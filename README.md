@@ -1,6 +1,7 @@
 ## Hello there 🖖
 
 #### Less Terrible ECMAScript Watch List
+* Static Type Checker: https://github.com/JSMonk/hegel
 * Pattern Matching: https://github.com/tc39/proposal-pattern-matching
 * Pipeline Operator:
   * https://github.com/tc39/proposal-pipeline-operator
