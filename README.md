@@ -10,6 +10,7 @@
 * Record & Tuple: https://github.com/tc39/proposal-record-tuple
 * ADT Enum: https://github.com/Jack-Works/proposal-enum
 * Do Expressions: https://github.com/tc39/proposal-do-expressions
+* Extractors (Pattern Matching): https://github.com/tc39/proposal-extractors
 
 #### Edgy Github Stats
 <img align="center" src="https://github-readme-stats.vercel.app/api?username=noverby&show_icons=true&theme=radical&count_private=true&hide=stars" />
