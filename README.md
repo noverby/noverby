@@ -11,6 +11,7 @@
 * ADT Enum: https://github.com/Jack-Works/proposal-enum
 * Do Expressions: https://github.com/tc39/proposal-do-expressions
 * Extractors (Pattern Matching): https://github.com/tc39/proposal-extractors
+* React Native Promise: https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
 
 #### Edgy Github Stats
 <img align="center" src="https://github-readme-stats.vercel.app/api?username=noverby&show_icons=true&theme=radical&count_private=true&hide=stars" />
