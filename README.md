@@ -12,6 +12,7 @@
 * ADT Enum: https://github.com/Jack-Works/proposal-enum
 * Do Expressions: https://github.com/tc39/proposal-do-expressions
 * Extractors (Pattern Matching): https://github.com/tc39/proposal-extractors
+* Operator Overloading: https://github.com/tc39/proposal-operator-overloading
 
 ### JS/TS Toolchain
 * Static JS Type Checker: https://github.com/JSMonk/hegel
