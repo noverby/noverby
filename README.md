@@ -1,5 +1,3 @@
-# Hello there 🖖
-
 ## Less Terrible Watch Lists
 
 ### ECMAScript 
