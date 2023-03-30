@@ -1,4 +1,4 @@
-## Less Terrible Watch Lists
+## More Niceness Watch Lists
 
 ### ECMAScript 
 * Pattern Matching: https://github.com/tc39/proposal-pattern-matching
