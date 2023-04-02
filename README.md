@@ -3,6 +3,9 @@
 ### GNOME
 * Chromecast: https://gitlab.gnome.org/GNOME/gnome-network-displays/-/merge_requests/171
 
+### Flatpak
+* Webextensions Portal: https://github.com/flatpak/xdg-desktop-portal/pull/705
+
 ### ECMAScript 
 * Pattern Matching: https://github.com/tc39/proposal-pattern-matching
 * Pipeline Operator:
