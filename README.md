@@ -6,6 +6,9 @@
 ### Flatpak
 * Webextensions Portal: https://github.com/flatpak/xdg-desktop-portal/pull/705
 
+### Zig
+* Comptime Interfaces: https://github.com/ziglang/zig/issues/1268 
+
 ### ECMAScript 
 * Pattern Matching: https://github.com/tc39/proposal-pattern-matching
 * Pipeline Operator:
