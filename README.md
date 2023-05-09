@@ -10,7 +10,9 @@
 * Comptime Interfaces: https://github.com/ziglang/zig/issues/1268 
 
 ### ECMAScript 
-* Pattern Matching: https://github.com/tc39/proposal-pattern-matching
+* Pattern Matching: 
+  * https://github.com/tc39/proposal-pattern-matching
+  * https://github.com/tc39/proposal-extractors
 * Pipeline Operator:
   * https://github.com/tc39/proposal-pipeline-operator
   * https://github.com/tc39/proposal-call-this
@@ -18,7 +20,6 @@
 * Record & Tuple: https://github.com/tc39/proposal-record-tuple
 * ADT Enum: https://github.com/Jack-Works/proposal-enum
 * Do Expressions: https://github.com/tc39/proposal-do-expressions
-* Extractors (Pattern Matching): https://github.com/tc39/proposal-extractors
 * Operator Overloading: https://github.com/tc39/proposal-operator-overloading
 
 ### JS/TS Toolchain
