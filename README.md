@@ -21,6 +21,7 @@
 * ADT Enum: https://github.com/Jack-Works/proposal-enum
 * Do Expressions: https://github.com/tc39/proposal-do-expressions
 * Operator Overloading: https://github.com/tc39/proposal-operator-overloading
+* Array Grouping: https://github.com/tc39/proposal-array-grouping
 
 ### JS/TS Toolchain
 * Static JS Type Checker: https://github.com/JSMonk/hegel
