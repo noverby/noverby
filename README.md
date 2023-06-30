@@ -7,6 +7,7 @@
 * Webextensions Portal: https://github.com/flatpak/xdg-desktop-portal/pull/705
 
 ### Zig
+* Divorce from LLVM: https://github.com/ziglang/zig/issues/16270
 * Comptime Interfaces: https://github.com/ziglang/zig/issues/1268 
 
 ### ECMAScript 
