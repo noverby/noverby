@@ -8,7 +8,10 @@
 
 ### Zig
 * Divorce from LLVM: https://github.com/ziglang/zig/issues/16270
-* Comptime Interfaces: https://github.com/ziglang/zig/issues/1268 
+* Comptime Interfaces: https://github.com/ziglang/zig/issues/1268
+
+### Roc
+* Language Server: https://github.com/ayazhafiz/roc/tree/langsrv
 
 ### ECMAScript 
 * Pattern Matching: 
