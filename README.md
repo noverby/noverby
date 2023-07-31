@@ -13,6 +13,9 @@
 ### Roc
 * Language Server: https://github.com/ayazhafiz/roc/tree/langsrv
 
+### Matrix
+* Discord Forum Support: https://github.com/mautrix/discord/issues/101
+
 ### ECMAScript 
 * Pattern Matching: 
   * https://github.com/tc39/proposal-pattern-matching
