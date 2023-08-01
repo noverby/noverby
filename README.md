@@ -2,6 +2,7 @@
 
 ### GNOME
 * Chromecast: https://gitlab.gnome.org/GNOME/gnome-network-displays/-/merge_requests/171
+* Proton Drive Sync: https://github.com/hwittenborn/celeste/issues/31
 
 ### Flatpak
 * Webextensions Portal: https://github.com/flatpak/xdg-desktop-portal/pull/705
