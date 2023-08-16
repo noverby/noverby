@@ -18,6 +18,9 @@
 ### Matrix
 * Discord Forum Support: https://github.com/mautrix/discord/issues/101
 
+### Nix
+* Home-manager GNOME Extensions: https://github.com/nix-community/home-manager/issues/284
+
 ### ECMAScript 
 * Pattern Matching: 
   * https://github.com/tc39/proposal-pattern-matching
