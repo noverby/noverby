@@ -20,7 +20,7 @@
 
 ### Nix
 * Home-manager GNOME Extensions: https://github.com/nix-community/home-manager/issues/284
-* fromYAML builtin: https://github.com/NixOS/nix/issues/4910
+* fromYAML builtin: https://github.com/NixOS/nix/pull/7340
 
 ### ECMAScript 
 * Pattern Matching: 
