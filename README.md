@@ -1,3 +1,6 @@
+## Nixfiles
+https://github.com/noverby/nixfiles/
+
 ## More Niceness Watch Lists
 
 ### GNOME
