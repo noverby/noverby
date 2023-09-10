@@ -4,7 +4,7 @@ https://github.com/noverby/nixfiles/
 ## More Niceness Watch Lists
 
 ### GNOME
-* Chromecast: https://gitlab.gnome.org/GNOME/gnome-network-displays/-/merge_requests/171
+* [Integrate GNOME Network Displays features into GNOME Settings](https://gitlab.gnome.org/Teams/Engagement/internship-project-ideas/-/issues/32)
 * Proton Drive Sync: https://github.com/hwittenborn/celeste/issues/31
 * Office 365 Online Account: https://gitlab.gnome.org/GNOME/gnome-online-accounts/-/merge_requests/97
 
