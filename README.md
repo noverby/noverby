@@ -3,6 +3,9 @@
 
 ## Niceness Watch Lists
 
+### Bun
+* [Implement Node-API](https://github.com/oven-sh/bun/issues/158)
+
 ### GNOME
 * [Integrate GNOME Network Displays features into GNOME Settings](https://gitlab.gnome.org/Teams/Engagement/internship-project-ideas/-/issues/32)
 * [Proton Drive Sync](https://github.com/hwittenborn/celeste/issues/31)
