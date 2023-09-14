@@ -27,6 +27,7 @@
 ### Nix
 * [Home-manager GNOME Extensions](https://github.com/nix-community/home-manager/issues/284)
 * [fromYAML builtin](https://github.com/NixOS/nix/pull/7340)
+* [Allow derivations to hardlink](https://github.com/NixOS/nix/issues/1272)
 
 ### ECMAScript 
 * [Pattern Matching](https://github.com/tc39/proposal-pattern-matching):
