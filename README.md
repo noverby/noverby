@@ -1,7 +1,7 @@
 ## Me
 [My Nix Files](https://github.com/noverby/nixfiles)
 
-## Niceness Watch Lists
+## Wish List
 
 ### Bun
 * [Implement Node-API](https://github.com/oven-sh/bun/issues/158)
