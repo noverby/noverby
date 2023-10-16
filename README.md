@@ -4,6 +4,9 @@
 ## Projects
 [My Nix Files](https://github.com/noverby/nixfiles)
 
+## Github Stats
+[![GitHub Streak](https://streak-stats.demolab.com/?user=noverby&theme=dark)](https://git.io/streak-stats)
+
 ## Wish List
 
 ### Bun
@@ -57,5 +60,3 @@
 * [View Old Posts](https://github.com/mastodon/mastodon/issues/17213)
 * [Make Financial Supporters Visible](https://github.com/mastodon/mastodon/issues/5380)
 
-## Edgy Github Stats
-[![GitHub Streak](https://streak-stats.demolab.com/?user=noverby&theme=dark)](https://git.io/streak-stats)
