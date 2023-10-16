@@ -1,4 +1,7 @@
-## Me
+## Homepage
+[![Niclas Overby's Homepage](homepage.png)](https://niclas.overby.me/)
+
+## Projects
 [My Nix Files](https://github.com/noverby/nixfiles)
 
 ## Wish List
