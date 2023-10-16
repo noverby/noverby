@@ -3,6 +3,7 @@
 
 ## Projects
 [My Nix Files](https://github.com/noverby/nixfiles)
+[RadikalWiki](https://github.com/RadikalWiki/radikalwiki)
 
 ## Github Stats
 [![GitHub Streak](https://streak-stats.demolab.com/?user=noverby&theme=dark)](https://git.io/streak-stats)
