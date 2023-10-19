@@ -9,22 +9,22 @@
 [![GitHub Streak](https://streak-stats.demolab.com/?user=noverby&theme=dark)](https://git.io/streak-stats)
 
 ## Stack Migration
-| Status | Component           | Successor              | Compat               | Legacy             |
-|:------:|---------------------|------------------------|----------------------|--------------------|
-| 🚫     | Compiler Framework  | Cranelift, Zig         | N/A                  | LLVM               |
-| ✔️      | System Language     | Zig, Rust              | cxx, bindgen         | C, C++             |
-| 🚧     | Shell               | Nushell                | ?                    | Bash               |
-| 🚧     | Shell Utilities     | Nushell Builtins       | uutils               | GNU Coreutils      |
-| 🚫     | Build Script        | Just                   | ?                    | GNU Make           |
-| 🚫     | Scripting Language  | Roc                    | RustPython, WASI     | Python, TypeScript |
-| 🚧     | Config Language     | Nickel                 | ?                    | Nix                |
-| 🚧     | Package Manager     | Tvix                   | Flatpak              | Nix, Dnf, Ostree   |
-| 🚧     | 2D Toolkit          | Iced                   | Cosmic Gtk Theme     | GTK+, Qt           |
-| 🚧     | Desktop Environment | Cosmic Epoch           | Cosmic               | Gnome Shell        |
-| ❓     | IDE                 | ?                      | LSP, BSP             | VS Codium          |
-| ❓     | Web Browser         | ?                      | Chrome Extension API | Firefox            |
-| ✔️      | Distro              | NixOS                  | OCI, Distrobox       | Fedora Silverblue  |
-| 🚫     | Container Runtime   | youki                  | OCI                  | runc, crun         |
+| Status | Component | Successor | Compat | Legacy |
+|:-:|-|-|-|-|
+| 🚫 | Compiler Framework | [Cranelift](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift), [Zig](https://github.com/ziglang/zig) | N/A | [LLVM](https://github.com/llvm/llvm-project) |
+| ✔️ | System Language | [Zig](https://github.com/ziglang/zig), [Rust](https://github.com/rust-lang/rust) | [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) | [Clang](https://github.com/llvm/llvm-project) |
+| 🚧 | Shell | [Nushell](https://github.com/nushell/nushell)| ?| [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
+| 🚧 | Shell Utilities | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [GNU Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| 🚫 | Build Script| [Just](https://github.com/casey/just) | ?| [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
+| 🚫 | Scripting Language | [Roc](https://github.com/roc-lang/roc)| [RustPython](https://github.com/RustPython/RustPython), [WASI](https://github.com/WebAssembly/WASI) | [Python](https://github.com/python/cpython), [TypeScript](https://github.com/microsoft/TypeScript) |
+| 🚧 | Config Language | [Nickel](https://github.com/tweag/nickel) | N/A| [Nix](https://github.com/NixOS/nix)|
+| 🚧 | Package Manager | [Tvix](https://github.com/tvlfyi/tvix) | [Flatpak](https://github.com/flatpak/flatpak) | [Nix](https://github.com/NixOS/nix) |
+| 🚧 | 2D Toolkit | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
+| 🚧 | Desktop Environment | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | [Cosmic](https://github.com/pop-os/cosmic) | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell)|
+| ❓ | IDE | ? | [LSP](https://github.com/microsoft/language-server-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium](https://github.com/VSCodium/vscodium) |
+| ❓ | Web Browser | ? | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) | [Firefox](https://github.com/mozilla/gecko-dev)|
+| ✔️ | Distro | [NixOS](https://github.com/NixOS/nixpkgs) | [OCI](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue/) |
+| 🚫 | Container Runtime | [youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [runc](https://github.com/opencontainers/runc) |
 
 ## Wish List
 
@@ -56,9 +56,9 @@
 
 ### ECMAScript 
 * [Pattern Matching](https://github.com/tc39/proposal-pattern-matching):
-  * [Extractors](https://github.com/tc39/proposal-extractors)
+ * [Extractors](https://github.com/tc39/proposal-extractors)
 * [Pipeline Operator](https://github.com/tc39/proposal-pipeline-operator):
-  * [Call This](https://github.com/tc39/proposal-call-this)
+ * [Call This](https://github.com/tc39/proposal-call-this)
 * [Type Annotations](https://github.com/tc39/proposal-type-annotations)
 * [Record & Tuple](https://github.com/tc39/proposal-record-tuple)
 * [ADT Enum](https://github.com/Jack-Works/proposal-enum)
