@@ -9,22 +9,22 @@
 [![GitHub Streak](https://streak-stats.demolab.com/?user=noverby&theme=dark)](https://git.io/streak-stats)
 
 ## Stack Migration
-| Component           | Successor              | Compat               | Legacy             |
-|:--------------------|:----------------------:|:--------------------:|:------------------:|
-| Compiler Framework  | Cranelift, Zig         | N/A                  | LLVM               |
-| System Language     | Zig, Rust              | cxx, bindgen         | C, C++             |
-| Shell               | Nushell                | ?                    | Bash               |
-| Shell Utilities     | Nushell Builtins       | uutils               | GNU Coreutils      |
-| Build Script        | Just                   | ?                    | GNU Make           |
-| Scripting Language  | Roc                    | RustPython, WASI     | Python, TypeScript |
-| Config Language     | Nickel                 | ?                    | Nix                |
-| Package Manager     | Tvix                   | Flatpak              | Nix, Dnf, Ostree   |
-| 2D Toolkit          | Iced                   | Cosmic Gtk Theme     | GTK+, Qt           |
-| Desktop Environment | Cosmic Epoch           | Cosmic               | Gnome Shell        |
-| IDE                 | ?                      | LSP, BSP             | VS Codium          |
-| Web Browser         | ?                      | Chrome Extension API | Firefox            |
-| Distro              | NixOS                  | OCI, Distrobox       | Fedora Silverblue  |
-| Container Runtime   | youki                  | OCI                  | runc, crun         |
+| Status | Component           | Successor              | Compat               | Legacy             |
+|--------|---------------------|------------------------|----------------------|--------------------|
+| 🚫     | Compiler Framework  | Cranelift, Zig         | N/A                  | LLVM               |
+| ✔️      | System Language     | Zig, Rust              | cxx, bindgen         | C, C++             |
+| 🚧     | Shell               | Nushell                | ?                    | Bash               |
+| 🚧     | Shell Utilities     | Nushell Builtins       | uutils               | GNU Coreutils      |
+| 🚫     | Build Script        | Just                   | ?                    | GNU Make           |
+| 🚫     | Scripting Language  | Roc                    | RustPython, WASI     | Python, TypeScript |
+| 🚧     | Config Language     | Nickel                 | ?                    | Nix                |
+| 🚧     | Package Manager     | Tvix                   | Flatpak              | Nix, Dnf, Ostree   |
+| 🚧     | 2D Toolkit          | Iced                   | Cosmic Gtk Theme     | GTK+, Qt           |
+| 🚧     | Desktop Environment | Cosmic Epoch           | Cosmic               | Gnome Shell        |
+| ❓     | IDE                 | ?                      | LSP, BSP             | VS Codium          |
+| ❓     | Web Browser         | ?                      | Chrome Extension API | Firefox            |
+| ✔️      | Distro              | NixOS                  | OCI, Distrobox       | Fedora Silverblue  |
+| 🚫     | Container Runtime   | youki                  | OCI                  | runc, crun         |
 
 ## Wish List
 
