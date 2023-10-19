@@ -10,7 +10,7 @@
 
 ## Stack Migration
 | Status | Component           | Successor              | Compat               | Legacy             |
-|--------|---------------------|------------------------|----------------------|--------------------|
+|:------:|---------------------|------------------------|----------------------|--------------------|
 | 🚫     | Compiler Framework  | Cranelift, Zig         | N/A                  | LLVM               |
 | ✔️      | System Language     | Zig, Rust              | cxx, bindgen         | C, C++             |
 | 🚧     | Shell               | Nushell                | ?                    | Bash               |
