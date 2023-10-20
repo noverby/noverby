@@ -12,7 +12,7 @@
 | Status | Component | Successor | Compat | Legacy |
 |:-:|-|-|-|-|
 | 🚫 | Compiler Framework | [Cranelift](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift), [Zig](https://github.com/ziglang/zig) | N/A | [LLVM](https://github.com/llvm/llvm-project) |
-| ✅ | System Language | [Zig](https://github.com/ziglang/zig), [Rust](https://github.com/rust-lang/rust) | [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) | [Clang](https://github.com/llvm/llvm-project) |
+| ✅ | System Language | [Rust](https://github.com/rust-lang/rust), [Zig](https://github.com/ziglang/zig)  | [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) | [Clang](https://github.com/llvm/llvm-project) |
 | ✅ | Shell | [Nushell](https://github.com/nushell/nushell)| ?| [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
 | ✅ | Shell Utilities | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [GNU Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Build Script| [Just](https://github.com/casey/just) | ?| [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
@@ -25,7 +25,8 @@
 | 🚫 | Web Browser | [Servo](https://github.com/servo/servo) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) | [Firefox](https://github.com/mozilla/gecko-dev)|
 | 🚧 | Web Runtime | [Deno](https://github.com/denoland/deno), [Bun](https://github.com/oven-sh/bun) | [Node.js API](https://nodejs.org/api) | [Node.js](https://github.com/nodejs/node)|
 | ✅ | Distro | [NixOS](https://github.com/NixOS/nixpkgs) | [OCI](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue/) |
-| 🚫 | Container Runtime | [youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [runc](https://github.com/opencontainers/runc) |
+| 🚧 | Container CLI | [Podman](https://github.com/containers/podman) | [OCI](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
+| 🚧 | Container Runtime | [youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
 
 ## Wish List
 
