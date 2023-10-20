@@ -13,11 +13,11 @@
 |:-:|-|-|-|-|
 | 🚫 | Compiler Framework | [Cranelift](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift), [Zig](https://github.com/ziglang/zig) | N/A | [LLVM](https://github.com/llvm/llvm-project) |
 | ✅ | System Language | [Zig](https://github.com/ziglang/zig), [Rust](https://github.com/rust-lang/rust) | [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) | [Clang](https://github.com/llvm/llvm-project) |
-| 🚧 | Shell | [Nushell](https://github.com/nushell/nushell)| ?| [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
+| ✅ | Shell | [Nushell](https://github.com/nushell/nushell)| ?| [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
 | ✅ | Shell Utilities | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [GNU Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | 🚫 | Build Script| [Just](https://github.com/casey/just) | ?| [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
 | 🚫 | Scripting Language | [Roc](https://github.com/roc-lang/roc)| [RustPython](https://github.com/RustPython/RustPython), [WASI](https://github.com/WebAssembly/WASI) | [Python](https://github.com/python/cpython), [TypeScript](https://github.com/microsoft/TypeScript) |
-| 🚧 | Config Language | [Nickel](https://github.com/tweag/nickel) | N/A| [Nix](https://github.com/NixOS/nix)|
+| 🚧 | Config Language | [Nickel](https://github.com/tweag/nickel) | N/A | [Nix](https://github.com/NixOS/nix)|
 | 🚧 | Package Manager | [Tvix](https://github.com/tvlfyi/tvix) | [Flatpak](https://github.com/flatpak/flatpak) | [Nix](https://github.com/NixOS/nix) |
 | 🚧 | 2D Toolkit | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
 | 🚧 | Desktop Environment | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | [Cosmic](https://github.com/pop-os/cosmic) | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell)|
@@ -30,11 +30,6 @@
 
 ### Bun
 * [Implement Node-API](https://github.com/oven-sh/bun/issues/158)
-
-### GNOME
-* [Integrate GNOME Network Displays features into GNOME Settings](https://gitlab.gnome.org/Teams/Engagement/internship-project-ideas/-/issues/32)
-* [Proton Drive Sync](https://github.com/hwittenborn/celeste/issues/31)
-* [Office 365 Online Account](https://gitlab.gnome.org/GNOME/gnome-online-accounts/-/merge_requests/97)
 
 ### Flatpak
 * [Webextensions Portal](https://github.com/flatpak/xdg-desktop-portal/pull/705)
@@ -50,7 +45,6 @@
 * [Discord Forum Support](https://github.com/mautrix/discord/issues/101)
 
 ### Nix
-* [Home-manager GNOME Extensions](https://github.com/nix-community/home-manager/issues/284)
 * [fromYAML builtin](https://github.com/NixOS/nix/pull/7340)
 * [Allow derivations to hardlink](https://github.com/NixOS/nix/issues/1272)
 
