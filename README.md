@@ -22,7 +22,7 @@
 | 🚧 | 2D Toolkit | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
 | 🚧 | Desktop Environment | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | [Cosmic](https://github.com/pop-os/cosmic) | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell)|
 | ❓ | IDE | ? | [LSP](https://github.com/microsoft/language-server-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium](https://github.com/VSCodium/vscodium) |
-| ❓ | Web Browser | ? | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) | [Firefox](https://github.com/mozilla/gecko-dev)|
+| 🚫 | Web Browser | [Servo](https://github.com/servo/servo) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) | [Firefox](https://github.com/mozilla/gecko-dev)|
 | ✅ | Distro | [NixOS](https://github.com/NixOS/nixpkgs) | [OCI](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue/) |
 | 🚫 | Container Runtime | [youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [runc](https://github.com/opencontainers/runc) |
 
