@@ -33,7 +33,20 @@
 |:-:|-|-|-|-|
 | ✅ | Shell | [Nushell](https://github.com/nushell/nushell)| ? | [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
 | ✅ | Core Utilities | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [GNU Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Copy | [Xcp](https://github.com/tarka/xcp) | [uutils](https://github.com/uutils/coreutils) | [Cp](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| 🚫 | Cut Text | [Choose](https://github.com/theryangeary/choose) | [uutils](https://github.com/uutils/coreutils) | [Cut](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Directory Usage | [Dust](https://github.com/bootandy/dust) | [uutils](https://github.com/uutils/coreutils) | [Du](https://git.savannah.gnu.org/cgit/coreutils.git) | 
+| ❓ | Filesystem Usage | ? | [uutils](https://github.com/uutils/coreutils) | [Df](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Build Script| [Just](https://github.com/casey/just) | ? | [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
+| ✅ | Superuser | [Sudo-rs](https://github.com/memorysafety/sudo-rs) | N/A | [Sudo](https://www.sudo.ws/repos/sudo) |
+| ✅ | Fortune | [Fortune-kind](https://github.com/cafkafk/fortune-kind) | N/A | [Fortune-mod](https://github.com/shlomif/fortune-mod) |
+| ✅ | System Call Tracing | [Lurk](https://github.com/JakWai01/lurk) | N/A | [Strace](https://github.com/strace/strace) |
+| ✅ | Find Files | [Fd](https://github.com/sharkdp/fd) | N/A | [Findutils](https://git.savannah.gnu.org/cgit/findutils.git) |
+| ✅ | Find Patterns | [Ripgrep](https://github.com/BurntSushi/ripgrep) | N/A | [Grep](https://git.savannah.gnu.org/cgit/grep.git) |
+| ✅ | JSON Query | [Jql](https://github.com/yamafaktory/jql) | N/A | [Jq](https://github.com/jqlang/jq) |
+| 🚫 | Regex Edit | [Sd](https://github.com/chmln/sd) | N/A | [Sed](https://git.savannah.gnu.org/cgit/sed.git) |
+| 🚫 | Optimize PNG | [Oxipng](https://github.com/shssoichiro/oxipngc) | N/A | [Optpng](https://optipng.sourceforge.net) |
+| 🚫 | Terminal Workspace | [Zellij](https://github.com/zellij-org/zellij) | N/A | [Tmux](https://github.com/tmux/tmux) |
 
 ## Wish List
 
