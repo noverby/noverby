@@ -9,13 +9,12 @@
 [![GitHub Streak](https://streak-stats.demolab.com/?user=noverby&theme=dark)](https://git.io/streak-stats)
 
 ## Stack Migration
+
+### Base
 | Status | Component | Successor | Compat | Legacy |
 |:-:|-|-|-|-|
 | 🚫 | Compiler Framework | [Cranelift](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift), [Zig](https://github.com/ziglang/zig) | N/A | [LLVM](https://github.com/llvm/llvm-project) |
 | ✅ | System Language | [Rust](https://github.com/rust-lang/rust), [Zig](https://github.com/ziglang/zig)  | [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) | [Clang](https://github.com/llvm/llvm-project) |
-| ✅ | Shell | [Nushell](https://github.com/nushell/nushell)| ?| [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
-| ✅ | Shell Utilities | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [GNU Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
-| ✅ | Build Script| [Just](https://github.com/casey/just) | ?| [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
 | 🚫 | Scripting Language | [Roc](https://github.com/roc-lang/roc)| [RustPython](https://github.com/RustPython/RustPython), [WASI](https://github.com/WebAssembly/WASI) | [Python](https://github.com/python/cpython), [TypeScript](https://github.com/microsoft/TypeScript) |
 | 🚧 | Config Language | [Nickel](https://github.com/tweag/nickel) | N/A | [Nix](https://github.com/NixOS/nix)|
 | 🚧 | Package Manager | [Tvix](https://github.com/tvlfyi/tvix) | [Flatpak](https://github.com/flatpak/flatpak) | [Nix](https://github.com/NixOS/nix) |
@@ -27,6 +26,14 @@
 | ✅ | Distro | [NixOS](https://github.com/NixOS/nixpkgs) | [OCI](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue/) |
 | 🚧 | Container CLI | [Podman](https://github.com/containers/podman) | [OCI](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
 | 🚧 | Container Runtime | [youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
+
+
+### Shell
+| Status | Component | Successor | Compat | Legacy |
+|:-:|-|-|-|-|
+| ✅ | Shell | [Nushell](https://github.com/nushell/nushell)| ? | [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
+| ✅ | Core Utilities | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [GNU Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Build Script| [Just](https://github.com/casey/just) | ? | [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
 
 ## Wish List
 
