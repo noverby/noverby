@@ -50,27 +50,35 @@
 
 ## Wish List
 
-### Bun
-* [Implement Node-API](https://github.com/oven-sh/bun/issues/158)
+### Stack
 
-### Flatpak
-* [Webextensions Portal](https://github.com/flatpak/xdg-desktop-portal/pull/705)
-
-### Zig
+#### Zig
 * [Divorce from LLVM](https://github.com/ziglang/zig/issues/16270)
 * [Comptime Interfaces](https://github.com/ziglang/zig/issues/1268)
 
-### Roc
+#### Roc
 * [Language Server](https://github.com/ayazhafiz/roc/tree/langsrv)
 
-### Matrix
+#### Matrix
 * [Discord Forum Support](https://github.com/mautrix/discord/issues/101)
 
-### Nix
+#### Nix
 * [fromYAML builtin](https://github.com/NixOS/nix/pull/7340)
 * [Allow derivations to hardlink](https://github.com/NixOS/nix/issues/1272)
 
-### ECMAScript 
+### World
+
+#### Mastodon
+* [View Remote Followers](https://github.com/mastodon/mastodon/issues/20533)
+* [View Old Posts](https://github.com/mastodon/mastodon/issues/17213)
+* [Make Financial Supporters Visible](https://github.com/mastodon/mastodon/issues/5380)
+
+### Legacy
+
+#### Bun
+* [Implement Node-API](https://github.com/oven-sh/bun/issues/158)
+
+#### ECMAScript 
 * [Pattern Matching](https://github.com/tc39/proposal-pattern-matching):
   * [Extractors](https://github.com/tc39/proposal-extractors)
 * [Pipeline Operator](https://github.com/tc39/proposal-pipeline-operator):
@@ -82,16 +90,11 @@
 * [Operator Overloading](https://github.com/tc39/proposal-operator-overloading)
 * [Array Grouping](https://github.com/tc39/proposal-array-grouping)
 
-### JS/TS Toolchain
+#### JS/TS Toolchain
 * [Hegel: Static JS Type Checker](https://github.com/JSMonk/hegel)
 * [Stc: Low-level TS Type Checker](https://github.com/dudykr/stc)
 
-### React/JSX
+#### React/JSX
 * [JSX Props Pruning](https://github.com/facebook/jsx/issues/23)
 * [React Native Promise](https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md)
-
-### Mastodon
-* [View Remote Followers](https://github.com/mastodon/mastodon/issues/20533)
-* [View Old Posts](https://github.com/mastodon/mastodon/issues/17213)
-* [Make Financial Supporters Visible](https://github.com/mastodon/mastodon/issues/5380)
 
