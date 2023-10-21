@@ -34,6 +34,7 @@
 | ✅ | Shell | [Nushell](https://github.com/nushell/nushell)| ❓ | [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
 | ✅ | Core Utilities | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [GNU Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Copy | [Xcp](https://github.com/tarka/xcp) | [uutils](https://github.com/uutils/coreutils) | [Cp](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Remove | [Rip](https://github.com/nivekuil/rip) | [uutils](https://github.com/uutils/coreutils) | [Rm](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | 🚫 | Cut Text | [Choose](https://github.com/theryangeary/choose) | [uutils](https://github.com/uutils/coreutils) | [Cut](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Directory Usage | [Dust](https://github.com/bootandy/dust) | [uutils](https://github.com/uutils/coreutils) | [Du](https://git.savannah.gnu.org/cgit/coreutils.git) | 
 | ✅ | Build Script| [Just](https://github.com/casey/just) | ❓ | [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
