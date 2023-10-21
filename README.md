@@ -36,7 +36,6 @@
 | ✅ | Copy | [Xcp](https://github.com/tarka/xcp) | [uutils](https://github.com/uutils/coreutils) | [Cp](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | 🚫 | Cut Text | [Choose](https://github.com/theryangeary/choose) | [uutils](https://github.com/uutils/coreutils) | [Cut](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Directory Usage | [Dust](https://github.com/bootandy/dust) | [uutils](https://github.com/uutils/coreutils) | [Du](https://git.savannah.gnu.org/cgit/coreutils.git) | 
-| ❓ | Filesystem Usage | ❓ | [uutils](https://github.com/uutils/coreutils) | [Df](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Build Script| [Just](https://github.com/casey/just) | ❓ | [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
 | 🚫 | Superuser | [Sudo-rs](https://github.com/memorysafety/sudo-rs) | ⬅️ | [Sudo](https://www.sudo.ws/repos/sudo) |
 | ✅ | Fortune | [Fortune-kind](https://github.com/cafkafk/fortune-kind) | ⬅️ | [Fortune-mod](https://github.com/shlomif/fortune-mod) |
