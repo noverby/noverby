@@ -13,14 +13,10 @@
 ### Base
 | Status | Component | Successor | Compat | Legacy |
 |:-:|-|-|-|-|
-| 🚫 | Compiler Framework | [Cranelift](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift), [Zig](https://github.com/ziglang/zig) | ⬅️ | [LLVM](https://github.com/llvm/llvm-project) |
-| ✅ | System Language | [Rust](https://github.com/rust-lang/rust), [Zig](https://github.com/ziglang/zig)  | [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) | [Clang](https://github.com/llvm/llvm-project) |
-| 🚫 | Scripting Language | [Roc](https://github.com/roc-lang/roc)| [RustPython](https://github.com/RustPython/RustPython), [WASI](https://github.com/WebAssembly/WASI) | [Python](https://github.com/python/cpython), [TypeScript](https://github.com/microsoft/TypeScript) |
 | 🚧 | Config Language | [Nickel](https://github.com/tweag/nickel) | ⬅️ | [Nix](https://github.com/NixOS/nix)|
 | 🚧 | Package Manager | [Tvix](https://github.com/tvlfyi/tvix) | ⬅️ | [Nix](https://github.com/NixOS/nix) |
 | 🚧 | 2D Toolkit | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
 | 🚧 | Desktop Environment | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | [Cosmic](https://github.com/pop-os/cosmic) | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell)|
-| ❓ | IDE | ❓ | [LSP](https://github.com/microsoft/language-server-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium](https://github.com/VSCodium/vscodium) |
 | 🚫 | Web Browser | [Servo](https://github.com/servo/servo) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) | [Firefox](https://github.com/mozilla/gecko-dev)|
 | 🚧 | Web Runtime | [Deno](https://github.com/denoland/deno), [Bun](https://github.com/oven-sh/bun) | [Node.js API](https://nodejs.org/api) | [Node.js](https://github.com/nodejs/node)|
 | ✅ | Distro | [NixOS](https://github.com/NixOS/nixpkgs) | [OCI](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue/) |
@@ -37,16 +33,23 @@
 | ✅ | Remove | [Rip](https://github.com/nivekuil/rip) | [uutils](https://github.com/uutils/coreutils) | [Rm](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Cut Text | [Choose](https://github.com/theryangeary/choose) | [uutils](https://github.com/uutils/coreutils) | [Cut](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Directory Usage | [Dust](https://github.com/bootandy/dust) | [uutils](https://github.com/uutils/coreutils) | [Du](https://git.savannah.gnu.org/cgit/coreutils.git) | 
-| ✅ | Build Script| [Just](https://github.com/casey/just) | ❓ | [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
 | 🚫 | Superuser | [Sudo-rs](https://github.com/memorysafety/sudo-rs) | ⬅️ | [Sudo](https://www.sudo.ws/repos/sudo) |
 | ✅ | Fortune | [Fortune-kind](https://github.com/cafkafk/fortune-kind) | ⬅️ | [Fortune-mod](https://github.com/shlomif/fortune-mod) |
-| ✅ | System Call Tracing | [Lurk](https://github.com/JakWai01/lurk) | 🆗 | [Strace](https://github.com/strace/strace) |
 | ✅ | Find Files | [Fd](https://github.com/sharkdp/fd) | 🆗 | [Findutils](https://git.savannah.gnu.org/cgit/findutils.git) |
 | ✅ | Find Patterns | [Ripgrep](https://github.com/BurntSushi/ripgrep) | 🆗 | [Grep](https://git.savannah.gnu.org/cgit/grep.git) |
-| ✅ | JSON Query | [Jql](https://github.com/yamafaktory/jql) | 🆗 | [Jq](https://github.com/jqlang/jq) |
 | ✅ | Regex Edit | [Sd](https://github.com/chmln/sd) | ❓ | [Sed](https://git.savannah.gnu.org/cgit/sed.git) |
-| ✅ | Optimize PNG | [Oxipng](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng](https://optipng.sourceforge.net) |
 | ✅ | Terminal Workspace | [Zellij](https://github.com/zellij-org/zellij) | 🆗 | [Tmux](https://github.com/tmux/tmux) |
+
+### Dev
+| Status | Component | Successor | Compat | Legacy |
+| 🚫 | Compiler Framework | [Cranelift](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift), [Zig](https://github.com/ziglang/zig) | ⬅️ | [LLVM](https://github.com/llvm/llvm-project) |
+| ✅ | System Language | [Rust](https://github.com/rust-lang/rust), [Zig](https://github.com/ziglang/zig)  | [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) | [Clang](https://github.com/llvm/llvm-project) |
+| 🚫 | Scripting Language | [Roc](https://github.com/roc-lang/roc)| [RustPython](https://github.com/RustPython/RustPython), [WASI](https://github.com/WebAssembly/WASI) | [Python](https://github.com/python/cpython), [TypeScript](https://github.com/microsoft/TypeScript) |
+| ✅ | Build Script| [Just](https://github.com/casey/just) | ❓ | [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
+| ❓ | IDE | ❓ | [LSP](https://github.com/microsoft/language-server-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium](https://github.com/VSCodium/vscodium) |
+| ✅ | JSON Query | [Jql](https://github.com/yamafaktory/jql) | 🆗 | [Jq](https://github.com/jqlang/jq) |
+| ✅ | System Call Tracing | [Lurk](https://github.com/JakWai01/lurk) | 🆗 | [Strace](https://github.com/strace/strace) |
+| ✅ | Optimize PNG | [Oxipng](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng](https://optipng.sourceforge.net) |
 
 ## Wish List
 
