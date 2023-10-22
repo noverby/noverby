@@ -8,7 +8,15 @@
 ## Github Stats
 [![GitHub Streak](https://streak-stats.demolab.com/?user=noverby&theme=dark)](https://git.io/streak-stats)
 
-## Stack Migration
+## Stack
+
+### Hardware
+| Status | Component | Successor | Legacy |
+|:-:|-|-|-|
+| ✅ | Laptop | ❓ | [Framwork 13](https://frame.work/products/laptop-diy-13-gen-intel) |
+| ✅ | Mobile | ❓ | [Samsung Galaxy S23 Plus](https://www.samsung.com/dk/smartphones/galaxy-s23) |
+| ✅ | Watch | ❓ | [Fēnix® 7 – Sapphire Solar Edition](https://www.garmin.com/en-US/p/735520) |
+| ✅ | AR Glasses | ❓ | [XReal Air](https://www.xreal.com/air) |
 
 ### Base
 | Status | Component | Successor | Compat | Legacy |
