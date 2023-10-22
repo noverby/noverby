@@ -46,7 +46,7 @@
 | ✅ | JSON Query | [Jql](https://github.com/yamafaktory/jql) | 🆗 | [Jq](https://github.com/jqlang/jq) |
 | ✅ | Regex Edit | [Sd](https://github.com/chmln/sd) | ❓ | [Sed](https://git.savannah.gnu.org/cgit/sed.git) |
 | ✅ | Optimize PNG | [Oxipng](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng](https://optipng.sourceforge.net) |
-| 🚫 | Terminal Workspace | [Zellij](https://github.com/zellij-org/zellij) | 🆗 | [Tmux](https://github.com/tmux/tmux) |
+| ✅ | Terminal Workspace | [Zellij](https://github.com/zellij-org/zellij) | 🆗 | [Tmux](https://github.com/tmux/tmux) |
 
 ## Wish List
 
