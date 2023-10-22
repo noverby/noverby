@@ -11,7 +11,7 @@
 ## Stack
 
 ### Hardware
-| Status | Component | Successor | Legacy |
+| Status | Component | Successor | Current |
 |:-:|-|-|-|
 | ✅ | Laptop | ❓ | [Framwork 13](https://frame.work/products/laptop-diy-13-gen-intel) |
 | ✅ | Mobile | ❓ | [Samsung Galaxy S23 Plus](https://www.samsung.com/dk/smartphones/galaxy-s23) |
@@ -19,7 +19,7 @@
 | ✅ | AR Glasses | ❓ | [XReal Air](https://www.xreal.com/air) |
 
 ### Base
-| Status | Component | Successor | Compat | Legacy |
+| Status | Component | Successor | Compat | Current |
 |:-:|-|-|-|-|
 | 🚧 | Config Language | [Nickel](https://github.com/tweag/nickel) | ⬅️ | [Nix](https://github.com/NixOS/nix)|
 | 🚧 | Package Manager | [Tvix](https://github.com/tvlfyi/tvix) | ⬅️ | [Nix](https://github.com/NixOS/nix) |
@@ -33,7 +33,7 @@
 
 
 ### Shell
-| Status | Component | Successor | Compat | Legacy |
+| Status | Component | Successor | Compat | Current |
 |:-:|-|-|-|-|
 | ✅ | Shell | [Nushell](https://github.com/nushell/nushell)| ❓ | [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
 | ✅ | Core Utilities | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [GNU Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
@@ -49,7 +49,7 @@
 | ✅ | Terminal Workspace | [Zellij](https://github.com/zellij-org/zellij) | 🆗 | [Tmux](https://github.com/tmux/tmux) |
 
 ### Dev
-| Status | Component | Successor | Compat | Legacy |
+| Status | Component | Successor | Compat | Current |
 |:-:|-|-|-|-|
 | 🚫 | Compiler Framework | [Cranelift](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift), [Zig](https://github.com/ziglang/zig) | ⬅️ | [LLVM](https://github.com/llvm/llvm-project) |
 | ✅ | System Language | [Rust](https://github.com/rust-lang/rust), [Zig](https://github.com/ziglang/zig)  | [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) | [Clang](https://github.com/llvm/llvm-project) |
