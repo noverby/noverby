@@ -9,17 +9,23 @@
 [![GitHub Streak](https://streak-stats.demolab.com/?user=noverby&theme=dark)](https://git.io/streak-stats)
 
 ## Stack
+ * ✅: Currently in use
+ * 🚧: In progress/transition
+ * 🚫: Not in use
+ * ❓: Undecided
+ * 🆗: Not needed
+ * ⬅️: Backward compatible
 
 ### Hardware
-| Status | Component | Successor | Current |
-|:-:|-|-|-|
-| ✅ | Laptop | ❓ | [Framwork 13](https://frame.work/products/laptop-diy-13-gen-intel) |
-| ✅ | Mobile | ❓ | [Samsung Galaxy S23 Plus](https://www.samsung.com/dk/smartphones/galaxy-s23) |
-| ✅ | Watch | ❓ | [Fēnix 7 – Sapphire Solar Edition](https://www.garmin.com/en-US/p/735520) |
-| ✅ | AR Glasses | ❓ | [XReal Air](https://www.xreal.com/air) |
+| Status | Component | Upcoming | Current | Legacy |
+|:-:|-|-|-|-|
+| ✅ | Laptop | ❓ | [Framwork 13](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
+| ✅ | Mobile | ❓ | [Samsung Galaxy S23 Plus](https://www.samsung.com/dk/smartphones/galaxy-s23) | [Google Pixel 8 Pro](https://store.google.com/product/pixel_8_pro) + [GrapheneOS](https://grapheneos.org) |
+| ✅ | Watch | ❓ | [Fēnix 7 – Sapphire Solar Edition](https://www.garmin.com/en-US/p/735520) | [PineTime](https://www.pine64.org/pinetime) |
+| ✅ | AR Glasses | ❓ | [XReal Air](https://www.xreal.com/air) | [XReal Light](https://www.xreal.com/light/) |
 
 ### Base
-| Status | Component | Successor | Compat | Current |
+| Status | Component | Upcoming | Compat | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | Config Language | [Nickel](https://github.com/tweag/nickel) | ⬅️ | [Nix](https://github.com/NixOS/nix)|
 | 🚧 | Package Manager | [Tvix](https://github.com/tvlfyi/tvix) | ⬅️ | [Nix](https://github.com/NixOS/nix) |
@@ -29,11 +35,11 @@
 | 🚧 | Web Runtime | [Deno](https://github.com/denoland/deno), [Bun](https://github.com/oven-sh/bun) | [Node.js API](https://nodejs.org/api) | [Node.js](https://github.com/nodejs/node)|
 | ✅ | Distro | [NixOS](https://github.com/NixOS/nixpkgs) | [OCI](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue/) |
 | 🚧 | Container CLI | [Podman](https://github.com/containers/podman) | [OCI](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
-| 🚧 | Container Runtime | [youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
+| 🚧 | Container Runtime | [Youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
 
 
 ### Shell
-| Status | Component | Successor | Compat | Current |
+| Status | Component | Upcoming | Compat | Legacy |
 |:-:|-|-|-|-|
 | ✅ | Shell | [Nushell](https://github.com/nushell/nushell)| ❓ | [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
 | ✅ | Core Utilities | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [GNU Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
@@ -49,7 +55,7 @@
 | ✅ | Terminal Workspace | [Zellij](https://github.com/zellij-org/zellij) | 🆗 | [Tmux](https://github.com/tmux/tmux) |
 
 ### Dev
-| Status | Component | Successor | Compat | Current |
+| Status | Component | Upcoming | Compat | Legacy |
 |:-:|-|-|-|-|
 | 🚫 | Compiler Framework | [Cranelift](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift), [Zig](https://github.com/ziglang/zig) | ⬅️ | [LLVM](https://github.com/llvm/llvm-project) |
 | ✅ | System Language | [Rust](https://github.com/rust-lang/rust), [Zig](https://github.com/ziglang/zig)  | [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) | [Clang](https://github.com/llvm/llvm-project) |
@@ -59,7 +65,7 @@
 | ✅ | JSON Query | [Jql](https://github.com/yamafaktory/jql) | 🆗 | [Jq](https://github.com/jqlang/jq) |
 | ✅ | System Call Tracing | [Lurk](https://github.com/JakWai01/lurk) | 🆗 | [Strace](https://github.com/strace/strace) |
 | ✅ | Optimize PNG | [Oxipng](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng](https://optipng.sourceforge.net) |
-| 🚧 | Database | [Surrealdb](https://github.com/surrealdb/surrealdb) | SQL, GraphQL | [Postgres](https://github.com/postgres/postgres) |
+| 🚧 | Database | [Surrealdb](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org/) | [Postgres](https://github.com/postgres/postgres) |
 
 ## Wish List
 
