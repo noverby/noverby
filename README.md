@@ -59,7 +59,8 @@
 |:-:|-|-|-|-|
 | 🚫 | Compiler Framework | [Cranelift](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift), [Zig](https://github.com/ziglang/zig) | ⬅️ | [LLVM](https://github.com/llvm/llvm-project) |
 | ✅ | System Language | [Rust](https://github.com/rust-lang/rust), [Zig](https://github.com/ziglang/zig)  | [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) | [Clang](https://github.com/llvm/llvm-project) |
-| 🚫 | Scripting Language | [Roc](https://github.com/roc-lang/roc)| [RustPython](https://github.com/RustPython/RustPython), [WASI](https://github.com/WebAssembly/WASI) | [Python](https://github.com/python/cpython), [TypeScript](https://github.com/microsoft/TypeScript) |
+| 🚫 | Scripting Language | [Roc](https://github.com/roc-lang/roc) | [RustPython](https://github.com/RustPython/RustPython), [WASI](https://github.com/WebAssembly/WASI) | [Python](https://github.com/python/cpython), [TypeScript](https://github.com/microsoft/TypeScript) |
+| 🚫 | Read ELF | [Rust Readelf](https://github.com/cole14/rust-readelf) |❓ | [LLVM Readelf](https://llvm.org/docs/CommandGuide/llvm-readelf.html) |
 | ✅ | Build Script| [Just](https://github.com/casey/just) | ❓ | [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
 | ❓ | IDE | ❓ | [LSP](https://github.com/microsoft/language-server-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium](https://github.com/VSCodium/vscodium) |
 | ✅ | JSON Query | [Jql](https://github.com/yamafaktory/jql) | 🆗 | [Jq](https://github.com/jqlang/jq) |
