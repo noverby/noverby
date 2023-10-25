@@ -68,7 +68,7 @@
 | ✅ | Optimize PNG | [Oxipng](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng](https://optipng.sourceforge.net) |
 | 🚫 | Meta Database | [Surrealdb](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org/) | [Hasura](https://github.com/hasura/graphql-engine) |
 | 🚫 | Database | [Tikv](https://github.com/tikv/tikv) | ❓ | [Postgres](https://github.com/postgres/postgres) |
-| 🚫 | Storage Engine | ❓ | ❓ | [RocksDB](https://github.com/facebook/rocksdb) |
+| 🚫 | Storage Engine | [Sled](https://github.com/spacejam/sled) | ❓ | [RocksDB](https://github.com/facebook/rocksdb) |
 
 ## Wish List
 
