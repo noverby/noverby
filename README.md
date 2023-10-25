@@ -65,7 +65,9 @@
 | ✅ | JSON Query | [Jql](https://github.com/yamafaktory/jql) | 🆗 | [Jq](https://github.com/jqlang/jq) |
 | ✅ | System Call Tracing | [Lurk](https://github.com/JakWai01/lurk) | 🆗 | [Strace](https://github.com/strace/strace) |
 | ✅ | Optimize PNG | [Oxipng](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng](https://optipng.sourceforge.net) |
-| 🚧 | Database | [Surrealdb](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org/) | [Postgres](https://github.com/postgres/postgres) |
+| 🚫 | Meta Database | [Surrealdb](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org/) | [Hasura](https://github.com/hasura/graphql-engine) |
+| 🚫 | Database | [Tikv](https://github.com/tikv/tikv) | ❓ | [Postgres](https://github.com/postgres/postgres) |
+| 🚫 | Storage Engine | ❓ | ❓ | [RocksDB](https://github.com/facebook/rocksdb) |
 
 ## Wish List
 
