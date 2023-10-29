@@ -83,7 +83,7 @@
 * [Comptime Interfaces](https://github.com/ziglang/zig/issues/1268)
 
 #### Roc
-* [Language Server](https://github.com/ayazhafiz/roc/tree/langsrv)
+* [Language Server](https://github.com/roc-lang/roc/tree/main/crates/lang_srv)
 
 #### Matrix
 * [Discord Forum Support](https://github.com/mautrix/discord/issues/101)
