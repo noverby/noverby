@@ -29,7 +29,7 @@
 ### Base
 | Status | Component | Upcoming | Compat | Legacy |
 |:-:|-|-|-|-|
-| 🚧 | Config Language | [Nickel](https://github.com/tweag/nickel) | ⬅️ | [Nix](https://github.com/NixOS/nix)|
+| 🚧 | Config Language | [Nickel](https://github.com/tweag/nickel) | [Organist](https://github.com/nickel-lang/organist) | [Nix](https://github.com/NixOS/nix)|
 | 🚧 | Package Manager | [Tvix](https://github.com/tvlfyi/tvix) | ⬅️ | [Nix](https://github.com/NixOS/nix) |
 | 🚧 | 2D Toolkit | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
 | 🚧 | Desktop Environment | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | [Cosmic](https://github.com/pop-os/cosmic) | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell)|
