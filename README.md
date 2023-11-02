@@ -78,6 +78,9 @@
 
 ### Stack
 
+### Helix
+* [Nushell Helix Mode](https://github.com/nushell/reedline/issues/639)  
+
 #### Zig
 * [Divorce from LLVM](https://github.com/ziglang/zig/issues/16270)
 * [Comptime Interfaces](https://github.com/ziglang/zig/issues/1268)
