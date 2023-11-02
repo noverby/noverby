@@ -9,9 +9,9 @@
 [![GitHub Streak](https://streak-stats.demolab.com/?user=noverby&theme=dark)](https://git.io/streak-stats)
 
 ## Stack
- * ✅: Currently in use
- * 🚧: In progress/transition
- * 🚫: Not in use
+ * ✅: Good for now
+ * 🚧: Transitioning
+ * 🚫: Blocked
  * ❓: Undecided
  * 🆗: Not needed
  * ⬅️: Backward compatible
@@ -19,61 +19,60 @@
 ### Hardware
 | Status | Component | Upcoming | Current | Legacy |
 |:-:|-|-|-|-|
-| ✅ | Laptop | ❓ | [Framwork 13](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
-| ✅ | Mobile | ❓ | [Samsung Galaxy S23 Plus](https://www.samsung.com/dk/smartphones/galaxy-s23) | [Google Pixel 8 Pro](https://store.google.com/product/pixel_8_pro) + [GrapheneOS](https://grapheneos.org) |
-| ✅ | Watch | ❓ | [Fēnix 7 – Sapphire Solar Edition](https://www.garmin.com/en-US/p/735520) | [PineTime](https://www.pine64.org/pinetime) |
+| ✅ | Laptop |  | [Framwork 13](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
+| ✅ | Mobile |  | [Samsung Galaxy S23 Plus](https://www.samsung.com/dk/smartphones/galaxy-s23) | [Google Pixel 8 Pro](https://store.google.com/product/pixel_8_pro) + [GrapheneOS](https://grapheneos.org) |
+| ✅ | Watch |  | [Fēnix 7 – Sapphire Solar Edition](https://www.garmin.com/en-US/p/735520) | [PineTime](https://www.pine64.org/pinetime) |
 | ✅ | AR Glasses | [XREAL Air 2 Pro](https://us.shop.xreal.com/products/xreal-air-2-pro) | [XReal Air](https://www.xreal.com/air) | [XReal Light](https://www.xreal.com/light/) |
 | 🚫 | Input | [Tap XR](https://www.tapwithus.com/product/tap-xr) | [Tap Strap 2](https://www.tapwithus.com/product/tap-strap-2) | Keyboard/Touch Screen |
 | ✅ | Earphones | [Hyphen Aria](https://www.kickstarter.com/projects/rollingsquare/hyphen-aria-the-first-biological-earbuds) | [Aftershokz Openrun Pro Mini](https://shokz.com/products/openrunpro) | [Aftershokz Openrun](https://shokz.com/products/openrun) |
 
 ### Base
-| Status | Component | Upcoming | Compat | Legacy |
-|:-:|-|-|-|-|
-| 🚧 | Config Language | [Nickel](https://github.com/tweag/nickel) | [Organist](https://github.com/nickel-lang/organist) | [Nix](https://github.com/NixOS/nix)|
-| 🚧 | Package Manager | [Tvix](https://github.com/tvlfyi/tvix) | ⬅️ | [Nix](https://github.com/NixOS/nix) |
-| 🚧 | 2D Toolkit | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
-| 🚧 | Desktop Environment | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | [Cosmic](https://github.com/pop-os/cosmic) | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell)|
-| 🚫 | Web Browser | [Servo](https://github.com/servo/servo) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) | [Firefox](https://github.com/mozilla/gecko-dev)|
-| 🚧 | Web Runtime | [Deno](https://github.com/denoland/deno), [Bun](https://github.com/oven-sh/bun) | [Node.js API](https://nodejs.org/api) | [Node.js](https://github.com/nodejs/node)|
-| ✅ | Distro | [NixOS](https://github.com/NixOS/nixpkgs) | [OCI](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue/) |
-| 🚧 | Container CLI | [Podman](https://github.com/containers/podman) | [OCI](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
-| 🚧 | Container Runtime | [Youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
-| ✅ | Typesetting | [Typst](https://github.com/typst/) | ❓ | [LaTeX](https://github.com/latex3/latex3) |
+| Status | Component | Upcoming | Current | Compat | Legacy |
+|:-:|-|-|-|-|-|
+| 🚧 | Config Language | [Nickel](https://github.com/tweag/nickel) | [Nix](https://github.com/NixOS/nix) | [Organist](https://github.com/nickel-lang/organist) |  |
+| 🚧 | Package Manager | [Tvix](https://github.com/tvlfyi/tvix) | [Nix](https://github.com/NixOS/nix) | ⬅️ |  |
+| ✅ | 2D Toolkit | | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
+| 🚧 | Desktop Environment | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | [Cosmic](https://github.com/pop-os/cosmic) | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell) |
+| 🚫 | Web Browser | [Servo](https://github.com/servo/servo) | [Firefox](https://github.com/mozilla/gecko-dev) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) |  |
+| 🚧 | Web Runtime | [Deno](https://github.com/denoland/deno), [Bun](https://github.com/oven-sh/bun) | [Node.js API](https://nodejs.org/api) | [Node.js](https://github.com/nodejs/node) |
+| ✅ | Distro | | [NixOS](https://github.com/NixOS/nixpkgs) | [OCI](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue/) |
+| 🚧 | Container CLI | | [Podman](https://github.com/containers/podman) | [OCI](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
+| 🚧 | Container Runtime | | [Youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
+| ✅ | Typesetting |  | [Typst](https://github.com/typst/) | ❓ | [LaTeX](https://github.com/latex3/latex3) |
 
 
 
 ### Shell
-| Status | Component | Upcoming | Compat | Legacy |
-|:-:|-|-|-|-|
-| ✅ | Shell | [Nushell](https://github.com/nushell/nushell)| ❓ | [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
-| ✅ | Core Utilities | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [GNU Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
-| ✅ | Copy | [Xcp](https://github.com/tarka/xcp) | [uutils](https://github.com/uutils/coreutils) | [Cp](https://git.savannah.gnu.org/cgit/coreutils.git) |
-| ✅ | Remove | [Rip](https://github.com/nivekuil/rip) | [uutils](https://github.com/uutils/coreutils) | [Rm](https://git.savannah.gnu.org/cgit/coreutils.git) |
-| ✅ | Cut Text | [Choose](https://github.com/theryangeary/choose) | [uutils](https://github.com/uutils/coreutils) | [Cut](https://git.savannah.gnu.org/cgit/coreutils.git) |
-| ✅ | Directory Usage | [Dust](https://github.com/bootandy/dust) | [uutils](https://github.com/uutils/coreutils) | [Du](https://git.savannah.gnu.org/cgit/coreutils.git) | 
-| 🚫 | Superuser | [Sudo-rs](https://github.com/memorysafety/sudo-rs) | ⬅️ | [Sudo](https://www.sudo.ws/repos/sudo) |
-| ✅ | Fortune | [Fortune-kind](https://github.com/cafkafk/fortune-kind) | ⬅️ | [Fortune-mod](https://github.com/shlomif/fortune-mod) |
-| ✅ | Find Files | [Fd](https://github.com/sharkdp/fd) | 🆗 | [Findutils](https://git.savannah.gnu.org/cgit/findutils.git) |
-| ✅ | Find Patterns | [Ripgrep](https://github.com/BurntSushi/ripgrep) | 🆗 | [Grep](https://git.savannah.gnu.org/cgit/grep.git) |
-| ✅ | Regex Edit | [Sd](https://github.com/chmln/sd) | ❓ | [Sed](https://git.savannah.gnu.org/cgit/sed.git) |
-| ✅ | Terminal Workspace | [Zellij](https://github.com/zellij-org/zellij) | 🆗 | [Tmux](https://github.com/tmux/tmux) |
+| Status | Component | Upcoming | Current | Compat | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Shell | | [Nushell](https://github.com/nushell/nushell)| ❓ | [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
+| ✅ | Core Utilities | | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [GNU Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Copy | | [Xcp](https://github.com/tarka/xcp) | [uutils](https://github.com/uutils/coreutils) | [Cp](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Remove | | [Rip](https://github.com/nivekuil/rip) | [uutils](https://github.com/uutils/coreutils) | [Rm](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Cut Text | | [Choose](https://github.com/theryangeary/choose) | [uutils](https://github.com/uutils/coreutils) | [Cut](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Directory Usage | | [Dust](https://github.com/bootandy/dust) | [uutils](https://github.com/uutils/coreutils) | [Du](https://git.savannah.gnu.org/cgit/coreutils.git) | 
+| 🚫 | Superuser | [Sudo-rs](https://github.com/memorysafety/sudo-rs) | [Sudo](https://www.sudo.ws/repos/sudo) | ⬅️ | |
+| ✅ | Fortune | | [Fortune-kind](https://github.com/cafkafk/fortune-kind) | ⬅️ | [Fortune-mod](https://github.com/shlomif/fortune-mod) |
+| ✅ | Find Files | | [Fd](https://github.com/sharkdp/fd) | 🆗 | [Findutils](https://git.savannah.gnu.org/cgit/findutils.git) |
+| ✅ | Find Patterns | | [Ripgrep](https://github.com/BurntSushi/ripgrep) | 🆗 | [Grep](https://git.savannah.gnu.org/cgit/grep.git) |
+| ✅ | Regex Edit | | [Sd](https://github.com/chmln/sd) | ❓ | [Sed](https://git.savannah.gnu.org/cgit/sed.git) |
+| ✅ | Terminal Workspace | | [Zellij](https://github.com/zellij-org/zellij) | 🆗 | [Tmux](https://github.com/tmux/tmux) |
 
 ### Dev
-| Status | Component | Upcoming | Compat | Legacy |
-|:-:|-|-|-|-|
-| 🚫 | Compiler Framework | [Cranelift](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift), [Zig](https://github.com/ziglang/zig) | ⬅️ | [LLVM](https://github.com/llvm/llvm-project) |
-| ✅ | System Language | [Rust](https://github.com/rust-lang/rust), [Zig](https://github.com/ziglang/zig)  | [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) | [Clang](https://github.com/llvm/llvm-project) |
-| 🚫 | Scripting Language | [Roc](https://github.com/roc-lang/roc) | [RustPython](https://github.com/RustPython/RustPython), [WASI](https://github.com/WebAssembly/WASI) | [Python](https://github.com/python/cpython), [TypeScript](https://github.com/microsoft/TypeScript) |
-| 🚫 | Read ELF | [Rust Readelf](https://github.com/cole14/rust-readelf) |❓ | [LLVM Readelf](https://llvm.org/docs/CommandGuide/llvm-readelf.html) |
-| ✅ | Build Script| [Just](https://github.com/casey/just) | ❓ | [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
-| 🚧 | Editor | [Helix](https://github.com/helix-editor/helix) | 🆗 | [Neovim](https://github.com/neovim/neovim), [Vim](https://github.com/vim/vim) |
-| ❓ | IDE | ❓ | [LSP](https://github.com/microsoft/language-server-protocol), [DAP](https://github.com/Microsoft/debug-adapter-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium](https://github.com/VSCodium/vscodium) |
-| ✅ | JSON Query | [Jql](https://github.com/yamafaktory/jql) | 🆗 | [Jq](https://github.com/jqlang/jq) |
-| ✅ | System Call Tracing | [Lurk](https://github.com/JakWai01/lurk) | 🆗 | [Strace](https://github.com/strace/strace) |
-| ✅ | Optimize PNG | [Oxipng](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng](https://optipng.sourceforge.net) |
-| 🚫 | Meta Database | [Surrealdb](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org/) | [Hasura](https://github.com/hasura/graphql-engine) |
-| 🚫 | Database | [Tikv](https://github.com/tikv/tikv) | ❓ | [Postgres](https://github.com/postgres/postgres) |
-| 🚫 | Storage Engine | [Sled](https://github.com/spacejam/sled) | ❓ | [RocksDB](https://github.com/facebook/rocksdb) |
+| Status | Component | Upcoming | Current | Compat | Legacy |
+|:-:|-|-|-|-|-|
+| 🚫 | Compiler Framework | [Cranelift](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift), [Zig](https://github.com/ziglang/zig) | [LLVM](https://github.com/llvm/llvm-project) | ⬅️ | |
+| ✅ | System Language | | [Rust](https://github.com/rust-lang/rust), [Zig](https://github.com/ziglang/zig) |  [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) |  [Clang](https://github.com/llvm/llvm-project) |
+| 🚫 | Scripting Language | [Roc](https://github.com/roc-lang/roc) | [TypeScript](https://github.com/microsoft/TypeScript) | [RustPython](https://github.com/RustPython/RustPython), [WASI](https://github.com/WebAssembly/WASI) | [Python](https://github.com/python/cpython) | 
+| ✅ | Build Script| | [Just](https://github.com/casey/just) | ❓ | [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
+| ✅ | Editor | | [Helix](https://github.com/helix-editor/helix) | 🆗 | [Neovim](https://github.com/neovim/neovim), [Vim](https://github.com/vim/vim) |
+| ❓ | IDE | ❓ | [VS Codium](https://github.com/VSCodium/vscodium) | [LSP](https://github.com/microsoft/language-server-protocol), [DAP](https://github.com/Microsoft/debug-adapter-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) |
+| ✅ | JSON Query | | [Jql](https://github.com/yamafaktory/jql) | 🆗 | [Jq](https://github.com/jqlang/jq) |
+| ✅ | System Call Tracing | | [Lurk](https://github.com/JakWai01/lurk) | 🆗 | [Strace](https://github.com/strace/strace) |
+| ✅ | Optimize PNG | | [Oxipng](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng](https://optipng.sourceforge.net) |
+| 🚫 | Meta Database | [Surrealdb](https://github.com/surrealdb/surrealdb) | [Hasura](https://github.com/hasura/graphql-engine) | [GraphQL](https://graphql.org/) | 
+| 🚫 | Database | [Tikv](https://github.com/tikv/tikv) | [Postgres](https://github.com/postgres/postgres) | ❓ |  |
+| 🚫 | Storage Engine | [Sled](https://github.com/spacejam/sled) | | ❓ | [RocksDB](https://github.com/facebook/rocksdb) |
 
 ## Wish List
 
