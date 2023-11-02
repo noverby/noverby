@@ -46,11 +46,11 @@
 | Status | Component | Upcoming | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Shell | | [Nushell](https://github.com/nushell/nushell)| ❓ | [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
-| ✅ | Core Utilities | | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [GNU Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
-| ✅ | Copy | | [Xcp](https://github.com/tarka/xcp) | [uutils](https://github.com/uutils/coreutils) | [Cp](https://git.savannah.gnu.org/cgit/coreutils.git) |
-| ✅ | Remove | | [Rip](https://github.com/nivekuil/rip) | [uutils](https://github.com/uutils/coreutils) | [Rm](https://git.savannah.gnu.org/cgit/coreutils.git) |
-| ✅ | Cut Text | | [Choose](https://github.com/theryangeary/choose) | [uutils](https://github.com/uutils/coreutils) | [Cut](https://git.savannah.gnu.org/cgit/coreutils.git) |
-| ✅ | Directory Usage | | [Dust](https://github.com/bootandy/dust) | [uutils](https://github.com/uutils/coreutils) | [Du](https://git.savannah.gnu.org/cgit/coreutils.git) | 
+| ✅ | Core Utilities | | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Copy | | [Xcp](https://github.com/tarka/xcp) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Remove | | [Rip](https://github.com/nivekuil/rip) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Cut Text | | [Choose](https://github.com/theryangeary/choose) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Directory Usage | | [Dust](https://github.com/bootandy/dust) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) | 
 | 🚫 | Superuser | [Sudo-rs](https://github.com/memorysafety/sudo-rs) | [Sudo](https://www.sudo.ws/repos/sudo) | ⬅️ | |
 | ✅ | Fortune | | [Fortune-kind](https://github.com/cafkafk/fortune-kind) | ⬅️ | [Fortune-mod](https://github.com/shlomif/fortune-mod) |
 | ✅ | Find Files | | [Fd](https://github.com/sharkdp/fd) | 🆗 | [Findutils](https://git.savannah.gnu.org/cgit/findutils.git) |
