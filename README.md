@@ -25,6 +25,7 @@
 | ✅ | AR Glasses | [XREAL Air 2 Pro](https://us.shop.xreal.com/products/xreal-air-2-pro) | [XReal Air](https://www.xreal.com/air) | [XReal Light](https://www.xreal.com/light/) |
 | 🚫 | Input | [Tap XR](https://www.tapwithus.com/product/tap-xr) | [Tap Strap 2](https://www.tapwithus.com/product/tap-strap-2) | Keyboard/Touch Screen |
 | ✅ | Earphones | [Hyphen Aria](https://www.kickstarter.com/projects/rollingsquare/hyphen-aria-the-first-biological-earbuds) | [Aftershokz Openrun Pro Mini](https://shokz.com/products/openrunpro) | [Aftershokz Openrun](https://shokz.com/products/openrun) |
+| ✅ | E-book Reader | | [reMarkable 2](https://remarkable.com/store/remarkable-2) | [reMarkable 1](https://remarkable.com/store/remarkable) |
 
 ### Base
 | Status | Component | Upcoming | Current | Compat | Legacy |
@@ -39,8 +40,6 @@
 | 🚧 | Container CLI | | [Podman](https://github.com/containers/podman) | [OCI](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
 | 🚧 | Container Runtime | | [Youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
 | ✅ | Typesetting |  | [Typst](https://github.com/typst/) | ❓ | [LaTeX](https://github.com/latex3/latex3) |
-
-
 
 ### Shell
 | Status | Component | Upcoming | Current | Compat | Legacy |
