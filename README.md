@@ -40,6 +40,7 @@
 | 🚧 | Container CLI | | [Podman](https://github.com/containers/podman) | [OCI](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
 | 🚧 | Container Runtime | | [Youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
 | ✅ | Typesetting |  | [Typst](https://github.com/typst/) | ❓ | [LaTeX](https://github.com/latex3/latex3) |
+| 🚫 | Media Player |  | [Mpv](https://github.com/mpv-player/mpv) | ❓ |  |
 
 ### Shell
 | Status | Component | Upcoming | Current | Compat | Legacy |
