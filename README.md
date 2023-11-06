@@ -93,9 +93,10 @@
 * [Discord Forum Support](https://github.com/mautrix/discord/issues/101)
 
 #### Nix
-* [fromYAML builtin](https://github.com/NixOS/nix/pull/7340)
-* [Allow derivations to hardlink](https://github.com/NixOS/nix/issues/1272)
+* [fromYAML Builtin](https://github.com/NixOS/nix/pull/7340)
+* [Allow Derivations To Hardlink](https://github.com/NixOS/nix/issues/1272)
 * [Pipe Operator](https://github.com/NixOS/rfcs/pull/148)
+* [Inherit As List](https://github.com/NixOS/rfcs/pull/110)
 * [Meson Port](https://github.com/NixOS/nix/pull/3160)
 
 ### World
