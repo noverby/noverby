@@ -96,6 +96,7 @@
 * [fromYAML builtin](https://github.com/NixOS/nix/pull/7340)
 * [Allow derivations to hardlink](https://github.com/NixOS/nix/issues/1272)
 * [Pipe Operator](https://github.com/NixOS/rfcs/pull/148)
+* [Meson Port](https://github.com/NixOS/nix/pull/3160)
 
 ### World
 
