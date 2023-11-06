@@ -93,6 +93,7 @@
 * [Discord Forum Support](https://github.com/mautrix/discord/issues/101)
 
 #### Nix
+* [Meta Categories](https://github.com/NixOS/rfcs/pull/146)
 * [fromYAML Builtin](https://github.com/NixOS/nix/pull/7340)
 * [Allow Derivations To Hardlink](https://github.com/NixOS/nix/issues/1272)
 * [Pipe Operator](https://github.com/NixOS/rfcs/pull/148)
