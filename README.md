@@ -57,6 +57,7 @@
 | ✅ | Find Patterns | | [Ripgrep](https://github.com/BurntSushi/ripgrep) | 🆗 | [Grep](https://git.savannah.gnu.org/cgit/grep.git) |
 | ✅ | Regex Edit | | [Sd](https://github.com/chmln/sd) | ❓ | [Sed](https://git.savannah.gnu.org/cgit/sed.git) |
 | ✅ | Terminal Workspace | | [Zellij](https://github.com/zellij-org/zellij) | 🆗 | [Tmux](https://github.com/tmux/tmux) |
+| ✅ | Network Client | | [Xh](https://github.com/ducaale/xh) | ❓ | [Curl](https://github.com/curl/curl) |
 
 ### Dev
 | Status | Component | Upcoming | Current | Compat | Legacy |
