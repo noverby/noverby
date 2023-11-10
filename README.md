@@ -45,7 +45,7 @@
 ### Shell
 | Status | Component | Upcoming | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Shell | | [Nushell](https://github.com/nushell/nushell)| ❓ | [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
+| ✅ | Shell | | [Nushell](https://github.com/nushell/nushell) | ❓ | [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
 | ✅ | Core Utilities | | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Copy | | [Xcp](https://github.com/tarka/xcp) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Remove | | [Rip](https://github.com/nivekuil/rip) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
@@ -69,12 +69,18 @@
 | ✅ | Build Script| | [Just](https://github.com/casey/just) | ❓ | [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
 | ✅ | Editor | | [Helix](https://github.com/helix-editor/helix) | 🆗 | [Neovim](https://github.com/neovim/neovim), [Vim](https://github.com/vim/vim) |
 | ❓ | IDE | ❓ | [VS Codium](https://github.com/VSCodium/vscodium) | [LSP](https://github.com/microsoft/language-server-protocol), [DAP](https://github.com/Microsoft/debug-adapter-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) |
-| ✅ | JSON Query | | [Jql](https://github.com/yamafaktory/jql) | 🆗 | [Jq](https://github.com/jqlang/jq) |
+| ✅ | JSON Query | | [Nushell](https://github.com/nushell/nushell), [Jql](https://github.com/yamafaktory/jql) | 🆗 | [Jq](https://github.com/jqlang/jq) |
 | ✅ | System Call Tracing | | [Lurk](https://github.com/JakWai01/lurk) | 🆗 | [Strace](https://github.com/strace/strace) |
 | ✅ | Optimize PNG | | [Oxipng](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng](https://optipng.sourceforge.net) |
 | 🚫 | Meta Database | [Surrealdb](https://github.com/surrealdb/surrealdb) | [Hasura](https://github.com/hasura/graphql-engine) | [GraphQL](https://graphql.org/) | 
 | 🚫 | Database | [Tikv](https://github.com/tikv/tikv) | [Postgres](https://github.com/postgres/postgres) | ❓ |  |
 | 🚫 | Storage Engine | [Sled](https://github.com/spacejam/sled) | | ❓ | [RocksDB](https://github.com/facebook/rocksdb) |
+
+
+### Services
+| Status | Component | Upcoming | Current | Compat | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Search Engine | | [Kage](https://kagi.com) | [Bangs](https://help.kagi.com/kagi/features/bangs.html) | [DuckDuckGo](https://duckduckgo.com) |
 
 ## Watch List
 
