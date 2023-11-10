@@ -82,6 +82,7 @@
 |:-:|-|-|-|-|-|
 | ✅ | Search Engine | | [Kage](https://kagi.com) | [Bangs](https://help.kagi.com/kagi/features/bangs.html) | [DuckDuckGo](https://duckduckgo.com) |
 | ✅ | Microblogging | | [Mastodon](https://mas.to/niclasoverby), [Bluesky](https://bsky.app/profile/overby.me) | ❓ | [Twitter](https://twitter.com) |
+| 🚫 | [Social Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Bookwyrm](https://bookwyrm.social/user/niclasoverby) | [Goodreads](https://www.goodreads.com/niclasoverby) | [OpenLibrary](https://openlibrary.org) | |
 
 ## Watch List
 
