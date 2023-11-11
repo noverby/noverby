@@ -37,7 +37,7 @@
 | 🚫 | Web Browser | [Servo](https://github.com/servo/servo) | [Firefox](https://github.com/mozilla/gecko-dev) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) |  |
 | 🚧 | Web Runtime | [Deno](https://github.com/denoland/deno), [Bun](https://github.com/oven-sh/bun) | [Node.js API](https://nodejs.org/api) | [Node.js](https://github.com/nodejs/node) |
 | ✅ | Distro | | [NixOS](https://github.com/NixOS/nixpkgs) | [OCI](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue/) |
-| 🚧 | Container CLI | | [Podman](https://github.com/containers/podman) | [OCI](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
+| 🚫 | Container CLI | | | [OCI](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
 | 🚧 | Container Runtime | | [Youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
 | ✅ | Typesetting |  | [Typst](https://github.com/typst/) | ❓ | [LaTeX](https://github.com/latex3/latex3) |
 | 🚫 | Media Player |  | [Mpv](https://github.com/mpv-player/mpv) | ❓ |  |
