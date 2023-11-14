@@ -86,6 +86,7 @@
 | ✅ | Media Sharing |  | [Pixelfed](https://pixelfed.social/niclasoverby) | | [Instagram](https://instagram.com) |
 | 🚫 | [Social Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Bookwyrm](https://bookwyrm.social/user/niclasoverby) | [Goodreads](https://www.goodreads.com/niclasoverby) | [OpenLibrary](https://openlibrary.org) | |
 | 🚫 | [Social Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | ❓ | [Letterboxd](https://letterboxd.com/niclasoverby) | [OpenLibrary](https://openlibrary.org) | |
+| 🚫 | [Social Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | ❓ | [Spotify](https://open.spotify.com/user/1148979230) | [OpenLibrary](https://openlibrary.org) | |
 | ✅ | [Social Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | | [HappyCow](https://www.happycow.net/members/profile/niclasoverby) | | |
 | ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | | [Wikipedia](https://en.wikipedia.org/wiki/User:Niclas_Overby) | | |
 
