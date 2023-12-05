@@ -27,6 +27,11 @@
 | ✅ | Earphones | | [Shokz Openfit](https://shokz.com/products/openfit)| [Shokz Openrun Pro](https://shokz.com/products/openrunpro) |
 | ✅ | E-book Reader | | [reMarkable 2](https://remarkable.com/store/remarkable-2) | [reMarkable 1](https://remarkable.com/store/remarkable) |
 
+### Standards
+| Status | Component | Upcoming | Current | Legacy |
+|:-:|-|-|-|-|
+| 🚫 | IoT Connectivity Standard | [Matter](https://en.wikipedia.org/wiki/Matter_(standard)) | [ChromeCast](https://en.wikipedia.org/wiki/Chromecast) | [Miracast](https://en.wikipedia.org/wiki/Miracast) |
+
 ### Base
 | Status | Component | Upcoming | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
