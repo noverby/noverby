@@ -19,11 +19,11 @@
 ### Hardware
 | Status | Component | Upcoming | Current | Legacy |
 |:-:|-|-|-|-|
-| ✅ | Laptop |  | [Framwork 13](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
-| ✅ | Mobile |  | [Samsung Galaxy S23 Plus](https://www.samsung.com/dk/smartphones/galaxy-s23) | [Google Pixel 8 Pro](https://store.google.com/product/pixel_8_pro) + [GrapheneOS](https://grapheneos.org) |
-| ✅ | Watch |  | [Fēnix 7 – Sapphire Solar Edition](https://www.garmin.com/en-US/p/735520) | [PineTime](https://www.pine64.org/pinetime) |
-| ✅ | AR Glasses | [XReal Air 2 Pro](https://us.shop.xreal.com/products/xreal-air-2-pro) | [XReal Air](https://www.xreal.com/air) | [XReal Light](https://www.xreal.com/light/) |
-| 🚫 | Input | [Tap XR](https://www.tapwithus.com/product/tap-xr) | [Tap Strap 2](https://www.tapwithus.com/product/tap-strap-2) | Keyboard/Touch Screen |
+| ✅ | Laptop | | [Framwork 13](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
+| ✅ | Mobile | | [Samsung Galaxy S23 Plus](https://www.samsung.com/dk/smartphones/galaxy-s23) | [Google Pixel 8 Pro](https://store.google.com/product/pixel_8_pro) + [GrapheneOS](https://grapheneos.org) |
+| ✅ | Watch | | [Fēnix 7 – Sapphire Solar Edition](https://www.garmin.com/en-US/p/735520) | [PineTime](https://www.pine64.org/pinetime) |
+| ✅ | AR Glasses | | [XReal Air 2 Pro](https://us.shop.xreal.com/products/xreal-air-2-pro) | [XReal Light](https://www.xreal.com/light/) |
+| ✅ | Input | | [Tap XR](https://www.tapwithus.com/product/tap-xr) | [Tap Strap 2](https://www.tapwithus.com/product/tap-strap-2) |
 | ✅ | Earphones | | [Shokz Openfit](https://shokz.com/products/openfit)| [Shokz Openrun Pro](https://shokz.com/products/openrunpro) |
 | ✅ | E-book Reader | | [reMarkable 2](https://remarkable.com/store/remarkable-2) | [reMarkable 1](https://remarkable.com/store/remarkable) |
 
