@@ -85,7 +85,7 @@
 ### Services
 | Status | Component | Upcoming | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Search Engine | | [Kagi](https://kagi.com) | [Bangs](https://help.kagi.com/kagi/features/bangs.html) | [DuckDuckGo](https://duckduckgo.com) |
+| ✅ | Search Engine | | [StartPage](https://startpage.com) | [Bangs](https://help.kagi.com/kagi/features/bangs.html) | [Kagi](https://kagi.com), [DuckDuckGo](https://duckduckgo.com) |
 | ✅ | Microblogging | | [Mastodon](https://mas.to/niclasoverby), [Bluesky](https://bsky.app/profile/overby.me) | ❓ | [Twitter](https://twitter.com) |
 | ✅ | Messaging | | [Beeper](https://www.beeper.com), [Matrix](https://matrix.org) | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram](https://telegram.org) |
 | ✅ | Media Sharing |  | [Pixelfed](https://pixelfed.social/niclasoverby) | | [Instagram](https://instagram.com) |
