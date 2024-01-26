@@ -45,7 +45,7 @@
 | 🚫 | Container CLI | | | [OCI](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
 | 🚧 | Container Runtime | | [Youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
 | ✅ | Typesetting |  | [Typst](https://github.com/typst/) | ❓ | [LaTeX](https://github.com/latex3/latex3) |
-| 🚫 | Media Player |  | [Mpv](https://github.com/mpv-player/mpv) | ❓ |  |
+| 🚧 | Media Player | [Cosmic Player](https://github.com/pop-os/cosmic-player) | [Mpv](https://github.com/mpv-player/mpv) | [FFMPEG](https://github.com/FFmpeg/FFmpeg), [GStreamer](https://gitlab.freedesktop.org/gstreamer/) |  |
 
 ### Shell
 | Status | Component | Upcoming | Current | Compat | Legacy |
