@@ -37,15 +37,11 @@
 |:-:|-|-|-|-|-|
 | 🚧 | Config Language | [Nickel](https://github.com/tweag/nickel) | [Nix](https://github.com/NixOS/nix) | [Organist](https://github.com/nickel-lang/organist) |  |
 | 🚧 | Package Manager | [Tvix](https://github.com/tvlfyi/tvix) | [Nix](https://github.com/NixOS/nix) | ⬅️ |  |
-| ✅ | 2D Toolkit | | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
-| 🚧 <br> https://github.com/NixOS/nixpkgs/issues/259641 | Desktop Environment | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | [Cosmic](https://github.com/pop-os/cosmic) | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell) |
-| 🚫 | Web Browser | [Servo](https://github.com/servo/servo) | [Firefox](https://github.com/mozilla/gecko-dev) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) |  |
 | 🚧 | Web Runtime | [Deno](https://github.com/denoland/deno), [Bun](https://github.com/oven-sh/bun) | [Node.js API](https://nodejs.org/api) | [Node.js](https://github.com/nodejs/node) |
 | ✅ | Distro | | [NixOS](https://github.com/NixOS/nixpkgs) | [OCI](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue/) |
 | 🚫 | Container CLI | | | [OCI](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
 | 🚧 | Container Runtime | | [Youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
 | ✅ | Typesetting |  | [Typst](https://github.com/typst/) | ❓ | [LaTeX](https://github.com/latex3/latex3) |
-| 🚧 | Media Player | [Cosmic Player](https://github.com/pop-os/cosmic-player) | [Mpv](https://github.com/mpv-player/mpv) | [FFMPEG](https://github.com/FFmpeg/FFmpeg), [GStreamer](https://gitlab.freedesktop.org/gstreamer/) |  |
 
 ### Shell
 | Status | Component | Upcoming | Current | Compat | Legacy |
@@ -81,6 +77,14 @@
 | 🚫 | Database | [Tikv](https://github.com/tikv/tikv) | [Postgres](https://github.com/postgres/postgres) | ❓ |  |
 | 🚫 | Storage Engine | [Sled](https://github.com/spacejam/sled) | | ❓ | [RocksDB](https://github.com/facebook/rocksdb) |
 
+### GUI
+| Status | Component | Upcoming | Current | Compat | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | 2D Toolkit | | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
+| 🚧 <br> https://github.com/NixOS/nixpkgs/issues/259641 | Desktop Environment | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | [Cosmic](https://github.com/pop-os/cosmic) | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell) |
+| 🚧 | File Manager | [Cosmic Files](https://github.com/pop-os/cosmic-files) | [GNOME Files](https://gitlab.gnome.org/GNOME/nautilus) | | |
+| 🚧 | Web Browser | [Servo](https://github.com/servo/servo) | [Firefox](https://github.com/mozilla/gecko-dev) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) |  |
+| 🚧 | Media Player | [Cosmic Player](https://github.com/pop-os/cosmic-player) | [Mpv](https://github.com/mpv-player/mpv) | [FFMPEG](https://github.com/FFmpeg/FFmpeg), [GStreamer](https://gitlab.freedesktop.org/gstreamer/) |  |
 
 ### Services
 | Status | Component | Upcoming | Current | Compat | Legacy |
