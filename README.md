@@ -37,7 +37,7 @@
 |:-:|-|-|-|-|-|
 | 🚧 | Config Language | [Nickel](https://github.com/tweag/nickel) | [Nix](https://github.com/NixOS/nix) | [Organist](https://github.com/nickel-lang/organist) |  |
 | 🚧 | Package Manager | [Tvix](https://github.com/tvlfyi/tvix) | [Nix](https://github.com/NixOS/nix) | ⬅️ |  |
-| 🚧 | Web Runtime | [Deno](https://github.com/denoland/deno), [Bun](https://github.com/oven-sh/bun) | [Node.js API](https://nodejs.org/api) | [Node.js](https://github.com/nodejs/node) |
+| 🚧 | Web Runtime | [Deno](https://github.com/denoland/deno), [Bun](https://github.com/oven-sh/bun) | [Node.js](https://github.com/nodejs/node) | [Node.js API](https://nodejs.org/api) |
 | ✅ | Distro | | [NixOS](https://github.com/NixOS/nixpkgs) | [OCI](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue/) |
 | 🚫 | Container CLI | | | [OCI](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
 | 🚧 | Container Runtime | | [Youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
