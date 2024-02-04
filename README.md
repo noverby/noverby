@@ -2,7 +2,7 @@
 [![Niclas Overby's Homepage](homepage.png)](https://niclas.overby.me/)
 
 ## Projects
-* [My Nix Files](https://github.com/noverby/nixfiles)
+* [My Nix Flakes](https://github.com/noverby/nixflakes)
 * [RadikalWiki](https://github.com/RadikalWiki/radikalwiki)
 
 ## Github Stats
