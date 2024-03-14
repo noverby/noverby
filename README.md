@@ -153,8 +153,7 @@
 * [Array Grouping](https://github.com/tc39/proposal-array-grouping)
 
 #### JS/TS Toolchain
-* [Hegel: Static JS Type Checker](https://github.com/JSMonk/hegel)
-* [Stc: Low-level TS Type Checker](https://github.com/dudykr/stc)
+* [Ezno: Static JS Type Checker](https://github.com/kaleidawave/ezno)
 
 #### React/JSX
 * [JSX Props Pruning](https://github.com/facebook/jsx/issues/23)
