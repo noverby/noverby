@@ -53,7 +53,7 @@
 | ✅ | Remove | | [Rip](https://github.com/nivekuil/rip) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Cut Text | | [Choose](https://github.com/theryangeary/choose) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Directory Usage | | [Dust](https://github.com/bootandy/dust) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) | 
-| 🚫 | Superuser | [Sudo-rs](https://github.com/memorysafety/sudo-rs) | [Sudo](https://www.sudo.ws/repos/sudo) | ⬅️ | |
+| ✅ | Superuser | | [Sudo-rs](https://github.com/memorysafety/sudo-rs) | ⬅️ | [Sudo](https://www.sudo.ws/repos/sudo) |
 | ✅ | Fortune | | [Fortune-kind](https://github.com/cafkafk/fortune-kind) | ⬅️ | [Fortune-mod](https://github.com/shlomif/fortune-mod) |
 | ✅ | Find Files | | [Fd](https://github.com/sharkdp/fd) | 🆗 | [Findutils](https://git.savannah.gnu.org/cgit/findutils.git) |
 | ✅ | Find Patterns | | [Ripgrep](https://github.com/BurntSushi/ripgrep) | 🆗 | [Grep](https://git.savannah.gnu.org/cgit/grep.git) |
