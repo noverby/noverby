@@ -21,7 +21,6 @@
 |:-:|-|-|-|-|
 | ✅ | Laptop | | [Framwork 13](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
 | ✅ | Mobile | | [Google Pixel 7 Pro](https://store.google.com/product/pixel_7_pro) | [Samsung Galaxy S23 Plus](https://www.samsung.com/dk/smartphones/galaxy-s23) |
-| ✅ | Mobile OS | [Murena](https://murena.com/) | [GrapheneOS](https://grapheneos.org) |  |
 | ✅ | Watch | | [Fēnix 7 – Sapphire Solar Edition](https://www.garmin.com/en-US/p/735520) | [PineTime](https://www.pine64.org/pinetime) |
 | ✅ | AR Glasses | | [XReal Air 2 Pro](https://us.shop.xreal.com/products/xreal-air-2-pro) | [XReal Light](https://www.xreal.com/light/) |
 | ✅ | Input | | [Tap XR](https://www.tapwithus.com/product/tap-xr) | [Tap Strap 2](https://www.tapwithus.com/product/tap-strap-2) |
@@ -87,10 +86,10 @@
 | 🚧 | Web Browser | [Servo](https://github.com/servo/servo) | [Firefox](https://github.com/mozilla/gecko-dev) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) |  |
 | 🚧 | Media Player | [Cosmic Player](https://github.com/pop-os/cosmic-player) | [Mpv](https://github.com/mpv-player/mpv) | [FFMPEG](https://github.com/FFmpeg/FFmpeg), [GStreamer](https://gitlab.freedesktop.org/gstreamer/) |  |
 
-
 ### Mobile
 | Status | Component | Upcoming | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
+| ✅ | OS | [Murena](https://murena.com/) | [GrapheneOS](https://grapheneos.org) |  |
 | ✅ | Keyboard | | [Thumb-Key](https://github.com/dessalines/thumb-key) | | [OpenBoard](https://github.com/openboard-team/openboard) |
 
 ### Services
