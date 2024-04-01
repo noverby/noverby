@@ -110,11 +110,13 @@
 
 ### Stack
 
+### Zed
+* [Helix Keymap](https://github.com/zed-industries/zed/issues/4642)
+* [Direnv](https://github.com/zed-industries/zed/issues/4977)
+
 ### Helix
 * [Nushell Helix Mode](https://github.com/nushell/reedline/issues/639)
 * [VSCode Helix Keymap](https://github.com/71/dance/issues/299)
-* [Integrated Terminal](https://github.com/helix-editor/helix/issues/1976)
-* [Zed Helix Keymap](https://github.com/zed-industries/zed/issues/4642)
 
 #### Zig
 * [Divorce from LLVM](https://github.com/ziglang/zig/issues/16270)
