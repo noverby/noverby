@@ -95,6 +95,7 @@
 ### Services
 | Status | Component | Upcoming | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
+| ✅ | DNS | | [NextDNS](https://nextdns.io) | | [Rethink DNS](https://rethinkdns.com) |
 | ✅ | Search Engine | [Stract](https://github.com/StractOrg/stract) | [StartPage](https://startpage.com) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [Kagi](https://kagi.com), [DuckDuckGo](https://duckduckgo.com) |
 | ✅ | Microblogging | | [Mastodon](https://mas.to/niclasoverby), [Bluesky](https://bsky.app/profile/overby.me) | ❓ | [Twitter](https://twitter.com) |
 | ✅ | Messaging | | [Beeper](https://www.beeper.com), [Matrix](https://matrix.org) | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram](https://telegram.org) |
