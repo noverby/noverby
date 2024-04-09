@@ -160,6 +160,7 @@
 * [Do Expressions](https://github.com/tc39/proposal-do-expressions)
 * [Operator Overloading](https://github.com/tc39/proposal-operator-overloading)
 * [Array Grouping](https://github.com/tc39/proposal-array-grouping)
+* [Signals](https://github.com/proposal-signals/proposal-signals)
 
 #### JS/TS Toolchain
 * [Ezno: Static JS Type Checker](https://github.com/kaleidawave/ezno)
