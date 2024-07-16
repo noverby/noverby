@@ -48,15 +48,11 @@
 |:-:|-|-|-|-|-|
 | ✅ | Shell | | [Nushell](https://github.com/nushell/nushell) | ❓ | [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
 | ✅ | Core Utilities | | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
-| ✅ | Copy | | [Xcp](https://github.com/tarka/xcp) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
-| ✅ | Remove | | [Rip](https://github.com/nivekuil/rip) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
-| ✅ | Cut Text | | [Choose](https://github.com/theryangeary/choose) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Directory Usage | | [Dust](https://github.com/bootandy/dust) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) | 
 | ✅ | Superuser | | [Sudo-rs](https://github.com/memorysafety/sudo-rs) | ⬅️ | [Sudo](https://www.sudo.ws/repos/sudo) |
 | ✅ | Fortune | | [Fortune-kind](https://github.com/cafkafk/fortune-kind) | ⬅️ | [Fortune-mod](https://github.com/shlomif/fortune-mod) |
 | ✅ | Find Files | | [Fd](https://github.com/sharkdp/fd) | 🆗 | [Findutils](https://git.savannah.gnu.org/cgit/findutils.git) |
 | ✅ | Find Patterns | | [Ripgrep](https://github.com/BurntSushi/ripgrep) | 🆗 | [Grep](https://git.savannah.gnu.org/cgit/grep.git) |
-| ✅ | Regex Edit | | [Sd](https://github.com/chmln/sd) | ❓ | [Sed](https://git.savannah.gnu.org/cgit/sed.git) |
 | ✅ | Terminal Workspace | | [Zellij](https://github.com/zellij-org/zellij) | 🆗 | [Tmux](https://github.com/tmux/tmux) |
 | ✅ | Network Client | | [Xh](https://github.com/ducaale/xh) | ❓ | [Curl](https://github.com/curl/curl) |
 
@@ -70,7 +66,6 @@
 | ✅ | Build Script| | [Just](https://github.com/casey/just) | ❓ | [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
 | ✅ | Editor | | [Helix](https://github.com/helix-editor/helix) | 🆗 | [Neovim](https://github.com/neovim/neovim), [Vim](https://github.com/vim/vim) |
 | 🚧 | IDE | [Zed](https://github.com/zed-industries/zed) | [VS Codium](https://github.com/VSCodium/vscodium) | [LSP](https://github.com/microsoft/language-server-protocol), [DAP](https://github.com/Microsoft/debug-adapter-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) |
-| ✅ | JSON Query | | [Nushell](https://github.com/nushell/nushell), [Jql](https://github.com/yamafaktory/jql) | 🆗 | [Jq](https://github.com/jqlang/jq) |
 | ✅ | System Call Tracing | | [Lurk](https://github.com/JakWai01/lurk) | 🆗 | [Strace](https://github.com/strace/strace) |
 | ✅ | Optimize PNG | | [Oxipng](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng](https://optipng.sourceforge.net) |
 | 🚫 | Meta Database | [Surrealdb](https://github.com/surrealdb/surrealdb) | [Hasura](https://github.com/hasura/graphql-engine) | [GraphQL](https://graphql.org/) | 
@@ -122,9 +117,6 @@
 #### Zig
 * [Divorce from LLVM](https://github.com/ziglang/zig/issues/16270)
 * [Comptime Interfaces](https://github.com/ziglang/zig/issues/1268)
-
-#### Roc
-* [Language Server](https://github.com/roc-lang/roc/tree/main/crates/lang_srv)
 
 #### Matrix
 * [Discord Forum Support](https://github.com/mautrix/discord/issues/101)
