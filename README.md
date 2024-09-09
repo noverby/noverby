@@ -123,6 +123,7 @@
 
 #### Nix
 * [Flamegraph Profiler](https://github.com/NixOS/nix/pull/11373)
+* [Multithreaded Evaluator](https://github.com/NixOS/nix/pull/10938)
 * [Meta Categories](https://github.com/NixOS/rfcs/pull/146)
 * [fromYAML Builtin](https://github.com/NixOS/nix/pull/7340)
 * [Allow Derivations To Hardlink](https://github.com/NixOS/nix/issues/1272)
