@@ -128,7 +128,7 @@
 * [Allow Derivations To Hardlink](https://github.com/NixOS/nix/issues/1272)
 * [Pipe Operator](https://github.com/NixOS/rfcs/pull/148)
 * [Inherit As List](https://github.com/NixOS/rfcs/pull/110)
-* [Meson Port](https://github.com/NixOS/nix/pull/3160)
+* [Meson Port](https://github.com/NixOS/nix/issues/2503)
 
 ### World
 
