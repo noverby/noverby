@@ -60,7 +60,7 @@
 | Status | Component | Upcoming | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | 🚧 | Compiler Framework | [Mlir](https://github.com/llvm/llvm-project/tree/main/mlir/), [Cranelift](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift) | [LLVM](https://github.com/llvm/llvm-project) | ⬅️ | |
-| ✅ | System Language | | [Rust](https://github.com/rust-lang/rust), [Zig](https://github.com/ziglang/zig) | [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) |  [Clang](https://github.com/llvm/llvm-project) |
+| 🚧 | System Language | | [Mojo](https://github.com/modularml/mojo), [Rust](https://github.com/rust-lang/rust) | [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) |  [Clang](https://github.com/llvm/llvm-project) |
 | 🚧 | Scripting Language | [Mojo](https://github.com/modularml/mojo) | [TypeScript](https://github.com/microsoft/TypeScript) | [RustPython](https://github.com/RustPython/RustPython), [WASI](https://github.com/WebAssembly/WASI) | [Python](https://github.com/python/cpython) | 
 | 🚫 | Version Control | [Gitoxide](https://github.com/Byron/gitoxide) | [Git](https://github.com/git/git) | ⬅️ ️️️️| |
 | ✅ | Build Script| | [Just](https://github.com/casey/just) | ❓ | [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
