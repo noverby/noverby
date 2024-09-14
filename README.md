@@ -30,6 +30,7 @@
 ### Standards
 | Status | Component | Upcoming | Current | Legacy |
 |:-:|-|-|-|-|
+| 🚧 | IoT Connectivity Standard | [Matter](https://en.wikipedia.org/wiki/Matter_(standard)) | | |
 | 🚧 | Wireless Media | [Matter](https://en.wikipedia.org/wiki/Matter_(standard)) | [ChromeCast](https://en.wikipedia.org/wiki/Chromecast) | [Miracast](https://en.wikipedia.org/wiki/Miracast) |
 
 ### Base
