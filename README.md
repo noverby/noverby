@@ -76,8 +76,9 @@
 ### Libraries
 | Status | Component | Upcoming | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
+| 🚧 | Compression | [Zlib-rs](https://github.com/memorysafety/zlib-rs) | [Zlib](https://github.com/madler/zlib) | ⬅️ | |
 | 🚧 | TLS Protocol | [Rustls](https://github.com/rustls/rustls) | [Openssl](https://github.com/openssl/openssl) | ⬅️ | |
-| 🚧 | Compression | [Zlib-rs](https://github.com/memorysafety/zlib-rs/) | [Zlib](https://github.com/madler/zlib) | ⬅️ | |
+| 🚧 | HTTP Protocol | [Hyper](https://github.com/hyperium/hyper) | [Nghttp2](https://github.com/nghttp2/nghttp2), [Nghttp3](https://github.com/ngtcp2/nghttp3) | ⬅️ | |
 
 ### GUI
 | Status | Component | Upcoming | Current | Compat | Legacy |
