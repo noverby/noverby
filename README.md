@@ -77,6 +77,7 @@
 | Status | Component | Upcoming | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | 🚧 | TLS Protocol | [Rustls](https://github.com/rustls/rustls) | [Openssl](https://github.com/openssl/openssl) | ⬅️ | |
+| 🚧 | Compression | [Zlib-rs](https://github.com/memorysafety/zlib-rs/) | [Zlib](https://github.com/madler/zlib) | ⬅️ | |
 
 ### GUI
 | Status | Component | Upcoming | Current | Compat | Legacy |
