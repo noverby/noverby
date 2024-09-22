@@ -141,6 +141,9 @@
 * [Inherit As List](https://github.com/NixOS/rfcs/pull/110)
 * [Meson Port](https://github.com/NixOS/nix/issues/2503)
 
+### Redox
+* [The Road to Nix](https://gitlab.redox-os.org/redox-os/redox/-/issues/1552)
+
 ### World
 
 #### Mastodon
