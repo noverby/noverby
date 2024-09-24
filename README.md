@@ -56,6 +56,7 @@
 | ✅ | Find Patterns | | [Ripgrep](https://github.com/BurntSushi/ripgrep) | 🆗 | [Grep](https://git.savannah.gnu.org/cgit/grep.git) |
 | ✅ | Terminal Workspace | | [Zellij](https://github.com/zellij-org/zellij) | 🆗 | [Tmux](https://github.com/tmux/tmux) |
 | ✅ | Network Client | | [Xh](https://github.com/ducaale/xh) | ❓ | [Curl](https://github.com/curl/curl) |
+| 🚫 | Environment Loader | [Envy](https://github.com/mre/envy) | [Direnv](https://github.com/direnv/direnv) | ❓ | |
 
 ### Dev
 | Status | Component | Upcoming | Current | Compat | Legacy |
