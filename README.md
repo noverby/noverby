@@ -81,6 +81,7 @@
 | 🚧 | HTTP Protocol | [Hyper](https://github.com/hyperium/hyper) | [Nghttp2](https://github.com/nghttp2/nghttp2), [Nghttp3](https://github.com/ngtcp2/nghttp3) | ⬅️ | |
 | 🚧 | HTTP Client | [Reqwest](https://github.com/seanmonstar/reqwest) | [Curl](https://github.com/curl/curl) | ⬅️ | |
 | 🚧 | Font Rendering | [Cosmic-text](https://github.com/pop-os/cosmic-text) | [HarfBuzz](https://github.com/harfbuzz/harfbuzz), [FreeType](https://github.com/freetype/freetype) | ⬅️ | |
+| 🚧 | Browser Engine | [Servo](https://github.com/servo/servo) | [Gecko](https://en.wikipedia.org/wiki/Gecko_(software)) | ⬅️ | |
 
 ### GUI
 | Status | Component | Upcoming | Current | Compat | Legacy |
