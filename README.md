@@ -88,7 +88,7 @@
 | ✅ | 2D Toolkit | | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
 | 🚧 <br> https://github.com/NixOS/nixpkgs/issues/259641 | Desktop Environment | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | [Cosmic](https://github.com/pop-os/cosmic) | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell) |
 | 🚧 | File Manager | [Cosmic Files](https://github.com/pop-os/cosmic-files) | [GNOME Files](https://gitlab.gnome.org/GNOME/nautilus) | | |
-| 🚧 | Web Browser | [Servo](https://github.com/servo/servo) | [Firefox](https://github.com/mozilla/gecko-dev) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) |  |
+| 🚧 | Web Browser | [Verso](https://github.com/versotile-org/verso) | [Firefox](https://github.com/mozilla/gecko-dev) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) |  |
 | 🚧 | Media Player | [Cosmic Player](https://github.com/pop-os/cosmic-player) | [Mpv](https://github.com/mpv-player/mpv) | [FFMPEG](https://github.com/FFmpeg/FFmpeg), [GStreamer](https://gitlab.freedesktop.org/gstreamer/) |  |
 
 ### Mobile
