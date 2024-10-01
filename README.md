@@ -83,10 +83,11 @@
 | 🚧 | HTTP Client | [Reqwest](https://github.com/seanmonstar/reqwest) | [Curl](https://github.com/curl/curl) | ⬅️ | |
 | 🚧 | Font Rendering | [Cosmic-text](https://github.com/pop-os/cosmic-text) | [HarfBuzz](https://github.com/harfbuzz/harfbuzz), [FreeType](https://github.com/freetype/freetype) | ⬅️ | |
 | 🚧 | Browser Engine | [Servo](https://github.com/servo/servo) | [Gecko](https://en.wikipedia.org/wiki/Gecko_(software)) | ⬅️ | |
-
+o
 ### GUI
 | Status | Component | Upcoming | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
+| 🚫 | Web Toolkit | | [React](https://github.com/facebook/react) | [Web Component](https://kagi.com/search?q=Web+Components) | |
 | ✅ | 2D Toolkit | | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
 | 🚧 <br> https://github.com/NixOS/nixpkgs/issues/259641 | Desktop Environment | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | [Cosmic](https://github.com/pop-os/cosmic) | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell) |
 | 🚧 | File Manager | [Cosmic Files](https://github.com/pop-os/cosmic-files) | [GNOME Files](https://gitlab.gnome.org/GNOME/nautilus) | | |
