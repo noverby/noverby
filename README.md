@@ -104,6 +104,7 @@
 |:-:|-|-|-|-|-|
 | ✅ | DNS | | [NextDNS](https://nextdns.io) | | [Rethink DNS](https://rethinkdns.com) |
 | ✅ | Search Engine | [Stract](https://github.com/StractOrg/stract) | [Kagi](https://kagi.com) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [StartPage](https://startpage.com), [DuckDuckGo](https://duckduckgo.com) |
+| ✅ | LLM | | [Claude](https://claude.ai) | | [OpenAI o1](https://openai.com/o1) |
 | ✅ | Microblogging | | [Mastodon](https://mas.to/niclasoverby), [Bluesky](https://bsky.app/profile/overby.me) | ❓ | [Twitter](https://twitter.com) |
 | ✅ | Messaging | | [Beeper](https://www.beeper.com), [Matrix](https://matrix.org) | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram](https://telegram.org) |
 | ✅ | Media Sharing |  | [Pixelfed](https://pixelfed.social/niclasoverby) | | [Instagram](https://instagram.com) |
