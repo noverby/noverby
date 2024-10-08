@@ -94,6 +94,7 @@
 | 🚧 | Web Browser | [Verso](https://github.com/versotile-org/verso) | [Firefox](https://github.com/mozilla/gecko-dev) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) |  |
 | 🚧 | Media Player | [Cosmic Player](https://github.com/pop-os/cosmic-player) | [Mpv](https://github.com/mpv-player/mpv) | [FFMPEG](https://github.com/FFmpeg/FFmpeg), [GStreamer](https://gitlab.freedesktop.org/gstreamer/) |  |
 | ✅ | GUI Package Manager | | [Flatpak](https://github.com/flatpak/flatpak) | 🆗 |  [Snap](https://github.com/canonical/snapd), [AppImage](https://github.com/AppImage) |
+| ✅ | App Browser | | [Cosmic Store](https://github.com/pop-os/cosmic-store) | 🆗 | [GNOME Software](https://gitlab.gnome.org/GNOME/gnome-software) |
 
 ### Mobile
 | Status | Component | Upcoming | Current | Compat | Legacy |
