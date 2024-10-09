@@ -67,7 +67,7 @@
 | 🚫 | Version Control | [Gitoxide](https://github.com/Byron/gitoxide) | [Git](https://github.com/git/git) | ⬅️ ️️️️| |
 | ✅ | Build Script| | [Just](https://github.com/casey/just) | ❓ | [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
 | ✅ | Editor | | [Helix](https://github.com/helix-editor/helix) | 🆗 | [Neovim](https://github.com/neovim/neovim), [Vim](https://github.com/vim/vim) |
-| 🚧 | IDE | [Zed](https://github.com/zed-industries/zed) | [VS Codium](https://github.com/VSCodium/vscodium) | [LSP](https://github.com/microsoft/language-server-protocol), [DAP](https://github.com/Microsoft/debug-adapter-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) |
+| ✅ | IDE | | [Zed](https://github.com/zed-industries/zed)  | [LSP](https://github.com/microsoft/language-server-protocol), [DAP](https://github.com/Microsoft/debug-adapter-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium](https://github.com/VSCodium/vscodium) |
 | ✅ | System Call Tracing | | [Lurk](https://github.com/JakWai01/lurk) | 🆗 | [Strace](https://github.com/strace/strace) |
 | ✅ | Optimize PNG | | [Oxipng](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng](https://optipng.sourceforge.net) |
 | 🚫 | Meta Database | [Surrealdb](https://github.com/surrealdb/surrealdb) | [Hasura](https://github.com/hasura/graphql-engine) | [GraphQL](https://graphql.org/) | 
