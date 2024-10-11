@@ -19,7 +19,7 @@
 ### Hardware
 | Status | Component | Upcoming | Current | Legacy |
 |:-:|-|-|-|-|
-| ✅ | Laptop | | [Framwork 13](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
+| ✅ | Laptop | | [Framework 13](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
 | ✅ | Mobile | | [Google Pixel 7 Pro](https://store.google.com/product/pixel_7_pro) | [Samsung Galaxy S23 Plus](https://www.samsung.com/dk/smartphones/galaxy-s23) |
 | ✅ | Watch | | [Fēnix 7 – Sapphire Solar Edition](https://www.garmin.com/en-US/p/735520) | [PineTime](https://www.pine64.org/pinetime) |
 | ✅ | AR Glasses | | [XReal Air 2 Pro](https://us.shop.xreal.com/products/xreal-air-2-pro) | [XReal Light](https://www.xreal.com/light/) |
