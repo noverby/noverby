@@ -116,7 +116,7 @@
 | 🚫 | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | ❓ | [Spotify](https://open.spotify.com/user/1148979230) | [OpenLibrary](https://openlibrary.org) | |
 | 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | ❓ | [Strava](https://www.strava.com/athletes/116425039) | | |
 | ✅ | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | | [HappyCow](https://www.happycow.net/members/profile/niclasoverby) | | |
-| ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | | [Wikipedia](https://en.wikipedia.org/wiki/User:Niclas_Overby) | | |
+| ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Ibis](https://github.com/Nutomic/ibis) | [Wikipedia](https://en.wikipedia.org/wiki/User:Niclas_Overby) | | |
 
 ## Watch List
 
