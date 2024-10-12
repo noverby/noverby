@@ -42,6 +42,7 @@
 | ✅ | Distro | | [NixOS](https://github.com/NixOS/nixpkgs) | [OCI](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue/) |
 | ✅ | Kernel | | [Linux](https://github.com/torvalds/linux) | | |
 | ✅ | Init System | | [Systemd](https://github.com/systemd/systemd) | | |
+| ✅ | IPC | [Busd](https://github.com/dbus2/busd)  | [Dbus](https://gitlab.freedesktop.org/dbus/dbus/) | | |
 | 🚫 | Container CLI | | | [OCI](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
 | 🚧 | Container Runtime | | [Youki](https://github.com/containers/youki) | [OCI](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
 | ✅ | Typesetting |  | [Typst](https://github.com/typst/) | ❓ | [LaTeX](https://github.com/latex3/latex3) |
