@@ -103,6 +103,7 @@
 | Status | Component | Upcoming | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | 🚫 | Image Editing | | [GIMP](https://gitlab.gnome.org/GNOME/gimp) | | |
+| 🚫 | Vector Graphics | | [Inkscape](https://gitlab.com/inkscape/inkscape) | | |
 
 ### Mobile
 | Status | Component | Upcoming | Current | Compat | Legacy |
