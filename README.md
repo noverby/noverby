@@ -17,7 +17,7 @@
  * ⬅️: Backward compatible
 
 ### Hardware
-| Status | Component | Upcoming | Current | Legacy |
+| Status | Component | R&D | Current | Legacy |
 |:-:|-|-|-|-|
 | ✅ | Laptop | | [Framework 13](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
 | ✅ | Mobile | | [Google Pixel 7 Pro](https://store.google.com/product/pixel_7_pro) | [Samsung Galaxy S23 Plus](https://www.samsung.com/dk/smartphones/galaxy-s23) |
@@ -28,13 +28,13 @@
 | ✅ | E-book Reader | | [reMarkable 2](https://remarkable.com/store/remarkable-2) | [reMarkable 1](https://remarkable.com/store/remarkable) |
 
 ### Standards
-| Status | Component | Upcoming | Current | Legacy |
+| Status | Component | R&D | Current | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | IoT Connectivity Standard | [Matter](https://en.wikipedia.org/wiki/Matter_(standard)) | | |
 | 🚧 | Wireless Media | [Matter](https://en.wikipedia.org/wiki/Matter_(standard)) | [ChromeCast](https://en.wikipedia.org/wiki/Chromecast) | [Miracast](https://en.wikipedia.org/wiki/Miracast) |
 
 ### Base
-| Status | Component | Upcoming | Current | Compat | Legacy |
+| Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | 🚧 | Config Language | [Nickel](https://github.com/tweag/nickel) | [Nix](https://github.com/NixOS/nix) | [Organist](https://github.com/nickel-lang/organist) | |
 | 🚧 | Package Manager | [Tvix](https://github.com/tvlfyi/tvix) | [Nix](https://github.com/NixOS/nix) | ⬅️ | |
@@ -48,7 +48,7 @@
 | ✅ | Typesetting | | [Typst](https://github.com/typst/) | ❓ | [LaTeX](https://github.com/latex3/latex3) |
 
 ### Shell
-| Status | Component | Upcoming | Current | Compat | Legacy |
+| Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Shell | | [Nushell](https://github.com/nushell/nushell) | ❓ | [Bash](https://git.savannah.gnu.org/cgit/bash.git) |
 | ✅ | Core Utilities | | [Nushell Builtins](https://github.com/nushell/nushell) | [uutils](https://github.com/uutils/coreutils) | [Coreutils](https://git.savannah.gnu.org/cgit/coreutils.git) |
@@ -62,7 +62,7 @@
 | 🚫 | Environment Loader | [Envy](https://github.com/mre/envy) | [Direnv](https://github.com/direnv/direnv) | ❓ | |
 
 ### Dev
-| Status | Component | Upcoming | Current | Compat | Legacy |
+| Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | 🚧 | Compiler Framework | [Mlir](https://github.com/llvm/llvm-project/tree/main/mlir/), [Cranelift](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift) | [LLVM](https://github.com/llvm/llvm-project) | ⬅️ | |
 | 🚧 | System Language | | [Mojo](https://github.com/modularml/mojo), [Rust](https://github.com/rust-lang/rust) | [cxx](https://github.com/dtolnay/cxx), [bindgen](https://github.com/rust-lang/rust-bindgen) | [Go](https://github.com/golang/go) |
@@ -78,7 +78,7 @@
 | 🚫 | Storage Engine | [Sled](https://github.com/spacejam/sled) | | ❓ | [RocksDB](https://github.com/facebook/rocksdb) |
 
 ### Libraries
-| Status | Component | Upcoming | Current | Compat | Legacy |
+| Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | 🚧 | Compression | [Zlib-rs](https://github.com/memorysafety/zlib-rs) | [Zlib](https://github.com/madler/zlib) | ⬅️ | |
 | 🚧 | TLS Protocol | [Rustls](https://github.com/rustls/rustls) | [Openssl](https://github.com/openssl/openssl) | ⬅️ | |
@@ -88,7 +88,7 @@
 | 🚧 | Browser Engine | [Servo](https://github.com/servo/servo) | [Gecko](https://en.wikipedia.org/wiki/Gecko_(software)) | ⬅️ | |
 
 ### GUI
-| Status | Component | Upcoming | Current | Compat | Legacy |
+| Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | 🚫 | Web Toolkit | | [React](https://github.com/facebook/react) | [Web Component](https://kagi.com/search?q=Web+Components) | |
 | ✅ | 2D Toolkit | | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
@@ -100,19 +100,19 @@
 | ✅ | App Browser | | [Cosmic Store](https://github.com/pop-os/cosmic-store) | 🆗 | [GNOME Software](https://gitlab.gnome.org/GNOME/gnome-software) |
 
 ### Media
-| Status | Component | Upcoming | Current | Compat | Legacy |
+| Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | 🚫 | Image Editing | | [GIMP](https://gitlab.gnome.org/GNOME/gimp) | | |
 | 🚫 | Vector Graphics | | [Inkscape](https://gitlab.com/inkscape/inkscape) | | |
 
 ### Mobile
-| Status | Component | Upcoming | Current | Compat | Legacy |
+| Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | OS | [Murena](https://murena.com/) | [GrapheneOS](https://grapheneos.org) | |
 | ✅ | Keyboard | | [Thumb-Key](https://github.com/dessalines/thumb-key) | | [OpenBoard](https://github.com/openboard-team/openboard) |
 
 ### Services
-| Status | Component | Upcoming | Current | Compat | Legacy |
+| Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | DNS | | [NextDNS](https://nextdns.io) | | [Rethink DNS](https://rethinkdns.com) |
 | ✅ | Search Engine | [Stract](https://github.com/StractOrg/stract) | [Kagi](https://kagi.com) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [StartPage](https://startpage.com), [DuckDuckGo](https://duckduckgo.com) |
