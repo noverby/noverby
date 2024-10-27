@@ -5,9 +5,6 @@
 * [My Nix Flakes](https://github.com/noverby/nixflakes)
 * [RadikalWiki](https://github.com/RadikalWiki/radikalwiki)
 
-## Github Stats
-[![GitHub Streak](https://streak-stats.demolab.com/?user=noverby&theme=dark)](https://git.io/streak-stats)
-
 ## Stack
  * ✅: Good for now
  * 🚧: Transitioning
