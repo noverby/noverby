@@ -13,6 +13,7 @@
     evince
     spotify
     protonmail-bridge
+    bitwarden-desktop
     mpv
     onlyoffice-desktopeditors
     gnome-tweaks
