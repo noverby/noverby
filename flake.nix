@@ -1,5 +1,5 @@
 {
-  description = "NixOS + Home-manager";
+  description = "Personal Monorepo";
 
   inputs = {
     nixpkgs.follows = "nixos-cosmic/nixpkgs";
