@@ -1,7 +1,7 @@
 # Personal Monorepo
 
 ## Projects
-* [Nix Config](/tree/main/config)
+* [Nix Config](https://github.com/noverby/noverby/tree/master/config)
 * [RadikalWiki](https://github.com/RadikalWiki/radikalwiki)
 
 ## Stack
