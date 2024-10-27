@@ -2,7 +2,8 @@
 
 ## Projects
 * [Nix Config](https://github.com/noverby/noverby/tree/master/config)
-* [RadikalWiki](https://github.com/RadikalWiki/radikalwiki)
+* [Homepage](https://github.com/noverby/noverby/tree/master/projects/homepage)
+* [Wiki](https://github.com/noverby/noverby/tree/master/projects/wiki)
 
 ## Stack
  * ✅: Good for now
