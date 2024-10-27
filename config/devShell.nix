@@ -12,7 +12,7 @@ inputs.devenv.lib.mkShell
       devenv.root = builtins.readFile inputs.devenv-root.outPath;
     }
     {
-      packages = with pkgs; [yarn nodejs just magic];
+      packages = with pkgs; [yarn nodejs just rustc cargo nixd nil alejandra magic];
     }
   ];
 }
