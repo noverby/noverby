@@ -2,6 +2,10 @@
   description = "Personal Monorepo";
 
   inputs = {
+    devenv-root = {
+      url = "file+file:///dev/null";
+      flake = false;
+    };
     nixpkgs.follows = "nixos-cosmic/nixpkgs";
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
     home-manager = {
@@ -11,6 +15,15 @@
     flakelight = {
       url = "github:accelbread/flakelight";
       inputs.nixpkgs.follows = "nixpkgs";
+    };
+    git-hooks = {
+      url = "github:cachix/git-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    devenv = {
+      url = "github:cachix/devenv";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.pre-commit-hooks.follows = "git-hooks";
     };
     flake-utils = {
       url = "github:numtide/flake-utils";
