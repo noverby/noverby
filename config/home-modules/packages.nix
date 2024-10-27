@@ -14,7 +14,7 @@
     spotify
     protonmail-bridge
     mpv
-    libreoffice
+    onlyoffice-desktopeditors
     gnome-tweaks
     dconf-editor
     celeste
