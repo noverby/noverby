@@ -18,10 +18,9 @@ in {
       enabled-extensions = map (extension: extension.extensionUuid) gnomeExtensions;
       disabled-extensions = [];
       favorite-apps = [
-        "brave.desktop"
-        "zed.desktop"
+        "unbrave-browser.desktop"
+        "dev.zed.Zed.desktop"
         "org.gnome.Nautilus.desktop"
-        "org.gnome.Console.desktop"
         "org.gnome.Geary.desktop"
         "org.gnome.Calendar.desktop"
         "com.spotify.Client.desktop"
