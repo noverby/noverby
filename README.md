@@ -1,7 +1,7 @@
 # Personal Monorepo
 
 ## Projects
-* [My Nix Flakes](https://github.com/noverby/nixflakes)
+* [Nix Config](/tree/main/config)
 * [RadikalWiki](https://github.com/RadikalWiki/radikalwiki)
 
 ## Stack
