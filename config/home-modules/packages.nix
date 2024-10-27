@@ -18,7 +18,6 @@
     gnome-tweaks
     dconf-editor
     celeste
-    firefoxpwa
     gnome-network-displays
     eyedropper
 

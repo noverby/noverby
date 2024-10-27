@@ -41,8 +41,9 @@
     bg = "pueue";
     zed = "zeditor";
     optpng = "oxipng";
+    unbrave = "brave";
+    unbrave-dev = "brave --remote-debugging-port=9220";
     firefox-dev = "firefox -start-debugger-server 6000 -P dev http://localhost:3000";
-    chromium-dev = "chromium --remote-debugging-port=9220";
   };
 in {
   imports = [./git.nix ./vscode.nix ./zed-editor.nix];

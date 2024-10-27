@@ -18,8 +18,8 @@ in {
       enabled-extensions = map (extension: extension.extensionUuid) gnomeExtensions;
       disabled-extensions = [];
       favorite-apps = [
-        "firefox.desktop"
-        "codium.desktop"
+        "brave.desktop"
+        "zed.desktop"
         "org.gnome.Nautilus.desktop"
         "org.gnome.Console.desktop"
         "org.gnome.Geary.desktop"

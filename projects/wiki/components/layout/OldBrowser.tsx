@@ -28,9 +28,6 @@ const OldBrowser = () => (
             Opdater venligst din browser, eller installer en understøttet
             browser.
           </Typography>
-          <Typography sx={{ mb: 1 }}>
-            Skamløst forslag: <a href="https://firefox.com">Firefox 🦊</a>
-          </Typography>
           <Typography sx={{ mb: 1, fontWeight: 'bold' }}>
             OBS: På iOS er det kun muligt at bruge Safari. (Opdater Safari!)
           </Typography>
