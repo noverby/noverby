@@ -1,5 +1,4 @@
-## Homepage
-[![Niclas Overby's Homepage](homepage.png)](https://niclas.overby.me/)
+# Personal Monorepo
 
 ## Projects
 * [My Nix Flakes](https://github.com/noverby/nixflakes)
