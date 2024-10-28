@@ -230,6 +230,8 @@ in {
         "blaaajhemilngeeffpbfkdjjoefldkok"
         # Dark Reader
         "eimadpbcbfnmbkopoojfekhnkhdbieeh"
+        # Graze
+        "epocinhmkcnjfjobnglchpbncndobblj"
         # News Feed Eradicator
         "fjcldmjmjhkklehbacihaiopjklihlgg"
         # Momentum
@@ -252,6 +254,18 @@ in {
         "epocinhmkcnjfjobnglchpbncndobblj"
         # Distil
         "inlikjemeeknofckkjolnjbpehgadgge"
+        # Tab Reloader
+        "dejobinhdiimklegodgbmbifijpppopn"
+        # Proton VPN
+        "jplgfhpmjnbigmhklmmbgecoobifkmpa"
+        # Absolute Enable Right Click & Copy
+        "jdocbkpgdakpekjlhemmfcncgdjeiika"
+        # User-Agent Switcher
+        "djflhoibgkdhkhhcedjiklpkjnoahfmg"
+        # CORS Unblock
+        "lfhmikememgdcahcdlaciloancbhjino"
+        # Emoji Keyboard
+        "ipdjnhgkpapgippgcgkfcbpdpcgifncb"
       ];
     };
 
