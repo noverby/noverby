@@ -42,8 +42,8 @@
     initrd.verbose = false;
     kernelParams = ["quiet" "splash" "rd.systemd.show_status=false" "rd.udev.log_level=3" "udev.log_priority=3" "boot.shell_on_fail" "i915.fastboot=1"];
     kernelModules = ["v4l2loopback"];
-    kernelPackages = pkgs.linuxPackages_6_10;
-    extraModulePackages = [pkgs.linuxPackages_6_10.v4l2loopback];
+    kernelPackages = pkgs.linuxPackages;
+    extraModulePackages = [pkgs.linuxPackages.v4l2loopback];
   };
 
   # Network

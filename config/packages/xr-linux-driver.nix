@@ -7,7 +7,7 @@
   makeWrapper,
   patchelf,
   python311Packages,
-  libusb,
+  libusb1,
   curl,
   libevdev,
   json_c,
@@ -26,7 +26,7 @@ stdenv.mkDerivation {
     fetchSubmodules = true;
   };
 
-  nativeBuildInputs = [cmake pkg-config libusb curl libevdev json_c hidapi makeWrapper patchelf];
+  nativeBuildInputs = [cmake pkg-config libusb1 curl libevdev json_c hidapi makeWrapper patchelf];
   buildInputs = with python311Packages; [python pyyaml];
 
   cmakeFlags = [
@@ -34,7 +34,7 @@ stdenv.mkDerivation {
   ];
 
   installPhase = ''
-    patchelf --set-rpath ${lib.makeLibraryPath [libusb curl libevdev json_c hidapi openssl]} xrealAirLinuxDriver
+    patchelf --set-rpath ${lib.makeLibraryPath [libusb1 curl libevdev json_c hidapi openssl]} xrealAirLinuxDriver
     mkdir -p $out/bin
     cp ../bin/xreal_driver_config $out/bin
     cp ./xrealAirLinuxDriver $out/bin
