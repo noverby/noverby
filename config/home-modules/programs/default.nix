@@ -222,52 +222,29 @@ in {
       # TODO:
       # - https://github.com/bpc-clone/bypass-paywalls-chrome-clean
       extensions = map (id: {inherit id;}) [
-        # Bitwarden
-        "nngceckbapebfimnlniiiahkandclblb"
-        # Kagi
-        "cdglnehniifkbagbbombnjghhcihifij"
-        # Leechblock
-        "blaaajhemilngeeffpbfkdjjoefldkok"
-        # Dark Reader
-        "eimadpbcbfnmbkopoojfekhnkhdbieeh"
-        # Surfingkeys
-        "gfbliohnnapiefjpjlpjnehglfpaknnc"
-        # Graze
-        "epocinhmkcnjfjobnglchpbncndobblj"
-        # News Feed Eradicator
-        "fjcldmjmjhkklehbacihaiopjklihlgg"
-        # Momentum
-        "laookkfknpbbblfpciffpaejjkokdgca"
-        # Language Tool
-        "oldceeleldhonbafppcapldpdifcinji"
-        # Consent-O-Matic
-        "mdjildafknihdffpkfmmpnpoiajfjnjd"
-        # Read on reMarkable
-        "bfhkfdnddlhfippjbflipboognpdpoeh"
-        # Copyfish
-        "eenjdnjldapjajjofmldgmkjaienebbj"
-        # Video Speed Controller
-        "nffaoalbilbmmfgbnbgppjihopabppdk"
-        # Social Fixer for Facebook
-        "ifmhoabcaeehkljcfclfiieohkohdgbb"
-        # Neat URL
-        "jchobbjgibcahbheicfocecmhocglkco"
-        # Graze
-        "epocinhmkcnjfjobnglchpbncndobblj"
-        # Distil
-        "inlikjemeeknofckkjolnjbpehgadgge"
-        # Tab Reloader
-        "dejobinhdiimklegodgbmbifijpppopn"
-        # Proton VPN
-        "jplgfhpmjnbigmhklmmbgecoobifkmpa"
-        # Absolute Enable Right Click & Copy
-        "jdocbkpgdakpekjlhemmfcncgdjeiika"
-        # User-Agent Switcher
-        "djflhoibgkdhkhhcedjiklpkjnoahfmg"
-        # CORS Unblock
-        "lfhmikememgdcahcdlaciloancbhjino"
-        # Emoji Keyboard
-        "ipdjnhgkpapgippgcgkfcbpdpcgifncb"
+        "nngceckbapebfimnlniiiahkandclblb" # Bitwarden
+        "cdglnehniifkbagbbombnjghhcihifij" # Kagi
+        "blaaajhemilngeeffpbfkdjjoefldkok" # Leechblock
+        "eimadpbcbfnmbkopoojfekhnkhdbieeh" # Dark Reader
+        "gfbliohnnapiefjpjlpjnehglfpaknnc" # Surfingkeys
+        "epocinhmkcnjfjobnglchpbncndobblj" # Graze
+        "fjcldmjmjhkklehbacihaiopjklihlgg" # News Feed Eradicator
+        "laookkfknpbbblfpciffpaejjkokdgca" # Momentum
+        "oldceeleldhonbafppcapldpdifcinji" # Language Tool
+        "mdjildafknihdffpkfmmpnpoiajfjnjd" # Consent-O-Matic
+        "bfhkfdnddlhfippjbflipboognpdpoeh" # Read on reMarkable
+        "eenjdnjldapjajjofmldgmkjaienebbj" # Copyfish
+        "nffaoalbilbmmfgbnbgppjihopabppdk" # Video Speed Controller
+        "ifmhoabcaeehkljcfclfiieohkohdgbb" # Social Fixer for Facebook
+        "jchobbjgibcahbheicfocecmhocglkco" # Neat URL
+        "epocinhmkcnjfjobnglchpbncndobblj" # Graze
+        "inlikjemeeknofckkjolnjbpehgadgge" # Distil
+        "dejobinhdiimklegodgbmbifijpppopn" # Tab Reloader
+        "jplgfhpmjnbigmhklmmbgecoobifkmpa" # Proton VPN
+        "jdocbkpgdakpekjlhemmfcncgdjeiika" # Absolute Enable Right Click & Copy
+        "djflhoibgkdhkhhcedjiklpkjnoahfmg" # User-Agent Switcher
+        "lfhmikememgdcahcdlaciloancbhjino" # CORS Unblock
+        "ipdjnhgkpapgippgcgkfcbpdpcgifncb" # Emoji Keyboard
       ];
     };
 
