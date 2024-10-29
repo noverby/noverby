@@ -1,3 +1,3 @@
 {inputs, ...}: {
-  imports = with inputs.self.homeModules; [home systemd packages gnome xdg file programs];
+  imports = with inputs.self.homeModules; [home systemd packages xdg file programs];
 }

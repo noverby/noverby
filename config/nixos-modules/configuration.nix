@@ -71,13 +71,6 @@
     };
   };
 
-  # Fonts
-  fonts.packages = with pkgs;
-    [
-      (nerdfonts.override {fonts = ["FiraCode" "DroidSansMono"];})
-    ]
-    ++ [fira roboto roboto-slab meslo-lgs-nf cascadia-code];
-
   # Audio
   hardware.pulseaudio.enable = false;
   security.rtkit.enable = true;
@@ -94,41 +87,18 @@
     waydroid.enable = true;
   };
 
-  # Security
-  security.pam.services = {
-    gdm.enableGnomeKeyring = true;
-    login.fprintAuth = false;
-    gdm-fingerprint = with pkgs; {
-      text = ''
-        auth       required                    pam_shells.so
-        auth       requisite                   pam_nologin.so
-        auth       requisite                   pam_faillock.so      preauth
-        auth       required                    ${fprintd}/lib/security/pam_fprintd.so
-        auth       optional                    pam_permit.so
-        auth       required                    pam_env.so
-        auth       [success=ok default=1]      ${gdm}/lib/security/pam_gdm.so
-        auth       optional                    ${gnome-keyring}/lib/security/pam_gnome_keyring.so
-
-        account    include                     login
-
-        password   required                    pam_deny.so
-
-        session    include                     login
-        session    optional                    ${gnome-keyring}/lib/security/pam_gnome_keyring.so auto_start
-      '';
-    };
-  };
-  programs.seahorse.enable = true;
+  # Fonts
+  fonts.packages = with pkgs;
+    [
+      (nerdfonts.override {fonts = ["FiraCode" "DroidSansMono"];})
+    ]
+    ++ [fira roboto roboto-slab meslo-lgs-nf cascadia-code];
 
   # Packages
   environment = {
     systemPackages = with pkgs; [
-      gnome-boxes
       helix
-      python3
       powertop
-      gjs
-      glib.dev
       nix-alien
       tailspin
     ];
@@ -158,7 +128,6 @@
   # Users
   environment.profiles = ["$HOME/.local"];
   users.users.noverby = {
-    shell = "${pkgs.nushell}/bin/nu";
     isNormalUser = true;
     description = "Niclas Overby";
     extraGroups = ["networkmanager" "wheel" "docker" "libvirtd"];
@@ -236,6 +205,6 @@
   # Cosmic
   services = {
     desktopManager.cosmic.enable = true;
-    displayManager.cosmic-greeter.enable = false;
+    displayManager.cosmic-greeter.enable = true;
   };
 }

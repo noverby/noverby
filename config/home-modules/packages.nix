@@ -20,6 +20,7 @@
     dconf-editor
     celeste
     gnome-network-displays
+    gnome-system-monitor
     eyedropper
 
     # System tools

@@ -89,8 +89,8 @@
 |:-:|-|-|-|-|-|
 | 🚫 | Web Toolkit | | [React](https://github.com/facebook/react) | [Web Component](https://kagi.com/search?q=Web+Components) | |
 | ✅ | 2D Toolkit | | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
-| 🚧 <br> https://github.com/NixOS/nixpkgs/issues/259641 | Desktop Environment | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | [Cosmic](https://github.com/pop-os/cosmic) | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell) |
-| 🚧 | File Manager | [Cosmic Files](https://github.com/pop-os/cosmic-files) | [GNOME Files](https://gitlab.gnome.org/GNOME/nautilus) | | |
+| ✅ | Desktop Environment | | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell) |
+| ✅ | File Manager | | [Cosmic Files](https://github.com/pop-os/cosmic-files) | | [GNOME Files](https://gitlab.gnome.org/GNOME/nautilus) |
 | 🚫 | Web Browser | [Verso](https://github.com/versotile-org/verso) | [Unbraved Brave](https://github.com/MulesGaming/brave-debullshitinator)  | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) | [Firefox](https://github.com/mozilla/gecko-dev) |
 | 🚧 | Media Player | [Cosmic Player](https://github.com/pop-os/cosmic-player) | [Mpv](https://github.com/mpv-player/mpv) | [FFMPEG](https://github.com/FFmpeg/FFmpeg), [GStreamer](https://gitlab.freedesktop.org/gstreamer/) | |
 | ✅ | GUI Package Manager | | [Flatpak](https://github.com/flatpak/flatpak) | 🆗 | [Snap](https://github.com/canonical/snapd), [AppImage](https://github.com/AppImage) |

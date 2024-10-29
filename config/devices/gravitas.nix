@@ -23,6 +23,5 @@
     self.nixosModules.packages
     self.nixosModules.configuration
     self.nixosModules.home-manager
-    self.nixosModules.gnome
   ];
 }
