@@ -230,6 +230,8 @@ in {
         "blaaajhemilngeeffpbfkdjjoefldkok"
         # Dark Reader
         "eimadpbcbfnmbkopoojfekhnkhdbieeh"
+        # Surfingkeys
+        "gfbliohnnapiefjpjlpjnehglfpaknnc"
         # Graze
         "epocinhmkcnjfjobnglchpbncndobblj"
         # News Feed Eradicator
