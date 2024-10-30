@@ -136,10 +136,6 @@
 * [Nushell Helix Mode](https://github.com/nushell/reedline/issues/639)
 * [VSCode Helix Keymap](https://github.com/71/dance/issues/299)
 
-#### Zig
-* [Divorce from LLVM](https://github.com/ziglang/zig/issues/16270)
-* [Comptime Interfaces](https://github.com/ziglang/zig/issues/1268)
-
 #### Matrix
 * [Discord Forum Support](https://github.com/mautrix/discord/issues/101)
 
