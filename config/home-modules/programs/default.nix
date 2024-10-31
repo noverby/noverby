@@ -65,19 +65,14 @@ in {
       inherit shellAliases;
       configFile.source = ./nushell/config.nu;
       environmentVariables = {
-        EDITOR = "\"hx\"";
-        VISUAL = "\"hx\"";
+        EDITOR = "hx";
+        VISUAL = "hx";
         DIRENV_LOG_FORMAT = "";
-        PYTHONSTARTUP = "\"${homeDirectory}/.pystartup\"";
+        PYTHONSTARTUP = "${homeDirectory}/.pystartup";
         NIXOS_OZONE_WL = "1";
         GRANTED_ALIAS_CONFIGURED = "true";
-        XDG_DATA_DIRS = "\"${builtins.concatStringsSep ":" [
-          "${homeDirectory}/.nix-profile/share"
-          "${homeDirectory}/.local/share/flatpak/exports/share"
-          "($env.XDG_DATA_DIRS)"
-        ]}\"";
         # XR
-        XR_RUNTIME_JSON = "\"${pkgs.monado}/share/openxr/1/openxr_monado.json\"";
+        XR_RUNTIME_JSON = "${pkgs.monado}/share/openxr/1/openxr_monado.json";
         XRT_COMPOSITOR_FORCE_XCB = "1";
         XRT_COMPOSITOR_XCB_FULLSCREEN = "1";
       };
