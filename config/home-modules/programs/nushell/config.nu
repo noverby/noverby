@@ -1,4 +1,5 @@
 $env.config = {
+  edit_mode: vi
   show_banner: false
   keybindings: []
 }
@@ -6,10 +7,10 @@ $env.PATH = ($env.PATH | split row (char esep))
 
 def ghash [] {git rev-parse HEAD | tr -d '\\n' | wl-copy; git rev-parse HEAD}
 
-def ggg [] { 
+def ggg [] {
   git push -f
   gh pr create --fill
-  gh pr comment --body 'bors merge' 
+  gh pr comment --body 'bors merge'
 }
 
 def --env assume [profile?: string = ""] {
