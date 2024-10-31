@@ -67,7 +67,7 @@ in {
       environmentVariables = {
         EDITOR = "\"hx\"";
         VISUAL = "\"hx\"";
-        DIRENV_LOG_FORMAT = "\"\"";
+        DIRENV_LOG_FORMAT = "";
         PYTHONSTARTUP = "\"${homeDirectory}/.pystartup\"";
         NIXOS_OZONE_WL = "1";
         GRANTED_ALIAS_CONFIGURED = "true";
