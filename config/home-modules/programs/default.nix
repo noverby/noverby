@@ -8,10 +8,12 @@
     open = "xdg-open";
     ga = "git add";
     gc = "git commit";
+    gcm = "git commit -m";
     gca = "git commit --amend";
     gcn = "git commit --no-verify";
     gcp = "git cherry-pick";
-    gcm = "git checkout master";
+    gcom = "git checkout master";
+    gd = "git diff";
     gf = "git fetch";
     gl = "git log --oneline --no-abbrev-commit";
     glg = "git log --graph";
