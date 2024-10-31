@@ -87,6 +87,7 @@
 ### GUI
 | Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
+| 🚫 | Design System | | [Material You](https://m3.material.io) | | [Material Design 2](https://m2.material.io) |
 | 🚫 | Web Toolkit | | [React](https://github.com/facebook/react) | [Web Component](https://kagi.com/search?q=Web+Components) | |
 | ✅ | 2D Toolkit | | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
 | ✅ | Desktop Environment | | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell) |
