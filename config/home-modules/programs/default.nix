@@ -117,6 +117,7 @@ in {
     zellij = {
       enable = true;
       settings = {
+        default_shell = "nu";
         copy_command = "wl-copy";
         session_serialization = false;
         pane_frames = false;
