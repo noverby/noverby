@@ -1,6 +1,5 @@
 {...}: let
-  userKeymaps = {
-    keyBindings = [
+  userKeymaps = [
       {
         bindings = {
           "ctrl-j" = "editor::ContextMenuNext";
@@ -111,7 +110,6 @@
         context = "ConversationEditor > Editor";
       }
     ];
-  };
   userSettings = {
     assistant = {
       default_model = {
