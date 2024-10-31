@@ -101,6 +101,19 @@
       powertop
       nix-alien
       tailspin
+
+      # Cosmic
+      cosmic-ext-applet-clipboard-manager
+      cosmic-ext-applet-emoji-selector
+      cosmic-ext-applet-external-monitor-brightness
+      cosmic-ext-calculator
+      cosmic-ext-examine
+      cosmic-ext-forecast
+      cosmic-ext-tasks
+      cosmic-ext-tweaks
+      cosmic-player
+      cosmic-reader
+      stellarshot
     ];
     sessionVariables = {
       PAGER = "tspin";
@@ -135,26 +148,11 @@
 
   # Security
   security.pam.services = {
-    login.fprintAuth = false;
-    gnome-keyring = with pkgs; {
-      text = ''
-        auth       required                    pam_shells.so
-        auth       requisite                   pam_nologin.so
-        auth       requisite                   pam_faillock.so      preauth
-        auth       required                    ${fprintd}/lib/security/pam_fprintd.so
-        auth       optional                    pam_permit.so
-        auth       required                    pam_env.so
-        auth       optional                    ${gnome-keyring}/lib/security/pam_gnome_keyring.so
-
-        account    include                     login
-
-        password   required                    pam_deny.so
-
-        session    include                     login
-        session    optional                    ${gnome-keyring}/lib/security/pam_gnome_keyring.so auto_start
-      '';
+    cosmic-greeter = {
+      enableGnomeKeyring = true;
     };
   };
+  services.gnome.gnome-keyring.enable = true;
   programs.seahorse.enable = true;
 
   # Services
