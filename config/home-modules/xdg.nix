@@ -40,6 +40,10 @@
           };
         };
       };
+      brave-browser = {
+        name = "";
+        settings.NoDisplay = "true";
+      };
     };
   };
 }
