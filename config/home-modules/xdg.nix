@@ -6,7 +6,7 @@
         name = "Unbrave Browser";
         genericName = "Web Browser";
         comment = "Browse the World Wide Web";
-        exec = "brave --app-name=\"Unbrave\" %U";
+        exec = "brave %U";
         terminal = false;
         type = "Application";
         icon = ./unbrave.svg;
@@ -32,11 +32,11 @@
         actions = {
           "new-window" = {
             name = "New Window";
-            exec = "brave --app-name=\"Unbrave\"";
+            exec = "brave";
           };
           "new-private-window" = {
             name = "New Private Window";
-            exec = "brave --app-name=\"Unbrave\" --incognito";
+            exec = "brave --incognito";
           };
         };
       };
