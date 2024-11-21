@@ -1,6 +1,9 @@
 {...}: {
   xdg = {
     enable = true;
+    mimeApps.defaultApplications = {
+      browser = "unbrave-browser.desktop";
+    };
     desktopEntries = {
       unbrave-browser = {
         name = "Unbrave Browser";
