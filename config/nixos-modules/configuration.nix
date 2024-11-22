@@ -147,11 +147,6 @@
   };
 
   # Security
-  security.pam.services = {
-    cosmic-greeter = {
-      enableGnomeKeyring = true;
-    };
-  };
   services.gnome.gnome-keyring.enable = true;
   programs.seahorse.enable = true;
 
