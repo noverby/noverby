@@ -170,6 +170,7 @@ in {
 
     ssh = {
       enable = true;
+      addKeysToAgent = "yes";
       controlMaster = "auto";
       controlPath = "~/.ssh/socket/%r@%h:%p";
       controlPersist = "120";

@@ -103,6 +103,7 @@
       tailspin
 
       # Cosmic
+      gcr_4
       cosmic-ext-applet-clipboard-manager
       cosmic-ext-applet-emoji-selector
       cosmic-ext-applet-external-monitor-brightness
@@ -118,6 +119,7 @@
     sessionVariables = {
       PAGER = "tspin";
       SYSTEMD_PAGERSECURE = "1";
+      SSH_AUTH_SOCK = "$XDG_RUNTIME_DIR/gcr/ssh";
     };
   };
   programs = {
@@ -149,6 +151,27 @@
   # Security
   services.gnome.gnome-keyring.enable = true;
   programs.seahorse.enable = true;
+  systemd.user = {
+    sockets.gcr-ssh-agent = {
+      description = "GCR SSH Agent Socket";
+      socketConfig = {
+        ListenStream = "%t/gcr/ssh";
+        DirectoryMode = "0700";
+      };
+      wantedBy = ["sockets.target"];
+    };
+
+    services.gcr-ssh-agent = {
+      description = "GCR SSH Agent";
+      requires = ["gcr-ssh-agent.socket"];
+      after = ["gcr-ssh-agent.socket"];
+      serviceConfig = {
+        Type = "simple";
+        ExecStart = "${pkgs.gcr_4}/libexec/gcr-ssh-agent --base-dir %t/gcr";
+        StandardError = "journal";
+      };
+    };
+  };
 
   # Services
   services = {
