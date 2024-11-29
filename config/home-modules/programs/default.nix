@@ -116,6 +116,7 @@ in {
       settings = {
         default_shell = "nu";
         copy_command = "wl-copy";
+        scrollback_editor = "hx";
         session_serialization = false;
         pane_frames = false;
         env = {
