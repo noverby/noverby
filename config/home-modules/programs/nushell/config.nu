@@ -13,6 +13,10 @@ def ggg [] {
   gh pr comment --body 'bors merge'
 }
 
+def bin64 [] {
+  xxd -r -p | base64 -w 0
+}
+
 def --env assume [profile?: string = ""] {
   let granted = assumego $profile | split row " "
   load-env {
