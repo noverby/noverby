@@ -63,6 +63,7 @@
     tokei
     zip
     unzip
+    diffoscope
 
     # Container tools
     distrobox
