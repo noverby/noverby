@@ -23,7 +23,7 @@
     devenv = {
       url = "github:cachix/devenv";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.pre-commit-hooks.follows = "git-hooks";
+      inputs.git-hooks.follows = "git-hooks";
     };
     flake-utils = {
       url = "github:numtide/flake-utils";

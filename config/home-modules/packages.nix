@@ -21,7 +21,7 @@
     celeste
     gnome-network-displays
     gnome-system-monitor
-    gnome.file-roller
+    file-roller
     eyedropper
 
     # System tools

@@ -88,11 +88,7 @@
   };
 
   # Fonts
-  fonts.packages = with pkgs;
-    [
-      (nerdfonts.override {fonts = ["FiraCode" "DroidSansMono"];})
-    ]
-    ++ [fira roboto roboto-slab meslo-lgs-nf cascadia-code];
+  fonts.packages = with pkgs; [nerd-fonts.fira-code nerd-fonts.droid-sans-mono fira roboto roboto-slab meslo-lgs-nf cascadia-code];
 
   # Packages
   environment = {
