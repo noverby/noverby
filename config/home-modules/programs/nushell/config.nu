@@ -18,13 +18,15 @@ def bin64 [] {
 }
 
 def --env assume [profile?: string = ""] {
-  let granted = assumego $profile | split row " "
+  let granted_output = assumego $profile 
+  let granted = $granted_output | lines | get -i 1 | split row " "
   load-env {
     AWS_ACCESS_KEY_ID: $granted.1,
     AWS_SECRET_ACCESS_KEY: $granted.2,
     AWS_SESSION_TOKEN: $granted.3,
     AWS_PROFILE: $granted.4,
     AWS_REGION: $granted.5,
+    AWS_DEFAULT_REGION: $granted.5,
     AWS_SESSION_EXPIRATION: $granted.6,
     AWS_CREDENTIAL_EXPIRATION: $granted.6,
     GRANTED_SSO: $granted.7,
