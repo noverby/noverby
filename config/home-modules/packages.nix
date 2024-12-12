@@ -23,6 +23,7 @@
     gnome-system-monitor
     file-roller
     eyedropper
+    wireplumber
 
     # System tools
     sudo-rs
