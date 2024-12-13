@@ -24,6 +24,7 @@
     file-roller
     eyedropper
     wireplumber
+    gnome-disk-utility
 
     # System tools
     sudo-rs
