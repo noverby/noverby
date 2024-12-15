@@ -1,12 +1,13 @@
 import { useRouter } from "next/router";
 import { useEffect } from "react";
 
-export default function Yt() {
+export default function X() {
   const router = useRouter();
-  const match = router.asPath.match(/.*q=([^&]*)/)?.[1];
-
+  const match = router.asPath.match(/.*x\.com(.*)/)?.[1];  
   useEffect(() => {
-    router.push(`https://kagi.com${match ? `/search?q=${match}` : ""}`);
+      if (!match) return;
+      router.push(`https://xcancel.com${match}`);
   }, [match, router]);
   return null;
 }
+
