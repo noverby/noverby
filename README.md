@@ -110,6 +110,7 @@
 | ✅ | Launcher | | [Olauncher](https://github.com/tanujnotes/Olauncher) | | [Minimalist Phone](https://www.minimalistphone.com/) |
 | ✅ | Keyboard | | [Thumb-Key](https://github.com/dessalines/thumb-key) | | [OpenBoard](https://github.com/openboard-team/openboard) |
 | ✅ | Alarm | | [Chrono](https://github.com/vicolo-dev/chrono) | | [Sleep](https://sleep.urbandroid.org/) |
+| ✅ | Browser | | [Mull](https://github.com/mull-project/mull) | | |
 
 ### Services
 | Status | Component | R&D | Current | Compat | Legacy |
