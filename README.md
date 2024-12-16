@@ -156,6 +156,9 @@
 ### Redox
 * [The Road to Nix](https://gitlab.redox-os.org/redox-os/redox/-/issues/1552)
 
+### Git
+* [Mergiraf](https://codeberg.org/mergiraf/mergiraf)
+
 ### World
 
 #### Mastodon
