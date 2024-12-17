@@ -117,6 +117,7 @@
       SYSTEMD_PAGERSECURE = "1";
       SSH_AUTH_SOCK = "$XDG_RUNTIME_DIR/gcr/ssh";
       COSMIC_DATA_CONTROL_ENABLED = 1;
+      NIXOS_OZONE_WL = "1";
     };
   };
   programs = {

@@ -71,7 +71,6 @@ in {
         VISUAL = "hx";
         DIRENV_LOG_FORMAT = "";
         PYTHONSTARTUP = "${homeDirectory}/.pystartup";
-        NIXOS_OZONE_WL = "1";
         GRANTED_ALIAS_CONFIGURED = "true";
         # XR
         XR_RUNTIME_JSON = "${pkgs.monado}/share/openxr/1/openxr_monado.json";
