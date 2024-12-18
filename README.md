@@ -93,7 +93,7 @@
 | ✅ | Desktop Environment | | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell) |
 | ✅ | File Manager | | [Cosmic Files](https://github.com/pop-os/cosmic-files) | | [GNOME Files](https://gitlab.gnome.org/GNOME/nautilus) |
 | 🚫 | Web Browser | [Verso](https://github.com/versotile-org/verso) | [Unbraved Brave](https://github.com/MulesGaming/brave-debullshitinator)  | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) | [Firefox](https://github.com/mozilla/gecko-dev) |
-| 🚧 | Media Player | [Cosmic Player](https://github.com/pop-os/cosmic-player) | [Mpv](https://github.com/mpv-player/mpv) | [FFMPEG](https://github.com/FFmpeg/FFmpeg), [GStreamer](https://gitlab.freedesktop.org/gstreamer/) | |
+| ✅ | Media Player | [Cosmic Player](https://github.com/pop-os/cosmic-player) | [Mpv](https://github.com/mpv-player/mpv) | [FFMPEG](https://github.com/FFmpeg/FFmpeg), [GStreamer](https://gitlab.freedesktop.org/gstreamer/) | |
 | ✅ | GUI Package Manager | | [Flatpak](https://github.com/flatpak/flatpak) | 🆗 | [Snap](https://github.com/canonical/snapd), [AppImage](https://github.com/AppImage) |
 | ✅ | App Browser | | [Cosmic Store](https://github.com/pop-os/cosmic-store) | 🆗 | [GNOME Software](https://gitlab.gnome.org/GNOME/gnome-software) |
 
