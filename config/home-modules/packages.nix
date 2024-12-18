@@ -35,6 +35,7 @@
     lsof
     wl-clipboard
     fpp
+    skim
     pueue
     waypipe
     tailspin
