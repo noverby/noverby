@@ -46,8 +46,16 @@ def yarn-lock-update [] {
 }
 
 def gco [branch_name: string] {
-    match (git show-ref --quiet $"refs/heads/($branch_name)" | complete | get exit_code) {
-     0 => { git checkout $branch_name }
-     1 =>  { git checkout -b $branch_name }
+    git fetch origin
+
+    let local_exists = (git show-ref --quiet $"refs/heads/($branch_name)" | complete | get exit_code) == 0
+    let remote_exists = (git show-ref --quiet $"refs/remotes/origin/($branch_name)" | complete | get exit_code) == 0
+
+    if $local_exists {
+        git checkout $branch_name
+    } else if $remote_exists {
+        git checkout -b $branch_name --track $"origin/($branch_name)"
+    } else {
+        git checkout -b $branch_name
     }
 }
