@@ -4,6 +4,7 @@
   homeDirectory,
   ...
 }: let
+  editor = "vi";
   shellAliases = {
     open = "xdg-open";
     ga = "git add";
@@ -67,8 +68,8 @@ in {
       inherit shellAliases;
       configFile.source = ./nushell/config.nu;
       environmentVariables = {
-        EDITOR = "hx";
-        VISUAL = "hx";
+        EDITOR = editor;
+        VISUAL = editor;
         DIRENV_LOG_FORMAT = "";
         PYTHONSTARTUP = "${homeDirectory}/.pystartup";
         GRANTED_ALIAS_CONFIGURED = "true";
@@ -115,7 +116,7 @@ in {
       settings = {
         default_shell = "nu";
         copy_command = "wl-copy";
-        scrollback_editor = "hx";
+        scrollback_editor = editor;
         session_serialization = false;
         pane_frames = false;
         env = {
