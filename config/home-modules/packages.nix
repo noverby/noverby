@@ -12,7 +12,7 @@
     fragments
     evince
     spotify
-    protonmail-bridge
+    protonmail-desktop
     bitwarden-desktop
     mpv
     onlyoffice-desktopeditors
