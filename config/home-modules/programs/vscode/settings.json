@@ -1176,7 +1176,7 @@
   "security.workspace.trust.untrustedFiles": "open",
   "telemetry.telemetryLevel": "off",
   "terminal.integrated.automationProfile.linux": {
-    "path": "nu"
+    "path": "fish"
   },
   "terminal.integrated.defaultProfile.linux": "zellij-cwd",
   "terminal.integrated.enablePersistentSessions": false,
