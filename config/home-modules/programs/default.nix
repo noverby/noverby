@@ -1,6 +1,7 @@
 {
   pkgs,
   username,
+  homeDirectory,
   ...
 }: let
   editor = "vi";
@@ -62,15 +63,27 @@ in {
       enableBashIntegration = true;
     };
 
-    fish = {
-      enable = true;
-      inherit shellAliases;
-    };
-
     nushell = {
       enable = true;
       inherit shellAliases;
       configFile.source = ./nushell/config.nu;
+      environmentVariables = {
+        EDITOR = editor;
+        VISUAL = editor;
+        DIRENV_LOG_FORMAT = "";
+        PYTHONSTARTUP = "${homeDirectory}/.pystartup";
+        GRANTED_ALIAS_CONFIGURED = "true";
+        # XR
+        XR_RUNTIME_JSON = "${pkgs.monado}/share/openxr/1/openxr_monado.json";
+        XRT_COMPOSITOR_FORCE_XCB = "1";
+        XRT_COMPOSITOR_XCB_FULLSCREEN = "1";
+      };
+    };
+
+    carapace = {
+      enable = true;
+      enableNushellIntegration = true;
+      enableBashIntegration = true;
     };
 
     bash = {
@@ -98,18 +111,10 @@ in {
       '';
     };
 
-    carapace = {
-      enable = true;
-      enableFishIntegration = true;
-      enableNushellIntegration = true;
-      enableBashIntegration = true;
-    };
-
     zellij = {
       enable = true;
-      enableFishIntegration = true;
       settings = {
-        default_shell = "fish";
+        default_shell = "nu";
         copy_command = "wl-copy";
         scrollback_editor = editor;
         session_serialization = false;
@@ -122,7 +127,6 @@ in {
 
     starship = {
       enable = true;
-      enableFishIntegration = true;
       enableNushellIntegration = true;
       enableBashIntegration = true;
       settings = {
@@ -144,8 +148,6 @@ in {
 
     direnv = {
       enable = true;
-      # Already set for some reason
-      #enableFishIntegration = true;
       enableNushellIntegration = true;
       enableBashIntegration = true;
       nix-direnv.enable = true;
@@ -153,31 +155,18 @@ in {
 
     zoxide = {
       enable = true;
-      enableFishIntegration = true;
       enableNushellIntegration = true;
       enableBashIntegration = true;
     };
 
     nix-index = {
       enable = true;
-      enableFishIntegration = true;
     };
 
     atuin = {
       enable = true;
-      enableFishIntegration = true;
       enableNushellIntegration = true;
       enableBashIntegration = true;
-    };
-
-    skim = {
-      enable = true;
-      enableFishIntegration = true;
-    };
-
-    nix-your-shell = {
-      enable = true;
-      enableFishIntegration = true;
     };
 
     ssh = {
