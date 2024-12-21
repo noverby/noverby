@@ -19,6 +19,10 @@ with config.lib.file; {
       executable = true;
       source = ./bin/vi;
     };
+    ".local/bin/uf" = {
+      executable = true;
+      source = ./bin/uf;
+    };
     ".local/bin/zellij-cwd" = {
       executable = true;
       source = ./bin/zellij-cwd;
