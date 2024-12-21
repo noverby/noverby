@@ -18,6 +18,8 @@ def main [] {
         }
         | get 0
     )
-    $paths | uniq
+    let selected = $paths | uniq | str join "\n" | sk
+
+    xdg-open $selected
 }
 
