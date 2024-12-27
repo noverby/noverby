@@ -1,0 +1,39 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Server",
+      "type": "pwa-node",
+      "request": "launch",
+      "console": "integratedTerminal",
+      "program": "${workspaceFolder}/node_modules/next/dist/bin/next",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Client",
+      "type": "firefox",
+      "request": "attach",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}",
+      "pathMappings": [
+        {
+          "url": "webpack://_n_e",
+          "path": "${workspaceFolder}"
+        }
+      ]
+    },
+    {
+      "type": "pwa-chrome",
+      "name": "Chromium",
+      "request": "attach",
+      "url": "http://localhost:3000",
+      "port": 9220
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Server/Client",
+      "configurations": ["Server", "Client"]
+    }
+  ]
+}

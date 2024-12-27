@@ -1,0 +1,21 @@
+#!/usr/bin/env -S nu --stdin
+def main [] {
+    let input = $in
+    if ($input | is-empty) {
+        print "Please provide input through a pipe"
+        exit 1
+    }
+    let paths = ($input
+        | split row -r '\s+'
+        | filter { |match|
+          (($match | path exists) and ($match | parse --regex '^(\.)+$' | is-empty)) or ($match | parse --regex '^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$' | is-not-empty)
+        }
+    )
+    let selected = $paths | uniq | str join "\n" | sk
+    let type = $selected | path type
+    if ($type == "file" or ($selected | readlink $in | path type) == "file") {
+      xdg-open $selected | complete
+      return "."
+    }
+    $selected
+}
