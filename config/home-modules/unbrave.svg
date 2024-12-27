@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Background Shield -->
+  <path d="M100 10 L180 45 L180 110 Q180 160 100 190 Q20 160 20 110 L20 45 Z" 
+        fill="#FB542B" />
+  
+  <!-- Inner Shield -->
+  <path d="M100 20 L170 50 L170 105 Q170 150 100 175 Q30 150 30 105 L30 50 Z" 
+        fill="white" />
+  
+  <!-- Kitten Face -->
+  <!-- Main Face Shape -->
+  <path d="M100 70 Q140 70 150 100 Q155 120 140 140 Q120 155 100 155 Q80 155 60 140 Q45 120 50 100 Q60 70 100 70" 
+        fill="#FB542B" />
+  
+  <!-- Ears -->
+  <path d="M70 60 Q85 50 90 70 L70 75 Z" fill="#FB542B" />
+  <path d="M130 60 Q115 50 110 70 L130 75 Z" fill="#FB542B" />
+  
+  <!-- Inner Ears -->
+  <path d="M75 63 Q85 57 87 70 L75 73 Z" fill="#FF7B5C" />
+  <path d="M125 63 Q115 57 113 70 L125 73 Z" fill="#FF7B5C" />
+  
+  <!-- Scared Eyes -->
+  <ellipse cx="80" cy="100" rx="18" ry="20" fill="white" />
+  <ellipse cx="120" cy="100" rx="18" ry="20" fill="white" />
+  
+  <!-- Pupils -->
+  <circle cx="80" cy="100" r="12" fill="black" />
+  <circle cx="120" cy="100" r="12" fill="black" />
+  
+  <!-- Eye Shine -->
+  <circle cx="75" cy="95" r="3" fill="white" />
+  <circle cx="115" cy="95" r="3" fill="white" />
+  
+  <!-- Tiny Nose -->
+  <path d="M97 115 Q100 117 103 115" fill="#FF7B5C" />
+  
+  <!-- Worried Mouth -->
+  <path d="M90 125 Q100 120 110 125" 
+        stroke="black" 
+        stroke-width="2" 
+        fill="none" />
+  
+  <!-- Whiskers -->
+  <!-- Left Whiskers -->
+  <path d="M85 120 Q65 115 55 110" stroke="black" stroke-width="1.5" fill="none" />
+  <path d="M85 122 Q65 122 55 122" stroke="black" stroke-width="1.5" fill="none" />
+  <path d="M85 124 Q65 129 55 134" stroke="black" stroke-width="1.5" fill="none" />
+  
+  <!-- Right Whiskers -->
+  <path d="M115 120 Q135 115 145 110" stroke="black" stroke-width="1.5" fill="none" />
+  <path d="M115 122 Q135 122 145 122" stroke="black" stroke-width="1.5" fill="none" />
+  <path d="M115 124 Q135 129 145 134" stroke="black" stroke-width="1.5" fill="none" />
+  
+  <!-- Subtle Fur Texture -->
+  <path d="M70 140 Q100 150 130 140" stroke="#E64B27" stroke-width="1" fill="none" opacity="0.3" />
+</svg>

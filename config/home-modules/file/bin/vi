@@ -1,0 +1,30 @@
+#!/usr/bin/env nu
+def main [--wait,--diff,...vargs: string] {
+  mut args = []
+  mut files = []
+  mut line = 0
+  if $wait {
+    $args = ($args | append "--wait")
+  }
+  if $diff {
+    $args = ($args | append "--diff")
+  }
+  for arg in $vargs {
+    if ($arg | str starts-with "+") {
+      $line = ($arg | str substring 1..)
+    } else {
+      let file = ($arg | path expand)
+      $files = ($files | append $file)
+    }
+  }
+
+  let fileCount = ($files | length)
+  for file in $files {
+    match [$fileCount, ($file | path type)] {
+      [1, "file"] => (zeditor --add ...$args $"($file):($line)")
+      [_, "file"] => (zeditor --add ...$args $file)
+      [_, "dir"] => (zeditor --new ...$args $file)
+      [_, null] => (touch $file; zeditor --add ...$args $file)
+    }
+  }
+}
