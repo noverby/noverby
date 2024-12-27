@@ -14,6 +14,9 @@
         autocrlf = "input";
         editor = "vi --wait";
       };
+      init = {
+        defaultBranch = "main";
+      };
       push = {
         default = "simple";
         autoSetupRemote = true;
