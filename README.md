@@ -119,13 +119,13 @@
 | Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Version Control | | [Codeberg 🇪🇺](https://codeberg.org) | | [GitHub 🇺🇸](https://github.com), [GitLab 🇺🇸](https://gitlab.com) |
-| ✅ | Mail | [Tuta Mail 🇪🇺](https://tuta.com) | | | [Proton Mail 🇨🇭](https://proton.me/mail) |
-| ✅ | Calendar | [Tuta Calendar 🇪🇺](https://tuta.com) | | | [Proton Calendar 🇨🇭](https://proton.me/calendar) |
-| ✅ | DNS | [Adguard 🇪🇺](https://adguard.com) | | | [NextDNS 🇺🇸](https://nextdns.io), [Rethink DNS 🇬🇧](https://rethinkdns.com) |
+| ✅ | Mail | | [Tuta Mail 🇪🇺](https://tuta.com) | | [Proton Mail 🇨🇭](https://proton.me/mail) |
+| ✅ | Calendar | | [Tuta Calendar 🇪🇺](https://tuta.com) | | [Proton Calendar 🇨🇭](https://proton.me/calendar) |
+| ✅ | DNS | | [Adguard 🇪🇺](https://adguard.com) | | [NextDNS 🇺🇸](https://nextdns.io), [Rethink DNS 🇬🇧](https://rethinkdns.com) |
 | ✅ | Search Engine | [Stract 🇪🇺](https://github.com/StractOrg/stract) | [StartPage 🇪🇺](https://startpage.com) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [Kagi 🇺🇸](https://kagi.com), [DuckDuckGo 🇺🇸](https://duckduckgo.com) |
 | 🚫 | LLM | | [Claude 🇺🇸](https://claude.ai) | | [OpenAI 🇺🇸](https://openai.com) |
 | ✅ | Microblogging | | [Mastodon 🇪🇺](https://mas.to/niclasoverby), [Bluesky 🇺🇸](https://bsky.app/profile/overby.me) | [X-Cancel](https://xcancel.com) | [X-Twitter 🇺🇸](https://x.com) |
-| ✅ | Messaging | | [Beeper 🇺🇸](https://www.beeper.com), [Matrix 🌐](https://matrix.org) | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🇦🇪](https://telegram.org) |
+| ✅ | Messaging | | [Matrix 🌐](https://matrix.org), [Beeper 🇺🇸](https://www.beeper.com) | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🇦🇪](https://telegram.org) |
 | ✅ | Media Sharing | | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | | [Instagram 🇺🇸](https://instagram.com) |
 | 🚫 | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Bookwyrm 🇪🇺](https://bookwyrm.social/user/niclasoverby) | [Goodreads 🇺🇸](https://www.goodreads.com/niclasoverby) | [OpenLibrary](https://openlibrary.org) | |
 | 🚫 | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | ❓ | [Letterboxd 🇺🇸](https://letterboxd.com/niclasoverby) | [OpenLibrary](https://openlibrary.org) | |
