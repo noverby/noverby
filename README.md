@@ -104,7 +104,7 @@
 | Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Design System | | [Material You](https://m3.material.io) | | [Material Design 2](https://m2.material.io) |
-| 🚧 | GUI Toolkit | [Dixous](https://github.com/dioxusLabs/dioxus) | WIP Mojo Library | [Web Component 📖](https://kagi.com/search?q=Web+Components) | |
+| 🚧 | GUI Toolkit | [Dixous 🦀](https://github.com/dioxusLabs/dioxus) | WIP Toolkit 🔥 | [Web Component 📖](https://kagi.com/search?q=Web+Components) | |
 | ✅ | Desktop Environment | | [Cosmic Epoch 🦀](https://github.com/pop-os/cosmic-epoch) | | [Gnome Shell 💣](https://gitlab.gnome.org/GNOME/gnome-shell) |
 | ✅ | File Manager | | [Cosmic Files 🦀](https://github.com/pop-os/cosmic-files) | | [GNOME Files 💣](https://gitlab.gnome.org/GNOME/nautilus) |
 | 🚫 | Web Browser | [Verso 🦀](https://github.com/versotile-org/verso) | [Unbraved Brave 💣🦀](https://github.com/MulesGaming/brave-debullshitinator) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) | [Firefox 🦀💣](https://github.com/mozilla/gecko-dev) |
