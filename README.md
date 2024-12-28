@@ -129,9 +129,9 @@
 | ✅ | Microblogging | | [Mastodon 🇪🇺](https://mas.to/niclasoverby), [Bluesky 🇺🇸](https://bsky.app/profile/overby.me) | [X-Cancel](https://xcancel.com) | [X-Twitter 🇺🇸](https://x.com) |
 | ✅ | Messaging | | [Matrix 🌐](https://matrix.org), [Beeper 🇺🇸](https://www.beeper.com) | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🇦🇪](https://telegram.org) |
 | ✅ | Media Sharing | | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | | [Instagram 🇺🇸](https://instagram.com) |
-| 🚫 | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Bookwyrm 🇪🇺](https://bookwyrm.social/user/niclasoverby) | [Goodreads 🇺🇸](https://www.goodreads.com/niclasoverby) | [OpenLibrary](https://openlibrary.org) | |
-| 🚫 | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | ❓ | [Letterboxd 🇺🇸](https://letterboxd.com/niclasoverby) | [OpenLibrary](https://openlibrary.org) | |
-| 🚫 | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | ❓ | [Spotify 🇺🇸](https://open.spotify.com/user/1148979230) | [OpenLibrary](https://openlibrary.org) | |
+| 🚫 | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🌐](https://github.com/neodb-social/neodb), [Bookwyrm 🇪🇺](https://bookwyrm.social/user/niclasoverby) | [Goodreads 🇺🇸](https://www.goodreads.com/niclasoverby) | [OpenLibrary](https://openlibrary.org) | |
+| 🚫 | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🌐](https://github.com/neodb-social/neodb) | [Letterboxd 🇺🇸](https://letterboxd.com/niclasoverby) | [OpenLibrary](https://openlibrary.org) | |
+| 🚫 | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🌐](https://github.com/neodb-social/neodb) | [Spotify 🇺🇸](https://open.spotify.com/user/1148979230) | [OpenLibrary](https://openlibrary.org) | |
 | 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | ❓ | [Strava 🇺🇸](https://www.strava.com/athletes/116425039) | | |
 | 🚫 | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | | [HappyCow 🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | | |
 | ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Ibis 🌐](https://github.com/Nutomic/ibis) | [Wikipedia 🌐](https://en.wikipedia.org/wiki/User:Niclas_Overby) | | |
