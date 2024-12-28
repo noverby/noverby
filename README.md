@@ -12,18 +12,19 @@
  * ❓: Undecided
  * 🆗: Not needed
  * ⬅️: Backward compatible
+ * 🌐: Open source & Nonprofit
 
 ### Hardware
 | Status | Component | R&D | Current | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | Architecture | [RISC-V](https://en.wikipedia.org/wiki/RISC-V), [ARM](https://en.wikipedia.org/wiki/ARM_architecture_family) | [X86-64](https://en.wikipedia.org/wiki/X86-64) | |
-| ✅ | Laptop | | [Framework 13](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
-| ✅ | Mobile | | [Google Pixel 7 Pro](https://store.google.com/product/pixel_7_pro) | [Samsung Galaxy S23 Plus](https://www.samsung.com/dk/smartphones/galaxy-s23) |
-| ✅ | Watch | | [Fēnix 7 – Sapphire Solar Edition](https://www.garmin.com/en-US/p/735520) | [PineTime](https://www.pine64.org/pinetime) |
-| ✅ | AR Glasses | | [XReal Air 2 Pro](https://us.shop.xreal.com/products/xreal-air-2-pro) | [XReal Light](https://www.xreal.com/light/) |
-| ✅ | Input | | [Tap XR](https://www.tapwithus.com/product/tap-xr) | [Tap Strap 2](https://www.tapwithus.com/product/tap-strap-2) |
-| ✅ | Earphones | | [Shokz Openfit](https://shokz.com/products/openfit)| [Shokz Openrun Pro](https://shokz.com/products/openrunpro) |
-| ✅ | E-book Reader | | [reMarkable 2](https://remarkable.com/store/remarkable-2) | [reMarkable 1](https://remarkable.com/store/remarkable) |
+| 🚫 | Laptop | | [Framework 13 🇺🇸](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320 🇺🇸](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
+| 🚫 | Mobile | | [Google Pixel 7 Pro 🇺🇸](https://store.google.com/product/pixel_7_pro) | [Samsung Galaxy S23 Plus 🇰🇷](https://www.samsung.com/dk/smartphones/galaxy-s23) |
+| 🚫 | Watch | | [Fēnix 7 – Sapphire Solar Edition 🇺🇸](https://www.garmin.com/en-US/p/735520) | [PineTime 🇭🇰](https://www.pine64.org/pinetime) |
+| 🚫 | AR Glasses | | [XReal Air 2 Pro 🇨🇳](https://us.shop.xreal.com/products/xreal-air-2-pro) | [XReal Light 🇨🇳](https://www.xreal.com/light/) |
+| 🚫 | Input | | [Tap XR 🇺🇸](https://www.tapwithus.com/product/tap-xr) | [Tap Strap 2 🇺🇸](https://www.tapwithus.com/product/tap-strap-2) |
+| ✅ | Earphones | | [Hyphen Aria 🇨🇭](https://rollingsquare.com/products/hyphen%C2%AE-aria) | [Shokz Openfit 🇬🇧](https://shokz.com/products/openfit) |
+| ✅ | E-book Reader | | [reMarkable 2 🇳🇴](https://remarkable.com/store/remarkable-2) | [reMarkable 1 🇳🇴](https://remarkable.com/store/remarkable) |
 
 ### Standards
 | Status | Component | R&D | Current | Legacy |
@@ -89,7 +90,7 @@
 ### GUI
 | Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
-| 🚫 | Design System | | [Material You](https://m3.material.io) | | [Material Design 2](https://m2.material.io) |
+| ✅ | Design System | | [Material You](https://m3.material.io) | | [Material Design 2](https://m2.material.io) |
 | 🚫 | Web Toolkit | | [React](https://github.com/facebook/react) | [Web Component](https://kagi.com/search?q=Web+Components) | |
 | ✅ | 2D Toolkit | | [Iced](https://github.com/iced-rs/iced) | [Cosmic Gtk Theme](https://github.com/pop-os/gtk-theme) | [GTK](https://gitlab.gnome.org/GNOME/gtk), [Qt](https://github.com/qt/qt5) |
 | ✅ | Desktop Environment | | [Cosmic Epoch](https://github.com/pop-os/cosmic-epoch) | | [Gnome Shell](https://gitlab.gnome.org/GNOME/gnome-shell) |
@@ -102,13 +103,13 @@
 ### Media
 | Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
-| 🚫 | Image Editing | | [GIMP](https://gitlab.gnome.org/GNOME/gimp) | | |
-| 🚫 | Vector Graphics | | [Inkscape](https://gitlab.com/inkscape/inkscape) | | |
+| ✅ | Image Editing | | [GIMP](https://gitlab.gnome.org/GNOME/gimp) | | |
+| ✅ | Vector Graphics | | [Inkscape](https://gitlab.com/inkscape/inkscape) | | |
 
 ### Mobile
 | Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | OS | [Murena](https://murena.com/) | [GrapheneOS](https://grapheneos.org) | |
+| ✅ | OS | [/e/OS 🇪🇺](https://e.foundation/e-os) | [GrapheneOS 🇨🇦](https://grapheneos.org) | |
 | ✅ | Launcher | | [Olauncher](https://github.com/tanujnotes/Olauncher) | | [Minimalist Phone](https://www.minimalistphone.com/) |
 | ✅ | Keyboard | | [Thumb-Key](https://github.com/dessalines/thumb-key) | | [OpenBoard](https://github.com/openboard-team/openboard) |
 | ✅ | Alarm | | [Chrono](https://github.com/vicolo-dev/chrono) | | [Sleep](https://sleep.urbandroid.org/) |
@@ -117,20 +118,20 @@
 ### Services
 | Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Version Control | | [Codeberg](https://codeberg.org) | | [GitHub](https://github.com), [GitLab](https://gitlab.com) |
-| ✅ | Mail | | [Proton Mail](https://proton.me/mail) | | |
-| ✅ | DNS | | [NextDNS](https://nextdns.io) | | [Rethink DNS](https://rethinkdns.com) |
-| ✅ | Search Engine | [Stract](https://github.com/StractOrg/stract) | [Kagi](https://kagi.com) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [StartPage](https://startpage.com), [DuckDuckGo](https://duckduckgo.com) |
-| ✅ | LLM | | [Claude](https://claude.ai) | | [OpenAI o1](https://openai.com/o1) |
-| ✅ | Microblogging | | [Mastodon](https://mas.to/niclasoverby), [Bluesky](https://bsky.app/profile/overby.me) | ❓ | [Twitter](https://twitter.com) |
-| ✅ | Messaging | | [Beeper](https://www.beeper.com), [Matrix](https://matrix.org) | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram](https://telegram.org) |
-| ✅ | Media Sharing | | [Pixelfed](https://pixelfed.social/niclasoverby) | | [Instagram](https://instagram.com) |
-| 🚫 | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Bookwyrm](https://bookwyrm.social/user/niclasoverby) | [Goodreads](https://www.goodreads.com/niclasoverby) | [OpenLibrary](https://openlibrary.org) | |
-| 🚫 | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | ❓ | [Letterboxd](https://letterboxd.com/niclasoverby) | [OpenLibrary](https://openlibrary.org) | |
-| 🚫 | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | ❓ | [Spotify](https://open.spotify.com/user/1148979230) | [OpenLibrary](https://openlibrary.org) | |
-| 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | ❓ | [Strava](https://www.strava.com/athletes/116425039) | | |
-| ✅ | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | | [HappyCow](https://www.happycow.net/members/profile/niclasoverby) | | |
-| ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Ibis](https://github.com/Nutomic/ibis) | [Wikipedia](https://en.wikipedia.org/wiki/User:Niclas_Overby) | | |
+| ✅ | Version Control | | [Codeberg 🇪🇺](https://codeberg.org) | | [GitHub 🇺🇸](https://github.com), [GitLab 🇺🇸](https://gitlab.com) |
+| 🚫 | Mail | | [Proton Mail 🇨🇭](https://proton.me/mail) | | |
+| 🚫 | DNS | | [NextDNS 🇺🇸](https://nextdns.io) | | [Rethink DNS 🇬🇧](https://rethinkdns.com) |
+| 🚫 | Search Engine | [Stract 🇪🇺](https://github.com/StractOrg/stract) | [Kagi 🇺🇸](https://kagi.com) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [StartPage 🇪🇺](https://startpage.com), [DuckDuckGo 🇺🇸](https://duckduckgo.com) |
+| 🚫 | LLM | | [Claude 🇺🇸](https://claude.ai) | | [OpenAI 🇺🇸](https://openai.com) |
+| ✅ | Microblogging | | [Mastodon 🇪🇺](https://mas.to/niclasoverby), [Bluesky 🇺🇸](https://bsky.app/profile/overby.me) | [X-Cancel](https://xcancel.com) | [X-Twitter 🇺🇸](https://x.com) |
+| ✅ | Messaging | | [Beeper 🇺🇸](https://www.beeper.com), [Matrix 🌐](https://matrix.org) | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🇦🇪](https://telegram.org) |
+| ✅ | Media Sharing | | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | | [Instagram 🇺🇸](https://instagram.com) |
+| 🚫 | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Bookwyrm 🇪🇺](https://bookwyrm.social/user/niclasoverby) | [Goodreads 🇺🇸](https://www.goodreads.com/niclasoverby) | [OpenLibrary](https://openlibrary.org) | |
+| 🚫 | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | ❓ | [Letterboxd 🇺🇸](https://letterboxd.com/niclasoverby) | [OpenLibrary](https://openlibrary.org) | |
+| 🚫 | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | ❓ | [Spotify 🇺🇸](https://open.spotify.com/user/1148979230) | [OpenLibrary](https://openlibrary.org) | |
+| 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | ❓ | [Strava 🇺🇸](https://www.strava.com/athletes/116425039) | | |
+| 🚫 | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | | [HappyCow 🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | | |
+| ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Ibis 🌐](https://github.com/Nutomic/ibis) | [Wikipedia 🌐](https://en.wikipedia.org/wiki/User:Niclas_Overby) | | |
 
 ## Watch List
 
