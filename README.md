@@ -119,7 +119,8 @@
 | Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Version Control | | [Codeberg 🇪🇺](https://codeberg.org) | | [GitHub 🇺🇸](https://github.com), [GitLab 🇺🇸](https://gitlab.com) |
-| 🚫 | Mail | | [Proton Mail 🇨🇭](https://proton.me/mail) | | |
+| ✅ | Mail | [Tuta Mail 🇪🇺](https://tuta.com) | | | [Proton Mail 🇨🇭](https://proton.me/mail) |
+| ✅ | Calendar | [Tuta Calendar 🇪🇺](https://tuta.com) | | | [Proton Calendar 🇨🇭](https://proton.me/calendar) |
 | 🚫 | DNS | | [NextDNS 🇺🇸](https://nextdns.io) | | [Rethink DNS 🇬🇧](https://rethinkdns.com) |
 | 🚫 | Search Engine | [Stract 🇪🇺](https://github.com/StractOrg/stract) | [Kagi 🇺🇸](https://kagi.com) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [StartPage 🇪🇺](https://startpage.com), [DuckDuckGo 🇺🇸](https://duckduckgo.com) |
 | 🚫 | LLM | | [Claude 🇺🇸](https://claude.ai) | | [OpenAI 🇺🇸](https://openai.com) |
