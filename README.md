@@ -78,10 +78,10 @@
 | ✅ | Compiler Framework | [Cranelift 🦀](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift) | [Mlir](https://github.com/llvm/llvm-project/tree/main/mlir/), [LLVM](https://github.com/llvm/llvm-project) | ⬅️ | |
 | 🚧 | Application binary interface | [CrABI 📖](https://github.com/rust-lang/rust/pull/105586) | C ABI | ⬅️ | |
 | ✅ | System Language | | [Mojo 🔒🔥](https://github.com/modularml/mojo), [Rust 🦀](https://github.com/rust-lang/rust) | [cxx 🦀](https://github.com/dtolnay/cxx), [bindgen 🦀](https://github.com/rust-lang/rust-bindgen) | [Go](https://github.com/golang/go) |
-| ✅ | Scripting Language | | [Mojo 🔒🔥](https://github.com/modularml/mojo) | | [RustPython 🦀](https://github.com/RustPython/RustPython), [WASI 📖](https://github.com/WebAssembly/WASI), [Interface Types 📖](https://github.com/WebAssembly/interface-types/tree/main/proposals/interface-types) | [TypeScript](https://github.com/microsoft/TypeScript), [Python](https://github.com/python/cpython) |
+| ✅ | Scripting Language | | [Mojo 🔒🔥](https://github.com/modularml/mojo) | [RustPython 🦀](https://github.com/RustPython/RustPython), [WASI 📖](https://github.com/WebAssembly/WASI), [Interface Types 📖](https://github.com/WebAssembly/interface-types/tree/main/proposals/interface-types) | [TypeScript](https://github.com/microsoft/TypeScript) |
 | 🚫 | Version Control | [Gitoxide 🦀](https://github.com/Byron/gitoxide) | [Git](https://github.com/git/git) | ⬅️ ️️️️| |
 | ✅ | Build Script| | [Just 🦀](https://github.com/casey/just) | ❓ | [GNU Make](https://git.savannah.gnu.org/cgit/make.git) |
-| ✅ | Editor | | [Helix 🦀](https://github.com/helix-editor/helix) | 🆗 | [Neovim](https://github.com/neovim/neovim), [Vim](https://github.com/vim/vim) |
+| ✅ | Editor | | [Helix 🦀](https://github.com/helix-editor/helix) | 🆗 | [Neovim](https://github.com/neovim/neovim) |
 | ✅ | IDE | | [Zed 🦀](https://github.com/zed-industries/zed) | [LSP 📖](https://github.com/microsoft/language-server-protocol), [DAP 📖](https://github.com/Microsoft/debug-adapter-protocol), [BSP 📖](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium](https://github.com/VSCodium/vscodium) |
 | ✅ | System Call Tracing | | [Lurk 🦀](https://github.com/JakWai01/lurk) | 🆗 | [Strace](https://github.com/strace/strace) |
 | ✅ | Optimize PNG | | [Oxipng 🦀](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng](https://optipng.sourceforge.net) |
@@ -134,7 +134,7 @@
 | ✅ | Calendar | | [Tuta Calendar 🇪🇺](https://tuta.com) | | [Proton Calendar 🌐🇨🇭](https://proton.me/calendar) |
 | ✅ | Storage | [Tuta Drive 🇪🇺](https://tuta.com/blog/pqdrive-project) | [Syncthing](https://github.com/syncthing/syncthing) | | [Proton Drive 🌐🇨🇭](https://proton.me/drive) |
 | ✅ | VPN | | [Adguard VPN 🇪🇺](https://adguard.com) | | [Proton VPN 🌐🇨🇭](https://proton.me/vpn) |
-| ✅ | DNS | | [Adguard DNS 🇪🇺](https://adguard.com) | | [NextDNS 🔒🇺🇸](https://nextdns.io), [Rethink DNS 🇬🇧](https://rethinkdns.com) |
+| ✅ | DNS | | [Adguard DNS 🇪🇺](https://adguard.com) | | [NextDNS 🔒🇺🇸](https://nextdns.io) |
 | ✅ | Search Engine | [Stract 🇪🇺](https://github.com/StractOrg/stract) | [StartPage 🔒🇪🇺](https://startpage.com) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [Kagi 🔒🇺🇸](https://kagi.com), [DuckDuckGo 🔒🇺🇸](https://duckduckgo.com) |
 | ✅ | LLM | | [Ollama](https://github.com/ollama/ollama) | | [Claude 🔒🇺🇸](https://claude.ai), [OpenAI 🔒🇺🇸](https://openai.com) |
 | ✅ | Microblogging | | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [Bluesky 🇺🇸](https://bsky.app/profile/overby.me) | [X-Cancel](https://xcancel.com) | [X-Twitter 🔒🇺🇸](https://x.com) |
