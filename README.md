@@ -121,7 +121,7 @@
 | ✅ | Version Control | | [Codeberg 🇪🇺](https://codeberg.org) | | [GitHub 🇺🇸](https://github.com), [GitLab 🇺🇸](https://gitlab.com) |
 | ✅ | Mail | [Tuta Mail 🇪🇺](https://tuta.com) | | | [Proton Mail 🇨🇭](https://proton.me/mail) |
 | ✅ | Calendar | [Tuta Calendar 🇪🇺](https://tuta.com) | | | [Proton Calendar 🇨🇭](https://proton.me/calendar) |
-| 🚫 | DNS | | [NextDNS 🇺🇸](https://nextdns.io) | | [Rethink DNS 🇬🇧](https://rethinkdns.com) |
+| ✅ | DNS | [Adguard 🇪🇺](https://adguard.com) | | | [NextDNS 🇺🇸](https://nextdns.io), [Rethink DNS 🇬🇧](https://rethinkdns.com) |
 | ✅ | Search Engine | [Stract 🇪🇺](https://github.com/StractOrg/stract) | [StartPage 🇪🇺](https://startpage.com) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [Kagi 🇺🇸](https://kagi.com), [DuckDuckGo 🇺🇸](https://duckduckgo.com) |
 | 🚫 | LLM | | [Claude 🇺🇸](https://claude.ai) | | [OpenAI 🇺🇸](https://openai.com) |
 | ✅ | Microblogging | | [Mastodon 🇪🇺](https://mas.to/niclasoverby), [Bluesky 🇺🇸](https://bsky.app/profile/overby.me) | [X-Cancel](https://xcancel.com) | [X-Twitter 🇺🇸](https://x.com) |
