@@ -86,7 +86,7 @@
 | ✅ | IDE | | [Zed 🦀](https://github.com/zed-industries/zed) | [LSP 📖](https://github.com/microsoft/language-server-protocol), [DAP 📖](https://github.com/Microsoft/debug-adapter-protocol), [BSP 📖](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium](https://github.com/VSCodium/vscodium) |
 | ✅ | System Call Tracing | | [Lurk 🦀](https://github.com/JakWai01/lurk) | 🆗 | [Strace 💣](https://github.com/strace/strace) |
 | ✅ | Optimize PNG | | [Oxipng 🦀](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng 💣](https://optipng.sourceforge.net) |
-| 🚫 | Meta Database | [Surrealdb 🦀](https://github.com/surrealdb/surrealdb) | [Hasura 🦀](https://github.com/hasura/graphql-engine) | [GraphQL 📖](https://graphql.org) |
+| 🚫 | Meta Database | [Surrealdb 🔒🦀](https://github.com/surrealdb/surrealdb) | [Hasura 🦀](https://github.com/hasura/graphql-engine) | [GraphQL 📖](https://graphql.org) |
 | 🚫 | Database | [Tikv 🦀](https://github.com/tikv/tikv) | [Postgres 💣](https://github.com/postgres/postgres) | ❓ | |
 | 🚫 | Storage Engine | [Sled 🦀](https://github.com/spacejam/sled) | | ❓ | [RocksDB 💣](https://github.com/facebook/rocksdb) |
 
