@@ -18,7 +18,7 @@
 | Status | Component | R&D | Current | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | Architecture | [RISC-V](https://en.wikipedia.org/wiki/RISC-V), [ARM](https://en.wikipedia.org/wiki/ARM_architecture_family) | [X86-64](https://en.wikipedia.org/wiki/X86-64) | |
-| 🚫 | Laptop | | [Framework 13 🇺🇸](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320 🇺🇸](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
+| 🚫 | Laptop | [Tuxedo ARM Laptop 🇪🇺](https://www.tuxedocomputers.com/en/TUXEDO-on-ARM-is-coming.tuxedo) | [Framework 13 🇺🇸](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320 🇺🇸](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
 | ✅ | Mobile | | [Fairphone 4 🇪🇺](https://shop.fairphone.com/fairphone-4) | [Google Pixel 7 Pro 🇺🇸](https://store.google.com/product/pixel_7_pro) |
 | 🚫 | Watch | | [Garmin Fenix 7 🇺🇸](https://www.garmin.com/en-US/p/735520) | [PineTime 🇭🇰](https://www.pine64.org/pinetime) |
 | 🚫 | AR Glasses | | [XReal Air 2 Pro 🇨🇳](https://us.shop.xreal.com/products/xreal-air-2-pro) | [XReal Light 🇨🇳](https://www.xreal.com/light/) |
@@ -125,7 +125,7 @@
 | ✅ | VPN | | [Adguard VPN 🇪🇺](https://adguard.com) | | [Proton VPN 🇨🇭](https://proton.me/vpn) |
 | ✅ | DNS | | [Adguard DNS 🇪🇺](https://adguard.com) | | [NextDNS 🇺🇸](https://nextdns.io), [Rethink DNS 🇬🇧](https://rethinkdns.com) |
 | ✅ | Search Engine | [Stract 🇪🇺](https://github.com/StractOrg/stract) | [StartPage 🇪🇺](https://startpage.com) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [Kagi 🇺🇸](https://kagi.com), [DuckDuckGo 🇺🇸](https://duckduckgo.com) |
-| 🚫 | LLM | | [Claude 🇺🇸](https://claude.ai) | | [OpenAI 🇺🇸](https://openai.com) |
+| ✅ | LLM | | [Ollama 🌐](https://github.com/ollama/ollama) | | [Claude 🇺🇸](https://claude.ai), [OpenAI 🇺🇸](https://openai.com) |
 | ✅ | Microblogging | | [Mastodon 🇪🇺](https://mas.to/niclasoverby), [Bluesky 🇺🇸](https://bsky.app/profile/overby.me) | [X-Cancel](https://xcancel.com) | [X-Twitter 🇺🇸](https://x.com) |
 | ✅ | Messaging | | [Matrix 🌐](https://matrix.org), [Beeper 🇺🇸](https://www.beeper.com) | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🇦🇪](https://telegram.org) |
 | ✅ | Media Sharing | | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | | [Instagram 🇺🇸](https://instagram.com) |
