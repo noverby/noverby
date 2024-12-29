@@ -35,7 +35,7 @@
 | 🚧 | Architecture | [RISC-V 📖](https://en.wikipedia.org/wiki/RISC-V), [ARM 🔒](https://en.wikipedia.org/wiki/ARM_architecture_family) | [X86-64 🔒](https://en.wikipedia.org/wiki/X86-64) | |
 | 🚫 | Laptop | [Tuxedo ARM Laptop 🇪🇺](https://www.tuxedocomputers.com/en/TUXEDO-on-ARM-is-coming.tuxedo) | [Framework 13 🇺🇸](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320 🇺🇸](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
 | ✅ | Mobile | | [Fairphone 4 🇪🇺](https://shop.fairphone.com/fairphone-4) | [Google Pixel 7 Pro 🇺🇸](https://store.google.com/product/pixel_7_pro) |
-| 🚫 | Watch | | [Garmin Fenix 7 🇺🇸](https://www.garmin.com/en-US/p/735520) | [PineTime 🇭🇰](https://www.pine64.org/pinetime) |
+| 🚫 | Watch | | [Garmin Fenix 7 🔒🇺🇸](https://www.garmin.com/en-US/p/735520) | [PineTime 🇭🇰](https://www.pine64.org/pinetime) |
 | 🚫 | AR Glasses | | [XReal Air 2 Pro 🔒🇨🇳](https://us.shop.xreal.com/products/xreal-air-2-pro) | [XReal Light 🔒🇨🇳](https://www.xreal.com/light/) |
 | ✅ | Earphones | | [Hyphen Aria 🇨🇭](https://rollingsquare.com/products/hyphen%C2%AE-aria) | [Shokz Openfit 🇬🇧](https://shokz.com/products/openfit) |
 | ✅ | E-book Reader | | [reMarkable 2 🔒🇳🇴](https://remarkable.com/store/remarkable-2) | [reMarkable 1 🔒🇳🇴](https://remarkable.com/store/remarkable) |
