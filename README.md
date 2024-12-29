@@ -84,10 +84,10 @@
 | 🚫 | Version Control | [Gitoxide 🦀](https://github.com/Byron/gitoxide) | [Git 💣](https://github.com/git/git) | ⬅️ ️️️️| |
 | ✅ | Build Script| | [Just 🦀](https://github.com/casey/just) | ❓ | [GNU Make 💣](https://git.savannah.gnu.org/cgit/make.git) |
 | ✅ | Editor | | [Helix 🦀](https://github.com/helix-editor/helix) | 🆗 | [Neovim 💣](https://github.com/neovim/neovim) |
-| ✅ | IDE | | [Zed 🦀](https://github.com/zed-industries/zed) | [LSP 📖](https://github.com/microsoft/language-server-protocol), [DAP 📖](https://github.com/Microsoft/debug-adapter-protocol), [BSP 📖](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium](https://github.com/VSCodium/vscodium) |
+| ✅ | IDE | | [Zed 🦀](https://github.com/zed-industries/zed) | [LSP](https://github.com/microsoft/language-server-protocol), [DAP](https://github.com/Microsoft/debug-adapter-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium](https://github.com/VSCodium/vscodium) |
 | ✅ | System Call Tracing | | [Lurk 🦀](https://github.com/JakWai01/lurk) | 🆗 | [Strace 💣](https://github.com/strace/strace) |
 | ✅ | Optimize PNG | | [Oxipng 🦀](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng 💣](https://optipng.sourceforge.net) |
-| 🚫 | Meta Database | [Surrealdb 🔒🦀](https://github.com/surrealdb/surrealdb) | [Hasura 🦀](https://github.com/hasura/graphql-engine) | [GraphQL 📖](https://graphql.org) |
+| 🚫 | Meta Database | [Surrealdb 🔒🦀](https://github.com/surrealdb/surrealdb) | [Hasura 🦀](https://github.com/hasura/graphql-engine) | [GraphQL](https://graphql.org) |
 | 🚫 | Database | [Tikv 🦀](https://github.com/tikv/tikv) | [Postgres 💣](https://github.com/postgres/postgres) | ❓ | |
 | 🚫 | Storage Engine | [Sled 🦀](https://github.com/spacejam/sled) | | ❓ | [RocksDB 💣](https://github.com/facebook/rocksdb) |
 
@@ -141,7 +141,7 @@
 | ✅ | Search Engine | [Stract 🇪🇺](https://github.com/StractOrg/stract) | [StartPage 🔒🇪🇺](https://startpage.com) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [Kagi 🔒🇺🇸](https://kagi.com), [DuckDuckGo 🔒🇺🇸](https://duckduckgo.com) |
 | ✅ | LLM | | [Ollama 🏡🇪🇺](https://github.com/ollama/ollama) | | [Claude 🔒🇺🇸](https://claude.ai), [OpenAI 🔒🇺🇸](https://openai.com) |
 | ✅ | Microblogging | | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [Bluesky 🇺🇸](https://bsky.app/profile/overby.me) | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub), [ATProtocol](https://atproto.com), [X-Cancel](https://xcancel.com) | [X-Twitter 🔒🇺🇸](https://x.com) |
-| ✅ | Messaging | | [Matrix 🌐](https://matrix.org), [Beeper 🔒🇺🇸](https://www.beeper.com) | [Matrix Bridges 📖](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org) |
+| ✅ | Messaging | | [Matrix 🌐](https://matrix.org), [Beeper 🔒🇺🇸](https://www.beeper.com) | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org) |
 | ✅ | Media Sharing | | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | | [Instagram 🔒🇺🇸](https://instagram.com) |
 | 🚫 | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb), [Bookwyrm 🐍🇪🇺](https://bookwyrm.social/user/niclasoverby) | [Goodreads 🔒🇺🇸](https://www.goodreads.com/niclasoverby) | [OpenLibrary 🌐📖](https://openlibrary.org) | |
 | 🚫 | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Letterboxd 🔒🇺🇸](https://letterboxd.com/niclasoverby) | [OpenLibrary 🌐📖](https://openlibrary.org) | |
