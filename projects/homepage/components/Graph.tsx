@@ -126,10 +126,10 @@ const nodes = [
     url: "https://github.com/noverby",
   },
   {
-    id: "GitLab",
-    desc: "GitLab\nProfile",
-    icon: "gitlab.png",
-    url: "https://gitlab.com/noverby",
+    id: "Codeberg",
+    desc: "Codeberg\nProfile",
+    icon: "codeberg.png",
+    url: "https://codeberg.com/noverby",
   },
   {
     id: "Mastodon",
@@ -210,7 +210,6 @@ const links = [
   { source: "Commerce", target: "Aivero" },
   { source: "Commerce", target: "Factbird" },
   { source: "Commerce", target: "GitHub" },
-  { source: "Commerce", target: "GitLab" },
   { source: "Immerse", target: "PixelFed" },
   { source: "Immerse", target: "Letterboxd" },
   { source: "Immerse", target: "Spotify" },
@@ -220,13 +219,11 @@ const links = [
   { source: "Immerse", target: "HappyCow" },
   { source: "Immerse", target: "Lemmy" },
   { source: "Give", target: "Wikipedia" },
-  { source: "Give", target: "GitHub" },
-  { source: "Give", target: "GitLab" },
+  { source: "Give", target: "Codeberg" },
   { source: "Give", target: "Radikale Venstre" },
   { source: "Give", target: "HappyCow" },
   { source: "Improve", target: "Freeletics" },
-  { source: "Improve", target: "GitHub" },
-  { source: "Improve", target: "GitLab" },
+  { source: "Improve", target: "Codeberg" },
   { source: "Improve", target: "Goodreads" },
   { source: "Improve", target: "Bookwyrm" },
   { source: "Improve", target: "Strava" },
@@ -257,7 +254,7 @@ const Graph = () => {
       nodeThreeObject={(node: any) => {
         if (!node.color) {
           const imgTexture = new THREE.TextureLoader().load(
-            `icons/${node.icon}`
+            `icons/${node.icon}`,
           );
           const material = new THREE.SpriteMaterial({ map: imgTexture });
           const sprite = new THREE.Sprite(material);
@@ -268,7 +265,7 @@ const Graph = () => {
         } else {
           const group = new THREE.Group();
           const imgTexture = new THREE.TextureLoader().load(
-            `icons/${node.icon}`
+            `icons/${node.icon}`,
           );
           const material = new THREE.SpriteMaterial({ map: imgTexture });
           const icon = new THREE.Sprite(material);
@@ -281,8 +278,8 @@ const Graph = () => {
                 color: node.color,
                 transparent: true,
                 opacity: 0.4,
-              })
-            )
+              }),
+            ),
           );
 
           return group;
