@@ -15,6 +15,7 @@
  ### Ownership
  * 🌐: Magaged by non-profit
  * 📖: Open standard
+ * 🏡: Self-hosted
  * 🔒: Proprietary
 
  ### Language
@@ -134,11 +135,11 @@
 | ✅ | Version Control | | [Codeberg 🇪🇺](https://codeberg.org) | | [GitHub 🔒🇺🇸](https://github.com), [GitLab 🔒🇺🇸](https://gitlab.com) |
 | ✅ | Mail | | [Tuta Mail 🇪🇺](https://tuta.com) | | [Proton Mail 🌐🇨🇭](https://proton.me/mail) |
 | ✅ | Calendar | | [Tuta Calendar 🇪🇺](https://tuta.com) | | [Proton Calendar 🌐🇨🇭](https://proton.me/calendar) |
-| ✅ | Storage | [Tuta Drive 🇪🇺](https://tuta.com/blog/pqdrive-project) | [Syncthing](https://github.com/syncthing/syncthing) | | [Proton Drive 🌐🇨🇭](https://proton.me/drive) |
+| ✅ | Storage | [Tuta Drive 🇪🇺](https://tuta.com/blog/pqdrive-project) | [Syncthing 🏡🇪🇺](https://github.com/syncthing/syncthing) | | [Proton Drive 🌐🇨🇭](https://proton.me/drive) |
 | ✅ | VPN | | [Adguard VPN 🇪🇺](https://adguard.com) | | [Proton VPN 🌐🇨🇭](https://proton.me/vpn) |
 | ✅ | DNS | | [Adguard DNS 🇪🇺](https://adguard.com) | | [NextDNS 🔒🇺🇸](https://nextdns.io) |
 | ✅ | Search Engine | [Stract 🇪🇺](https://github.com/StractOrg/stract) | [StartPage 🔒🇪🇺](https://startpage.com) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [Kagi 🔒🇺🇸](https://kagi.com), [DuckDuckGo 🔒🇺🇸](https://duckduckgo.com) |
-| ✅ | LLM | | [Ollama](https://github.com/ollama/ollama) | | [Claude 🔒🇺🇸](https://claude.ai), [OpenAI 🔒🇺🇸](https://openai.com) |
+| ✅ | LLM | | [Ollama 🏡🇪🇺](https://github.com/ollama/ollama) | | [Claude 🔒🇺🇸](https://claude.ai), [OpenAI 🔒🇺🇸](https://openai.com) |
 | ✅ | Microblogging | | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [Bluesky 🇺🇸](https://bsky.app/profile/overby.me) | [X-Cancel](https://xcancel.com) | [X-Twitter 🔒🇺🇸](https://x.com) |
 | ✅ | Messaging | | [Matrix 🌐](https://matrix.org), [Beeper 🔒🇺🇸](https://www.beeper.com) | [Matrix Bridges 📖](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org) |
 | ✅ | Media Sharing | | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | | [Instagram 🔒🇺🇸](https://instagram.com) |
