@@ -13,7 +13,7 @@
  * ❓: Undecided
 
  ### Control
- * 🌐: Magaged by non-profit
+ * 🌐: Managed by non-profit
  * 📖: Open standard
  * 🏡: Self-hosted
  * 🔒: Proprietary
@@ -36,7 +36,7 @@
 | 🚫 | Laptop | [Tuxedo ARM Laptop 🇪🇺](https://www.tuxedocomputers.com/en/TUXEDO-on-ARM-is-coming.tuxedo) | [Framework 13 🇺🇸](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320 🇺🇸](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
 | ✅ | Mobile | | [Fairphone 4 🇪🇺](https://shop.fairphone.com/fairphone-4) | [Google Pixel 7 Pro 🇺🇸](https://store.google.com/product/pixel_7_pro) |
 | 🚫 | Watch | | [Garmin Fenix 7 🔒🇺🇸](https://www.garmin.com/en-US/p/735520) | [PineTime 🇭🇰](https://www.pine64.org/pinetime) |
-| 🚫 | AR Glasses | | [XReal Air 2 Pro 🔒🇨🇳](https://us.shop.xreal.com/products/xreal-air-2-pro) | [XReal Light 🔒🇨🇳](https://www.xreal.com/light/) |
+| 🚫 | AR Glasses | | [XReal Air 2 Pro 🔒🇨🇳](https://us.shop.xreal.com/products/xreal-air-2-pro) | [XReal Light 🔒🇨🇳](https://www.xreal.com/light) |
 | ✅ | Earphones | | [Hyphen Aria 🇨🇭](https://rollingsquare.com/products/hyphen%C2%AE-aria) | [Shokz Openfit 🇬🇧](https://shokz.com/products/openfit) |
 | ✅ | E-book Reader | | [reMarkable 2 🔒🇳🇴](https://remarkable.com/store/remarkable-2) | [reMarkable 1 🔒🇳🇴](https://remarkable.com/store/remarkable) |
 
@@ -51,10 +51,10 @@
 |:-:|-|-|-|-|-|
 | 🚧 | Config Language | [Nickel 🦀](https://github.com/tweag/nickel) | [Nix 🌐💣](https://github.com/NixOS/nix) | [Organist](https://github.com/nickel-lang/organist) | |
 | 🚧 | Package Manager | [Tvix 🦀](https://github.com/tvlfyi/tvix) | [Nix 🌐💣](https://github.com/NixOS/nix) | ⬅️ | |
-| ✅ | Distro | | [NixOS 🌐❄️](https://github.com/NixOS/nixpkgs) | [OCI 📖](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue/) |
+| ✅ | Distro | | [NixOS 🌐❄️](https://github.com/NixOS/nixpkgs) | [OCI 📖](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue) |
 | ✅ | Kernel | [Asterinas 🦀](https://github.com/asterinas/asterinas), [Redox OS 🦀](https://gitlab.redox-os.org/redox-os/redox) | [Linux 🌐💣](https://github.com/torvalds/linux) | | |
 | ✅ | Init System | | [Systemd 💣](https://github.com/systemd/systemd) | | |
-| ✅ | IPC | [Busd 🦀](https://github.com/dbus2/busd) | [Dbus 💣](https://gitlab.freedesktop.org/dbus/dbus/) | | |
+| ✅ | IPC | [Busd 🦀](https://github.com/dbus2/busd) | [Dbus 💣](https://gitlab.freedesktop.org/dbus/dbus) | | |
 
 ### CLI Tools
 | Status | Component | Reseach & Development | Current | Migration Path | Legacy |
@@ -71,7 +71,7 @@
 ### Dev Tools
 | Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Compiler Framework | [Cranelift 🦀](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift) | [Mlir 💣](https://github.com/llvm/llvm-project/tree/main/mlir/), [LLVM 💣](https://github.com/llvm/llvm-project) | ⬅️ | |
+| ✅ | Compiler Framework | [Cranelift 🦀](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift) | [Mlir 💣](https://github.com/llvm/llvm-project/tree/main/mlir), [LLVM 💣](https://github.com/llvm/llvm-project) | ⬅️ | |
 | 🚧 | Application binary interface | [CrABI 📖](https://github.com/rust-lang/rust/pull/105586) | C ABI | ⬅️ | |
 | ✅ | System Language | | [Mojo 🔒🔥](https://github.com/modularml/mojo), [Rust 🦀](https://github.com/rust-lang/rust) | [cxx 🦀](https://github.com/dtolnay/cxx), [bindgen 🦀](https://github.com/rust-lang/rust-bindgen) | [Go](https://github.com/golang/go) |
 | ✅ | Scripting Language | | [Mojo 🔒🔥](https://github.com/modularml/mojo) | [RustPython 🦀](https://github.com/RustPython/RustPython), [WASI 📖](https://github.com/WebAssembly/WASI), [Interface Types 📖](https://github.com/WebAssembly/interface-types/tree/main/proposals/interface-types) | [TypeScript](https://github.com/microsoft/TypeScript) |
@@ -82,7 +82,6 @@
 | ✅ | System Call Tracing | | [Lurk 🦀](https://github.com/JakWai01/lurk) | 🆗 | [Strace 💣](https://github.com/strace/strace) |
 | ✅ | Network Client | | [Xh 🦀](https://github.com/ducaale/xh) | ❓ | [Curl 💣](https://github.com/curl/curl) |
 | 🚫 | Environment Loader | [Envy 🦀](https://github.com/mre/envy) | [Direnv](https://github.com/direnv/direnv) | ⬅️ | |
-
 
 ### Infrastructure
 | Status | Component | Reseach & Development | Current | Migration Path | Legacy |
@@ -119,19 +118,19 @@
 ### Media
 | Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Media Player | | [Cosmic Player 🦀](https://github.com/pop-os/cosmic-player) | [FFMPEG 💣](https://github.com/FFmpeg/FFmpeg), [GStreamer 💣](https://gitlab.freedesktop.org/gstreamer/) | [Mpv 💣](https://github.com/mpv-player/mpv) |
+| ✅ | Media Player | | [Cosmic Player 🦀](https://github.com/pop-os/cosmic-player) | [FFMPEG 💣](https://github.com/FFmpeg/FFmpeg), [GStreamer 💣](https://gitlab.freedesktop.org/gstreamer) | [Mpv 💣](https://github.com/mpv-player/mpv) |
 | ✅ | Image Editing | | [GIMP 💣](https://gitlab.gnome.org/GNOME/gimp) | | |
 | ✅ | Vector Graphics | | [Inkscape 💣](https://gitlab.com/inkscape/inkscape) | | |
-| ✅ | Typesetting | | [Typst 🦀](https://github.com/typst/) | 🆗 | [LaTeX 💣](https://github.com/latex3/latex3) |
+| ✅ | Typesetting | | [Typst 🦀](https://github.com/typst) | 🆗 | [LaTeX 💣](https://github.com/latex3/latex3) |
 | ✅ | Optimize PNG | | [Oxipng 🦀](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng 💣](https://optipng.sourceforge.net) |
 
 ### Mobile
 | Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | OS | | [/e/OS 🌐🇪🇺](https://e.foundation/e-os) | [MicroG](https://microg.org) | [GrapheneOS 🇨🇦](https://grapheneos.org) |
-| ✅ | Launcher | | [Olauncher](https://github.com/tanujnotes/Olauncher) | | [Minimalist Phone🔒](https://www.minimalistphone.com/) |
+| ✅ | Launcher | | [Olauncher](https://github.com/tanujnotes/Olauncher) | | [Minimalist Phone🔒](https://www.minimalistphone.com) |
 | ✅ | Keyboard | | [Thumb-Key](https://github.com/dessalines/thumb-key) | | [OpenBoard](https://github.com/openboard-team/openboard) |
-| ✅ | Alarm | | [Chrono](https://github.com/vicolo-dev/chrono) | | [Sleep🔒](https://sleep.urbandroid.org/) |
+| ✅ | Alarm | | [Chrono](https://github.com/vicolo-dev/chrono) | | [Sleep🔒](https://sleep.urbandroid.org) |
 | ✅ | Browser | | [Mull 🦀💣](https://github.com/mull-project/mull) | | |
 
 ### Services
