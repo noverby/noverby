@@ -44,7 +44,7 @@
 ### Standards
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
-| 🚧 | Application Binary Interface | [System V ABI](https://wiki.osdev.org/System_V_ABI) | [CrABI 📖](https://github.com/rust-lang/rust/pull/105586) | |
+| 🚧 | Application Binary Interface | [System V ABI 📖](https://wiki.osdev.org/System_V_ABI) | [CrABI 📖](https://github.com/rust-lang/rust/pull/105586) | |
 | 🚧 | IoT Connectivity Standard | | [Matter 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | |
 | 🚧 | Wireless Media | [ChromeCast 🔒](https://en.wikipedia.org/wiki/Chromecast) | [MatterCast 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | [Miracast 📖](https://en.wikipedia.org/wiki/Miracast) |
 | ✅ | USB Interface | [USB 3.2 📖](https://www.usb.org/usb-32-specification) | [USB4 📖](https://www.usb.org/usb4) | [Thunderbolt 3 🔒](https://www.intel.com/content/www/us/en/architecture-and-technology/thunderbolt/thunderbolt-technology-general.html) |
