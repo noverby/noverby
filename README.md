@@ -130,6 +130,7 @@
 ### Services
 | Status | Component | R&D | Current | Compat | Legacy |
 |:-:|-|-|-|-|-|
+| ✅ | Password Manager | | [Bitwarden.eu 🇪🇺](https://bitwarden.eu) | | [Bitwarden.com 🇺🇸](https://bitwarden.com) |
 | ✅ | Version Control | | [Codeberg 🇪🇺](https://codeberg.org) | | [GitHub 🔒🇺🇸](https://github.com), [GitLab 🔒🇺🇸](https://gitlab.com) |
 | ✅ | Mail | | [Tuta Mail 🇪🇺](https://tuta.com) | | [Proton Mail 🌐🇨🇭](https://proton.me/mail) |
 | ✅ | Calendar | | [Tuta Calendar 🇪🇺](https://tuta.com) | | [Proton Calendar 🌐🇨🇭](https://proton.me/calendar) |
