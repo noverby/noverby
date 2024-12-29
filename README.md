@@ -12,7 +12,7 @@
  * 🚫: Blocked
  * ❓: Undecided
 
- ### Ownership
+ ### Control
  * 🌐: Magaged by non-profit
  * 📖: Open standard
  * 🏡: Self-hosted
@@ -25,12 +25,12 @@
  * 🦀: Rust
  * 💣: C/C++
 
-### Compatibility
+### Migration Compatibility
  * 🆗: Not needed
- * ⬅️: Backward compatible
+ * ⬅️: Backward Compatible
 
 ### Hardware
-| Status | Component | R&D | Current | Legacy |
+| Status | Component | Reseach & Development | Current | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | Architecture | [RISC-V 📖](https://en.wikipedia.org/wiki/RISC-V), [ARM 🔒](https://en.wikipedia.org/wiki/ARM_architecture_family) | [X86-64 🔒](https://en.wikipedia.org/wiki/X86-64) | |
 | 🚫 | Laptop | [Tuxedo ARM Laptop 🇪🇺](https://www.tuxedocomputers.com/en/TUXEDO-on-ARM-is-coming.tuxedo) | [Framework 13 🇺🇸](https://frame.work/products/laptop-diy-13-gen-intel) | [Dell XPS 13 Plus 9320 🇺🇸](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
@@ -41,27 +41,23 @@
 | ✅ | E-book Reader | | [reMarkable 2 🔒🇳🇴](https://remarkable.com/store/remarkable-2) | [reMarkable 1 🔒🇳🇴](https://remarkable.com/store/remarkable) |
 
 ### Standards
-| Status | Component | R&D | Current | Legacy |
+| Status | Component | Reseach & Development | Current | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | IoT Connectivity Standard | [Matter 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | | |
 | 🚧 | Wireless Media | [MatterCast 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | [ChromeCast](https://en.wikipedia.org/wiki/Chromecast) | [Miracast](https://en.wikipedia.org/wiki/Miracast) |
 
-### Base
-| Status | Component | R&D | Current | Compat | Legacy |
+### System Core
+| Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | 🚧 | Config Language | [Nickel 🦀](https://github.com/tweag/nickel) | [Nix 🌐💣](https://github.com/NixOS/nix) | [Organist](https://github.com/nickel-lang/organist) | |
 | 🚧 | Package Manager | [Tvix 🦀](https://github.com/tvlfyi/tvix) | [Nix 🌐💣](https://github.com/NixOS/nix) | ⬅️ | |
-| 🚧 | Web Runtime | [Deno 🦀](https://github.com/denoland/deno) | [Node.js 💣](https://github.com/nodejs/node) | [Node.js API](https://nodejs.org/api) |
 | ✅ | Distro | | [NixOS 🌐❄️](https://github.com/NixOS/nixpkgs) | [OCI 📖](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue/) |
 | ✅ | Kernel | [Asterinas 🦀](https://github.com/asterinas/asterinas), [Redox OS 🦀](https://gitlab.redox-os.org/redox-os/redox) | [Linux 🌐💣](https://github.com/torvalds/linux) | | |
 | ✅ | Init System | | [Systemd 💣](https://github.com/systemd/systemd) | | |
 | ✅ | IPC | [Busd 🦀](https://github.com/dbus2/busd) | [Dbus 💣](https://gitlab.freedesktop.org/dbus/dbus/) | | |
-| 🚫 | Container CLI | | | [OCI 📖](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
-| 🚧 | Container Runtime | | [Youki 🦀](https://github.com/containers/youki) | [OCI 📖](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
-| ✅ | Typesetting | | [Typst 🦀](https://github.com/typst/) | 🆗 | [LaTeX 💣](https://github.com/latex3/latex3) |
 
-### Shell
-| Status | Component | R&D | Current | Compat | Legacy |
+### CLI Tools
+| Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Shell | | [Nushell 🦀](https://github.com/nushell/nushell) | ❓ | [Bash 💣](https://git.savannah.gnu.org/cgit/bash.git) |
 | ✅ | Core Utilities | | [Nushell Builtins 🦀](https://github.com/nushell/nushell) | [uutils 🦀](https://github.com/uutils/coreutils) | [Coreutils 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
@@ -71,11 +67,9 @@
 | ✅ | Find Files | | [Fd 🦀](https://github.com/sharkdp/fd) | 🆗 | [Findutils 💣](https://git.savannah.gnu.org/cgit/findutils.git) |
 | ✅ | Find Patterns | | [Ripgrep 🦀](https://github.com/BurntSushi/ripgrep) | 🆗 | [Grep 💣](https://git.savannah.gnu.org/cgit/grep.git) |
 | ✅ | Terminal Workspace | | [Zellij 🦀](https://github.com/zellij-org/zellij) | 🆗 | [Tmux 💣](https://github.com/tmux/tmux) |
-| ✅ | Network Client | | [Xh 🦀](https://github.com/ducaale/xh) | ❓ | [Curl 💣](https://github.com/curl/curl) |
-| 🚫 | Environment Loader | [Envy 🦀](https://github.com/mre/envy) | [Direnv](https://github.com/direnv/direnv) | ⬅️ | |
 
-### Dev
-| Status | Component | R&D | Current | Compat | Legacy |
+### Dev Tools
+| Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Compiler Framework | [Cranelift 🦀](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift) | [Mlir 💣](https://github.com/llvm/llvm-project/tree/main/mlir/), [LLVM 💣](https://github.com/llvm/llvm-project) | ⬅️ | |
 | 🚧 | Application binary interface | [CrABI 📖](https://github.com/rust-lang/rust/pull/105586) | C ABI | ⬅️ | |
@@ -86,13 +80,22 @@
 | ✅ | Editor | | [Helix 🦀](https://github.com/helix-editor/helix) | 🆗 | [Neovim 💣](https://github.com/neovim/neovim) |
 | ✅ | IDE | | [Zed 🦀](https://github.com/zed-industries/zed) | [LSP](https://github.com/microsoft/language-server-protocol), [DAP](https://github.com/Microsoft/debug-adapter-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium](https://github.com/VSCodium/vscodium) |
 | ✅ | System Call Tracing | | [Lurk 🦀](https://github.com/JakWai01/lurk) | 🆗 | [Strace 💣](https://github.com/strace/strace) |
-| ✅ | Optimize PNG | | [Oxipng 🦀](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng 💣](https://optipng.sourceforge.net) |
+| ✅ | Network Client | | [Xh 🦀](https://github.com/ducaale/xh) | ❓ | [Curl 💣](https://github.com/curl/curl) |
+| 🚫 | Environment Loader | [Envy 🦀](https://github.com/mre/envy) | [Direnv](https://github.com/direnv/direnv) | ⬅️ | |
+
+
+### Infrastructure
+| Status | Component | Reseach & Development | Current | Migration Path | Legacy |
+|:-:|-|-|-|-|-|
+| 🚧 | Web Runtime | [Deno 🦀](https://github.com/denoland/deno) | [Node.js 💣](https://github.com/nodejs/node) | [Node.js API](https://nodejs.org/api) |
+| 🚫 | Container CLI | | | [OCI 📖](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
+| 🚧 | Container Runtime | | [Youki 🦀](https://github.com/containers/youki) | [OCI 📖](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
 | 🚫 | Meta Database | [Surrealdb 🔒🦀](https://github.com/surrealdb/surrealdb) | [Hasura 🦀](https://github.com/hasura/graphql-engine) | [GraphQL](https://graphql.org) |
 | 🚫 | Database | [Tikv 🦀](https://github.com/tikv/tikv) | [Postgres 💣](https://github.com/postgres/postgres) | ❓ | |
 | 🚫 | Storage Engine | [Sled 🦀](https://github.com/spacejam/sled) | | ❓ | [RocksDB 💣](https://github.com/facebook/rocksdb) |
 
 ### Libraries
-| Status | Component | R&D | Current | Compat | Legacy |
+| Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | 🚧 | Compression | [Zlib-rs 🦀](https://github.com/memorysafety/zlib-rs) | [Zlib 💣](https://github.com/madler/zlib) | ⬅️ | |
 | 🚧 | TLS Protocol | [Rustls 🦀](https://github.com/rustls/rustls) | [Openssl 💣](https://github.com/openssl/openssl) | ⬅️ | |
@@ -102,25 +105,27 @@
 | 🚧 | Browser Engine | [Servo 🦀](https://github.com/servo/servo) | [Gecko 🦀💣](https://en.wikipedia.org/wiki/Gecko_(software)) | ⬅️ | |
 
 ### GUI
-| Status | Component | R&D | Current | Compat | Legacy |
+| Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Design System | | [Material You](https://m3.material.io) | | [Material Design 2](https://m2.material.io) |
 | 🚧 | GUI Toolkit | [Dixous 🦀](https://github.com/dioxusLabs/dioxus) | WIP Toolkit 🔥 | [Web Component 📖](https://kagi.com/search?q=Web+Components) | |
 | ✅ | Desktop Environment | | [Cosmic Epoch 🦀](https://github.com/pop-os/cosmic-epoch) | | [Gnome Shell 💣](https://gitlab.gnome.org/GNOME/gnome-shell) |
 | ✅ | File Manager | | [Cosmic Files 🦀](https://github.com/pop-os/cosmic-files) | | [GNOME Files 💣](https://gitlab.gnome.org/GNOME/nautilus) |
 | 🚫 | Web Browser | [Verso 🦀](https://github.com/versotile-org/verso) | [Unbraved Brave 💣🦀](https://github.com/MulesGaming/brave-debullshitinator) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) | [Firefox 🦀💣](https://github.com/mozilla/gecko-dev) |
-| ✅ | Media Player | [Cosmic Player 🦀](https://github.com/pop-os/cosmic-player) | [Mpv 💣](https://github.com/mpv-player/mpv) | [FFMPEG 💣](https://github.com/FFmpeg/FFmpeg), [GStreamer 💣](https://gitlab.freedesktop.org/gstreamer/) | |
 | ✅ | GUI Package Manager | | [Flatpak 💣](https://github.com/flatpak/flatpak) | 🆗 | [Snap🔒](https://github.com/canonical/snapd), [AppImage 💣](https://github.com/AppImage) |
 | ✅ | App Browser | | [Cosmic Store 🦀](https://github.com/pop-os/cosmic-store) | 🆗 | [GNOME Software 💣](https://gitlab.gnome.org/GNOME/gnome-software) |
 
 ### Media
-| Status | Component | R&D | Current | Compat | Legacy |
+| Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
+| ✅ | Media Player | [Cosmic Player 🦀](https://github.com/pop-os/cosmic-player) | [Mpv 💣](https://github.com/mpv-player/mpv) | [FFMPEG 💣](https://github.com/FFmpeg/FFmpeg), [GStreamer 💣](https://gitlab.freedesktop.org/gstreamer/) | |
 | ✅ | Image Editing | | [GIMP 💣](https://gitlab.gnome.org/GNOME/gimp) | | |
 | ✅ | Vector Graphics | | [Inkscape 💣](https://gitlab.com/inkscape/inkscape) | | |
+| ✅ | Typesetting | | [Typst 🦀](https://github.com/typst/) | 🆗 | [LaTeX 💣](https://github.com/latex3/latex3) |
+| ✅ | Optimize PNG | | [Oxipng 🦀](https://github.com/shssoichiro/oxipngc) | 🆗 | [Optpng 💣](https://optipng.sourceforge.net) |
 
 ### Mobile
-| Status | Component | R&D | Current | Compat | Legacy |
+| Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | OS | | [/e/OS 🌐🇪🇺](https://e.foundation/e-os) | [MicroG](https://microg.org) | [GrapheneOS 🇨🇦](https://grapheneos.org) |
 | ✅ | Launcher | | [Olauncher](https://github.com/tanujnotes/Olauncher) | | [Minimalist Phone🔒](https://www.minimalistphone.com/) |
@@ -129,7 +134,7 @@
 | ✅ | Browser | | [Mull 🦀💣](https://github.com/mull-project/mull) | | |
 
 ### Services
-| Status | Component | R&D | Current | Compat | Legacy |
+| Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Password Manager | | [Bitwarden.eu 🇪🇺](https://bitwarden.eu) | | [Bitwarden.com 🇺🇸](https://bitwarden.com) |
 | ✅ | Version Control | | [Codeberg 🇪🇺](https://codeberg.org) | | [GitHub 🔒🇺🇸](https://github.com), [GitLab 🔒🇺🇸](https://gitlab.com) |
@@ -140,6 +145,10 @@
 | ✅ | DNS | | [Adguard DNS 🇪🇺](https://adguard.com) | | [NextDNS 🔒🇺🇸](https://nextdns.io) |
 | ✅ | Search Engine | [Stract 🇪🇺](https://github.com/StractOrg/stract) | [StartPage 🔒🇪🇺](https://startpage.com) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [Kagi 🔒🇺🇸](https://kagi.com), [DuckDuckGo 🔒🇺🇸](https://duckduckgo.com) |
 | ✅ | LLM | | [Ollama 🏡🇪🇺](https://github.com/ollama/ollama) | | [Claude 🔒🇺🇸](https://claude.ai), [OpenAI 🔒🇺🇸](https://openai.com) |
+
+### Social
+| Status | Component | Reseach & Development | Current | Migration Path | Legacy |
+|:-:|-|-|-|-|-|
 | ✅ | Microblogging | | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [Bluesky 🇺🇸](https://bsky.app/profile/overby.me) | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub), [ATProtocol](https://atproto.com), [X-Cancel](https://xcancel.com) | [X-Twitter 🔒🇺🇸](https://x.com) |
 | ✅ | Messaging | | [Matrix 🌐](https://matrix.org), [Beeper 🔒🇺🇸](https://www.beeper.com) | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org) |
 | ✅ | Media Sharing | | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | | [Instagram 🔒🇺🇸](https://instagram.com) |
