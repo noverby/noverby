@@ -87,7 +87,8 @@
 ### Infrastructure
 | Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| 🚧 | Web Runtime | [Deno 🦀](https://github.com/denoland/deno) | [Node.js 💣](https://github.com/nodejs/node) | [Node.js API](https://nodejs.org/api) |
+| ✅ | WebAssembly Runtime | | [Wasmtime 🦀](https://github.com/bytecodealliance/wasmtime) | | |
+| 🚧 | JavaScript Runtime | [Deno 🦀](https://github.com/denoland/deno) | [Node.js 💣](https://github.com/nodejs/node) | [Node.js API](https://nodejs.org/api) |
 | 🚫 | Container CLI | | | [OCI 📖](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
 | 🚧 | Container Runtime | | [Youki 🦀](https://github.com/containers/youki) | [OCI 📖](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
 | 🚫 | Meta Database | [Surrealdb 🔒🦀](https://github.com/surrealdb/surrealdb) | [Hasura 🦀](https://github.com/hasura/graphql-engine) | [GraphQL](https://graphql.org) |
