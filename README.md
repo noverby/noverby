@@ -118,7 +118,7 @@
 ### Media
 | Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Media Player | [Cosmic Player 🦀](https://github.com/pop-os/cosmic-player) | [Mpv 💣](https://github.com/mpv-player/mpv) | [FFMPEG 💣](https://github.com/FFmpeg/FFmpeg), [GStreamer 💣](https://gitlab.freedesktop.org/gstreamer/) | |
+| ✅ | Media Player | | [Cosmic Player 🦀](https://github.com/pop-os/cosmic-player) | [FFMPEG 💣](https://github.com/FFmpeg/FFmpeg), [GStreamer 💣](https://gitlab.freedesktop.org/gstreamer/) | [Mpv 💣](https://github.com/mpv-player/mpv) |
 | ✅ | Image Editing | | [GIMP 💣](https://gitlab.gnome.org/GNOME/gimp) | | |
 | ✅ | Vector Graphics | | [Inkscape 💣](https://gitlab.com/inkscape/inkscape) | | |
 | ✅ | Typesetting | | [Typst 🦀](https://github.com/typst/) | 🆗 | [LaTeX 💣](https://github.com/latex3/latex3) |
