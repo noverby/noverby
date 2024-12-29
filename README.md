@@ -58,7 +58,7 @@
 |:-:|-|-|-|-|-|
 | ✅ | Distro | | [NixOS 🌐❄️](https://github.com/NixOS/nixpkgs) | [OCI 📖](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue) |
 | ✅ | Kernel | [Asterinas 🦀](https://github.com/asterinas/asterinas), [Redox OS 🦀](https://gitlab.redox-os.org/redox-os/redox) | [Linux 🌐💣](https://github.com/torvalds/linux) | | |
-| ✅ | Init System | | [Systemd 💣](https://github.com/systemd/systemd) | | |
+| ✅ | Init System | [Rustysd 🦀](https://github.com/KillingSpark/rustysd) | [Systemd 💣](https://github.com/systemd/systemd) | | |
 | ✅ | IPC | [Busd 🦀](https://github.com/dbus2/busd) | [Dbus 💣](https://gitlab.freedesktop.org/dbus/dbus) | | |
 | 🚧 | Filesystem | | [Btrfs 📖](https://btrfs.wiki.kernel.org/index.php/Main_Page) | [Ext4 📖](https://ext4.wiki.kernel.org/index.php/Main_Page) |
 | 🚧 | Config Language | [Nickel 🦀](https://github.com/tweag/nickel) | [Nix 🌐💣](https://github.com/NixOS/nix) | [Organist](https://github.com/nickel-lang/organist) | |
