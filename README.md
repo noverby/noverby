@@ -13,10 +13,11 @@
  * ❓: Undecided
 
  ### Control
- * 🌐: Managed by non-profit
- * 📖: Open standard
+ * 🌐: Managed by [Nonprofit Org](https://en.wikipedia.org/wiki/Nonprofit_organization)
+ * ⚖️: Managed by [Benefit Corp](https://en.wikipedia.org/wiki/Benefit_corporation)
+ * 📖: [Open standard](https://en.wikipedia.org/wiki/Open_standard)
  * 🏡: Self-hosted
- * 🔒: Proprietary
+ * 🔒: [Proprietary](https://en.wiktionary.org/wiki/proprietary)
 
  ### Language
  * 🔥: Mojo
@@ -156,7 +157,7 @@
 ### Social
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Microblogging | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [Bluesky 🇺🇸](https://bsky.app/profile/overby.me) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub), [ATProtocol](https://atproto.com), [X-Cancel](https://xcancel.com) | [X-Twitter 🔒🇺🇸](https://x.com) |
+| ✅ | Microblogging | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [Bluesky ⚖️🇺🇸](https://bsky.app/profile/overby.me) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub), [ATProtocol](https://atproto.com), [X-Cancel](https://xcancel.com) | [X-Twitter 🔒🇺🇸](https://x.com) |
 | ✅ | Messaging | [Matrix 🌐](https://matrix.org), [Beeper 🔒🇺🇸](https://www.beeper.com) | | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org) |
 | ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | | | [Instagram 🔒🇺🇸](https://instagram.com) |
 | 🚫 | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Goodreads 🔒🇺🇸](https://www.goodreads.com/niclasoverby) | [Neodb 🐍](https://github.com/neodb-social/neodb), [Bookwyrm 🐍🇪🇺](https://bookwyrm.social/user/niclasoverby) | [OpenLibrary 🌐📖](https://openlibrary.org) | |
