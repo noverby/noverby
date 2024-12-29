@@ -44,17 +44,24 @@
 | Status | Component | Reseach & Development | Current | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | IoT Connectivity Standard | [Matter 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | | |
-| 🚧 | Wireless Media | [MatterCast 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | [ChromeCast](https://en.wikipedia.org/wiki/Chromecast) | [Miracast](https://en.wikipedia.org/wiki/Miracast) |
+| 🚧 | Wireless Media | [MatterCast 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | [ChromeCast 🔒](https://en.wikipedia.org/wiki/Chromecast) | [Miracast 📖](https://en.wikipedia.org/wiki/Miracast) |
+| ✅ | USB Interface | [USB4 📖](https://www.usb.org/usb4) | [USB 3.2 📖](https://www.usb.org/usb-32-specification) | [Thunderbolt 3 🔒](https://www.intel.com/content/www/us/en/architecture-and-technology/thunderbolt/thunderbolt-technology-general.html) |
+| ✅ | Display Interface | [DisplayPort 2.1 📖](https://en.wikipedia.org/wiki/DisplayPort) | [DisplayPort 1.4 📖](https://en.wikipedia.org/wiki/DisplayPort) | [HDMI 2.1 🔒](https://en.wikipedia.org/wiki/HDMI) |
+| ✅ | Video Codec | [AV1.1 📖](https://aomedia.org/av1-version-1-1-freezes-bitstream) | [AV1 📖](https://aomedia.org/av1-features/get-started) | [H.264 🔒](https://en.wikipedia.org/wiki/Advanced_Video_Coding) |
+| ✅ | Audio Codec | | [Opus 📖](https://opus-codec.org) | [AAC 🔒](https://en.wikipedia.org/wiki/Advanced_Audio_Coding) |
+| 🚧 | Network Transport | [QUIC 📖](https://www.chromium.org/quic/) | [TCP 📖](https://en.wikipedia.org/wiki/Transmission_Control_Protocol) | |
+| 🚧 | Web Protocol | [HTTP/3 📖](https://en.wikipedia.org/wiki/HTTP/3) | [HTTP/2 📖](https://en.wikipedia.org/wiki/HTTP/2) | [HTTP/1.1 📖](https://en.wikipedia.org/wiki/HTTP/1.1) |
 
 ### System Core
 | Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| 🚧 | Config Language | [Nickel 🦀](https://github.com/tweag/nickel) | [Nix 🌐💣](https://github.com/NixOS/nix) | [Organist](https://github.com/nickel-lang/organist) | |
-| 🚧 | Package Manager | [Tvix 🦀](https://github.com/tvlfyi/tvix) | [Nix 🌐💣](https://github.com/NixOS/nix) | ⬅️ | |
 | ✅ | Distro | | [NixOS 🌐❄️](https://github.com/NixOS/nixpkgs) | [OCI 📖](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue) |
 | ✅ | Kernel | [Asterinas 🦀](https://github.com/asterinas/asterinas), [Redox OS 🦀](https://gitlab.redox-os.org/redox-os/redox) | [Linux 🌐💣](https://github.com/torvalds/linux) | | |
 | ✅ | Init System | | [Systemd 💣](https://github.com/systemd/systemd) | | |
 | ✅ | IPC | [Busd 🦀](https://github.com/dbus2/busd) | [Dbus 💣](https://gitlab.freedesktop.org/dbus/dbus) | | |
+| 🚧 | Filesystem | | [Btrfs 📖](https://btrfs.wiki.kernel.org/index.php/Main_Page) | [Ext4 📖](https://ext4.wiki.kernel.org/index.php/Main_Page) |
+| 🚧 | Config Language | [Nickel 🦀](https://github.com/tweag/nickel) | [Nix 🌐💣](https://github.com/NixOS/nix) | [Organist](https://github.com/nickel-lang/organist) | |
+| 🚧 | Package Manager | [Tvix 🦀](https://github.com/tvlfyi/tvix) | [Nix 🌐💣](https://github.com/NixOS/nix) | ⬅️ | |
 
 ### CLI Tools
 | Status | Component | Reseach & Development | Current | Migration Path | Legacy |
@@ -107,12 +114,12 @@
 ### GUI
 | Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Design System | | [Material You](https://m3.material.io) | | [Material Design 2](https://m2.material.io) |
+| ✅ | Design System | | [Material You 🔒](https://m3.material.io) | | [Material Design 2 🔒](https://m2.material.io) |
 | 🚧 | GUI Toolkit | [Dixous 🦀](https://github.com/dioxusLabs/dioxus) | WIP Toolkit 🔥 | [Web Component 📖](https://kagi.com/search?q=Web+Components) | |
 | ✅ | Desktop Environment | | [Cosmic Epoch 🦀](https://github.com/pop-os/cosmic-epoch) | | [Gnome Shell 💣](https://gitlab.gnome.org/GNOME/gnome-shell) |
 | ✅ | File Manager | | [Cosmic Files 🦀](https://github.com/pop-os/cosmic-files) | | [GNOME Files 💣](https://gitlab.gnome.org/GNOME/nautilus) |
-| 🚫 | Web Browser | [Verso 🦀](https://github.com/versotile-org/verso) | [Unbraved Brave 💣🦀](https://github.com/MulesGaming/brave-debullshitinator) | [Chrome Extension API](https://developer.chrome.com/docs/extensions/reference) | [Firefox 🦀💣](https://github.com/mozilla/gecko-dev) |
-| ✅ | GUI Package Manager | | [Flatpak 💣](https://github.com/flatpak/flatpak) | 🆗 | [Snap🔒](https://github.com/canonical/snapd), [AppImage 💣](https://github.com/AppImage) |
+| 🚫 | Web Browser | [Verso 🦀](https://github.com/versotile-org/verso) | [Unbraved Brave 💣🦀](https://github.com/MulesGaming/brave-debullshitinator) | [Chrome Extension API 🔒](https://developer.chrome.com/docs/extensions/reference) | [Firefox 🦀💣](https://github.com/mozilla/gecko-dev) |
+| ✅ | GUI Package Manager | | [Flatpak 💣](https://github.com/flatpak/flatpak) | 🆗 | [Snap 🔒](https://github.com/canonical/snapd), [AppImage 💣](https://github.com/AppImage) |
 | ✅ | App Browser | | [Cosmic Store 🦀](https://github.com/pop-os/cosmic-store) | 🆗 | [GNOME Software 💣](https://gitlab.gnome.org/GNOME/gnome-software) |
 
 ### Media
@@ -127,10 +134,10 @@
 ### Mobile
 | Status | Component | Reseach & Development | Current | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | OS | | [/e/OS 🌐🇪🇺](https://e.foundation/e-os) | [MicroG](https://microg.org) | [GrapheneOS 🇨🇦](https://grapheneos.org) |
-| ✅ | Launcher | | [Olauncher](https://github.com/tanujnotes/Olauncher) | | [Minimalist Phone🔒](https://www.minimalistphone.com) |
+| ✅ | OS | | [/e/OS 🌐🇪🇺](https://e.foundation/e-os) | [MicroG 🌐](https://microg.org) | [GrapheneOS 🇨🇦](https://grapheneos.org) |
+| ✅ | Launcher | | [Olauncher](https://github.com/tanujnotes/Olauncher) | | [Minimalist Phone 🔒](https://www.minimalistphone.com) |
 | ✅ | Keyboard | | [Thumb-Key](https://github.com/dessalines/thumb-key) | | [OpenBoard](https://github.com/openboard-team/openboard) |
-| ✅ | Alarm | | [Chrono](https://github.com/vicolo-dev/chrono) | | [Sleep🔒](https://sleep.urbandroid.org) |
+| ✅ | Alarm | | [Chrono](https://github.com/vicolo-dev/chrono) | | [Sleep 🔒](https://sleep.urbandroid.org) |
 | ✅ | Browser | | [Mull 🦀💣](https://github.com/mull-project/mull) | | |
 
 ### Services
