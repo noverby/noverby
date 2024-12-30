@@ -24,6 +24,7 @@
  * 🐍: Python
  * ❄️: Nix
  * 🦀: Rust
+ * 🐹: Go
  * 💣: C/C++
 
 ### Migration Compatibility
@@ -89,15 +90,15 @@
 | ✅ | IDE | [Zed 🦀](https://github.com/zed-industries/zed) | | [LSP](https://github.com/microsoft/language-server-protocol), [DAP](https://github.com/Microsoft/debug-adapter-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium](https://github.com/VSCodium/vscodium) |
 | ✅ | System Call Tracing | [Lurk 🦀](https://github.com/JakWai01/lurk) | | 🆗 | [Strace 💣](https://github.com/strace/strace) |
 | ✅ | Network Client | [Xh 🦀](https://github.com/ducaale/xh) | | ❓ | [Curl 💣](https://github.com/curl/curl) |
-| 🚧 | Environment Loader | [Direnv](https://github.com/direnv/direnv) | [Envy 🦀](https://github.com/mre/envy) | ⬅️ | |
+| 🚧 | Environment Loader | [Direnv 🐹](https://github.com/direnv/direnv) | [Envy 🦀](https://github.com/mre/envy) | ⬅️ | |
 
 ### Infrastructure
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | WebAssembly Runtime | [Wasmtime 🦀](https://github.com/bytecodealliance/wasmtime) | | | |
 | 🚧 | JavaScript Runtime | [Node.js 💣](https://github.com/nodejs/node) | [Deno 🦀](https://github.com/denoland/deno) | [Node.js API](https://nodejs.org/api) |
-| ✅ | Container CLI | | | [OCI 📖](https://github.com/opencontainers/runtime-spec) | [Docker](https://github.com/docker) |
-| 🚧 | Container Runtime | [Youki 🦀](https://github.com/containers/youki) | | [OCI 📖](https://github.com/opencontainers/runtime-spec) | [Runc](https://github.com/opencontainers/runc) |
+| 🚫 | Container CLI | [Docker 🐹](https://github.com/docker/cli) | | [OCI 📖](https://github.com/opencontainers/runtime-spec) | |
+| 🚧 | Container Runtime | [Runc 🐹](https://github.com/opencontainers/runc) | [Youki 🦀](https://github.com/containers/youki) | [OCI 📖](https://github.com/opencontainers/runtime-spec) | |
 | 🚫 | Meta Database | [Hasura 🦀](https://github.com/hasura/graphql-engine) | [Surrealdb 🔒🦀](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org) |
 | 🚫 | Database | [Postgres 💣](https://github.com/postgres/postgres) | [Tikv 🦀](https://github.com/tikv/tikv) | ❓ | |
 | 🚫 | Storage Engine | | [Sled 🦀](https://github.com/spacejam/sled) | ❓ | [RocksDB 💣](https://github.com/facebook/rocksdb) |
@@ -148,11 +149,11 @@
 | ✅ | Version Control | [Codeberg 🇪🇺](https://codeberg.org) | | | [GitHub 🔒🇺🇸](https://github.com), [GitLab 🔒🇺🇸](https://gitlab.com) |
 | ✅ | Mail | [Tuta Mail 🇪🇺](https://tuta.com) | | | [Proton Mail 🌐🇨🇭](https://proton.me/mail) |
 | ✅ | Calendar | [Tuta Calendar 🇪🇺](https://tuta.com) | | | [Proton Calendar 🌐🇨🇭](https://proton.me/calendar) |
-| ✅ | Storage | [Syncthing 🏡🇪🇺](https://github.com/syncthing/syncthing) | [Tuta Drive 🇪🇺](https://tuta.com/blog/pqdrive-project) | | [Proton Drive 🌐🇨🇭](https://proton.me/drive) |
+| ✅ | Storage | [Syncthing 🐹🏡🇪🇺](https://github.com/syncthing/syncthing) | [Tuta Drive 🇪🇺](https://tuta.com/blog/pqdrive-project) | | [Proton Drive 🌐🇨🇭](https://proton.me/drive) |
 | ✅ | VPN | [Adguard VPN 🇪🇺](https://adguard.com) | | | [Proton VPN 🌐🇨🇭](https://proton.me/vpn) |
 | ✅ | DNS | [Adguard DNS 🇪🇺](https://adguard.com) | | | [NextDNS 🔒🇺🇸](https://nextdns.io) |
 | ✅ | Search Engine | [StartPage 🔒🇪🇺](https://startpage.com) | [Stract 🇪🇺](https://github.com/StractOrg/stract) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [Kagi 🔒🇺🇸](https://kagi.com), [DuckDuckGo 🔒🇺🇸](https://duckduckgo.com) |
-| ✅ | LLM | [Ollama 🏡🇪🇺](https://github.com/ollama/ollama) | | | [Claude 🔒🇺🇸](https://claude.ai), [OpenAI 🔒🇺🇸](https://openai.com) |
+| ✅ | LLM | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama) | | | [Claude 🔒🇺🇸](https://claude.ai), [OpenAI 🔒🇺🇸](https://openai.com) |
 
 ### Social
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
