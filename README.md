@@ -172,6 +172,7 @@
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | 🚫 | Cloud Provider | [AWS 🇺🇸](https://aws.amazon.com) | | | |
+| 🚫 | Static Host | [Vercel 🇺🇸](https://vercel.com) | | | |
 
 ## Watch List
 
