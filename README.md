@@ -168,6 +168,11 @@
 | 🚫 | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [HappyCow 🔒🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | [OpenVegeMap](https://github.com/Rudloff/openvegemap) | | |
 | ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Wikipedia 🌐](https://en.wikipedia.org/wiki/User:Niclas_Overby) | [Ibis 🦀](https://github.com/Nutomic/ibis) | | |
 
+### Cloud
+| Status | Component | Current | Research & Development | Migration Path | Legacy |
+|:-:|-|-|-|-|-|
+| 🚫 | Cloud Provider | [AWS 🇺🇸](https://aws.amazon.com) | | | |
+
 ## Watch List
 
 ### Stack
