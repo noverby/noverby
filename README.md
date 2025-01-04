@@ -173,6 +173,7 @@
 |:-:|-|-|-|-|-|
 | 🚫 | Cloud Provider | [AWS 🇺🇸](https://aws.amazon.com) | | | |
 | 🚫 | Static Host | [Vercel 🇺🇸](https://vercel.com) | | | |
+| ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | | |
 
 ## Watch List
 
