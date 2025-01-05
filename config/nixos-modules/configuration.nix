@@ -178,10 +178,7 @@
       enable = true;
       extraConfig = ''
         [Resolve]
-        DNS=45.90.28.0#5e65f2.dns.nextdns.io
-        DNS=2a07:a8c0::#5e65f2.dns.nextdns.io
-        DNS=45.90.30.0#5e65f2.dns.nextdns.io
-        DNS=2a07:a8c1::#5e65f2.dns.nextdns.io
+        DNS=94.140.14.49#fb52a727.d.adguard-dns.com
         DNSOverTLS=yes
       '';
     };
