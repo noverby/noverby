@@ -90,7 +90,7 @@ const nodes = [
   },
   {
     id: "Signal",
-    desc: "Install Signal\nAsk # PM",
+    desc: "Install Signal\nAsk E-mail",
     icon: "signal.png",
     url: "https://www.signal.org/install",
   },
