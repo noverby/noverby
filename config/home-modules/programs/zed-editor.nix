@@ -99,7 +99,8 @@
       };
     };
     auto_update = false;
-    ui_font_size = 16;
+    ui_font_size = 14;
+    buffer_font_size = 12;
     # allow cursor to reach edges of screen
     vertical_scroll_margin = 10;
     vim = {
