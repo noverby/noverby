@@ -92,6 +92,10 @@
         program = "zellij-cwd";
       };
       line_height = "standard";
+      font_size = 11;
+      toolbar = {
+        breadcrumbs = false;
+      };
     };
     autosave = {
       after_delay = {
