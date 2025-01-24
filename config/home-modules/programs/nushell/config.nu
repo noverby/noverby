@@ -25,7 +25,7 @@ def unbin64 [] {
 
 def --env assume [profile?: string = ""] {
   let granted_output = assumego $profile
-  let granted = $granted_output | lines | get -i 1 | split row " "
+  let granted = $granted_output | lines | get -i 0 | split row " "
   load-env {
     AWS_ACCESS_KEY_ID: $granted.1,
     AWS_SECRET_ACCESS_KEY: $granted.2,
