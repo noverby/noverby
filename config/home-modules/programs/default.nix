@@ -232,7 +232,7 @@ in {
         "djflhoibgkdhkhhcedjiklpkjnoahfmg" # User-Agent Switcher
         "lfhmikememgdcahcdlaciloancbhjino" # CORS Unblock
         "ipdjnhgkpapgippgcgkfcbpdpcgifncb" # Emoji Keyboard
-        "nlhpidbjmmffhoogcennoiopekbiglbp" # Claude AI
+        "jjdalbijcodgjpeepgllndclalllbopg" # Tabboo
       ];
     };
 
