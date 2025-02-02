@@ -147,7 +147,6 @@
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Password Manager | [Bitwarden.eu 🇪🇺](https://bitwarden.eu) | | | [Bitwarden.com 🇺🇸](https://bitwarden.com) |
-| ✅ | Version Control | [Codeberg 🇪🇺](https://codeberg.org) | | | [GitHub 🔒🇺🇸](https://github.com), [GitLab 🇺🇸](https://gitlab.com) |
 | ✅ | Mail | [Tuta Mail 🇪🇺](https://tuta.com) | | | [Proton Mail 🌐🇨🇭](https://proton.me/mail) |
 | ✅ | Calendar | [Tuta Calendar 🇪🇺](https://tuta.com) | | | [Proton Calendar 🔒🌐🇨🇭](https://proton.me/calendar) |
 | ✅ | Storage | [Syncthing 🐹🏡🇪🇺](https://github.com/syncthing/syncthing) | [Tuta Drive 🇪🇺](https://tuta.com/blog/pqdrive-project) | | [Proton Drive 🌐🇨🇭](https://proton.me/drive) |
@@ -155,6 +154,8 @@
 | ✅ | DNS | [Adguard DNS 🇪🇺](https://adguard.com) | | | [NextDNS 🔒🇺🇸](https://nextdns.io) |
 | ✅ | Search Engine | [StartPage 🔒🇪🇺](https://startpage.com) | [Stract 🦀🇪🇺](https://github.com/StractOrg/stract) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [Kagi 🔒🇺🇸](https://kagi.com), [DuckDuckGo 🔒🇺🇸](https://duckduckgo.com) |
 | ✅ | LLM | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama) | | | [Claude 🔒🇺🇸](https://claude.ai), [OpenAI 🔒🇺🇸](https://openai.com) |
+| ✅ | Version Control | [Codeberg 🇪🇺](https://codeberg.org) | | | [GitHub 🔒🇺🇸](https://github.com), [GitLab 🇺🇸](https://gitlab.com) |
+| ✅ | Music Streaming | [Deezer 🇪🇺](https://deezer.com) | | | [Spotify 🇺🇸](https://spotify.com) |
 
 ### Social
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
