@@ -174,6 +174,7 @@
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | 🚫 | Cloud Provider | [AWS 🇺🇸](https://aws.amazon.com) | | | |
+| ✅ | Bare Metal Hosting | [Hetzner 🇪🇺](https://hetzner.com) | | | |
 | 🚫 | Static Host | [Vercel 🇺🇸](https://vercel.com) | | | |
 | ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | | |
 | 🚫 | Backend | [Nhost 🇪🇺](https://nhost.com) | [DFRNT 🇪🇺](https://dfrnt.com) | | |
