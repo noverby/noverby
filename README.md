@@ -173,7 +173,7 @@
 ### Cloud
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| 🚫 | Cloud Provider | [AWS 🇺🇸](https://aws.amazon.com) | | | |
+| 🚫 | Cloud Provider | [AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com) | | |
 | ✅ | Bare Metal Hosting | [Hetzner 🇪🇺](https://hetzner.com) | | | |
 | 🚫 | Static Host | [Vercel 🇺🇸](https://vercel.com) | | | |
 | ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | | |
