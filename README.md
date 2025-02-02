@@ -155,15 +155,16 @@
 | ✅ | Search Engine | [StartPage 🔒🇪🇺](https://startpage.com) | [Stract 🦀🇪🇺](https://github.com/StractOrg/stract) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [Kagi 🔒🇺🇸](https://kagi.com), [DuckDuckGo 🔒🇺🇸](https://duckduckgo.com) |
 | ✅ | LLM | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama) | | | [Claude 🔒🇺🇸](https://claude.ai), [OpenAI 🔒🇺🇸](https://openai.com) |
 | ✅ | Version Control | [Codeberg 🇪🇺](https://codeberg.org) | | | [GitHub 🔒🇺🇸](https://github.com), [GitLab 🇺🇸](https://gitlab.com) |
-| ✅ | Music Streaming | [Deezer 🇪🇺](https://deezer.com) | | | [Spotify 🇪🇺](https://spotify.com) |
+| ✅ | Music Streaming |  [Spotify 🇪🇺](https://spotify.com) | | | [Deezer 🇪🇺](https://deezer.com) |
 
 ### Social
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Microblogging | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [Bluesky ⚖️🇺🇸](https://bsky.app/profile/overby.me) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub), [ATProtocol](https://atproto.com), [X-Cancel](https://xcancel.com) | [X-Twitter 🔒🇺🇸](https://x.com), [Threads 🔒🇺🇸](https://www.threads.net) |
 | ✅ | Messaging | [Matrix 🌐](https://matrix.org), [Beeper 🔒🇺🇸](https://www.beeper.com) | | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org), [Messenger 🔒🇺🇸](https://messenger.com), [WhatsApp 🔒🇺🇸](https://whatsapp.com) |
+| ✅ | Events | [Matrix 🌐](https://smokesignal.events) | | | [Facebook Events 🔒🇺🇸](https://facebook.com) |
 | ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | | | [Instagram 🔒🇺🇸](https://instagram.com) |
 | ✅ | Discussion | [Lemmy World 🌐🇨🇦](https://lemmy.world) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub) | [Reddit 🔒🇺🇸](https://reddit.com), [Lemmy.ml 🌐🇪🇺](https://lemmy.world) |
+| ✅ | Microblogging | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [Bluesky ⚖️🇺🇸](https://bsky.app/profile/overby.me) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub), [ATProtocol](https://atproto.com), [X-Cancel](https://xcancel.com) | [X-Twitter 🔒🇺🇸](https://x.com), [Threads 🔒🇺🇸](https://www.threads.net) |
 | 🚫 | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Goodreads 🔒🇺🇸](https://www.goodreads.com/niclasoverby) | [Neodb 🐍](https://github.com/neodb-social/neodb), [Bookwyrm 🐍🇪🇺](https://bookwyrm.social/user/niclasoverby) | [OpenLibrary 🌐📖](https://openlibrary.org) | |
 | 🚫 | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Letterboxd 🔒🇺🇸](https://letterboxd.com/niclasoverby) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [OpenLibrary 🌐📖](https://openlibrary.org) | |
 | 🚫 | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Spotify 🔒🇺🇸](https://open.spotify.com/user/1148979230) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [OpenLibrary 🌐📖](https://openlibrary.org) | |
