@@ -58,9 +58,17 @@
       url = "github:thiagokokada/nix-alien";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    zen-browser = {
+      url = "github:0xc000022070/zen-browser-flake";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = {flakelight, ...} @ inputs:
+  outputs = {
+    flakelight,
+    zen-browser,
+    ...
+  } @ inputs:
     flakelight ./. {
       inherit inputs;
       nixDir = ./config;
@@ -71,6 +79,9 @@
       };
       withOverlays = [
         (inputs.nix-alien.overlays.default)
+        (_: prev: {
+          zen-browser = zen-browser.packages."${prev.system}".default;
+        })
       ];
     };
 }
