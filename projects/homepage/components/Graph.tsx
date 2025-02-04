@@ -90,9 +90,9 @@ const nodes = [
   },
   {
     id: "Signal",
-    desc: "Install Signal\nAsk E-mail",
+    desc: "Signal\nProfile",
     icon: "signal.png",
-    url: "https://www.signal.org/install",
+    url: "https://signal.me/#eu/BKjgrHvQhqgDPpy9p2VfcfVj6yx0mJtVGOX8GQ_2htxhX7cDxhREVad8oWL1qAMj",
   },
   {
     id: "Freeletics",
