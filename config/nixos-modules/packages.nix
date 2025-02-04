@@ -21,24 +21,6 @@
         #     hash = "sha256-sDGuNT2rmE25aRj3fP5hHUN76fUVqhLNebdv112cqpw=";
         #   };
         # });
-        fprintd = prev.fprintd.overrideAttrs (_: {
-          mesonCheckFlags = [
-            "--no-suite"
-            "fprintd:TestPamFprintd"
-          ];
-        });
-        gcr_4 = prev.gcr_4.overrideAttrs (prevPkg: {
-          nativeBuildInputs =
-            prevPkg.nativeBuildInputs
-            ++ [
-              prev.gnupg
-              prev.openssh
-            ];
-
-          mesonFlags = [
-            "-Dssh_agent=true"
-          ];
-        });
       };
   };
 }
