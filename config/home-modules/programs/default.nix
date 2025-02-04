@@ -228,7 +228,6 @@ in {
         "epocinhmkcnjfjobnglchpbncndobblj" # Graze
         "inlikjemeeknofckkjolnjbpehgadgge" # Distil
         "dejobinhdiimklegodgbmbifijpppopn" # Tab Reloader
-        "jplgfhpmjnbigmhklmmbgecoobifkmpa" # Proton VPN
         "jdocbkpgdakpekjlhemmfcncgdjeiika" # Absolute Enable Right Click & Copy
         "djflhoibgkdhkhhcedjiklpkjnoahfmg" # User-Agent Switcher
         "lfhmikememgdcahcdlaciloancbhjino" # CORS Unblock

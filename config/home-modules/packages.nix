@@ -13,7 +13,6 @@
     fragments
     evince
     spotify
-    protonmail-desktop
     bitwarden-desktop
     mpv
     onlyoffice-desktopeditors
