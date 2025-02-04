@@ -177,7 +177,7 @@
 |:-:|-|-|-|-|-|
 | 🚫 | Cloud Provider | [AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com) | | |
 | ✅ | Bare Metal Hosting | [Hetzner 🇪🇺](https://hetzner.com) | | | |
-| 🚫 | Static Host | [Vercel 🇺🇸](https://vercel.com) | | | |
+| 🚫 | Static Host | [Vercel 🇺🇸](https://vercel.com) | [FastFront 🇪🇺](https://www.fastfront.io) | | |
 | ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | | |
 | 🚫 | Backend | [Nhost 🇪🇺](https://nhost.com) | [DFRNT 🇪🇺](https://dfrnt.com) | | |
 
