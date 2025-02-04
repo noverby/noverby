@@ -43,9 +43,9 @@
         ];
       in
         {
-          browser = "unbrave-browser.desktop";
-          "x-scheme-handler/http" = "unbrave-browser.desktop";
-          "x-scheme-handler/https" = "unbrave-browser.desktop";
+          browser = "zen.desktop";
+          "x-scheme-handler/http" = "zen.desktop";
+          "x-scheme-handler/https" = "zen.desktop";
         }
         // builtins.listToAttrs (map (mime: {
             name = mime;

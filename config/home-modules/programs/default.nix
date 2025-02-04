@@ -45,6 +45,7 @@
     unbrave = "brave";
     unbrave-dev = "brave --remote-debugging-port=9220";
     firefox-dev = "firefox -start-debugger-server 6000 -P dev http://localhost:3000";
+    zen-dev = "zen -start-debugger-server 6000 -P dev http://localhost:3000";
   };
 in {
   imports = [./git.nix ./vscode.nix ./zed-editor.nix];

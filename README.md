@@ -121,7 +121,7 @@
 | 🚧 | GUI Toolkit | WIP Toolkit 🔥 | [Dixous 🦀](https://github.com/dioxusLabs/dioxus) | [Web Component 📖](https://kagi.com/search?q=Web+Components) | |
 | ✅ | Desktop Environment | [Cosmic Epoch 🦀](https://github.com/pop-os/cosmic-epoch) | | | [Gnome Shell 💣](https://gitlab.gnome.org/GNOME/gnome-shell) |
 | ✅ | File Manager | [Cosmic Files 🦀](https://github.com/pop-os/cosmic-files) | | | [GNOME Files 💣](https://gitlab.gnome.org/GNOME/nautilus) |
-| 🚫 | Web Browser | [Unbraved Brave 💣🦀](https://github.com/MulesGaming/brave-debullshitinator) | [Verso 🦀](https://github.com/versotile-org/verso) | [Chrome Extension API 🔒](https://developer.chrome.com/docs/extensions/reference) | [Firefox 🦀💣](https://github.com/mozilla/gecko-dev) |
+| ✅ | Web Browser | [Zen Browser 💣🦀](https://zen-browser.app) | [Verso 🦀](https://github.com/versotile-org/verso) | [Chrome Extension API 🔒](https://developer.chrome.com/docs/extensions/reference) | [Firefox 🦀💣](https://github.com/mozilla/gecko-dev), [Unbraved Brave 💣🦀](https://github.com/MulesGaming/brave-debullshitinator)  |
 | 🚫 | GUI Package Manager | [Flatpak 💣](https://github.com/flatpak/flatpak) | | 🆗 | [Snap 🔒](https://github.com/canonical/snapd), [AppImage 💣](https://github.com/AppImage) |
 | ✅ | App Browser | [Cosmic Store 🦀](https://github.com/pop-os/cosmic-store) | | 🆗 | [GNOME Software 💣](https://gitlab.gnome.org/GNOME/gnome-software) |
 
