@@ -6,18 +6,6 @@
   systemd.user = {
     startServices = "sd-switch";
     services = {
-      protonmail-bridge = {
-        Unit = {
-          Description = "Service to run the Protonmail bridge client";
-          After = "network.target";
-        };
-        Service = {
-          ExecStart = "${pkgs.protonmail-bridge}/bin/protonmail-bridge --noninteractive";
-        };
-        Install = {
-          WantedBy = ["default.target"];
-        };
-      };
       # xreal-air-driver = {
       # Unit = {
       # Description = "XREAL Air user-space driver";
