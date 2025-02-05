@@ -21,6 +21,18 @@
         #     hash = "sha256-sDGuNT2rmE25aRj3fP5hHUN76fUVqhLNebdv112cqpw=";
         #   };
         # });
+        gcr_4 = prev.gcr_4.overrideAttrs (prevPkg: {
+          nativeBuildInputs =
+            prevPkg.nativeBuildInputs
+            ++ [
+              prev.gnupg
+              prev.openssh
+            ];
+
+          mesonFlags = [
+            "-Dssh_agent=true"
+          ];
+        });
       };
   };
 }
