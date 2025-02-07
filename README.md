@@ -161,7 +161,7 @@
 | Status | Component | Current | Research & Development | Migration Path | Previous |
 |:-:|-|-|-|-|-|
 | ✅ | Messaging | [Matrix 🌐](https://matrix.org), [Beeper 🔒🇺🇸](https://www.beeper.com) | | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org), [Messenger 🔒🇺🇸](https://messenger.com), [WhatsApp 🔒🇺🇸](https://whatsapp.com) |
-| ✅ | Events | [Smoke Signal Events 🌐](https://smokesignal.events) | | | [Facebook Events 🔒🇺🇸](https://facebook.com) |
+| ✅ | Events | [Smoke Signal Events 🌐](https://smokesignal.events), [Meetup 🔒🇪🇺](https://meetup.com) | | | [Facebook Events 🔒🇺🇸](https://facebook.com) |
 | ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | | | [Instagram 🔒🇺🇸](https://instagram.com) |
 | ✅ | Discussion | [Lemmy World 🌐🇨🇦](https://lemmy.world) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub) | [Reddit 🔒🇺🇸](https://reddit.com), [Lemmy.ml 🌐🇪🇺](https://lemmy.world) |
 | ✅ | Microblogging | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [Bluesky ⚖️🇺🇸](https://bsky.app/profile/overby.me) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub), [ATProtocol](https://atproto.com), [X-Cancel](https://xcancel.com) | [X-Twitter 🔒🇺🇸](https://x.com), [Threads 🔒🇺🇸](https://www.threads.net) |
