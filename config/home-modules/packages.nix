@@ -74,7 +74,7 @@
     appimage-run
 
     # System dev
-    lldb
+    #lldb
     gdb
     cling # C++ repl
     evcxr # Rust repl
@@ -102,6 +102,7 @@
 
     # Mojo
     magic
+    mojo
 
     # XR Desktop
     #monado
