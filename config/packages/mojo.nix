@@ -60,6 +60,19 @@ stdenv.mkDerivation rec {
     # /etc/modular/modular.cfg contains hardcoded paths to libs
     mkdir -p $out/etc/modular
     cat > $out/etc/modular/modular.cfg << EOF
+    [max]
+    cache_dir = $out/share/max/.max_cache
+    driver_lib = $out/lib/libDeviceDriver.so
+    enable_compile_progress = true
+    enable_model_ir_cache = true
+    engine_lib = $out/lib/libmodular-framework-common.so
+    graph_lib = $out/lib/libmof.so
+    name = MAX Platform
+    path = $out
+    serve_lib = $out/lib/libServeRTCAPI.so
+    torch_ext_lib = $out/lib/libmodular-framework-torch-ext.so
+    version = ${version}
+
     [mojo-max]
     compilerrt_path = $out/lib/libKGENCompilerRTShared.so
     mgprt_path = $out/lib/libMGPRT.so
@@ -90,6 +103,15 @@ stdenv.mkDerivation rec {
     chmod +x $out/bin/.mojo-wrapped
     mv $out/bin/mojo $out/bin/mojo-unwrapped
     mv $out/bin/.mojo-wrapped $out/bin/mojo
+
+    # Create wrapper for mojo-lsp-server
+    mv $out/bin/mojo-lsp-server $out/bin/mojo-lsp-server-unwrapped
+    cat > $out/bin/mojo-lsp-server << EOF
+    #!${stdenv.shell}
+    export MODULAR_HOME=$out/etc/modular
+    exec $out/bin/mojo-lsp-server-unwrapped -I $out/lib/mojo "\$@"
+    EOF
+    chmod +x $out/bin/mojo-lsp-server
 
     # /etc/modular/crashdb needs to be mutable
     ln -s /tmp $out/etc/modular/crashdb
