@@ -18,7 +18,7 @@
     onlyoffice-desktopeditors
     gnome-tweaks
     dconf-editor
-    celeste
+    #celeste
     gnome-network-displays
     gnome-system-monitor
     file-roller
@@ -66,7 +66,7 @@
     tokei
     zip
     unzip
-    diffoscope
+    #diffoscope
 
     # Container tools
     distrobox

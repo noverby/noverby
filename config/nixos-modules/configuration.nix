@@ -73,7 +73,7 @@
   };
 
   # Audio
-  hardware.pulseaudio.enable = false;
+  services.pulseaudio.enable = false;
   security.rtkit.enable = true;
 
   # Graphics
@@ -96,7 +96,7 @@
     systemPackages = with pkgs; [
       helix
       powertop
-      nix-alien
+      #nix-alien
       tailspin
 
       # Cosmic
@@ -105,9 +105,9 @@
       cosmic-ext-applet-emoji-selector
       cosmic-ext-applet-external-monitor-brightness
       cosmic-ext-calculator
-      cosmic-ext-examine
-      cosmic-ext-forecast
-      cosmic-ext-tasks
+      examine
+      forecast
+      tasks
       cosmic-ext-tweaks
       cosmic-player
       cosmic-reader
