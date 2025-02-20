@@ -99,7 +99,7 @@
 |:-:|-|-|-|-|-|
 | ✅ | WebAssembly Runtime | [Wasmtime 🦀](https://github.com/bytecodealliance/wasmtime) | | | |
 | 🚧 | JavaScript Runtime | [Node.js 💣](https://github.com/nodejs/node) | [Deno 🦀](https://github.com/denoland/deno) | [Node.js API](https://nodejs.org/api) |
-| 🚫 | Container CLI | [Docker 🐹](https://github.com/docker/cli) | | [OCI 📖](https://github.com/opencontainers/runtime-spec) | |
+| ✅ | Container CLI | [Docker 🐹](https://github.com/docker/cli) | | [OCI 📖](https://github.com/opencontainers/runtime-spec) | |
 | 🚧 | Container Runtime | [Runc 🐹](https://github.com/opencontainers/runc) | [Youki 🦀](https://github.com/containers/youki) | [OCI 📖](https://github.com/opencontainers/runtime-spec) | |
 | 🚫 | Meta Database | [Hasura 🦀](https://github.com/hasura/graphql-engine) | [Surrealdb 🔒🦀](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org) |
 | 🚫 | Database | [Postgres 💣](https://github.com/postgres/postgres) | [Tikv 🦀](https://github.com/tikv/tikv) | ❓ | |
@@ -109,10 +109,10 @@
 | Status | Component | Current | Research & Development | Migration Path | Previous |
 |:-:|-|-|-|-|-|
 | 🚧 | Compression | [Zlib 💣](https://github.com/madler/zlib) | [Zlib-rs 🦀](https://github.com/memorysafety/zlib-rs) | ⬅️ | |
-| 🚧 | TLS Protocol | [Openssl 💣](https://github.com/openssl/openssl) | [Rustls 🦀](https://github.com/rustls/rustls) | ⬅️ | |
-| 🚧 | HTTP Protocol | [Nghttp2 💣](https://github.com/nghttp2/nghttp2), [Nghttp3 💣](https://github.com/ngtcp2/nghttp3) | [Hyper 🦀](https://github.com/hyperium/hyper) | ⬅️ | |
-| 🚧 | HTTP Client | [Curl 💣](https://github.com/curl/curl) | [Reqwest 🦀](https://github.com/seanmonstar/reqwest) | ⬅️ | |
-| 🚧 | Font Rendering | [HarfBuzz 💣](https://github.com/harfbuzz/harfbuzz), [FreeType 💣](https://github.com/freetype/freetype) | [Cosmic-text 🦀](https://github.com/pop-os/cosmic-text) | ⬅️ | |
+| ✅ | TLS Protocol |  [Rustls 🦀](https://github.com/rustls/rustls) | | 🆗 | [Openssl 💣](https://github.com/openssl/openssl) |
+| ✅ | HTTP Protocol | [Hyper 🦀](https://github.com/hyperium/hyper) | | 🆗 | [Nghttp2 💣](https://github.com/nghttp2/nghttp2), [Nghttp3 💣](https://github.com/ngtcp2/nghttp3) |
+| ✅ | HTTP Client | [Reqwest 🦀](https://github.com/seanmonstar/reqwest) | | 🆗 | [Curl 💣](https://github.com/curl/curl) |
+| ✅ | Font Rendering | [Cosmic-text 🦀](https://github.com/pop-os/cosmic-text) | | 🆗 | [HarfBuzz 💣](https://github.com/harfbuzz/harfbuzz), [FreeType 💣](https://github.com/freetype/freetype) |
 | 🚧 | Browser Engine | [Gecko 🦀💣](https://en.wikipedia.org/wiki/Gecko_(software)) | [Servo 🦀](https://github.com/servo/servo) | ⬅️ | |
 
 ### GUI
@@ -142,7 +142,7 @@
 | ✅ | Launcher | [Olauncher](https://github.com/tanujnotes/Olauncher) | | | [Minimalist Phone 🔒](https://www.minimalistphone.com) |
 | ✅ | Keyboard | [Thumb-Key](https://github.com/dessalines/thumb-key) | | | [OpenBoard](https://github.com/openboard-team/openboard) |
 | ✅ | Alarm | [Chrono](https://github.com/vicolo-dev/chrono) | | | [Sleep 🔒](https://sleep.urbandroid.org) |
-| 🚫 | Browser | [Fennec 💣🦀](https://f-droid.org/en/packages/org.mozilla.fennec_fdroid) | | | [Mull 💣🦀](https://github.com/mull-project/mull) |
+| ✅ | Browser | [Fennec 💣🦀](https://f-droid.org/en/packages/org.mozilla.fennec_fdroid) | | | [Mull 💣🦀](https://github.com/mull-project/mull) |
 
 ### Services
 | Status | Component | Current | Research & Development | Migration Path | Previous |
@@ -170,7 +170,7 @@
 | 🚫 | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Letterboxd 🔒🇺🇸](https://letterboxd.com/niclasoverby) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [OpenLibrary 🌐📖](https://openlibrary.org) | |
 | 🚫 | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Spotify 🔒🇺🇸](https://open.spotify.com/user/1148979230) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [OpenLibrary 🌐📖](https://openlibrary.org) | |
 | 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Strava 🔒🇺🇸](https://www.strava.com/athletes/116425039) | [FitTrackee 🐍](https://github.com/SamR1/FitTrackee) | | |
-| 🚫 | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [HappyCow 🔒🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | [OpenVegeMap](https://github.com/Rudloff/openvegemap) | | |
+| ✅ | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [HappyCow 🔒🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | [OpenVegeMap](https://github.com/Rudloff/openvegemap) | | |
 | ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Wikipedia 🌐](https://en.wikipedia.org/wiki/User:Niclas_Overby) | [Ibis 🦀](https://github.com/Nutomic/ibis) | | |
 
 ### Cloud
@@ -178,9 +178,9 @@
 |:-:|-|-|-|-|-|
 | 🚫 | Cloud Provider | [AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com) | | |
 | ✅ | Bare Metal Hosting | [Hetzner 🇪🇺](https://hetzner.com) | | | |
-| 🚫 | Static Host | [Vercel 🇺🇸](https://vercel.com) | [FastFront 🇪🇺](https://www.fastfront.io) | | |
+| 🚧 | Static Host | [Vercel 🇺🇸](https://vercel.com) | [Statichost 🇪🇺](https://statichost.eu),[FastFront 🇪🇺](https://www.fastfront.io) | | |
 | ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | | |
-| 🚫 | Backend | [Nhost 🇪🇺](https://nhost.com) | [DFRNT 🇪🇺](https://dfrnt.com) | | |
+| 🚧 | Backend | [Nhost 🇪🇺](https://nhost.com) | [DFRNT 🇪🇺](https://dfrnt.com) | | |
 
 ## Watch List
 
