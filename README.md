@@ -145,6 +145,8 @@
 | ✅ | Keyboard | [Thumb-Key](https://github.com/dessalines/thumb-key) | | | [OpenBoard](https://github.com/openboard-team/openboard) |
 | ✅ | Alarm | [Chrono](https://github.com/vicolo-dev/chrono) | | | [Sleep 🔒](https://sleep.urbandroid.org) |
 | ✅ | Browser | [Fennec 💣🦀](https://f-droid.org/en/packages/org.mozilla.fennec_fdroid) | | | [Mull 💣🦀](https://github.com/mull-project/mull) |
+| ✅ | Distraction Blockers | [TimeLimit](https://codeberg.org/timelimit/timelimit-android), [LeechBlock NG](https://github.com/proginosko/LeechBlockNG), [Adguard DNS 🇪🇺](https://adguard.com) | | | |
+
 
 ### Services
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
