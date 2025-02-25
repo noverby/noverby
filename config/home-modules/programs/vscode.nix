@@ -22,9 +22,9 @@ in {
       '';
 
       overwriteVSCodeSymlink = let
-        userSettings = config.programs.vscode.userSettings;
+        userSettings = config.programs.vscode.profiles.default.userSettings;
         jsonSettings = pkgs.writeText "tmp_vscode_settings" (builtins.toJSON userSettings);
-        keybindings = config.programs.vscode.keybindings;
+        keybindings = config.programs.vscode.profiles.default.keybindings;
         jsonKeybindings = pkgs.writeText "tmp_vscode_keybindings" (builtins.toJSON keybindings);
       in
         lib.hm.dag.entryAfter ["linkGeneration"] ''
@@ -38,19 +38,21 @@ in {
   programs.vscode = {
     enable = true;
     package = pkgs.vscodium;
-    extensions = with pkgs.vscode-extensions; [
-      mkhl.direnv
-      jnoortheen.nix-ide
-      kamadorueda.alejandra
-      rust-lang.rust-analyzer
-      tamasfe.even-better-toml
-      ms-python.python
-      ms-vscode.hexeditor
-      esbenp.prettier-vscode
-      thenuprojectcontributors.vscode-nushell-lang
-      ms-azuretools.vscode-docker
-    ];
-    userSettings = builtins.fromJSON (builtins.readFile ./vscode/settings.json);
-    keybindings = builtins.fromJSON (builtins.readFile ./vscode/keybindings.json);
+    profiles.default = {
+      extensions = with pkgs.vscode-extensions; [
+        mkhl.direnv
+        jnoortheen.nix-ide
+        kamadorueda.alejandra
+        rust-lang.rust-analyzer
+        tamasfe.even-better-toml
+        ms-python.python
+        ms-vscode.hexeditor
+        esbenp.prettier-vscode
+        thenuprojectcontributors.vscode-nushell-lang
+        ms-azuretools.vscode-docker
+      ];
+      userSettings = builtins.fromJSON (builtins.readFile ./vscode/settings.json);
+      keybindings = builtins.fromJSON (builtins.readFile ./vscode/keybindings.json);
+    };
   };
 }
