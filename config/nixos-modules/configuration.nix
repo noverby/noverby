@@ -125,19 +125,6 @@
     wireshark.enable = true;
     # Run unpatched binaries
     nix-ld.enable = true;
-    # Unbraved Brave
-    # https://github.com/MulesGaming/brave-debullshitinator
-    chromium = {
-      enable = true;
-      extraOpts = {
-        BraveRewardsDisabled = true;
-        BraveWalletDisabled = true;
-        BraveVPNDisabled = 1;
-        BraveAIChatEnabled = false;
-        IPFSEnabled = false;
-        PasswordManagerEnabled = false;
-      };
-    };
   };
 
   # Users
