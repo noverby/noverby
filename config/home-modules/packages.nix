@@ -25,6 +25,7 @@
     eyedropper
     wireplumber
     gnome-disk-utility
+    firefoxpwa
 
     # System tools
     sudo-rs
