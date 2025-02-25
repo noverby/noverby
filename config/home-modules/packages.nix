@@ -38,7 +38,6 @@
     skim
     pueue
     waypipe
-    tailspin
 
     # Network tools
     xh
