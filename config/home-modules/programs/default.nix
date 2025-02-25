@@ -42,8 +42,6 @@
     bg = "pueue";
     zed = "zeditor";
     optpng = "oxipng";
-    unbrave = "brave";
-    unbrave-dev = "brave --remote-debugging-port=9220";
     firefox-dev = "firefox -start-debugger-server 6000 -P dev http://localhost:3000";
     zen-dev = "zen -start-debugger-server 6000 -P dev http://localhost:3000";
   };
@@ -197,43 +195,6 @@ in {
             isDefault = false;
           };
       };
-    };
-
-    # Unbraved Brave
-    chromium = {
-      enable = true;
-      commandLineArgs = [
-        "--enable-features=UseOzonePlatform,TouchpadOverscrollHistoryNavigation"
-        "--ozone-platform=wayland"
-      ];
-      package = pkgs.brave;
-      # TODO:
-      # - https://github.com/bpc-clone/bypass-paywalls-chrome-clean
-      extensions = map (id: {inherit id;}) [
-        "nngceckbapebfimnlniiiahkandclblb" # Bitwarden
-        "cdglnehniifkbagbbombnjghhcihifij" # Kagi
-        "blaaajhemilngeeffpbfkdjjoefldkok" # Leechblock
-        "eimadpbcbfnmbkopoojfekhnkhdbieeh" # Dark Reader
-        "gfbliohnnapiefjpjlpjnehglfpaknnc" # Surfingkeys
-        "epocinhmkcnjfjobnglchpbncndobblj" # Graze
-        "fjcldmjmjhkklehbacihaiopjklihlgg" # News Feed Eradicator
-        "laookkfknpbbblfpciffpaejjkokdgca" # Momentum
-        "oldceeleldhonbafppcapldpdifcinji" # Language Tool
-        "mdjildafknihdffpkfmmpnpoiajfjnjd" # Consent-O-Matic
-        "bfhkfdnddlhfippjbflipboognpdpoeh" # Read on reMarkable
-        "eenjdnjldapjajjofmldgmkjaienebbj" # Copyfish
-        "nffaoalbilbmmfgbnbgppjihopabppdk" # Video Speed Controller
-        "ifmhoabcaeehkljcfclfiieohkohdgbb" # Social Fixer for Facebook
-        "jchobbjgibcahbheicfocecmhocglkco" # Neat URL
-        "epocinhmkcnjfjobnglchpbncndobblj" # Graze
-        "inlikjemeeknofckkjolnjbpehgadgge" # Distil
-        "dejobinhdiimklegodgbmbifijpppopn" # Tab Reloader
-        "jdocbkpgdakpekjlhemmfcncgdjeiika" # Absolute Enable Right Click & Copy
-        "djflhoibgkdhkhhcedjiklpkjnoahfmg" # User-Agent Switcher
-        "lfhmikememgdcahcdlaciloancbhjino" # CORS Unblock
-        "ipdjnhgkpapgippgcgkfcbpdpcgifncb" # Emoji Keyboard
-        "jjdalbijcodgjpeepgllndclalllbopg" # Tabboo
-      ];
     };
 
     obs-studio = {
