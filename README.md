@@ -133,7 +133,7 @@
 |:-:|-|-|-|-|-|
 | ✅ | Media Player | [Cosmic Player 🦀](https://github.com/pop-os/cosmic-player) | | [FFMPEG 💣](https://github.com/FFmpeg/FFmpeg), [GStreamer 💣](https://gitlab.freedesktop.org/gstreamer) | [Mpv 💣](https://github.com/mpv-player/mpv) |
 | 🚫 | Image Editing | [GIMP 💣](https://gitlab.gnome.org/GNOME/gimp) | | | |
-| 🚫 | Vector Graphics | [Inkscape 💣](https://gitlab.com/inkscape/inkscape) | | | |
+| ✅ | Vector Graphics | [Graphite 🦀](https://github.com/GraphiteEditor/Graphite) | | | [Inkscape 💣](https://gitlab.com/inkscape/inkscape)  |
 | ✅ | Typesetting | [Typst 🦀](https://github.com/typst) | | 🆗 | [LaTeX 💣](https://github.com/latex3/latex3) |
 | ✅ | Optimize PNG | [Oxipng 🦀](https://github.com/shssoichiro/oxipngc) | | 🆗 | [Optpng 💣](https://optipng.sourceforge.net) |
 
