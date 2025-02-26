@@ -8,7 +8,7 @@
 ## Stack
 ### State
  * ✅: Good for now
- * 🚧: Transitioning
+ * 🚧: WIP
  * 🚫: Blocked
  * ❓: Undecided
 
@@ -103,9 +103,9 @@
 | 🚧 | ECMAScript Runtime | [Node.js 💣](https://github.com/nodejs/node) | [Deno 🦀](https://github.com/denoland/deno) | [Node.js API](https://nodejs.org/api) |
 | ✅ | Container CLI | [Docker 🐹](https://github.com/docker/cli) | | [OCI 📖](https://github.com/opencontainers/runtime-spec) | |
 | 🚧 | Container Runtime | [Runc 🐹](https://github.com/opencontainers/runc) | [Youki 🦀](https://github.com/containers/youki) | [OCI 📖](https://github.com/opencontainers/runtime-spec) | |
-| 🚫 | Meta Database | [Hasura 🦀](https://github.com/hasura/graphql-engine) | [Surrealdb 🔒🦀](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org) |
-| 🚫 | Database | [Postgres 💣](https://github.com/postgres/postgres) | [Tikv 🦀](https://github.com/tikv/tikv) | ❓ | |
-| 🚫 | Storage Engine | | [Sled 🦀](https://github.com/spacejam/sled) | ❓ | [RocksDB 💣](https://github.com/facebook/rocksdb) |
+| 🚧 | Meta Database | [Hasura 🦀](https://github.com/hasura/graphql-engine) | [Surrealdb 🔒🦀](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org) |
+| 🚧 | Database | [Postgres 💣](https://github.com/postgres/postgres) | [Tikv 🦀](https://github.com/tikv/tikv) | ❓ | |
+| 🚧 | Storage Engine | | [Sled 🦀](https://github.com/spacejam/sled) | ❓ | [RocksDB 💣](https://github.com/facebook/rocksdb) |
 
 ### Libraries
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
@@ -181,7 +181,7 @@
 ### Cloud
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| 🚫 | Cloud Provider | [AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com) | | |
+| 🚧 | Cloud Provider | [AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com) | | |
 | ✅ | Bare Metal Hosting | [Hetzner 🇪🇺](https://hetzner.com) | | | |
 | 🚧 | Static Host | [Vercel 🇺🇸](https://vercel.com) | [Statichost 🇪🇺](https://statichost.eu),[FastFront 🇪🇺](https://www.fastfront.io) | | |
 | ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | | |
