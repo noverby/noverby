@@ -15,7 +15,7 @@
  ### Control
  * 🌐: Managed by [Nonprofit Org](https://en.wikipedia.org/wiki/Nonprofit_organization)
  * ⚖️: Managed by [Benefit Corp](https://en.wikipedia.org/wiki/Benefit_corporation)
- * 📖: [Open standard](https://en.wikipedia.org/wiki/Open_standard)
+ * 📖: [Open Standard](https://en.wikipedia.org/wiki/Open_standard)
  * 🏡: Self-hosted
  * 🔒: [Proprietary](https://en.wiktionary.org/wiki/proprietary)
 
@@ -183,7 +183,7 @@
 |:-:|-|-|-|-|-|
 | 🚧 | Cloud Provider | [AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com) | | |
 | ✅ | Bare Metal Hosting | [Hetzner 🇪🇺](https://hetzner.com) | | | |
-| 🚧 | Static Host | [Vercel 🇺🇸](https://vercel.com) | [Statichost 🇪🇺](https://statichost.eu),[FastFront 🇪🇺](https://www.fastfront.io) | | |
+| 🚧 | Static Host | [Vercel 🇺🇸](https://vercel.com) | [Statichost 🇪🇺](https://statichost.eu), [FastFront 🇪🇺](https://www.fastfront.io) | | |
 | ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | | |
 | 🚧 | Backend | [Nhost 🇪🇺](https://nhost.com) | [DFRNT 🇪🇺](https://dfrnt.com) | | |
 
