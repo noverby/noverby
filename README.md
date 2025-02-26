@@ -158,7 +158,7 @@
 | ✅ | VPN | [Adguard VPN 🇪🇺](https://adguard.com) | | | [Proton VPN 🌐🇨🇭](https://proton.me/vpn) |
 | ✅ | DNS | [Adguard DNS 🇪🇺](https://adguard.com) | | | [NextDNS 🔒🇺🇸](https://nextdns.io) |
 | ✅ | Search Engine | [StartPage 🔒🇪🇺](https://startpage.com) | [Stract 🦀🇪🇺](https://github.com/StractOrg/stract) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [Kagi 🔒🇺🇸](https://kagi.com), [DuckDuckGo 🔒🇺🇸](https://duckduckgo.com) |
-| ✅ | LLM | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama) | | | [Claude 🔒🇺🇸](https://claude.ai), [OpenAI 🔒🇺🇸](https://openai.com) |
+| ✅ | LLM | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama), [Mistral 🇪🇺](https://mistral.ai) | | | [Claude 🔒🇺🇸](https://claude.ai), [OpenAI 🔒🇺🇸](https://openai.com) |
 | ✅ | Version Control | [Codeberg 🇪🇺](https://codeberg.org) | | | [GitHub 🔒🇺🇸](https://github.com), [GitLab 🇺🇸](https://gitlab.com) |
 | ✅ | Music Streaming |  [Spotify 🇪🇺](https://spotify.com) | | | [Deezer 🇪🇺](https://deezer.com) |
 
