@@ -66,6 +66,7 @@
     tokei
     zip
     unzip
+    mergiraf
     #diffoscope
 
     # Container tools
