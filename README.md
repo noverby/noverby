@@ -60,10 +60,10 @@
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Distro | [NixOS 🌐❄️](https://github.com/NixOS/nixpkgs) | | [OCI 📖](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue) |
-| ✅ | Kernel | [Linux 🌐💣](https://github.com/torvalds/linux) | [Asterinas 🦀](https://github.com/asterinas/asterinas), [Redox OS 🦀](https://gitlab.redox-os.org/redox-os/redox) | | |
-| 🚫 | Init System | [Systemd 💣](https://github.com/systemd/systemd) | [Rustysd 🦀](https://github.com/KillingSpark/rustysd) | | |
-| 🚧 | IPC | [Dbus 💣](https://gitlab.freedesktop.org/dbus/dbus) | [Busd 🦀](https://github.com/dbus2/busd) | | |
-| 🚧 | Filesystem | [Ext4 📖💣](https://ext4.wiki.kernel.org/index.php/Main_Page) | [Btrfs 📖💣](https://btrfs.wiki.kernel.org/index.php/Main_Page) | | |
+| ✅ | Kernel | [Linux 🌐💣](https://github.com/torvalds/linux) | [Asterinas 🦀](https://github.com/asterinas/asterinas), [Redox OS 🦀](https://gitlab.redox-os.org/redox-os/redox) | [Rust For Linux 🦀](https://rust-for-linux.com/) | |
+| 🚫 | Init System | [Systemd 💣](https://github.com/systemd/systemd) | [Rustysd 🦀](https://github.com/KillingSpark/rustysd) | ⬅️ | |
+| 🚧 | IPC | [Dbus 💣](https://gitlab.freedesktop.org/dbus/dbus) | [Busd 🦀](https://github.com/dbus2/busd) | ⬅️ | |
+| 🚧 | Filesystem | [Ext4 📖💣](https://ext4.wiki.kernel.org/index.php/Main_Page) | [Btrfs 📖💣](https://btrfs.wiki.kernel.org/index.php/Main_Page) | 🆗 | |
 | 🚧 | Config Language | [Nix 🌐💣](https://github.com/NixOS/nix) | [Nickel 🦀](https://github.com/tweag/nickel) | [Organist](https://github.com/nickel-lang/organist) | |
 | 🚧 | Package Manager | [Nix 🌐💣](https://github.com/NixOS/nix) | [Tvix 🦀](https://github.com/tvlfyi/tvix) | ⬅️ | |
 
@@ -88,12 +88,12 @@
 | ✅ | System Language | [Mojo 🔒🔥](https://github.com/modularml/mojo), [Rust 🦀](https://github.com/rust-lang/rust) | | [cxx 🦀](https://github.com/dtolnay/cxx), [bindgen 🦀](https://github.com/rust-lang/rust-bindgen) | |
 | ✅ | Scripting Language | [Mojo 🔒🔥](https://github.com/modularml/mojo) | | [RustPython 🦀](https://github.com/RustPython/RustPython), [WASI 📖](https://github.com/WebAssembly/WASI), [Interface Types 📖](https://github.com/WebAssembly/interface-types/tree/main/proposals/interface-types) | [TypeScript](https://github.com/microsoft/TypeScript) |
 | 🚧 | Version Control | [Git 💣](https://github.com/git/git) | [Gitoxide 🦀](https://github.com/Byron/gitoxide) | ⬅️ ️️️️| |
-| ✅ | Merge | [Mergiraf 🦀](https://codeberg.org/mergiraf/mergiraf) | | | |
-| ✅ | Build Script | [Just 🦀](https://github.com/casey/just) | | ❓ | [GNU Make 💣](https://git.savannah.gnu.org/cgit/make.git) |
+| ✅ | Merge | [Mergiraf 🦀](https://codeberg.org/mergiraf/mergiraf) | | ⬅️ | |
+| ✅ | Build Script | [Just 🦀](https://github.com/casey/just) | | Rusty Make ([Rusty Bash 🦀](https://github.com/shellgei/rusty_bash)) | [GNU Make 💣](https://git.savannah.gnu.org/cgit/make.git) |
 | ✅ | Editor | [Helix 🦀](https://github.com/helix-editor/helix) | | 🆗 | [Neovim 💣](https://github.com/neovim/neovim) |
 | ✅ | IDE | [Zed 🦀](https://github.com/zed-industries/zed) | | [LSP](https://github.com/microsoft/language-server-protocol), [DAP](https://github.com/Microsoft/debug-adapter-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium](https://github.com/VSCodium/vscodium) |
 | ✅ | System Call Tracing | [Lurk 🦀](https://github.com/JakWai01/lurk) | | 🆗 | [Strace 💣](https://github.com/strace/strace) |
-| ✅ | Network Client | [Xh 🦀](https://github.com/ducaale/xh) | | ❓ | [Curl 💣](https://github.com/curl/curl) |
+| ✅ | Network Client | [Xh 🦀](https://github.com/ducaale/xh) | | 🆗 | [Curl 💣](https://github.com/curl/curl) |
 | 🚧 | Environment Loader | [Direnv 🐹](https://github.com/direnv/direnv) | [Envy 🦀](https://github.com/mre/envy) | ⬅️ | |
 | ✅ | Pager | [Tailspin 🦀](https://github.com/bensadeh/tailspin) | | 🆗 | [Less 💣](https://github.com/gwsw/less) |
 | ✅ | Performance Profiler | [Samply 🦀](https://github.com/mstange/samply) | | 🆗 | [Perf 💣](https://perf.wiki.kernel.org/) |
@@ -101,13 +101,13 @@
 ### Infrastructure
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | WebAssembly Runtime | [Wasmtime 🦀](https://github.com/bytecodealliance/wasmtime) | | | |
+| ✅ | WebAssembly Runtime | [Wasmtime 🦀](https://github.com/bytecodealliance/wasmtime) | | [WASI 📖](https://wasi.dev) | |
 | 🚧 | ECMAScript Runtime | [Node.js 💣](https://github.com/nodejs/node) | [Deno 🦀](https://github.com/denoland/deno) | [Node.js API](https://nodejs.org/api) |
 | ✅ | Container CLI | [Docker 🐹](https://github.com/docker/cli) | | [OCI 📖](https://github.com/opencontainers/runtime-spec) | |
 | 🚧 | Container Runtime | [Runc 🐹](https://github.com/opencontainers/runc) | [Youki 🦀](https://github.com/containers/youki) | [OCI 📖](https://github.com/opencontainers/runtime-spec) | |
 | 🚧 | Meta Database | [Hasura 🦀](https://github.com/hasura/graphql-engine) | [Surrealdb 🔒🦀](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org) |
-| 🚧 | Database | [Postgres 💣](https://github.com/postgres/postgres) | [Tikv 🦀](https://github.com/tikv/tikv) | ❓ | |
-| 🚧 | Storage Engine | | [Sled 🦀](https://github.com/spacejam/sled) | ❓ | [RocksDB 💣](https://github.com/facebook/rocksdb) |
+| 🚧 | Database | [Postgres 💣](https://github.com/postgres/postgres) | [Tikv 🦀](https://github.com/tikv/tikv) | 🆗 | |
+| 🚧 | Storage Engine | | [Sled 🦀](https://github.com/spacejam/sled) | 🆗 | [RocksDB 💣](https://github.com/facebook/rocksdb) |
 
 ### Libraries
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
@@ -122,11 +122,11 @@
 ### GUI
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Design System | [Material You 🔒](https://m3.material.io) | | | [Material Design 2 🔒](https://m2.material.io) |
+| ✅ | Design System | [Material You 🔒](https://m3.material.io) | | 🆗 | [Material Design 2 🔒](https://m2.material.io) |
 | 🚧 | GUI Toolkit | WIP Toolkit 🔥 | [Dixous 🦀](https://github.com/dioxusLabs/dioxus) | [Web Component 📖](https://kagi.com/search?q=Web+Components) | |
-| ✅ | Desktop Environment | [Cosmic Epoch 🦀](https://github.com/pop-os/cosmic-epoch) | | | [Gnome Shell 💣](https://gitlab.gnome.org/GNOME/gnome-shell) |
-| ✅ | File Manager | [Cosmic Files 🦀](https://github.com/pop-os/cosmic-files) | | | [GNOME Files 💣](https://gitlab.gnome.org/GNOME/nautilus) |
-| ✅ | Web Browser | [Zen Browser 💣🦀](https://zen-browser.app) | [Verso 🦀](https://github.com/versotile-org/verso) | [Chrome Extension API 🔒](https://developer.chrome.com/docs/extensions/reference) | [Firefox 🦀💣](https://github.com/mozilla/gecko-dev), [Unbraved Brave 💣🦀](https://github.com/MulesGaming/brave-debullshitinator)  |
+| ✅ | Desktop Environment | [Cosmic Epoch 🦀](https://github.com/pop-os/cosmic-epoch) | | 🆗 | [Gnome Shell 💣](https://gitlab.gnome.org/GNOME/gnome-shell) |
+| ✅ | File Manager | [Cosmic Files 🦀](https://github.com/pop-os/cosmic-files) | | 🆗 | [GNOME Files 💣](https://gitlab.gnome.org/GNOME/nautilus) |
+| ✅ | Web Browser | [Zen Browser 💣🦀](https://zen-browser.app) | [Verso 🦀](https://github.com/versotile-org/verso) | [Chrome Extension API 🔒](https://developer.chrome.com/docs/extensions/reference) | [Firefox 💣🦀](https://github.com/mozilla/gecko-dev), [Unbraved Brave 💣🦀](https://github.com/MulesGaming/brave-debullshitinator) |
 | 🚫 | GUI Package Manager | [Flatpak 💣](https://github.com/flatpak/flatpak) | | 🆗 | [Snap 🔒](https://github.com/canonical/snapd), [AppImage 💣](https://github.com/AppImage) |
 | ✅ | App Browser | [Cosmic Store 🦀](https://github.com/pop-os/cosmic-store) | | 🆗 | [GNOME Software 💣](https://gitlab.gnome.org/GNOME/gnome-software) |
 
@@ -134,8 +134,8 @@
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Media Player | [Cosmic Player 🦀](https://github.com/pop-os/cosmic-player) | | [FFMPEG 💣](https://github.com/FFmpeg/FFmpeg), [GStreamer 💣](https://gitlab.freedesktop.org/gstreamer) | [Mpv 💣](https://github.com/mpv-player/mpv) |
-| 🚧 | Raster Graphics | [GIMP 💣](https://gitlab.gnome.org/GNOME/gimp) | [Graphite 🦀](https://github.com/GraphiteEditor/Graphite) | | |
-| ✅ | Vector Graphics | [Graphite 🦀](https://github.com/GraphiteEditor/Graphite) | | | [Inkscape 💣](https://gitlab.com/inkscape/inkscape)  |
+| 🚧 | Raster Graphics | [GIMP 💣](https://gitlab.gnome.org/GNOME/gimp) | [Graphite 🦀](https://github.com/GraphiteEditor/Graphite) | 🆗 | |
+| ✅ | Vector Graphics | [Graphite 🦀](https://github.com/GraphiteEditor/Graphite) | | 🆗 | [Inkscape 💣](https://gitlab.com/inkscape/inkscape) |
 | ✅ | Typesetting | [Typst 🦀](https://github.com/typst) | | 🆗 | [LaTeX 💣](https://github.com/latex3/latex3) |
 | ✅ | Optimize PNG | [Oxipng 🦀](https://github.com/shssoichiro/oxipngc) | | 🆗 | [Optpng 💣](https://optipng.sourceforge.net) |
 
@@ -143,43 +143,43 @@
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | OS | [/e/OS 🌐🇪🇺](https://e.foundation/e-os) | | [MicroG 🌐](https://microg.org), [Magisk](https://github.com/topjohnwu/Magisk) | [GrapheneOS 🇨🇦](https://grapheneos.org) |
-| ✅ | Launcher | [Olauncher](https://github.com/tanujnotes/Olauncher) | | | [Minimalist Phone 🔒](https://www.minimalistphone.com) |
-| ✅ | Keyboard | [Thumb-Key](https://github.com/dessalines/thumb-key) | | | [OpenBoard](https://github.com/openboard-team/openboard) |
-| ✅ | Alarm | [Chrono](https://github.com/vicolo-dev/chrono) | | | [Sleep 🔒](https://sleep.urbandroid.org) |
-| ✅ | Browser | [Fennec 💣🦀](https://f-droid.org/en/packages/org.mozilla.fennec_fdroid) | | | [Mull 💣🦀](https://github.com/mull-project/mull) |
-| ✅ | Maps | [Organic Maps](https://organicmaps.app) | | [Openstreetmap 🌐📖](https://www.openstreetmap.org) | [Google Maps 🔒🇺🇸](https://maps.google.com)|
-| ✅ | Distraction Blockers | [TimeLimit](https://codeberg.org/timelimit/timelimit-android), [LeechBlock NG](https://github.com/proginosko/LeechBlockNG), [Adguard DNS 🇪🇺](https://adguard.com) | | | |
+| ✅ | Launcher | [Olauncher](https://github.com/tanujnotes/Olauncher) | | 🆗 | [Minimalist Phone 🔒](https://www.minimalistphone.com) |
+| ✅ | Keyboard | [Thumb-Key](https://github.com/dessalines/thumb-key) | | 🆗 | [OpenBoard](https://github.com/openboard-team/openboard) |
+| ✅ | Alarm | [Chrono](https://github.com/vicolo-dev/chrono) | | 🆗 | [Sleep 🔒](https://sleep.urbandroid.org) |
+| ✅ | Browser | [Fennec 💣🦀](https://f-droid.org/en/packages/org.mozilla.fennec_fdroid) | | 🆗 | [Mull 💣🦀](https://github.com/mull-project/mull) |
+| ✅ | Maps | [Organic Maps 💣](https://organicmaps.app) | | [Openstreetmap 🌐📖](https://www.openstreetmap.org) | [Google Maps 🔒🇺🇸](https://maps.google.com)|
+| ✅ | Distraction Blockers | [TimeLimit](https://codeberg.org/timelimit/timelimit-android), [LeechBlock NG](https://github.com/proginosko/LeechBlockNG), [Adguard DNS 🇪🇺](https://adguard.com) | | 🆗 | |
 
 
 ### Services
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Password Manager | [Bitwarden.eu 🇪🇺](https://bitwarden.eu) | | | [Bitwarden.com 🇺🇸](https://bitwarden.com) |
-| ✅ | Mail | [Tuta Mail 🇪🇺](https://tuta.com) | | | [Proton Mail 🌐🇨🇭](https://proton.me/mail) |
-| ✅ | Calendar | [Tuta Calendar 🇪🇺](https://tuta.com) | | | [Proton Calendar 🔒🌐🇨🇭](https://proton.me/calendar) |
-| ✅ | Storage | [Syncthing 🐹🏡🇪🇺](https://github.com/syncthing/syncthing) | [Tuta Drive 🇪🇺](https://tuta.com/blog/pqdrive-project) | | [Proton Drive 🌐🇨🇭](https://proton.me/drive) |
-| ✅ | VPN | [Adguard VPN 🇪🇺](https://adguard.com) | | | [Proton VPN 🌐🇨🇭](https://proton.me/vpn) |
-| ✅ | DNS | [Adguard DNS 🇪🇺](https://adguard.com) | | | [NextDNS 🔒🇺🇸](https://nextdns.io) |
+| ✅ | Password Manager | [Bitwarden.eu 🇪🇺](https://bitwarden.eu) | | 🆗 | [Bitwarden.com 🇺🇸](https://bitwarden.com) |
+| ✅ | Mail | [Tuta Mail 🇪🇺](https://tuta.com) | | [Mail Import](https://tuta.com/blog/tuta-release-update-february) | [Proton Mail 🌐🇨🇭](https://proton.me/mail) |
+| ✅ | Calendar | [Tuta Calendar 🇪🇺](https://tuta.com) | | [iCalendar 📖](https://en.wikipedia.org/wiki/ICalendar) | [Proton Calendar 🔒🌐🇨🇭](https://proton.me/calendar) |
+| ✅ | Storage | [Syncthing 🐹🏡🇪🇺](https://github.com/syncthing/syncthing) | [Tuta Drive 🇪🇺](https://tuta.com/blog/pqdrive-project) | 🆗 | [Proton Drive 🌐🇨🇭](https://proton.me/drive) |
+| ✅ | VPN | [Adguard VPN 🇪🇺](https://adguard.com) | | 🆗 | [Proton VPN 🌐🇨🇭](https://proton.me/vpn) |
+| ✅ | DNS | [Adguard DNS 🇪🇺](https://adguard.com) | | 🆗 | [NextDNS 🔒🇺🇸](https://nextdns.io) |
 | ✅ | Search Engine | [StartPage 🔒🇪🇺](https://startpage.com) | [Stract 🦀🇪🇺](https://github.com/StractOrg/stract) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [Kagi 🔒🇺🇸](https://kagi.com), [DuckDuckGo 🔒🇺🇸](https://duckduckgo.com) |
-| ✅ | LLM | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama), [Mistral 🇪🇺](https://mistral.ai) | | | [Claude 🔒🇺🇸](https://claude.ai), [OpenAI 🔒🇺🇸](https://openai.com) |
-| ✅ | Version Control | [Codeberg 🇪🇺](https://codeberg.org) | | | [GitHub 🔒🇺🇸](https://github.com), [GitLab 🇺🇸](https://gitlab.com) |
-| ✅ | Music Streaming |  [Spotify 🇪🇺](https://spotify.com) | | | [Deezer 🇪🇺](https://deezer.com) |
+| ✅ | LLM | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama), [Mistral 🇪🇺](https://mistral.ai) | | 🆗 | [Claude 🔒🇺🇸](https://claude.ai), [OpenAI 🔒🇺🇸](https://openai.com) |
+| ✅ | Version Control | [Codeberg 🇪🇺](https://codeberg.org) | | [Mirror](https://codeberg.org/Recommendations/Mirror_to_Codeberg) | [GitHub 🔒🇺🇸](https://github.com), [GitLab 🇺🇸](https://gitlab.com) |
+| ✅ | Music Streaming |  [Spotify 🇪🇺](https://spotify.com) | | 🆗 | [Deezer 🇪🇺](https://deezer.com) |
 
 ### Social
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Messaging | [Matrix 🌐](https://matrix.org), [Beeper 🔒🇺🇸](https://www.beeper.com) | | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org), [Messenger 🔒🇺🇸](https://messenger.com), [WhatsApp 🔒🇺🇸](https://whatsapp.com) |
-| ✅ | Events | [Smoke Signal Events 🌐](https://smokesignal.events), [Meetup 🔒🇪🇺](https://meetup.com) | | | [Facebook Events 🔒🇺🇸](https://facebook.com) |
-| ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | | | [Instagram 🔒🇺🇸](https://instagram.com) |
-| ✅ | Collaboration | [AppFlowy 🦀](https://github.com/AppFlowy-IO/AppFlowy) | | | [Notion 🔒🇺🇸](https://notion.so) |
+| ✅ | Events | [Smoke Signal Events 🌐](https://smokesignal.events), [Meetup 🔒🇪🇺](https://meetup.com) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub) | [Facebook Events 🔒🇺🇸](https://facebook.com) |
+| ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub) | [Instagram 🔒🇺🇸](https://instagram.com) |
 | ✅ | Discussion | [Lemmy World 🌐🇪🇺](https://lemmy.world) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub) | [Reddit 🔒🇺🇸](https://reddit.com), [Lemmy.ml 🌐🇪🇺](https://lemmy.world) |
 | ✅ | Microblogging | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [Bluesky ⚖️🇺🇸](https://bsky.app/profile/overby.me) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub), [ATProtocol](https://atproto.com), [X-Cancel](https://xcancel.com) | [X-Twitter 🔒🇺🇸](https://x.com), [Threads 🔒🇺🇸](https://www.threads.net) |
 | ✅ | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Bookwyrm 🐍🇪🇺](https://bookwyrm.social/user/niclasoverby) | [OpenLibrary 🌐📖](https://openlibrary.org) | [Goodreads 🔒🇺🇸](https://www.goodreads.com/niclasoverby) |
 | ✅ | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | | [OpenLibrary 🌐📖](https://openlibrary.org) | [Letterboxd 🔒🇳🇿](https://letterboxd.com/niclasoverby)  |
 | ✅ | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Spotify 🔒🇪🇺](https://open.spotify.com/user/1148979230) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [OpenLibrary 🌐📖](https://openlibrary.org) | |
-| 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Strava 🔒🇺🇸](https://www.strava.com/athletes/116425039) | [FitTrackee 🐍](https://github.com/SamR1/FitTrackee) | | |
-| ✅ | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [HappyCow 🔒🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | [OpenVegeMap](https://github.com/Rudloff/openvegemap) | | |
-| ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Wikipedia 🌐](https://en.wikipedia.org/wiki/User:Niclas_Overby) | [Ibis 🦀](https://github.com/Nutomic/ibis) | | |
+| 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Strava 🔒🇺🇸](https://www.strava.com/athletes/116425039) | [FitTrackee 🐍](https://github.com/SamR1/FitTrackee) | [GPX 📖](https://en.wikipedia.org/wiki/GPS_Exchange_Format) | |
+| ✅ | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [HappyCow 🔒🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | [OpenVegeMap](https://github.com/Rudloff/openvegemap) | 🆗 | |
+| ✅ | Collaboration | [AppFlowy 🦀](https://github.com/AppFlowy-IO/AppFlowy) | | [Import](https://docs.appflowy.io/docs/guides/import-from-notion) | [Notion 🔒🇺🇸](https://notion.so) |
+| ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Wikipedia 🌐](https://en.wikipedia.org/wiki/User:Niclas_Overby) | [Ibis 🦀](https://github.com/Nutomic/ibis) | 🆗 | |
 
 ### Cloud
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
