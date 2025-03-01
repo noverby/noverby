@@ -49,9 +49,9 @@
 | 🚧 | Application Binary Interface | [System V ABI 📖](https://wiki.osdev.org/System_V_ABI) | [CrABI 📖](https://github.com/rust-lang/rust/pull/105586) | |
 | 🚧 | IoT Connectivity Standard | | [Matter 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | |
 | 🚧 | Wireless Media | [ChromeCast 🔒](https://en.wikipedia.org/wiki/Chromecast) | [MatterCast 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | [Miracast 📖](https://en.wikipedia.org/wiki/Miracast) |
-| ✅ | USB Interface | [USB 3.2 📖](https://www.usb.org/usb-32-specification) | [USB4 📖](https://www.usb.org/usb4) | [Thunderbolt 3 🔒](https://www.intel.com/content/www/us/en/architecture-and-technology/thunderbolt/thunderbolt-technology-general.html) |
-| ✅ | Display Interface | [DisplayPort 1.4 📖](https://en.wikipedia.org/wiki/DisplayPort) | [DisplayPort 2.1 📖](https://en.wikipedia.org/wiki/DisplayPort) | [HDMI 2.1 🔒](https://en.wikipedia.org/wiki/HDMI) |
-| ✅ | Video Codec | [AV1 📖](https://aomedia.org/av1-features/get-started) | [AV1.1 📖](https://aomedia.org/av1-version-1-1-freezes-bitstream) | [H.264 🔒](https://en.wikipedia.org/wiki/Advanced_Video_Coding) |
+| ✅ | USB Interface | [USB4 📖](https://www.usb.org/usb4) | | [Thunderbolt 3 🔒](https://www.intel.com/content/www/us/en/architecture-and-technology/thunderbolt/thunderbolt-technology-general.html) |
+| ✅ | Display Interface | [DisplayPort 📖](https://en.wikipedia.org/wiki/DisplayPort) | | [HDMI 2.1 🔒](https://en.wikipedia.org/wiki/HDMI) |
+| ✅ | Video Codec | [AV1 📖](https://aomedia.org/av1-features/get-started) | | [H.264 🔒](https://en.wikipedia.org/wiki/Advanced_Video_Coding) |
 | ✅ | Audio Codec | [Opus 📖](https://opus-codec.org) | | [AAC 🔒](https://en.wikipedia.org/wiki/Advanced_Audio_Coding) |
 | 🚧 | Network Transport | [TCP 📖](https://en.wikipedia.org/wiki/Transmission_Control_Protocol) | [QUIC 📖](https://www.chromium.org/quic/) | |
 | 🚧 | Web Protocol | [HTTP/2 📖](https://en.wikipedia.org/wiki/HTTP/2) | [HTTP/3 📖](https://en.wikipedia.org/wiki/HTTP/3) | [HTTP/1.1 📖](https://en.wikipedia.org/wiki/HTTP/1.1) |
