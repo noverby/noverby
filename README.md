@@ -61,6 +61,7 @@
 |:-:|-|-|-|-|-|
 | ✅ | Distro | [NixOS 🌐❄️](https://github.com/NixOS/nixpkgs) | | [OCI 📖](https://github.com/opencontainers/runtime-spec), [Distrobox](https://github.com/89luca89/distrobox) | [Fedora Silverblue](https://fedoraproject.org/silverblue) |
 | ✅ | Kernel | [Linux 🌐💣](https://github.com/torvalds/linux) | [Asterinas 🦀](https://github.com/asterinas/asterinas), [Redox OS 🦀](https://gitlab.redox-os.org/redox-os/redox) | [Rust For Linux 🦀](https://rust-for-linux.com/) | |
+| 🚧 | Libc | [Glibc 💣](https://www.gnu.org/software/libc) | [Musl 💣](https://www.musl-libc.org), [Relibc 🦀](https://github.com/redox-os/relibc) | [Gcompat 💣](https://git.adelielinux.org/adelie/gcompat) | |
 | 🚫 | Init System | [Systemd 💣](https://github.com/systemd/systemd) | [Rustysd 🦀](https://github.com/KillingSpark/rustysd) | ⬅️ | |
 | 🚧 | IPC | [Dbus 💣](https://gitlab.freedesktop.org/dbus/dbus) | [Busd 🦀](https://github.com/dbus2/busd) | ⬅️ | |
 | 🚧 | Filesystem | [Ext4 📖💣](https://ext4.wiki.kernel.org/index.php/Main_Page) | [Btrfs 📖💣](https://btrfs.wiki.kernel.org/index.php/Main_Page) | 🆗 | |
