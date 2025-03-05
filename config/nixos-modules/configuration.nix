@@ -10,6 +10,8 @@
       trusted-users = ["root" "noverby"];
       experimental-features = "nix-command flakes";
     };
+    daemonCPUSchedPolicy = "idle";
+    daemonIOSchedClass = "idle";
     extraOptions = ''
       min-free = ${toString (30 * 1024 * 1024 * 1024)}
       max-free = ${toString (40 * 1024 * 1024 * 1024)}
