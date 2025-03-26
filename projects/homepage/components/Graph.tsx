@@ -95,18 +95,6 @@ const nodes = [
     url: "https://signal.me/#eu/BKjgrHvQhqgDPpy9p2VfcfVj6yx0mJtVGOX8GQ_2htxhX7cDxhREVad8oWL1qAMj",
   },
   {
-    id: "Letterboxd",
-    desc: "Letterboxd\nProfile",
-    icon: "letterboxd.png",
-    url: "https://letterboxd.com/niclasoverby",
-  },
-  {
-    id: "Goodreads",
-    desc: "Goodreads\nProfile",
-    icon: "goodreads.png",
-    url: "https://www.goodreads.com/user/show/140895412-niclas-overby",
-  },
-  {
     id: "Spotify",
     desc: "Spotify\nProfile",
     icon: "spotify.png",
@@ -173,10 +161,10 @@ const nodes = [
     url: "https://lemmy.world/u/noverby",
   },
   {
-    id: "Bookwyrm",
-    desc: "Bookwyrm\nProfile",
-    icon: "bookwyrm.png",
-    url: "https://bookwyrm.social/user/niclasoverby",
+    id: "NeoDB",
+    desc: "NeoDB\nProfile",
+    icon: "neodb.png",
+    url: "https://neodb.social/users/niclasoverby",
   },
 ];
 
@@ -198,10 +186,8 @@ const links = [
   { source: "Commerce", target: "Factbird" },
   { source: "Commerce", target: "GitHub" },
   { source: "Immerse", target: "PixelFed" },
-  { source: "Immerse", target: "Letterboxd" },
   { source: "Immerse", target: "Spotify" },
-  { source: "Immerse", target: "Goodreads" },
-  { source: "Immerse", target: "Bookwyrm" },
+  { source: "Immerse", target: "NeoDB" },
   { source: "Immerse", target: "Wikipedia" },
   { source: "Immerse", target: "HappyCow" },
   { source: "Immerse", target: "Lemmy" },
@@ -210,12 +196,11 @@ const links = [
   { source: "Give", target: "Radikale Venstre" },
   { source: "Give", target: "HappyCow" },
   { source: "Improve", target: "Codeberg" },
-  { source: "Improve", target: "Goodreads" },
-  { source: "Improve", target: "Bookwyrm" },
+  { source: "Improve", target: "NeoDB" },
   { source: "PixelFed", target: "Fediverse" },
   { source: "Mastodon", target: "Fediverse" },
   { source: "Lemmy", target: "Fediverse" },
-  { source: "Bookwyrm", target: "Fediverse" },
+  { source: "NeoDB", target: "Fediverse" },
 ];
 
 const graphData: GraphData = {
