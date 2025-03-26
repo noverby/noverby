@@ -29,7 +29,7 @@
 
 ### Migration Compatibility
  * 🆗: Not needed
- * ⬅️: Backward Compatible
+ * ⬅️: Backward compatible
 
 ### Hardware
 | Status | Component | Current | Research & Development | Legacy |
