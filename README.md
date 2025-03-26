@@ -48,7 +48,7 @@
 |:-:|-|-|-|-|
 | 🚧 | Application Binary Interface | [System V ABI 📖](https://wiki.osdev.org/System_V_ABI) | [CrABI 📖](https://github.com/rust-lang/rust/pull/105586) | |
 | 🚧 | IoT Connectivity Standard | | [Matter 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | |
-| 🚧 | Wireless Media | [ChromeCast 🔒](https://en.wikipedia.org/wiki/Chromecast) | [MatterCast 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | [Miracast 📖](https://en.wikipedia.org/wiki/Miracast) |
+| 🚧 | Wireless Media | [Google ChromeCast 🔒](https://en.wikipedia.org/wiki/Chromecast) | [MatterCast 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | [Miracast 📖](https://en.wikipedia.org/wiki/Miracast) |
 | ✅ | USB Interface | [USB4 📖](https://www.usb.org/usb4) | | [Thunderbolt 3 🔒](https://www.intel.com/content/www/us/en/architecture-and-technology/thunderbolt/thunderbolt-technology-general.html) |
 | ✅ | Display Interface | [DisplayPort 📖](https://en.wikipedia.org/wiki/DisplayPort) | | [HDMI 2.1 🔒](https://en.wikipedia.org/wiki/HDMI) |
 | ✅ | Video Codec | [AV1 📖](https://aomedia.org/av1-features/get-started) | | [H.264 🔒](https://en.wikipedia.org/wiki/Advanced_Video_Coding) |
@@ -165,20 +165,20 @@
 | ✅ | DNS | [Adguard DNS 🇪🇺](https://adguard.com) | | 🆗 | [NextDNS 🔒🇺🇸](https://nextdns.io) |
 | ✅ | Search Engine | [StartPage 🔒🇪🇺](https://startpage.com) | [Stract 🦀🇪🇺](https://github.com/StractOrg/stract) | [Search Shortcuts](https://support.mozilla.org/en-US/kb/assign-shortcuts-search-engines) | [Kagi 🔒🇺🇸](https://kagi.com), [DuckDuckGo 🔒🇺🇸](https://duckduckgo.com) |
 | ✅ | LLM | [Ollama 🐹🏡🇪🇺](https://github.com/ollama/ollama), [Mistral 🇪🇺](https://mistral.ai) | | 🆗 | [Claude 🔒🇺🇸](https://claude.ai), [OpenAI 🔒🇺🇸](https://openai.com) |
-| ✅ | Version Control | [Codeberg 🇪🇺](https://codeberg.org) | | [Mirror](https://codeberg.org/Recommendations/Mirror_to_Codeberg) | [GitHub 🔒🇺🇸](https://github.com), [GitLab 🇺🇸](https://gitlab.com) |
+| ✅ | Version Control | [Codeberg 🇪🇺](https://codeberg.org) | | [Mirror](https://codeberg.org/Recommendations/Mirror_to_Codeberg) | [Microsoft GitHub 🔒🇺🇸](https://github.com), [GitLab 🇺🇸](https://gitlab.com) |
 | ✅ | Music |  [Spotify 🇪🇺](https://spotify.com) | | 🆗 | [Deezer 🇪🇺](https://deezer.com) |
 | ✅ | Audiobooks |  [LibreVox 🌐](https://librivox.org/) | | 🆗 | [Amazon Audible 🇺🇸](https://www.audible.com) |
 
 ### Social
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Messaging | [Matrix 🌐](https://matrix.org), [Beeper 🔒🇺🇸](https://www.beeper.com) | | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org), [Messenger 🔒🇺🇸](https://messenger.com), [WhatsApp 🔒🇺🇸](https://whatsapp.com) |
-| ✅ | Events | [Smoke Signal Events 🌐](https://smokesignal.events), [Meetup 🔒🇪🇺](https://meetup.com) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub) | [Facebook Events 🔒🇺🇸](https://facebook.com) |
-| ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub) | [Instagram 🔒🇺🇸](https://instagram.com) |
+| ✅ | Messaging | [Matrix 🌐](https://matrix.org), [Beeper 🔒🇺🇸](https://www.beeper.com) | | [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org), [Meta Messenger 🔒🇺🇸](https://messenger.com), [Meta WhatsApp 🔒🇺🇸](https://whatsapp.com) |
+| ✅ | Events | [Smoke Signal Events 🌐](https://smokesignal.events), [Meetup 🔒🇪🇺](https://meetup.com) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub) | [Meta Facebook Events 🔒🇺🇸](https://facebook.com) |
+| ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub) | [Meta Instagram 🔒🇺🇸](https://instagram.com) |
 | ✅ | Discussion | [Lemmy World 🌐🇪🇺](https://lemmy.world) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub) | [Reddit 🔒🇺🇸](https://reddit.com), [Lemmy.ml 🌐🇪🇺](https://lemmy.world) |
-| ✅ | Microblogging | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [Bluesky ⚖️🇺🇸](https://bsky.app/profile/overby.me) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub), [ATProtocol](https://atproto.com), [X-Cancel](https://xcancel.com) | [X-Twitter 🔒🇺🇸](https://x.com), [Threads 🔒🇺🇸](https://www.threads.net) |
-| ✅ | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Bookwyrm 🐍🇪🇺](https://bookwyrm.social/user/niclasoverby) | [OpenLibrary 🌐📖](https://openlibrary.org) | [Goodreads 🔒🇺🇸](https://www.goodreads.com/niclasoverby) |
-| ✅ | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | | [OpenLibrary 🌐📖](https://openlibrary.org) | [Letterboxd 🔒🇳🇿](https://letterboxd.com/niclasoverby)  |
+| ✅ | Microblogging | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [Bluesky ⚖️🇺🇸](https://bsky.app/profile/overby.me) | | [ActivityPub 🌐📖](https://www.w3.org/TR/activitypub), [ATProtocol](https://atproto.com), [X-Cancel](https://xcancel.com) | [X-Twitter 🔒🇺🇸](https://x.com), [Meta Threads 🔒🇺🇸](https://www.threads.net) |
+| ✅ | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Bookwyrm 🐍🇪🇺](https://bookwyrm.social/user/niclasoverby) | [OpenLibrary 🌐📖](https://openlibrary.org) | [Amazon Goodreads 🔒🇺🇸](https://www.goodreads.com/niclasoverby) |
+| ✅ | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | | [OpenLibrary 🌐📖](https://openlibrary.org) | [Letterboxd 🔒🇳🇿](https://letterboxd.com/niclasoverby) |
 | ✅ | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Spotify 🔒🇪🇺](https://open.spotify.com/user/1148979230) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [OpenLibrary 🌐📖](https://openlibrary.org) | |
 | 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Strava 🔒🇺🇸](https://www.strava.com/athletes/116425039) | [FitTrackee 🐍](https://github.com/SamR1/FitTrackee) | [GPX 📖](https://en.wikipedia.org/wiki/GPS_Exchange_Format) | |
 | ✅ | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [HappyCow 🔒🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | [OpenVegeMap](https://github.com/Rudloff/openvegemap) | 🆗 | |
@@ -188,7 +188,7 @@
 ### Cloud
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| 🚧 | Cloud Provider | [AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com) | | |
+| 🚧 | Cloud Provider | [Amazon AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com) | | |
 | ✅ | Bare Metal Hosting | [Hetzner 🇪🇺](https://hetzner.com) | | | |
 | 🚧 | Static Host | [Vercel 🇺🇸](https://vercel.com) | [Statichost 🇪🇺](https://statichost.eu), [FastFront 🇪🇺](https://www.fastfront.io) | | |
 | ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | | |
