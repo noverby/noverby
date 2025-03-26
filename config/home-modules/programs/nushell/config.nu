@@ -15,6 +15,14 @@ def ggg [] {
   gh pr comment --body 'bors merge'
 }
 
+def gdf [branch: string] {
+  gco $branch
+  gco $"bump-($branch | split row "/" | get 2)"
+  git commit --amend --no-edit
+  gps
+  gpr
+}
+
 def bin64 [] {
   xxd -r -p | base64 -w 0
 }
