@@ -95,13 +95,6 @@ const nodes = [
     url: "https://signal.me/#eu/BKjgrHvQhqgDPpy9p2VfcfVj6yx0mJtVGOX8GQ_2htxhX7cDxhREVad8oWL1qAMj",
   },
   {
-    id: "Freeletics",
-    desc: "Freeletics\nProfile",
-    icon: "freeletics.png",
-    url: "https://www.freeletics.com/en/athlete/139364945",
-  },
-
-  {
     id: "Letterboxd",
     desc: "Letterboxd\nProfile",
     icon: "letterboxd.png",
@@ -168,12 +161,6 @@ const nodes = [
     url: "https://en.wikipedia.org/wiki/User:Niclas_Overby",
   },
   {
-    id: "Strava",
-    desc: "Strava\nProfile",
-    icon: "strava.png",
-    url: "https://www.strava.com/athletes/niclasoverby",
-  },
-  {
     id: "HappyCow",
     desc: "HappyCow\nProfile",
     icon: "happycow.png",
@@ -222,11 +209,9 @@ const links = [
   { source: "Give", target: "Codeberg" },
   { source: "Give", target: "Radikale Venstre" },
   { source: "Give", target: "HappyCow" },
-  { source: "Improve", target: "Freeletics" },
   { source: "Improve", target: "Codeberg" },
   { source: "Improve", target: "Goodreads" },
   { source: "Improve", target: "Bookwyrm" },
-  { source: "Improve", target: "Strava" },
   { source: "PixelFed", target: "Fediverse" },
   { source: "Mastodon", target: "Fediverse" },
   { source: "Lemmy", target: "Fediverse" },
