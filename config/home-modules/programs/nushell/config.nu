@@ -17,10 +17,16 @@ def ggg [] {
 
 def gdf [branch: string] {
   gco $branch
-  gco $"bump-($branch | split row "/" | get 2)"
+  let elems = $branch | split row "/"
+  if ($elems | length) == 4 {
+    gco $"bump-($elems | last 2 | str join "-")"
+
+  } else if ($elems | length) == 3 {
+    gco $"bump-($elems | get 2)"
+  }
   git commit --amend --no-edit
-  gps
-  gpr
+  git push
+  gh pr create --fill
 }
 
 def bin64 [] {
