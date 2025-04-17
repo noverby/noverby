@@ -72,11 +72,11 @@
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Shell | [Nushell 🦀](https://github.com/nushell/nushell) | | [Rusty Bash 🦀](https://github.com/shellgei/rusty_bash) | [Bash 💣](https://git.savannah.gnu.org/cgit/bash.git) |
-| ✅ | Core Utilities | [Nushell Builtins 🦀](https://github.com/nushell/nushell) | | [uutils 🦀](https://github.com/uutils/coreutils) | [Coreutils 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
-| ✅ | Directory Usage | [Dust 🦀](https://github.com/bootandy/dust) | | [uutils 🦀](https://github.com/uutils/coreutils) | [Coreutils 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Core Utilities | [Nushell Builtins 🦀](https://github.com/nushell/nushell) | | [Uutils 🦀](https://github.com/uutils/coreutils) | [Coreutils 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Directory Usage | [Dust 🦀](https://github.com/bootandy/dust) | | [Uutils 🦀](https://github.com/uutils/coreutils) | [Coreutils 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Superuser | [Sudo-rs 🦀](https://github.com/memorysafety/sudo-rs) | | ⬅️ | [Sudo 💣](https://www.sudo.ws/repos/sudo) |
 | ✅ | Fortune | [Fortune-kind 🦀](https://github.com/cafkafk/fortune-kind) | | ⬅️ | [Fortune-mod 💣](https://github.com/shlomif/fortune-mod) |
-| ✅ | Find Files | [Fd 🦀](https://github.com/sharkdp/fd) | | 🆗 | [Findutils 💣](https://git.savannah.gnu.org/cgit/findutils.git) |
+| ✅ | Find Files | [Fd 🦀](https://github.com/sharkdp/fd) | | [Uutils Findutils 🦀](https://github.com/uutils/findutils) | [Findutils 💣](https://git.savannah.gnu.org/cgit/findutils.git) |
 | ✅ | Find Patterns | [Ripgrep 🦀](https://github.com/BurntSushi/ripgrep) | | 🆗 | [Grep 💣](https://git.savannah.gnu.org/cgit/grep.git) |
 | ✅ | Terminal Workspace | [Zellij 🦀](https://github.com/zellij-org/zellij) | | 🆗 | [Tmux 💣](https://github.com/tmux/tmux) |
 | ✅ | Parallel Processing | [Rust Parallel 🦀](https://github.com/aaronriekenberg/rust-parallel) | | 🆗 | [GNU Parallel 💣](https://git.savannah.gnu.org/cgit/parallel.git) |
