@@ -94,7 +94,7 @@
       line_height = "standard";
       font_size = 11;
       toolbar = {
-        breadcrumbs = false;
+        breadcrumbs = true;
       };
     };
     autosave = {
