@@ -316,7 +316,8 @@
       "ctrl-j": "editor::MoveLineDown",
       "shift-u": "editor::Redo",
       "ctrl-c": "editor::ToggleComments",
-      "d": "editor::Delete"
+      "d": "editor::Cut",
+      "shift-c": "editor::AddSelectionBelow"
     }
   },
   {
