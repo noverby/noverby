@@ -137,6 +137,7 @@ in {
       enableNushellIntegration = true;
       enableBashIntegration = true;
       nix-direnv.enable = true;
+      silent = true;
     };
 
     zoxide = {
