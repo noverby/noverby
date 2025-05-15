@@ -177,9 +177,7 @@ in {
 
     firefox = {
       enable = true;
-      package = pkgs.firefox.override {
-        cfg.enableGnomeExtensions = true;
-      };
+      package = pkgs.zen-browser;
       nativeMessagingHosts = [pkgs.firefoxpwa];
       profiles = rec {
         default = {
