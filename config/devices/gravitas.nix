@@ -8,6 +8,7 @@
     stateVersion = "24.05";
   };
   modules = with inputs; [
+    determinate.nixosModules.default
     nixos-hardware
     .nixosModules
     .framework-13th-gen-intel

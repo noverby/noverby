@@ -6,6 +6,10 @@
       url = "file+file:///dev/null";
       flake = false;
     };
+    determinate = {
+      url = "https://flakehub.com/f/DeterminateSystems/determinate/0.1";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     nixpkgs.follows = "nixos-cosmic/nixpkgs";
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
     home-manager = {
