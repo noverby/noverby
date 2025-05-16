@@ -9,6 +9,7 @@
       max-jobs = 100;
       trusted-users = ["root" "noverby"];
       experimental-features = "nix-command flakes";
+      lazy-trees = true;
     };
     daemonCPUSchedPolicy = "idle";
     daemonIOSchedClass = "idle";
