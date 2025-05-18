@@ -1,0 +1,51 @@
+<!doctype html>
+
+<script type="module">
+  const env = {
+    __cxa_atexit: (func, obj, dso) => {
+      console.log("__cxa_atexit called");
+      return 0;
+    },
+    KGEN_CompilerRT_AlignedAlloc: (align, size) => {
+      console.log("KGEN_CompilerRT_AlignedAlloc called with", { sizeNum });
+      return 1;
+    },
+    KGEN_CompilerRT_AlignedFree: (ptr) => {
+      console.log("Free called for pointer:", ptr);
+      return 1;
+    },
+    write: (fd, ptr, len) => {
+      console.log("write called with:", { fd, ptr, len });
+      return 1;
+    },
+    dup: (fd) => {
+      console.log("dup called with fd:", fd);
+      return 1;
+    },
+    fdopen: (fd, modePtr) => {
+      console.log("fdopen called with:", { fd, modePtr });
+      return 1;
+    },
+    fflush: (stream) => {
+      console.log("fflush called with stream:", stream);
+      return 1;
+    },
+    fclose: (stream) => {
+      console.log("fclose called with stream:", stream);
+      return 1;
+    },
+  };
+
+  async function init() {
+    const response = await fetch("build/out.wasm");
+    const bytes = await response.arrayBuffer();
+    const results = await WebAssembly.instantiate(bytes, {
+      env,
+    });
+    const instance = results.instance;
+
+    const result = instance.exports.add(2n, 2n);
+    console.log("Result:", result);
+  }
+  init();
+</script>

@@ -71,6 +71,7 @@
   } @ inputs:
     flakelight ./. {
       inherit inputs;
+      nixpkgs.config = {allowUnfree = true;};
       nixDir = ./config;
       nixDirAliases = {
         nixosConfigurations = ["devices"];
