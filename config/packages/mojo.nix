@@ -7,6 +7,7 @@
   zstd,
   libedit,
   zlib,
+  curl,
 }:
 stdenv.mkDerivation rec {
   pname = "mojo";
@@ -39,6 +40,7 @@ stdenv.mkDerivation rec {
     stdenv.cc.cc.lib
     libedit
     zlib
+    curl
   ];
 
   unpackPhase = ''
