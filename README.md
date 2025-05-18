@@ -1,9 +1,10 @@
 # Personal Monorepo
 
 ## Projects
-* [Nix Config](https://github.com/noverby/noverby/tree/master/config)
-* [Homepage](https://github.com/noverby/noverby/tree/master/projects/homepage)
-* [Wiki](https://github.com/noverby/noverby/tree/master/projects/wiki)
+* [Nix Config](https://codeberg.org/noverby/noverby/src/branch/main/config)
+* [Homepage](https://codeberg.org/noverby/noverby/src/branch/main/projects/homepage)
+* [Wiki](https://codeberg.org/noverby/noverby/src/branch/main/projects/wiki)
+* [Mojo Wasm](https://codeberg.org/noverby/noverby/src/branch/main/projects/mojo-wasm)
 
 ## Stack
 ### State
