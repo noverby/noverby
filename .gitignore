@@ -2,3 +2,8 @@
 .direnv
 result
 tmp
+build
+
+*.ll
+*.o
+*.wasm

@@ -1,0 +1,8 @@
+build:
+  mkdir -p build
+  mojo build --emit-llvm --emit shared-lib src/main.mojo > build/out.ll
+  llc --mtriple=wasm32-wasi -filetype=obj build/out.ll
+  wasm-ld --no-entry --export-all --allow-undefined -o build/out.wasm build/out.o
+
+server:
+  python server.py
