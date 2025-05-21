@@ -1,30 +1,20 @@
 {
   stdenv,
   fetchurl,
-  lib,
-  cacert,
 }:
-stdenv.mkDerivation {
+stdenv.mkDerivation rec {
   pname = "magic";
-  version = "latest";
+  version = "0.7.2";
 
   src = fetchurl {
-    url = "https://magic.modular.com";
-    hash = "sha256-HSoTz6MqQpw9MEoiXGsPC88Qpvpa1g/VGW//uOEPX+c=";
+    url = "https://dl.modular.com/public/magic/raw/versions/${version}/magic-x86_64-unknown-linux-musl";
+    hash = "sha256-L+zh1XH9RD+XqcxC1A9V9a09ZN6bda84e4khLimN7NU=";
   };
   dontUnpack = true;
 
-  buildInputs = [cacert];
-
-  outputHashMode = "recursive";
-  outputHash = "sha256-X8w9bpRiyvAAeHa1gXhFxpBOF/wqHn8CxBTdlv0bNPY";
-
   installPhase = ''
     mkdir -p $out/bin
-
-    export HOME=.
-    bash $src
-
-    cp .modular/bin/magic $out/bin
+    cp $src $out/bin/magic
+    chmod +x $out/bin/magic
   '';
 }
