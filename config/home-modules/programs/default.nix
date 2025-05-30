@@ -105,6 +105,7 @@ in {
         scrollback_editor = "zed-uf";
         session_serialization = false;
         pane_frames = false;
+        show_startup_tips = false;
         env = {
           TERM = "tmux-256color";
         };
