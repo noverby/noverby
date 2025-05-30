@@ -95,10 +95,11 @@ stdenv.mkDerivation rec {
     test_executor_path = $out/lib/mojo-test-executor
     EOF
 
-    # Create wrapper that uses generated modular.cfg
+    # Create mojo wrapper that uses generated modular.cfg
     mkdir -p $out/bin
     cat > $out/bin/.mojo-wrapped << EOF
     #!${stdenv.shell}
+    mkdir -p /tmp/crashdb
     export MODULAR_HOME=$out/etc/modular
     exec $out/bin/mojo-unwrapped "\$@"
     EOF
@@ -106,17 +107,18 @@ stdenv.mkDerivation rec {
     mv $out/bin/mojo $out/bin/mojo-unwrapped
     mv $out/bin/.mojo-wrapped $out/bin/mojo
 
-    # Create wrapper for mojo-lsp-server
+    # Create mojo-lsp-server wrapper that uses generated modular.cfg
     mv $out/bin/mojo-lsp-server $out/bin/mojo-lsp-server-unwrapped
     cat > $out/bin/mojo-lsp-server << EOF
     #!${stdenv.shell}
+    mkdir -p /tmp/crashdb
     export MODULAR_HOME=$out/etc/modular
     exec $out/bin/mojo-lsp-server-unwrapped -I $out/lib/mojo "\$@"
     EOF
     chmod +x $out/bin/mojo-lsp-server
 
     # /etc/modular/crashdb needs to be mutable
-    ln -s /tmp $out/etc/modular/crashdb
+    ln -s /tmp/crashdb $out/etc/modular/crashdb
   '';
 
   doInstallCheck = true;
