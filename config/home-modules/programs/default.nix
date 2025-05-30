@@ -183,9 +183,12 @@ in {
       profiles = rec {
         default = {
           isDefault = true;
-          userChrome = builtins.readFile ./firefox/userChrome.css;
           settings = {
-            "toolkit.legacyUserProfileCustomizations.stylesheets" = true;
+            "browser.ml.enable" = true;
+            "browser.ml.chat.enabled" = true;
+            "browser.ml.chat.shortcuts" = true;
+            "browser.ml.chat.shortcuts.custom" = true;
+            "browser.ml.chat.sidebar" = true;
           };
         };
         dev =
