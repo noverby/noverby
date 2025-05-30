@@ -25,13 +25,13 @@
     }
 
     try {
-      if (ptr + Number(len) > memory.buffer.byteLength) {
+      if (ptr + len > memory.buffer.byteLength) {
         console.error("Write would exceed memory bounds");
         return -1;
       }
 
       // Read data from memory
-      const data = new Uint8Array(memory.buffer, ptr, Number(len));
+      const data = new Uint8Array(memory.buffer, Number(ptr), Number(len));
 
       // Handle standard file descriptors
       if (fd === 1n) {
@@ -60,14 +60,11 @@
   };
 
   const KGEN_CompilerRT_AlignedAlloc = (align, size) => {
-    const alignNum = Number(align);
-    const sizeNum = Number(size);
-
     // Allocate the memory
     const ptr = heapPointer;
-    heapPointer += sizeNum;
+    heapPointer += size;
 
-    console.log("Allocated", sizeNum, "bytes at", ptr, "aligned to", alignNum);
+    console.log("Allocated", size, "bytes at", ptr, "aligned to", align);
     return ptr;
   };
 
@@ -81,7 +78,7 @@
       return 1;
     }
 
-    return 1; // Success
+    return 1;
   };
 
   const env = {
@@ -119,29 +116,29 @@
 
   const writeStringToMemory = (str) => {
     const bytes = new TextEncoder().encode(str);
-    const len = bytes.length;
+    const len = BigInt(bytes.length + 1);
 
     // Allocate memory for the string plus null terminator
-    const ptr = KGEN_CompilerRT_AlignedAlloc(1, len + 1);
+    const ptr = KGEN_CompilerRT_AlignedAlloc(1, len);
     if (!ptr) throw new Error("Memory allocation failed");
 
     // Write the string to memory
     new Uint8Array(memory.buffer).set(bytes, Number(ptr));
 
     // Add null terminator
-    new Uint8Array(memory.buffer)[Number(ptr) + len] = 0;
+    new Uint8Array(memory.buffer)[Number(ptr + len)] = 0;
 
-    return { ptr: Number(ptr), len };
+    return { ptr, len };
   };
 
   const readStringFromMemory = ({ ptr, len }) => {
     // Bounds check
-    if (Number(ptr) + len > memory.buffer.byteLength) {
+    if (Number(ptr + len) > memory.buffer.byteLength) {
       throw new Error("Read would exceed memory bounds");
     }
 
     // Read bytes from memory
-    const bytes = new Uint8Array(memory.buffer, Number(ptr), len);
+    const bytes = new Uint8Array(memory.buffer, Number(ptr), Number(len - 1n));
 
     // Decode to string
     return new TextDecoder().decode(bytes);
@@ -158,10 +155,15 @@
     initializeEnv(instance);
 
     // Test assertions
-    const assert = console.assert;
+    const assert = (exp1, exp2) =>
+      exp1 === exp2
+        ? undefined
+        : console.log(
+            `assert: '${exp1}' [${String(exp1).length}] not equal '${exp2}' [${String(exp2).length}]`,
+          );
     const fns = instance.exports;
     const alloc = KGEN_CompilerRT_AlignedAlloc;
-    const strLen = (str) => new TextEncoder().encode(str).length + 1;
+    const strLen = (str) => BigInt(new TextEncoder().encode(str).length + 1);
 
     // Add
     () => {
@@ -192,24 +194,23 @@
     () => {
       const inputString = writeStringToMemory("print-input-string");
       fns.print_input_string(inputString.ptr);
-    }
+    };
 
     // Return
     () => {
       const expectedString = "return-static-string";
       const len = strLen(expectedString);
       const ptr = alloc(1, len);
-      fns.return_static_string(Number(ptr));
-      assert(readStringFromMemory({ ptr, len }) === expectedString);
+      fns.return_static_string(ptr);
+      assert(readStringFromMemory({ ptr, len }), expectedString);
     };
-    () => {
+    {
       const expectedString = "return-input-string";
       const input = writeStringToMemory(expectedString);
       const output = writeStringToMemory("AAAAAAAAAAAAAAAAAAA");
-      fns.return_input_string(Number(input.ptr), Number(output.ptr));
-      console.log(readStringFromMemory(input));
-      console.log(readStringFromMemory(output));
-    };
+      fns.return_input_string(input.ptr, output.ptr);
+      assert(readStringFromMemory(output), expectedString);
+    }
 
     // Set
     () => {
@@ -221,7 +222,7 @@
       const newString = writeStringToMemory(expectedNewString);
       fns.set_global_string();
       console.log(fns.get_global_string(newString.ptr), expectedNewString);
-    }
+    };
   }
   try {
     init();
