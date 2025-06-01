@@ -21,7 +21,7 @@
     nixos-cosmic.nixosModules.default
     home-manager.nixosModules.home-manager
     self.nixosModules.framework
-    self.nixosModules.packages
+    self.nixosModules.gnome
     self.nixosModules.configuration
     self.nixosModules.home-manager
   ];

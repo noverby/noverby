@@ -137,10 +137,6 @@
     extraGroups = ["networkmanager" "wheel" "docker" "libvirtd" "wireshark"];
   };
 
-  # Security
-  services.gnome.gnome-keyring.enable = true;
-  programs.seahorse.enable = true;
-
   # Services
   services = {
     resolved = {
