@@ -67,7 +67,7 @@
 | 🚧 | IPC | [Dbus 💣](https://gitlab.freedesktop.org/dbus/dbus) | [Busd 🦀](https://github.com/dbus2/busd) | ⬅️ | |
 | 🚧 | Filesystem | [Ext4 📖💣](https://ext4.wiki.kernel.org/index.php/Main_Page) | [Btrfs 📖💣](https://btrfs.wiki.kernel.org/index.php/Main_Page) | 🆗 | |
 | 🚧 | Config Language | [Nix 🌐💣](https://github.com/NixOS/nix) | [Nickel 🦀](https://github.com/tweag/nickel) | [Organist](https://github.com/nickel-lang/organist) | |
-| 🚧 | Package Manager | [Nix 🌐💣](https://github.com/NixOS/nix) | [Tvix 🦀](https://github.com/tvlfyi/tvix) | ⬅️ | |
+| 🚧 | Package Manager | [Nix 🌐💣](https://github.com/NixOS/nix) | [Snix 🦀](https://git.snix.dev/snix/snix) | ⬅️ | |
 | 🚧 | Config Manager | [Home Manager 🌐](https://github.com/nix-community/home-manager) | [Organist](https://github.com/nickel-lang/organist) | | |
 
 ### CLI Tools
