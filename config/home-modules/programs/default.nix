@@ -1,7 +1,6 @@
 {
   pkgs,
   username,
-  homeDirectory,
   ...
 }: let
   shellAliases = {
