@@ -86,6 +86,7 @@
     # Nix dev
     alejandra
     nil
+    nixd
     nix-tree
     statix
     manix
