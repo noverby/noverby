@@ -56,7 +56,6 @@ in {
     wezterm = {
       enable = true;
       extraConfig = builtins.readFile ./wezterm/config.lua;
-      enableBashIntegration = true;
     };
 
     nushell = {
@@ -67,8 +66,6 @@ in {
 
     carapace = {
       enable = true;
-      enableNushellIntegration = true;
-      enableBashIntegration = true;
     };
 
     bash = {
@@ -113,8 +110,6 @@ in {
 
     starship = {
       enable = true;
-      enableNushellIntegration = true;
-      enableBashIntegration = true;
       settings = {
         command_timeout = 10000;
         time = {
@@ -134,16 +129,12 @@ in {
 
     direnv = {
       enable = true;
-      enableNushellIntegration = true;
-      enableBashIntegration = true;
       nix-direnv.enable = true;
       silent = true;
     };
 
     zoxide = {
       enable = true;
-      enableNushellIntegration = true;
-      enableBashIntegration = true;
     };
 
     nix-index = {
@@ -152,8 +143,6 @@ in {
 
     atuin = {
       enable = true;
-      enableNushellIntegration = true;
-      enableBashIntegration = true;
     };
 
     ssh = {
