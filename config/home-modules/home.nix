@@ -8,6 +8,10 @@
   home = {
     inherit username homeDirectory stateVersion;
     enableDebugInfo = true;
+    shell = {
+      enableBashIntegration = true;
+      enableNushellIntegration = true;
+    };
     sessionVariables = {
       EDITOR = "vi";
       VISUAL = "vi";
