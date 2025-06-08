@@ -5,14 +5,19 @@ const nextConfig = {
     {
       source: "/.well-known/matrix/server",
       destination: "https://matrix.overby.me/.well-known/matrix/server",
-      statusCode: 301
+      permanent: true,
     },
     {
       source: "/.well-known/matrix/client",
       destination: "https://matrix.overby.me/.well-known/matrix/client",
-      statusCode: 301
+      permanent: true,
     },
-  ]
-}
+    {
+      source: "/.well-known/matrix/support",
+      destination: "https://matrix.overby.me/.well-known/matrix/support",
+      permanent: true,
+    },
+  ],
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;
