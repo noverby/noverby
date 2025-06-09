@@ -86,7 +86,7 @@ const nodes = [
     id: "Matrix",
     desc: "Matrix\nProfile",
     icon: "matrix.png",
-    url: "https://matrix.to/#/@niclasoverby:beeper.com",
+    url: "https://matrix.to/#/@niclas:overby.me",
   },
   {
     id: "Signal",
