@@ -54,21 +54,13 @@
       url = "github:lilyinstarlight/nixos-cosmic";
       inputs.flake-compat.follows = "flake-compat";
     };
-    nix-alien = {
-      url = "github:thiagokokada/nix-alien";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     zen-browser = {
       url = "github:0xc000022070/zen-browser-flake";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = {
-    flakelight,
-    zen-browser,
-    ...
-  } @ inputs:
+  outputs = {flakelight, ...} @ inputs:
     flakelight ./. {
       inherit inputs;
       nixpkgs.config = {allowUnfree = true;};
@@ -79,8 +71,5 @@
         homeModules = ["modules/home-manager"];
         devShells = ["shells"];
       };
-      withOverlays = [
-        (inputs.nix-alien.overlays.default)
-      ];
     };
 }
