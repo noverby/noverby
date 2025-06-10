@@ -1,6 +1,5 @@
 {
   pkgs,
-  src,
   inputs,
   stateVersion,
   ...
