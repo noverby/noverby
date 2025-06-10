@@ -76,11 +76,12 @@
     flakelight ./. {
       inherit inputs;
       nixpkgs.config = {allowUnfree = true;};
-      nixDir = ./config;
+      nixDir = ./.;
       nixDirAliases = {
         nixosConfigurations = ["devices"];
         nixosModules = ["nixos-modules"];
         homeModules = ["home-modules"];
+        devShells = ["shells"];
       };
       withOverlays = [
         (inputs.nix-alien.overlays.default)
