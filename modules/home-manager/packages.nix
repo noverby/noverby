@@ -8,7 +8,6 @@
     # General apps
     genact
     #bitwarden
-    zen-browser
     slack
     fragments
     evince

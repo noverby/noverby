@@ -164,9 +164,8 @@ in {
       };
     };
 
-    firefox = {
+    zen-browser = {
       enable = true;
-      package = pkgs.zen-browser;
       nativeMessagingHosts = [pkgs.firefoxpwa];
       profiles = rec {
         default = {
