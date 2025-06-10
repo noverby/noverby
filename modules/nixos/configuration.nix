@@ -98,7 +98,6 @@
     systemPackages = with pkgs; [
       helix
       powertop
-      #nix-alien
       tailspin
 
       # Cosmic
