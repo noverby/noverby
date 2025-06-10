@@ -81,10 +81,6 @@
       };
       withOverlays = [
         (inputs.nix-alien.overlays.default)
-        (_: prev: {
-          zen-browser = zen-browser.packages."${prev.system}".default;
-          tailspin = prev.tailspin.overrideAttrs (old: {doCheck = false;});
-        })
       ];
     };
 }
