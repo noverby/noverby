@@ -2,8 +2,8 @@
 
 ## Overview
 ### Config
-* [Home Manager Modules](https://codeberg.org/noverby/noverby/src/branch/main/home-modules)
-* [NixOS Modules](https://codeberg.org/noverby/noverby/src/branch/main/nixos-modules)
+* [Home Manager Modules](https://codeberg.org/noverby/noverby/src/branch/main/modules/home-manager)
+* [NixOS Modules](https://codeberg.org/noverby/noverby/src/branch/main/modules/nixos)
 * [NixOS Devices](https://codeberg.org/noverby/noverby/src/branch/main/devices)
 * [Devenv Shells](https://codeberg.org/noverby/noverby/src/branch/main/shells)
 
