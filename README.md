@@ -1,7 +1,17 @@
 # Personal Monorepo
 
-## Projects
-* [Nix Config](https://codeberg.org/noverby/noverby/src/branch/main/config)
+## Overview
+### Config
+* [Home Manager Modules](https://codeberg.org/noverby/noverby/src/branch/main/home-modules)
+* [NixOS Modules](https://codeberg.org/noverby/noverby/src/branch/main/nixos-modules)
+* [NixOS Devices](https://codeberg.org/noverby/noverby/src/branch/main/devices)
+* [Devenv Shells](https://codeberg.org/noverby/noverby/src/branch/main/shells)
+
+### Packages
+* [Magic Package Manager](https://codeberg.org/noverby/noverby/src/branch/main/packages/magic.nix)
+* [Mojo Toolchain](https://codeberg.org/noverby/noverby/src/branch/main/packages/mojo.nix)
+
+### Projects
 * [Homepage](https://codeberg.org/noverby/noverby/src/branch/main/projects/homepage)
 * [Wiki](https://codeberg.org/noverby/noverby/src/branch/main/projects/wiki)
 * [Mojo Wasm](https://codeberg.org/noverby/noverby/src/branch/main/projects/mojo-wasm)
@@ -128,7 +138,7 @@
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Design System | [Material You 🔒](https://m3.material.io) | | 🆗 | [Material Design 2 🔒](https://m2.material.io) |
-| 🚧 | GUI Toolkit | WIP Toolkit 🔥 | [Dixous 🦀](https://github.com/dioxusLabs/dioxus) | [Web Component 📖](https://kagi.com/search?q=Web+Components) | |
+| 🚧 | GUI Toolkit | WIP Toolkit 🔥 | [Dixous 🦀](https://github.com/dioxusLabs/dioxus) | [Web Component 📖](https://www.webcomponents.org/) | |
 | ✅ | Desktop Environment | [Cosmic Epoch 🦀](https://github.com/pop-os/cosmic-epoch) | | 🆗 | [Gnome Shell 💣](https://gitlab.gnome.org/GNOME/gnome-shell) |
 | ✅ | File Manager | [Cosmic Files 🦀](https://github.com/pop-os/cosmic-files) | | 🆗 | [GNOME Files 💣](https://gitlab.gnome.org/GNOME/nautilus) |
 | ✅ | Web Browser | [Zen Browser 💣🦀](https://zen-browser.app) | [Verso 🦀](https://github.com/versotile-org/verso) | [Chrome Extension API 🔒](https://developer.chrome.com/docs/extensions/reference) | [Firefox 💣🦀](https://github.com/mozilla/gecko-dev), [Unbraved Brave 💣🦀](https://github.com/MulesGaming/brave-debullshitinator) |
