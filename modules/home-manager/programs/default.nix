@@ -32,7 +32,7 @@
     gbc = "gh pr comment --body 'bors cancel'";
     gpr = "gh pr create --fill";
     du = "dust";
-    cat = "bat";
+    cat = "prettybat";
     find = "fd";
     grep = "rg";
     man = "tldr";
@@ -49,9 +49,13 @@ in {
   programs = {
     home-manager.enable = true;
     gh.enable = true;
-    bat.enable = true;
     tealdeer.enable = true;
     bottom.enable = true;
+    
+    bat = {
+      enable = true;
+      extraPackages = with pkgs.bat-extras; [ prettybat batgrep batdiff ];
+    };
 
     wezterm = {
       enable = true;
