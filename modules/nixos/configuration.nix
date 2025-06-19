@@ -96,7 +96,7 @@
   # Packages
   environment = {
     systemPackages = with pkgs; [
-      helix
+      evil-helix
       powertop
       tailspin
 
