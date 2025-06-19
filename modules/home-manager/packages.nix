@@ -53,7 +53,6 @@
     usbutils
 
     # File tools
-    helix
     file
     unixtools.xxd
     fd
