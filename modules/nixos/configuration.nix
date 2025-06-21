@@ -103,25 +103,11 @@
       evil-helix
       powertop
       tailspin
-
-      # Cosmic
-      gcr_4
-      cosmic-ext-applet-emoji-selector
-      cosmic-ext-applet-external-monitor-brightness
-      cosmic-ext-calculator
-      examine
-      forecast
-      tasks
-      cosmic-ext-tweaks
-      cosmic-player
-      cosmic-reader
-      stellarshot
     ];
     sessionVariables = {
       PAGER = "tspin";
       SYSTEMD_PAGERSECURE = "1";
       SSH_AUTH_SOCK = "$XDG_RUNTIME_DIR/gcr/ssh";
-      COSMIC_DATA_CONTROL_ENABLED = 1;
       NIXOS_OZONE_WL = "1";
     };
   };
@@ -203,11 +189,5 @@
       };
       wantedBy = ["multi-user.target"];
     };
-  };
-
-  # Cosmic
-  services = {
-    desktopManager.cosmic.enable = true;
-    displayManager.cosmic-greeter.enable = true;
   };
 }
