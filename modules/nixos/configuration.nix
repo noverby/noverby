@@ -107,7 +107,6 @@
     sessionVariables = {
       PAGER = "tspin";
       SYSTEMD_PAGERSECURE = "1";
-      SSH_AUTH_SOCK = "$XDG_RUNTIME_DIR/gcr/ssh";
       NIXOS_OZONE_WL = "1";
     };
   };
