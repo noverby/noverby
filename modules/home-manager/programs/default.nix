@@ -30,7 +30,7 @@
     gundo = "git reset HEAD~1 --soft";
     gbm = "gh pr comment --body 'bors merge'";
     gbc = "gh pr comment --body 'bors cancel'";
-    gpr = "gh pr create --fill";
+    gpr = "gh pr create --draft --fill";
     du = "dust";
     cat = "prettybat";
     find = "fd";
