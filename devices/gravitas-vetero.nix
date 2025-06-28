@@ -16,7 +16,7 @@
     }
     nixos-cosmic.nixosModules.default
     home-manager.nixosModules.home-manager
-    self.nixosModules.dell-xps-9320.nix
+    self.nixosModules.dell-xps-9320
     self.nixosModules.cosmic
     self.nixosModules.gnome
     self.nixosModules.configuration
