@@ -110,7 +110,7 @@ const nodes = [
     id: "Codeberg",
     desc: "Codeberg\nProfile",
     icon: "codeberg.png",
-    url: "https://codeberg.com/noverby",
+    url: "https://codeberg.org/noverby",
   },
   {
     id: "Mastodon",
