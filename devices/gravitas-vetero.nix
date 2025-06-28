@@ -5,12 +5,9 @@
 }: {
   specialArgs = {
     inherit src inputs;
-    stateVersion = "24.05";
+    stateVersion = "25.05";
   };
   modules = with inputs; [
-    nixos-hardware
-    .nixosModules
-    .framework-13th-gen-intel
     {
       nix.settings = {
         substituters = ["https://cosmic.cachix.org/"];
@@ -19,7 +16,7 @@
     }
     nixos-cosmic.nixosModules.default
     home-manager.nixosModules.home-manager
-    self.nixosModules.framework-13th-gen-intel
+    self.nixosModules.dell-xps-9320.nix
     self.nixosModules.cosmic
     self.nixosModules.gnome
     self.nixosModules.configuration
