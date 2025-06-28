@@ -11,13 +11,6 @@
     nixos-hardware
     .nixosModules
     .framework-13th-gen-intel
-    {
-      nix.settings = {
-        substituters = ["https://cosmic.cachix.org/"];
-        trusted-public-keys = ["cosmic.cachix.org-1:Dya9IyXD4xdBehWjrkPv6rtxpmMdRel02smYzA85dPE="];
-      };
-    }
-    nixos-cosmic.nixosModules.default
     home-manager.nixosModules.home-manager
     self.nixosModules.framework-13th-gen-intel
     self.nixosModules.cosmic
