@@ -16,9 +16,7 @@
   "buffer_font_family": "Cascadia Code NF",
   "buffer_font_size": 12,
   "file_types": {
-    "Shell Script": [
-      ".envrc"
-    ]
+    "Shell Script": [".envrc"]
   },
   "indent_guides": {
     "coloring": "indent_aware",
@@ -28,10 +26,12 @@
     "enabled": true
   },
   "languages": {
+    "Git Commit":{
+       "soft_wrap":"none",
+       "preferred_line_length":null
+    },
     "JavaScript": {
-      "language_servers": [
-        "vtsls"
-      ]
+      "language_servers": ["vtsls"]
     },
     "Nix": {
       "format_on_save": {
@@ -40,16 +40,10 @@
           "command": "alejandra"
         }
       },
-      "language_servers": [
-        "nil",
-        "!nix-ls",
-        "..."
-      ]
+      "language_servers": ["nil", "!nix-ls", "..."]
     },
     "TSX": {
-      "language_servers": [
-        "vtsls"
-      ]
+      "language_servers": ["vtsls"]
     },
     "TypeScript": {
       "formatter": {
@@ -57,9 +51,7 @@
           "name": "biome"
         }
       },
-      "language_servers": [
-        "vtsls"
-      ]
+      "language_servers": ["vtsls"]
     }
   },
   "load_direnv": "direct",
