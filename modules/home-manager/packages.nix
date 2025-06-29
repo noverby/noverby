@@ -25,6 +25,7 @@
     wireplumber
     gnome-disk-utility
     firefoxpwa
+    cheese
 
     # System tools
     sudo-rs
