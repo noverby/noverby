@@ -138,6 +138,7 @@
       enable = true;
       drivers = with pkgs; [hplip hplipWithPlugin];
     };
+    fprintd.enable = true;
     openssh.enable = true;
     flatpak.enable = true;
     fwupd.enable = true;
