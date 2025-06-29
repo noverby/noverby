@@ -42,12 +42,7 @@
           "application/x-python"
         ];
       in
-        {
-          browser = "zen.desktop";
-          "x-scheme-handler/http" = "zen.desktop";
-          "x-scheme-handler/https" = "zen.desktop";
-        }
-        // builtins.listToAttrs (map (mime: {
+        builtins.listToAttrs (map (mime: {
             name = mime;
             value = "dev.zed.Zed.desktop";
           })
