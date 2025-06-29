@@ -1,5 +1,11 @@
-nixos-build:
+gravitas-build:
     nixos-rebuild build --flake .#gravitas --print-build-logs
 
-nixos-switch:
+gravitas-switch:
     sudo nixos-rebuild switch --flake .#gravitas --print-build-logs
+
+gravitas-vetero-build:
+    nixos-rebuild build --flake .#gravitas-vetero --print-build-logs
+
+gravitas-vetero-switch:
+    sudo nixos-rebuild switch --flake .#gravitas-vetero --print-build-logs
