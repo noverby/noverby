@@ -2,6 +2,7 @@ const million = require("million/compiler");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: "export",
   // ...
   webpack: (config) => {
     // eslint-disable-next-line functional/immutable-data
