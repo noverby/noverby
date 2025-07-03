@@ -8,12 +8,7 @@ const P404 = () => {
     router.push(router.asPath);
   }, [router.asPath]);
 
-  return (
-    <>
-      <p>404: Path not found!</p>
-      <p>This should not happen...</p>
-    </>
-  );
+  return <></>;
 };
 
 export default P404;
