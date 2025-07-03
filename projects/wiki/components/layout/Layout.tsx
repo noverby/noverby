@@ -7,7 +7,12 @@ import {
   MobileMenu,
   AppDrawer,
 } from 'comps';
-import { useAuthenticationStatus } from '@nhost/nextjs';
+import {
+  useAuthenticationStatus,
+  useUserDisplayName,
+  useUserEmail,
+  useUserId,
+} from '@nhost/nextjs';
 import { useRouter } from 'next/router';
 import { Container, Box, useMediaQuery } from '@mui/material';
 import { checkVersion } from 'core/util';
@@ -23,6 +28,9 @@ const Layout = ({ children }: { children: JSX.Element }) => {
   const path = usePath();
   const [version, setVersion] = useState<string | undefined>();
   const { isLoading } = useAuthenticationStatus();
+  const userEmail = useUserEmail();
+  const userName = useUserDisplayName();
+  const userId = useUserId();
   const largeScreen = useMediaQuery('(min-width:1200px)');
   const { enqueueSnackbar } = useSnackbar();
 
@@ -32,6 +40,16 @@ const Layout = ({ children }: { children: JSX.Element }) => {
       setShowing(true);
     });
   }, []);
+
+  useEffect(() => {
+    const registerUser = async () => {
+      const { Bugfender } = await import('@bugfender/sdk');
+      Bugfender.setDeviceKey('user.id', userId ?? '');
+      Bugfender.setDeviceKey('user.email', userEmail ?? '');
+      Bugfender.setDeviceKey('user.name', userName ?? '');
+    };
+    registerUser();
+  }, [userId, userEmail, userName]);
 
   useEffect(() => {
     // if (session !== null && session?.timeDiff === undefined) {
