@@ -9,9 +9,9 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import M3ThemeProvider from 'core/theme/M3ThemeProvider';
 import ThemeModeProvider from 'core/theme/ThemeModeContext';
 import ThemeSchemeProvider from 'core/theme/ThemeSchemeContext';
-import { Analytics } from '@vercel/analytics/react';
 import { ErrorBoundary } from 'react-error-boundary';
 import Head from 'next/head';
+import { initBugfender } from 'core/bugfender';
 
 const fallbackRender = ({ error }: { error: { stack: string } }) => {
   return (
@@ -40,14 +40,19 @@ const App = ({
     const jssStyles = document.querySelector('#jss-server-side');
     jssStyles?.parentElement?.removeChild(jssStyles);
   }, []);
-  return <>
-  <Head>
-    <title>RadikalWiki</title>
-    <meta
-      name="viewport"
-      content="minimum-scale=1, initial-scale=1, width=device-width"
-    />
-  </Head>
+  useEffect(() => {
+    initBugfender();
+  }, []);
+
+  return (
+    <>
+      <Head>
+        <title>RadikalWiki</title>
+        <meta
+          name="viewport"
+          content="minimum-scale=1, initial-scale=1, width=device-width"
+        />
+      </Head>
 
       <ErrorBoundary fallbackRender={fallbackRender}>
         <NhostProvider nhost={nhost}>
@@ -67,9 +72,9 @@ const App = ({
             </SessionProvider>
           </LocalizationProvider>
         </NhostProvider>
-        <Analytics />
       </ErrorBoundary>
-  </>
+    </>
+  );
 };
 
 export default App;

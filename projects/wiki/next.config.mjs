@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
+  //productionBrowserSourceMaps: true,
   webpack: (config) => {
     // eslint-disable-next-line functional/immutable-data
     config.resolve.fallback = {
