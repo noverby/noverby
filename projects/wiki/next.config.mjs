@@ -1,9 +1,6 @@
-const million = require("million/compiler");
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "export",
-  // ...
+  output: 'export',
   webpack: (config) => {
     // eslint-disable-next-line functional/immutable-data
     config.resolve.fallback = {
@@ -19,12 +16,8 @@ const nextConfig = {
   },
   images: {
     domains: ['pgvhpsenoifywhuxnybq.storage.eu-central-1.nhost.run'],
+    unoptimized: true,
   },
 };
 
-const millionConfig = {
-  auto: true,
-};
-
-
-module.exports = million.next(nextConfig, millionConfig);
+export default nextConfig;

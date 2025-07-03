@@ -8,7 +8,7 @@ import {
   AppDrawer,
 } from 'comps';
 import { useAuthenticationStatus } from '@nhost/nextjs';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/router';
 import { Container, Box, useMediaQuery, IconButton } from '@mui/material';
 import { checkVersion } from 'core/util';
 import { usePath, useSession } from 'hooks';
@@ -21,7 +21,6 @@ const Layout = ({ children }: { children: JSX.Element }) => {
   const [openDrawer, setOpenDrawer] = useState(false);
   const [session, setSession] = useSession();
   const router = useRouter();
-  const params = useSearchParams();
   const path = usePath();
   const [version, setVersion] = useState<string | undefined>();
   const { isLoading } = useAuthenticationStatus();
@@ -60,7 +59,7 @@ const Layout = ({ children }: { children: JSX.Element }) => {
               autoHideDuration: null,
               action: () => {
                 return (
-                  <IconButton onClick={() => startTransition(() => router.refresh() )}>
+                  <IconButton onClick={() => startTransition(() => router.reload() )}>
                     <Refresh />
                   </IconButton>
                 );
@@ -76,9 +75,9 @@ const Layout = ({ children }: { children: JSX.Element }) => {
   }, []);
 
   if (outdated) return <OldBrowser />;
-  if (!showing || isLoading) return null;
+  if (!showing || isLoading || !router.isReady) return null;
 
-  if (params.get("app") === 'screen' || path.startsWith('user'))
+  if (router.query.app === 'screen' || path.startsWith('user'))
     return children;
 
   return (

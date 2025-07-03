@@ -1,8 +1,13 @@
-import { usePathname } from 'next/navigation';
+import { useRouter } from 'next/router';
 
-const usePath = () => {
-  const pathname = decodeURI(usePathname());
-  return pathname === "/" ? [] : pathname.split("/").slice(1);
+const usePathList = () => {
+  const router = useRouter();
+  const query = router.query;
+  return Array.isArray(query.path)
+    ? query.path
+    : query.path
+    ? [query.path]
+    : [];
 };
 
-export default usePath;
+export default usePathList;

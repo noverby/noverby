@@ -1,7 +1,7 @@
 import { fromId } from 'core/path';
 import { resolve } from 'gql';
 import { usePath } from 'hooks';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/router';
 
 const prefetch = async (
   path: string[],

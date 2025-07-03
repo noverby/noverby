@@ -1,7 +1,8 @@
-import { usePathname } from 'next/navigation';
+import { useRouter } from 'next/router';
 
 const usePath = () => {
-  return decodeURI(usePathname().slice(1));
+  const router = useRouter();
+  return router.asPath.slice(1);
 };
 
 export default usePath;
