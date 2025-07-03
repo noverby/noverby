@@ -202,6 +202,6 @@
 |:-:|-|-|-|-|-|
 | 🚧 | Cloud Provider | [Amazon AWS 🇺🇸](https://aws.amazon.com) | [Scaleway 🇪🇺](https://www.scaleway.com) | | |
 | ✅ | Bare Metal Hosting | [Hetzner 🇪🇺](https://hetzner.com) | | | |
-| 🚧 | Static Host | [Vercel 🇺🇸](https://vercel.com) | [Statichost 🇪🇺](https://statichost.eu), [FastFront 🇪🇺](https://www.fastfront.io) | | |
+| ✅ | Static Host | [Statichost 🇪🇺](https://statichost.eu) |  [FastFront 🇪🇺](https://www.fastfront.io) | | [Vercel 🇺🇸](https://vercel.com) |
 | ✅ | Domain Registrar | [Simply 🇪🇺](https://simply.com) | | | |
-| 🚧 | Backend | [Nhost 🇪🇺](https://nhost.com) | [DFRNT 🇪🇺](https://dfrnt.com) | | |
+| ✅ | Backend | [Nhost 🇪🇺](https://nhost.com) | [DFRNT 🇪🇺](https://dfrnt.com) | | |
