@@ -1,4 +1,3 @@
-"use client"
 import React, { Suspense } from 'react';
 import { Loader, PathLoader } from 'comps';
 import { usePathList } from 'hooks';
@@ -26,7 +25,7 @@ const Path = () => {
   }
 
   // Load node from path
-  return  <PathLoader keys={[]} fullpath={fullpath} />
+  return <PathLoader keys={[]} fullpath={fullpath} />;
 };
 
 export default Path;

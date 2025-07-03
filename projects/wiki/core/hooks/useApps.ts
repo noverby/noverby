@@ -1,12 +1,12 @@
-import { useSearchParams } from 'next/navigation';
 import { useLink, usePath, useSession } from 'hooks';
 import { useAuthenticated, useUserEmail, useUserId } from '@nhost/nextjs';
 import { useSubscription } from 'gql';
 import { useMediaQuery } from '@mui/material';
+import { useRouter } from 'next/router';
 
 const useApps = () => {
   const pathname = usePath();
-  const params = useSearchParams();
+  const router = useRouter();
   const link = useLink();
   const [session] = useSession();
   const isAuthenticated = useAuthenticated();
@@ -15,7 +15,7 @@ const useApps = () => {
   const sub = useSubscription();
   const largeScreen = useMediaQuery('(min-width:1200px)');
 
-  const currentApp = params.get('app') ?? (pathname == '' ? 'home' : 'folder');
+  const currentApp = (router.query.app as string) ?? (pathname == '' ? 'home' : 'folder');
 
   const handleClick = (path?: string[], app?: string) => async () => {
     const scroll = document.querySelector('#scroll');

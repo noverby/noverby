@@ -20,7 +20,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import { useSession } from 'hooks';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/router';
 import { Node } from 'hooks';
 import { HeaderCard, MimeAvatarId, MimeLoader } from 'comps';
 import {
@@ -166,7 +166,7 @@ const VoteApp = ({ node }: { node: Node }) => {
       avatar={
         <Tooltip title="Opdater status">
           <Avatar
-            onClick={() => router.refresh()}
+            onClick={() => router.reload()}
             onMouseEnter={() => setRefresh(true)}
             onMouseLeave={() => setRefresh(false)}
             sx={{
