@@ -9,10 +9,9 @@ import {
 } from 'comps';
 import { useAuthenticationStatus } from '@nhost/nextjs';
 import { useRouter } from 'next/router';
-import { Container, Box, useMediaQuery, IconButton } from '@mui/material';
+import { Container, Box, useMediaQuery } from '@mui/material';
 import { checkVersion } from 'core/util';
 import { usePath, useSession } from 'hooks';
-import { Refresh } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 
 const Layout = ({ children }: { children: JSX.Element }) => {
@@ -35,41 +34,41 @@ const Layout = ({ children }: { children: JSX.Element }) => {
   }, []);
 
   useEffect(() => {
-    if (session !== null && session?.timeDiff === undefined) {
-      setSession({ timeDiff: 0 });
-      fetch('/api/time').then((res) =>
-        res.json().then(({ time }) => {
-          setSession({
-            timeDiff: new Date().getTime() - new Date(time).getTime(),
-          });
-        })
-      );
-    }
+    // if (session !== null && session?.timeDiff === undefined) {
+    //   setSession({ timeDiff: 0 });
+    //   fetch('/api/time').then((res) =>
+    //     res.json().then(({ time }) => {
+    //       setSession({
+    //         timeDiff: new Date().getTime() - new Date(time).getTime(),
+    //       });
+    //     })
+    //   );
+    // }
   }, [session, setSession]);
 
   useEffect(() => {
-    const checkVersion = () => {
-      fetch('/api/version').then((res) => {
-        res.json().then(({ commit }) => {
-          if (version == undefined) {
-            setVersion(commit);
-          } else if (version != commit) {
-            enqueueSnackbar('Ny version tilgængelig', {
-              variant: 'info',
-              autoHideDuration: null,
-              action: () => {
-                return (
-                  <IconButton onClick={() => startTransition(() => router.reload() )}>
-                    <Refresh />
-                  </IconButton>
-                );
-              },
-            });
-          }
-        });
-      });
-    };
-    checkVersion();
+    // const checkVersion = () => {
+    //   fetch('/api/version').then((res) => {
+    //     res.json().then(({ commit }) => {
+    //       if (version == undefined) {
+    //         setVersion(commit);
+    //       } else if (version != commit) {
+    //         enqueueSnackbar('Ny version tilgængelig', {
+    //           variant: 'info',
+    //           autoHideDuration: null,
+    //           action: () => {
+    //             return (
+    //               <IconButton onClick={() => startTransition(() => router.reload() )}>
+    //                 <Refresh />
+    //               </IconButton>
+    //             );
+    //           },
+    //         });
+    //       }
+    //     });
+    //   });
+    // };
+    // checkVersion();
     window.addEventListener('focus', checkVersion);
     return () => window.removeEventListener('focus', checkVersion);
   }, []);
@@ -77,37 +76,36 @@ const Layout = ({ children }: { children: JSX.Element }) => {
   if (outdated) return <OldBrowser />;
   if (!showing || isLoading || !router.isReady) return null;
 
-  if (router.query.app === 'screen' || path.startsWith('user'))
-    return children;
+  if (router.query.app === 'screen' || path.startsWith('user')) return children;
 
   return (
-      <Box sx={{ display: 'flex' }}>
-        <Scroll>
-          <>
-            {largeScreen && <Box sx={{ p: 4 }} />}
-            {typeof window !== 'undefined' && (
-              <Container sx={{ pl: 1, pr: 1, pt: 1 }} disableGutters>
-                {children}
-              </Container>
-            )}
-            <BottomBar openDrawer={openDrawer} setOpenDrawer={setOpenDrawer} />
-          </>
-        </Scroll>
-        {largeScreen && (
-          <AppDrawer openDrawer={openDrawer} setOpenDrawer={setOpenDrawer} />
-        )}
+    <Box sx={{ display: 'flex' }}>
+      <Scroll>
+        <>
+          {largeScreen && <Box sx={{ p: 4 }} />}
+          {typeof window !== 'undefined' && (
+            <Container sx={{ pl: 1, pr: 1, pt: 1 }} disableGutters>
+              {children}
+            </Container>
+          )}
+          <BottomBar openDrawer={openDrawer} setOpenDrawer={setOpenDrawer} />
+        </>
+      </Scroll>
+      {largeScreen && (
+        <AppDrawer openDrawer={openDrawer} setOpenDrawer={setOpenDrawer} />
+      )}
 
-        <Drawer
-          open={openDrawer}
-          setOpen={() => startTransition(() => setOpenDrawer(false))}
-        />
+      <Drawer
+        open={openDrawer}
+        setOpen={() => startTransition(() => setOpenDrawer(false))}
+      />
 
-        {!largeScreen && (
-          <Suspense>
-            <MobileMenu openDrawer={openDrawer} setOpenDrawer={setOpenDrawer} />
-          </Suspense>
-        )}
-      </Box>
+      {!largeScreen && (
+        <Suspense>
+          <MobileMenu openDrawer={openDrawer} setOpenDrawer={setOpenDrawer} />
+        </Suspense>
+      )}
+    </Box>
   );
 };
 
