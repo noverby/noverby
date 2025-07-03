@@ -1,14 +1,14 @@
-import { useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/router';
 import { MimeLoader, AppLoader, HomeApp, UnknownApp } from 'comps';
 
 const Loader = ({ app, id }: { app?: string; id?: string }) => {
-  const params = useSearchParams();
+  const router = useRouter();
 
-  if (!params.get("app") && app === 'home') {
+  if (!router.query.app && app === 'home') {
     return <HomeApp />;
-  } else if (params.get("app") || app) {
+  } else if (router.query.app || app) {
     return (
-      (id && <AppLoader app={params.get("app") ?? app} id={id} />) ||
+      (id && <AppLoader app={(router.query.app as string) ?? app} id={id} />) ||
       null
     );
   } else {

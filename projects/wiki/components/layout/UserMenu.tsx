@@ -18,7 +18,7 @@ import {
   Logout,
   ManageAccounts,
 } from '@mui/icons-material';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/router';
 import { nhost } from 'nhost';
 import { useAuthenticationStatus } from '@nhost/nextjs';
 import { ThemeModeContext } from 'core/theme/ThemeModeContext';

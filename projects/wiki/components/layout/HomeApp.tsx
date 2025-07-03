@@ -14,7 +14,7 @@ import { AddContentFab, HeaderCard, HomeList, InvitesUserList } from 'comps';
 import { useNode } from 'hooks';
 import { Hail, HowToReg, Login } from '@mui/icons-material';
 import { useAuthenticationStatus, useUserDisplayName } from '@nhost/nextjs';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/router';
 
 const AddContentFabSuspense = () => {
   const node = useNode();
@@ -26,7 +26,7 @@ const HomeApp = () => {
   const { isAuthenticated } = useAuthenticationStatus();
   const displayName = useUserDisplayName();
   const largeScreen = useMediaQuery('(min-width:1200px)');
-
+  
   return (
     <Grid direction={largeScreen ? 'row-reverse' : 'row'} container spacing={1}>
       {isAuthenticated && (
