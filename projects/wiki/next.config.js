@@ -1,4 +1,4 @@
-import million from "million/compiler";
+const million = require("million/compiler");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -25,4 +25,5 @@ const millionConfig = {
   auto: true,
 };
 
-export default million.next(nextConfig, millionConfig);
+
+module.exports = million.next(nextConfig, millionConfig);
