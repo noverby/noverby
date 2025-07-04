@@ -7,7 +7,7 @@ const AddQuestionButton = ({ node }: { node: Node }) => {
 	const [open, setOpen] = useState(false);
 	const query = node.useQuery();
 
-	const handleSubmit = async () => {
+	const handleSubmit = () => {
 		setOpen(true);
 	};
 

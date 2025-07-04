@@ -85,8 +85,8 @@ const Layout = ({ children }: { children: React.ReactElement }) => {
 		//   });
 		// };
 		// checkVersion();
-		window.addEventListener("focus", checkVersion);
-		return () => window.removeEventListener("focus", checkVersion);
+		globalThis.addEventListener("focus", checkVersion);
+		return () => globalThis.removeEventListener("focus", checkVersion);
 	}, []);
 
 	if (outdated) return <OldBrowser />;

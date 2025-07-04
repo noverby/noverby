@@ -59,7 +59,7 @@ const Editor = ({ node }: { node: Node }) => {
 					fetchMembers(node.id);
 				}
 			}
-			const fetch = async () => {
+			const fetch = () => {
 				setName(query?.name ?? "");
 				setDate(parseISO(query?.createdAt ?? ""));
 				setContent(structuredClone(data?.content));
@@ -110,7 +110,7 @@ const Editor = ({ node }: { node: Node }) => {
 				<CardContent>
 					<Grid container spacing={2}>
 						<Grid item xs={12}>
-							<Stack spacing={2} direction={"row"} alignItems="center">
+							<Stack spacing={2} direction="row" alignItems="center">
 								<TextField
 									value={name}
 									onChange={(e) => setName(e.target.value)}
@@ -134,7 +134,7 @@ const Editor = ({ node }: { node: Node }) => {
 							</Stack>
 						</Grid>
 						<Grid item xs={12}>
-							<Stack spacing={2} direction={"row"} alignItems="center">
+							<Stack spacing={2} direction="row" alignItems="center">
 								{![
 									"wiki/group",
 									"wiki/event",

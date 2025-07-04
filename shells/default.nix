@@ -10,6 +10,7 @@
         }
         {
           git-hooks.hooks = {
+            denolint.enable = true;
             biome.enable = true;
             alejandra.enable = true;
             statix.enable = true;

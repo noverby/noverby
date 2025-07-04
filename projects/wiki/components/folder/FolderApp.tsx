@@ -10,7 +10,7 @@ const FolderApp = ({ node, child }: { node: Node; child?: boolean }) => {
 		<>
 			<Card sx={{ m: 0 }}>
 				<ContentHeader add child={child} hideMembers node={node} />
-				<Collapse in={true}>
+				<Collapse in>
 					<List sx={{ m: 0 }}>
 						<Suspense fallback={null}>
 							<FolderList node={node} />

@@ -8,7 +8,7 @@ const FileApp = ({ node }: { node: Node }) => {
 			<Stack spacing={1}>
 				<Card sx={{ m: 0 }}>
 					<ContentHeader node={node} />
-					<Collapse in={true}>
+					<Collapse in>
 						<FileLoader node={node} />
 					</Collapse>
 				</Card>
