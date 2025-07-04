@@ -225,6 +225,10 @@ const Graph = () => {
         if (!node.color) {
           const imgTexture = new THREE.TextureLoader().load(
             `icons/${node.icon}`,
+            (texture) => {
+              // @ts-ignore
+              texture.colorSpace = THREE.SRGBColorSpace;
+            },
           );
           const material = new THREE.SpriteMaterial({ map: imgTexture });
           const sprite = new THREE.Sprite(material);
@@ -236,6 +240,10 @@ const Graph = () => {
           const group = new THREE.Group();
           const imgTexture = new THREE.TextureLoader().load(
             `icons/${node.icon}`,
+            (texture) => {
+              // @ts-ignore
+              texture.colorSpace = THREE.SRGBColorSpace;
+            },
           );
           const material = new THREE.SpriteMaterial({ map: imgTexture });
           const icon = new THREE.Sprite(material);
