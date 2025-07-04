@@ -8,7 +8,7 @@ const P404 = () => {
 		router.push(router.asPath);
 	}, [router.asPath]);
 
-	return <></>;
+	return <> </>;
 };
 
 export default P404;

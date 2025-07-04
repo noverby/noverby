@@ -29,7 +29,7 @@ const AddContentFab = ({ node }: { node: Node }) => {
 
 	return (
 		<>
-			<Zoom in={true}>
+			<Zoom in>
 				<Fab
 					sx={{
 						position: "fixed",

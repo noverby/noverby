@@ -10,7 +10,7 @@ export default function Index() {
 	return (
 		<>
 			<Head>
-				<title>{"Niclas Overby Ⓝ"}</title>
+				<title>Niclas Overby Ⓝ</title>
 			</Head>
 			{showing && <Graph />}
 			<a rel="me" href="https://mas.to/@niclasoverby" />

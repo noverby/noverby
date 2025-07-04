@@ -104,8 +104,8 @@ const useApps = () => {
 							name: "Skærm",
 							mimeId: "app/screen",
 							active: [],
-							onClick: async () => {
-								window.open(
+							onClick: () => {
+								globalThis.open(
 									`/${session?.prefix?.path?.join("/")}?app=screen`,
 									"_blank",
 								);

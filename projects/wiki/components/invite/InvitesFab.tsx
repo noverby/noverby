@@ -20,7 +20,7 @@ const InvitesFab = ({ node }: { node: Node }) => {
 	};
 
 	return (
-		// @ts-ignore
+		// @ts-ignore: unknown type
 		<SheetReader onFileLoaded={handleFile}>
 			<Fab
 				sx={{

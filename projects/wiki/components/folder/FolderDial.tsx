@@ -219,7 +219,7 @@ const FolderDial = ({ node }: { node: Node }) => {
 
 	return (
 		<>
-			<Zoom in={true}>
+			<Zoom in>
 				<SpeedDial
 					ariaLabel="Administrer mappe"
 					sx={{

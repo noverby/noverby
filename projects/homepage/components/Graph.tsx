@@ -233,7 +233,6 @@ const Graph = () => {
 					const imgTexture = new THREE.TextureLoader().load(
 						`icons/${node.icon}`,
 						(texture) => {
-							// @ts-ignore
 							texture.colorSpace = THREE.SRGBColorSpace;
 						},
 					);
@@ -248,7 +247,6 @@ const Graph = () => {
 					const imgTexture = new THREE.TextureLoader().load(
 						`icons/${node.icon}`,
 						(texture) => {
-							// @ts-ignore
 							texture.colorSpace = THREE.SRGBColorSpace;
 						},
 					);

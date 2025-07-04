@@ -42,7 +42,7 @@ const RailAction = ({
 	label: string;
 	icon: React.ReactNode;
 	value: string;
-	onClick: () => Promise<void>;
+	onClick: () => void;
 }) => {
 	return (
 		<BottomNavigationAction
