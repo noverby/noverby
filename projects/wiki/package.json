@@ -60,8 +60,8 @@
 		"build:next": "next build",
 		"build:gqty": "deno run -A npm:@gqty/cli generate",
 		"clean": "rm -Rf .next node_modules",
-		"dev": "export VERCEL_GIT_COMMIT_SHA=$(git rev-parse HEAD) && deno task build:gqty && next dev",
-		"start": "export VERCEL_GIT_COMMIT_SHA=$(git rev-parse HEAD) && next start",
+		"dev": "deno task build:gqty && next dev",
+		"start": "deno run -A npm:serve -n out",
 		"lint": "next lint"
 	},
 	"devDependencies": {
@@ -83,6 +83,7 @@
 		"eslint-plugin-functional": "^5.0.4",
 		"eslint-plugin-react-hooks": "^4.6.0",
 		"eslint-plugin-unused-imports": "^2.0.0",
+		"serve": "^14.2.4",
 		"typescript": "4.7.4"
 	},
 	"gqty": {
