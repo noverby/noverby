@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { startTransition } from 'react';
 import { Fab, Tooltip } from '@mui/material';
 import { Save } from '@mui/icons-material';
 import { Node, useLink } from 'hooks';
@@ -15,11 +15,13 @@ const SortFab = ({
   const update = node.useUpdate();
 
   const handleClick = async () => {
-    const proms = elements.map(({ id }, index: number) =>
-      update({ id, set: { index } })
-    );
-    await Promise.all(proms);
-    link.push([]);
+    startTransition(async () => {
+      const proms = elements.map(({ id }, index: number) =>
+        update({ id, set: { index } })
+      );
+      await Promise.all(proms);
+      link.push([]);
+    });
   };
 
   return (

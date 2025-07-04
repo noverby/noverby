@@ -1,5 +1,5 @@
 import { UseQueryReturnValue } from '@gqty/react';
-import { UseQueryPrepareHelpers } from '@gqty/react/dist/query/useQuery';
+import { UseQueryPrepareHelpers } from '@gqty/react/query/useQuery';
 import {
   GeneratedSchema,
   Maybe,
