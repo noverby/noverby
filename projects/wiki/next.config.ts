@@ -1,5 +1,6 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
+import { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
   output: 'export',
   productionBrowserSourceMaps: true,
   webpack: (config) => {
