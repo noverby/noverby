@@ -36,7 +36,7 @@ const ThemeSchemeProvider: FC<{ children: React.ReactNode }> = ({
 		}
 	}, []);
 
-	const generateThemeScheme = async (colorBase: string) => {
+	const generateThemeScheme = (colorBase: string) => {
 		const theme = themeFromSourceColor(argbFromHex(colorBase), [
 			{
 				name: "custom-1",
@@ -67,11 +67,11 @@ const ThemeSchemeProvider: FC<{ children: React.ReactNode }> = ({
 			dark[key] = color;
 		}
 		const scheme: M3ThemeScheme = {
-			// @ts-ignore
+			// @ts-ignore: needs to be replaced anyway
 			light,
-			// @ts-ignore
+			// @ts-ignore: needs to be replaced anyway
 			dark,
-			// @ts-ignore
+			// @ts-ignore: needs to be replaced anyway
 			tones: paletteTones,
 		};
 		setThemeScheme(scheme);

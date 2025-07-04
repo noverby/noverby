@@ -14,7 +14,7 @@ const SortFab = ({
 	const link = useLink();
 	const update = node.useUpdate();
 
-	const handleClick = async () => {
+	const handleClick = () => {
 		startTransition(async () => {
 			const proms = elements.map(({ id }, index: number) =>
 				update({ id, set: { index } }),

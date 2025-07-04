@@ -114,7 +114,7 @@ const BreadcrumbsLink = ({
 					}}
 				>
 					<MimeAvatar mimeId="app/home" />
-					<Collapse orientation="horizontal" in={true}>
+					<Collapse orientation="horizontal" in>
 						<Typography
 							ref={divRef}
 							sx={{

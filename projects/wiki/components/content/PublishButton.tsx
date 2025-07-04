@@ -23,7 +23,7 @@ const PublishButton = ({
 
 	const handler =
 		handlePublish ??
-		(async () => {
+		(() => {
 			update({ set: { mutable: false } });
 		});
 

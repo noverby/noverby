@@ -61,7 +61,7 @@ const useLink = () => {
 		return router.push(`/${pushPath.join("/")}${query}`);
 	};
 
-	const pop = async () => {
+	const pop = () => {
 		const pushPath = pathname.split("/").slice(0, -1).map(decodeURI);
 		return router.push(`/${pushPath.join("/")}`);
 	};
