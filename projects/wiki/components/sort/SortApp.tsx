@@ -24,7 +24,8 @@ const SortApp = ({ node }: { node: Node }) => {
     const fetch = async () => {
       const children = await resolve(
         ({ query }) =>
-          query.node({ id: node.id! })
+          query
+            .node({ id: node.id! })
             ?.children({
               order_by: [{ index: order_by.asc }],
               where: { mime: { hidden: { _eq: false } } },
@@ -37,7 +38,7 @@ const SortApp = ({ node }: { node: Node }) => {
               mimeId,
               data,
             })) ?? [],
-        { cachePolicy: "no-cache" }
+        { cachePolicy: 'no-cache' }
       );
       setList(children);
     };
@@ -64,7 +65,7 @@ const SortApp = ({ node }: { node: Node }) => {
           <Droppable droppableId="drop1">
             {(provided, snapshot) => (
               <List ref={provided.innerRef} sx={{ m: 0 }}>
-                {list?.[0]?.id &&
+                {[...(list?.[0]?.id &&
                   list.map((node, index: number) => (
                     <Draggable
                       key={node.id}
@@ -89,8 +90,7 @@ const SortApp = ({ node }: { node: Node }) => {
                         </Fragment>
                       )}
                     </Draggable>
-                  ))}
-                {provided.placeholder}
+                  )) || []), provided.placeholder as React.ReactElement]}
               </List>
             )}
           </Droppable>
