@@ -1,4 +1,4 @@
-{...}: {
+_: {
   programs.git = {
     enable = true;
     userName = "Niclas Overby";
