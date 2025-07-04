@@ -43,8 +43,8 @@ const getRows = (data: any[]) => {
 */
 
 const ResultsDataGrid = () => {
-  return null;
-  /*
+	return null;
+	/*
   const { data } = useSubscription(POLL_SUB_ALL_RESULT);
 
   const rows = getRows(data?.poll);
