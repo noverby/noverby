@@ -11,7 +11,9 @@
       "vscode-insiders" = "Code - Insiders";
       "vscodium" = "VSCodium";
     }
-    .${vscodePname};
+    .${
+      vscodePname
+    };
   settingsPath = "${config.xdg.configHome}/${configDir}/User/settings.json";
   keybindingsPath = "${config.xdg.configHome}/${configDir}/User/keybindings.json";
 in {

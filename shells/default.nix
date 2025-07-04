@@ -11,6 +11,7 @@
         {
           git-hooks.hooks = {
             biome.enable = true;
+            alejandra.enable = true;
           };
           packages = with pkgs; [
             # Common
