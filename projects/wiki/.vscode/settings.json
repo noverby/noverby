@@ -1,9 +1,0 @@
-{
-  "files.exclude": {
-    "**/node_modules": true,
-    "**/yarn.lock": true,
-    "**/.next": true,
-    "**/next-env.d.ts": true,
-    "**/.swc": true
-  }
-}

@@ -15,8 +15,7 @@
     "npm:react-responsive@^9.0.2": "9.0.2_react@18.2.0",
     "npm:react@18.2.0": "18.2.0",
     "npm:three@0.168": "0.168.0",
-    "npm:typescript@4.7.4": "4.7.4",
-    "npm:yarn@^1.22.19": "1.22.22"
+    "npm:typescript@4.7.4": "4.7.4"
   },
   "npm": {
     "3d-force-graph@1.78.2_three@0.168.0": {
@@ -2814,11 +2813,6 @@
     "wrappy@1.0.2": {
       "integrity": "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ=="
     },
-    "yarn@1.22.22": {
-      "integrity": "sha512-prL3kGtyG7o9Z9Sv8IPfBNrWTDmXB4Qbes8A9rEzt6wkJV8mUvoirjU0Mp3GGAU06Y0XQyA3/2/RQFVuK7MTfg==",
-      "scripts": true,
-      "bin": true
-    },
     "yocto-queue@0.1.0": {
       "integrity": "sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q=="
     },
@@ -2849,8 +2843,7 @@
         "npm:react-responsive@^9.0.2",
         "npm:react@18.2.0",
         "npm:three@0.168",
-        "npm:typescript@4.7.4",
-        "npm:yarn@^1.22.19"
+        "npm:typescript@4.7.4"
       ]
     }
   }

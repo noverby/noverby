@@ -73,8 +73,7 @@
     "npm:typescript@4.7.4": "4.7.4",
     "npm:utf-8-validate@^6.0.3": "6.0.5",
     "npm:uuid@^8.3.2": "8.3.2",
-    "npm:xlsx@~0.18.5": "0.18.5",
-    "npm:yarn@^1.22.19": "1.22.22"
+    "npm:xlsx@~0.18.5": "0.18.5"
   },
   "npm": {
     "@ampproject/remapping@2.3.0": {
@@ -6299,11 +6298,6 @@
     "yaml@1.10.2": {
       "integrity": "sha512-r3vXyErRCYJ7wg28yvBY5VSoAF8ZvlcW9/BwUzEtUsjvX/DKs24dIkuwjtuprwJJHsbyUbLApepYTR1BN4uHrg=="
     },
-    "yarn@1.22.22": {
-      "integrity": "sha512-prL3kGtyG7o9Z9Sv8IPfBNrWTDmXB4Qbes8A9rEzt6wkJV8mUvoirjU0Mp3GGAU06Y0XQyA3/2/RQFVuK7MTfg==",
-      "scripts": true,
-      "bin": true
-    },
     "yocto-queue@0.1.0": {
       "integrity": "sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q=="
     },
@@ -6594,8 +6588,7 @@
         "npm:typescript@4.7.4",
         "npm:utf-8-validate@^6.0.3",
         "npm:uuid@^8.3.2",
-        "npm:xlsx@~0.18.5",
-        "npm:yarn@^1.22.19"
+        "npm:xlsx@~0.18.5"
       ]
     }
   }

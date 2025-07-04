@@ -53,8 +53,7 @@
     "slate-react": "^0.92.0",
     "utf-8-validate": "^6.0.3",
     "uuid": "^8.3.2",
-    "xlsx": "^0.18.5",
-    "yarn": "^1.22.19"
+    "xlsx": "^0.18.5"
   },
   "scripts": {
     "build": "export NEXT_PUBLIC_GIT_COMMIT_SHA=$(git rev-parse HEAD) && deno task build:gqty && deno task build:next",
