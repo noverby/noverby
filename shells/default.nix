@@ -27,6 +27,7 @@
             # Nodejs
             yarn
             nodejs
+            deno
           ];
         }
       ];

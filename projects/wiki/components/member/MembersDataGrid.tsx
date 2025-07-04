@@ -1,6 +1,7 @@
 import { order_by } from 'gql';
-import { DataGrid, GridActionsCellItem, GridColumns } from '@mui/x-data-grid';
+import { DataGrid, GridColumns, GridRenderCellParams } from '@mui/x-data-grid';
 import { Box } from '@mui/system';
+import { IconButton } from '@mui/material';
 import { Delete } from '@mui/icons-material';
 import { Node } from 'hooks';
 
@@ -46,26 +47,26 @@ const MembersDataGrid = ({ node }: { node: Node }) => {
     },
     {
       field: 'actions',
-      type: 'actions',
       headerName: 'Actions',
       width: 100,
-      cellClassName: 'actions',
-      getActions: ({ id }) => [
-        <GridActionsCellItem
-          icon={<Delete />}
-          label="Delete"
-          key="delete"
-          onClick={() => member.delete(id.toString())}
-          color="inherit"
-        />,
-      ],
+      sortable: false,
+      disableColumnMenu: true,
+      renderCell: (params: GridRenderCellParams) => (
+        <IconButton
+          onClick={() => member.delete(params.id.toString())}
+          size="small"
+          aria-label="delete"
+        >
+          <Delete />
+        </IconButton>
+      ),
     },
   ];
 
   const handleCellEditCommit = ({
     id,
     field,
-    value
+    value,
   }: {
     id: string | number;
     field: string;
@@ -77,7 +78,7 @@ const MembersDataGrid = ({ node }: { node: Node }) => {
   };
 
   const rows = query
-    ?.members({  order_by: [{ user: { displayName: order_by.asc } }] })
+    ?.members({ order_by: [{ user: { displayName: order_by.asc } }] })
     .map(({ id, name, email, user, owner, hidden, active, accepted }) => ({
       id,
       email: user?.email ?? email,
@@ -87,7 +88,6 @@ const MembersDataGrid = ({ node }: { node: Node }) => {
       accepted,
       active,
     }));
-
 
   if (rows == undefined || rows.length == 0 || !rows[0]?.id) return null;
 

@@ -197,7 +197,7 @@ const Slate = ({
   onChange?: (value: Descendant[]) => void;
   readOnly: boolean;
 }) => {
-  const editorRef = useRef<CustomEditor>();
+  const editorRef = useRef<CustomEditor | null>(null);
   if (!editorRef.current)
     editorRef.current = withHtml(withHistory(withReact(createEditor())));
   const editor = editorRef.current;
@@ -428,7 +428,7 @@ const Leaf = ({ attributes, children, leaf }: RenderLeafProps) => {
 const BlockSelect = () => {
   const editor = useSlate();
   return (
-    <FormControl title='Stil' sx={{ minWidth: "140px" }}>
+    <FormControl title="Stil" sx={{ minWidth: '140px' }}>
       <InputLabel>Stil</InputLabel>
       <Select
         label="Stil"
