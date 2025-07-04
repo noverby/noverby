@@ -1,0 +1,24 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+	"files": {
+		"experimentalScannerIgnores": [
+			".direnv",
+			".devenv",
+			".pre-commit-config.yaml",
+			"out",
+			"node_modules",
+			"dist",
+			"result"
+		]
+	},
+	"linter": {
+		"rules": {
+			"a11y": {
+				"useAnchorContent": "off"
+			},
+			"suspicious": {
+				"noDuplicateFontNames": "off"
+			}
+		}
+	}
+}

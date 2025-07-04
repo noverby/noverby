@@ -1,110 +1,110 @@
 {
-  "assistant": {
-    "default_model": {
-      "model": "claude-sonnet-4",
-      "provider": "zed.dev"
-    },
-    "version": "2"
-  },
-  "auto_update": false,
-  "autosave": {
-    "after_delay": {
-      "milliseconds": 1000
-    }
-  },
-  "base_keymap": "VSCode",
-  "buffer_font_family": "Cascadia Code NF",
-  "buffer_font_size": 12,
-  "file_types": {
-    "Shell Script": [".envrc"]
-  },
-  "indent_guides": {
-    "coloring": "indent_aware",
-    "enabled": true
-  },
-  "inlay_hints": {
-    "enabled": true
-  },
-  "languages": {
-    "Git Commit":{
-       "soft_wrap":"none",
-       "preferred_line_length":null
-    },
-    "JavaScript": {
-      "language_servers": ["vtsls"]
-    },
-    "Nix": {
-      "format_on_save": {
-        "external": {
-          "arguments": [],
-          "command": "alejandra"
-        }
-      },
-      "language_servers": ["nil", "!nix-ls", "..."]
-    },
-    "TSX": {
-      "language_servers": ["vtsls"]
-    },
-    "TypeScript": {
-      "formatter": {
-        "language_server": {
-          "name": "biome"
-        }
-      },
-      "language_servers": ["vtsls"]
-    }
-  },
-  "load_direnv": "direct",
-  "lsp": {
-    "biome": {
-      "settings": {
-        "require_config_file": true
-      }
-    },
-    "nil": {
-      "binary": {
-        "path": "nil"
-      }
-    },
-    "rust-analyzer": {
-      "binary": {
-        "path_lookup": true
-      }
-    },
-    "vtsls": {
-      "initialization_options": {
-        "typescript": {
-          "tsdk": ".yarn/sdks/typescript/lib"
-        },
-        "vtsls": {
-          "autoUseWorkspaceTsdk": true
-        }
-      }
-    }
-  },
-  "relative_line_numbers": true,
-  "show_whitespaces": "all",
-  "tab_size": 2,
-  "tabs": {
-    "file_icons": true,
-    "git_status": true
-  },
-  "terminal": {
-    "font_size": 11,
-    "line_height": "standard",
-    "shell": {
-      "program": "zellij-cwd"
-    },
-    "toolbar": {
-      "breadcrumbs": true
-    }
-  },
-  "ui_font_size": 14,
-  "vertical_scroll_margin": 10,
-  "vim": {
-    "use_multiline_find": true,
-    "use_smartcase_find": true,
-    "use_system_clipboard": "always"
-  },
-  "vim_mode": true
+	"assistant": {
+		"default_model": {
+			"model": "claude-sonnet-4",
+			"provider": "zed.dev"
+		},
+		"version": "2"
+	},
+	"auto_update": false,
+	"autosave": {
+		"after_delay": {
+			"milliseconds": 1000
+		}
+	},
+	"base_keymap": "VSCode",
+	"buffer_font_family": "Cascadia Code NF",
+	"buffer_font_size": 12,
+	"file_types": {
+		"Shell Script": [".envrc"]
+	},
+	"indent_guides": {
+		"coloring": "indent_aware",
+		"enabled": true
+	},
+	"inlay_hints": {
+		"enabled": true
+	},
+	"languages": {
+		"Git Commit": {
+			"soft_wrap": "none",
+			"preferred_line_length": null
+		},
+		"JavaScript": {
+			"language_servers": ["vtsls"]
+		},
+		"Nix": {
+			"format_on_save": {
+				"external": {
+					"arguments": [],
+					"command": "alejandra"
+				}
+			},
+			"language_servers": ["nil", "!nix-ls", "..."]
+		},
+		"TSX": {
+			"language_servers": ["vtsls"]
+		},
+		"TypeScript": {
+			"formatter": {
+				"language_server": {
+					"name": "biome"
+				}
+			},
+			"language_servers": ["vtsls"]
+		}
+	},
+	"load_direnv": "direct",
+	"lsp": {
+		"biome": {
+			"settings": {
+				"require_config_file": true
+			}
+		},
+		"nil": {
+			"binary": {
+				"path": "nil"
+			}
+		},
+		"rust-analyzer": {
+			"binary": {
+				"path_lookup": true
+			}
+		},
+		"vtsls": {
+			"initialization_options": {
+				"typescript": {
+					"tsdk": ".yarn/sdks/typescript/lib"
+				},
+				"vtsls": {
+					"autoUseWorkspaceTsdk": true
+				}
+			}
+		}
+	},
+	"relative_line_numbers": true,
+	"show_whitespaces": "all",
+	"tab_size": 2,
+	"tabs": {
+		"file_icons": true,
+		"git_status": true
+	},
+	"terminal": {
+		"font_size": 11,
+		"line_height": "standard",
+		"shell": {
+			"program": "zellij-cwd"
+		},
+		"toolbar": {
+			"breadcrumbs": true
+		}
+	},
+	"ui_font_size": 14,
+	"vertical_scroll_margin": 10,
+	"vim": {
+		"use_multiline_find": true,
+		"use_smartcase_find": true,
+		"use_system_clipboard": "always"
+	},
+	"vim_mode": true
 }
