@@ -8,3 +8,5 @@ build
 *.ll
 *.o
 *.wasm
+
+.pre-commit-config.yaml
