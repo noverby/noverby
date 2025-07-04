@@ -24,9 +24,9 @@ in {
       '';
 
       overwriteVSCodeSymlink = let
-        userSettings = config.programs.vscode.profiles.default.userSettings;
+        inherit (config.programs.vscode.profiles.default) userSettings;
         jsonSettings = pkgs.writeText "tmp_vscode_settings" (builtins.toJSON userSettings);
-        keybindings = config.programs.vscode.profiles.default.keybindings;
+        inherit (config.programs.vscode.profiles.default) keybindings;
         jsonKeybindings = pkgs.writeText "tmp_vscode_keybindings" (builtins.toJSON keybindings);
       in
         lib.hm.dag.entryAfter ["linkGeneration"] ''

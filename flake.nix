@@ -41,10 +41,12 @@
     };
     stardustxr = {
       url = "github:StardustXR/server";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flatland.follows = "flatland";
-      inputs.hercules-ci-effects.follows = "hercules-ci-effects";
-      inputs.flake-parts.follows = "flake-parts";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        flatland.follows = "flatland";
+        hercules-ci-effects.follows = "hercules-ci-effects";
+        flake-parts.follows = "flake-parts";
+      };
     };
     flatland = {
       url = "github:StardustXR/flatland";
