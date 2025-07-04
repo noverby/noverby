@@ -17,8 +17,7 @@
     "react-dom": "18.2.0",
     "react-force-graph-3d": "^1.28.0",
     "react-responsive": "^9.0.2",
-    "three": "^0.168.0",
-    "yarn": "^1.22.19"
+    "three": "^0.168.0"
   },
   "devDependencies": {
     "@types/node": "18.7.13",
