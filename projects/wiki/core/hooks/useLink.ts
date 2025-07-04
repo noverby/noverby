@@ -1,74 +1,74 @@
-import { fromId } from 'core/path';
-import { resolve } from 'gql';
-import { usePath } from 'hooks';
-import { useRouter } from 'next/router';
+import { fromId } from "core/path";
+import { resolve } from "gql";
+import { usePath } from "hooks";
+import { useRouter } from "next/router";
 
 const prefetch = async (
-  path: string[],
-  parentId?: string
+	path: string[],
+	parentId?: string,
 ): Promise<string | undefined> => {
-  const where = {
-    _and: parentId
-      ? [{ key: { _eq: path.at(0) } }, { parentId: { _eq: parentId } }]
-      : [{ parentId: { _is_null: true } }],
-  };
-  const id = await resolve(({ query }) => {
-    const node = query.nodes({ where }).at(0);
-    node?.__typename;
-    const id = node?.id;
-    node?.name;
+	const where = {
+		_and: parentId
+			? [{ key: { _eq: path.at(0) } }, { parentId: { _eq: parentId } }]
+			: [{ parentId: { _is_null: true } }],
+	};
+	const id = await resolve(({ query }) => {
+		const node = query.nodes({ where }).at(0);
+		node?.__typename;
+		const id = node?.id;
+		node?.name;
 
-    return id;
-  });
+		return id;
+	});
 
-  await resolve(({ query }) => {
-    if (id) {
-      const node = query.node({ id: id });
-      node?.name;
-      node?.data?.({ path: 'type' });
-      node?.mimeId;
-      node?.getIndex;
-      node?.id;
-    }
-  });
+	await resolve(({ query }) => {
+		if (id) {
+			const node = query.node({ id: id });
+			node?.name;
+			node?.data?.({ path: "type" });
+			node?.mimeId;
+			node?.getIndex;
+			node?.id;
+		}
+	});
 
-  return path.length > 1
-    ? await prefetch(parentId ? path.slice(1) : path, id)
-    : id;
+	return path.length > 1
+		? await prefetch(parentId ? path.slice(1) : path, id)
+		: id;
 };
 
 const useLink = () => {
-  const router = useRouter();
-  const pathname = usePath();
+	const router = useRouter();
+	const pathname = usePath();
 
-  const path = async (path: string[], app?: string) => {
-    await prefetch(path);
-    const query = app ? `?app=${app}` : '';
-    return router.push(`/${path.join('/')}${query}`);
-  };
+	const path = async (path: string[], app?: string) => {
+		await prefetch(path);
+		const query = app ? `?app=${app}` : "";
+		return router.push(`/${path.join("/")}${query}`);
+	};
 
-  const id = async (id: string, app?: string) => {
-    const path = await fromId(id);
-    await prefetch(path);
-    const query = app ? `?app=${app}` : '';
-    return router.push(`/${path.join('/')}${query}`);
-  };
+	const id = async (id: string, app?: string) => {
+		const path = await fromId(id);
+		await prefetch(path);
+		const query = app ? `?app=${app}` : "";
+		return router.push(`/${path.join("/")}${query}`);
+	};
 
-  const push = async (path: string[], app?: string) => {
-    const pushPath = pathname.split('/').concat(path);
-    await prefetch(pushPath);
-    const query = app ? `?app=${app}` : '';
-    return router.push(`/${pushPath.join('/')}${query}`);
-  };
+	const push = async (path: string[], app?: string) => {
+		const pushPath = pathname.split("/").concat(path);
+		await prefetch(pushPath);
+		const query = app ? `?app=${app}` : "";
+		return router.push(`/${pushPath.join("/")}${query}`);
+	};
 
-  const pop = async () => {
-    const pushPath = pathname.split('/').slice(0, -1).map(decodeURI);
-    return router.push(`/${pushPath.join('/')}`);
-  };
+	const pop = async () => {
+		const pushPath = pathname.split("/").slice(0, -1).map(decodeURI);
+		return router.push(`/${pushPath.join("/")}`);
+	};
 
-  const back = router.back;
+	const back = router.back;
 
-  return { path, id, push, pop, back };
+	return { path, id, push, pop, back };
 };
 
 export default useLink;

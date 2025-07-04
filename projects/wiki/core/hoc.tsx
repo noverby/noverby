@@ -1,21 +1,16 @@
-import { Component, ComponentType, Suspense } from 'react';
-import { useNode } from 'hooks';
+import { type ComponentType, Suspense } from "react";
 
 const withSuspense =
-  <T extends object,>(Component: ComponentType<T>, fallback?: React.ReactNode | null) =>
-  // eslint-disable-next-line react/display-name
-  (props: T) =>
-    (
-      <Suspense fallback={fallback ?? null}>
-        <Component {...props} />
-      </Suspense>
-    );
-
-const Node = <T, G>(props: T & { id: string; Component: ComponentType<G> }) => {
-  const id = props.id;
-  const node = useNode({ id });
-  return <Component node={node} {...props} />;
-};
+	<T extends object>(
+		Component: ComponentType<T>,
+		fallback?: React.ReactNode | null,
+	) =>
+	// eslint-disable-next-line react/display-name
+	(props: T) => (
+		<Suspense fallback={fallback ?? null}>
+			<Component {...props} />
+		</Suspense>
+	);
 
 /*
 const withNode =

@@ -1,14 +1,14 @@
-import { useRouter } from 'next/router';
-import { useEffect } from 'react';
+import { useRouter } from "next/router";
+import { useEffect } from "react";
 
 const P404 = () => {
-  const router = useRouter();
+	const router = useRouter();
 
-  useEffect(() => {
-    router.push(router.asPath);
-  }, [router.asPath]);
+	useEffect(() => {
+		router.push(router.asPath);
+	}, [router.asPath]);
 
-  return <></>;
+	return <></>;
 };
 
 export default P404;

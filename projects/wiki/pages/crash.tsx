@@ -1,8 +1,16 @@
-import { Button } from '@mui/material';
+import { Button } from "@mui/material";
 
 const Crash = () => {
-  // eslint-disable-next-line functional/no-throw-statements
-  return <Button onClick={() => { throw Error("Triggered Crash") }}>Trigger Crash</Button>;
+	return (
+		<Button
+			onClick={() => {
+				// eslint-disable-next-line functional/no-throw-statements
+				throw Error("Triggered Crash");
+			}}
+		>
+			Trigger Crash
+		</Button>
+	);
 };
 
 export default Crash;
