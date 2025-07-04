@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, useMediaQuery } from '@mui/material';
 
-const Scroll = ({ children }: { children: JSX.Element }) => {
+const Scroll = ({ children }: { children: React.ReactNode }) => {
   const largeScreen = useMediaQuery('(min-width:1200px)');
   return (
     <Box
