@@ -1,12 +1,12 @@
 [
-  {
-    "context": "Terminal",
-    "bindings": {
-      "ctrl-p": ["terminal::SendKeystroke", "ctrl-p"],
-      "ctrl-t": ["terminal::SendKeystroke", "ctrl-t"],
-      "ctrl-s": ["terminal::SendKeystroke", "ctrl-s"],
-      "ctrl-o": ["terminal::SendKeystroke", "ctrl-o"],
-      "alt-n": ["terminal::SendKeystroke", "alt-n"]
-    }
-  }
+	{
+		"context": "Terminal",
+		"bindings": {
+			"ctrl-p": ["terminal::SendKeystroke", "ctrl-p"],
+			"ctrl-t": ["terminal::SendKeystroke", "ctrl-t"],
+			"ctrl-s": ["terminal::SendKeystroke", "ctrl-s"],
+			"ctrl-o": ["terminal::SendKeystroke", "ctrl-o"],
+			"alt-n": ["terminal::SendKeystroke", "alt-n"]
+		}
+	}
 ]

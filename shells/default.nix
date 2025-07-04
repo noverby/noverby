@@ -9,6 +9,9 @@
           devenv.root = builtins.readFile inputs.devenv-root.outPath;
         }
         {
+          git-hooks.hooks = {
+            biome.enable = true;
+          };
           packages = with pkgs; [
             # Common
             just
