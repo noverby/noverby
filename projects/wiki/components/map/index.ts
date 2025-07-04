@@ -1,1 +1,1 @@
-export { default as MapApp } from './MapApp';
+export { default as MapApp } from "./MapApp";

@@ -1,1 +1,1 @@
-export { default as ScreenApp } from './ScreenApp';
+export { default as ScreenApp } from "./ScreenApp";

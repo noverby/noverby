@@ -1,1 +1,1 @@
-export { default as ResultsDataGrid } from './ResultDataGrid';
+export { default as ResultsDataGrid } from "./ResultDataGrid";

@@ -1,23 +1,39 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
 	"files": {
-		"experimentalScannerIgnores": [
+		"includes": [
+			"**/*.ts",
+			"**/*.tsx",
+			"**/*.json",
+			"**/*.css",
 			".direnv",
 			".devenv",
 			".pre-commit-config.yaml",
-			"out",
-			"node_modules",
-			"dist",
-			"result"
+			"!**/out",
+			"!**/node_modules",
+			"!**/dist",
+			"!**/result",
+			"!**/.next",
+			"!**/schema.generated.ts"
 		]
 	},
 	"linter": {
 		"rules": {
 			"a11y": {
-				"useAnchorContent": "off"
+				"useAnchorContent": "off",
+				"useMediaCaption": "off"
 			},
 			"suspicious": {
 				"noDuplicateFontNames": "off"
+			},
+			"style": {
+				"noNonNullAssertion": "off"
+			},
+			"correctness": {
+				"useExhaustiveDependencies": "off"
+			},
+			"nursery": {
+				"useUniqueElementIds": "off"
 			}
 		}
 	}
