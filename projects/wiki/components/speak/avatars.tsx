@@ -13,7 +13,7 @@ const color = '#fff';
 type Avatar = {
   name: string;
   priority: number;
-  avatar: JSX.Element;
+  avatar: React.ReactNode;
 };
 
 const avatars: { [id: string]: Avatar } = {

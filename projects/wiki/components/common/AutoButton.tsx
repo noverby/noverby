@@ -7,7 +7,7 @@ const AutoButton = ({
   onClick,
 }: {
   text: string;
-  icon: JSX.Element;
+  icon: React.ReactElement;
   onClick: MouseEventHandler<HTMLButtonElement>;
 }) => {
   const largeScreen = useMediaQuery('(min-width:1200px)');

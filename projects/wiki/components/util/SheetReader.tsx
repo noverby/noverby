@@ -6,7 +6,7 @@ const SheetReader = ({
   children,
   onFileLoaded,
 }: {
-  children: JSX.Element;
+  children: React.ReactNode;
   onFileLoaded: Function;
 }) => {
   const handleChangeFile: ChangeEventHandler<HTMLInputElement> = (e) => {

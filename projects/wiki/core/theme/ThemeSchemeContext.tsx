@@ -20,7 +20,7 @@ export const ThemeSchemeContext = createContext<ThemeSchemeContextType>({
 
 const THEME_SCHEME_KEY = 'ThemeScheme';
 
-const ThemeSchemeProvider: FC<{ children: JSX.Element }> = ({ children }) => {
+const ThemeSchemeProvider: FC<{ children: React.ReactNode }> = ({ children }) => {
   const [themeScheme, setThemeScheme] = useState<M3ThemeScheme>(
     DEFAULT_M3_THEME_SCHEME
   );

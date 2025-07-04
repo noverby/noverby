@@ -157,7 +157,7 @@ const DrawerElement = ({
                 startTransition(() => {
                   const newChildOpen = [
                     ...new Array(childIndex).fill(false),
-                    !open[index]?.[childIndex] ?? false,
+                    open[index]?.[childIndex] ?? false,
                   ];
 
                   const newOpen =

@@ -19,7 +19,7 @@ import { checkVersion } from 'core/util';
 import { usePath, useSession } from 'hooks';
 import { useSnackbar } from 'notistack';
 
-const Layout = ({ children }: { children: JSX.Element }) => {
+const Layout = ({ children }: { children: React.ReactElement }) => {
   const [outdated, setOutdated] = useState(false);
   const [showing, setShowing] = useState(false);
   const [openDrawer, setOpenDrawer] = useState(false);

@@ -2,7 +2,7 @@ import { Component, ComponentType, Suspense } from 'react';
 import { useNode } from 'hooks';
 
 const withSuspense =
-  <T extends object,>(Component: ComponentType<T>, fallback?: JSX.Element | null) =>
+  <T extends object,>(Component: ComponentType<T>, fallback?: React.ReactNode | null) =>
   // eslint-disable-next-line react/display-name
   (props: T) =>
     (
