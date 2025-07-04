@@ -12,6 +12,16 @@ type Node = {
 	icon?: string;
 	color?: string;
 	desc?: string;
+	x?: number;
+	y?: number;
+	z?: number;
+	vx?: number;
+	vy?: number;
+	vz?: number;
+	fx?: number;
+	fy?: number;
+	fz?: number;
+	[key: string]: any;
 };
 type Link = { source?: string; target?: string; value?: number };
 type GraphData = {
@@ -212,14 +222,14 @@ const Graph = () => {
 	return (
 		<ForceGraph3D
 			graphData={graphData}
-			nodeLabel={(node: Node) => {
+			nodeLabel={(node: any) => {
 				return `<b style="white-space: pre; color: #ffffff; display: flex; text-align: center; font-size: 30px; text-shadow: 0 0 5px #000000, 2px 2px 18px #ff0072;">${node.desc}</b>`;
 			}}
 			backgroundColor="#222222"
 			linkDirectionalParticles={2}
 			linkDirectionalParticleWidth={1}
-			onNodeClick={(node: Node) => node.url && router.push(node.url)}
-			nodeThreeObject={(node: Node) => {
+			onNodeClick={(node: any) => node.url && router.push(node.url)}
+			nodeThreeObject={(node: any) => {
 				if (!node.color) {
 					const imgTexture = new THREE.TextureLoader().load(
 						`icons/${node.icon}`,
