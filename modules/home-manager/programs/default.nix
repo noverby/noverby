@@ -51,10 +51,10 @@ in {
     gh.enable = true;
     tealdeer.enable = true;
     bottom.enable = true;
-    
+
     bat = {
       enable = true;
-      extraPackages = with pkgs.bat-extras; [ prettybat batgrep batdiff ];
+      extraPackages = with pkgs.bat-extras; [prettybat batgrep batdiff];
     };
 
     wezterm = {
