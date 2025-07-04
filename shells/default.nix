@@ -24,9 +24,7 @@
             python3
             llvmPackages_latest.llvm
             llvmPackages_latest.lld
-            # Nodejs
-            yarn
-            nodejs
+            # Deno
             deno
           ];
         }
