@@ -12,7 +12,7 @@ const RailNagivation = ({
   children,
 }: {
   value?: string;
-  children: JSX.Element[];
+  children: React.ReactNode[];
 }) => {
   return (
 
@@ -46,7 +46,7 @@ const RailAction = ({
   ...props
 }: {
   label: string;
-  icon: JSX.Element;
+  icon: React.ReactNode;
   value: string;
   onClick: () => Promise<void>;
 }) => {

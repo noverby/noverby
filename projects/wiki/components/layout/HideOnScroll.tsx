@@ -1,7 +1,7 @@
 import { Slide, useMediaQuery } from '@mui/material';
 import { useEffect, useState } from 'react';
 
-const HideOnScroll = ({ children }: { children: JSX.Element }) => {
+const HideOnScroll = ({ children }: { children: React.ReactElement }) => {
   const [scrollPosition, setScrollPosition] = useState(0);
   const [show, setShow] = useState(true);
   const largeScreen = useMediaQuery('(min-width:1200px)');

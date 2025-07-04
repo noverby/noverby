@@ -18,7 +18,7 @@ export const ThemeModeContext = createContext<ThemeModeContextType>({
 
 
 
-const ThemeModeProvider: FC<{ children: JSX.Element }> = ({ children }) => {
+const ThemeModeProvider: FC<{ children: React.ReactNode }> = ({ children }) => {
 
     const [themeMode, setThemeMode] = useState<M3ThemeMode>(DEFAULT_MODE);
 

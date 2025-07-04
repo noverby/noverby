@@ -8,7 +8,7 @@ import { ThemeSchemeContext } from './ThemeSchemeContext';
 import { CssBaseline } from '@mui/material';
 
 type M3ThemeProps = {
-  children: JSX.Element;
+  children: React.ReactNode;
 }
 
 const M3ThemeProvider: FC<M3ThemeProps> = ({ children }) => {

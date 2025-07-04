@@ -6,7 +6,7 @@ const AdminCard = ({
   children,
   title,
 }: {
-  children: JSX.Element | JSX.Element[];
+  children: React.ReactNode | React.ReactNode[];
   title: string;
 }) => (
   <Card sx={{ m: 0, bgcolor: 'primary.main' }}>

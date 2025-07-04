@@ -2,7 +2,7 @@ import { useMediaQuery } from '@mui/material';
 import { drawerWidth } from 'core/constants';
 import { SnackbarProvider as NoSnackbarProvider } from 'notistack';
 
-const SnackbarProvider = ({ children }: { children: JSX.Element }) => {
+const SnackbarProvider = ({ children }: { children: React.ReactNode }) => {
   const largeScreen = useMediaQuery('(min-width:1200px)');
   return (
     <NoSnackbarProvider
