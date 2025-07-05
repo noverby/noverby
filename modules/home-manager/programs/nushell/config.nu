@@ -58,7 +58,7 @@ def --env assume [profile?: string = ""] {
  }
 
 def yarn-lock-update [] {
-  try { git rebase master }
+  try { grm }
   let root = git rev-parse --show-toplevel
   git reset $"($root)/.pnp.cjs" $"($root)/yarn.lock"
   yarn
@@ -78,4 +78,16 @@ def gco [branch_name: string] {
     } else {
         git checkout -b $branch_name
     }
+}
+
+def gcom [] {
+  git fetch origin
+  let default_branch = (git symbolic-ref refs/remotes/origin/HEAD | str replace "refs/remotes/origin/" "")
+  gco $default_branch
+}
+
+def grm [] {
+  git fetch origin
+  let default_branch = (git symbolic-ref refs/remotes/origin/HEAD | str replace "refs/remotes/origin/" "")
+  gr $default_branch
 }
