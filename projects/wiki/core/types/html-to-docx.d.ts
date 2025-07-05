@@ -1,5 +1,5 @@
 declare module "html-to-docx" {
-	import { Buffer } from "node:buffer";
+	import type { Buffer } from "node:buffer";
 	interface Margins {
 		/**
 		 * top <Number> distance between the top of the text margins for the main document and the top of the page for all pages in this section in TWIP.
