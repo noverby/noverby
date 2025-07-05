@@ -60,7 +60,7 @@
 		"build:next": "next build",
 		"build:gqty": "deno run -A npm:@gqty/cli generate",
 		"clean": "rm -Rf .next node_modules",
-		"dev": "deno task build:gqty && next dev",
+		"dev": "deno task build:gqty && next dev --turbopack",
 		"start": "deno run -A npm:serve -n out",
 		"lint": "next lint"
 	},
