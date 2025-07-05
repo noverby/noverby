@@ -10,7 +10,6 @@
     gca = "git commit --amend";
     gcn = "git commit --no-verify";
     gcp = "git cherry-pick";
-    gcom = "git checkout master";
     gd = "git diff";
     gf = "git fetch";
     gl = "git log --oneline --no-abbrev-commit";
