@@ -15,6 +15,7 @@
     sessionVariables = {
       EDITOR = "vi";
       VISUAL = "vi";
+      BATDIFF_USE_DELTA = "true";
       DIRENV_LOG_FORMAT = "";
       PYTHONSTARTUP = "${homeDirectory}/.pystartup";
       GRANTED_ALIAS_CONFIGURED = "true";

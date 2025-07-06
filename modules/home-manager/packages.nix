@@ -66,6 +66,8 @@
     zip
     unzip
     mergiraf
+    uutils-diffutils
+    delta
     #diffoscope
 
     # Container tools
