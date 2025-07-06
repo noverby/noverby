@@ -4,6 +4,7 @@
   ...
 }: let
   shellAliases = {
+    diff = "batdiff";
     ga = "git add";
     gc = "git commit";
     gcm = "git commit -m";
