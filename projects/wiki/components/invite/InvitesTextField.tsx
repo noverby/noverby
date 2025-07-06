@@ -23,29 +23,33 @@ const InvitesTextField = ({ node }: { node: Node }) => {
 			nodeId: user.userId,
 			parentId: node.id,
 		}));
-		console.log(members)
-		await nodeMembers.insert({ members });
-		setValue([]);
+		console.log(members);
+
+		startTransition(async () => {
+			await nodeMembers.insert({ members });
+			setValue([]);
+		});
 	};
 
 	useEffect(() => {
 		const fetch = async () => {
 			const like = `%${inputValue}%`;
-			const users = await resolve(({ query: { users } }) =>
-				users({
-					limit: 10,
-					where: {
-						displayName: { _ilike: like },
-					},
-					order_by: [{ displayName: order_by.asc }],
-				}).map(({ displayName, id }) => ({
-					name: displayName,
-					userId: id,
-					id,
-				})),
+			const users = await resolve(
+				({ query: { users } }) =>
+					users({
+						limit: 10,
+						where: {
+							displayName: { _ilike: like },
+						},
+						order_by: [{ displayName: order_by.asc }],
+					}).map(({ displayName, id }) => ({
+						name: displayName,
+						userId: id,
+						id,
+					})),
 				{
 					cachePolicy: "no-store",
-				}
+				},
 			);
 
 			const newOptions: Option[] = ([] as Option[]).concat(

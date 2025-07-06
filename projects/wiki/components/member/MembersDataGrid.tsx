@@ -8,6 +8,7 @@ import {
 } from "@mui/x-data-grid";
 import { order_by } from "gql";
 import type { Node } from "hooks";
+import { startTransition } from "react";
 
 const MembersDataGrid = ({ node }: { node: Node }) => {
 	const query = node.useQuery();
@@ -57,7 +58,11 @@ const MembersDataGrid = ({ node }: { node: Node }) => {
 			disableColumnMenu: true,
 			renderCell: (params: GridRenderCellParams) => (
 				<IconButton
-					onClick={() => member.delete(params.id.toString())}
+					onClick={() =>
+						startTransition(() => {
+							member.delete(params.id.toString());
+						})
+					}
 					size="small"
 					aria-label="delete"
 				>
