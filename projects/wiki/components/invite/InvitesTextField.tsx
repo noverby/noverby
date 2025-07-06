@@ -23,6 +23,7 @@ const InvitesTextField = ({ node }: { node: Node }) => {
 			nodeId: user.userId,
 			parentId: node.id,
 		}));
+		console.log(members)
 		await nodeMembers.insert({ members });
 		setValue([]);
 	};
@@ -42,6 +43,9 @@ const InvitesTextField = ({ node }: { node: Node }) => {
 					userId: id,
 					id,
 				})),
+				{
+					cachePolicy: "no-store",
+				}
 			);
 
 			const newOptions: Option[] = ([] as Option[]).concat(
