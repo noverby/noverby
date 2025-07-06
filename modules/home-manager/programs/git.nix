@@ -6,7 +6,7 @@ _: {
     lfs = {
       enable = true;
     };
-    difftastic = {
+    delta = {
       enable = true;
     };
     extraConfig = {
