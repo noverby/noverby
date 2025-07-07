@@ -55,15 +55,6 @@
 		"uuid": "^8.3.2",
 		"xlsx": "^0.18.5"
 	},
-	"scripts": {
-		"build": "export NEXT_PUBLIC_GIT_COMMIT_SHA=$(git rev-parse HEAD) && deno task build:gqty && deno task build:next",
-		"build:next": "next build",
-		"build:gqty": "deno run -A npm:@gqty/cli generate",
-		"clean": "rm -Rf .next node_modules",
-		"dev": "deno task build:gqty && next dev",
-		"start": "deno run -A npm:serve -n out",
-		"lint": "deno lint"
-	},
 	"devDependencies": {
 		"@gqty/cli": "^4.1.0",
 		"@svgr/webpack": "^6.3.1",

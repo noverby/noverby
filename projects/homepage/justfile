@@ -1,0 +1,11 @@
+dev:
+  deno run -A npm:next dev --turbopack
+
+build:
+  deno run -A npm:next build
+
+start: build
+  deno run -A npm:serve -n out
+
+lint:
+  deno lint
