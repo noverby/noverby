@@ -1,4 +1,4 @@
-import { Autocomplete, Button, Grid, TextField } from "@mui/material";
+import { Autocomplete, Button, Grid2, TextField } from "@mui/material";
 import { order_by, resolve } from "gql";
 import type { Node } from "hooks";
 import { startTransition, useEffect, useState } from "react";
@@ -16,14 +16,13 @@ const InvitesTextField = ({ node }: { node: Node }) => {
 	const [options, setOptions] = useState<Option[]>([]);
 	const [inputValue, setInputValue] = useState("");
 
-	const handleAddInvites = async () => {
+	const handleAddInvites = () => {
 		const members = value.map((user) => ({
 			name: user.name,
 			email: user.email,
 			nodeId: user.userId,
 			parentId: node.id,
 		}));
-		console.log(members);
 
 		startTransition(async () => {
 			await nodeMembers.insert({ members });
@@ -66,8 +65,8 @@ const InvitesTextField = ({ node }: { node: Node }) => {
 	}, [JSON.stringify(value), inputValue]);
 
 	return (
-		<Grid style={{ margin: 1 }} container spacing={2}>
-			<Grid item xs={6}>
+		<Grid2 style={{ margin: 1 }} container spacing={2}>
+			<Grid2 size={{ xs: 6 }}>
 				<Autocomplete
 					multiple
 					color="primary"
@@ -97,13 +96,13 @@ const InvitesTextField = ({ node }: { node: Node }) => {
 						/>
 					)}
 				/>
-			</Grid>
-			<Grid item xs={6}>
+			</Grid2>
+			<Grid2 size={{ xs: 6 }}>
 				<Button onClick={handleAddInvites} color="primary" variant="contained">
 					Tilføj
 				</Button>
-			</Grid>
-		</Grid>
+			</Grid2>
+		</Grid2>
 	);
 };
 

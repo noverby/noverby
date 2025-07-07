@@ -1,5 +1,11 @@
 import { Save } from "@mui/icons-material";
-import { ButtonGroup, Card, CardContent, Grid, TextField } from "@mui/material";
+import {
+	ButtonGroup,
+	Card,
+	CardContent,
+	Grid2,
+	TextField,
+} from "@mui/material";
 import { Stack } from "@mui/system";
 import { DatePicker } from "@mui/x-date-pickers";
 import {
@@ -108,8 +114,8 @@ const Editor = ({ node }: { node: Node }) => {
 		<>
 			<Card sx={{ m: 0 }}>
 				<CardContent>
-					<Grid container spacing={2}>
-						<Grid item xs={12}>
+					<Grid2 container spacing={2}>
+						<Grid2 size={{ xs: 12 }}>
 							<Stack spacing={2} direction="row" alignItems="center">
 								<TextField
 									value={name}
@@ -132,8 +138,8 @@ const Editor = ({ node }: { node: Node }) => {
 									/>
 								</ButtonGroup>
 							</Stack>
-						</Grid>
-						<Grid item xs={12}>
+						</Grid2>
+						<Grid2 size={12}>
 							<Stack spacing={2} direction="row" alignItems="center">
 								{![
 									"wiki/group",
@@ -153,26 +159,26 @@ const Editor = ({ node }: { node: Node }) => {
 									<DatePicker value={date} onChange={setDate} />
 								)}
 							</Stack>
-						</Grid>
-						<Grid item>
+						</Grid2>
+						<Grid2>
 							<FileUploader
 								text="Upload Billede"
 								onNewFile={({ fileId }: { fileId?: string }) => {
 									fileId && setFileId(fileId);
 								}}
 							/>
-						</Grid>
+						</Grid2>
 
-						<Grid item xs={12}>
-							<Grid container>
+						<Grid2 size={{ xs: 12 }}>
+							<Grid2 container>
 								{image && (
-									<Grid item xs={3}>
+									<Grid2 size={{ xs: 3 }}>
 										<Image alt="Billede for indhold" src={image} />
-									</Grid>
+									</Grid2>
 								)}
-							</Grid>
-						</Grid>
-					</Grid>
+							</Grid2>
+						</Grid2>
+					</Grid2>
 				</CardContent>
 				<Slate
 					value={content}
