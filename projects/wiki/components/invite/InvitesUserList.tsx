@@ -18,6 +18,7 @@ import {
 	useMutation,
 	useSubscription,
 } from "gql";
+import { startTransition } from "react";
 
 const ListSuspense = () => {
 	const sub = useSubscription();
@@ -108,34 +109,39 @@ const ListSuspense = () => {
 		},
 	);
 
-	const handleAcceptInvite = (id?: string) => async () => {
-		try {
-			await updateMember({
-				args: { id, set: { accepted: true, nodeId: userId } },
-			});
-		} catch (_) {
-			await deleteMember({ args: { id } });
-		}
+	const handleAcceptInvite = (id?: string) => () => {
+		startTransition(async () => {
+			try {
+				await updateMember({
+					args: { id, set: { accepted: true, nodeId: userId } },
+				});
+			} catch (_) {
+				await deleteMember({ args: { id } });
+			}
 
-		// Delete cache
-		// eslint-disable-next-line functional/immutable-data
-		client.cache.clear();
-		await resolve(
-			({ query }) =>
-				query
-					.membersAggregate({
-						where: {
-							_and: [
-								{ accepted: { _eq: false } },
-								{
-									_or: [{ nodeId: { _eq: userId } }, { email: { _eq: email } }],
-								},
-							],
-						},
-					})
-					.aggregate?.count(),
-			{ cachePolicy: "no-cache" },
-		);
+			// Delete cache
+			// eslint-disable-next-line functional/immutable-data
+			client.cache.clear();
+			await resolve(
+				({ query }) =>
+					query
+						.membersAggregate({
+							where: {
+								_and: [
+									{ accepted: { _eq: false } },
+									{
+										_or: [
+											{ nodeId: { _eq: userId } },
+											{ email: { _eq: email } },
+										],
+									},
+								],
+							},
+						})
+						.aggregate?.count(),
+				{ cachePolicy: "no-cache" },
+			);
+		});
 	};
 
 	return (
