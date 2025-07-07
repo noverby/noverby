@@ -3,7 +3,7 @@ import { IconButton } from "@mui/material";
 import { Box } from "@mui/system";
 import {
 	DataGrid,
-	type GridColumns,
+	type GridColDef,
 	type GridRenderCellParams,
 } from "@mui/x-data-grid";
 import { order_by } from "gql";
@@ -14,7 +14,7 @@ const MembersDataGrid = ({ node }: { node: Node }) => {
 	const query = node.useQuery();
 	const member = node.useMember();
 
-	const columns: GridColumns = [
+	const columns: GridColDef[] = [
 		{
 			field: "name",
 			headerName: "Navn",
@@ -72,19 +72,27 @@ const MembersDataGrid = ({ node }: { node: Node }) => {
 		},
 	];
 
-	const handleCellEditCommit = ({
-		id,
-		field,
-		value,
-	}: {
-		id: string | number;
-		field: string;
-		value: string;
-	}) => {
-		if (typeof value !== "boolean" && !["name", "email"].includes(field))
-			return;
-		const set = { [field]: value };
-		member.update(String(id), set);
+	const processRowUpdate = (
+		newRow: Record<string, unknown>,
+		oldRow: Record<string, unknown>,
+	) => {
+		// Find the changed field by comparing newRow with oldRow
+		const changedField = Object.keys(newRow).find(
+			(key) => newRow[key] !== oldRow[key],
+		);
+
+		if (
+			changedField &&
+			(typeof newRow[changedField] === "boolean" ||
+				["name", "email"].includes(changedField))
+		) {
+			const set = { [changedField]: newRow[changedField] };
+			startTransition(() => {
+				member.update(String(newRow.id), set);
+			});
+		}
+
+		return newRow;
 	};
 
 	const rows = query
@@ -107,7 +115,7 @@ const MembersDataGrid = ({ node }: { node: Node }) => {
 				autoHeight
 				columns={columns}
 				rows={rows}
-				onCellEditCommit={handleCellEditCommit}
+				processRowUpdate={processRowUpdate}
 			/>
 		</Box>
 	);

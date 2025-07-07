@@ -15,12 +15,16 @@
     "npm:@gqty/react@^3.0.2": "3.1.0_gqty@3.4.2__graphql@16.11.0__graphql-ws@5.16.2___graphql@16.11.0_graphql@16.11.0_graphql-ws@5.16.2__graphql@16.11.0_react@18.3.1_react-dom@18.3.1__react@18.3.1_js-cookie@3.0.5",
     "npm:@material/material-color-utilities@~0.2.4": "0.2.7",
     "npm:@mui/icons-material@^5.11.16": "5.17.1_@mui+material@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1__react-dom@18.3.1___react@18.3.1_@types+react@19.1.8_react@18.3.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_react-dom@18.3.1__react@18.3.1",
-    "npm:@mui/material-nextjs@^5.15.11": "5.16.14_@emotion+cache@11.14.0_@mui+material@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1__react-dom@18.3.1___react@18.3.1_@types+react@19.1.8_next@15.3.5__react@18.3.1__react-dom@18.3.1___react@18.3.1_react@18.3.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_react-dom@18.3.1__react@18.3.1",
+    "npm:@mui/icons-material@^6.4.12": "6.4.12_@mui+material@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1__react-dom@18.3.1___react@18.3.1_@types+react@19.1.8_react@18.3.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_react-dom@18.3.1__react@18.3.1",
+    "npm:@mui/material-nextjs@^6.4.12": "6.4.12_@emotion+cache@11.14.0_@emotion+react@11.14.0__react@18.3.1_@types+react@19.1.8_next@15.3.5__react@18.3.1__react-dom@18.3.1___react@18.3.1_react@18.3.1_react-dom@18.3.1__react@18.3.1",
     "npm:@mui/material@^5.13.0": "5.17.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1_react-dom@18.3.1__react@18.3.1",
+    "npm:@mui/material@^6.4.12": "6.4.12_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1_react-dom@18.3.1__react@18.3.1",
     "npm:@mui/system@^5.12.3": "5.17.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1",
+    "npm:@mui/system@^6.4.12": "6.4.12_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1",
     "npm:@mui/utils@^5.17.1": "5.17.1_@types+react@19.1.8_react@18.3.1",
-    "npm:@mui/x-data-grid@^5.15.0": "5.17.26_@mui+material@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1__react-dom@18.3.1___react@18.3.1_@mui+system@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1_react@18.3.1_react-dom@18.3.1__react@18.3.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8",
-    "npm:@mui/x-date-pickers@^6.16.2": "6.20.2_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@mui+material@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1__react-dom@18.3.1___react@18.3.1_@mui+system@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1_date-fns@2.30.0_react@18.3.1_react-dom@18.3.1__react@18.3.1_@types+react@19.1.8",
+    "npm:@mui/utils@^6.4.9": "6.4.9_@types+react@19.1.8_react@18.3.1",
+    "npm:@mui/x-data-grid@^6.20.4": "6.20.4_@mui+material@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1__react-dom@18.3.1___react@18.3.1_@mui+system@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1_react@18.3.1_react-dom@18.3.1__react@18.3.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8",
+    "npm:@mui/x-date-pickers@^6.20.2": "6.20.2_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@mui+material@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1__react-dom@18.3.1___react@18.3.1_@mui+system@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1_date-fns@2.30.0_react@18.3.1_react-dom@18.3.1__react@18.3.1_@types+react@19.1.8",
     "npm:@nhost/nextjs@^2.1.17": "2.2.9_next@15.3.5__react@18.3.1__react-dom@18.3.1___react@18.3.1_react@18.3.1_react-dom@18.3.1__react@18.3.1_graphql@16.8.1_encoding@0.1.13",
     "npm:@svgr/webpack@^6.3.1": "6.5.1_@babel+core@7.28.0_@svgr+core@6.5.1__@babel+core@7.28.0",
     "npm:@types/is-hotkey@~0.1.10": "0.1.10",
@@ -988,8 +992,8 @@
         "@devexpress/dx-react-core",
         "@emotion/react",
         "@emotion/styled",
-        "@mui/icons-material",
-        "@mui/material",
+        "@mui/icons-material@5.17.1_@mui+material@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1__react-dom@18.3.1___react@18.3.1_@types+react@19.1.8_react@18.3.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_react-dom@18.3.1__react@18.3.1",
+        "@mui/material@5.17.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1_react-dom@18.3.1__react@18.3.1",
         "clsx@1.2.1",
         "prop-types",
         "react"
@@ -1751,11 +1755,14 @@
     "@mui/core-downloads-tracker@5.17.1": {
       "integrity": "sha512-OcZj+cs6EfUD39IoPBOgN61zf1XFVY+imsGoBDwXeSq2UHJZE3N59zzBOVjclck91Ne3e9gudONOeILvHCIhUA=="
     },
+    "@mui/core-downloads-tracker@6.4.12": {
+      "integrity": "sha512-M7IkG4LqSJfkY+thlQQHNkcS5NdmMDwLq/2RKoW40XR0mv/2BYb6X8fRnyaxP4zGdPD2M4MQdbzKihSVormJ7Q=="
+    },
     "@mui/icons-material@5.17.1_@mui+material@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1__react-dom@18.3.1___react@18.3.1_@types+react@19.1.8_react@18.3.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_react-dom@18.3.1__react@18.3.1": {
       "integrity": "sha512-CN86LocjkunFGG0yPlO4bgqHkNGgaEOEc3X/jG5Bzm401qYw79/SaLrofA7yAKCCXAGdIGnLoMHohc3+ubs95A==",
       "dependencies": [
         "@babel/runtime@7.27.6",
-        "@mui/material",
+        "@mui/material@5.17.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1_react-dom@18.3.1__react@18.3.1",
         "@types/react",
         "react"
       ],
@@ -1763,12 +1770,24 @@
         "@types/react"
       ]
     },
-    "@mui/material-nextjs@5.16.14_@emotion+cache@11.14.0_@mui+material@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1__react-dom@18.3.1___react@18.3.1_@types+react@19.1.8_next@15.3.5__react@18.3.1__react-dom@18.3.1___react@18.3.1_react@18.3.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_react-dom@18.3.1__react@18.3.1": {
-      "integrity": "sha512-kh/sun4FNvmCW1yhUPaBeuycvgJVlHwsQDkC5OHZHGjkz1T6RkmZ7R66xgf3ZHYdEJH8scH1T9qvPDxrVS/F4g==",
+    "@mui/icons-material@6.4.12_@mui+material@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1__react-dom@18.3.1___react@18.3.1_@types+react@19.1.8_react@18.3.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_react-dom@18.3.1__react@18.3.1": {
+      "integrity": "sha512-ILTe3A2te0+Vb9TG4P1AZVmZFOjDDCV/b2nBmV1rNOmSu3Q/xkHghW+yMhMffwHcXklMlcajMlc4iFSkPbrTKw==",
+      "dependencies": [
+        "@babel/runtime@7.27.6",
+        "@mui/material@5.17.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1_react-dom@18.3.1__react@18.3.1",
+        "@types/react",
+        "react"
+      ],
+      "optionalPeers": [
+        "@types/react"
+      ]
+    },
+    "@mui/material-nextjs@6.4.12_@emotion+cache@11.14.0_@emotion+react@11.14.0__react@18.3.1_@types+react@19.1.8_next@15.3.5__react@18.3.1__react-dom@18.3.1___react@18.3.1_react@18.3.1_react-dom@18.3.1__react@18.3.1": {
+      "integrity": "sha512-fBOTr9YGonjjCYWp81eEHOxnbmx6n1aVZ6zbhQABBq3mFtEzkqSP/6/P36cO3Q24sPiCLAC5g3wt3BcdD4OVxg==",
       "dependencies": [
         "@babel/runtime@7.27.6",
         "@emotion/cache",
-        "@mui/material",
+        "@emotion/react",
         "@types/react",
         "next",
         "react"
@@ -1784,10 +1803,37 @@
         "@babel/runtime@7.27.6",
         "@emotion/react",
         "@emotion/styled",
-        "@mui/core-downloads-tracker",
-        "@mui/system",
+        "@mui/core-downloads-tracker@5.17.1",
+        "@mui/system@5.17.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1",
         "@mui/types",
         "@mui/utils@5.17.1_@types+react@19.1.8_react@18.3.1",
+        "@popperjs/core",
+        "@types/react",
+        "@types/react-transition-group",
+        "clsx@2.1.1",
+        "csstype",
+        "prop-types",
+        "react",
+        "react-dom",
+        "react-is@19.1.0",
+        "react-transition-group"
+      ],
+      "optionalPeers": [
+        "@emotion/react",
+        "@emotion/styled",
+        "@types/react"
+      ]
+    },
+    "@mui/material@6.4.12_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1_react-dom@18.3.1__react@18.3.1": {
+      "integrity": "sha512-VqoLNS5UaNqoS1FybezZR/PaAvzbTmRe0Mx//afXbolIah43eozpX2FckaFffLvMoiSIyxx1+AMHyENTr2Es0Q==",
+      "dependencies": [
+        "@babel/runtime@7.27.6",
+        "@emotion/react",
+        "@emotion/styled",
+        "@mui/core-downloads-tracker@6.4.12",
+        "@mui/system@6.4.12_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1",
+        "@mui/types",
+        "@mui/utils@6.4.9_@types+react@19.1.8_react@18.3.1",
         "@popperjs/core",
         "@types/react",
         "@types/react-transition-group",
@@ -1818,6 +1864,19 @@
         "@types/react"
       ]
     },
+    "@mui/private-theming@6.4.9_@types+react@19.1.8_react@18.3.1": {
+      "integrity": "sha512-LktcVmI5X17/Q5SkwjCcdOLBzt1hXuc14jYa7NPShog0GBDCDvKtcnP0V7a2s6EiVRlv7BzbWEJzH6+l/zaCxw==",
+      "dependencies": [
+        "@babel/runtime@7.27.6",
+        "@mui/utils@6.4.9_@types+react@19.1.8_react@18.3.1",
+        "@types/react",
+        "prop-types",
+        "react"
+      ],
+      "optionalPeers": [
+        "@types/react"
+      ]
+    },
     "@mui/styled-engine@5.16.14_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_react@18.3.1": {
       "integrity": "sha512-UAiMPZABZ7p8mUW4akDV6O7N3+4DatStpXMZwPlt+H/dA0lt67qawN021MNND+4QTpjaiMYxbhKZeQcyWCbuKw==",
       "dependencies": [
@@ -1834,16 +1893,56 @@
         "@emotion/styled"
       ]
     },
+    "@mui/styled-engine@6.4.11_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_react@18.3.1": {
+      "integrity": "sha512-74AUmlHXaGNbyUqdK/+NwDJOZqgRQw6BcNvhoWYLq3LGbLTkE+khaJ7soz6cIabE4CPYqO2/QAIU1Z/HEjjpcw==",
+      "dependencies": [
+        "@babel/runtime@7.27.6",
+        "@emotion/cache",
+        "@emotion/react",
+        "@emotion/serialize",
+        "@emotion/sheet",
+        "@emotion/styled",
+        "csstype",
+        "prop-types",
+        "react"
+      ],
+      "optionalPeers": [
+        "@emotion/react",
+        "@emotion/styled"
+      ]
+    },
     "@mui/system@5.17.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1": {
       "integrity": "sha512-aJrmGfQpyF0U4D4xYwA6ueVtQcEMebET43CUmKMP7e7iFh3sMIF3sBR0l8Urb4pqx1CBjHAaWgB0ojpND4Q3Jg==",
       "dependencies": [
         "@babel/runtime@7.27.6",
         "@emotion/react",
         "@emotion/styled",
-        "@mui/private-theming",
-        "@mui/styled-engine",
+        "@mui/private-theming@5.17.1_@types+react@19.1.8_react@18.3.1",
+        "@mui/styled-engine@5.16.14_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_react@18.3.1",
         "@mui/types",
         "@mui/utils@5.17.1_@types+react@19.1.8_react@18.3.1",
+        "@types/react",
+        "clsx@2.1.1",
+        "csstype",
+        "prop-types",
+        "react"
+      ],
+      "optionalPeers": [
+        "@emotion/react",
+        "@emotion/styled",
+        "@types/react"
+      ]
+    },
+    "@mui/system@6.4.12_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1": {
+      "integrity": "sha512-fgEfm1qxpKCztndESeL1L0sLwA2c7josZ2w42D8OM3pbLee4bH2twEjoMo6qf7z2rNw1Uc9EU9haXeMoq0oTdQ==",
+      "dependencies": [
+        "@babel/runtime@7.27.6",
+        "@emotion/react",
+        "@emotion/styled",
+        "@mui/private-theming@6.4.9_@types+react@19.1.8_react@18.3.1",
+        "@mui/styled-engine@6.4.11_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_react@18.3.1",
+        "@mui/types",
+        "@mui/utils@6.4.9_@types+react@19.1.8_react@18.3.1",
         "@types/react",
         "clsx@2.1.1",
         "csstype",
@@ -1897,14 +1996,14 @@
         "@types/react"
       ]
     },
-    "@mui/x-data-grid@5.17.26_@mui+material@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1__react-dom@18.3.1___react@18.3.1_@mui+system@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1_react@18.3.1_react-dom@18.3.1__react@18.3.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8": {
-      "integrity": "sha512-eGJq9J0g9cDGLFfMmugOadZx0mJeOd/yQpHwEa5gUXyONS6qF0OhXSWyDOhDdA3l2TOoQzotMN5dY/T4Wl1KYA==",
+    "@mui/x-data-grid@6.20.4_@mui+material@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1__react-dom@18.3.1___react@18.3.1_@mui+system@5.17.1__@emotion+react@11.14.0___react@18.3.1__@emotion+styled@11.14.1___@emotion+react@11.14.0____react@18.3.1___react@18.3.1__@types+react@19.1.8__react@18.3.1_react@18.3.1_react-dom@18.3.1__react@18.3.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8": {
+      "integrity": "sha512-I0JhinVV4e25hD2dB+R6biPBtpGeFrXf8RwlMPQbr9gUggPmPmNtWKo8Kk2PtBBMlGtdMAgHWe7PqhmucUxU1w==",
       "dependencies": [
         "@babel/runtime@7.27.6",
-        "@mui/material",
-        "@mui/system",
+        "@mui/material@5.17.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1_react-dom@18.3.1__react@18.3.1",
+        "@mui/system@5.17.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1",
         "@mui/utils@5.17.1_@types+react@19.1.8_react@18.3.1",
-        "clsx@1.2.1",
+        "clsx@2.1.1",
         "prop-types",
         "react",
         "react-dom",
@@ -1918,8 +2017,8 @@
         "@emotion/react",
         "@emotion/styled",
         "@mui/base",
-        "@mui/material",
-        "@mui/system",
+        "@mui/material@5.17.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1_react-dom@18.3.1__react@18.3.1",
+        "@mui/system@5.17.1_@emotion+react@11.14.0__react@18.3.1_@emotion+styled@11.14.1__@emotion+react@11.14.0___react@18.3.1__react@18.3.1_@types+react@19.1.8_react@18.3.1",
         "@mui/utils@5.17.1_@types+react@19.1.8_react@18.3.1",
         "@types/react-transition-group",
         "clsx@2.1.1",
@@ -5099,13 +5198,13 @@
         "npm:@gqty/logger@^3.0.2",
         "npm:@gqty/react@^3.0.2",
         "npm:@material/material-color-utilities@~0.2.4",
-        "npm:@mui/icons-material@^5.11.16",
-        "npm:@mui/material-nextjs@^5.15.11",
-        "npm:@mui/material@^5.13.0",
-        "npm:@mui/system@^5.12.3",
-        "npm:@mui/utils@^5.17.1",
-        "npm:@mui/x-data-grid@^5.15.0",
-        "npm:@mui/x-date-pickers@^6.16.2",
+        "npm:@mui/icons-material@^6.4.12",
+        "npm:@mui/material-nextjs@^6.4.12",
+        "npm:@mui/material@^6.4.12",
+        "npm:@mui/system@^6.4.12",
+        "npm:@mui/utils@^6.4.9",
+        "npm:@mui/x-data-grid@^6.20.4",
+        "npm:@mui/x-date-pickers@^6.20.2",
         "npm:@nhost/nextjs@^2.1.17",
         "npm:@svgr/webpack@^6.3.1",
         "npm:@types/is-hotkey@~0.1.10",
