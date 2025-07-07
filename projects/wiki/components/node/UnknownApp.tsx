@@ -1,5 +1,5 @@
 import { Login, QuestionMark } from "@mui/icons-material";
-import { Avatar, Button, CardContent, Grid2, Typography } from "@mui/material";
+import { Avatar, Button, CardContent, Grid, Typography } from "@mui/material";
 import { useAuthenticationStatus } from "@nhost/nextjs";
 import { HeaderCard } from "comps";
 import { useRouter } from "next/router";
@@ -9,8 +9,8 @@ const UnknownApp = () => {
 	const { isAuthenticated } = useAuthenticationStatus();
 
 	return (
-		<Grid2 container spacing={1}>
-			<Grid2 size={{ xs: 12 }}>
+		<Grid container spacing={1}>
+			<Grid size={{ xs: 12 }}>
 				<HeaderCard
 					title="Dokumentet er ikke tilgængelig"
 					avatar={
@@ -48,8 +48,8 @@ const UnknownApp = () => {
 						)}
 					</CardContent>
 				</HeaderCard>
-			</Grid2>
-		</Grid2>
+			</Grid>
+		</Grid>
 	);
 };
 

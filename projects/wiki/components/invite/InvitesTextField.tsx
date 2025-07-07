@@ -1,4 +1,4 @@
-import { Autocomplete, Button, Grid2, TextField } from "@mui/material";
+import { Autocomplete, Button, Grid, TextField } from "@mui/material";
 import { order_by, resolve } from "gql";
 import type { Node } from "hooks";
 import { startTransition, useEffect, useState } from "react";
@@ -65,8 +65,8 @@ const InvitesTextField = ({ node }: { node: Node }) => {
 	}, [JSON.stringify(value), inputValue]);
 
 	return (
-		<Grid2 style={{ margin: 1 }} container spacing={2}>
-			<Grid2 size={{ xs: 6 }}>
+		<Grid style={{ margin: 1 }} container spacing={2}>
+			<Grid size={{ xs: 6 }}>
 				<Autocomplete
 					multiple
 					color="primary"
@@ -96,13 +96,13 @@ const InvitesTextField = ({ node }: { node: Node }) => {
 						/>
 					)}
 				/>
-			</Grid2>
-			<Grid2 size={{ xs: 6 }}>
+			</Grid>
+			<Grid size={{ xs: 6 }}>
 				<Button onClick={handleAddInvites} color="primary" variant="contained">
 					Tilføj
 				</Button>
-			</Grid2>
-		</Grid2>
+			</Grid>
+		</Grid>
 	);
 };
 
