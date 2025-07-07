@@ -1,4 +1,4 @@
-import { Grid2 } from "@mui/material";
+import { Grid } from "@mui/material";
 import { Box } from "@mui/system";
 import { MimeLoader, SpeakApp } from "comps";
 import type { Node } from "hooks";
@@ -10,17 +10,17 @@ const ScreenApp = ({ node }: { node: Node }) => {
 	const mimeId = content?.mimeId;
 	return (
 		<Box sx={{ height: "100%", m: 1 }}>
-			<Grid2
+			<Grid
 				container
 				alignItems="stretch"
 				justifyContent="space-evenly"
 				spacing={1}
 			>
-				<Grid2>{id && <MimeLoader id={id} mimeId={mimeId!} />}</Grid2>
-				<Grid2 size={{ xs: 3 }}>
+				<Grid>{id && <MimeLoader id={id} mimeId={mimeId!} />}</Grid>
+				<Grid size={{ xs: 3 }}>
 					<SpeakApp node={node} />
-				</Grid2>
-			</Grid2>
+				</Grid>
+			</Grid>
 		</Box>
 	);
 };
