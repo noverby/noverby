@@ -5,7 +5,7 @@ import {
 	Button,
 	Card,
 	CardContent,
-	Grid,
+	Grid2,
 	Stack,
 	Typography,
 	useMediaQuery,
@@ -28,16 +28,20 @@ const HomeApp = () => {
 	const largeScreen = useMediaQuery("(min-width:1200px)");
 
 	return (
-		<Grid direction={largeScreen ? "row-reverse" : "row"} container spacing={1}>
+		<Grid2
+			direction={largeScreen ? "row-reverse" : "row"}
+			container
+			spacing={1}
+		>
 			{isAuthenticated && (
-				<Grid item xs={12} lg={4}>
+				<Grid2 size={{ xs: 12, lg: 4 }}>
 					<InvitesUserList />
 					<Suspense fallback={null}>
 						<AddContentFabSuspense />
 					</Suspense>
-				</Grid>
+				</Grid2>
 			)}
-			<Grid item xs={12} lg>
+			<Grid2 size={{ xs: 8 }}>
 				{isAuthenticated && !largeScreen ? (
 					<Card>
 						<HomeList />
@@ -99,8 +103,8 @@ const HomeApp = () => {
 						</CardContent>
 					</HeaderCard>
 				)}
-			</Grid>
-		</Grid>
+			</Grid2>
+		</Grid2>
 	);
 };
 
