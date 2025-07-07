@@ -2,12 +2,6 @@
 	"name": "homepage",
 	"version": "0.1.0",
 	"private": true,
-	"scripts": {
-		"dev": "next dev --turbopack",
-		"build": "next build",
-		"start": "deno run -A npm:serve -n out",
-		"lint": "next lint"
-	},
 	"dependencies": {
 		"@react-three/fiber": "^8.6.0",
 		"@types/three": "^0.168.0",
