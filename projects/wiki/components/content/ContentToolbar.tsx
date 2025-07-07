@@ -34,20 +34,18 @@ const ContentToolbar = ({
 					/>
 				)}
 			{!child && <DownloadButton node={node} />}
-			{!child && (
-				<ButtonGroup>
-					{((query?.mutable && query?.isOwner) || query?.isContextOwner) && [
-						<DeleteButton key="delete" node={node} />,
+			{!child &&
+				((query?.mutable && query?.isOwner) || query?.isContextOwner) && (
+					<ButtonGroup>
+						<DeleteButton node={node} />
 						<AutoButton
-							key="edit"
 							text="Rediger"
 							icon={<Edit />}
 							onClick={() => link.push([], "editor")}
-						/>,
-						<PublishButton key="publish" node={node} />,
-					]}
-				</ButtonGroup>
-			)}
+						/>
+						{query?.mutable && <PublishButton node={node} />}
+					</ButtonGroup>
+				)}
 			{add && <AddContentButton node={node} />}
 		</Stack>
 	);
