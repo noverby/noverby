@@ -1,4 +1,4 @@
-import { Box, Collapse, Grid2 } from "@mui/material";
+import { Box, Collapse, Grid } from "@mui/material";
 import { Image, Slate } from "comps";
 import useFile from "core/hooks/useFile";
 import type { Node } from "hooks";
@@ -20,20 +20,20 @@ const Content = ({ node, fontSize }: { node: Node; fontSize: string }) => {
 	}, [JSON.stringify(data?.content)]);
 
 	return (
-		<Grid2 container spacing={2}>
-			<Grid2 size={{ xs: 9 }}>
+		<Grid container spacing={2}>
+			<Grid size={{ xs: 9 }}>
 				<Box sx={{ fontSize, overflowX: "auto" }}>
 					<Collapse in={!!content}>
 						<Slate value={content} readOnly />
 					</Collapse>
 				</Box>
-			</Grid2>
+			</Grid>
 			{image && (
-				<Grid2 size={{ xs: 9, sm: 4 }}>
+				<Grid size={{ xs: 9, sm: 4 }}>
 					<Image alt="Billede for indhold" layout="fill" src={image} />
-				</Grid2>
+				</Grid>
 			)}
-		</Grid2>
+		</Grid>
 	);
 };
 
