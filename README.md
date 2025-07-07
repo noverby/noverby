@@ -139,6 +139,7 @@
 | ✅ | TLS Protocol |  [Rustls 🦀](https://github.com/rustls/rustls) | | 🆗 | [Openssl 💣](https://github.com/openssl/openssl) |
 | ✅ | HTTP Protocol | [Hyper 🦀](https://github.com/hyperium/hyper) | | 🆗 | [Nghttp2 💣](https://github.com/nghttp2/nghttp2), [Nghttp3 💣](https://github.com/ngtcp2/nghttp3) |
 | ✅ | HTTP Client | [Reqwest 🦀](https://github.com/seanmonstar/reqwest) | | 🆗 | [Curl 💣](https://github.com/curl/curl) |
+| ✅ | SSH Protocol | [Russh 🦀](https://github.com/warp-tech/russh) | | 🆗 | [OpenSSH 💣](https://github.com/openssh/openssh-portable) |
 | ✅ | Font Rendering | [Cosmic-text 🦀](https://github.com/pop-os/cosmic-text) | | 🆗 | [HarfBuzz 💣](https://github.com/harfbuzz/harfbuzz), [FreeType 💣](https://github.com/freetype/freetype) |
 | 🚧 | Browser Engine | [Gecko 🦀💣](https://en.wikipedia.org/wiki/Gecko_(software)) | [Servo 🦀](https://github.com/servo/servo) | ⬅️ | |
 
