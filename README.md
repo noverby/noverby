@@ -29,6 +29,7 @@
  * 📖: [Open Standard](https://en.wikipedia.org/wiki/Open_standard)
  * 🏡: Self-hosted
  * 🔒: [Proprietary](https://en.wiktionary.org/wiki/proprietary)
+ * ⏳: [Business_Source_License](https://en.wikipedia.org/wiki/Business_Source_License)
 
  ### Language
  * 🔥: Mojo
@@ -128,7 +129,7 @@
 | ✅ | ECMAScript Runtime | [Deno 🦀](https://github.com/denoland/deno) | | [Deno Node APIs](https://docs.deno.com/runtime/reference/node_apis) | [Node.js 💣](https://github.com/nodejs/node) |
 | ✅ | Container CLI | [Docker 🐹](https://github.com/docker/cli) | | [OCI 📖](https://github.com/opencontainers/runtime-spec) | |
 | 🚧 | Container Runtime | [Runc 🐹](https://github.com/opencontainers/runc) | [Youki 🦀](https://github.com/containers/youki) | [OCI 📖](https://github.com/opencontainers/runtime-spec) | |
-| 🚧 | Meta Database | [Hasura 🦀](https://github.com/hasura/graphql-engine) | [Surrealdb 🔒🦀](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org) |
+| 🚧 | Meta Database | [Hasura 🦀](https://github.com/hasura/graphql-engine) | [Surrealdb ⏳🦀](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org) |
 | 🚧 | Database | [Postgres 💣](https://github.com/postgres/postgres) | [Tikv 🦀](https://github.com/tikv/tikv) | 🆗 | |
 | 🚧 | Storage Engine | | [Sled 🦀](https://github.com/spacejam/sled) | 🆗 | [RocksDB 💣](https://github.com/facebook/rocksdb) |
 | 🚧 | Web Server | [Nginx 💣](https://github.com/nginx/nginx) | [Moella 🦀](https://github.com/Icelk/moella) | | |
