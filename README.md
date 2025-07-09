@@ -30,7 +30,7 @@
  * 📖: [Open Standard](https://en.wikipedia.org/wiki/Open_standard)
  * 🏡: Self-hosted
  * 🔒: [Proprietary](https://en.wiktionary.org/wiki/proprietary)
- * ⏳: [Business_Source_License](https://en.wikipedia.org/wiki/Business_Source_License)
+ * ⏳: [Business Source License](https://en.wikipedia.org/wiki/Business_Source_License)
 
  ### Language
  * 🔥: Mojo
