@@ -52,7 +52,7 @@
 | 🚫 | Laptop | [Framework 13 🇺🇸](https://frame.work/products/laptop-diy-13-gen-intel), [Dell XPS 13 Plus 9320 🇺🇸](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) | [Tuxedo ARM Laptop 🇪🇺](https://www.tuxedocomputers.com/en/TUXEDO-on-ARM-is-coming.tuxedo) | |
 | ✅ | Router | [Turris Omnia 🇪🇺](https://www.turris.com/en/products/omnia) | | |
 | ✅ | Mobile | [Fairphone 4 🇪🇺](https://shop.fairphone.com/fairphone-4) | | [Google Pixel 7 Pro 🇺🇸](https://store.google.com/product/pixel_7_pro) |
-| ✅ | Watch | [Garmin Fenix 7 🔒🇺🇸](https://foundation.mozilla.org/en/privacynotincluded/garmin-fenix) | | [PineTime 🇭🇰](https://www.pine64.org/pinetime) |
+| 🚫 | Watch | [Garmin Fenix 7 🔒🇺🇸](https://foundation.mozilla.org/en/privacynotincluded/garmin-fenix) | | [PineTime 🇭🇰](https://www.pine64.org/pinetime) |
 | 🚫 | AR Glasses | [XReal Air 2 Pro 🔒🇨🇳](https://us.shop.xreal.com/products/xreal-air-2-pro) | | [XReal Light 🔒🇨🇳](https://www.xreal.com/light) |
 | ✅ | Earphones | [Hyphen Aria 🇨🇭](https://rollingsquare.com/products/hyphen%C2%AE-aria) | | [Shokz Openfit 🇬🇧](https://shokz.com/products/openfit) |
 | ✅ | E-book Reader | [reMarkable 2 🔒🇳🇴](https://remarkable.com/store/remarkable-2) | [PineNote 🇭🇰](https://pine64.org/devices/pinenote) | [reMarkable 1 🔒🇳🇴](https://remarkable.com/store/remarkable) |
@@ -121,7 +121,7 @@
 | ✅ | System Call Tracing | [Lurk 🦀](https://github.com/JakWai01/lurk) | | 🆗 | [Strace 💣](https://github.com/strace/strace) |
 | ✅ | Network Client | [Xh 🦀](https://github.com/ducaale/xh) | | 🆗 | [Curl 💣](https://github.com/curl/curl) |
 | ✅ | Dev Environment | [Devenv 🦀️❄️](https://github.com/cachix/devenv) | | 🆗 | |
-| 🚧 | Environment Loader | [Direnv 🐹](https://github.com/direnv/direnv) | [Envy 🦀](https://github.com/mre/envy) | ⬅️ | |
+| ✅ | Environment Loader | [Direnv 🐹](https://github.com/direnv/direnv) | [Envy 🦀](https://github.com/mre/envy) | ⬅️ | |
 | ✅ | Pager | [Tailspin 🦀](https://github.com/bensadeh/tailspin) | | 🆗 | [Less 💣](https://github.com/gwsw/less) |
 | ✅ | Performance Profiler | [Samply 🦀](https://github.com/mstange/samply) | | 🆗 | [Perf 💣](https://perf.wiki.kernel.org/) |
 | 🚧 | Bundler | [Webpack 🇹](https://github.com/webpack/webpack), [Turbopack 🦀](https://github.com/vercel/turbo) | [Vite 🇹](https://github.com/vitejs/vite), [Farm 🦀](https://github.com/farm-fe/farm) | 🆗 | |
@@ -136,7 +136,7 @@
 | 🚧 | Meta Database | [Hasura 🦀](https://github.com/hasura/graphql-engine) | [Surrealdb ⏳🦀](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org) |
 | 🚧 | Database | [Postgres 💣](https://github.com/postgres/postgres) | [Tikv 🦀](https://github.com/tikv/tikv) | 🆗 | |
 | 🚧 | Storage Engine | | [Sled 🦀](https://github.com/spacejam/sled) | 🆗 | [RocksDB 💣](https://github.com/facebook/rocksdb) |
-| 🚧 | Web Server | [Nginx 💣](https://github.com/nginx/nginx) | [Moella 🦀](https://github.com/Icelk/moella) | | |
+| 🚫 | Web Server | [Nginx 💣](https://github.com/nginx/nginx) | [Moella 🦀](https://github.com/Icelk/moella) | | |
 
 ### Libraries
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
@@ -211,7 +211,7 @@
 | ✅ | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Bookwyrm 🐍🇪🇺](https://bookwyrm.social/user/niclasoverby) | [OpenLibrary 🌐📖](https://openlibrary.org) | [Amazon Goodreads 🔒🇺🇸](https://www.goodreads.com/niclasoverby) |
 | ✅ | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | | [OpenLibrary 🌐📖](https://openlibrary.org) | [Letterboxd 🔒🇳🇿](https://letterboxd.com/niclasoverby), [Amazon IMDB 🔒🇺🇸](https://www.imdb.com) |
 | ✅ | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Spotify 🔒🇪🇺](https://open.spotify.com/user/1148979230) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [OpenLibrary 🌐📖](https://openlibrary.org) | |
-| 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | | [FitTrackee 🐍](https://github.com/SamR1/FitTrackee) | [GPX 📖](https://en.wikipedia.org/wiki/GPS_Exchange_Format) | [Strava 🔒🇺🇸](https://www.strava.com/athletes/116425039) |
+| 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Garmin Connect 🔒🇺🇸](https://connect.garmin.com) | [FitTrackee 🐍](https://github.com/SamR1/FitTrackee) | [GPX 📖](https://en.wikipedia.org/wiki/GPS_Exchange_Format) | [Strava 🔒🇺🇸](https://www.strava.com/athletes/116425039) |
 | ✅ | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [HappyCow 🔒🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | [OpenVegeMap](https://github.com/Rudloff/openvegemap) | 🆗 | |
 | ✅ | Collaboration | [AppFlowy 🦀](https://github.com/AppFlowy-IO/AppFlowy) | | [Import](https://docs.appflowy.io/docs/guides/import-from-notion) | [Notion 🔒🇺🇸](https://notion.so) |
 | ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Wikipedia 🌐](https://en.wikipedia.org/wiki/User:Niclas_Overby) | [Ibis 🦀](https://github.com/Nutomic/ibis) | 🆗 | |
