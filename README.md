@@ -67,10 +67,10 @@
 | ✅ | Audio Codec | [Opus 📖](https://opus-codec.org) | | [AAC 🔒](https://en.wikipedia.org/wiki/Advanced_Audio_Coding) |
 | 🚧 | Network Transport | [TCP 📖](https://en.wikipedia.org/wiki/Transmission_Control_Protocol) | [QUIC 📖](https://www.chromium.org/quic/) | |
 | 🚧 | Web Protocol | [HTTP/2 📖](https://en.wikipedia.org/wiki/HTTP/2) | [HTTP/3 📖](https://en.wikipedia.org/wiki/HTTP/3) | [HTTP/1.1 📖](https://en.wikipedia.org/wiki/HTTP/1.1) |
-| ✅ | GPU Compute | [Vulkan Compute 📖](https://www.vulkan.org) | | 🆗 | [OpenCL 📖](https://www.khronos.org/opencl) |
-| ✅ | Graphics API | [Vulkan 📖](https://www.vulkan.org) | | 🆗 | [OpenGL 📖](https://www.opengl.org) |
-| ✅ | Windowing | [Wayland 📖](https://wayland.freedesktop.org) | | 🆗 | [X11 📖](https://www.x.org) |
-| ✅ | Heterogeneous Compute | | [SYCL 📖](https://www.khronos.org/sycl) | 🆗 | |
+| ✅ | GPU Compute | [Vulkan Compute 📖](https://www.vulkan.org) | | [OpenCL 📖](https://www.khronos.org/opencl) |
+| ✅ | Graphics API | [Vulkan 📖](https://www.vulkan.org) | | [OpenGL 📖](https://www.opengl.org) |
+| ✅ | Windowing | [Wayland 📖](https://wayland.freedesktop.org) | | [X11 📖](https://www.x.org) |
+| ✅ | Heterogeneous Compute | [SYCL 📖](https://www.khronos.org/sycl) | | |
 | 🚫 | Tensor Operations | | | | |
 | 🚫 | AI Inference | | | | |
 
