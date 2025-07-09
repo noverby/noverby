@@ -25,6 +25,7 @@
 
  ### Control
  * 🌐: Managed by [Nonprofit Org](https://en.wikipedia.org/wiki/Nonprofit_organization)
+ * 🏛️: Managed by [Public Authority](https://en.wikipedia.org/wiki/Public_administration)
  * ⚖️: Managed by [Benefit Corp](https://en.wikipedia.org/wiki/Benefit_corporation)
  * 📖: [Open Standard](https://en.wikipedia.org/wiki/Open_standard)
  * 🏡: Self-hosted
@@ -71,6 +72,7 @@
 | ✅ | Graphics API | [Vulkan 📖](https://www.vulkan.org) | | [OpenGL 📖](https://www.opengl.org) |
 | ✅ | Windowing | [Wayland 📖](https://wayland.freedesktop.org) | | [X11 📖](https://www.x.org) |
 | ✅ | Heterogeneous Compute | [SYCL 📖](https://www.khronos.org/sycl) | | |
+| 🚧 | Payment Systems | [Dankort 🔒](https://www.dankort.dk), [Visa 🔒](https://www.visa.com) | [Digital Euro 🏛️](https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html), [GNU Taler 📖](https://taler.net) | |
 | 🚫 | Tensor Operations | | | | |
 | 🚫 | AI Inference | | | | |
 
