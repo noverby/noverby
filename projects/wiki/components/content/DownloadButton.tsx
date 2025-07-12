@@ -82,7 +82,7 @@ const DownloadButton = ({ node }: { node: Node }) => {
 					: "";
 		return `<h${level}>${prefix}${
 			node?.name
-		}</h${level}>${formatedMembers}${toHtml(node?.data?.content)}${
+		}</h${level}>${formatedMembers}${toHtml(node?.data?.content ?? [])}${
 			children
 				? "<br>" +
 					(
