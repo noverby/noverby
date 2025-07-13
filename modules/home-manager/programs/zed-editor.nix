@@ -13,6 +13,13 @@
 in {
   programs.zed-editor = {
     enable = true;
+    extensions = [
+      "biome"
+      "nix"
+      "nu"
+      "zed-just"
+      "zed-just-ls"
+    ];
   };
   home = {
     activation = {
