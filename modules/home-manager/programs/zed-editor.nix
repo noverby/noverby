@@ -11,9 +11,10 @@
   userKeymaps = builtins.fromJSON (builtins.readFile ./zed-editor/keymap.json);
   userSettings = builtins.fromJSON (builtins.readFile ./zed-editor/settings.json);
 in {
+  programs.zed-editor = {
+    enable = true;
+  };
   home = {
-    packages = [pkgs.zed-editor];
-
     activation = {
       removeExistingZedSettings = lib.hm.dag.entryBefore ["checkLinkTargets"] ''
         rm -rf "${settingsPath}" "${keymapPath}"
