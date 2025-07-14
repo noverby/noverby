@@ -1,5 +1,5 @@
 {
-	"assistant": {
+	"agent": {
 		"default_model": {
 			"model": "claude-sonnet-4",
 			"provider": "zed.dev"
