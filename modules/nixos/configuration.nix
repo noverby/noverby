@@ -82,9 +82,13 @@
   services.pulseaudio.enable = false;
   security.rtkit.enable = true;
 
-  # Graphics
-  hardware.graphics = {
-    enable = true;
+  # Hardware
+  hardware = {
+    graphics.enable = true;
+    logitech.wireless = {
+      enable = true;
+      enableGraphical = true;
+    };
   };
 
   # Virtualisation
