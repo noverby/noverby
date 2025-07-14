@@ -20,8 +20,8 @@ const Content = ({ node, fontSize }: { node: Node; fontSize: string }) => {
 	}, [JSON.stringify(data?.content)]);
 
 	return (
-		<Grid container spacing={2}>
-			<Grid size={{ xs: 9 }}>
+		<Grid direction="column-reverse" container spacing={2}>
+			<Grid size={{ xs: 12, lg: 9 }}>
 				<Box sx={{ fontSize, overflowX: "auto" }}>
 					<Collapse in={!!content}>
 						<Slate value={content} readOnly />
@@ -29,7 +29,7 @@ const Content = ({ node, fontSize }: { node: Node; fontSize: string }) => {
 				</Box>
 			</Grid>
 			{image && (
-				<Grid size={{ xs: 9, sm: 4 }}>
+				<Grid size={{ xs: 12, lg: 3 }}>
 					<Image alt="Billede for indhold" layout="fill" src={image} />
 				</Grid>
 			)}
