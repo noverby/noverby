@@ -101,7 +101,6 @@
   environment = {
     systemPackages = with pkgs; [
       evil-helix
-      powertop
       tailspin
     ];
     sessionVariables = {
@@ -196,19 +195,5 @@
       # Rule for HID Devices (hiddev)
       KERNEL=="hiddev[0-9]*", SUBSYSTEM=="usb", ATTRS{idVendor}=="3318", ATTRS{idProduct}=="0424|0428|0432", MODE="0666"
     '';
-  };
-
-  # Systemd
-  systemd.services = {
-    powertop = {
-      enable = true;
-      description = "Powertop tunings";
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = "yes";
-        ExecStart = "${pkgs.powertop}/bin/powertop --auto-tune";
-      };
-      wantedBy = ["multi-user.target"];
-    };
   };
 }
