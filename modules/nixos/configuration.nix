@@ -174,6 +174,9 @@
         variant = "altgr-intl";
       };
     };
+    ollama = {
+      enable = true;
+    };
     udev.extraRules = ''
       # XReal
 
