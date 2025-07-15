@@ -20,7 +20,7 @@ import {
 	useSubscription,
 } from "gql";
 
-const getKey = (name?: string) =>
+export const getKey = (name?: string) =>
 	name
 		?.trim()
 		.toLocaleLowerCase()
