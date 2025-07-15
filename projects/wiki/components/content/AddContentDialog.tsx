@@ -15,11 +15,12 @@ import {
 	Typography,
 } from "@mui/material";
 import { FileUploader } from "comps";
+import { getKey } from "core/hooks/useNode";
 import { fromId } from "core/path";
 import { resolve } from "gql";
 import { type Node, useLink, useSession } from "hooks";
 import { getName, IconId } from "mime";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { v4 as uuid } from "uuid";
 
 const contextPerm = [
@@ -238,6 +239,21 @@ const AddContentDialog = ({
 			setError("Indhold med dette navn eksisterer allerede");
 		}
 	};
+
+	useEffect(() => {
+		const checkKeys = async () => {
+			const keys = await resolve(({ query }) =>
+				query
+					.node({ id: node.id! })
+					?.children()
+					.map((child) => child.key),
+			);
+			if (keys?.includes(getKey(titel) ?? "")) {
+				setError("Indhold med dette navn eksisterer allerede");
+			}
+		};
+		checkKeys();
+	}, [titel]);
 
 	return (
 		<Dialog maxWidth="xs" fullWidth open={open} onClose={() => setOpen(false)}>
