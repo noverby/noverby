@@ -8,6 +8,7 @@ import {
 	type members_set_input,
 	type nodes,
 	type nodes_bool_exp,
+	nodes_constraint,
 	type nodes_insert_input,
 	type nodes_set_input,
 	type permissions_insert_input,
@@ -192,7 +193,13 @@ const useNode = (param?: { id?: string; where?: nodes_bool_exp }): Node => {
 	const useInsert = (param?: Param) => {
 		const [insertNode] = useMutation(
 			(mutation, args: nodes_insert_input) =>
-				mutation.insertNode({ object: args })?.id,
+				mutation.insertNode({
+					object: args,
+					on_conflict: {
+						constraint: nodes_constraint.nodes_parent_id_namespace_key,
+						update_columns: [],
+					},
+				})?.id,
 			getOpts(param),
 		);
 		return async ({
