@@ -188,7 +188,10 @@ const FolderDial = ({ node }: { node: Node }) => {
 		);
 		if (node.parentId === null) return;
 		const newNode = await nodeInsert(node);
-		if (!newNode.id) return;
+		if (typeof newNode.id !== "string") {
+			setSession({ selected: [] });
+			return;
+		}
 		await nodeMembers.insert({ members, parentId: newNode.id });
 
 		children?.map((id) => copy(id, newNode.id));
