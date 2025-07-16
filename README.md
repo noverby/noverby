@@ -76,6 +76,7 @@
 | 🚧 | Payment Systems | [Dankort 🔒](https://www.dankort.dk), [Visa 🔒](https://www.visa.com) | [Digital Euro 🏛️](https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html), [GNU Taler 📖](https://taler.net) | |
 | 🚫 | Tensor Operations | | | | |
 | 🚫 | AI Inference | | | | |
+| 🚧 | Satellite Navigation | [Galileo 🇪🇺](https://www.gsa.europa.eu/galileo), [GPS 🏛️🇺🇸](https://www.gps.gov) | | |
 
 ### System Core
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
