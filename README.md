@@ -108,7 +108,6 @@
 | ✅ | Parallel Processing | [Rust Parallel 🦀](https://github.com/aaronriekenberg/rust-parallel) | | 🆗 | [GNU Parallel 💣](https://git.savannah.gnu.org/cgit/parallel.git) |
 | ✅ | Process Monitor | [Bottom 🦀](https://github.com/ClementTsang/bottom) | | 🆗 | [Top 💣](https://gitlab.com/procps-ng/procps) |
 | ✅ | Fuzzy Finder | [Television 🦀](https://github.com/alexpasmantier/television) | | 🆗 | [Fzf 🐹](https://github.com/junegunn/fzf) |
-
 ### Dev Tools
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
@@ -127,7 +126,8 @@
 | ✅ | Environment Loader | [Direnv 🐹](https://github.com/direnv/direnv) | [Envy 🦀](https://github.com/mre/envy) | ⬅️ | |
 | ✅ | Pager | [Tailspin 🦀](https://github.com/bensadeh/tailspin) | | 🆗 | [Less 💣](https://github.com/gwsw/less) |
 | ✅ | Performance Profiler | [Samply 🦀](https://github.com/mstange/samply) | | 🆗 | [Perf 💣](https://perf.wiki.kernel.org/) |
-| 🚧 | Bundler | [Webpack 🇹](https://github.com/webpack/webpack), [Turbopack 🦀](https://github.com/vercel/turbo) | [Vite 🇹](https://github.com/vitejs/vite), [Farm 🦀](https://github.com/farm-fe/farm) | 🆗 | |
+| 🚧 | Bundler | [Webpack 🇹](https://github.com/webpack/webpack), [Turbopack 🦀](https://github.com/vercel/turbo) | [Rsbuild 🦀](https://github.com/web-infra-dev/rsbuild), [Farm 🦀](https://github.com/farm-fe/farm) | 🆗 | |
+
 ### Infrastructure
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
