@@ -51,6 +51,7 @@ in {
     gh.enable = true;
     tealdeer.enable = true;
     bottom.enable = true;
+    jujutsu.enable = true;
 
     bat = {
       enable = true;
