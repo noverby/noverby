@@ -1,8 +1,8 @@
 {
 	"agent": {
 		"default_model": {
-			"model": "claude-sonnet-4",
-			"provider": "zed.dev"
+			"model": "codestral-latest",
+			"provider": "mistral"
 		},
 		"version": "2"
 	},
