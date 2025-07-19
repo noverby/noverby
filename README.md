@@ -10,6 +10,7 @@
 ### Packages
 * [Magic Package Manager](https://codeberg.org/noverby/noverby/src/branch/main/packages/magic.nix)
 * [Mojo Toolchain](https://codeberg.org/noverby/noverby/src/branch/main/packages/mojo.nix)
+* [Cavif-rs](https://codeberg.org/noverby/noverby/src/branch/main/packages/cavif-rs/default.nix)
 
 ### Projects
 * [Homepage](https://codeberg.org/noverby/noverby/src/branch/main/projects/homepage)
