@@ -23,8 +23,7 @@
             nil
             alejandra
             # Rust
-            rustc
-            cargo
+            rustup
             # Mojo
             mojo
             python3
