@@ -31,6 +31,8 @@
             llvmPackages_latest.lld
             # Deno
             deno
+            # Media
+            cavif-rs
           ];
         }
       ];
