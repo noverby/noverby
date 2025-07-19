@@ -6,6 +6,7 @@
 		},
 		"version": "2"
 	},
+	"lsp_document_colors": "inlay",
 	"auto_update": false,
 	"autosave": {
 		"after_delay": {
@@ -27,11 +28,11 @@
 	},
 	"languages": {
 		"Git Commit": {
-			"soft_wrap": "none",
-			"preferred_line_length": null
+			"preferred_line_length": null,
+			"soft_wrap": "none"
 		},
 		"JavaScript": {
-			"language_servers": ["vtsls"]
+			"language_servers": ["vtsls", "color-lsp"]
 		},
 		"Nix": {
 			"format_on_save": {
@@ -43,7 +44,7 @@
 			"language_servers": ["nil", "!nix-ls", "..."]
 		},
 		"TSX": {
-			"language_servers": ["vtsls"]
+			"language_servers": ["vtsls", "color-lsp"]
 		},
 		"TypeScript": {
 			"formatter": {
@@ -51,7 +52,7 @@
 					"name": "biome"
 				}
 			},
-			"language_servers": ["vtsls"]
+			"language_servers": ["vtsls", "color-lsp"]
 		}
 	},
 	"load_direnv": "direct",
