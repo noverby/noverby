@@ -103,6 +103,7 @@
     gst_all_1.gst-plugins-good
     imagemagick
     oxipng
+    gimp3
 
     # Mojo
     magic
