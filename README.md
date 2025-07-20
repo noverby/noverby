@@ -241,3 +241,4 @@
 | ✅ | Backend | [Nhost 🇪🇺](https://nhost.com) | [DFRNT 🇪🇺](https://dfrnt.com) | | |
 | ✅ | Logging | [Bugfender 🇪🇺](https://bugfender.com) | | | [Sentry 🇺🇸](https://sentry.io) |
 | ✅ | Analytics | [Counter.dev 🇪🇺](https://counter.dev) | | | [Vercel Analytics 🇺🇸](https://vercel.com/analytics) |
+| ✅ | CDN | [Bunny.net 🇪🇺](https://bunny.net) | | | |
