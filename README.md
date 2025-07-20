@@ -62,6 +62,7 @@
 | 🚫 | AR Glasses | [XReal Air 2 Pro 🔒🇨🇳](https://us.shop.xreal.com/products/xreal-air-2-pro) | | [XReal Light 🔒🇨🇳](https://www.xreal.com/light) |
 | ✅ | Earphones | [Hyphen Aria 🇨🇭](https://rollingsquare.com/products/hyphen%C2%AE-aria) | | [Shokz Openfit 🇬🇧](https://shokz.com/products/openfit) |
 | ✅ | E-book Reader | [reMarkable 2 🔒🇳🇴](https://remarkable.com/store/remarkable-2) | [PineNote 🇭🇰](https://pine64.org/devices/pinenote) | [reMarkable 1 🔒🇳🇴](https://remarkable.com/store/remarkable) |
+
 ### Standards
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
@@ -84,6 +85,7 @@
 | 🚫 | AI Inference | | | | |
 | 🚧 | Satellite Navigation | [Galileo 🇪🇺](https://www.euspa.europa.eu/eu-space-programme/galileo), [GPS 🏛️🇺🇸](https://www.gps.gov) | | |
 | 🚧 | Satellite Internet | | [Iris² 🏛️🇪🇺](https://defence-industry-space.ec.europa.eu/eu-space-policy/iris2_en) | [Starlink 🔒🇺🇸](https://www.starlink.com) |
+| 🚧 | Object Notation | [JSON 📖](https://www.json.org) | [CBOR 📖](https://cbor.io) | |
 
 ### System Core
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
