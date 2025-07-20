@@ -65,7 +65,7 @@
 | 🚧 | Wireless Media | [Google ChromeCast 🔒](https://en.wikipedia.org/wiki/Chromecast) | [MatterCast 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | [Miracast 📖](https://en.wikipedia.org/wiki/Miracast) |
 | ✅ | USB Interface | [USB4 📖](https://www.usb.org/usb4) | | [Thunderbolt 3 🔒](https://www.intel.com/content/www/us/en/architecture-and-technology/thunderbolt/thunderbolt-technology-general.html) |
 | ✅ | Display Interface | [DisplayPort 📖](https://en.wikipedia.org/wiki/DisplayPort) | | [HDMI 2.1 🔒](https://en.wikipedia.org/wiki/HDMI) |
-| 🚧 | Image Codec | [PNG 📖](https://en.wikipedia.org/wiki/Portable_Network_Graphics), [JPEG 📖](https://en.wikipedia.org/wiki/JPEG) | [AVIF 📖](https://en.wikipedia.org/wiki/AVIF) | |
+| ✅ | Image Codec | [PNG 📖](https://en.wikipedia.org/wiki/Portable_Network_Graphics), [JPEG 📖](https://en.wikipedia.org/wiki/JPEG) | [AVIF 📖](https://en.wikipedia.org/wiki/AVIF) | |
 | ✅ | Audio Codec | [Opus 📖](https://opus-codec.org) | | [AAC 🔒](https://en.wikipedia.org/wiki/Advanced_Audio_Coding) |
 | ✅ | Video Codec | [AV1 📖](https://aomedia.org/av1-features/get-started) | | [H.264 🔒](https://en.wikipedia.org/wiki/Advanced_Video_Coding) |
 | 🚧 | Network Transport | [TCP 📖](https://en.wikipedia.org/wiki/Transmission_Control_Protocol) | [QUIC 📖](https://www.chromium.org/quic/) | |
