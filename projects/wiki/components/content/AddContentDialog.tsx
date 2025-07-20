@@ -20,7 +20,7 @@ import { fromId } from "core/path";
 import { resolve } from "gql";
 import { type Node, useLink, useSession } from "hooks";
 import { getName, IconId } from "mime";
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import { v4 as uuid } from "uuid";
 
 const contextPerm = [
@@ -178,66 +178,68 @@ const AddContentDialog = ({
 	const { insert: permInsert } = node.usePermissions();
 	const [_, setSession] = useSession();
 
-	const handleSubmit = async () => {
-		try {
-			const { id, key } = await insert({
-				name: titel,
-				key: ["vote/question", "vote/comment"].includes(mimeId)
-					? uuid()
-					: undefined,
-				mimeId: mimes.length === 1 ? mimes[0] : mimeId!,
-				mutable,
-				data:
-					mimeId === "wiki/file"
-						? { fileId, type }
-						: ["vote/question", "vote/comment"].includes(mimeId)
-							? { text }
-							: undefined,
-			});
-			if (!key) return;
-
-			if (await resolve(({ query }) => query.mime({ id: mimeId })?.context)) {
-				await update({ id: id!, set: { contextId: id, mutable: false } });
-				const perms = contextPerm.map((perm) => ({
-					...perm,
-					contextId: id,
-					nodeId: id,
-					parents: JSON.stringify(perm.parents)
-						.replace("[", "{")
-						.replace("]", "}"),
-				}));
-				await permInsert(perms);
-
-				const prefix = await resolve(({ query }) => {
-					const node = query.node({ id: id! });
-					return {
-						id: node?.id,
-						name: node?.name ?? "",
-						mime: node?.mimeId!,
-						key: node?.key,
-					};
+	const handleSubmit = () => {
+		startTransition(async () => {
+			try {
+				const { id, key } = await insert({
+					name: titel,
+					key: ["vote/question", "vote/comment"].includes(mimeId)
+						? uuid()
+						: undefined,
+					mimeId: mimes.length === 1 ? mimes[0] : mimeId!,
+					mutable,
+					data:
+						mimeId === "wiki/file"
+							? { fileId, type }
+							: ["vote/question", "vote/comment"].includes(mimeId)
+								? { text }
+								: undefined,
 				});
+				if (!key) return;
 
-				const path = await fromId(id);
-				setSession({
-					prefix: {
-						...prefix,
-						path,
-					},
-				});
+				if (await resolve(({ query }) => query.mime({ id: mimeId })?.context)) {
+					await update({ id: id!, set: { contextId: id, mutable: false } });
+					const perms = contextPerm.map((perm) => ({
+						...perm,
+						contextId: id,
+						nodeId: id,
+						parents: JSON.stringify(perm.parents)
+							.replace("[", "{")
+							.replace("]", "}"),
+					}));
+					await permInsert(perms);
+
+					const prefix = await resolve(({ query }) => {
+						const node = query.node({ id: id! });
+						return {
+							id: node?.id,
+							name: node?.name ?? "",
+							mime: node?.mimeId!,
+							key: node?.key,
+						};
+					});
+
+					const path = await fromId(id);
+					setSession({
+						prefix: {
+							...prefix,
+							path,
+						},
+					});
+				}
+
+				// Reset fields
+				setOpen(false);
+				setTitel(initTitel ?? "");
+				setText("");
+				setFileId(undefined);
+				setFileName(undefined);
+
+				if (redirect) link.push([key], app);
+			} catch (_) {
+				setError("Indhold med dette navn eksisterer allerede");
 			}
-
-			// Reset fields
-			setOpen(false);
-			setTitel(initTitel ?? "");
-			setText("");
-			setFileId(undefined);
-			setFileName(undefined);
-
-			if (redirect) link.push([key], app);
-		} catch (_) {
-			setError("Indhold med dette navn eksisterer allerede");
-		}
+		});
 	};
 
 	useEffect(() => {
