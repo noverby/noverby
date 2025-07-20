@@ -175,6 +175,7 @@
 | ✅ | App Browser | [Cosmic Store 🦀](https://github.com/pop-os/cosmic-store) | | 🆗 | [GNOME Software 💣](https://gitlab.gnome.org/GNOME/gnome-software) |
 | 🚫 | GUI Package Manager | [Flatpak 💣](https://github.com/flatpak/flatpak) | | 🆗 | [Snap 🔒](https://github.com/canonical/snapd), [AppImage 💣](https://github.com/AppImage) |
 | ✅ | Web Browser Navigation | [Surfingkeys 🐒](https://github.com/brookhong/Surfingkeys) | | 🆗 | |
+| ✅ | Ad Blocker | [uBlock Origin 🐒](https://github.com/gorhill/uBlock) | | 🆗 | |
 
 ### Media
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
