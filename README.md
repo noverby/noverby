@@ -11,6 +11,7 @@
 * [Magic Package Manager](https://codeberg.org/noverby/noverby/src/branch/main/packages/magic.nix)
 * [Mojo Toolchain](https://codeberg.org/noverby/noverby/src/branch/main/packages/mojo.nix)
 * [Cavif-rs](https://codeberg.org/noverby/noverby/src/branch/main/packages/cavif-rs/default.nix)
+* [Rcgen](https://codeberg.org/noverby/noverby/src/branch/main/packages/rcgen.nix)
 
 ### Projects
 * [Homepage](https://codeberg.org/noverby/noverby/src/branch/main/projects/homepage)
@@ -130,6 +131,7 @@
 | ✅ | Pager | [Tailspin 🦀](https://github.com/bensadeh/tailspin) | | 🆗 | [Less 💣](https://github.com/gwsw/less) |
 | ✅ | Performance Profiler | [Samply 🦀](https://github.com/mstange/samply) | | 🆗 | [Perf 💣](https://perf.wiki.kernel.org/) |
 | 🚧 | Bundler | [Webpack 🐒](https://github.com/webpack/webpack), [Turbopack 🦀](https://github.com/vercel/turbo) | [Rsbuild 🦀](https://github.com/web-infra-dev/rsbuild), [Farm 🦀](https://github.com/farm-fe/farm) | 🆗 | |
+| ✅ | Certificate Generation | [Rcgen 🦀](https://github.com/rustls/rcgen) | | 🆗 | [Mkcert 🐹](https://github.com/FiloSottile/mkcert) |
 
 ### Infrastructure
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
