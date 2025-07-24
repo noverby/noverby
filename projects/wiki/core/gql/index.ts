@@ -56,7 +56,9 @@ const subscriptionsClient = createSubscriptionsClient({
 		headers: getHeaders(),
 	}),
 	shouldRetry: (_errOrCloseEvent) => true,
-	on: { error: (error) => console.error(error) },
+	on: {
+		error: (error) => console.error(`GraphQL Subscription error: '${error}'`),
+	},
 	url: () => {
 		const urlClass = new URL(url);
 		// eslint-disable-next-line functional/immutable-data
