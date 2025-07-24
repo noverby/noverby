@@ -10,7 +10,7 @@ const BarRef = (props: BoxProps, ref?: ForwardedRef<HTMLDivElement>) => (
 			borderRadius: "20px",
 			backgroundColor: (t) => alpha(t.palette.secondary.main, 0.9),
 			marginLeft: {
-				sm: (t) => t.spacing(1),
+				sm: 1,
 				md: 0,
 			},
 			width: "100%",

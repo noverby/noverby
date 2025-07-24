@@ -40,7 +40,7 @@ const QuestionList = ({ node }: { node: Node }) => {
 				avatar={
 					<Avatar
 						sx={{
-							bgcolor: "secondary.main",
+							bgcolor: "primary.main",
 						}}
 					>
 						<IconId mimeId="vote/question" />

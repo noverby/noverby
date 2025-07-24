@@ -9,18 +9,20 @@ const MimeAvatar = ({
 	mimeId,
 	index,
 	name,
+	child,
 }: {
 	mimeId: Maybe<string | undefined>;
 	index?: number;
 	name?: string;
+	child?: boolean;
 }) => {
 	return (
 		<MuiAvatar
 			sx={{
-				bgcolor: "secondary.main",
+				bgcolor: child ? "secondary.main" : "primary.main",
 			}}
 		>
-			<IconId name={name} mimeId={mimeId} index={index} avatar />
+			<IconId name={name} mimeId={mimeId} index={index} avatar child={child} />
 		</MuiAvatar>
 	);
 };
@@ -37,7 +39,7 @@ const Avatar = ({ node }: { node: Node }) => {
 		return (
 			<MuiAvatar
 				sx={{
-					bgcolor: "secondary.main",
+					bgcolor: "primary.main",
 				}}
 			>
 				{" "}
@@ -48,7 +50,7 @@ const Avatar = ({ node }: { node: Node }) => {
 	const avatar = (
 		<MuiAvatar
 			sx={{
-				bgcolor: "secondary.main",
+				bgcolor: "primary.main",
 			}}
 		>
 			<IconId

@@ -42,7 +42,7 @@ const ChildListElement = ({ id, index }: { id: string; index: number }) => {
 		<>
 			<ListItemButton onClick={() => link.push([query?.key!])}>
 				<ListItemAvatar>
-					<MimeAvatar mimeId={query?.mimeId} index={index} />
+					<MimeAvatar mimeId={query?.mimeId} index={index} child />
 				</ListItemAvatar>
 				<Stack>
 					<Typography>{query?.name}</Typography>
@@ -117,7 +117,7 @@ const ChangeList = ({ node }: { node: Node }) => {
 				avatar={
 					<Avatar
 						sx={{
-							bgcolor: "secondary.main",
+							bgcolor: "primary.main",
 						}}
 					>
 						<IconId mimeId="vote/change" />
