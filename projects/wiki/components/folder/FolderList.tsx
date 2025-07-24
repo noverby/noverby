@@ -84,7 +84,12 @@ const FolderList = ({ node }: { node: Node }) => {
 							onClick={handleOnClick(key)}
 						>
 							<ListItemAvatar>
-								<MimeAvatar mimeId={typeMimeId} index={index} name={name} />
+								<MimeAvatar
+									mimeId={typeMimeId}
+									index={index}
+									name={name}
+									child
+								/>
 							</ListItemAvatar>
 							<ListItemText primary={<Typography>{name}</Typography>} />
 							{isOwner ? (
