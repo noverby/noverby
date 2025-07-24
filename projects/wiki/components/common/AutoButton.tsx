@@ -14,18 +14,13 @@ const AutoButton = ({
 	const largeScreen = useMediaQuery("(min-width:1200px)");
 
 	return largeScreen ? (
-		<Button
-			color="secondary"
-			variant="outlined"
-			endIcon={icon}
-			onClick={onClick}
-		>
+		<Button color="primary" variant="outlined" endIcon={icon} onClick={onClick}>
 			{text}
 		</Button>
 	) : (
 		<IconButton
 			aria-label={text}
-			color="secondary"
+			color="primary"
 			onClick={onClick}
 			size="large"
 		>

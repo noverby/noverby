@@ -38,7 +38,7 @@ const FileUploader = ({
 			/>
 			<label htmlFor={inputId}>
 				<Button
-					color="secondary"
+					color="primary"
 					component="span"
 					variant="outlined"
 					startIcon={<UploadFile />}

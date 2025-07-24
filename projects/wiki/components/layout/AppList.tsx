@@ -57,6 +57,7 @@ const RailAction = ({
 				minHeight: 72,
 				maxHeight: 72,
 				padding: "14px 8px",
+				color: "secondary.main",
 				"&$iconOnly": {
 					paddingTop: 24,
 					paddingBottom: 10,

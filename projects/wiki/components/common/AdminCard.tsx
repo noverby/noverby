@@ -11,7 +11,11 @@ const AdminCard = ({
 }) => (
 	<Card sx={{ m: 0, bgcolor: "primary.main" }}>
 		<CardHeader
-			title={<Typography variant="h5">{title}</Typography>}
+			title={
+				<Typography variant="h5" color="common.white">
+					{title}
+				</Typography>
+			}
 			avatar={
 				<Avatar
 					sx={{

@@ -126,10 +126,12 @@ const Editor = ({ node }: { node: Node }) => {
 										icon={<Save />}
 										onClick={handleSave()}
 									/>
-									<PublishButton
-										node={node}
-										handlePublish={handleSave(false)}
-									/>
+									{query?.mutable && (
+										<PublishButton
+											node={node}
+											handlePublish={handleSave(false)}
+										/>
+									)}
 								</ButtonGroup>
 							</Stack>
 						</Grid>

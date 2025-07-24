@@ -44,11 +44,13 @@ const IconId = ({
 	index,
 	name,
 	avatar,
+	child,
 }: {
 	mimeId: Maybe<string | undefined>;
 	index?: number;
 	name?: string;
 	avatar?: boolean;
+	child?: boolean;
 }) => {
 	switch (mimeId) {
 		case "wiki/search":
@@ -72,7 +74,11 @@ const IconId = ({
 					/>
 					<Typography
 						sx={{
-							color: avatar ? "secondary.main" : "common.white",
+							color: avatar
+								? child
+									? "secondary.main"
+									: "primary.main"
+								: "common.white",
 							position: avatar ? "absolute" : "relative",
 							top: avatar ? 8 : 3,
 							left: avatar ? 16 : 8,

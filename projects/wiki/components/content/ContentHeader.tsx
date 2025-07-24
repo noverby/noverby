@@ -25,7 +25,11 @@ const Subtitle = ({ node }: { node: Node }) => {
 		<Tooltip
 			title={query?.createdAt && new Date(query?.createdAt).toLocaleString()}
 		>
-			<Typography component="span" variant="caption">
+			<Typography
+				component="span"
+				variant="caption"
+				sx={{ color: "common.black" }}
+			>
 				{query?.createdAt
 					? `
                 Oprettet
