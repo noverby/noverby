@@ -17,7 +17,7 @@
     onlyoffice-desktopeditors
     gnome-tweaks
     dconf-editor
-    #celeste
+    rclone
     gnome-network-displays
     gnome-system-monitor
     file-roller
