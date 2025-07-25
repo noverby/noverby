@@ -57,7 +57,8 @@ const subscriptionsClient = createSubscriptionsClient({
 	}),
 	shouldRetry: (_errOrCloseEvent) => true,
 	on: {
-		error: (error) => console.error(`GraphQL Subscription error: '${error}'`),
+		error: (error) =>
+			console.error(`GraphQL Subscription error: '${JSON.stringify(error)}'`),
 	},
 	url: () => {
 		const urlClass = new URL(url);
