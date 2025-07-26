@@ -6,7 +6,6 @@ import {
 	ListItemAvatar,
 	ListItemButton,
 	ListItemText,
-	lighten,
 	Typography,
 } from "@mui/material";
 import { useUserId } from "@nhost/nextjs";
@@ -148,7 +147,7 @@ const HomeList = ({ setOpen }: { setOpen?: (open: boolean) => void }) => {
 			<List>
 				<ListItem key={-1}>
 					<ListItemAvatar>
-						<Avatar sx={{ bgcolor: "secondary.main" }}>
+						<Avatar sx={{ bgcolor: "primary.main" }}>
 							<Group />
 						</Avatar>
 					</ListItemAvatar>
@@ -168,7 +167,7 @@ const HomeList = ({ setOpen }: { setOpen?: (open: boolean) => void }) => {
 										sx={{
 											width: 35,
 											height: 35,
-											bgcolor: (t) => lighten(t.palette.primary.main, 0.3),
+											bgcolor: "secondary.main",
 										}}
 									>
 										<Typography fontSize={15}>
@@ -198,7 +197,7 @@ const HomeList = ({ setOpen }: { setOpen?: (open: boolean) => void }) => {
 			<List>
 				<ListItem key={-1}>
 					<ListItemAvatar>
-						<Avatar sx={{ bgcolor: "secondary.main" }}>
+						<Avatar sx={{ bgcolor: "primary.main" }}>
 							<Event />
 						</Avatar>
 					</ListItemAvatar>
@@ -229,8 +228,7 @@ const HomeList = ({ setOpen }: { setOpen?: (open: boolean) => void }) => {
 													sx={{
 														width: 35,
 														height: 35,
-														bgcolor: (t) =>
-															lighten(t.palette.primary.main, 0.3),
+														bgcolor: "secondary.main",
 													}}
 												>
 													<Typography fontSize={15}>
