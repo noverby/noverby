@@ -61,7 +61,7 @@ const MenuAvatar = ({
 	return (
 		<Tooltip title="Menu">
 			<IconButton onClick={() => startTransition(() => setOpenDrawer(true))}>
-				<Avatar sx={{ bgcolor: "secondary.main" }}>
+				<Avatar sx={{ bgcolor: "primary.main" }}>
 					<Menu />
 				</Avatar>
 			</IconButton>
