@@ -491,7 +491,7 @@ const Drawer = ({
 						borderRadius: "20px",
 						width: largeScreen ? `${drawerWidth}px` : "100%",
 						position: largeScreen ? "fixed" : "absolute",
-						bottom: largeScreen ? undefined : 9,
+						bottom: largeScreen ? undefined : 0,
 						ml: largeScreen ? 9 : 0,
 					}}
 					disableGutters
@@ -522,7 +522,7 @@ const Drawer = ({
 										});
 									}}
 								>
-									<Avatar sx={{ bgcolor: "secondary.main" }}>
+									<Avatar sx={{ bgcolor: "primary.main" }}>
 										<Close />
 									</Avatar>
 								</IconButton>

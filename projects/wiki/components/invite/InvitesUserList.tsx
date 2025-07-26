@@ -188,7 +188,7 @@ const InvitesUserList = () => (
 		avatar={
 			<Avatar
 				sx={{
-					bgcolor: "secondary.main",
+					bgcolor: "primary.main",
 				}}
 			>
 				<ContactMail />

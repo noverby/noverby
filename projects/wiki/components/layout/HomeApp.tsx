@@ -48,7 +48,7 @@ const HomeApp = () => {
 						avatar={
 							<Avatar
 								sx={{
-									bgcolor: "secondary.main",
+									bgcolor: "primary.main",
 								}}
 							>
 								<Hail />
