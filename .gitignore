@@ -4,6 +4,8 @@
 result
 tmp
 build
+dist
+node_modules
 
 *.ll
 *.o

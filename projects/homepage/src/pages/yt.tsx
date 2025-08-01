@@ -1,9 +1,9 @@
-import { useRouter } from "next/router";
+import { useSearchParams } from "react-router-dom";
 
-export default function Yt() {
-	const router = useRouter();
+const Yt = () => {
+	const [params] = useSearchParams();
 	const regex = /.*v=([a-zA-Z0-9_-]{11}).*/;
-	const match = router.asPath.match(regex)?.[1];
+	const match = params.get("url")?.match(regex)?.[1];
 	if (!match) return null;
 
 	return (
@@ -26,4 +26,6 @@ export default function Yt() {
 			/>
 		</div>
 	);
-}
+};
+
+export { Yt };

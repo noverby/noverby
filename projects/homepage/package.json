@@ -1,23 +1,20 @@
 {
 	"name": "homepage",
-	"version": "0.1.0",
+	"version": "1.0.0",
 	"private": true,
+	"type": "module",
 	"dependencies": {
-		"@react-three/fiber": "^8.6.0",
-		"@types/three": "^0.168.0",
-		"add": "^2.0.6",
-		"next": "^15.3.5",
-		"react": "18.2.0",
-		"react-dom": "18.2.0",
+		"react": "^19.1.0",
+		"react-dom": "^19.1.0",
 		"react-force-graph-3d": "^1.28.0",
-		"react-responsive": "^9.0.2",
-		"three": "^0.168.0"
+		"react-router-dom": "^7.7.1",
+		"three": "^0.178.0"
 	},
 	"devDependencies": {
-		"@types/node": "18.7.13",
-		"@types/react": "18.0.17",
-		"@types/react-dom": "18.0.6",
-		"serve": "^14.2.4",
-		"typescript": "4.7.4"
+		"@rsbuild/core": "^1.4.3",
+		"@rsbuild/plugin-react": "^1.3.3",
+		"@types/react": "^19.1.8",
+		"@types/react-dom": "^19.1.6",
+		"typescript": "^5.8.3"
 	}
 }

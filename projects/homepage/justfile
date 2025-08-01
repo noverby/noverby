@@ -1,11 +1,11 @@
 dev:
-  deno run -A npm:next dev --turbopack
+    deno run -A npm:@rsbuild/core dev --open
 
 build:
-  deno run -A npm:next build
+    deno run -A npm:@rsbuild/core build
 
-start: build
-  deno run -A npm:serve -n out
+start:
+    deno run -A npm:@rsbuild/core preview
 
 lint:
-  deno lint
+    deno lint
