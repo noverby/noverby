@@ -1,19 +1,21 @@
-import Head from "next/head";
 import { useEffect, useState } from "react";
 import Graph from "../components/Graph";
+import { Search } from "./search";
+import { X } from "./x";
+import { Yt } from "./yt";
 
-export default function Index() {
+const Index = () => {
 	const [showing, setShowing] = useState(false);
 	useEffect(() => {
 		setShowing(true);
 	}, []);
+
+	console.log("App component loaded");
 	return (
 		<>
-			<Head>
-				<title>Niclas Overby Ⓝ</title>
-			</Head>
-			{showing && <Graph />}
 			<a rel="me" href="https://mas.to/@niclasoverby" />
+			{showing && <Graph />}
 		</>
 	);
-}
+};
+export { Index, Search, X, Yt };
