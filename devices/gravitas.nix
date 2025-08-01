@@ -12,7 +12,7 @@
     .nixosModules
     .framework-13th-gen-intel
     home-manager.nixosModules.home-manager
-    self.nixosModules.framework-13th-gen-intel
+    self.nixosModules.thinkpad-t14-ryzen-7-pro
     self.nixosModules.cosmic
     self.nixosModules.gnome
     self.nixosModules.configuration
