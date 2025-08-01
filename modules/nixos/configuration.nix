@@ -173,11 +173,29 @@
     openssh.enable = true;
     flatpak.enable = true;
     fwupd.enable = true;
-    pipewire = {
+    pipewire = let
+      # https://gist.github.com/outten45/94361183164ab5e7790253c685176e57
+      # Custom libcamera with post-processing
+      fixedLibcamera = pkgs.libcamera.overrideAttrs (old: {
+        postFixup = ''
+          echo "Running ipa-sign-install.sh on libcamera IPA modules..."
+          ../src/ipa/ipa-sign-install.sh src/ipa-priv-key.pem $out/lib/libcamera/ipa/ipa_*.so
+        '';
+      });
+
+      # Override libcamera system-wide
+      customPkgs = pkgs.extend (
+        final: prev: {
+          libcamera = fixedLibcamera;
+        }
+      );
+    in {
       enable = true;
       alsa.enable = true;
       alsa.support32Bit = true;
       pulse.enable = true;
+      package = customPkgs.pipewire;
+      wireplumber.package = customPkgs.wireplumber;
     };
     xserver = {
       enable = true;
