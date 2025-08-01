@@ -1,10 +1,5 @@
-import dynamic from "next/dynamic";
-import { useRouter } from "next/router";
+import ForceGraph3D from "react-force-graph-3d";
 import * as THREE from "three";
-
-const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
-	ssr: false,
-});
 
 type Node = {
 	id: string;
@@ -216,7 +211,9 @@ const graphData: GraphData = {
 };
 
 const Graph = () => {
-	const router = useRouter();
+	const goto = (url: string) => {
+		window.location.href = url;
+	};
 
 	return (
 		<ForceGraph3D
@@ -227,7 +224,7 @@ const Graph = () => {
 			backgroundColor="#222222"
 			linkDirectionalParticles={2}
 			linkDirectionalParticleWidth={1}
-			onNodeClick={(node) => node.url && router.push(node.url)}
+			onNodeClick={(node) => node.url && goto(node.url)}
 			nodeThreeObject={(node) => {
 				if (!node.color) {
 					const imgTexture = new THREE.TextureLoader().load(
