@@ -1,0 +1,11 @@
+[default]
+extend-ignore-re = [
+  "Automattic"
+]
+
+[files]
+extend-exclude = [
+   # Project is still in Danish
+  "projects/wiki/**"
+]
+ignore-hidden = false
