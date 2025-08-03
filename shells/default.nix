@@ -14,6 +14,7 @@
             biome.enable = true;
             alejandra.enable = true;
             statix.enable = true;
+            typos.enable = true;
             commitlint-rs = {
               enable = true;
               package = pkgs.commitlint-rs;
