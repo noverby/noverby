@@ -83,6 +83,7 @@
     evcxr # Rust repl
     lurk
     tracexec
+    llvmPackages.bintools
     #darling
 
     # Nix dev
