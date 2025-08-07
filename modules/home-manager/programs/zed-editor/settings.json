@@ -3,8 +3,7 @@
 		"default_model": {
 			"model": "codestral-latest",
 			"provider": "mistral"
-		},
-		"version": "2"
+		}
 	},
 	"lsp_document_colors": "inlay",
 	"auto_update": false,
