@@ -5,6 +5,7 @@
   ...
 }: let
   shellAliases = {
+    open = "xdg-open";
     diff = "batdiff";
     ga = "git add";
     gc = "git commit";
