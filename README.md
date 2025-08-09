@@ -8,15 +8,15 @@
 * [Devenv Shells](https://codeberg.org/noverby/noverby/src/branch/main/shells)
 
 ### Packages
-* [Magic: Mojo package manager for dependency management](https://codeberg.org/noverby/noverby/src/branch/main/packages/magic.nix)
-* [Mojo: High-performance programming language development toolchain](https://codeberg.org/noverby/noverby/src/branch/main/packages/mojo.nix)
-* [Cavif-rs: High-efficiency AVIF image encoder written in Rust](https://codeberg.org/noverby/noverby/src/branch/main/packages/cavif-rs/default.nix)
-* [Rcgen: X.509 certificate generation library and CLI tool](https://codeberg.org/noverby/noverby/src/branch/main/packages/rcgen.nix)
+* [Magic](https://codeberg.org/noverby/noverby/src/branch/main/packages/magic.nix): Mojo package manager for dependency management
+* [Mojo](https://codeberg.org/noverby/noverby/src/branch/main/packages/mojo.nix): High-performance programming language development toolchain
+* [Cavif-rs](https://codeberg.org/noverby/noverby/src/branch/main/packages/cavif-rs/default.nix): High-efficiency AVIF image encoder written in Rust
+* [Rcgen](https://codeberg.org/noverby/noverby/src/branch/main/packages/rcgen.nix): X.509 certificate generation library and CLI tool
 
 ### Projects
-* [Homepage: Personal website and portfolio](https://codeberg.org/noverby/noverby/src/branch/main/projects/homepage)
-* [Wiki: Platform for political conference & beyond](https://codeberg.org/noverby/noverby/src/branch/main/projects/wiki)
-* [Mojo-Wasm: WebAssembly interop layer for Mojo](https://codeberg.org/noverby/noverby/src/branch/main/projects/mojo-wasm)
+* [Homepage](https://codeberg.org/noverby/noverby/src/branch/main/projects/homepage): Personal website and portfolio
+* [Wiki](https://codeberg.org/noverby/noverby/src/branch/main/projects/wiki): Platform for political conference & beyond
+* [Mojo-Wasm](https://codeberg.org/noverby/noverby/src/branch/main/projects/mojo-wasm): WebAssembly interop layer for Mojo
 
 ## Stack
 ### State
