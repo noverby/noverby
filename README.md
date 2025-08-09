@@ -89,7 +89,7 @@
 | ✅ | Graphics API | [Vulkan 📖](https://www.vulkan.org) | | [OpenGL 📖](https://www.opengl.org) |
 | ✅ | Windowing | [Wayland 📖](https://wayland.freedesktop.org) | | [X11 📖](https://www.x.org) |
 | ✅ | Heterogeneous Compute | [SYCL 📖](https://www.khronos.org/sycl) | | |
-| 🚧 | Payment Systems | [Dankort 🔒](https://www.dankort.dk), [Visa 🔒](https://www.visa.com) | [Digital Euro 🏛️](https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html), [GNU Taler 📖](https://taler.net) | |
+| 🚧 | Payment Systems | [Dankort 🔒🇪🇺](https://www.dankort.dk), [Visa 🔒🇺🇸](https://www.visa.com) | [Digital Euro 🏛️🇪🇺](https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html), [GNU Taler 📖](https://taler.net) | |
 | 🚫 | Tensor Operations | | | | |
 | 🚫 | AI Inference | | | | |
 | 🚧 | Satellite Navigation | [Galileo 🇪🇺](https://www.euspa.europa.eu/eu-space-programme/galileo), [GPS 🏛️🇺🇸](https://www.gps.gov) | | |
