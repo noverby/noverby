@@ -11,7 +11,6 @@
     slack
     fragments
     evince
-    spotify
     bitwarden-desktop
     mpv
     onlyoffice-desktopeditors

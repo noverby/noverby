@@ -1,4 +1,5 @@
 {
+  inputs,
   pkgs,
   username,
   ...
@@ -196,6 +197,13 @@ in {
       plugins = with pkgs.obs-studio-plugins; [
         obs-3d-effect
       ];
+    };
+
+    spicetify = let
+      spicePkgs = inputs.spicetify-nix.legacyPackages.${pkgs.stdenv.system};
+    in {
+      enable = true;
+      theme = spicePkgs.themes.hazy;
     };
   };
 }
