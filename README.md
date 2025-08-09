@@ -94,7 +94,8 @@
 | 🚫 | AI Inference | | | | |
 | 🚧 | Satellite Navigation | [Galileo 🇪🇺](https://www.euspa.europa.eu/eu-space-programme/galileo), [GPS 🏛️🇺🇸](https://www.gps.gov) | | |
 | 🚧 | Satellite Internet | | [Iris² 🏛️🇪🇺](https://defence-industry-space.ec.europa.eu/eu-space-policy/iris2_en) | [Starlink 🔒🇺🇸](https://www.starlink.com) |
-| 🚧 | Object Notation | [JSON 📖](https://www.json.org) | [CBOR 📖](https://cbor.io) | |
+| ✅ | Object Notation | [JSON 📖](https://www.json.org) | | |
+| ✅ | Binary Object Notation | [CBOR 📖](https://cbor.io) | | |
 
 </details>
 
