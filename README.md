@@ -48,7 +48,7 @@
  * 🐒: ECMAScript
 
 ### Miscellaneous
-* X➡️Y: Migrating from X to Y
+* 🇽➡️🇾: Migrating from 🇽 to 🇾
 * 👁️: [Sentientist](https://en.wikipedia.org/wiki/Sentientism)
 
 ### Hardware
