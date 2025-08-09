@@ -96,12 +96,12 @@
     docker = {
       enable = true;
       daemon.settings = {
-        runtimes = {
-          youki = {
-            path = "${pkgs.youki}/bin/youki";
-          };
-        };
-        default-runtime = "youki";
+        # runtimes = {
+        #   youki = {
+        #     path = "${pkgs.youki}/bin/youki";
+        #   };
+        # };
+        # default-runtime = "youki";
       };
     };
     libvirtd.enable = true;
@@ -207,6 +207,8 @@
     };
     ollama = {
       enable = true;
+      acceleration = "rocm";
+      rocmOverrideGfx = "11.0.2";
     };
     udev.extraRules = ''
       # XReal
