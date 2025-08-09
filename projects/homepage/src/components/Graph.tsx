@@ -140,9 +140,15 @@ const nodes = [
 	},
 	{
 		id: "Factbird",
-		desc: "Factbird\n(Commercial Effort)",
+		desc: "Factbird\n(Ex-company)",
 		icon: "factbird.avif",
 		url: "https://www.factbird.com",
+	},
+	{
+		id: "Veo",
+		desc: "Veo\n(Commercial Effort)",
+		icon: "veo.avif",
+		url: "https://www.veo.co",
 	},
 	{
 		id: "Wikipedia",
@@ -186,6 +192,7 @@ const links = [
 	{ source: "Commerce", target: "LinkedIn" },
 	{ source: "Commerce", target: "Aivero" },
 	{ source: "Commerce", target: "Factbird" },
+	{ source: "Commerce", target: "Veo" },
 	{ source: "Commerce", target: "GitHub" },
 	{ source: "Immerse", target: "PixelFed" },
 	{ source: "Immerse", target: "Spotify" },
