@@ -46,6 +46,7 @@
  * 🐹: Go
  * 💣: C/C++
  * 🐒: ECMAScript
+ * 🐷: Java
 
 ### Miscellaneous
 * 🇽➡️🇾: Migrating from 🇽 to 🇾
@@ -218,11 +219,11 @@
 ### Browser Extensions
 
 <details open>
-
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Keyboard Navigation | [Surfingkeys 🐒](https://github.com/brookhong/Surfingkeys) | | 🆗 | |
 | ✅ | Ad Blocker | [uBlock Origin 🐒](https://github.com/gorhill/uBlock) | | 🆗 | |
+| ✅ | Grammar Checker | [Harper 🦀](https://github.com/Automattic/harper) | | 🆗 | [LanguageTools 🐷](https://github.com/languagetools) |
 
 </details>
 
