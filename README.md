@@ -12,6 +12,7 @@
 * [Mojo](https://codeberg.org/noverby/noverby/src/branch/main/packages/mojo.nix): High-performance programming language development toolchain
 * [Cavif-rs](https://codeberg.org/noverby/noverby/src/branch/main/packages/cavif-rs/default.nix): High-efficiency AVIF image encoder written in Rust
 * [Rcgen](https://codeberg.org/noverby/noverby/src/branch/main/packages/rcgen.nix): X.509 certificate generation library and CLI tool
+* [Hakoniwa](https://codeberg.org/noverby/noverby/src/branch/main/packages/hakoniwa.nix): Process isolation tool
 
 ### Projects
 * [Homepage](https://codeberg.org/noverby/noverby/src/branch/main/projects/homepage): Personal website and portfolio
