@@ -200,11 +200,8 @@ in {
       ];
     };
 
-    spicetify = let
-      spicePkgs = inputs.spicetify-nix.legacyPackages.${pkgs.stdenv.system};
-    in {
+    spicetify = {
       enable = true;
-      theme = spicePkgs.themes.hazy;
     };
   };
 }
