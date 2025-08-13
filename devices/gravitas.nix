@@ -11,6 +11,7 @@
     nixos-hardware
     .nixosModules
     .lenovo-thinkpad-p14s-amd-gen5
+    catppuccin.nixosModules.catppuccin
     home-manager.nixosModules.home-manager
     self.nixosModules.thinkpad-t14-ryzen-7-pro
     self.nixosModules.cosmic
