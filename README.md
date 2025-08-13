@@ -221,6 +221,7 @@
 ### Browser Extensions
 
 <details open>
+
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Keyboard Navigation | [Surfingkeys 🐒](https://github.com/brookhong/Surfingkeys) | | 🆗 | |
