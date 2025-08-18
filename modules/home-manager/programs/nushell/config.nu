@@ -9,6 +9,8 @@ def --env uo [] { let res = uf | $in; cd $res }
 
 def ghash [] {git rev-parse HEAD | tr -d '\\n' | wl-copy; git rev-parse HEAD}
 
+def show [] {to json | jless}
+
 def ggg [] {
   git push -f
   gh pr create --fill
