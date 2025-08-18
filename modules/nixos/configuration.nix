@@ -58,7 +58,12 @@
     hostName = "gravitas";
     networkmanager = {
       enable = true;
+      dns = "systemd-resolved";
     };
+  };
+  programs.captive-browser = {
+    enable = true;
+    interface = "wlp2s0";
   };
 
   # Locale
