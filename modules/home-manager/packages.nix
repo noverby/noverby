@@ -57,6 +57,7 @@
     hexyl
     hyperfine
     jless
+    rustscanner
 
     # File tools
     file
