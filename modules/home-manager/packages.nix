@@ -51,7 +51,9 @@
     pciutils
     lshw
     usbutils
-    solaar # Logitech Unifying Receiver
+    solaar
+    gping
+    # Logitech Unifying Receiver
 
     # File tools
     file
