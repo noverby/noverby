@@ -142,6 +142,7 @@
 | ✅ | Fuzzy Finder | [Television 🦀](https://github.com/alexpasmantier/television) | | 🆗 | [Fzf 🐹](https://github.com/junegunn/fzf) |
 | ✅ | Ping | [Gping 🦀](https://github.com/orf/gping) | | | [Ping 💣](https://git.savannah.gnu.org/cgit/inetutils.git) |
 | ✅ | Benchmark | [Hyperfine 🦀](https://github.com/sharkdp/hyperfine) | | | [time 💣](https://www.gnu.org/software/time) |
+| ✅ | Port Scanner | [RustScan 🦀](https://github.com/rustscan/rustscan) | | 🆗 | [Nmap 💣](https://github.com/nmap/nmap) |
 
 </details>
 
