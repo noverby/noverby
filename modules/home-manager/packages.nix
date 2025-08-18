@@ -54,8 +54,9 @@
     solaar # Logitech Unifying Receiver
     gping
     bandwhich
-    hyxel
+    hexyl
     hyperfine
+    jless
 
     # File tools
     file
