@@ -143,6 +143,7 @@
 | ✅ | Ping | [Gping 🦀](https://github.com/orf/gping) | | | [Ping 💣](https://git.savannah.gnu.org/cgit/inetutils.git) |
 | ✅ | Benchmark | [Hyperfine 🦀](https://github.com/sharkdp/hyperfine) | | | [time 💣](https://www.gnu.org/software/time) |
 | ✅ | Port Scanner | [RustScan 🦀](https://github.com/rustscan/rustscan) | | 🆗 | [Nmap 💣](https://github.com/nmap/nmap) |
+| ✅ | Tree Viewer | [Tre 🦀](https://github.com/dduan/tre) | | 🆗 | [Tree 💣](https://oldmanprogrammer.net/source.php?dir=projects/tree) |
 
 </details>
 

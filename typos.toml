@@ -1,6 +1,8 @@
 [default]
 extend-ignore-re = [
-  "Automattic"
+  "Automattic",
+  "Tre",
+  "tre"
 ]
 
 [files]

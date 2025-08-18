@@ -58,6 +58,7 @@
     hyperfine
     jless
     rustscanner
+    tre
 
     # File tools
     file
