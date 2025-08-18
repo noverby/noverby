@@ -55,6 +55,7 @@
     gping
     bandwhich
     hyxel
+    hyperfine
 
     # File tools
     file
