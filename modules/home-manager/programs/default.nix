@@ -50,7 +50,11 @@
     zen-dev = "zen -start-debugger-server 6000 -P dev http://localhost:3000";
   };
 in {
-  imports = [./git.nix ./vscode.nix ./zed-editor.nix];
+  imports = [
+    ./git.nix
+    ./vscode.nix
+    ./zed-editor.nix
+  ];
   programs = {
     home-manager.enable = true;
     gh.enable = true;
@@ -60,7 +64,11 @@ in {
 
     bat = {
       enable = true;
-      extraPackages = with pkgs.bat-extras; [prettybat batgrep batdiff];
+      extraPackages = with pkgs.bat-extras; [
+        prettybat
+        batgrep
+        batdiff
+      ];
     };
 
     wezterm = {
@@ -90,7 +98,10 @@ in {
       initExtra = ''
         export SHELL="${pkgs.bash}/bin/bash"
       '';
-      historyControl = ["ignoredups" "erasedups"];
+      historyControl = [
+        "ignoredups"
+        "erasedups"
+      ];
     };
 
     readline = {
@@ -186,6 +197,8 @@ in {
             "browser.ml.chat.shortcuts.custom" = true;
             "browser.ml.chat.sidebar" = true;
           };
+          userChrome = builtins.readFile ./zen-browser/userChrome.css;
+          userContent = builtins.readFile ./zen-browser/userContent.css;
         };
         dev =
           default
