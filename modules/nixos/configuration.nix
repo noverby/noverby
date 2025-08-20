@@ -35,8 +35,12 @@
   # Bootloader
   boot = {
     loader = {
-      timeout = 1;
-      systemd-boot.enable = true;
+      timeout = 3;
+      grub = {
+        enable = true;
+        device = "nodev";
+        efiSupport = true;
+      };
       efi.canTouchEfiVariables = true;
     };
     plymouth.enable = true;
