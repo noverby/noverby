@@ -86,7 +86,7 @@ const QuestionList = ({ node }: { node: Node }) => {
 												variant="outlined"
 												size="small"
 												sx={{ mr: 0.5 }}
-												label={child?.owner?.displayName}
+												label={child?.name ?? child?.owner?.displayName}
 											/>
 										}
 									/>

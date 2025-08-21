@@ -159,7 +159,17 @@ const FolderDial = ({ node }: { node: Node }) => {
 	const copy = async (copyId?: string | null, parentId?: string | null) => {
 		if (!copyId) return;
 		const node = await resolve(({ query }) => {
-			const { name, key, mimeId, data, mutable, attachable, index, createdAt } =
+			const {
+				name,
+				key,
+				mimeId,
+				data,
+				mutable,
+				attachable,
+				index,
+				createdAt,
+				owner,
+			} =
 				query.node({
 					id: copyId,
 				}) ?? {};
@@ -173,6 +183,7 @@ const FolderDial = ({ node }: { node: Node }) => {
 				data: data?.(),
 				parentId: parentId!,
 				createdAt: createdAt!,
+				ownerName: owner?.displayName,
 			};
 		});
 		const children = await resolve(({ query }) =>
@@ -187,14 +198,22 @@ const FolderDial = ({ node }: { node: Node }) => {
 				.map(({ name, nodeId, email }) => ({ name, nodeId, email, parentId })),
 		);
 		if (node.parentId === null) return;
-		const newNode = await nodeInsert(node);
+
+		const nodeArgs = ["vote/question", "vote/comment"].includes(node.mimeId)
+			? { ...node, name: node.ownerName }
+			: { ...node, ownerName: undefined };
+
+		const newNode = await nodeInsert(nodeArgs);
 		if (typeof newNode.id !== "string") {
 			setSession({ selected: [] });
 			return;
 		}
 		await nodeMembers.insert({ members, parentId: newNode.id });
 
-		children?.map((id) => copy(id, newNode.id));
+		if (!children) return;
+		for (const id of children) {
+			await copy(id, newNode.id);
+		}
 
 		setSession({ selected: [] });
 	};

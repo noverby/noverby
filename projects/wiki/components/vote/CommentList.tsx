@@ -61,7 +61,7 @@ const CommentList = ({ node }: { node: Node }) => {
 			/>
 			<List>
 				<TransitionGroup>
-					{children?.map(({ id, data, owner, isOwner }, index) => {
+					{children?.map(({ id, name, data, owner, isOwner }, index) => {
 						const item = (
 							<Collapse key={id ?? 0}>
 								<ListItem>
@@ -84,7 +84,7 @@ const CommentList = ({ node }: { node: Node }) => {
 												variant="outlined"
 												size="small"
 												sx={{ mr: 0.5 }}
-												label={owner?.displayName}
+												label={name ?? owner?.displayName}
 											/>
 										}
 									/>
