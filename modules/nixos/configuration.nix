@@ -49,7 +49,16 @@
       verbose = false;
       systemd.enable = true;
     };
-    kernelParams = ["quiet" "splash" "rd.systemd.show_status=false" "rd.udev.log_level=3" "udev.log_priority=3" "boot.shell_on_fail" "i915.fastboot=1"];
+    kernelParams = [
+      "boot.shell_on_fail"
+      "loglevel=3"
+      "plymouth.use-simpledrm"
+      "quiet"
+      "rd.systemd.show_status=false"
+      "rd.udev.log_level=3"
+      "splash"
+      "udev.log_priority=3"
+    ];
     kernelModules = ["v4l2loopback"];
     kernelPackages = pkgs.linuxPackages;
     extraModulePackages = [pkgs.linuxPackages.v4l2loopback];
