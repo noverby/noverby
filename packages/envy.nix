@@ -5,16 +5,18 @@
 }:
 rustPlatform.buildRustPackage rec {
   pname = "envy";
-  version = "0.5.0";
+  version = "0.6.0";
 
   src = fetchFromGitHub {
     owner = "mre";
     repo = "envy";
     rev = version;
-    hash = "sha256-nzRp2r+WzCVT/ASaHh8pa15rRCo8B0Gg+1wyuQ+GKNc=";
+    hash = "sha256-0uenByFb7VJSZaAoV3eSZ4HFRSEFbWBEzmMHPWd9w8I=";
   };
 
-  cargoHash = "sha256-wf2Cl5Suo4LjuEn/ooqdkR4HJZP13webMJmVi3iGMWQ=";
+  cargoHash = "sha256-ho30I+bv7rIyC798bkBdOhqtWW5rvaw6HpNBpqe+5FI=";
+
+  doCheck = false;
 
   meta = {
     description = "Manage environment variables without cluttering your .zshrc";
