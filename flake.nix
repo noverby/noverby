@@ -66,8 +66,8 @@
     };
   };
 
-  outputs = {flakelight, ...} @ inputs:
-    flakelight ./. {
+  outputs = inputs:
+    inputs.flakelight ./. {
       inherit inputs;
       nixpkgs.config = {allowUnfree = true;};
       nixDir = ./.;
