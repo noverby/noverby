@@ -49,6 +49,7 @@
  * 🐒: ECMAScript
  * 🐷: Java
  * 🌙: Lua
+ * λ: Haskell
 
 ### Miscellaneous
 * 🇽➡️🇾: Migrating from 🇽 to 🇾
@@ -115,6 +116,7 @@
 | ✅ | Filesystem | [Btrfs 📖💣](https://btrfs.wiki.kernel.org/index.php/Main_Page) | | 🆗 | [Ext4 📖💣](https://ext4.wiki.kernel.org/index.php/Main_Page) |
 | 🚧 | Config Language | [Nix 🌐💣](https://github.com/NixOS/nix) | [Nickel 🦀](https://github.com/tweag/nickel), [Glistix 🦀](https://github.com/Glistix/glistix) | | |
 | 🚧 | Package Manager | [Nix 🌐💣](https://github.com/NixOS/nix) | [Snix 🦀](https://git.snix.dev/snix/snix) | ⬅️ | |
+| 🚧 | Package Caching | [Cachix 🔒λ](https://github.com/cachix/cachix) | | 🆗 | [Attic 🦀](https://github.com/zhaofengli/attic) |
 | ✅ | Config Manager | [Home Manager 🌐](https://github.com/nix-community/home-manager) | | | |
 | ✅ | Sandboxing | [Hakoniwa 🦀](https://github.com/souk4711/hakoniwa) | | | [Bubblewrap 💣](https://github.com/containers/bubblewrap) |
 
