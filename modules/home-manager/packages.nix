@@ -115,11 +115,5 @@
     # Mojo
     magic
     mojo
-
-    # XR Desktop
-    #monado
-    #stardustxr
-    #flatland
-    #weston
   ];
 }
