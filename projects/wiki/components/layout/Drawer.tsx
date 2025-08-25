@@ -352,7 +352,7 @@ const MenuList = ({ setOpen }: { setOpen: (open: boolean) => void }) => {
 				width: "100%",
 			}}
 		>
-			{node.mimeId === "wiki/event" && (
+			{node.mimeId === "wiki/event" && false && (
 				<>
 					<ListItemButton onClick={handleCurrent}>
 						<ListItemIcon>
