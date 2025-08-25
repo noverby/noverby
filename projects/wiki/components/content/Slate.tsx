@@ -185,7 +185,7 @@ const withHtml = (editor: CustomEditor) => {
 };
 
 const validate = (value?: Descendant[]): Descendant[] => {
-	if (Array.isArray(value)) return value;
+	if (Array.isArray(value) && value.length > 0) return value;
 	else return [{ type: "paragraph", children: [{ text: "" }] }];
 };
 
@@ -212,6 +212,12 @@ const Slate = ({
 	);
 	const validated = validate(value);
 	if (editor) {
+		if (!(Array.isArray(value) && value.length > 0)) {
+			editor.selection = {
+				anchor: { path: [0, 0], offset: 0 },
+				focus: { path: [0, 0], offset: 0 },
+			};
+		}
 		editor.children = validated;
 	} else {
 		return null;
