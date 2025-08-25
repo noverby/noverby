@@ -216,6 +216,7 @@
 
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
+| ✅ | Color Scheme | [Catppuccin](https://github.com/catppuccin/catppuccin) | [Frosted Effect](https://github.com/pop-os/cosmic-epoch/issues/604) | 🆗 | [Adwaita](https://gitlab.gnome.org/GNOME/libadwaita) |
 | ✅ | Design System | [Material You 🔒](https://m3.material.io) | | 🆗 | [Material Design 2 🔒](https://m2.material.io) |
 | ✅ | 2D Renderer | [Wgpu 🦀](https://github.com/gfx-rs/wgpu) | | 🆗 | [Skia 💣](https://github.com/google/skia), [Cairo 💣](https://www.cairographics.org) |
 | 🚧 | 2D Toolkit | [React 🐒](https://react.dev) | [WIP Toolkit 🔥](https://codeberg.org/noverby/noverby/src/branch/main/projects/mojo-wasm), [Dixous 🦀](https://github.com/dioxusLabs/dioxus) | [Web Component 📖](https://www.webcomponents.org/) | |
@@ -229,7 +230,6 @@
 | ✅ | Application Store Frontend | [Cosmic Store 🦀](https://github.com/pop-os/cosmic-store) | | 🆗 | [GNOME Software 💣](https://gitlab.gnome.org/GNOME/gnome-software) |
 | 🚫 | Application Store Backend | [Flatpak 💣](https://github.com/flatpak/flatpak) | | 🆗 | [Snap 🔒](https://github.com/canonical/snapd), [AppImage 💣](https://github.com/AppImage) |
 | ✅ | Office Suite | [OnlyOffice 🐒](https://www.onlyoffice.com) | | [OpenDocument Format 📖](https://en.wikipedia.org/wiki/OpenDocument) | [LibreOffice 💣🐷](https://www.libreoffice.org) |
-
 </details>
 
 ### Browser Extensions
