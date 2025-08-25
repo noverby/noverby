@@ -16,7 +16,7 @@
     self.nixosModules.thinkpad-t14-ryzen-7-pro
     self.nixosModules.cosmic
     self.nixosModules.gnome
-    self.nixosModules.configuration
+    self.nixosModules.base
     self.nixosModules.home-manager
   ];
 }
