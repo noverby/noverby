@@ -93,6 +93,7 @@
     #darling
 
     # Nix dev
+    envy
     alejandra
     nil
     nixd
