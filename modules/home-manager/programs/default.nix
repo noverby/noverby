@@ -21,7 +21,6 @@
     gps = "git push";
     gpf = "git push -f";
     gr = "git rebase";
-    grm = "git rebase master";
     gri = "git rebase -i";
     grc = "git rebase --continue";
     gm = "git merge";
