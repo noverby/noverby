@@ -95,6 +95,7 @@
     nix-prefetch-git
     nix-fast-build
     nix-init
+    comma
 
     # Media tools
     gst_all_1.gstreamer
