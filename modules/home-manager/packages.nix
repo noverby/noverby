@@ -1,10 +1,5 @@
 {pkgs, ...}: {
   home.packages = with pkgs; [
-    # Pop
-    pop-launcher
-    pop-icon-theme
-    pop-gtk-theme
-
     # General apps
     genact
     #bitwarden
@@ -94,11 +89,7 @@
 
     # Nix dev
     envy
-    alejandra
-    nil
-    nixd
     nix-tree
-    statix
     manix
     devenv
     nix-prefetch-git
@@ -112,9 +103,5 @@
     imagemagick
     oxipng
     gimp3
-
-    # Mojo
-    magic
-    mojo
   ];
 }
