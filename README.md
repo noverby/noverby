@@ -47,7 +47,7 @@
  * 🦀: Rust
  * 🐹: Go
  * 💣: C/C++
- * 🐒: ECMAScript
+ * 🐒: [ECMAScript](https://en.wikipedia.org/wiki/ECMAScript)
  * 🐷: Java/Kotlin
  * 🌙: Lua
  * λ: Haskell
