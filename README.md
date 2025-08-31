@@ -41,7 +41,7 @@
  * ⬅️: Backward compatible
 
  ### Language
- * 🔥: Mojo
+ * 🔥: [Mojo](https://en.wikipedia.org/wiki/Mojo_(programming_language))
  * 🐍: Python
  * ❄️: Nix/[Nickel](https://github.com/tweag/nickel)
  * 🦀: Rust
