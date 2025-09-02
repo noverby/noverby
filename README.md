@@ -14,6 +14,7 @@
 * [Rcgen](https://codeberg.org/noverby/noverby/src/branch/main/packages/rcgen.nix): X.509 certificate generation CLI tool
 * [Hakoniwa](https://codeberg.org/noverby/noverby/src/branch/main/packages/hakoniwa.nix): Process isolation CLI tool
 * [Envy](https://codeberg.org/noverby/noverby/src/branch/main/packages/envy.nix): Environment loader CLI tool
+* [nix-sweep](https://codeberg.org/noverby/noverby/src/branch/main/packages/nix-sweep.nix): Nix garbage collector
 
 ### Projects
 * [Homepage](https://codeberg.org/noverby/noverby/src/branch/main/projects/homepage): Personal website and portfolio
