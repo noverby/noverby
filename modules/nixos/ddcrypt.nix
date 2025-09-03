@@ -1,5 +1,5 @@
 {pkgs, ...}: {
-  systemd.services.dmcrypt-daemon = {
+  systemd.services.dmcryptd = {
     description = "DMcrypt daemon";
     wantedBy = ["multi-user.target"];
     path = with pkgs; [util-linux];
