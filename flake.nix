@@ -16,28 +16,14 @@
       url = "github:accelbread/flakelight";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    git-hooks = {
-      url = "github:cachix/git-hooks.nix";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     devenv = {
       url = "github:cachix/devenv";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.git-hooks.follows = "git-hooks";
-    };
-    flake-utils = {
-      url = "github:numtide/flake-utils";
-    };
-    flake-compat = {
-      url = "github:edolstra/flake-compat";
-    };
-    flake-parts = {
-      url = "github:hercules-ci/flake-parts";
-    };
-    hercules-ci-effects = {
-      url = "github:hercules-ci/hercules-ci-effects";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-parts.follows = "flake-parts";
     };
     stardustxr = {
       url = "github:StardustXR/server";
@@ -64,6 +50,24 @@
       url = "github:catppuccin/nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    git-hooks = {
+      url = "github:cachix/git-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    flake-utils = {
+      url = "github:numtide/flake-utils";
+    };
+    flake-compat = {
+      url = "github:edolstra/flake-compat";
+    };
+    flake-parts = {
+      url = "github:hercules-ci/flake-parts";
+    };
+    hercules-ci-effects = {
+      url = "github:hercules-ci/hercules-ci-effects";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-parts.follows = "flake-parts";
+    };
   };
 
   outputs = inputs:
@@ -77,5 +81,9 @@
         homeModules = ["modules/home-manager"];
         devShells = ["shells"];
       };
+
+      withOverlays = [
+        (import inputs.rust-overlay)
+      ];
     };
 }

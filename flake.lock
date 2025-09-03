@@ -464,9 +464,30 @@
         "home-manager": "home-manager",
         "nixos-hardware": "nixos-hardware",
         "nixpkgs": "nixpkgs",
+        "rust-overlay": "rust-overlay",
         "spicetify-nix": "spicetify-nix",
         "stardustxr": "stardustxr",
         "zen-browser": "zen-browser"
+      }
+    },
+    "rust-overlay": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1756866691,
+        "narHash": "sha256-YWJsM0HfdFLcaoP5OeyzjX6MjGnJ0Acm+bg1QN8MKjo=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "fb6dab6f320291a8edd31c1d67f078c6f7384a02",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
       }
     },
     "spicetify-nix": {
