@@ -96,12 +96,13 @@
 | ✅ | Windowing | [Wayland 📖](https://wayland.freedesktop.org) | | [X11 📖](https://www.x.org) |
 | ✅ | Heterogeneous Compute | [SYCL 📖](https://www.khronos.org/sycl) | | |
 | 🚧 | Payment Systems | [Dankort 🔒🇪🇺](https://www.dankort.dk), [Visa 🔒🇺🇸](https://www.visa.com) | [Digital Euro 🏛️🇪🇺](https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html), [GNU Taler 📖](https://taler.net) | |
-| 🚫 | Tensor Operations | | | | |
-| 🚫 | AI Inference | | | | |
 | 🚧 | Satellite Navigation | [Galileo 🇪🇺](https://www.euspa.europa.eu/eu-space-programme/galileo), [GPS 🏛️🇺🇸](https://www.gps.gov) | | |
 | 🚧 | Satellite Internet | | [Iris² 🏛️🇪🇺](https://defence-industry-space.ec.europa.eu/eu-space-policy/iris2_en) | [Starlink 🔒🇺🇸](https://www.starlink.com) |
 | ✅ | Object Notation | [JSON 📖](https://www.json.org) | [KDL](https://kdl.dev), [EON](https://github.com/emilk/eon) | |
 | ✅ | Binary Object Notation | [CBOR 📖](https://cbor.io) | | |
+| 🚫 | Tensor Operations | | | | |
+| 🚫 | AI Inference | | | | |
+| ✅ | LLM | [Codestral 🇪🇺](https://mistral.ai/news/codestral) | [EuroLLM 🇪🇺](https://eurollm.io) | | |
 
 </details>
 
