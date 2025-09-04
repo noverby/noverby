@@ -70,6 +70,7 @@
     mergiraf
     uutils-diffutils
     delta
+    ast-grep
     #diffoscope
 
     # Container tools
