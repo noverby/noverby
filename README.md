@@ -228,6 +228,7 @@
 | 🚧 | 2D Component Library | [MUI 🐒](https://mui.com) | [Dioxus Components 🦀](https://github.com/DioxusLabs/components) | 🆗 | |
 | ✅ | 2D Desktop Engine | [Smithay 🦀](https://github.com/Smithay/smithay) | | 🆗 | [Mutter 💣](https://gitlab.gnome.org/GNOME/mutter) |
 | ✅ | 2D Desktop Environment | [Cosmic Epoch 🦀](https://github.com/pop-os/cosmic-epoch) | | 🆗 | [Gnome Shell 💣](https://gitlab.gnome.org/GNOME/gnome-shell) |
+| 🚫 | 3D Toolkit | [Stereokit 💣](https://github.com/StereoKit/StereoKit) | | 🆗 | |
 | 🚫 | 3D Desktop Engine | [Monado 💣](https://gitlab.freedesktop.org/monado/monado) | | [OpenXR 📖](https://www.khronos.org/openxr) | [Arcan 💣](https://github.com/letoram/arcan) |
 | ✅ | 3D Desktop Environment | [Stardust XR 🦀](https://github.com/StardustXR/server/tree/dev) | [Breezy Desktop](https://github.com/wheaney/breezy-desktop) | 🆗 | [Safespaces 🌙](https://github.com/letoram/safespaces) |
 | ✅ | File Manager | [Cosmic Files 🦀](https://github.com/pop-os/cosmic-files) | | 🆗 | [GNOME Files 💣](https://gitlab.gnome.org/GNOME/nautilus) |
