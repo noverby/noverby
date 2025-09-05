@@ -178,6 +178,7 @@
 | ✅ | Performance Profiler | [Samply 🦀](https://github.com/mstange/samply) | | 🆗 | [Perf 💣](https://perf.wiki.kernel.org/) |
 | 🚧 | Bundler | [Rsbuild 🦀](https://github.com/web-infra-dev/rsbuild), [Webpack 🐒](https://github.com/webpack/webpack), [Turbopack 🦀](https://github.com/vercel/turbo) | [Farm 🦀](https://github.com/farm-fe/farm) | 🆗 | |
 | ✅ | Certificate Generation | [Rcgen 🦀](https://github.com/rustls/rcgen) | | 🆗 | [Mkcert 🐹](https://github.com/FiloSottile/mkcert) |
+| ✅ | TCP Tunnel | [Bore 🦀](https://github.com/ekzhang/bore) | | 🆗 | |
 
 </details>
 
