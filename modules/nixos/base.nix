@@ -110,6 +110,7 @@
       enable = true;
       enableGraphical = true;
     };
+    amdgpu.opencl.enable = true;
   };
 
   # Virtualisation
@@ -212,11 +213,12 @@
         layout = "us";
         variant = "altgr-intl";
       };
+      videoDrivers = ["amdgpu" "modesetting"];
     };
     ollama = {
       enable = true;
       acceleration = "rocm";
-      rocmOverrideGfx = "11.0.2";
+      rocmOverrideGfx = "11.0.3";
     };
   };
 }
