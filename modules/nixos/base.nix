@@ -218,7 +218,7 @@
     ollama = {
       enable = true;
       acceleration = "rocm";
-      rocmOverrideGfx = "11.0.3";
+      rocmOverrideGfx = "11.0.2";
     };
   };
 }
