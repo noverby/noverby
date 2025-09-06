@@ -11,12 +11,16 @@
 }:
 stdenv.mkDerivation rec {
   pname = "mojo";
-  version = "25.3.0";
+  version = "25.5.0";
 
   srcs = [
     (fetchurl {
-      url = "https://conda.modular.com/max/linux-64/max-core-${version}-release.conda";
-      sha256 = "sha256-PfZFL/IMnDKH52wULYNS+9xX3T+oPj5AlKgTIvXyBc4=";
+      url = "https://conda.modular.com/max/linux-64/mojo-compiler-${version}-release.conda";
+      sha256 = "sha256-IlNuYlj/VzmxL187qWrRsJrxgo2wJIlIMf/wJxOyBgM=";
+    })
+    (fetchurl {
+      url = "https://conda.modular.com/max/linux-64/mojo-${version}-release.conda";
+      sha256 = "sha256-J1RRimHy/WPJqT9pLX9QpL+IhfNogT6ikDPv6jXr1Eg=";
     })
     # Using nixpkgs ncurses, mojo fails with error:
     # version `NCURSES6_5.0.19991023' not found (required by <NIX-STORE-PATH>/lib/liblldb20.0.0git.so)
