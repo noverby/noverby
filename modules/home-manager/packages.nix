@@ -97,6 +97,7 @@
     nix-fast-build
     nix-init
     comma
+    nurl
 
     # Media tools
     gst_all_1.gstreamer
