@@ -112,6 +112,7 @@
     };
     amdgpu.opencl.enable = true;
   };
+  zramSwap.enable = true;
 
   # Virtualisation
   virtualisation = {
