@@ -16,7 +16,8 @@
 * [Envy](https://codeberg.org/noverby/noverby/src/branch/main/packages/envy.nix): Environment loader CLI tool
 * [nix-sweep](https://codeberg.org/noverby/noverby/src/branch/main/packages/nix-sweep.nix): Nix garbage collector
 * [Forkfs](https://codeberg.org/noverby/noverby/src/branch/main/packages/forkfs.nix): Sandbox a process's changes to file system
-* [Busd](https://codeberg.org/noverby/noverby/src/branch/main/packages/busd.nix): A D-Bus bus implementation
+* [Busd](https://codeberg.org/noverby/noverby/src/branch/main/packages/busd.nix): A D-Bus bus implementation in Rust
+* [Rustysd](https://codeberg.org/noverby/noverby/src/branch/main/packages/rustysd.nix): A Systemd replacement in Rust
 
 ### Projects
 * [Homepage](https://codeberg.org/noverby/noverby/src/branch/main/projects/homepage): Personal website and portfolio
