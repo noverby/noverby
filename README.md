@@ -143,6 +143,7 @@
 | ✅ | Boilerplate Reducer | [Flakelight ❄️](https://github.com/nix-community/flakelight) | | | [Flake-parts ❄️](https://github.com/hercules-ci/flake-parts) |
 | ✅ | Search Derivation Files | [Nix-index 🦀](https://github.com/nix-community/nix-index), [Comma 🦀](https://github.com/nix-community/comma) | | | |
 | ✅ | Rust Builder | [Crate2nix 🦀❄️](https://github.com/nix-community/crate2nix) | | | [Crane ❄️](https://github.com/ipetkov/crane) |
+| ✅ | Package Initializer | [Nix-init 🦀](https://github.com/nix-community/nix-init), [Nurl 🦀](https://github.com/nix-community/nurl) | | | |
 
 </details>
 
