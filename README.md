@@ -138,7 +138,7 @@
 | ✅ | Linter | [Statix 🦀](https://github.com/oppiliappan/statix), [Deadnix 🦀](https://github.com/astro/deadnix)  | | | |
 | ✅ | LSP | [Nil 🦀](https://github.com/oxalica/nil) | | | [Nixd 💣](https://github.com/nix-community/nixd) |
 | 🚧 | Package Caching | [Cachix 🔒λ](https://github.com/cachix/cachix) | | 🆗 | [Attic 🦀](https://github.com/zhaofengli/attic) |
-| ✅ | Config Manager | [Home Manager 🌐](https://github.com/nix-community/home-manager) | | | |
+| ✅ | Config Manager | [Home Manager 🌐❄️](https://github.com/nix-community/home-manager) | | | |
 | ✅ | Secret Manager | [Agenix ❄️](https://github.com/ryantm/agenix) | [Ragenix 🦀❄️](github.com/yaxitech/ragenix) | | |
 | ✅ | Developer Environment | [Devenv 🦀️❄️](https://github.com/cachix/devenv) | [Organist ❄️](https://github.com/nickel-lang/organist) | 🆗 | |
 | ✅ | Boilerplate Reducer | [Flakelight ❄️](https://github.com/nix-community/flakelight) | | | [Flake-parts ❄️](https://github.com/hercules-ci/flake-parts) |
