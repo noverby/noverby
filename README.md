@@ -194,6 +194,7 @@
 | ✅ | TCP Tunnel | [Bore 🦀](https://github.com/ekzhang/bore) | | 🆗 | |
 
 </details>
+
 ### Infrastructure
 
 <details open>
@@ -211,6 +212,7 @@
 | ✅ | Virtual Private Network | [Tailscale 🐹](https://github.com/tailscale/tailscale) | [Innernet 🦀](https://github.com/tonarino/innernet) | | |
 
 </details>
+
 ### Libraries
 
 <details open>
