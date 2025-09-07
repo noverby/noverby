@@ -145,6 +145,7 @@
 | ✅ | Rust Builder | [Crate2nix 🦀❄️](https://github.com/nix-community/crate2nix) | | | [Crane ❄️](https://github.com/ipetkov/crane) |
 | ✅ | Package Initializer | [Nix-init 🦀](https://github.com/nix-community/nix-init), [Nurl 🦀](https://github.com/nix-community/nurl) | | | |
 | ✅ | Derivation Differ | [Nix-diff λ](https://github.com/Gabriella439/nix-diff) | | | |
+| ✅ | Storage Visualizer | [Nix-du 🦀](https://github.com/symphorien/nix-du), [Nix-tree λ](https://github.com/utdemir/nix-tree) | | | |
 
 </details>
 
