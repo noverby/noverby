@@ -77,6 +77,7 @@
     distrobox
     bubblewrap
     appimage-run
+    cloud-hypervisor
 
     # System dev
     #lldb
