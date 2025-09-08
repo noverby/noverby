@@ -18,6 +18,7 @@
 * [Forkfs](https://codeberg.org/noverby/noverby/src/branch/main/packages/forkfs.nix): Sandbox a process's changes to file system
 * [Busd](https://codeberg.org/noverby/noverby/src/branch/main/packages/busd.nix): A D-Bus bus implementation in Rust
 * [Rustysd](https://codeberg.org/noverby/noverby/src/branch/main/packages/rustysd.nix): A Systemd replacement in Rust
+* [Lacy](https://codeberg.org/noverby/noverby/src/branch/main/packages/lacy.nix): Fast magical cd alternative
 
 ### Projects
 * [Homepage](https://codeberg.org/noverby/noverby/src/branch/main/projects/homepage): Personal website and portfolio
