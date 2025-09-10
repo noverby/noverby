@@ -25,11 +25,6 @@
       ];
     };
 
-    wezterm = {
-      enable = true;
-      extraConfig = builtins.readFile ./wezterm/config.lua;
-    };
-
     nushell = {
       enable = true;
       configFile.source = ./nushell/config.nu;
