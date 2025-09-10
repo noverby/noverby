@@ -73,7 +73,10 @@
   outputs = inputs:
     inputs.flakelight ./. {
       inherit inputs;
-      nixpkgs.config = {allowUnfree = true;};
+      nixpkgs.config = {
+        allowUnfree = true;
+        segger-jlink.acceptLicense = true;
+      };
       nixDir = ./.;
       nixDirAliases = {
         nixosConfigurations = ["devices"];
