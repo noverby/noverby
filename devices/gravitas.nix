@@ -18,6 +18,6 @@
     self.nixosModules.gnome
     self.nixosModules.base
     self.nixosModules.home-manager
-    self.nixosModules.ddcrypt
+    self.nixosModules.veo
   ];
 }
