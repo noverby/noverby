@@ -133,21 +133,21 @@
 
 | Status | Component | Current | Research & Development | Migration Path | Legacy |
 |:-:|-|-|-|-|-|
-| 🚧 | Implementation | [Nix 🌐💣](https://github.com/NixOS/nix) | [Snix 🦀](https://git.snix.dev/snix/snix) | ⬅️ | |
-| 🚧 | Config Language | [Nix 🌐💣](https://github.com/NixOS/nix) | [Nickel 🦀](https://github.com/tweag/nickel), [Glistix 🦀](https://github.com/Glistix/glistix) | | |
+| 🚧 | Package Manager | [Nix 🌐💣](https://github.com/NixOS/nix) | [Snix 🦀](https://git.snix.dev/snix/snix) | ⬅️ | |
+| 🚧 | Language | [Nix 🌐💣](https://github.com/NixOS/nix) | [Nickel 🦀](https://github.com/tweag/nickel), [Glistix 🦀](https://github.com/Glistix/glistix) | | |
 | ✅ | Formatter | [Alejandra 🦀](https://github.com/kamadorueda/alejandra) | | | [Nixfmt λ](https://github.com/NixOS/nixfmt) |
-| ✅ | Linter | [Statix 🦀](https://github.com/oppiliappan/statix), [Deadnix 🦀](https://github.com/astro/deadnix)  | | | |
-| ✅ | LSP | [Nil 🦀](https://github.com/oxalica/nil) | | | [Nixd 💣](https://github.com/nix-community/nixd) |
-| 🚧 | Package Caching | [Cachix 🔒λ](https://github.com/cachix/cachix) | | 🆗 | [Attic 🦀](https://github.com/zhaofengli/attic) |
+| ✅ | Static Analyzer | [Statix 🦀](https://github.com/oppiliappan/statix), [Deadnix 🦀](https://github.com/astro/deadnix)  | | | |
+| ✅ | Language Server | [Nil 🦀](https://github.com/oxalica/nil) | | | [Nixd 💣](https://github.com/nix-community/nixd) |
+| 🚧 | Binary Cache | [Cachix 🔒λ](https://github.com/cachix/cachix) | | 🆗 | [Attic 🦀](https://github.com/zhaofengli/attic) |
 | ✅ | Config Manager | [Home Manager 🌐❄️](https://github.com/nix-community/home-manager) | | | |
 | ✅ | Secret Manager | [Agenix ❄️](https://github.com/ryantm/agenix) | [Ragenix 🦀❄️](github.com/yaxitech/ragenix) | | |
 | ✅ | Developer Environment | [Devenv 🦀️❄️](https://github.com/cachix/devenv) | [Organist ❄️](https://github.com/nickel-lang/organist) | 🆗 | |
-| ✅ | Boilerplate Reducer | [Flakelight ❄️](https://github.com/nix-community/flakelight) | | | [Flake-parts ❄️](https://github.com/hercules-ci/flake-parts) |
-| ✅ | Search Derivation Files | [Nix-index 🦀](https://github.com/nix-community/nix-index), [Comma 🦀](https://github.com/nix-community/comma) | | | |
-| ✅ | Rust Builder | [Crate2nix 🦀❄️](https://github.com/nix-community/crate2nix) | | | [Crane ❄️](https://github.com/ipetkov/crane) |
-| ✅ | Package Initializer | [Nix-init 🦀](https://github.com/nix-community/nix-init), [Nurl 🦀](https://github.com/nix-community/nurl) | | | |
-| ✅ | Derivation Differ | [Nix-diff λ](https://github.com/Gabriella439/nix-diff) | | | |
-| ✅ | Storage Visualizer | [Nix-du 🦀](https://github.com/symphorien/nix-du), [Nix-tree λ](https://github.com/utdemir/nix-tree) | | | |
+| ✅ | Flake Framework | [Flakelight ❄️](https://github.com/nix-community/flakelight) | | | [Flake-parts ❄️](https://github.com/hercules-ci/flake-parts) |
+| ✅ | File Locator | [Nix-index 🦀](https://github.com/nix-community/nix-index), [Comma 🦀](https://github.com/nix-community/comma) | | | |
+| ✅ | Rust Integration | [Crate2nix 🦀❄️](https://github.com/nix-community/crate2nix) | | | [Crane ❄️](https://github.com/ipetkov/crane) |
+| ✅ | Package Generation | [Nix-init 🦀](https://github.com/nix-community/nix-init) + [Nurl 🦀](https://github.com/nix-community/nurl) | | | |
+| ✅ | Derivation Difference | [Nix-diff λ](https://github.com/Gabriella439/nix-diff) | | | |
+| ✅ | Store Explorer | [Nix-du 🦀](https://github.com/symphorien/nix-du), [Nix-tree λ](https://github.com/utdemir/nix-tree) | | | |
 
 </details>
 
