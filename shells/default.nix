@@ -23,6 +23,14 @@
               stages = ["prepare-commit-msg"];
             };
           };
+
+          languages = {
+            rust = {
+              enable = true;
+              mold = true;
+            };
+          };
+
           packages = with pkgs; [
             # Common
             just
@@ -30,8 +38,6 @@
             nixd
             nil
             alejandra
-            # Rust
-            rustup
             # Mojo
             mojo
             python3
