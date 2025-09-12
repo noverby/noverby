@@ -141,6 +141,7 @@
 | 🚧 | Binary Cache | [Cachix 🔒λ](https://github.com/cachix/cachix) | | 🆗 | [Attic 🦀](https://github.com/zhaofengli/attic) |
 | ✅ | Config Manager | [Home Manager 🌐❄️](https://github.com/nix-community/home-manager) | | | |
 | ✅ | Secret Manager | [Agenix ❄️](https://github.com/ryantm/agenix) | [Ragenix 🦀❄️](github.com/yaxitech/ragenix) | | |
+| ✅ | Deployment | [Colmena 🦀️❄️](https://github.com/zhaofengli/colmena) | | | |
 | ✅ | Developer Environment | [Devenv 🦀️❄️](https://github.com/cachix/devenv) | [Organist ❄️](https://github.com/nickel-lang/organist) | 🆗 | |
 | ✅ | Flake Framework | [Flakelight ❄️](https://github.com/nix-community/flakelight) | | | [Flake-parts ❄️](https://github.com/hercules-ci/flake-parts) |
 | ✅ | File Locator | [Nix-index 🦀](https://github.com/nix-community/nix-index), [Comma 🦀](https://github.com/nix-community/comma) | | | |
