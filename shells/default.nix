@@ -27,7 +27,6 @@
           languages = {
             rust = {
               enable = true;
-              mold = true;
             };
           };
 
@@ -38,6 +37,8 @@
             nixd
             nil
             alejandra
+            # Rust
+            openssl
             # Mojo
             mojo
             python3
