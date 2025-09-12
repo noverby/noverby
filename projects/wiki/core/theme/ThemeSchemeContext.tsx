@@ -67,11 +67,11 @@ const ThemeSchemeProvider: FC<{ children: React.ReactNode }> = ({
 			dark[key] = color;
 		}
 		const scheme: M3ThemeScheme = {
-			// @ts-ignore: needs to be replaced anyway
+			// @ts-expect-error: needs to be replaced anyway
 			light,
-			// @ts-ignore: needs to be replaced anyway
+			// @ts-expect-error: needs to be replaced anyway
 			dark,
-			// @ts-ignore: needs to be replaced anyway
+			// @ts-expect-error: needs to be replaced anyway
 			tones: paletteTones,
 		};
 		setThemeScheme(scheme);
