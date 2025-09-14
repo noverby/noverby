@@ -40,28 +40,28 @@
 ## Repository
 
 ### Config
-* [Home Manager Modules](https://codeberg.org/noverby/noverby/src/branch/main/modules/home-manager)
-* [NixOS Modules](https://codeberg.org/noverby/noverby/src/branch/main/modules/nixos)
-* [NixOS Devices](https://codeberg.org/noverby/noverby/src/branch/main/devices)
-* [Devenv Shells](https://codeberg.org/noverby/noverby/src/branch/main/shells)
+* [Home Manager Modules ❄️](https://codeberg.org/noverby/noverby/src/branch/main/modules/home-manager)
+* [NixOS Modules ❄️](https://codeberg.org/noverby/noverby/src/branch/main/modules/nixos)
+* [NixOS Devices ❄️](https://codeberg.org/noverby/noverby/src/branch/main/devices)
+* [Devenv Shells ❄️](https://codeberg.org/noverby/noverby/src/branch/main/shells)
 
 ### Packages
-* [Magic](https://codeberg.org/noverby/noverby/src/branch/main/packages/magic.nix): Mojo package manager
-* [Mojo](https://codeberg.org/noverby/noverby/src/branch/main/packages/mojo.nix): Mojo development toolchain
-* [Cavif-rs](https://codeberg.org/noverby/noverby/src/branch/main/packages/cavif-rs/default.nix): AVIF image encoder CLI tool
-* [Rcgen](https://codeberg.org/noverby/noverby/src/branch/main/packages/rcgen.nix): X.509 certificate generation CLI tool
-* [Hakoniwa](https://codeberg.org/noverby/noverby/src/branch/main/packages/hakoniwa.nix): Process isolation CLI tool
-* [Envy](https://codeberg.org/noverby/noverby/src/branch/main/packages/envy.nix): Environment loader CLI tool
-* [Nix-sweep](https://codeberg.org/noverby/noverby/src/branch/main/packages/nix-sweep.nix): Nix garbage collector
-* [Forkfs](https://codeberg.org/noverby/noverby/src/branch/main/packages/forkfs.nix): Sandbox a process's changes to file system
-* [Busd](https://codeberg.org/noverby/noverby/src/branch/main/packages/busd.nix): A D-Bus bus implementation in Rust
-* [Rustysd](https://codeberg.org/noverby/noverby/src/branch/main/packages/rustysd.nix): A Systemd replacement in Rust
-* [Lacy](https://codeberg.org/noverby/noverby/src/branch/main/packages/lacy.nix): Fast magical cd alternative
+* [Magic 🔥](https://codeberg.org/noverby/noverby/src/branch/main/packages/magic.nix): Mojo package manager
+* [Mojo 🔥](https://codeberg.org/noverby/noverby/src/branch/main/packages/mojo.nix): Mojo development toolchain
+* [Cavif-rs 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/cavif-rs/default.nix): AVIF image encoder CLI tool
+* [Rcgen 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/rcgen.nix): X.509 certificate generation CLI tool
+* [Hakoniwa 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/hakoniwa.nix): Process isolation CLI tool
+* [Envy 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/envy.nix): Environment loader CLI tool
+* [Nix-sweep 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/nix-sweep.nix): Nix garbage collector
+* [Forkfs 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/forkfs.nix): Sandbox a process's changes to file system
+* [Busd 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/busd.nix): A D-Bus bus implementation in Rust
+* [Rustysd 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/rustysd.nix): A Systemd replacement in Rust
+* [Lacy 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/lacy.nix): Fast magical cd alternative
 
 ### Projects
-* [Homepage](https://codeberg.org/noverby/noverby/src/branch/main/projects/homepage): Personal website and portfolio
-* [Wiki](https://codeberg.org/noverby/noverby/src/branch/main/projects/wiki): Platform for political conference & beyond
-* [Mojo-Wasm](https://codeberg.org/noverby/noverby/src/branch/main/projects/mojo-wasm): WebAssembly interop layer for Mojo
+* [Homepage 🐒➡️🦀](https://codeberg.org/noverby/noverby/src/branch/main/projects/homepage): Personal website and portfolio
+* [Wiki 🐒➡️🦀](https://codeberg.org/noverby/noverby/src/branch/main/projects/wiki): Platform for political conference & beyond
+* [Mojo-Wasm 🔥](https://codeberg.org/noverby/noverby/src/branch/main/projects/mojo-wasm): WebAssembly interop layer for Mojo
 
 ## Stack
 
