@@ -1,6 +1,44 @@
 # Personal Monorepo
 
-## Overview
+## Specifiers
+
+### State
+ * ✅: Good for now
+ * 🚧: WIP
+ * 🚫: Blocked
+ * ❓: Undecided
+
+ ### Control
+ * 🌐: Managed by [Nonprofit Organization](https://en.wikipedia.org/wiki/Nonprofit_organization)
+ * 🏛️: Managed by [Public Authority](https://en.wikipedia.org/wiki/Public_administration)
+ * ⚖️: Managed by [Benefit Corporation](https://en.wikipedia.org/wiki/Benefit_corporation)
+ * 📖: [Open Standard](https://en.wikipedia.org/wiki/Open_standard)
+ * 🏡: Self-hosted
+ * 🔒: [Proprietary](https://en.wiktionary.org/wiki/proprietary)
+ * ⏳: [Business Source License](https://en.wikipedia.org/wiki/Business_Source_License)
+
+### Compatibility
+ * 🆗: Not needed
+ * ⬅️: Backward compatible
+
+ ### Language
+ * 🔥: [Mojo](https://en.wikipedia.org/wiki/Mojo_(programming_language))
+ * 🐍: Python
+ * ❄️: Nix/[Nickel](https://github.com/tweag/nickel)
+ * 🦀: Rust
+ * 🐹: Go
+ * 💣: C/C++
+ * 🐒: [ECMAScript](https://en.wikipedia.org/wiki/ECMAScript)
+ * 🐷: Java/Kotlin
+ * 🌙: Lua
+ * λ: Haskell
+
+### Miscellaneous
+* 🇽➡️🇾: Migrating from 🇽 to 🇾
+* 👁️: [Sentientist](https://en.wikipedia.org/wiki/Sentientism)
+
+## Repository
+
 ### Config
 * [Home Manager Modules](https://codeberg.org/noverby/noverby/src/branch/main/modules/home-manager)
 * [NixOS Modules](https://codeberg.org/noverby/noverby/src/branch/main/modules/nixos)
@@ -26,40 +64,6 @@
 * [Mojo-Wasm](https://codeberg.org/noverby/noverby/src/branch/main/projects/mojo-wasm): WebAssembly interop layer for Mojo
 
 ## Stack
-### State
- * ✅: Good for now
- * 🚧: WIP
- * 🚫: Blocked
- * ❓: Undecided
-
- ### Control
- * 🌐: Managed by [Nonprofit Organization](https://en.wikipedia.org/wiki/Nonprofit_organization)
- * 🏛️: Managed by [Public Authority](https://en.wikipedia.org/wiki/Public_administration)
- * ⚖️: Managed by [Benefit Corporation](https://en.wikipedia.org/wiki/Benefit_corporation)
- * 📖: [Open Standard](https://en.wikipedia.org/wiki/Open_standard)
- * 🏡: Self-hosted
- * 🔒: [Proprietary](https://en.wiktionary.org/wiki/proprietary)
- * ⏳: [Business Source License](https://en.wikipedia.org/wiki/Business_Source_License)
-
-### Migration Compatibility
- * 🆗: Not needed
- * ⬅️: Backward compatible
-
- ### Language
- * 🔥: [Mojo](https://en.wikipedia.org/wiki/Mojo_(programming_language))
- * 🐍: Python
- * ❄️: Nix/[Nickel](https://github.com/tweag/nickel)
- * 🦀: Rust
- * 🐹: Go
- * 💣: C/C++
- * 🐒: [ECMAScript](https://en.wikipedia.org/wiki/ECMAScript)
- * 🐷: Java/Kotlin
- * 🌙: Lua
- * λ: Haskell
-
-### Miscellaneous
-* 🇽➡️🇾: Migrating from 🇽 to 🇾
-* 👁️: [Sentientist](https://en.wikipedia.org/wiki/Sentientism)
 
 ### Hardware
 
@@ -111,7 +115,9 @@
 
 </details>
 
-### System Core
+### System
+
+#### Core
 
 <details open>
 
@@ -127,7 +133,23 @@
 
 </details>
 
-### Nix
+#### Libraries
+
+<details open>
+
+| Status | Component | Current | Research & Development | Migration Path | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Compression | [Zlib-rs 🦀](https://github.com/memorysafety/zlib-rs) | | ⬅️ | [Zlib 💣](https://github.com/madler/zlib) |
+| ✅ | TLS Protocol |  [Rustls 🦀](https://github.com/rustls/rustls) | | 🆗 | [Openssl 💣](https://github.com/openssl/openssl) |
+| ✅ | HTTP Protocol | [Hyper 🦀](https://github.com/hyperium/hyper) | | 🆗 | [Nghttp2 💣](https://github.com/nghttp2/nghttp2), [Nghttp3 💣](https://github.com/ngtcp2/nghttp3) |
+| ✅ | HTTP Client | [Reqwest 🦀](https://github.com/seanmonstar/reqwest) | | 🆗 | [Curl 💣](https://github.com/curl/curl) |
+| ✅ | SSH Protocol | [Russh 🦀](https://github.com/warp-tech/russh) | | 🆗 | [OpenSSH 💣](https://github.com/openssh/openssh-portable) |
+| ✅ | Font Rendering | [Cosmic-text 🦀](https://github.com/pop-os/cosmic-text) | | 🆗 | [HarfBuzz 💣](https://github.com/harfbuzz/harfbuzz), [FreeType 💣](https://github.com/freetype/freetype) |
+| 🚧 | Browser Engine | [Gecko 🦀💣](https://en.wikipedia.org/wiki/Gecko_(software)) | [Servo 🦀](https://github.com/servo/servo) | ⬅️ | |
+
+</details>
+
+#### Nix
 
 <details open>
 
@@ -152,7 +174,9 @@
 
 </details>
 
-### CLI Tools
+### Tools
+
+#### Command Line
 
 <details open>
 
@@ -182,7 +206,7 @@
 
 </details>
 
-### Dev Tools
+#### Development
 
 <details open>
 
@@ -226,23 +250,9 @@
 
 </details>
 
-### Libraries
+### Graphical User Interface
 
-<details open>
-
-| Status | Component | Current | Research & Development | Migration Path | Legacy |
-|:-:|-|-|-|-|-|
-| ✅ | Compression | [Zlib-rs 🦀](https://github.com/memorysafety/zlib-rs) | | ⬅️ | [Zlib 💣](https://github.com/madler/zlib) |
-| ✅ | TLS Protocol |  [Rustls 🦀](https://github.com/rustls/rustls) | | 🆗 | [Openssl 💣](https://github.com/openssl/openssl) |
-| ✅ | HTTP Protocol | [Hyper 🦀](https://github.com/hyperium/hyper) | | 🆗 | [Nghttp2 💣](https://github.com/nghttp2/nghttp2), [Nghttp3 💣](https://github.com/ngtcp2/nghttp3) |
-| ✅ | HTTP Client | [Reqwest 🦀](https://github.com/seanmonstar/reqwest) | | 🆗 | [Curl 💣](https://github.com/curl/curl) |
-| ✅ | SSH Protocol | [Russh 🦀](https://github.com/warp-tech/russh) | | 🆗 | [OpenSSH 💣](https://github.com/openssh/openssh-portable) |
-| ✅ | Font Rendering | [Cosmic-text 🦀](https://github.com/pop-os/cosmic-text) | | 🆗 | [HarfBuzz 💣](https://github.com/harfbuzz/harfbuzz), [FreeType 💣](https://github.com/freetype/freetype) |
-| 🚧 | Browser Engine | [Gecko 🦀💣](https://en.wikipedia.org/wiki/Gecko_(software)) | [Servo 🦀](https://github.com/servo/servo) | ⬅️ | |
-
-</details>
-
-### GUI
+#### Desktop
 
 <details open>
 
@@ -266,7 +276,7 @@
 | ✅ | Office Suite | [OnlyOffice 🐒](https://www.onlyoffice.com) | | [OpenDocument Format 📖](https://en.wikipedia.org/wiki/OpenDocument) | [LibreOffice 💣🐷](https://www.libreoffice.org) |
 </details>
 
-### Browser Extensions
+#### Browser Extensions
 
 <details open>
 
@@ -278,7 +288,7 @@
 
 </details>
 
-### Media
+#### Media
 
 <details open>
 
@@ -292,7 +302,7 @@
 
 </details>
 
-### Mobile
+#### Mobile
 
 <details open>
 
@@ -310,7 +320,9 @@
 
 </details>
 
-### Services
+### Platforms
+
+#### Services
 
 <details open>
 
@@ -333,7 +345,7 @@
 
 </details>
 
-### Social
+#### Social
 
 <details open>
 
@@ -355,7 +367,7 @@
 
 </details>
 
-### Cloud
+#### Cloud
 
 <details open>
 
