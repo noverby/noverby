@@ -9,6 +9,7 @@
     xdg
     file
     programs
+    services
     catppuccin
   ];
 }
