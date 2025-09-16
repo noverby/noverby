@@ -34,6 +34,7 @@
     skim
     pueue
     waypipe
+    wl-color-picker
 
     # Network tools
     xh
