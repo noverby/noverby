@@ -21,6 +21,7 @@
     firefoxpwa
     cheese
     pavucontrol
+    kooha
 
     # System tools
     sudo-rs
