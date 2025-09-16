@@ -121,9 +121,9 @@
 #### Encoding
 
 <details open>
-
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
+| ✅ | Text | [UTF-8 📖](https://en.wikipedia.org/wiki/UTF-8) | | [UTF-16 📖](https://en.wikipedia.org/wiki/UTF-16) |
 | ✅ | Object Notation | [JSON 📖](https://www.json.org) | [KDL](https://kdl.dev), [EON](https://github.com/emilk/eon) | |
 | ✅ | Binary Object Notation | [CBOR 📖](https://cbor.io) | | |
 | ✅ | Image Codec | [AVIF 📖](https://en.wikipedia.org/wiki/AVIF) | | [PNG 📖](https://en.wikipedia.org/wiki/Portable_Network_Graphics), [JPEG 📖](https://en.wikipedia.org/wiki/JPEG) |
@@ -304,6 +304,7 @@
 | ✅ | Application Store Frontend | [Cosmic Store 🦀](https://github.com/pop-os/cosmic-store) | | 🆗 | [GNOME Software 💣](https://gitlab.gnome.org/GNOME/gnome-software) |
 | 🚫 | Application Store Backend | [Flatpak 💣](https://github.com/flatpak/flatpak) | | 🆗 | [Snap 🔒](https://github.com/canonical/snapd), [AppImage 💣](https://github.com/AppImage) |
 | ✅ | Office Suite | [OnlyOffice 🐒](https://www.onlyoffice.com) | | [OpenDocument Format 📖](https://en.wikipedia.org/wiki/OpenDocument) | [LibreOffice 💣🐷](https://www.libreoffice.org) |
+
 </details>
 
 #### Browser Extensions
