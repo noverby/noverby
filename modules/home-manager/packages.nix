@@ -20,6 +20,7 @@
     gnome-disk-utility
     firefoxpwa
     cheese
+    pavucontrol
 
     # System tools
     sudo-rs
