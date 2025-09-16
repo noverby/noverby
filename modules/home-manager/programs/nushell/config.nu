@@ -91,5 +91,5 @@ def gcom [] {
 def grm [] {
   git fetch origin
   let default_branch = (git symbolic-ref refs/remotes/origin/HEAD | str replace "refs/remotes/origin/" "")
-  gr $default_branch
+  git rebase $default_branch
 }
