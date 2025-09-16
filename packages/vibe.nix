@@ -5,8 +5,13 @@
   pkg-config,
   libxkbcommon,
   vulkan-loader,
+  libGL,
+  vulkan-validation-layers,
+  vulkan-tools,
   alsa-lib,
   wayland,
+  mesa,
+  makeWrapper,
 }:
 rustPlatform.buildRustPackage rec {
   pname = "vibe";
@@ -23,16 +28,36 @@ rustPlatform.buildRustPackage rec {
 
   nativeBuildInputs = [
     pkg-config
+    makeWrapper
   ];
 
   buildInputs = [
-    libxkbcommon
-    vulkan-loader
     alsa-lib
+
     wayland
+
+    libGL
+    libxkbcommon
+
+    vulkan-loader
+    vulkan-validation-layers
+    vulkan-tools
   ];
 
   doCheck = false;
+
+  postInstall = ''
+    wrapProgram $out/bin/$pname --prefix LD_LIBRARY_PATH : ${builtins.toString (lib.makeLibraryPath [
+      # Without wayland in library path, this warning is raised:
+      # "No windowing system present. Using surfaceless platform"
+      wayland
+      # Without vulkan-loader present, wgpu won't find any adapter
+      vulkan-loader
+      mesa
+    ])}
+  '';
+
+  LD_LIBRARY_PATH = "$LD_LIBRARY_PATH:${lib.makeLibraryPath buildInputs}";
 
   meta = {
     description = "A desktop audio visualizer and shader player for your wayland wallpaper";
