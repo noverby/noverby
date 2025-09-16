@@ -67,11 +67,15 @@
     tokei
     zip
     unzip
+    p7zip
     mergiraf
     uutils-diffutils
     delta
     ast-grep
-    #diffoscope
+    diffoscope
+    simg2img
+    cryptsetup
+    binwalk
 
     # Container tools
     distrobox
