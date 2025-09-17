@@ -121,6 +121,7 @@
 #### Encoding
 
 <details open>
+
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
 | ✅ | Text | [UTF-8 📖](https://en.wikipedia.org/wiki/UTF-8) | | [UTF-16 📖](https://en.wikipedia.org/wiki/UTF-16) |
@@ -131,7 +132,6 @@
 | ✅ | Video Codec | [AV1 📖](https://aomedia.org/av1-features/get-started) | | [H.264 🔒](https://en.wikipedia.org/wiki/Advanced_Video_Coding) |
 
 </details>
-
 
 #### Protocol
 
