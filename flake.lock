@@ -223,11 +223,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1757335773,
-        "narHash": "sha256-MpPsb/ZwFQnngBKvmbtNn53LI3D5shhjl2tx7qh2by0=",
+        "lastModified": 1758214611,
+        "narHash": "sha256-5YLeUhF7Nu85fNi5ElWexJ4ViiY041I0mBLLzOhg2DQ=",
         "owner": "accelbread",
         "repo": "flakelight",
-        "rev": "06b8bc9debad318f240db984be9b8e36b3ab742b",
+        "rev": "464ab0a32efcc4310eef119cfc6c470e267cd42a",
         "type": "github"
       },
       "original": {
