@@ -354,9 +354,11 @@
 | ✅ | Distraction Blockers | [TimeLimit 🐷](https://codeberg.org/timelimit/timelimit-android), [LeechBlock NG](https://github.com/proginosko/LeechBlockNG), [Adguard DNS 🇪🇺](https://adguard.com) | | 🆗 | |
 | ✅ | Authenticator | [Aegis 🐷](https://getaegis.app) | | [HOTP 📖](https://en.wikipedia.org/wiki/HMAC-based_One-time_Password_algorithm), [TOTP 📖](https://en.wikipedia.org/wiki/Time-based_One-time_Password_algorithm) | |
 | ✅ | Music Recognition | [Audile 🐷](https://github.com/aleksey-saenko/MusicRecognizer) | | 🆗 | [Soundhound 🔒🇺🇸](https://www.soundhound.com) |
+| ✅ | Malware Scanner | [Hypatia 🐷](https://github.com/MaintainTeam/Hypatia) | | 🆗 | |
 | ✅ | Developer Environment | [Nix-on-droid ❄️🐍](https://github.com/nix-community/nix-on-droid) | | 🆗 | [Termux 🐷💣](https://github.com/termux/termux-app) |
 
 </details>
+
 ### Platforms
 
 #### Services
