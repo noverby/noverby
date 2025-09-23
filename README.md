@@ -40,29 +40,29 @@
 ## Repository
 
 ### Config
-* [Home Manager Modules ❄️](https://codeberg.org/noverby/noverby/src/branch/main/modules/home-manager)
-* [NixOS Modules ❄️](https://codeberg.org/noverby/noverby/src/branch/main/modules/nixos)
-* [NixOS Devices ❄️](https://codeberg.org/noverby/noverby/src/branch/main/devices)
-* [Devenv Shells ❄️](https://codeberg.org/noverby/noverby/src/branch/main/shells)
+* [Home Manager Modules ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/home-manager)
+* [NixOS Modules ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/nixos)
+* [NixOS Devices ❄️](https://tangled.org/@overby.me/overby.me/tree/main/devices)
+* [Devenv Shells ❄️](https://tangled.org/@overby.me/overby.me/tree/main/shells)
 
 ### Packages
-* [Magic 🔥](https://codeberg.org/noverby/noverby/src/branch/main/packages/magic.nix): Mojo package manager
-* [Mojo 🔥](https://codeberg.org/noverby/noverby/src/branch/main/packages/mojo.nix): Mojo development toolchain
-* [Cavif-rs 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/cavif-rs/default.nix): AVIF image encoder CLI tool
-* [Rcgen 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/rcgen.nix): X.509 certificate generation CLI tool
-* [Hakoniwa 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/hakoniwa.nix): Process isolation CLI tool
-* [Envy 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/envy.nix): Environment loader CLI tool
-* [Nix-sweep 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/nix-sweep.nix): Nix garbage collector
-* [Forkfs 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/forkfs.nix): Sandbox a process's changes to file system
-* [Busd 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/busd.nix): A D-Bus bus implementation in Rust
-* [Rustysd 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/rustysd.nix): A Systemd replacement in Rust
-* [Lacy 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/lacy.nix): Fast magical cd alternative
-* [Vibe 🦀](https://codeberg.org/noverby/noverby/src/branch/main/packages/vibe.nix): A desktop audio visualizer
+* [Magic 🔥](https://tangled.org/@overby.me/overby.me/tree/main/packages/magic.nix): Mojo package manager
+* [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/packages/mojo.nix): Mojo development toolchain
+* [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/cavif-rs/default.nix): AVIF image encoder CLI tool
+* [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/rcgen.nix): X.509 certificate generation CLI tool
+* [Hakoniwa 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/hakoniwa.nix): Process isolation CLI tool
+* [Envy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/envy.nix): Environment loader CLI tool
+* [Nix-sweep 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/nix-sweep.nix): Nix garbage collector
+* [Forkfs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/forkfs.nix): Sandbox a process's changes to file system
+* [Busd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/busd.nix): A D-Bus bus implementation in Rust
+* [Rustysd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/rustysd.nix): A Systemd replacement in Rust
+* [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/lacy.nix): Fast magical cd alternative
+* [Vibe 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/vibe.nix): A desktop audio visualizer
 
 ### Projects
-* [Homepage 🐒➡️🦀](https://codeberg.org/noverby/noverby/src/branch/main/projects/homepage): Personal website and portfolio
-* [Wiki 🐒➡️🦀](https://codeberg.org/noverby/noverby/src/branch/main/projects/wiki): Platform for political conference & beyond
-* [Mojo-Wasm 🔥](https://codeberg.org/noverby/noverby/src/branch/main/projects/mojo-wasm): WebAssembly interop layer for Mojo
+* [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/homepage): Personal website and portfolio
+* [Wiki 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/wiki): Platform for political conference & beyond
+* [Mojo-Wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/mojo-wasm): WebAssembly interop layer for Mojo
 
 ## Stack
 
@@ -295,7 +295,7 @@
 | ✅ | Color Scheme | [Catppuccin](https://github.com/catppuccin/catppuccin) | [Frosted Effect](https://github.com/pop-os/cosmic-epoch/issues/604) | 🆗 | [Adwaita](https://gitlab.gnome.org/GNOME/libadwaita) |
 | ✅ | Design System | [Material You 🔒](https://m3.material.io) | | 🆗 | [Material Design 2 🔒](https://m2.material.io) |
 | ✅ | 2D Renderer | [Wgpu 🦀](https://github.com/gfx-rs/wgpu) | | 🆗 | [Skia 💣](https://github.com/google/skia), [Cairo 💣](https://www.cairographics.org) |
-| 🚧 | 2D Toolkit | [React 🐒](https://react.dev) | [WIP Toolkit 🔥](https://codeberg.org/noverby/noverby/src/branch/main/projects/mojo-wasm), [Dixous 🦀](https://github.com/dioxusLabs/dioxus) | [Web Component 📖](https://www.webcomponents.org/) | |
+| 🚧 | 2D Toolkit | [React 🐒](https://react.dev) | [WIP Toolkit 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/mojo-wasm), [Dixous 🦀](https://github.com/dioxusLabs/dioxus) | [Web Component 📖](https://www.webcomponents.org/) | |
 | 🚧 | 2D Component Library | [MUI 🐒](https://mui.com) | [Dioxus Components 🦀](https://github.com/DioxusLabs/components) | 🆗 | |
 | ✅ | 2D Desktop Engine | [Smithay 🦀](https://github.com/Smithay/smithay) | | 🆗 | [Mutter 💣](https://gitlab.gnome.org/GNOME/mutter) |
 | ✅ | 2D Desktop Environment | [Cosmic Epoch 🦀](https://github.com/pop-os/cosmic-epoch) | | 🆗 | [Gnome Shell 💣](https://gitlab.gnome.org/GNOME/gnome-shell) |
