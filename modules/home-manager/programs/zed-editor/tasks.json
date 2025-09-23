@@ -12,5 +12,13 @@
 		"hide": "always",
 		"allow_concurrent_runs": true,
 		"use_new_terminal": true
+	},
+	{
+		"label": "Find in File",
+		"command": "bat --style=numbers --color=always --theme=TwoDark --paging=never $env.ZED_FILE | tv --ansi --input-header=$\"($env.ZED_RELATIVE_FILE)\" | ansi strip | str trim | split row \" \" | first | zeditor $\"($env.ZED_FILE):($in)\"",
+		"hide": "always",
+		"allow_concurrent_runs": true,
+		"use_new_terminal": true,
+		"shell": { "program": "nu" }
 	}
 ]
