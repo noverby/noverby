@@ -3,10 +3,13 @@
   src,
   ...
 }: {
+  system = "x86_64-linux";
+
   specialArgs = {
     inherit src inputs;
     stateVersion = "24.05";
   };
+
   modules = with inputs; [
     nixos-hardware
     .nixosModules

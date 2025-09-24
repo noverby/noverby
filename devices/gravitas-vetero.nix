@@ -3,10 +3,13 @@
   src,
   ...
 }: {
+  system = "x86_64-linux";
+
   specialArgs = {
     inherit src inputs;
     stateVersion = "25.05";
   };
+
   modules = with inputs; [
     home-manager.nixosModules.home-manager
     self.nixosModules.dell-xps-9320
