@@ -17,6 +17,7 @@
     self.nixosModules.cosmic
     self.nixosModules.gnome
     self.nixosModules.base
+    self.nixosModules.catppuccin
     self.nixosModules.home-manager
     self.nixosModules.veo
   ];

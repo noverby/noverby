@@ -160,11 +160,6 @@
     extraGroups = ["networkmanager" "wheel" "docker" "libvirtd" "wireshark"];
   };
 
-  # Style
-  catppuccin = {
-    enable = true;
-  };
-
   # Needed to make Zed login work in Cosmic
   xdg.portal = {
     enable = true;
