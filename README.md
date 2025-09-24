@@ -58,6 +58,7 @@
 * [Rustysd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/rustysd.nix): A Systemd replacement in Rust
 * [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/lacy.nix): Fast magical cd alternative
 * [Vibe 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/vibe.nix): A desktop audio visualizer
+* [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/sunsetc.nix): SSH in Rust
 
 ### Projects
 * [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/homepage): Personal website and portfolio
