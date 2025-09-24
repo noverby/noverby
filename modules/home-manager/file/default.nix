@@ -1,6 +1,7 @@
 {
   config,
   homeDirectory,
+  pkgs,
   ...
 }:
 with config.lib.file; {
@@ -35,5 +36,9 @@ with config.lib.file; {
     ".pystartup".source = ./config/pystartup;
     ".config/pop-shell/config.json".source = ./config/pop-shell/config.json;
     ".config/mpv/mpv.conf".source = ./config/mpv/mpv.conf;
+    ".local/share/wallpapers/current.png".source = "${(pkgs.nix-wallpaper.override {
+      preset = "catppuccin-mocha";
+      logoSize = 10;
+    })}/share/wallpapers/nixos-wallpaper.png";
   };
 }

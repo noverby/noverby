@@ -402,6 +402,32 @@
         "type": "github"
       }
     },
+    "nix-wallpaper": {
+      "inputs": {
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "pre-commit-hooks": [
+          "git-hooks"
+        ]
+      },
+      "locked": {
+        "lastModified": 1750526611,
+        "narHash": "sha256-RuP01U7zaS9S3zTNw4R0P87PY0A1szG8K5NTlOrqG18=",
+        "owner": "lunik1",
+        "repo": "nix-wallpaper",
+        "rev": "fb2a848f01cd1b08c5d9029984f034eb883e318a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "lunik1",
+        "repo": "nix-wallpaper",
+        "type": "github"
+      }
+    },
     "nixos-hardware": {
       "locked": {
         "lastModified": 1757103352,
@@ -462,6 +488,7 @@
         "git-hooks": "git-hooks",
         "hercules-ci-effects": "hercules-ci-effects",
         "home-manager": "home-manager",
+        "nix-wallpaper": "nix-wallpaper",
         "nixos-hardware": "nixos-hardware",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay",
