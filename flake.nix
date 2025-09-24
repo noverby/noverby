@@ -88,5 +88,6 @@
         devShells = ["shells"];
         withOverlays = ["with-overlays"];
       };
+      formatter = pkgs: pkgs.alejandra;
     };
 }
