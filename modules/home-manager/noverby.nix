@@ -11,5 +11,6 @@
     programs
     services
     catppuccin
+    vibe
   ];
 }
