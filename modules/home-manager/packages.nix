@@ -22,6 +22,7 @@
     cheese
     pavucontrol
     kooha
+    rustdesk
 
     # System tools
     sudo-rs
