@@ -22,7 +22,7 @@
     cheese
     pavucontrol
     kooha
-    rustdesk
+    rustdesk-flutter
 
     # System tools
     sudo-rs
