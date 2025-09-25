@@ -216,5 +216,6 @@
       acceleration = "rocm";
       rocmOverrideGfx = "11.0.2";
     };
+    tailscale.enable = true;
   };
 }
