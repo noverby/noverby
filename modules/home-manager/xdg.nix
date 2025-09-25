@@ -3,6 +3,25 @@ _: {
     enable = true;
     mimeApps = {
       enable = true;
+      associations.added = let
+        zenMimes = [
+          "x-scheme-handler/http"
+          "x-scheme-handler/https"
+          "x-scheme-handler/chrome"
+          "text/html"
+          "application/x-extension-htm"
+          "application/x-extension-html"
+          "application/x-extension-shtml"
+          "application/xhtml+xml"
+          "application/x-extension-xhtml"
+          "application/x-extension-xht"
+        ];
+      in
+        builtins.listToAttrs (map (mime: {
+            name = mime;
+            value = "zen-beta.desktop";
+          })
+          zenMimes);
       defaultApplications = let
         zedMimes = [
           "text/plain"
