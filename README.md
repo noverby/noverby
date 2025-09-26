@@ -339,6 +339,7 @@
 | ✅ | Vector Graphics | [Graphite 🦀](https://github.com/GraphiteEditor/Graphite) | | 🆗 | [Inkscape 💣](https://gitlab.com/inkscape/inkscape) |
 | ✅ | Typesetter | [Typst 🦀](https://github.com/typst) | | 🆗 | [LaTeX 💣](https://github.com/latex3/latex3) |
 | ✅ | Image Optimizer | [Oxipng 🦀](https://github.com/shssoichiro/oxipng) | | 🆗 | [Optpng 💣](https://optipng.sourceforge.net) |
+| 🚧 | Image Processing | | [Wondermagick 🦀](https://github.com/Shnatsel/wondermagick) | 🆗 | [ImageMagick 💣](https://github.com/ImageMagick/ImageMagick) |
 | ✅ | Screen Recorder | [Kooha 🦀](https://github.com/SeaDve/Kooha) | | 🆗 | [Mutter Built-in Recorder 💣](https://github.com/GNOME/mutter) |
 
 </details>
