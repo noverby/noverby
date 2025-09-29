@@ -33,7 +33,6 @@ with config.lib.file; {
       source = ./bin/zellij-cwd;
     };
     ".npmrc".source = ./config/npmrc.ini;
-    ".pystartup".source = ./config/pystartup;
     ".config/pop-shell/config.json".source = ./config/pop-shell/config.json;
     ".config/mpv/mpv.conf".source = ./config/mpv/mpv.conf;
     ".local/share/wallpapers/current.png".source = "${(pkgs.nix-wallpaper.override {
