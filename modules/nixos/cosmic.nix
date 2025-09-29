@@ -19,7 +19,6 @@
   services = {
     desktopManager.cosmic.enable = true;
     displayManager.cosmic-greeter.enable = true;
-    gnome.gnome-keyring.enable = true;
     system76-scheduler.enable = true;
   };
 }
