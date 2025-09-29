@@ -61,7 +61,7 @@
       EDITOR = "vi";
       VISUAL = "vi";
       BATDIFF_USE_DELTA = "true";
-      PYTHONSTARTUP = "${homeDirectory}/.pystartup";
+      PYTHONSTARTUP = ./file/config/pystartup.py;
       GRANTED_ALIAS_CONFIGURED = "true";
     };
   };
