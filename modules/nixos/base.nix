@@ -190,6 +190,7 @@
 
   # Services
   services = {
+    avahi.enable = false;
     resolved = {
       enable = true;
       extraConfig = ''
