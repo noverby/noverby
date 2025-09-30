@@ -8,19 +8,20 @@
   libedit,
   zlib,
   curl,
+  libbsd,
 }:
 stdenv.mkDerivation rec {
   pname = "mojo";
-  version = "25.5.0";
+  version = "25.6.0";
 
   srcs = [
     (fetchurl {
-      url = "https://conda.modular.com/max/linux-64/mojo-compiler-${version}-release.conda";
-      sha256 = "sha256-IlNuYlj/VzmxL187qWrRsJrxgo2wJIlIMf/wJxOyBgM=";
+      url = "https://conda.modular.com/max/linux-64/mojo-compiler-0.${version}-release.conda";
+      sha256 = "sha256-Qe30hyHRHhhqTm+96JrlHM0KrzOQnk6rl2PgAVinMRk=";
     })
     (fetchurl {
-      url = "https://conda.modular.com/max/linux-64/mojo-${version}-release.conda";
-      sha256 = "sha256-J1RRimHy/WPJqT9pLX9QpL+IhfNogT6ikDPv6jXr1Eg=";
+      url = "https://conda.modular.com/max/linux-64/mojo-0.${version}-release.conda";
+      sha256 = "sha256-oKSH3o1HDoXpJcmtdrSTsBlYzMev/guSJQ21ChlgcJo=";
     })
     # Using nixpkgs ncurses, mojo fails with error:
     # version `NCURSES6_5.0.19991023' not found (required by <NIX-STORE-PATH>/lib/liblldb20.0.0git.so)
@@ -45,6 +46,7 @@ stdenv.mkDerivation rec {
     libedit
     zlib
     curl
+    libbsd
   ];
 
   unpackPhase = ''
@@ -101,15 +103,27 @@ stdenv.mkDerivation rec {
 
     # Create mojo wrapper that uses generated modular.cfg
     mkdir -p $out/bin
-    cat > $out/bin/.mojo-wrapped << EOF
+    mv $out/bin/mojo $out/bin/mojo-unwrapped
+    cat > $out/bin/mojo << EOF
     #!${stdenv.shell}
     mkdir -p /tmp/crashdb
     export MODULAR_HOME=$out/etc/modular
+    export TERMINFO_DIRS=$out/share/terminfo
     exec $out/bin/mojo-unwrapped "\$@"
     EOF
-    chmod +x $out/bin/.mojo-wrapped
-    mv $out/bin/mojo $out/bin/mojo-unwrapped
-    mv $out/bin/.mojo-wrapped $out/bin/mojo
+    chmod +x $out/bin/mojo
+
+    # Create mojo-lldb wrapper that uses generated modular.cfg
+    mkdir -p $out/bin
+    mv $out/bin/mojo-lldb $out/bin/mojo-lldb-unwrapped
+    cat > $out/bin/mojo-lldb << EOF
+    #!${stdenv.shell}
+    mkdir -p /tmp/crashdb
+    export MODULAR_HOME=$out/etc/modular
+    export TERMINFO_DIRS=$out/share/terminfo
+    exec $out/bin/mojo-lldb-unwrapped "\$@"
+    EOF
+    chmod +x $out/bin/mojo-lldb
 
     # Create mojo-lsp-server wrapper that uses generated modular.cfg
     mv $out/bin/mojo-lsp-server $out/bin/mojo-lsp-server-unwrapped
@@ -128,6 +142,8 @@ stdenv.mkDerivation rec {
   doInstallCheck = true;
   installCheckPhase = ''
     $out/bin/mojo --version
+    $out/bin/mojo-lldb --version
+    $out/bin/mojo-lsp-server --version
   '';
 
   meta = with lib; {
