@@ -32,7 +32,7 @@ import {
 	ToggleButtonGroup,
 } from "@mui/material";
 import { Box } from "@mui/system";
-import { Link as NextLink } from "comps";
+import { Link as NextLink, SlateErrorBoundary } from "comps";
 import {
 	type CustomEditor,
 	type CustomElement,
@@ -253,20 +253,22 @@ const Slate = ({
 				(validated.length !== 0 &&
 					(validated as CustomElement[])[0].children?.[0].text !== "")) && (
 				<Box sx={{ m: 2 }}>
-					<Editable
-						renderElement={renderElement}
-						renderLeaf={renderLeaf}
-						spellCheck
-						readOnly={readOnly}
-						onKeyDown={(event) => {
-							Object.entries(HOTKEYS).map(([hotkey, mark]) => {
-								if (isHotkey(hotkey, event)) {
-									event.preventDefault();
-									toggleMark(editor, mark);
-								}
-							});
-						}}
-					/>
+					<SlateErrorBoundary editor={editor}>
+						<Editable
+							renderElement={renderElement}
+							renderLeaf={renderLeaf}
+							spellCheck
+							readOnly={readOnly}
+							onKeyDown={(event) => {
+								Object.entries(HOTKEYS).forEach(([hotkey, mark]) => {
+									if (isHotkey(hotkey, event)) {
+										event.preventDefault();
+										toggleMark(editor, mark);
+									}
+								});
+							}}
+						/>
+					</SlateErrorBoundary>
 				</Box>
 			)}
 		</SlateEditor>
