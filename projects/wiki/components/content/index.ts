@@ -13,3 +13,4 @@ export { default as EditorApp } from "./EditorApp";
 export { default as MemberChips } from "./MemberChips";
 export { default as PublishButton } from "./PublishButton";
 export { default as Slate } from "./Slate";
+export { default as SlateErrorBoundary } from "./SlateErrorBoundary";
