@@ -78,6 +78,10 @@
     cloud-hypervisor
     simg2img
 
+    # General dev
+    glab
+    granted
+
     # System dev
     #lldb
     gdb
@@ -88,7 +92,6 @@
     llvmPackages.bintools
     binwalk
     hyperfine
-    glab
     #darling
 
     # Nix dev
