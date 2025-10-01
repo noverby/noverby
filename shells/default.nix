@@ -31,6 +31,8 @@
           };
 
           packages = with pkgs; [
+            # IDE
+            harper
             # Common
             just
             # Nix
