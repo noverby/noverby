@@ -6,9 +6,12 @@
 }: {
   imports = [
     ./git.nix
-    ./vscode.nix
-    ./zed-editor.nix
+    ./nushell
+    ./zed-editor
+    ./zen-browser
+    ./vscode
   ];
+
   programs = {
     home-manager.enable = true;
     gh.enable = true;
@@ -23,11 +26,6 @@
         batgrep
         batdiff
       ];
-    };
-
-    nushell = {
-      enable = true;
-      configFile.source = ./nushell/config.nu;
     };
 
     carapace = {
@@ -136,31 +134,6 @@
           hostname = "localhost";
           user = username;
         };
-      };
-    };
-
-    zen-browser = {
-      enable = true;
-      nativeMessagingHosts = [pkgs.firefoxpwa];
-      profiles = rec {
-        default = {
-          isDefault = true;
-          settings = {
-            "browser.ml.enable" = true;
-            "browser.ml.chat.enabled" = true;
-            "browser.ml.chat.shortcuts" = true;
-            "browser.ml.chat.shortcuts.custom" = true;
-            "browser.ml.chat.sidebar" = true;
-          };
-          userChrome = builtins.readFile ./zen-browser/userChrome.css;
-          userContent = builtins.readFile ./zen-browser/userContent.css;
-        };
-        dev =
-          default
-          // {
-            id = 1;
-            isDefault = false;
-          };
       };
     };
 

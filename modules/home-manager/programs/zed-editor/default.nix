@@ -9,9 +9,9 @@
   keymapPath = "${configDir}/keymap.json";
   tasksPath = "${configDir}/tasks.json";
 
-  userKeymaps = builtins.fromJSON (builtins.readFile ./zed-editor/keymap.json);
-  userSettings = builtins.fromJSON (builtins.readFile ./zed-editor/settings.json);
-  userTasks = builtins.fromJSON (builtins.readFile ./zed-editor/tasks.json);
+  userKeymaps = builtins.fromJSON (builtins.readFile ./keymap.json);
+  userSettings = builtins.fromJSON (builtins.readFile ./settings.json);
+  userTasks = builtins.fromJSON (builtins.readFile ./tasks.json);
 in {
   programs.zed-editor = {
     enable = true;
