@@ -1,7 +1,6 @@
 {pkgs, ...}: {
   home.packages = with pkgs; [
     # General apps
-    genact
     #bitwarden
     slack
     fragments
@@ -9,13 +8,11 @@
     bitwarden-desktop
     mpv
     onlyoffice-desktopeditors
-    gnome-tweaks
     dconf-editor
     rclone
     gnome-network-displays
     gnome-system-monitor
     file-roller
-    eyedropper
     wireplumber
     gnome-disk-utility
     firefoxpwa
@@ -28,21 +25,22 @@
     sudo-rs
     killall
     uutils-coreutils-noprefix
-    fortune-kind
     xorg.xkill
     lsof
     wl-clipboard
-    fpp
     skim
-    pueue
     waypipe
     wl-color-picker
+    cryptsetup
 
     # Network tools
     xh
     wget
     whois
     openssl
+    gping
+    bandwhich
+    rustscan
 
     # Hardware tools
     acpi
@@ -51,19 +49,13 @@
     lshw
     usbutils
     solaar # Logitech Unifying Receiver
-    gping
-    bandwhich
-    hexyl
-    hyperfine
-    jless
-    rustscan
-    tre
 
     # File tools
     file
     unixtools.xxd
     fd
-    glab
+    tre
+    hexyl
     git-filter-repo
     du-dust
     ripgrep
@@ -77,15 +69,14 @@
     delta
     ast-grep
     diffoscope
-    simg2img
-    cryptsetup
-    binwalk
+    jless
 
     # Container tools
     distrobox
     bubblewrap
     appimage-run
     cloud-hypervisor
+    simg2img
 
     # System dev
     #lldb
@@ -95,12 +86,14 @@
     lurk
     tracexec
     llvmPackages.bintools
+    binwalk
+    hyperfine
+    glab
     #darling
 
     # Nix dev
     envy
     nix-tree
-    manix
     devenv
     nix-prefetch-git
     nix-fast-build
@@ -109,11 +102,12 @@
     nurl
 
     # Media tools
-    gst_all_1.gstreamer
-    gst_all_1.gst-plugins-base
-    gst_all_1.gst-plugins-good
     imagemagick
     oxipng
     gimp3
+
+    # Very serious tools
+    genact
+    fortune-kind
   ];
 }
