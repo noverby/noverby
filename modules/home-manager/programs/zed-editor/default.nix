@@ -18,9 +18,16 @@ in {
     extensions = [
       "biome"
       "nix"
+      "nickel"
+      "typos"
       "nu"
-      "zed-just"
-      "zed-just-ls"
+      "just"
+      "just-ls"
+      "cargo-appraiser"
+      "cargo-tom"
+      "catppuccin-blur"
+      "harper"
+      "jj-lsp"
     ];
   };
   home = {
