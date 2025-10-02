@@ -197,6 +197,7 @@
         [Resolve]
         DNS=94.140.14.49#fb52a727.d.adguard-dns.com
         DNSOverTLS=yes
+        MulticastDNS=resolve
       '';
     };
     printing = {
