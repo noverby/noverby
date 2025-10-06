@@ -29,8 +29,12 @@
     };
     devenv = {
       url = "github:cachix/devenv";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.git-hooks.follows = "git-hooks";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        git-hooks.follows = "git-hooks";
+        flake-compat.follows = "flake-compat";
+        flake-parts.follows = "flake-parts";
+      };
     };
 
     # XR
@@ -52,10 +56,12 @@
     zen-browser = {
       url = "github:0xc000022070/zen-browser-flake";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.home-manager.follows = "home-manager";
     };
     spicetify-nix = {
       url = "github:Gerg-L/spicetify-nix";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.systems.follows = "systems";
     };
     catppuccin = {
       url = "github:catppuccin/nix";
@@ -74,9 +80,11 @@
     git-hooks = {
       url = "github:cachix/git-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-compat.follows = "flake-compat";
     };
     flake-utils = {
       url = "github:numtide/flake-utils";
+      inputs.systems.follows = "systems";
     };
     flake-compat = {
       url = "github:edolstra/flake-compat";
@@ -89,6 +97,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-parts.follows = "flake-parts";
     };
+    systems.url = "github:nix-systems/default";
   };
 
   outputs = inputs:
