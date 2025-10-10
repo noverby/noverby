@@ -47,6 +47,8 @@
             deno
             # Media
             cavif-rs
+            presenterm
+            python313Packages.weasyprint
           ];
         }
       ];
