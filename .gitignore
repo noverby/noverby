@@ -12,3 +12,6 @@ node_modules
 *.wasm
 
 .pre-commit-config.yaml
+
+presentations/*.pdf
+presentations/*.html
