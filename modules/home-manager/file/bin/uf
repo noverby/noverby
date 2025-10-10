@@ -1,21 +1,34 @@
 #!/usr/bin/env -S nu --stdin
 def main [] {
-    let input = $in
+    # Only parse the first 100 lines of input
+    let input = $in | tail -n 100
     if ($input | is-empty) {
         print "Please provide input through a pipe"
         exit 1
     }
-    let paths = ($input
-        | split row -r '\s+'
-        | filter { |match|
-          (($match | path exists) and ($match | parse --regex '^(\.)+$' | is-empty)) or ($match | parse --regex '^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$' | is-not-empty)
+
+    let inputs = $input | split row -r '\s+';
+
+    let paths = ($inputs
+        | where { |input|
+          ($input | path exists) and ($input not-in ["/" "."])
         }
     )
-    let selected = $paths | uniq | str join "\n" | sk
-    let type = $selected | path type
-    if ($type == "file" or ($selected | readlink $in | path type) == "file") {
+
+    let urls = $inputs | reduce --fold [] { |it, acc|
+        let match = $it | parse --regex '\(?((https?|ftp):\/\/[^\s/$.?#].[^\s]*?)(?:\)|(?=\s|$))' | get capture0;
+        if ($match | is-empty) { $acc } else { $acc ++ [ $match.0 ] }
+    }
+
+    let selected = $paths ++ $urls | uniq | str join "\n" | sk
+    
+    if (($selected | path type) == "file" or ($selected | readlink $in | path type) == "file") {
       xdg-open $selected | complete
       return "."
     }
-    $selected
+    try {
+      $selected | url parse
+      xdg-open $selected | complete
+      return "."
+    }
 }
