@@ -6,9 +6,6 @@
 
       modules = [
         {
-          devenv.root = builtins.readFile inputs.devenv-root.outPath;
-        }
-        {
           git-hooks.hooks = {
             denolint.enable = true;
             biome.enable = true;
