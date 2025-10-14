@@ -107,7 +107,7 @@
         allowUnfree = true;
         segger-jlink.acceptLicense = true;
         permittedInsecurePackages = [
-          "segger-jlink-qt4-824"
+          "segger-jlink-qt4-874"
         ];
       };
       nixDir = ./.;
