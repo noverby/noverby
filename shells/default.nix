@@ -49,6 +49,8 @@
             cavif-rs
             presenterm
             python313Packages.weasyprint
+            # DevOps
+            scaleway-cli
           ];
         }
       ];
