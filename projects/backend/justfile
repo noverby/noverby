@@ -1,0 +1,3 @@
+deploy:
+  zip deployment.zip Cargo.toml Cargo.lock src/handle.rs
+  scw function deploy name=backend runtime=rust185 zip-file=deployment.zip
