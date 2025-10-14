@@ -11,6 +11,10 @@ node_modules
 *.o
 *.wasm
 
+# Rust
+target/
+deployment.zip
+
 .pre-commit-config.yaml
 
 presentations/*.pdf
