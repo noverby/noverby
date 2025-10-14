@@ -3,6 +3,21 @@ $env.config = {
   show_banner: false
   keybindings: []
 }
+
+# Fix for: https://github.com/nushell/nushell/issues/11950
+$env.config.hooks.display_output = {||
+    if (term size).columns >= 100 {
+        table -e
+    } else {
+        table
+    }
+    | if (($in | describe) =~ "^string(| .*)") and ($in | str contains (ansi cursor_position)) {
+        str replace --no-expand --all (ansi cursor_position) ""
+    } else {
+        print -n --raw $in
+    }
+}
+
 $env.PATH = ($env.PATH | split row (char esep))
 
 def --env uo [] { let res = uf | $in; cd $res }
