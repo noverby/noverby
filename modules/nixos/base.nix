@@ -200,10 +200,7 @@
         MulticastDNS=resolve
       '';
     };
-    printing = {
-      enable = true;
-      drivers = with pkgs; [hplip hplipWithPlugin];
-    };
+    printing.enable = true;
     openssh.enable = true;
     flatpak.enable = true;
     fwupd.enable = true;
