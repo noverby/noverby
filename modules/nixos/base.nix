@@ -10,6 +10,12 @@
       max-jobs = 100;
       trusted-users = ["root" "noverby"];
       experimental-features = "nix-command flakes ca-derivations";
+      substituters = [
+        "https://nix-community.cachix.org"
+      ];
+      trusted-public-keys = [
+        "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+      ];
     };
     daemonCPUSchedPolicy = "idle";
     daemonIOSchedClass = "idle";
