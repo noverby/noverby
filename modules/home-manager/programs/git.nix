@@ -25,10 +25,6 @@ _: {
       };
       merge = {
         tool = "vi";
-        mergiraf = {
-          name = "mergiraf";
-          driver = "mergiraf merge --git %O %A %B -s %S -x %X -y %Y -p %P -l %L";
-        };
       };
       mergetool = {
         vi = {
