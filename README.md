@@ -263,6 +263,7 @@
 | ✅ | Pager | [Tailspin 🦀](https://github.com/bensadeh/tailspin) | | 🆗 | [Less 💣](https://github.com/gwsw/less) |
 | ✅ | Performance Profiler | [Samply 🦀](https://github.com/mstange/samply) | | 🆗 | [Perf 💣](https://perf.wiki.kernel.org/) |
 | 🚧 | Bundler | [Rsbuild 🦀](https://github.com/web-infra-dev/rsbuild), [Webpack 🐒](https://github.com/webpack/webpack), [Turbopack 🦀](https://github.com/vercel/turbo) | [Farm 🦀](https://github.com/farm-fe/farm) | 🆗 | |
+| 🚧 | ECMAScript Typechecker | [TypeScript 🐒](https://github.com/microsoft/typescript) | [Ezno 🦀](https://github.com/kaleidawave/ezno), [TypeScript Go 🐹](https://github.com/microsoft/typescript-go) | | 🆗 | |
 | ✅ | Certificate Generation | [Rcgen 🦀](https://github.com/rustls/rcgen) | | 🆗 | [Mkcert 🐹](https://github.com/FiloSottile/mkcert) |
 | ✅ | TCP Tunnel | [Bore 🦀](https://github.com/ekzhang/bore) | | 🆗 | |
 | 🚧 | Monorepo | | [Josh 🦀](https://github.com/josh-project/josh), [Mega 🦀🐒](https://github.com/web3infra-foundation/mega), [Google Piper 🔒](https://en.wikipedia.org/wiki/Piper_(source_control_system)) | 🆗 | |
