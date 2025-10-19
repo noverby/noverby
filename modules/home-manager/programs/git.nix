@@ -1,15 +1,14 @@
 _: {
   programs.git = {
     enable = true;
-    userName = "Niclas Overby";
-    userEmail = "niclas@overby.me";
     lfs = {
       enable = true;
     };
-    delta = {
-      enable = true;
-    };
-    extraConfig = {
+    settings = {
+      user = {
+        name = "Niclas Overby";
+        email = "niclas@overby.me";
+      };
       core = {
         autocrlf = "input";
         editor = "vi --wait";
