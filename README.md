@@ -338,7 +338,7 @@
 | 🚧 | Raster Graphics | [GIMP 💣](https://gitlab.gnome.org/GNOME/gimp) | [Graphite 🦀](https://github.com/GraphiteEditor/Graphite) | 🆗 | |
 | ✅ | Vector Graphics | [Graphite 🦀](https://github.com/GraphiteEditor/Graphite) | | 🆗 | [Inkscape 💣](https://gitlab.com/inkscape/inkscape) |
 | ✅ | Typesetter | [Typst 🦀](https://github.com/typst) | | 🆗 | [LaTeX 💣](https://github.com/latex3/latex3) |
-| ✅ | Image Optimizer | [Oxipng 🦀](https://github.com/shssoichiro/oxipng) | | 🆗 | [Optpng 💣](https://optipng.sourceforge.net) |
+| 🚧 | Image Optimizer | | [Cavif-rs 🦀](https://github.com/kornelski/cavif-rs) | 🆗 | [Oxipng 🦀](https://github.com/shssoichiro/oxipng), [Optipng 💣](https://optipng.sourceforge.net) |
 | 🚧 | Image Processing | | [Wondermagick 🦀](https://github.com/Shnatsel/wondermagick) | 🆗 | [ImageMagick 💣](https://github.com/ImageMagick/ImageMagick) |
 | ✅ | Screen Recorder | [Kooha 🦀](https://github.com/SeaDve/Kooha) | | 🆗 | [Mutter Built-in Recorder 💣](https://github.com/GNOME/mutter) |
 
