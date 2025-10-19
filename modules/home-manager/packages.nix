@@ -79,6 +79,7 @@
     simg2img
 
     # General dev
+    lazyjj
     glab
     granted
 

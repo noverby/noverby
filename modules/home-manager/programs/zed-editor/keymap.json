@@ -21,6 +21,13 @@
 					"task_name": "Find in File",
 					"reveal_target": "center"
 				}
+			],
+			"ctrl-shift-j": [
+				"task::Spawn",
+				{
+					"task_name": "Lazyjj",
+					"reveal_target": "center"
+				}
 			]
 		}
 	},
