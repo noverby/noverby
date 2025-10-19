@@ -17,8 +17,17 @@
     gh.enable = true;
     tealdeer.enable = true;
     bottom.enable = true;
-    jujutsu.enable = true;
     mergiraf.enable = true;
+
+    jujutsu = {
+      enable = true;
+      settings = {
+        ui = {
+          pager = "delta";
+          diff-formatter = ":git";
+        };
+      };
+    };
 
     delta = {
       enable = true;
