@@ -18,6 +18,7 @@
     tealdeer.enable = true;
     bottom.enable = true;
     jujutsu.enable = true;
+    mergiraf.enable = true;
 
     delta = {
       enable = true;
