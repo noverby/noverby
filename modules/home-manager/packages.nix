@@ -66,7 +66,6 @@
     p7zip
     mergiraf
     uutils-diffutils
-    delta
     ast-grep
     diffoscope
     jless

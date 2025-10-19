@@ -19,6 +19,14 @@
     bottom.enable = true;
     jujutsu.enable = true;
 
+    delta = {
+      enable = true;
+      enableGitIntegration = true;
+      options = {
+        side-by-side = true;
+      };
+    };
+
     bat = {
       enable = true;
       extraPackages = with pkgs.bat-extras; [
