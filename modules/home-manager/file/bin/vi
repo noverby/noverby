@@ -21,10 +21,10 @@ def main [--wait,--diff,...vargs: string] {
   let fileCount = ($files | length)
   for file in $files {
     match [$fileCount, ($file | path type)] {
-      [1, "file"] => (zeditor --add ...$args $"($file):($line)")
-      [_, "file"] => (zeditor --add ...$args $file)
+      [1, "file"] => (zeditor ...$args $"($file):($line)")
+      [_, "file"] => (zeditor ...$args $file)
       [_, "dir"] => (zeditor --new ...$args $file)
-      [_, null] => (touch $file; zeditor --add ...$args $file)
+      [_, null] => (touch $file; zeditor ...$args $file)
     }
   }
 }
