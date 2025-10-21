@@ -118,6 +118,14 @@
         devShells = ["shells"];
         withOverlays = ["with-overlays"];
       };
-      formatter = pkgs: pkgs.alejandra;
+      formatters = {
+        "*.nix" = "alejandra";
+        "*.json" = "biome format";
+        "*.js" = "biome format";
+        "*.ts" = "biome format";
+        "*.tsx" = "biome format";
+        "*.rs" = "rustfmt";
+        "*.md" = "";
+      };
     };
 }
