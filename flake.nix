@@ -120,8 +120,8 @@
       };
       formatters = pkgs: let
         alejandra = "${pkgs.alejandra}/bin/alejandra";
-        biome = "${pkgs.biome}/bin/biome format";
-        rustfmt = "${pkgs.rustfmt}/bin/rustfmt";
+        biome = "${pkgs.biome}/bin/biome format --write";
+        rustfmt = "${pkgs.rustfmt}/bin/rustfmt --edition=2024";
         rumdl = "${pkgs.rumdl}/bin/rumdl fmt";
       in {
         "*.nix" = alejandra;
