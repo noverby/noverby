@@ -32,6 +32,7 @@
             harper
             # Common
             just
+            rumdl
             # Nix
             nixd
             nil
