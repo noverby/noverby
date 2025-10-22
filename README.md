@@ -3,49 +3,56 @@
 ## Specifiers
 
 ### State
- * ✅: Good for now
- * 🚧: WIP
- * 🚫: Blocked
- * ❓: Undecided
 
- ### Control
- * 🌐: Managed by [Nonprofit Organization](https://en.wikipedia.org/wiki/Nonprofit_organization)
- * 🏛️: Managed by [Public Authority](https://en.wikipedia.org/wiki/Public_administration)
- * ⚖️: Managed by [Benefit Corporation](https://en.wikipedia.org/wiki/Benefit_corporation)
- * 📖: [Open Standard](https://en.wikipedia.org/wiki/Open_standard)
- * 🏡: Self-hosted
- * 🔒: [Proprietary](https://en.wiktionary.org/wiki/proprietary)
- * ⏳: [Business Source License](https://en.wikipedia.org/wiki/Business_Source_License)
+* ✅: Good for now
+* 🚧: WIP
+* 🚫: Blocked
+* ❓: Undecided
+
+### Control
+
+* 🌐: Managed by [Nonprofit Organization](https://en.wikipedia.org/wiki/Nonprofit_organization)
+* 🏛️: Managed by [Public Authority](https://en.wikipedia.org/wiki/Public_administration)
+* ⚖️: Managed by [Benefit Corporation](https://en.wikipedia.org/wiki/Benefit_corporation)
+* 📖: [Open Standard](https://en.wikipedia.org/wiki/Open_standard)
+* 🏡: Self-hosted
+* 🔒: [Proprietary](https://en.wiktionary.org/wiki/proprietary)
+* ⏳: [Business Source License](https://en.wikipedia.org/wiki/Business_Source_License)
 
 ### Compatibility
- * 🆗: Not needed
- * ⬅️: Backward compatible
 
- ### Language
- * 🔥: [Mojo](https://en.wikipedia.org/wiki/Mojo_(programming_language))
- * 🐍: Python
- * ❄️: Nix/[Nickel](https://github.com/tweag/nickel)
- * 🦀: Rust
- * 🐹: Go
- * 💣: C/C++
- * 🐒: [ECMAScript](https://en.wikipedia.org/wiki/ECMAScript)
- * 🐷: Java/Kotlin
- * 🌙: Lua
- * λ: Haskell
+* 🆗: Not needed
+* ⬅️: Backward compatible
+
+### Language
+
+* 🔥: [Mojo](https://en.wikipedia.org/wiki/Mojo_(programming_language))
+* 🐍: Python
+* ❄️: Nix/[Nickel](https://github.com/tweag/nickel)
+* 🦀: Rust
+* 🐹: Go
+* 💣: C/C++
+* 🐒: [ECMAScript](https://en.wikipedia.org/wiki/ECMAScript)
+* 🐷: Java/Kotlin
+* 🌙: Lua
+* λ: Haskell
 
 ### Miscellaneous
+
 * 🇽➡️🇾: Migrating from 🇽 to 🇾
 * 👁️: [Sentientist](https://en.wikipedia.org/wiki/Sentientism)
 
 ## Repository
 
 ### Config
+
 * [Home Manager Modules ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/home-manager)
 * [NixOS Modules ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/nixos)
 * [NixOS Devices ❄️](https://tangled.org/@overby.me/overby.me/tree/main/devices)
 * [Devenv Shells ❄️](https://tangled.org/@overby.me/overby.me/tree/main/shells)
 
 ### Packages
+
 * [Magic 🔥](https://tangled.org/@overby.me/overby.me/tree/main/packages/magic.nix): Mojo package manager
 * [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/packages/mojo.nix): Mojo development toolchain
 * [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/cavif-rs/default.nix): AVIF image encoder CLI tool
@@ -61,6 +68,7 @@
 * [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/sunsetc.nix): SSH in Rust
 
 ### Projects
+
 * [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/homepage): Personal website and portfolio
 * [Wiki 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/wiki): Platform for political conference & beyond
 * [Mojo-Wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/mojo-wasm): WebAssembly interop layer for Mojo
@@ -88,14 +96,14 @@
 
 ### Standards
 
-#### Hardware
+#### Hardware Interface
 
 <details open>
 
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | Firmware | [Thinkpad UEFI 🔒](https://en.wikipedia.org/wiki/UEFI) | [Coreboot 💣](https://coreboot.org), [Oreboot 🦀](https://github.com/oreboot/oreboot) | |
-| ✅ | Internet of Things Connectivity | [Matter 📖](https://en.wikipedia.org/wiki/Matter_(standard)), [Zigbee 📖](https://en.wikipedia.org/wiki/Zigbee) | |
+| ✅ | Internet of Things Connectivity | [Matter 📖](https://en.wikipedia.org/wiki/Matter_(standard)), [Zigbee 📖](https://en.wikipedia.org/wiki/Zigbee) |  |  |
 | 🚧 | Wireless Media | [Google ChromeCast 🔒](https://en.wikipedia.org/wiki/Chromecast) | [MatterCast 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | [Miracast 📖](https://en.wikipedia.org/wiki/Miracast) |
 | ✅ | Peripheral Interface | [USB4 📖](https://www.usb.org/usb4) | | [Thunderbolt 3 🔒](https://en.wikipedia.org/wiki/Thunderbolt_(interface)) |
 | ✅ | Display Interface | [DisplayPort 📖](https://en.wikipedia.org/wiki/DisplayPort) | | [HDMI 2.1 🔒](https://en.wikipedia.org/wiki/HDMI) |
@@ -104,7 +112,7 @@
 
 </details>
 
-#### Interface
+#### Software Interface
 
 <details open>
 
@@ -115,8 +123,8 @@
 | ✅ | Graphics API | [Vulkan 📖](https://www.vulkan.org) | | [OpenGL 📖](https://www.opengl.org) |
 | ✅ | Windowing | [Wayland 📖](https://wayland.freedesktop.org) | | [X11 📖](https://www.x.org) |
 | ✅ | Heterogeneous Compute | [SYCL 📖](https://www.khronos.org/sycl) | | |
-| 🚫 | Tensor Operations | | | | |
-| 🚫 | AI Inference | | | | |
+| 🚫 | Tensor Operations |  |  |  |
+| 🚫 | AI Inference |  |  |  |
 
 </details>
 
@@ -264,12 +272,11 @@
 | ✅ | Pager | [Tailspin 🦀](https://github.com/bensadeh/tailspin) | | 🆗 | [Less 💣](https://github.com/gwsw/less) |
 | ✅ | Performance Profiler | [Samply 🦀](https://github.com/mstange/samply) | | 🆗 | [Perf 💣](https://perf.wiki.kernel.org/) |
 | 🚧 | Web Bundler | [Rsbuild 🦀](https://github.com/web-infra-dev/rsbuild), [Webpack 🐒](https://github.com/webpack/webpack), [Turbopack 🦀](https://github.com/vercel/turbo) | [Farm 🦀](https://github.com/farm-fe/farm) | 🆗 | |
-| ✅ | Web Formatter | [Biome 🦀](https://github.com/biomejs/biome) | | | 🆗 | [Prettier 🐒](https://github.com/prettier/prettier) |
-| 🚧 | ECMAScript Typechecker | [TypeScript 🐒](https://github.com/microsoft/typescript) | [Ezno 🦀](https://github.com/kaleidawave/ezno), [TypeScript Go 🐹](https://github.com/microsoft/typescript-go) | | 🆗 | |
+| ✅ | Web Formatter | [Biome 🦀](https://github.com/biomejs/biome) |  |  | 🆗 |
+| 🚧 | ECMAScript Typechecker | [TypeScript 🐒](https://github.com/microsoft/typescript) | [Ezno 🦀](https://github.com/kaleidawave/ezno), [TypeScript Go 🐹](https://github.com/microsoft/typescript-go) |  | 🆗 |
 | ✅ | Certificate Generation | [Rcgen 🦀](https://github.com/rustls/rcgen) | | 🆗 | [Mkcert 🐹](https://github.com/FiloSottile/mkcert) |
 | ✅ | TCP Tunnel | [Bore 🦀](https://github.com/ekzhang/bore) | | 🆗 | |
 | 🚧 | Monorepo | | [Josh 🦀](https://github.com/josh-project/josh), [Mega 🦀🐒](https://github.com/web3infra-foundation/mega), [Google Piper 🔒](https://en.wikipedia.org/wiki/Piper_(source_control_system)) | 🆗 | |
-
 
 </details>
 
@@ -283,7 +290,7 @@
 | ✅ | ECMAScript Runtime | [Deno 🦀](https://github.com/denoland/deno) | | [Deno Node APIs](https://docs.deno.com/runtime/reference/node_apis) | [Node.js 💣](https://github.com/nodejs/node) |
 | ✅ | Container Runtime | [Youki 🦀](https://github.com/containers/youki) | | [OCI 📖](https://github.com/opencontainers/runtime-spec) | [Runc 🐹](https://github.com/opencontainers/runc) |
 | 🚧 | Virtualization | [QEMU 💣](https://github.com/qemu/qemu) | [Cloud Hypervisor 🦀](https://github.com/cloud-hypervisor/cloud-hypervisor) | | |
-| 🚧 | Meta Database | [Hasura λ➡️🦀](https://github.com/hasura/graphql-engine) | [Surrealdb ⏳🦀](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org) |
+| 🚧 | Meta Database | [Hasura λ➡️🦀](https://github.com/hasura/graphql-engine) | [Surrealdb ⏳🦀](https://github.com/surrealdb/surrealdb) | [GraphQL](https://graphql.org) |  |
 | 🚧 | Database | [Postgres 💣](https://github.com/postgres/postgres) | [Tikv 🦀](https://github.com/tikv/tikv) | 🆗 | |
 | 🚧 | Storage Engine | | [Sled 🦀](https://github.com/spacejam/sled), [Fjall 🦀](https://github.com/fjall-rs/fjall) | 🆗 | [RocksDB 💣](https://github.com/facebook/rocksdb) |
 | 🚫 | Web Server | [Nginx 💣](https://github.com/nginx/nginx) | [Moella 🦀](https://github.com/Icelk/moella) | | |
@@ -389,7 +396,7 @@
 | ✅ | Music |  [Spotify 🇪🇺](https://spotify.com) | | 🆗 | [Deezer 🇪🇺](https://deezer.com) |
 | ✅ | Audiobooks |  [LibreVox 🌐](https://librivox.org/) | | 🆗 | [Amazon Audible 🇺🇸](https://www.audible.com) |
 | 🚧 | Payment | [MobilePay 🇪🇺](https://mobilepay.dk), [PayPal 🇺🇸](https://paypal.com) | [Wero 🇪🇺](https://wero-wallet.eu) | 🆗 | |
-| 🚧 | Payment Medium | [Dankort 🔒🇪🇺](https://www.dankort.dk), [Visa 🔒🇺🇸](https://www.visa.com) | [Digital Euro 🏛️🇪🇺](https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html), [GNU Taler 📖](https://taler.net) | |
+| 🚧 | Payment Medium | [Dankort 🔒🇪🇺](https://www.dankort.dk), [Visa 🔒🇺🇸](https://www.visa.com) | [Digital Euro 🏛️🇪🇺](https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html), [GNU Taler 📖](https://taler.net) |  |  |
 | 🚧 | Donation | [Ko-fi 🇬🇧](https://ko-fi.com) | [Liberapay 🌐🇪🇺](https://liberapay.com) | [GNU Taler 📖🇪🇺](https://taler.net) | [Patreon 🔒🇺🇸](https://patreon.com) |
 | ✅ | Translation | [DeepL 🔒🇪🇺](https://www.deepl.com) | | 🆗 | [Google Translate 🔒🇺🇸](https://translate.google.com) |
 

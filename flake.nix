@@ -118,14 +118,19 @@
         devShells = ["shells"];
         withOverlays = ["with-overlays"];
       };
-      formatters = {
-        "*.nix" = "alejandra";
-        "*.json" = "biome format";
-        "*.js" = "biome format";
-        "*.ts" = "biome format";
-        "*.tsx" = "biome format";
-        "*.rs" = "rustfmt";
-        "*.md" = "";
+      formatters = pkgs: let
+        alejandra = "${pkgs.alejandra}/bin/alejandra";
+        biome = "${pkgs.biome}/bin/biome format";
+        rustfmt = "${pkgs.rustfmt}/bin/rustfmt";
+        rumdl = "${pkgs.rumdl}/bin/rumdl fmt";
+      in {
+        "*.nix" = alejandra;
+        "*.json" = biome;
+        "*.js" = biome;
+        "*.ts" = biome;
+        "*.tsx" = biome;
+        "*.rs" = rustfmt;
+        "*.md" = rumdl;
       };
     };
 }
