@@ -6,4 +6,4 @@ Built with [Next.js](https://nextjs.org), [Hasura](https://hasura.io) and [NHost
 
 ## Showcase
 
-![](doc/radikalwiki.avif)
+![Radikalwiki image](doc/radikalwiki.avif)

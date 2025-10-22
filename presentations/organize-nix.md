@@ -37,7 +37,6 @@ Nix: The Ecosystem
   * Colmena
   * Much more!
 
-
 <!-- end_slide -->
 
 Nix Language: List
@@ -60,7 +59,6 @@ Nix Language: List
 
 Nix Language: Attribute Set
 ---
-
 
 ```nix
 # Attribute set (Record, Dictionary)
@@ -90,7 +88,6 @@ Nix Language: Attribute Set
 ```
 
 <!-- end_slide -->
-
 
 Nix Language: Constructs
 ---
@@ -188,7 +185,6 @@ Flake: Schema
 ```
 
 <!-- end_slide -->
-
 
 Flake: Systems Abstraction
 ---
@@ -377,7 +373,6 @@ Flakelight: Alternatives
   * Fragmentation
   * Exposing hard to read Nix code
   * Create our own shared Flake library?
-
 
 <!-- column: 1 -->
 
