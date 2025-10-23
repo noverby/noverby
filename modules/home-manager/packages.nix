@@ -92,6 +92,7 @@
     llvmPackages.bintools
     binwalk
     hyperfine
+    inferno
     #darling
 
     # Nix dev
