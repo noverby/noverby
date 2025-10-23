@@ -32,6 +32,10 @@ with config.lib.file; {
       executable = true;
       source = ./bin/zellij-cwd;
     };
+    ".local/bin/nix-flamegraph" = {
+      executable = true;
+      source = ./bin/nix-flamegraph;
+    };
     ".npmrc".source = ./config/npmrc.ini;
     ".config/pop-shell/config.json".source = ./config/pop-shell/config.json;
     ".config/mpv/mpv.conf".source = ./config/mpv/mpv.conf;

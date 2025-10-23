@@ -19,3 +19,5 @@ deployment.zip
 
 presentations/*.pdf
 presentations/*.html
+
+flamegraph.svg
