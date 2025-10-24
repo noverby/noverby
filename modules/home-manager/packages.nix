@@ -92,7 +92,8 @@
     llvmPackages.bintools
     binwalk
     hyperfine
-    inferno
+    inferno # Flamegraph svg generator
+    flamelens # Flamegraph cli viewer
     #darling
 
     # Nix dev
