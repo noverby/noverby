@@ -99,6 +99,7 @@
     # Nix dev
     envy
     nix-tree
+    nix-diff-rs
     devenv
     nix-prefetch-git
     nix-fast-build
