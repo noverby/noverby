@@ -69,9 +69,6 @@
         "globstar"
         "checkjobs"
       ];
-      initExtra = ''
-        export SHELL="${pkgs.bash}/bin/bash"
-      '';
       historyControl = [
         "ignoredups"
         "erasedups"
