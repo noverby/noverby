@@ -211,7 +211,7 @@
 | ✅ | File Locator | [Nix-index 🦀](https://github.com/nix-community/nix-index), [Comma 🦀](https://github.com/nix-community/comma) | | | |
 | ✅ | Rust Integration | [Crate2nix 🦀❄️](https://github.com/nix-community/crate2nix) | | | [Crane ❄️](https://github.com/ipetkov/crane) |
 | ✅ | Package Generation | [Nix-init 🦀](https://github.com/nix-community/nix-init) + [Nurl 🦀](https://github.com/nix-community/nurl) | | | |
-| ✅ | Derivation Difference | [Nix-diff λ](https://github.com/Gabriella439/nix-diff) | | | |
+| 🚧 | Derivation Difference | [Nix-diff λ](https://github.com/Gabriella439/nix-diff) | [Nix-diff-rs 🦀](https://github.com/Mic92/nix-diff-rs) | | |
 | ✅ | Store Explorer | [Nix-du 🦀](https://github.com/symphorien/nix-du), [Nix-tree λ](https://github.com/utdemir/nix-tree) | | | |
 
 </details>
