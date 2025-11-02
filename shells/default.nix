@@ -6,18 +6,21 @@
 
       modules = [
         {
-          git-hooks.hooks = {
-            denolint.enable = true;
-            biome.enable = true;
-            alejandra.enable = true;
-            statix.enable = true;
-            typos.enable = true;
-            commitlint-rs = {
-              enable = true;
-              package = pkgs.commitlint-rs;
-              name = "prepare-commit-msg-commitlint-rs";
-              entry = "${pkgs.commitlint-rs}/bin/commitlint --edit";
-              stages = ["prepare-commit-msg"];
+          git-hooks = {
+            package = pkgs.prek;
+            hooks = {
+              denolint.enable = true;
+              biome.enable = true;
+              alejandra.enable = true;
+              statix.enable = true;
+              typos.enable = true;
+              commitlint-rs = {
+                enable = true;
+                package = pkgs.commitlint-rs;
+                name = "prepare-commit-msg-commitlint-rs";
+                entry = "${pkgs.commitlint-rs}/bin/commitlint --edit";
+                stages = ["prepare-commit-msg"];
+              };
             };
           };
 
