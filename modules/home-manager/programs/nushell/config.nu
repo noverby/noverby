@@ -108,3 +108,10 @@ def grm [] {
   let default_branch = (git symbolic-ref refs/remotes/origin/HEAD | str replace "refs/remotes/origin/" "")
   git rebase $default_branch
 }
+
+def greset [] {
+  git fetch origin
+  let default_branch = (git symbolic-ref refs/remotes/origin/HEAD | str replace "refs/remotes/origin/" "")
+  let base = (git merge-base HEAD $default_branch)
+  git reset --soft $base
+}
