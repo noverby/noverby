@@ -14,6 +14,7 @@
               alejandra.enable = true;
               statix.enable = true;
               typos.enable = true;
+              rustfmt.enable = true;
               commitlint-rs = {
                 enable = true;
                 package = pkgs.commitlint-rs;
