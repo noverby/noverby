@@ -6,7 +6,7 @@ import {
 	DialogContent,
 	DialogTitle,
 } from "@mui/material";
-import { AutoButton } from "components/common";
+import { AutoButton } from "comps";
 import type { Node } from "hooks";
 import { useState } from "react";
 

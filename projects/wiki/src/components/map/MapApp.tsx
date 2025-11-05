@@ -1,7 +1,7 @@
 import Maplibre, { type MapStyle } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Card } from "@mui/material";
-import { ContentHeader } from "components/content";
+import { ContentHeader } from "comps";
 import type { Node } from "hooks";
 
 const STYLE: MapStyle = {
