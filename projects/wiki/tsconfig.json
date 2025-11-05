@@ -12,7 +12,8 @@
 		"allowJs": true,
 		"baseUrl": ".",
 		"paths": {
-			"comps": ["components"],
+			"comps": ["src/components"],
+			"components": ["src/components"],
 			"hooks": ["core/hooks"],
 			"gql": ["core/gql"],
 			"nhost": ["core/nhost"],

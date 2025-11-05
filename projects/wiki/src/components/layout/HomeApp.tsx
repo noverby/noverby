@@ -10,11 +10,11 @@ import {
 	Typography,
 	useMediaQuery,
 } from "@mui/material";
-import { useAuthenticationStatus, useUserDisplayName } from "@nhost/nextjs";
+import { useAuthenticationStatus, useUserDisplayName } from "@nhost/react";
 import { AddContentFab, HeaderCard, HomeList, InvitesUserList } from "comps";
 import { useNode } from "hooks";
-import { useRouter } from "next/router";
 import { Suspense } from "react";
+import { useNavigate } from "react-router-dom";
 
 const AddContentFabSuspense = () => {
 	const node = useNode();
@@ -22,7 +22,7 @@ const AddContentFabSuspense = () => {
 };
 
 const HomeApp = () => {
-	const router = useRouter();
+	const navigate = useNavigate();
 	const { isAuthenticated } = useAuthenticationStatus();
 	const displayName = useUserDisplayName();
 	const largeScreen = useMediaQuery("(min-width:1200px)");
@@ -67,7 +67,7 @@ const HomeApp = () => {
 											startIcon={<Login />}
 											sx={{ mt: 1 }}
 											variant="outlined"
-											onClick={() => router.push("/user/login")}
+											onClick={() => navigate("/user/login")}
 										>
 											Log ind
 										</Button>
@@ -76,7 +76,7 @@ const HomeApp = () => {
 											startIcon={<HowToReg />}
 											sx={{ mt: 1 }}
 											variant="outlined"
-											onClick={() => router.push("/user/register")}
+											onClick={() => navigate("/user/register")}
 										>
 											Registrer
 										</Button>
