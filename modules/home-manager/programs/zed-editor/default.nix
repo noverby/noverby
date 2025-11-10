@@ -19,6 +19,7 @@
       "catppuccin-blur"
       "harper"
       "jj-lsp"
+      "meson"
     ];
   };
   home = {
