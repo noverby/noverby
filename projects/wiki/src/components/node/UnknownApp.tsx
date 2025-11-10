@@ -1,11 +1,11 @@
 import { Login, QuestionMark } from "@mui/icons-material";
 import { Avatar, Button, CardContent, Grid, Typography } from "@mui/material";
-import { useAuthenticationStatus } from "@nhost/nextjs";
+import { useAuthenticationStatus } from "@nhost/react";
 import { HeaderCard } from "comps";
-import { useRouter } from "next/router";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 const UnknownApp = () => {
-	const router = useRouter();
+	const navigate = useNavigate();
 	const { isAuthenticated } = useAuthenticationStatus();
 
 	return (
@@ -40,7 +40,7 @@ const UnknownApp = () => {
 									startIcon={<Login />}
 									sx={{ mt: 1 }}
 									variant="outlined"
-									onClick={() => router.push("/user/login")}
+									onClick={() => navigate("/user/login")}
 								>
 									Log ind
 								</Button>

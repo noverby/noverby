@@ -2,7 +2,6 @@ import { BrokenImage } from "@mui/icons-material";
 import { CircularProgress } from "@mui/material";
 import { grey } from "@mui/material/colors";
 import { Box } from "@mui/system";
-import NextImage from "next/image";
 import { type ReactEventHandler, useRef, useState } from "react";
 
 const Image = ({
@@ -12,7 +11,6 @@ const Image = ({
 	onError,
 	animationDuration = 3000,
 	aspectRatio = 1,
-	...image
 }: {
 	src: string;
 	alt: string;
@@ -45,14 +43,10 @@ const Image = ({
 
 	const imageTransition = {
 		opacity: loaded ? 1 : 0,
-		filterBrightness: loaded ? 100 : 0,
-		filterSaturate: loaded ? 100 : 20,
+		filter: `brightness(${loaded ? 100 : 0}%) saturate(${loaded ? 100 : 20}%)`,
 		transition: `
-        filterBrightness ${
-					animationDuration * 0.75
-				}ms cubic-bezier(0.4, 0.0, 0.2, 1),
-        filterSaturate ${animationDuration}ms cubic-bezier(0.4, 0.0, 0.2, 1),
-        opacity ${animationDuration / 2}ms cubic-bezier(0.4, 0.0, 0.2, 1)`,
+			filter ${animationDuration * 0.75}ms cubic-bezier(0.4, 0.0, 0.2, 1),
+			opacity ${animationDuration / 2}ms cubic-bezier(0.4, 0.0, 0.2, 1)`,
 	};
 
 	return (
@@ -63,8 +57,7 @@ const Image = ({
 			}}
 		>
 			{src && (
-				<NextImage
-					{...image}
+				<img
 					src={src}
 					alt={alt}
 					ref={imageRef}
@@ -79,7 +72,6 @@ const Image = ({
 						left: 0,
 						...imageTransition,
 					}}
-					fill
 					onLoad={handleLoadImage}
 					onError={handleImageError}
 				/>
