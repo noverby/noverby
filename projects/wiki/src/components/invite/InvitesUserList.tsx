@@ -8,7 +8,7 @@ import {
 	ListItemText,
 	Tooltip,
 } from "@mui/material";
-import { useUserEmail, useUserId } from "@nhost/nextjs";
+import { useUserEmail, useUserId } from "@nhost/react";
 import { HeaderCard, MimeAvatarId } from "comps";
 import {
 	client,

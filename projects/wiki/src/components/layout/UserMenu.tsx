@@ -17,15 +17,15 @@ import {
 	useMediaQuery,
 	useTheme,
 } from "@mui/material";
-import { useAuthenticationStatus } from "@nhost/nextjs";
+import { useAuthenticationStatus } from "@nhost/react";
 import { ThemeModeContext } from "core/theme/ThemeModeContext";
 import { client } from "gql";
-import { useRouter } from "next/router";
 import { nhost } from "nhost";
 import { type MouseEventHandler, useContext, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 const UserMenu = ({ avatar }: { avatar?: boolean }) => {
-	const router = useRouter();
+	const navigate = useNavigate();
 	const [anchorEl, setAnchorEl] = useState<
 		HTMLButtonElement | HTMLDivElement | null
 	>(null);
@@ -54,7 +54,7 @@ const UserMenu = ({ avatar }: { avatar?: boolean }) => {
 
 	const handleUser = (mode: "login" | "register" | "set-password") => () => {
 		setAnchorEl(null);
-		router.push(`/user/${mode}`);
+		navigate(`/user/${mode}`);
 	};
 
 	return (

@@ -1,12 +1,13 @@
 import { useMediaQuery } from "@mui/material";
-import { useAuthenticated, useUserEmail, useUserId } from "@nhost/nextjs";
+import { useAuthenticated, useUserEmail, useUserId } from "@nhost/react";
 import { useSubscription } from "gql";
 import { useLink, usePath, useSession } from "hooks";
-import { useRouter } from "next/router";
+import { useLocation, useSearchParams } from "react-router-dom";
 
 const useApps = () => {
 	const pathname = usePath();
-	const router = useRouter();
+	const location = useLocation();
+	const [searchParams] = useSearchParams();
 	const link = useLink();
 	const [session] = useSession();
 	const isAuthenticated = useAuthenticated();
@@ -16,7 +17,7 @@ const useApps = () => {
 	const largeScreen = useMediaQuery("(min-width:1200px)");
 
 	const currentApp =
-		(router.query.app as string) ?? (pathname === "" ? "home" : "folder");
+		searchParams.get("app") ?? (pathname === "" ? "home" : "folder");
 
 	const handleClick = (path?: string[], app?: string) => async () => {
 		const scroll = document.querySelector("#scroll");

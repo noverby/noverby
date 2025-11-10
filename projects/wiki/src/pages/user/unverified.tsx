@@ -1,21 +1,21 @@
 import { MarkEmailRead } from "@mui/icons-material";
 import { Avatar, CardContent, Container, Typography } from "@mui/material";
-import { useAuthenticationStatus } from "@nhost/nextjs";
+import { useAuthenticationStatus } from "@nhost/react";
 import { HeaderCard } from "comps";
-import { useRouter } from "next/router";
 import { startTransition, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 const Unverified = () => {
-	const router = useRouter();
+	const navigate = useNavigate();
 	const { isAuthenticated } = useAuthenticationStatus();
 
 	useEffect(() => {
 		if (isAuthenticated) {
 			startTransition(() => {
-				router.push("/");
+				navigate("/");
 			});
 		}
-	}, [isAuthenticated, router.push]);
+	}, [isAuthenticated, navigate]);
 
 	return (
 		<Container>

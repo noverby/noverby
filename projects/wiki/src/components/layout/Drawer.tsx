@@ -25,7 +25,7 @@ import {
 	useMediaQuery,
 } from "@mui/material";
 import { Box } from "@mui/system";
-import { useUserId } from "@nhost/nextjs";
+import { useUserId } from "@nhost/react";
 import { Bar, HomeList, MimeAvatar, MimeIcon } from "comps";
 import { drawerWidth } from "core/constants";
 import { fromId } from "core/path";
