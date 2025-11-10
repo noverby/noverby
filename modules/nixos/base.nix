@@ -2,6 +2,7 @@
   pkgs,
   stateVersion,
   src,
+  lib,
   ...
 }: {
   # Nix
@@ -23,6 +24,14 @@
       min-free = ${toString (30 * 1024 * 1024 * 1024)}
       max-free = ${toString (40 * 1024 * 1024 * 1024)}
     '';
+  };
+
+  # Enforce Niceness
+  systemd.services.nix-daemon.serviceConfig = {
+    Nice = lib.mkForce 15;
+    IOSchedulingClass = lib.mkForce "idle";
+    IPEgressPriority = 7;
+    IPIngressPriority = 7;
   };
 
   # System
