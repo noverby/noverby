@@ -15,7 +15,7 @@ import {
 	Tooltip,
 	Typography,
 } from "@mui/material";
-import { useUserId } from "@nhost/nextjs";
+import { useUserId } from "@nhost/react";
 import { avatars } from "comps";
 import { order_by } from "gql";
 import { type Node, useScreen } from "hooks";

@@ -4,7 +4,7 @@ import {
 	useUserDisplayName,
 	useUserEmail,
 	useUserId,
-} from "@nhost/nextjs";
+} from "@nhost/react";
 import {
 	AppDrawer,
 	BottomBar,
@@ -15,16 +15,16 @@ import {
 } from "comps";
 import { checkVersion } from "core/util";
 import { usePath, useSession } from "hooks";
-import { useRouter } from "next/router";
 import type React from "react";
 import { Suspense, startTransition, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 const Layout = ({ children }: { children: React.ReactElement }) => {
 	const [outdated, setOutdated] = useState(false);
 	const [showing, setShowing] = useState(false);
 	const [openDrawer, setOpenDrawer] = useState(false);
 	const [session, setSession] = useSession();
-	const router = useRouter();
+	const [searchParams] = useSearchParams();
 	const path = usePath();
 	const { isLoading } = useAuthenticationStatus();
 	const userEmail = useUserEmail();
@@ -74,7 +74,7 @@ const Layout = ({ children }: { children: React.ReactElement }) => {
 		//           autoHideDuration: null,
 		//           action: () => {
 		//             return (
-		//               <IconButton onClick={() => startTransition(() => router.reload() )}>
+		//               <IconButton onClick={() => startTransition(() => window.location.reload() )}>
 		//                 <Refresh />
 		//               </IconButton>
 		//             );
@@ -90,9 +90,10 @@ const Layout = ({ children }: { children: React.ReactElement }) => {
 	}, []);
 
 	if (outdated) return <OldBrowser />;
-	if (!showing || isLoading || !router.isReady) return null;
+	if (!showing || isLoading) return null;
 
-	if (router.query.app === "screen" || path.startsWith("user")) return children;
+	if (searchParams.get("app") === "screen" || path.startsWith("user"))
+		return children;
 
 	return (
 		<Box sx={{ display: "flex" }}>

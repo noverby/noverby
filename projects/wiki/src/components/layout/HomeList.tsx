@@ -8,7 +8,7 @@ import {
 	ListItemText,
 	Typography,
 } from "@mui/material";
-import { useUserId } from "@nhost/nextjs";
+import { useUserId } from "@nhost/react";
 import { fromId } from "core/path";
 import { order_by, resolve, useQuery } from "gql";
 import { useLink, useSession } from "hooks";

@@ -19,23 +19,24 @@ import {
 	Stack,
 	Tooltip,
 } from "@mui/material";
-import { useUserId } from "@nhost/nextjs";
+import { useUserId } from "@nhost/react";
 import { HeaderCard, MimeAvatarId, MimeLoader } from "comps";
 import { type Node, useSession } from "hooks";
-import { useRouter } from "next/router";
 import {
 	type ChangeEventHandler,
 	type FormEvent,
 	useEffect,
 	useState,
 } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 type Vote = boolean[];
 
 const VoteApp = ({ node }: { node: Node }) => {
 	const [session] = useSession();
 	const userId = useUserId();
-	const router = useRouter();
+	const navigate = useNavigate();
+	const [searchParams] = useSearchParams();
 	const [refresh, setRefresh] = useState(false);
 	const [loading, setLoading] = useState(false);
 
@@ -165,7 +166,7 @@ const VoteApp = ({ node }: { node: Node }) => {
 			avatar={
 				<Tooltip title="Opdater status">
 					<Avatar
-						onClick={() => router.reload()}
+						onClick={() => window.location.reload()}
 						onMouseEnter={() => setRefresh(true)}
 						onMouseLeave={() => setRefresh(false)}
 						sx={{

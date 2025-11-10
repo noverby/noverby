@@ -1,5 +1,5 @@
 import { SpeedDial, SpeedDialAction, SpeedDialIcon } from "@mui/material";
-import { useUserDisplayName } from "@nhost/nextjs";
+import { useUserDisplayName } from "@nhost/react";
 import { avatars } from "comps";
 import { type Node, useSession } from "hooks";
 import { useState } from "react";

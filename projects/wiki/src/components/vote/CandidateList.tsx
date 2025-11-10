@@ -6,7 +6,7 @@ import {
 	useMediaQuery,
 } from "@mui/material";
 import { Box } from "@mui/system";
-import { useUserId } from "@nhost/nextjs";
+import { useUserId } from "@nhost/react";
 import { Image } from "comps";
 import { type Node, useFiles, useLink, useScreen } from "hooks";
 import { IconId } from "mime";

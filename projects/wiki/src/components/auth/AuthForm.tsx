@@ -9,10 +9,9 @@ import {
 	TextField,
 	Typography,
 } from "@mui/material";
-import { useAuthenticationStatus } from "@nhost/nextjs";
+import { useAuthenticationStatus } from "@nhost/react";
 import { client } from "gql";
 import { useSession } from "hooks";
-import { useRouter } from "next/router";
 import { nhost } from "nhost";
 import {
 	type ChangeEventHandler,
@@ -20,11 +19,12 @@ import {
 	useEffect,
 	useState,
 } from "react";
+import { useNavigate } from "react-router-dom";
 
 type Mode = "login" | "register" | "reset-password" | "set-password";
 
 const LoginForm = ({ mode }: { mode: Mode }) => {
-	const router = useRouter();
+	const navigate = useNavigate();
 	const { isAuthenticated } = useAuthenticationStatus();
 	const [_, setSession] = useSession();
 	const [loading, setLoading] = useState(false);
@@ -43,9 +43,9 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 			!loading &&
 			isAuthenticated
 		) {
-			router.push("/");
+			navigate("/");
 		}
-	}, [isAuthenticated, loading, mode]);
+	}, [isAuthenticated, loading, mode, navigate]);
 
 	const onNameChange: ChangeEventHandler<HTMLInputElement> = (e) => {
 		const name = e.target.value;
@@ -107,7 +107,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 		if (error) {
 			// Already logged-in
 			if ([100].includes(error.status)) {
-				router.push("/");
+				navigate("/");
 				return;
 			}
 
@@ -134,7 +134,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 		// eslint-disable-next-line functional/immutable-data
 		client.cache.clear();
 
-		await router.back();
+		navigate(-1);
 	};
 
 	const onRegister = async () => {
@@ -173,7 +173,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 			return;
 		}
 
-		await router.push("/user/unverified");
+		navigate("/user/unverified");
 	};
 
 	const onSetPassword = async () => {
@@ -194,7 +194,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 			return;
 		}
 
-		await router.push("/");
+		navigate("/");
 	};
 
 	const onSendResetEmail = async () => {
@@ -218,7 +218,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 			}
 			return;
 		}
-		await router.push("/user/set-password");
+		navigate("/user/set-password");
 	};
 
 	const handleSubmit = async (e: FormEvent) => {
@@ -355,7 +355,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 							fullWidth
 							variant="contained"
 							startIcon={<HowToReg />}
-							onClick={() => router.push("/user/register")}
+							onClick={() => navigate("/user/register")}
 						>
 							Registrer
 						</Button>
@@ -366,7 +366,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 							fullWidth
 							variant="contained"
 							startIcon={<Email />}
-							onClick={() => router.push("/user/reset-password")}
+							onClick={() => navigate("/user/reset-password")}
 						>
 							Nulstil kodeord
 						</Button>
