@@ -1,7 +1,7 @@
 import { MarkEmailRead } from "@mui/icons-material";
 import { Avatar, CardContent, Typography } from "@mui/material";
 import { Container, Stack } from "@mui/system";
-import { useAuthenticationStatus } from "@nhost/nextjs";
+import { useAuthenticationStatus } from "@nhost/react";
 import { AuthForm, HeaderCard } from "comps";
 
 const Reset = () => {
