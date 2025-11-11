@@ -57,7 +57,7 @@
     tre
     hexyl
     git-filter-repo
-    du-dust
+    dust
     ripgrep
     ripgrep-all
     tokei
