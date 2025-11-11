@@ -185,7 +185,7 @@
 | ✅ | SSH Protocol | [Russh 🦀](https://github.com/warp-tech/russh) | | 🆗 | [OpenSSH 💣](https://github.com/openssh/openssh-portable) |
 | ✅ | Font Rendering | [Cosmic-text 🦀](https://github.com/pop-os/cosmic-text) | | 🆗 | [HarfBuzz 💣](https://github.com/harfbuzz/harfbuzz), [FreeType 💣](https://github.com/freetype/freetype) |
 | 🚧 | Browser Engine | [Gecko 🦀💣](https://en.wikipedia.org/wiki/Gecko_(software)) | [Servo 🦀](https://github.com/servo/servo) | ⬅️ | |
-| 🚫 | ECMAScript Engine | [V8 💣](https://v8.dev) | [Boa 🦀](https://github.com/boa-dev/boa) | 🆗 | |
+| 🚫 | ECMAScript Engine | [V8 💣](https://v8.dev) | [Boa 🦀](https://github.com/boa-dev/boa), [Nova 🦀](https://github.com/trynova/nova) | 🆗 | |
 | ✅ | ECMAScript Compiler | [SWC 🦀](https://github.com/swc-project/swc) | | 🆗 | [Babel 🐒](https://github.com/babel/babel) |
 
 </details>
