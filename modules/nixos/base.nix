@@ -11,6 +11,7 @@
       max-jobs = 100;
       trusted-users = ["root" "noverby"];
       experimental-features = "nix-command flakes ca-derivations";
+      download-buffer-size = 1024 * 1024 * 1024;
       substituters = [
         "https://nix-community.cachix.org"
       ];
