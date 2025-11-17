@@ -41,6 +41,7 @@
     gping
     bandwhich
     rustscan
+    unixtools.route
 
     # Hardware tools
     acpi
