@@ -34,9 +34,6 @@ with config.lib.file; {
       "Work/wiki".source = mkOutOfStoreSymlink "${homeDirectory}/Sync/Documents/Wiki";
       "Work/tmp/.keep".source = builtins.toFile "keep" "";
       ".ssh/socket/.keep".source = builtins.toFile "keep" "";
-      ".npmrc".source = ./config/npmrc.ini;
-      ".config/pop-shell/config.json".source = ./config/pop-shell/config.json;
-      ".config/mpv/mpv.conf".source = ./config/mpv/mpv.conf;
       ".local/share/wallpapers/current.png".source = "${(pkgs.nix-wallpaper.override {
         preset = "catppuccin-mocha";
         logoSize = 10;
