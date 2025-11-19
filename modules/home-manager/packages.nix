@@ -99,7 +99,7 @@
 
     # Nix dev
     envy
-    nix-tree
+    nix-du
     nix-diff-rs
     devenv
     nix-prefetch-git
