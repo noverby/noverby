@@ -66,6 +66,7 @@
 * [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/lacy.nix): Fast magical cd alternative
 * [Vibe 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/vibe.nix): A desktop audio visualizer
 * [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/sunsetc.nix): SSH in Rust
+* [Layout 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/layout.nix): Graphviz dot renderer
 
 ### Projects
 
@@ -348,6 +349,7 @@
 | ✅ | Media Player | [Cosmic Player 🦀](https://github.com/pop-os/cosmic-player) | | [FFMPEG 💣](https://github.com/FFmpeg/FFmpeg), [GStreamer 💣](https://gitlab.freedesktop.org/gstreamer) | [Mpv 💣](https://github.com/mpv-player/mpv) |
 | 🚧 | Raster Graphics | [GIMP 💣](https://gitlab.gnome.org/GNOME/gimp) | [Graphite 🦀](https://github.com/GraphiteEditor/Graphite) | 🆗 | |
 | ✅ | Vector Graphics | [Graphite 🦀](https://github.com/GraphiteEditor/Graphite) | | 🆗 | [Inkscape 💣](https://gitlab.com/inkscape/inkscape) |
+| ✅ | Diagram Generation | [Layout 🦀](https://github.com/nadavrot/layout) | | 🆗 | [Graphviz 💣](https://graphviz.org) |
 | ✅ | Typesetter | [Typst 🦀](https://github.com/typst) | | 🆗 | [LaTeX 💣](https://github.com/latex3/latex3) |
 | 🚧 | Image Optimizer | | [Cavif-rs 🦀](https://github.com/kornelski/cavif-rs) | 🆗 | [Oxipng 🦀](https://github.com/shssoichiro/oxipng), [Optipng 💣](https://optipng.sourceforge.net) |
 | 🚧 | Image Processing | | [Wondermagick 🦀](https://github.com/Shnatsel/wondermagick) | 🆗 | [ImageMagick 💣](https://github.com/ImageMagick/ImageMagick) |
