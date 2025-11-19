@@ -8,19 +8,19 @@ with config.lib.file; {
   home = {
     packages = [
       (
-        pkgs.writeShellScriptBin "vi" ./bin/vi
+        pkgs.writeScriptBin "vi" (builtins.readFile ./bin/vi)
       )
       (
-        pkgs.writeShellScriptBin "uf" ./bin/uf
+        pkgs.writeScriptBin "uf" (builtins.readFile ./bin/uf)
       )
       (
-        pkgs.writeShellScriptBin "zed-uf" ./bin/zed-uf
+        pkgs.writeScriptBin "zed-uf" (builtins.readFile ./bin/zed-uf)
       )
       (
-        pkgs.writeShellScriptBin "zellij-cwd" ./bin/zellij-cwd
+        pkgs.writeScriptBin "zellij-cwd" (builtins.readFile ./bin/zellij-cwd)
       )
       (
-        pkgs.writeShellScriptBin "nix-flamegraph" ./bin/nix-flamegraph
+        pkgs.writeScriptBin "nix-flamegraph" (builtins.readFile ./bin/nix-flamegraph)
       )
     ];
     file = {
