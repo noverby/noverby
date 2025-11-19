@@ -146,6 +146,7 @@
 #### Protocol
 
 <details open>
+
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | Network Transport | [TCP 📖](https://en.wikipedia.org/wiki/Transmission_Control_Protocol) | [QUIC 📖](https://www.chromium.org/quic/) | |
