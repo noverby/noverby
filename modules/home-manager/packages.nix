@@ -22,7 +22,6 @@
     rustdesk-flutter
 
     # System tools
-    sudo-rs
     killall
     uutils-coreutils-noprefix
     xorg.xkill

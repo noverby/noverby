@@ -176,6 +176,7 @@
     # Run unpatched binaries
     nix-ld.enable = true;
   };
+  security.sudo-rs.enable = true;
 
   # Users
   environment.profiles = ["$HOME/.local"];
