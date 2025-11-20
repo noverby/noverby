@@ -13,7 +13,7 @@
       enableNushellIntegration = true;
     };
     shellAliases = {
-      open = "xdg-open";
+      xopen = "xdg-open";
       diff = "batdiff";
       ga = "git add";
       gc = "git commit";
