@@ -32,6 +32,11 @@ def ggg [] {
   gh pr comment --body 'bors merge'
 }
 
+def dhost [num: int] {
+  let known_hosts = open ~/.ssh/known_hosts | lines;
+  $known_hosts | enumerate | where index != ($num - 1) | get item | save -f ~/.ssh/known_hosts
+}
+
 def gdf [branch: string] {
   gco $branch
   let elems = $branch | split row "/"
