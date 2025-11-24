@@ -212,7 +212,7 @@
       enable = true;
       extraConfig = ''
         [Resolve]
-        DNS=94.140.14.49#fb52a727.d.adguard-dns.com
+        DNS=94.140.14.49#fb52a727.d.adguard-dns.com 100.100.100.100
         DNSOverTLS=yes
         MulticastDNS=resolve
       '';
@@ -241,6 +241,6 @@
       acceleration = "rocm";
       rocmOverrideGfx = "11.0.2";
     };
-    #tailscale.enable = true;
+    tailscale.enable = true;
   };
 }
