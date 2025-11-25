@@ -264,7 +264,7 @@
 | 🚧 | Version Control | [Jujutsu 🦀](https://github.com/jj-vcs/jj), [Git 💣](https://github.com/git/git) | [Gitoxide 🦀](https://github.com/Byron/gitoxide) | [Gix 🦀](https://github.com/GitoxideLabs/gitoxide/blob/main/crate-status.md#gix) | |
 | ✅ | Merger | [Mergiraf 🦀](https://codeberg.org/mergiraf/mergiraf) | | ⬅️ | |
 | ✅ | Build Script | [Just 🦀](https://github.com/casey/just) | | Rusty Make ([Rusty Bash 🦀](https://github.com/shellgei/rusty_bash)) | [GNU Make 💣](https://git.savannah.gnu.org/cgit/make.git) |
-| ✅ | Editor | [Evil Helix 🦀](https://github.com/usagi-flow/evil-helix) | | 🆗 | [Helix 🦀](https://github.com/helix-editor/helix), [Neovim 💣](https://github.com/neovim/neovim) |
+| ✅ | Editor | [Helix 🦀](https://github.com/helix-editor/helix) | | 🆗 | [Neovim 💣](https://github.com/neovim/neovim) |
 | ✅ | IDE | [Zed 🦀](https://github.com/zed-industries/zed) | | [LSP](https://github.com/microsoft/language-server-protocol), [DAP](https://github.com/Microsoft/debug-adapter-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium 🐒💣](https://github.com/VSCodium/vscodium) |
 | ✅ | Pre-commit Manager | [Prek 🦀](https://github.com/j178/prek) | | | [Pre-commit 🐍](https://github.com/pre-commit/pre-commit) |
 | ✅ | System Call Tracing | [Lurk 🦀](https://github.com/JakWai01/lurk), [Tracexec 🦀](https://github.com/kxxt/tracexec) | | 🆗 | [Strace 💣](https://github.com/strace/strace) |
