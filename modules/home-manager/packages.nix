@@ -51,6 +51,7 @@
     solaar # Logitech Unifying Receiver
 
     # File tools
+    helix
     file
     unixtools.xxd
     fd

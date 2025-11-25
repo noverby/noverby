@@ -162,7 +162,7 @@
   # Packages
   environment = {
     systemPackages = with pkgs; [
-      evil-helix
+      helix
       tailspin
     ];
     sessionVariables = {
