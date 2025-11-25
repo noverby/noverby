@@ -106,5 +106,5 @@
 		"use_smartcase_find": true,
 		"use_system_clipboard": "always"
 	},
-	"vim_mode": true
+	"helix_mode": true
 }
