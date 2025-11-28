@@ -27,7 +27,7 @@
 	},
 	"languages": {
 		"Git Commit": {
-			"preferred_line_length": null,
+			"preferred_line_length": 9001,
 			"soft_wrap": "none"
 		},
 		"JavaScript": {
