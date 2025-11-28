@@ -1,3 +1,6 @@
+flake-update:
+    nix flake update --option access-tokens "github.com=$(gh auth token)"
+
 gravitas-build:
     nixos-rebuild build --flake .#gravitas --print-build-logs
 
