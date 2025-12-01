@@ -49,6 +49,13 @@
     in "ln -s ${nixFiles} $out/full-config";
   };
 
+  # Perlless/Bashless activation
+  # system = {
+  #   nixos-init.enable = true;
+  #   etc.overlay.enable = true;
+  # };
+  # systemd.sysusers.enable = true;
+
   # Console
   console = {
     keyMap = "us-acentos";
