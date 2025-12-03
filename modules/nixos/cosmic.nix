@@ -25,4 +25,23 @@
   systemd.user.extraConfig = ''
     DefaultEnvironment="PATH=/run/wrappers/bin:/etc/profiles/per-user/%u/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin"
   '';
+
+  # Needed to make Zed login work in Cosmic
+  xdg.portal = {
+    enable = true;
+    config = {
+      common = {
+        default = "*";
+        "org.freedesktop.impl.portal.Secret" = "gnome-keyring";
+      };
+      gnome = {
+        default = "*";
+        "org.freedesktop.impl.portal.Secret" = "gnome-keyring";
+      };
+      gtk = {
+        default = "*";
+        "org.freedesktop.impl.portal.Secret" = "gnome-keyring";
+      };
+    };
+  };
 }
