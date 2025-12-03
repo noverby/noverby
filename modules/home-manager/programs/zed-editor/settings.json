@@ -40,7 +40,7 @@
 					"command": "alejandra"
 				}
 			},
-			"language_servers": ["nil", "!nix-ls", "..."]
+			"language_servers": ["nil", "!nixd"]
 		},
 		"TSX": {
 			"language_servers": ["vtsls", "color-lsp"]
@@ -63,7 +63,7 @@
 		},
 		"nil": {
 			"binary": {
-				"path": "nil"
+				"path_lookup": true
 			}
 		},
 		"rust-analyzer": {
@@ -92,9 +92,7 @@
 	"terminal": {
 		"font_size": 11,
 		"line_height": "standard",
-		"shell": {
-			"program": "zellij-cwd"
-		},
+		"shell": "system",
 		"toolbar": {
 			"breadcrumbs": true
 		}

@@ -120,3 +120,8 @@ def greset [] {
   let base = (git merge-base HEAD $default_branch)
   git reset --soft $base
 }
+
+# Use Zellij-cwd in Zed terminal
+if ($env.ZED_TERM?  == "true") and ($env.ZELLIJ? == null) {
+    zellij-cwd
+}
