@@ -194,25 +194,6 @@
     extraGroups = ["networkmanager" "wheel" "docker" "libvirtd" "wireshark"];
   };
 
-  # Needed to make Zed login work in Cosmic
-  xdg.portal = {
-    enable = true;
-    config = {
-      common = {
-        default = "*";
-        "org.freedesktop.impl.portal.Secret" = "gnome-keyring";
-      };
-      gnome = {
-        default = "*";
-        "org.freedesktop.impl.portal.Secret" = "gnome-keyring";
-      };
-      gtk = {
-        default = "*";
-        "org.freedesktop.impl.portal.Secret" = "gnome-keyring";
-      };
-    };
-  };
-
   # Services
   services = {
     avahi.enable = false;
