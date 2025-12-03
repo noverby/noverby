@@ -1,17 +1,23 @@
 [
 	{
 		"label": "File Finder",
-		"command": "zed \"$(tv files)\"",
+		"command": "zeditor (tv files)",
 		"hide": "always",
 		"allow_concurrent_runs": true,
-		"use_new_terminal": true
+		"show_summary": false,
+		"show_command": false,
+		"use_new_terminal": true,
+		"shell": { "program": "nu" }
 	},
 	{
 		"label": "Find in Files",
-		"command": "zed \"$(tv text)\"",
+		"command": "zeditor (tv text)",
 		"hide": "always",
 		"allow_concurrent_runs": true,
-		"use_new_terminal": true
+		"show_summary": false,
+		"show_command": false,
+		"use_new_terminal": true,
+		"shell": { "program": "nu" }
 	},
 	{
 		"label": "Find in File",
