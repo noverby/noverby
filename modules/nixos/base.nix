@@ -39,7 +39,7 @@
   system = {
     inherit stateVersion;
     # Store copy of all Nix files in /nix/var/nix/profiles/system/full-config
-    extraSystemBuilderCmds = let
+    systemBuilderCommands = let
       nixFiles =
         builtins.filterSource (
           path: type:
@@ -182,6 +182,7 @@
     wireshark.enable = true;
     # Run unpatched binaries
     nix-ld.enable = true;
+    niri.enable = true;
   };
   security.sudo-rs.enable = true;
 
