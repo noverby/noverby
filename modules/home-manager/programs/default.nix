@@ -56,10 +56,6 @@
       enable = true;
     };
 
-    television = {
-      enable = true;
-    };
-
     bash = {
       enable = true;
       shellOptions = [
