@@ -70,6 +70,7 @@
     ast-grep
     diffoscope
     jless
+    television
 
     # Container tools
     distrobox
