@@ -38,17 +38,8 @@
     };
 
     # XR
-    stardustxr = {
-      url = "github:StardustXR/server";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        flatland.follows = "flatland";
-        hercules-ci-effects.follows = "hercules-ci-effects";
-        flake-parts.follows = "flake-parts";
-      };
-    };
-    flatland = {
-      url = "github:StardustXR/flatland";
+    non-spatial-input = {
+      url = "github:StardustXR/non-spatial-input";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
