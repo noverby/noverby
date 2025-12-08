@@ -192,7 +192,7 @@
     shell = pkgs.nushell;
     isNormalUser = true;
     description = "Niclas Overby";
-    extraGroups = ["networkmanager" "wheel" "docker" "libvirtd" "wireshark"];
+    extraGroups = ["networkmanager" "wheel" "docker" "libvirtd" "wireshark" "input"];
   };
 
   # Services
