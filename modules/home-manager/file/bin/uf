@@ -10,6 +10,13 @@ def main [] {
     let inputs = $input | split row -r '\s+';
 
     let paths = ($inputs
+        | each { |input|
+            if ($input | split chars | get 0 | $in in ["'" '"' '`']) {
+                $input | str substring 1..(-2)
+            } else {
+                $input
+            }
+        }
         | where { |input|
           ($input | path exists) and ($input not-in ["/" "."])
         }
