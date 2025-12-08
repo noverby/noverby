@@ -54,12 +54,18 @@
       }
     },
     "crane": {
+      "inputs": {
+        "nixpkgs": [
+          "non-spatial-input",
+          "nixpkgs"
+        ]
+      },
       "locked": {
-        "lastModified": 1755993354,
-        "narHash": "sha256-FCRRAzSaL/+umLIm3RU3O/+fJ2ssaPHseI2SSFL8yZU=",
+        "lastModified": 1712681629,
+        "narHash": "sha256-bMDXn4AkTXLCpoZbII6pDGoSeSe9gI87jxPsHRXgu/E=",
         "owner": "ipetkov",
         "repo": "crane",
-        "rev": "25bd41b24426c7734278c2ff02e53258851db914",
+        "rev": "220387ac8e99cbee0ca4c95b621c4bc782b6a235",
         "type": "github"
       },
       "original": {
@@ -181,27 +187,6 @@
       "original": {
         "owner": "accelbread",
         "repo": "flakelight",
-        "type": "github"
-      }
-    },
-    "flatland": {
-      "inputs": {
-        "crane": "crane",
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1764572362,
-        "narHash": "sha256-mHcNh0Wm+VFYq0Ep+JdFDAcfEtr/pBoJ6tePcjXV2Co=",
-        "owner": "StardustXR",
-        "repo": "flatland",
-        "rev": "77215fe4a69398b94d343f85d8925b1a49d470fc",
-        "type": "github"
-      },
-      "original": {
-        "owner": "StardustXR",
-        "repo": "flatland",
         "type": "github"
       }
     },
@@ -407,6 +392,27 @@
         "type": "github"
       }
     },
+    "non-spatial-input": {
+      "inputs": {
+        "crane": "crane",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1764434251,
+        "narHash": "sha256-4gpou9U120dg3CqL2Chz4ZhbLa2DzBgv44laShX7nro=",
+        "owner": "StardustXR",
+        "repo": "non-spatial-input",
+        "rev": "3a586815e1c057580674c147e27c3a4909b3b4c6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "StardustXR",
+        "repo": "non-spatial-input",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "catppuccin": "catppuccin",
@@ -416,16 +422,15 @@
         "flake-parts": "flake-parts",
         "flake-utils": "flake-utils",
         "flakelight": "flakelight",
-        "flatland": "flatland",
         "git-hooks": "git-hooks",
         "hercules-ci-effects": "hercules-ci-effects",
         "home-manager": "home-manager",
         "nix-wallpaper": "nix-wallpaper",
         "nixos-hardware": "nixos-hardware",
         "nixpkgs": "nixpkgs",
+        "non-spatial-input": "non-spatial-input",
         "rust-overlay": "rust-overlay",
         "spicetify-nix": "spicetify-nix",
-        "stardustxr": "stardustxr",
         "systems": "systems",
         "zen-browser": "zen-browser"
       }
@@ -470,35 +475,6 @@
       "original": {
         "owner": "Gerg-L",
         "repo": "spicetify-nix",
-        "type": "github"
-      }
-    },
-    "stardustxr": {
-      "inputs": {
-        "flake-parts": [
-          "flake-parts"
-        ],
-        "flatland": [
-          "flatland"
-        ],
-        "hercules-ci-effects": [
-          "hercules-ci-effects"
-        ],
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1764731175,
-        "narHash": "sha256-YJFZ/UAB+pJ3DJdHRHn/8MG6Q9q1NkjE2LJF+AifKWk=",
-        "owner": "StardustXR",
-        "repo": "server",
-        "rev": "098abfa6c196bd8659082b64f0446e1c5f9146be",
-        "type": "github"
-      },
-      "original": {
-        "owner": "StardustXR",
-        "repo": "server",
         "type": "github"
       }
     },

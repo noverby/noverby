@@ -22,6 +22,7 @@
     self.nixosModules.base
     self.nixosModules.catppuccin
     self.nixosModules.home-manager
+    self.nixosModules.xr
     self.nixosModules.veo
   ];
 }

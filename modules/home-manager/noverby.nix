@@ -12,5 +12,6 @@
     services
     catppuccin
     vibe
+    xr
   ];
 }
