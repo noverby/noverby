@@ -1,11 +1,13 @@
 {pkgs, ...}: {
   environment.systemPackages = with pkgs; [
     monado
-    stardustxr
-    flatland
-    weston
+    stardust-xr-server
+    stardust-xr-kiara
+    non-spatial-input
+    #flatland
+    #weston
   ];
-  udev.extraRules = ''
+  services.udev.extraRules = ''
     # XReal
 
     # Rule for USB devices
