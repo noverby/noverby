@@ -6,9 +6,18 @@ _: {
       # https://github.com/pop-os/cosmic-session/blob/379ce30715f637075879feda784edc89231792cf/data/start-cosmic#L58
       socket = "keyring/ssh";
     };
-    # Blocked by: https://github.com/NixOS/nixpkgs/pull/423931
     espanso = {
       enable = true;
+      matches = {
+        base = {
+          matches = [
+            {
+              trigger = ":100";
+              replace = "💯";
+            }
+          ];
+        };
+      };
     };
   };
 }
