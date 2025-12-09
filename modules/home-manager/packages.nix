@@ -1,5 +1,5 @@
 {pkgs, ...}: {
-  home.packages = with pkgs; [
+  home.packages = with pkgs.pkgsUnstable; [
     # General apps
     #bitwarden
     slack
@@ -28,7 +28,7 @@
     lsof
     wl-clipboard
     skim
-    waypipe
+    #waypipe
     wl-color-picker
     cryptsetup
 
@@ -99,7 +99,6 @@
     #darling
 
     # Nix dev
-    envy
     nix-du
     nix-diff-rs
     devenv
