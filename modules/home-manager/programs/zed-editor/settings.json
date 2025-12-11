@@ -95,7 +95,8 @@
 		"shell": "system",
 		"toolbar": {
 			"breadcrumbs": true
-		}
+		},
+		"detect_venv": "off"
 	},
 	"ui_font_size": 14,
 	"vertical_scroll_margin": 10,
