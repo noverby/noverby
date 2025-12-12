@@ -71,6 +71,7 @@
     diffoscope
     jless
     television
+    yq-go # Needed by prettybat
 
     # Container tools
     distrobox
