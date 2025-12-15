@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 def --wrapped main [...vargs: string] {
-  mut args = []
+  mut args = ["--wait"]
   mut files = []
   mut line = 0
   for arg in $vargs {
