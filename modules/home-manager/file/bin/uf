@@ -10,13 +10,16 @@ def main [] {
     let inputs = $input | split row -r '\s+';
 
     let paths = ($inputs
-        | each { |input|
-            if ($input | split chars | get 0 | $in in ["'" '"' '`']) {
-                $input | str substring 1..(-2)
-            } else {
-                $input
-            }
-        }
+      | each { |input|
+          if ($input | is-empty) {
+              $input
+          } else if ($input | split chars | get 0 | $in in ["'" '"' '`']) {
+              $input | str substring 1..(-2)
+          } else {
+              $input
+          }
+      }
+        | each { str replace -r '^~' $env.HOME }
         | where { |input|
           ($input | path exists) and ($input not-in ["/" "."])
         }
@@ -28,7 +31,7 @@ def main [] {
     }
 
     let selected = $paths ++ $urls | uniq | str join "\n" | sk
-    
+
     if (($selected | path type) == "file" or ($selected | readlink $in | path type) == "file") {
       xdg-open $selected | complete
       return "."
