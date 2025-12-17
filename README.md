@@ -368,6 +368,7 @@
 | ✅ | Keyboard Navigation | [Surfingkeys 🐒](https://github.com/brookhong/Surfingkeys) | | 🆗 | |
 | ✅ | Advertising Blocker | [uBlock Origin 🐒](https://github.com/gorhill/uBlock) | | 🆗 | |
 | ✅ | Grammar Checker | [Harper 🦀](https://github.com/Automattic/harper) | | 🆗 | [LanguageTools 🐷](https://github.com/languagetools) |
+| ✅ | Distraction Blocker | [LeechBlock NG 🐒](https://github.com/proginosko/LeechBlockNG) | | 🆗 | |
 
 </details>
 
@@ -383,7 +384,7 @@
 | ✅ | Alarm | [Chrono 🐷](https://github.com/vicolo-dev/chrono) | | 🆗 | [Sleep 🔒](https://sleep.urbandroid.org) |
 | ✅ | Browser | [Fennec 💣🦀](https://f-droid.org/en/packages/org.mozilla.fennec_fdroid) | | 🆗 | [Mull 💣🦀](https://github.com/mull-project/mull) |
 | ✅ | Maps | [CoMaps 💣](https://comaps.app) | | [Openstreetmap 🌐📖](https://www.openstreetmap.org) | [Organic Maps 💣](https://organicmaps.app), [Google Maps 🔒🇺🇸](https://maps.google.com)|
-| ✅ | Distraction Blockers | [TimeLimit 🐷](https://codeberg.org/timelimit/timelimit-android), [LeechBlock NG](https://github.com/proginosko/LeechBlockNG), [Adguard DNS 🇪🇺](https://adguard.com) | | 🆗 | |
+| ✅ | Distraction Blocker | [TimeLimit 🐷](https://codeberg.org/timelimit/timelimit-android) | | 🆗 | |
 | ✅ | Authenticator | [Aegis 🐷](https://getaegis.app) | | [HOTP 📖](https://en.wikipedia.org/wiki/HMAC-based_One-time_Password_algorithm), [TOTP 📖](https://en.wikipedia.org/wiki/Time-based_One-time_Password_algorithm) | |
 | ✅ | Music Recognition | [Audile 🐷](https://github.com/aleksey-saenko/MusicRecognizer) | | 🆗 | [Soundhound 🔒🇺🇸](https://www.soundhound.com) |
 | ✅ | Malware Scanner | [Hypatia 🐷](https://github.com/MaintainTeam/Hypatia) | | 🆗 | |
