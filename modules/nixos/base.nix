@@ -226,6 +226,23 @@
       };
       videoDrivers = ["amdgpu" "modesetting"];
     };
+    keyd = {
+      enable = true;
+      keyboards = {
+        default = {
+          ids = ["*"];
+          settings = {
+            main = {
+              # Map arrow keys to nothing (noop)
+              left = "noop";
+              right = "noop";
+              up = "noop";
+              down = "noop";
+            };
+          };
+        };
+      };
+    };
     ollama = {
       enable = false;
       package = pkgs.ollama-rocm;
