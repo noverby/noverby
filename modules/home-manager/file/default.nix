@@ -39,17 +39,6 @@ with config.lib.file; {
         logoSize = 10;
       })}/share/wallpapers/nixos-wallpaper.png";
       ".config/helix/config.toml".text = ''
-        [keys.insert]
-        up = "no_op"
-        down = "no_op"
-        left = "no_op"
-        right = "no_op"
-
-        [keys.normal]
-        up = "no_op"
-        down = "no_op"
-        left = "no_op"
-        right = "no_op"
         # System  clipboard
         p = "paste_clipboard_after"
         P = "paste_clipboard_before"
