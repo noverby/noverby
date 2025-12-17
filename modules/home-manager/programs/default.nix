@@ -2,10 +2,12 @@
   inputs,
   pkgs,
   username,
+  lib,
   ...
 }: {
   imports = [
     ./git.nix
+    ./ssh.nix
     ./nushell
     ./zed-editor
     ./zen-browser
@@ -133,24 +135,6 @@
       enable = true;
       settings = {
         inline_height = 10;
-      };
-    };
-
-    ssh = {
-      enable = true;
-      enableDefaultConfig = false;
-      matchBlocks = {
-        "*" = {
-          addKeysToAgent = "yes";
-          controlMaster = "auto";
-          controlPath = "~/.ssh/socket/%r@%h:%p";
-          controlPersist = "120";
-          forwardAgent = true;
-        };
-        localhost = {
-          hostname = "localhost";
-          user = username;
-        };
       };
     };
 
