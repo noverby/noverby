@@ -11,7 +11,7 @@ _: {
       };
       core = {
         autocrlf = "input";
-        editor = "vi --wait";
+        editor = "vi";
       };
       init = {
         defaultBranch = "main";
@@ -28,7 +28,7 @@ _: {
       };
       mergetool = {
         vi = {
-          cmd = "vi --wait $MERGED";
+          cmd = "vi $MERGED";
         };
       };
       diff = {
@@ -36,7 +36,7 @@ _: {
       };
       difftool = {
         vi = {
-          cmd = "vi --wait --diff $LOCAL $REMOTE";
+          cmd = "vi --diff $LOCAL $REMOTE";
         };
       };
       color = {
