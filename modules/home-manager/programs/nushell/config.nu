@@ -4,17 +4,50 @@ $env.config = {
   keybindings: []
 }
 
-# Fix for: https://github.com/nushell/nushell/issues/11950
-$env.config.hooks.display_output = {||
-    if (term size).columns >= 100 {
-        table -e
-    } else {
-        table
+def zellij-update-tabname [] {
+    if ("ZELLIJ" in $env) {
+        mut tabname = "";
+        let dir: string = match (pwd) {
+            ($env.HOME) => { "~" },
+            _ => { pwd | path basename },
+        };
+        $tabname = $"[($dir)]";
+
+        try {
+            let cmd = (commandline | into string | split words | first);
+            if ($cmd == "ssh") {
+                let ssh = (commandline | into string | split row " " | get 1);
+                $tabname = $"[($ssh)]";
+            } else {
+                $tabname = ( [ $tabname " " $cmd ] | str join );
+            }
+        };
+
+        zellij action rename-tab $tabname;
     }
-    | if (($in | describe) =~ "^string(| .*)") and ($in | str contains (ansi cursor_position)) {
-        str replace --no-expand --all (ansi cursor_position) ""
-    } else {
-        print -n --raw $in
+}
+
+$env.config.hooks = {
+    pre_execution: [
+        { zellij-update-tabname }
+    ],
+    env_change: {
+        PWD: [
+            { zellij-update-tabname }
+        ]
+    }
+    # Fix for: https://github.com/nushell/nushell/issues/11950
+    display_output: {||
+        if (term size).columns >= 100 {
+          table -e
+        } else {
+          table
+        }
+        | if (($in | describe) =~ "^string(| .*)") and ($in | str contains (ansi cursor_position)) {
+          str replace --no-expand --all (ansi cursor_position) ""
+        } else {
+          print -n --raw $in
+        }
     }
 }
 
