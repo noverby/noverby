@@ -238,6 +238,16 @@
               right = "noop";
               up = "noop";
               down = "noop";
+
+              capslock = "layer(nav)";
+            };
+
+            # Define the navigation layer with hjkl
+            nav = {
+              h = "left";
+              j = "down";
+              k = "up";
+              l = "right";
             };
           };
         };
