@@ -1,5 +1,8 @@
 {inputs, ...}: {
-  default = {pkgs}:
+  default = {
+    pkgs,
+    system,
+  }:
     inputs.devenv.lib.mkShell
     {
       inherit inputs pkgs;
@@ -41,6 +44,7 @@
             nixd
             nil
             alejandra
+            inputs.ragenix.packages.${system}.default
             # Rust
             openssl
             # Mojo

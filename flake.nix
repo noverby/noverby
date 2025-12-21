@@ -22,11 +22,32 @@
       url = "github:nix-community/home-manager/release-25.11";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    agenix = {
+      url = "github:ryantm/agenix";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        home-manager.follows = "home-manager";
+        systems.follows = "systems";
+      };
+    };
+    ragenix = {
+      url = "github:yaxitech/ragenix";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        flake-utils.follows = "flake-utils";
+        agenix.follows = "agenix";
+        rust-overlay.follows = "rust-overlay";
+        crane.follows = "crane";
+      };
+    };
 
     # Development
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
+    };
+    crane = {
+      url = "github:ipetkov/crane";
     };
     devenv = {
       url = "github:cachix/devenv";
@@ -41,7 +62,10 @@
     # XR
     non-spatial-input = {
       url = "github:StardustXR/non-spatial-input";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        crane.follows = "crane";
+      };
     };
 
     # Apps & Styling
