@@ -3,6 +3,7 @@
     systemPackages = with pkgs; [
       #cosmic-ext-applet-emoji-selector
       #cosmic-ext-applet-external-monitor-brightness
+      cosmic-ext-applet-caffeine
       cosmic-ext-calculator
       examine
       forecast
