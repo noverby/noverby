@@ -107,6 +107,7 @@
     nix-init
     comma
     nurl
+    pkgs.nxv
 
     # Media tools
     imagemagick
