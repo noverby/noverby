@@ -7,6 +7,7 @@ type Node = {
 	icon?: string;
 	color?: string;
 	desc?: string;
+	opacity?: number;
 	x?: number;
 	y?: number;
 	z?: number;
@@ -52,6 +53,34 @@ const nodes = [
 		desc: "Immerse",
 		color: "#ff7f50",
 		icon: "immerse.avif",
+	},
+	{
+		id: "Blue",
+		desc: "Blue Ball",
+		color: "#0000ff",
+		url: "https://googleballs.com",
+		opacity: 1,
+	},
+	{
+		id: "Red",
+		desc: "Red Ball",
+		color: "#ff0000",
+		url: "https://googleballs.com",
+		opacity: 1,
+	},
+	{
+		id: "Yellow",
+		desc: "Yellow Ball",
+		color: "#ffff00",
+		url: "https://googleballs.com",
+		opacity: 1,
+	},
+	{
+		id: "Green",
+		desc: "Green Ball",
+		color: "#00ff00",
+		url: "https://googleballs.com",
+		opacity: 1,
 	},
 	{
 		id: "Give",
@@ -188,8 +217,12 @@ const links = [
 	{ source: "Niclas Overby", target: "Connect" },
 	{ source: "Niclas Overby", target: "Immerse" },
 	{ source: "Niclas Overby", target: "Give" },
-	{ source: "Connect", target: "Matrix" },
+	{ source: "Niclas Overby", target: "Blue" },
+	{ source: "Blue", target: "Red" },
+	{ source: "Red", target: "Yellow" },
+	{ source: "Yellow", target: "Green" },
 	{ source: "Connect", target: "Mail" },
+	{ source: "Connect", target: "Matrix" },
 	{ source: "Connect", target: "LinkedIn" },
 	{ source: "Connect", target: "Mastodon" },
 	{ source: "Connect", target: "PixelFed" },
@@ -272,7 +305,7 @@ const Graph = () => {
 							new THREE.MeshLambertMaterial({
 								color: node.color,
 								transparent: true,
-								opacity: 0.4,
+								opacity: node.opacity ?? 0.4,
 							}),
 						),
 					);
