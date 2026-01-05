@@ -34,12 +34,13 @@
 			"language_servers": ["vtsls", "color-lsp"]
 		},
 		"Nix": {
-			"format_on_save": {
+			"formatter": {
 				"external": {
 					"arguments": [],
 					"command": "alejandra"
 				}
 			},
+			"format_on_save": "on",
 			"language_servers": ["nil", "!nixd"]
 		},
 		"TSX": {
@@ -82,7 +83,7 @@
 			}
 		}
 	},
-	"relative_line_numbers": true,
+	"relative_line_numbers": "enabled",
 	"show_whitespaces": "all",
 	"tab_size": 2,
 	"tabs": {
