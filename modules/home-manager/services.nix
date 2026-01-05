@@ -15,6 +15,22 @@ _: {
               trigger = ":100";
               replace = "💯";
             }
+            {
+              trigger = ":nix";
+              replace = "❄️";
+            }
+            {
+              trigger = ":rust";
+              replace = "🦀";
+            }
+            {
+              trigger = ":mojo";
+              replace = "🔥";
+            }
+            {
+              trigger = ":eu";
+              replace = "🇪🇺";
+            }
           ];
         };
       };
