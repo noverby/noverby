@@ -208,7 +208,7 @@
 | ✅ | Formatter | [Alejandra 🦀](https://github.com/kamadorueda/alejandra) | | | [Nixfmt λ](https://github.com/NixOS/nixfmt) |
 | ✅ | Static Analyzer | [Statix 🦀](https://github.com/oppiliappan/statix), [Deadnix 🦀](https://github.com/astro/deadnix), [Nixpkgs-Lint 🦀](https://github.com/nix-community/nixpkgs-lint)  | | | |
 | ✅ | Language Server | [Nil 🦀](https://github.com/oxalica/nil) | | | [Nixd 💣](https://github.com/nix-community/nixd) |
-| 🚧 | Binary Cache | [Cachix 🔒λ](https://github.com/cachix/cachix) | | 🆗 | [Attic 🦀](https://github.com/zhaofengli/attic) |
+| 🚧 | Binary Cache | [Cachix 🔒λ](https://github.com/cachix/cachix) | [Harmonia 🦀](https://github.com/nix-community/harmonia) | 🆗 | [Attic 🦀](https://github.com/zhaofengli/attic) |
 | ✅ | Config Manager | [Home Manager 🌐❄️](https://github.com/nix-community/home-manager) | | | |
 | ✅ | Secret Manager |  [Ragenix 🦀❄️](https://github.com/yaxitech/ragenix) | | | [Agenix 🐹❄️](https://github.com/ryantm/agenix) |
 | ✅ | Deployment | [Colmena 🦀️❄️](https://github.com/zhaofengli/colmena) | | | |
