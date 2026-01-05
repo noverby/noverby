@@ -65,7 +65,6 @@
     zip
     unzip
     p7zip
-    mergiraf
     uutils-diffutils
     ast-grep
     diffoscope
