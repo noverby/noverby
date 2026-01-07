@@ -6,20 +6,19 @@ $env.config = {
 
 def zellij-update-tabname [] {
     if ("ZELLIJ" in $env) {
-        mut tabname = "";
-        let dir: string = match (pwd) {
-            ($env.HOME) => { "~" },
-            _ => { pwd | path basename },
-        };
-        $tabname = $"[($dir)]";
+        let pwd_path = pwd | str replace $env.HOME "~";
+        let session_path = $env.ZELLIJ_SESSION_NAME | str replace --all "|" "/";
+        mut $tabname = $"($pwd_path | str replace $session_path ".") ❯";
 
         try {
-            let cmd = (commandline | into string | split words | first);
+            let cmd = (commandline | into string | str substring 0..15);
             if ($cmd == "ssh") {
                 let ssh = (commandline | into string | split row " " | get 1);
-                $tabname = $"[($ssh)]";
+                $tabname = $"($ssh) ❯";
+            } else if ($pwd_path | str starts-with $session_path) {
+              $tabname = $"($pwd_path | str replace $session_path ".") ❯ ($cmd)";
             } else {
-                $tabname = ( [ $tabname " " $cmd ] | str join );
+              $tabname = $"($pwd_path) ❯ ($cmd)";
             }
         };
 
