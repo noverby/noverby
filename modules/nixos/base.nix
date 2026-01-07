@@ -9,6 +9,7 @@
   # Nix
   nix = {
     settings = {
+      netrc-file = "/home/noverby/.netrc";
       max-jobs = 100;
       trusted-users = ["root" "noverby"];
       experimental-features = "nix-command flakes ca-derivations";
