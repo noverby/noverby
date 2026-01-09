@@ -186,7 +186,7 @@
     nix-ld.enable = true;
     niri.enable = true;
   };
-  security.sudo-rs.enable = true;
+  #security.sudo-rs.enable = true;
 
   # Users
   environment.profiles = ["$HOME/.local"];

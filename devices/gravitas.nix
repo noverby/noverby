@@ -18,6 +18,7 @@
     home-manager.nixosModules.home-manager
     ragenix.nixosModules.default
     self.nixosModules.thinkpad-t14-ryzen-7-pro
+    self.nixosModules.nitrokey
     self.nixosModules.cosmic
     self.nixosModules.gnome
     self.nixosModules.base
