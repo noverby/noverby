@@ -48,6 +48,8 @@
     pciutils
     lshw
     usbutils
+    nitrocli
+    nitrokey-app2
     solaar # Logitech Unifying Receiver
 
     # File tools
