@@ -139,6 +139,7 @@
 
   # Hardware
   hardware = {
+    nitrokey.enable = true;
     graphics.enable = true;
     logitech.wireless = {
       enable = true;
