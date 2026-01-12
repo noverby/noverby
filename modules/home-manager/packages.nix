@@ -48,9 +48,15 @@
     pciutils
     lshw
     usbutils
-    nitrocli
-    nitrokey-app2
     solaar # Logitech Unifying Receiver
+
+    # Security
+    (pynitrokey.overridePythonAttrs (old: {
+      dependencies = (old.dependencies or []) ++ pynitrokey.optional-dependencies.pcsc;
+    }))
+    nitrokey-app2
+    age-plugin-fido2prf
+    pcsc-tools
 
     # File tools
     helix
