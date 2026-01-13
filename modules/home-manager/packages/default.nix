@@ -10,5 +10,6 @@
     ./network.nix
     ./security.nix
     ./system.nix
+    ./scripts
   ];
 }
