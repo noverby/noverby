@@ -423,7 +423,7 @@
 | ✅ | Event Hosting | [Smoke Signal Events 🌐](https://smokesignal.events), [Meetup 🔒🇪🇺](https://meetup.com) | | [ATProtocol](https://atproto.com) | [Meta Facebook Events 🔒🇺🇸](https://facebook.com) |
 | ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | [Flashes 🇪🇺](https://github.com/birdsongapps/Flashes) | [ATProtocol](https://atproto.com) | [Meta Instagram 🔒🇺🇸](https://instagram.com) |
 | 🚧 | Long-form Video | [Alphabet YouTube 🔒🇺🇸](https://youtube.com) | [Skytube 🇺🇸](https://skytube.video) | [ATProtocol](https://atproto.com) | |
-| 🚧 | Short-form Video | | [SkyLight 🇺🇸](https://skylight.social) | | [ByteDance TikTok 🔒🇨🇳](https://www.tiktok.com) |
+| 🚧 | Short-form Video | | [SkyLight 🇺🇸](https://skylight.social), [Spark 🇺🇸](https://sprk.so) | | [ByteDance TikTok 🔒🇨🇳](https://www.tiktok.com) |
 | 🚧 | Live Streaming | [Stream.place](https://stream.place/) | | [ATProtocol](https://atproto.com) | [Twitch 🔒🇺🇸](https://twitch.tv) |
 | ✅ | Discussion | [Lemmy World 🌐🇪🇺](https://lemmy.world) | [Frontpage 🇬🇧](https://frontpage.fyi) | [ATProtocol](https://atproto.com) | [Reddit 🔒🇺🇸](https://reddit.com), [Lemmy.ml 🌐🇪🇺](https://lemmy.world) |
 | 🚧 | Microblogging | [Bluesky ⚖️🇺🇸](https://bsky.app/profile/overby.me) | [Eurosky 🌐🇪🇺](https://eurosky.social) | [ATProtocol](https://atproto.com), [X-Cancel](https://xcancel.com) | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [X-Twitter 🔒🇺🇸](https://x.com), [Meta Threads 🔒🇺🇸](https://www.threads.net) |
