@@ -6,8 +6,6 @@
   src,
   ...
 }: let
-  username = "noverby";
-  homeDirectory = "/home/${username}";
   usersPath = src + /modules/users;
   users = builtins.listToAttrs (
     map (
@@ -23,7 +21,7 @@ in {
     useGlobalPkgs = false;
     useUserPackages = true;
     extraSpecialArgs = {
-      inherit inputs pkgs username homeDirectory stateVersion;
+      inherit inputs pkgs stateVersion;
     };
   };
 }
