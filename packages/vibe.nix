@@ -15,16 +15,16 @@
 }:
 rustPlatform.buildRustPackage rec {
   pname = "vibe";
-  version = "2.2.0";
+  version = "2.4.0";
 
   src = fetchFromGitHub {
     owner = "TornaxO7";
     repo = "vibe";
     rev = "vibe-v${version}";
-    hash = "sha256-uUItHJnPZ6RquLC4GPS7jtF7BTomMX6yf0Ftr3Y4AiE=";
+    hash = "sha256-+rqqEGfYbE1/JlNf8K+yAqAx5YE7/84tnO3ZRwC5M9I=";
   };
 
-  cargoHash = "sha256-Xn+sH5MpjX12X4zeRYfMPbxpZQR4tnVOXl916mVzBVM=";
+  cargoHash = "sha256-WxOAmSEnhxJFyfUGHbSGF+UmPKCvWRn2OVfay8aHhzI=";
 
   nativeBuildInputs = [
     pkg-config
