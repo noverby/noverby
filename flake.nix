@@ -139,7 +139,7 @@
       nixDir = ./.;
       nixDirAliases = {
         nixosConfigurations = ["devices"];
-        nixosModules = ["modules/nixos" "modules/nixos-hardware"];
+        nixosModules = ["modules/nixos" "modules/nixos/hardware"];
         homeConfigurations = ["modules/users"];
         homeModules = ["modules/home-manager" "modules/home-manager/users"];
         devShells = ["shells"];
