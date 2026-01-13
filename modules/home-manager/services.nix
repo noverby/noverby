@@ -36,6 +36,14 @@ _: {
               trigger = ":eu";
               replace = "🇪🇺";
             }
+            {
+              trigger = ":dk";
+              replace = "🇩🇰";
+            }
+            {
+              trigger = ":us";
+              replace = "🇺🇸";
+            }
           ];
         };
       };
