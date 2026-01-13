@@ -1,156 +1,30 @@
 {
-  inputs,
-  pkgs,
-  username,
-  lib,
-  ...
-}: {
   imports = [
+    ./atuin.nix
+    ./bash.nix
+    ./bat.nix
+    ./bottom.nix
+    ./carapace.nix
+    ./delta.nix
+    ./direnv.nix
+    ./gh.nix
     ./git.nix
-    ./ssh.nix
+    ./jujutsu.nix
+    ./mergiraf.nix
+    ./nix-index.nix
     ./nushell
-    ./zed-editor
-    ./zen-browser
+    ./obs-studio.nix
+    ./readline.nix
+    ./spicetify.nix
+    ./ssh.nix
+    ./starship.nix
+    ./tealdeer.nix
     ./vscode
+    ./zed-editor
+    ./zellij.nix
+    ./zen-browser
+    ./zoxide.nix
   ];
 
-  programs = {
-    home-manager.enable = true;
-    gh.enable = true;
-    tealdeer.enable = true;
-    bottom.enable = true;
-    mergiraf.enable = true;
-
-    jujutsu = {
-      enable = true;
-      settings = {
-        ui = {
-          pager = "delta";
-          diff-formatter = ":git";
-        };
-        merge-tools.mergiraf = {
-          program = "mergiraf";
-          merge-args = ["merge" "$base" "$left" "$right" "-o" "$output" "--fast"];
-          merge-conflict-exit-codes = [1];
-          conflict-marker-style = "git";
-        };
-      };
-    };
-
-    delta = {
-      enable = true;
-      enableGitIntegration = true;
-      options = {
-        side-by-side = true;
-      };
-    };
-
-    bat = {
-      enable = true;
-      extraPackages = with pkgs.bat-extras; [
-        prettybat
-        batgrep
-        batdiff
-      ];
-    };
-
-    carapace = {
-      enable = true;
-    };
-
-    bash = {
-      enable = true;
-      shellOptions = [
-        "histappend"
-        "checkwinsize"
-        "extglob"
-        "globstar"
-        "checkjobs"
-      ];
-      historyControl = [
-        "ignoredups"
-        "erasedups"
-      ];
-    };
-
-    readline = {
-      enable = true;
-      extraConfig = ''
-        "\e[A":history-search-backward
-        "\e[B":history-search-forward
-        set completion-ignore-case On
-        set completion-prefix-display-length 2
-      '';
-    };
-
-    zellij = {
-      enable = true;
-      settings = {
-        default_shell = "nu";
-        copy_command = "wl-copy";
-        scrollback_editor = "zed-uf";
-        session_serialization = false;
-        pane_frames = false;
-        show_startup_tips = false;
-        env = {
-          TERM = "tmux-256color";
-        };
-      };
-    };
-
-    starship = {
-      enable = true;
-      settings = {
-        command_timeout = 10000;
-        time = {
-          disabled = false;
-          format = " [$time]($style) ";
-        };
-        status = {
-          disabled = false;
-        };
-        directory = {
-          truncation_length = 8;
-          truncation_symbol = ".../";
-          truncate_to_repo = false;
-        };
-      };
-    };
-
-    direnv = {
-      enable = true;
-      nix-direnv.enable = true;
-      silent = true;
-    };
-
-    zoxide = {
-      enable = true;
-    };
-
-    nix-index = {
-      enable = true;
-    };
-
-    atuin = {
-      enable = true;
-      settings = {
-        inline_height = 10;
-      };
-    };
-
-    obs-studio = {
-      enable = true;
-      plugins = with pkgs.obs-studio-plugins; [
-        obs-3d-effect
-      ];
-    };
-
-    spicetify = let
-      spicePkgs = inputs.spicetify-nix.legacyPackages.${pkgs.stdenv.system};
-    in {
-      enable = true;
-      theme = spicePkgs.themes.catppuccin;
-      colorScheme = "mocha";
-    };
-  };
+  programs.home-manager.enable = true;
 }
