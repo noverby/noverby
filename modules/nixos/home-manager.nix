@@ -6,7 +6,7 @@
   src,
   ...
 }: let
-  usersPath = src + /modules/users;
+  usersPath = src + /modules/home-manager/users;
   users = builtins.listToAttrs (
     map (
       file: {
