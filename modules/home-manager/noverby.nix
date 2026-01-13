@@ -13,6 +13,5 @@
     catppuccin
     vibe
     xr
-    pinentry
   ];
 }

@@ -19,6 +19,7 @@
     ragenix.nixosModules.default
     self.nixosModules.thinkpad-t14-ryzen-7-pro
     self.nixosModules.nitrokey
+    self.nixosModules.age
     self.nixosModules.cosmic
     self.nixosModules.gnome
     self.nixosModules.base
