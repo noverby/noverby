@@ -10,22 +10,24 @@
     stateVersion = "24.05";
   };
 
-  modules = with inputs; [
-    nixos-hardware
+  modules = with inputs.self.nixosModules; [
+    inputs.nixos-hardware
     .nixosModules
     .lenovo-thinkpad-p14s-amd-gen5
-    catppuccin.nixosModules.catppuccin
-    home-manager.nixosModules.home-manager
-    ragenix.nixosModules.default
-    self.nixosModules.thinkpad-t14-ryzen-7-pro
-    self.nixosModules.nitrokey
-    self.nixosModules.age
-    self.nixosModules.cosmic
-    self.nixosModules.gnome
-    self.nixosModules.base
-    self.nixosModules.catppuccin
-    self.nixosModules.home-manager
-    self.nixosModules.xr
-    self.nixosModules.veo
+    inputs.catppuccin.nixosModules.catppuccin
+    inputs.home-manager.nixosModules.home-manager
+    inputs.ragenix.nixosModules.default
+    thinkpad-t14-ryzen-7-pro
+    nitrokey
+    age
+    cosmic
+    gnome
+    core
+    programs
+    services
+    catppuccin
+    home-manager
+    xr
+    veo
   ];
 }
