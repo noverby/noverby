@@ -1,4 +1,8 @@
 {inputs, ...}: {
+  home = {
+    username = "noverby";
+    homeDirectory = "/home/noverby";
+  };
   imports = with inputs.self.homeModules; [
     inputs.zen-browser.homeModules.default
     inputs.spicetify-nix.homeManagerModules.spicetify

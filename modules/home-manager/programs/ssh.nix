@@ -1,6 +1,6 @@
 {
-  username,
   lib,
+  config,
   ...
 }: {
   programs.ssh = {
@@ -16,7 +16,7 @@
       };
       localhost = {
         hostname = "localhost";
-        user = username;
+        user = config.home.username;
       };
     };
   };
