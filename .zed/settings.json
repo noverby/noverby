@@ -10,7 +10,7 @@
 		"GraphQL": { "formatter": { "language_server": { "name": "biome" } } },
 		"Nix": {
 			"format_on_save": "on",
-			"language_servers": ["nil", "!nix-ls", "..."]
+			"language_servers": ["nil", "!nixd", "..."]
 		}
 	},
 	"lsp": {
