@@ -11,7 +11,6 @@
     systemd
     packages
     xdg
-    file
     programs
     services
     catppuccin
