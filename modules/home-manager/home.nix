@@ -1,12 +1,6 @@
-{
-  pkgs,
-  username,
-  homeDirectory,
-  stateVersion,
-  ...
-}: {
+{stateVersion, ...}: {
   home = {
-    inherit username homeDirectory stateVersion;
+    inherit stateVersion;
     enableDebugInfo = true;
     shell = {
       enableBashIntegration = true;
