@@ -33,6 +33,18 @@ _: {
               replace = "🔥";
             }
             {
+              trigger = ":ok";
+              replace = "✅";
+            }
+            {
+              trigger = ":todo";
+              replace = "🚧";
+            }
+            {
+              trigger = ":no";
+              replace = "🚫";
+            }
+            {
               trigger = ":eu";
               replace = "🇪🇺";
             }
