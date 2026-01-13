@@ -44,7 +44,9 @@
             nixd
             nil
             alejandra
-            inputs.ragenix.packages.${system}.default
+            (writeShellScriptBin "ragenix" ''
+              exec ${ragenix}/bin/ragenix -i ~/.age/id_fido2 "$@"
+            '')
             # Rust
             openssl
             # Mojo
