@@ -1,21 +1,8 @@
 {inputs, ...}: {
-  home = {
-    username = "noverby";
-    homeDirectory = "/home/noverby";
+  system = "x86_64-linux";
+  extraSpecialArgs = {
+    inherit inputs;
+    stateVersion = "24.05";
   };
-  imports = with inputs.self.homeModules; [
-    inputs.zen-browser.homeModules.default
-    inputs.spicetify-nix.homeManagerModules.spicetify
-    inputs.catppuccin.homeModules.catppuccin
-    home
-    systemd
-    packages
-    xdg
-    file
-    programs
-    services
-    catppuccin
-    vibe
-    xr
-  ];
+  modules = [inputs.self.homeModules.noverby];
 }
