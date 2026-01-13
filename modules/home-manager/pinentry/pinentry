@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-
-# We assume that this file is the first `pinentry` application found in PATH.
-# Thus, the true pinentry is on second position.
-pinentry="$(type -a pinentry | sed -n '2s+.* is /+/+p')"
-
-pinentry-linux-sessioncache "$pinentry"
