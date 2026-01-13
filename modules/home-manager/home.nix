@@ -60,7 +60,7 @@
       EDITOR = "vi";
       VISUAL = "vi";
       BATDIFF_USE_DELTA = "true";
-      PYTHONSTARTUP = ./pystartup.py;
+      PYTHON_HISTORY = "~/.local/share/python/history";
       GRANTED_ALIAS_CONFIGURED = "true";
     };
     file = let
