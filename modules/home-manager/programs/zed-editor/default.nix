@@ -6,6 +6,7 @@
 }: {
   programs.zed-editor = {
     enable = true;
+    package = pkgs.pkgsUnstable.zed-editor;
     extensions = [
       "biome"
       "nix"
