@@ -140,7 +140,7 @@
       nixDirAliases = {
         nixosConfigurations = ["hosts"];
         nixosModules = ["modules/nixos" "modules/nixos/hardware"];
-        homeConfigurations = ["modules/users"];
+        homeConfigurations = ["homes"];
         homeModules = ["modules/home-manager" "modules/home-manager/users"];
         devShells = ["shells"];
         withOverlays = ["with-overlays"];
