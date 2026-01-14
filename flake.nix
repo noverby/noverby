@@ -139,9 +139,9 @@
       nixDir = ./.;
       nixDirAliases = {
         nixosConfigurations = ["hosts"];
-        nixosModules = ["modules/nixos" "modules/nixos/hardware"];
+        nixosModules = ["modules/nixos" "modules/nixos/hardware" "modules/nixos/desktop"];
         homeConfigurations = ["homes"];
-        homeModules = ["modules/home-manager" "modules/home-manager/users"];
+        homeModules = ["modules/home-manager" "modules/home-manager/users" "modules/home-manager/desktop"];
         devShells = ["shells"];
         withOverlays = ["with-overlays"];
       };
