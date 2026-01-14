@@ -17,6 +17,7 @@ inputs.devenv.lib.mkShell
           statix.enable = true;
           typos.enable = true;
           rustfmt.enable = true;
+          rumdl.enable = true;
           nil = {
             enable = true;
             entry = builtins.toString (pkgs.writeShellScript "precommit-nil" ''
