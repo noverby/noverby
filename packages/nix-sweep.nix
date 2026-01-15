@@ -20,7 +20,7 @@ rustPlatform.buildRustPackage rec {
     description = "Utility to clean up old Nix profile generations and left-over garbage collection roots";
     homepage = "https://github.com/jzbor/nix-sweep";
     license = lib.licenses.mit;
-    maintainers = with lib.maintainers; [];
+    maintainers = with lib.maintainers; [noverby];
     mainProgram = "nix-sweep";
   };
 }

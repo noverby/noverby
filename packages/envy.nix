@@ -24,7 +24,7 @@ rustPlatform.buildRustPackage rec {
     description = "Manage environment variables without cluttering your .zshrc";
     homepage = "https://github.com/mre/envy";
     license = with lib.licenses; [asl20 mit];
-    maintainers = with lib.maintainers; [];
+    maintainers = with lib.maintainers; [noverby];
     mainProgram = "envy";
   };
 }

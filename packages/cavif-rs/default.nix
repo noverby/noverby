@@ -39,7 +39,7 @@ rustPlatform.buildRustPackage rec {
     description = "AVIF image creator in pure Rust";
     homepage = "https://github.com/kornelski/cavif-rs";
     license = lib.licenses.bsd3;
-    maintainers = with lib.maintainers; [];
+    maintainers = with lib.maintainers; [noverby];
     mainProgram = "cavif-rs";
   };
 }

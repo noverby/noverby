@@ -22,7 +22,7 @@ rustPlatform.buildRustPackage rec {
     description = "Fast magical cd alternative for lacy terminal navigators";
     homepage = "https://github.com/timothebot/lacy";
     license = lib.licenses.mit;
-    maintainers = with lib.maintainers; [];
+    maintainers = with lib.maintainers; [noverby];
     mainProgram = "lacy";
   };
 }
