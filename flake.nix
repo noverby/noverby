@@ -138,11 +138,11 @@
       };
       nixDir = ./.;
       nixDirAliases = {
-        nixosConfigurations = ["configurations/hosts"];
+        nixosConfigurations = ["configurations/nixos"];
         nixosModules = ["modules/nixos" "modules/nixos/hardware" "modules/nixos/desktop"];
-        homeConfigurations = ["configurations/homes"];
+        homeConfigurations = ["configurations/home-manager"];
         homeModules = ["modules/home-manager" "modules/home-manager/users" "modules/home-manager/desktop"];
-        devShells = ["configurations/shells"];
+        devShells = ["configurations/devenv"];
         withOverlays = ["with-overlays"];
       };
     };
