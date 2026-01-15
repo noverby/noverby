@@ -7,6 +7,7 @@
     inputs.zen-browser.homeModules.default
     inputs.spicetify-nix.homeManagerModules.spicetify
     inputs.catppuccin.homeModules.catppuccin
+    nix
     home
     systemd
     packages
