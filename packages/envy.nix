@@ -3,7 +3,7 @@
   rustPlatform,
   fetchFromGitHub,
 }:
-rustPlatform.buildRustPackage rec {
+rustPlatform.buildRustPackage {
   pname = "envy";
   version = "0.6.0";
 
