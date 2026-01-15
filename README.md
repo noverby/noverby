@@ -54,7 +54,6 @@
 
 ### Packages
 
-* [Magic 🔥](https://tangled.org/@overby.me/overby.me/tree/main/packages/magic.nix): Mojo package manager
 * [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/packages/mojo.nix): Mojo development toolchain
 * [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/cavif-rs/default.nix): AVIF image encoder CLI tool
 * [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/rcgen.nix): X.509 certificate generation CLI tool
