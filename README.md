@@ -46,11 +46,11 @@
 
 ### Config
 
-* [Home Manager Homes ❄️](https://tangled.org/@overby.me/overby.me/tree/main/homes)
+* [Home Manager Homes ❄️](https://tangled.org/@overby.me/overby.me/tree/main/configurations/homes)
 * [Home Manager Modules ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/home-manager)
-* [NixOS Hosts ❄️](https://tangled.org/@overby.me/overby.me/tree/main/hosts)
+* [NixOS Hosts ❄️](https://tangled.org/@overby.me/overby.me/tree/main/configurations/hosts)
 * [NixOS Modules ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/nixos)
-* [Devenv Shells ❄️](https://tangled.org/@overby.me/overby.me/tree/main/shells)
+* [Devenv Shells ❄️](https://tangled.org/@overby.me/overby.me/tree/main/configurations/shells)
 
 ### Packages
 
