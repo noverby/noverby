@@ -52,8 +52,10 @@
 
 ### Modules
 
+* [Flakelight ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/flakelight)
 * [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/home-manager)
 * [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/nixos)
+* [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/devenv)
 
 ### Packages
 
