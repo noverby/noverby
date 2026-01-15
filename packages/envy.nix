@@ -10,13 +10,13 @@ rustPlatform.buildRustPackage {
   src = fetchFromGitHub {
     owner = "mre";
     repo = "envy";
-    rev = "master";
-    hash = "sha256-33efk7Udkchy2bm9hjcjNlUxCNFkaVJQG/U3h/vp/2g=";
+    rev = "45a68eb1e944c3383ac443df23a0ff6827140910";
+    hash = "sha256-2NIfAKx80sX7zqrCIMe2L6+LvQPtTWxQQmWMMpD0zAY=";
   };
 
   buildFeatures = ["bash-support"];
 
-  cargoHash = "sha256-L4Pm57GzcbC7bWafv33g3G3hD2vtcBu1L7Pkvuox4mY=";
+  cargoHash = "sha256-U8IBel3jDgIaHROfeNn8gAF3nQTxSJGb4gEqiwX39Dk=";
 
   doCheck = false;
 
