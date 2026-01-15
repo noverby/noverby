@@ -27,6 +27,25 @@ in
             typos.enable = true;
             rustfmt.enable = true;
             rumdl.enable = true;
+            nil = {
+              enable = true;
+              entry = builtins.toString (pkgs.writeShellScript "precommit-nil" ''
+                errors=false
+                echo Checking: $@
+                for file in $(echo "$@"); do
+                  ${pkgs.nil}/bin/nil diagnostics --deny-warnings "$file"
+                  exit_code=$?
+
+                  if [[ $exit_code -ne 0 ]]; then
+                    echo \"$file\" failed with exit code: $exit_code
+                    errors=true
+                  fi
+                done
+                if [[ $errors == true ]]; then
+                  exit 1
+                fi
+              '');
+            };
             commitlint-rs = {
               enable = true;
               package = pkgs.commitlint-rs;
