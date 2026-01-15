@@ -6,6 +6,7 @@
   imports = with inputs.self.devenvModules; [
     devenv-root
     git-hooks
+    configs
   ];
 
   languages = {
