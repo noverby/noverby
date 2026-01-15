@@ -5,7 +5,7 @@
   pkg-config,
   dbus,
 }:
-rustPlatform.buildRustPackage rec {
+rustPlatform.buildRustPackage {
   pname = "rustysd";
   version = "unstable-2023-02-26";
 
