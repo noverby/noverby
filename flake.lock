@@ -149,7 +149,7 @@
         "type": "github"
       }
     },
-    "devenv-root": {
+    "env": {
       "flake": false,
       "locked": {
         "narHash": "sha256-d6xi4mKdjkX2JFicDIv5niSzpyI0m/Hnm8GGAIU04kY=",
@@ -600,7 +600,7 @@
         "catppuccin": "catppuccin",
         "crane": "crane",
         "devenv": "devenv",
-        "devenv-root": "devenv-root",
+        "env": "env",
         "flake-compat": "flake-compat",
         "flake-parts": "flake-parts",
         "flake-utils": "flake-utils",
