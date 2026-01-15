@@ -17,5 +17,10 @@
 				"require_config_file": true
 			}
 		}
-	}
+	},
+	"project_panel": {
+		"hide_hidden": true,
+		"hide_gitignore": true
+	},
+	"hidden_files": ["**/.*", "**/*.lock"]
 }

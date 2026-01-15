@@ -6,6 +6,7 @@ tmp
 build
 dist
 node_modules
+.rumdl_cache
 
 *.ll
 *.o
