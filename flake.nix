@@ -130,8 +130,8 @@
     inputs.flakelight ./. {
       inherit inputs;
       imports = [
-        ./modules/flakelight/devenvModules.nix
-        ./modules/flakelight/devenvConfigurations.nix
+        ./nix/modules/flakelight/devenvModules.nix
+        ./nix/modules/flakelight/devenvConfigurations.nix
       ];
       nixpkgs.config = {
         allowUnfree = true;
@@ -140,7 +140,6 @@
           "segger-jlink-qt4-874"
         ];
       };
-      nixDir = ./.;
       nixDirAliases = {
         flakelightModules = ["modules/flakelight"];
         nixosConfigurations = ["configurations/nixos"];
@@ -149,8 +148,7 @@
         homeModules = ["modules/home-manager" "modules/home-manager/users" "modules/home-manager/desktop"];
         devenvConfigurations = ["configurations/devenv"];
         devenvModules = ["modules/devenv"];
-        withOverlays = ["nix/with-overlays"];
-        formatters = ["nix/formatters"];
+        withOverlays = ["with-overlays"];
       };
     };
 }

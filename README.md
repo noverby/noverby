@@ -46,33 +46,33 @@
 
 ### Configurations
 
-* [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/configurations/home-manager)
-* [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/configurations/nixos)
-* [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/configurations/devenv)
+* [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/home-manager)
+* [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/nixos)
+* [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/devenv)
 
 ### Modules
 
-* [Flakelight ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/flakelight)
-* [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/home-manager)
-* [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/nixos)
-* [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/devenv)
+* [Flakelight ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/flakelight)
+* [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager)
+* [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos)
+* [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/devenv)
 
 ### Packages
 
-* [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/packages/mojo.nix): Mojo development toolchain
-* [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/cavif-rs/default.nix): AVIF image encoder CLI tool
-* [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/rcgen.nix): X.509 certificate generation CLI tool
-* [Hakoniwa 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/hakoniwa.nix): Process isolation CLI tool
-* [Envy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/envy.nix): Environment loader CLI tool
-* [Nix-sweep 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/nix-sweep.nix): Nix garbage collector
-* [Forkfs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/forkfs.nix): Sandbox a process's changes to file system
-* [Busd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/busd.nix): A D-Bus bus implementation in Rust
-* [Rustysd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/rustysd.nix): A Systemd replacement in Rust
-* [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/lacy.nix): Fast magical cd alternative
-* [Vibe 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/vibe.nix): A desktop audio visualizer
-* [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/sunsetc.nix): SSH in Rust
-* [Layout 🦀](https://tangled.org/@overby.me/overby.me/tree/main/packages/layout.nix): Graphviz dot renderer
-* [Age-plugin-fido2prf 🐹](https://tangled.org/@overby.me/overby.me/tree/main/packages/age-plugin-fido2prf.nix): FIDO2 PRF plugin for age
+* [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo.nix): Mojo development toolchain
+* [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cavif-rs/default.nix): AVIF image encoder CLI tool
+* [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/rcgen.nix): X.509 certificate generation CLI tool
+* [Hakoniwa 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/hakoniwa.nix): Process isolation CLI tool
+* [Envy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/envy.nix): Environment loader CLI tool
+* [Nix-sweep 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/nix-sweep.nix): Nix garbage collector
+* [Forkfs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/forkfs.nix): Sandbox a process's changes to file system
+* [Busd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/busd.nix): A D-Bus bus implementation in Rust
+* [Rustysd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/rustysd.nix): A Systemd replacement in Rust
+* [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/lacy.nix): Fast magical cd alternative
+* [Vibe 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/vibe.nix): A desktop audio visualizer
+* [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/sunsetc.nix): SSH in Rust
+* [Layout 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/layout.nix): Graphviz dot renderer
+* [Age-plugin-fido2prf 🐹](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/age-plugin-fido2prf.nix): FIDO2 PRF plugin for age
 
 ### Projects
 
