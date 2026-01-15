@@ -129,6 +129,9 @@
   outputs = inputs:
     inputs.flakelight ./. {
       inherit inputs;
+      imports = [
+        ./modules/flakelight/devenvModules.nix
+      ];
       nixpkgs.config = {
         allowUnfree = true;
         segger-jlink.acceptLicense = true;
@@ -138,11 +141,13 @@
       };
       nixDir = ./.;
       nixDirAliases = {
+        flakelightModules = ["modules/flakelight"];
         nixosConfigurations = ["configurations/nixos"];
         nixosModules = ["modules/nixos" "modules/nixos/hardware" "modules/nixos/desktop"];
         homeConfigurations = ["configurations/home-manager"];
         homeModules = ["modules/home-manager" "modules/home-manager/users" "modules/home-manager/desktop"];
         devShells = ["configurations/devenv"];
+        devenvModules = ["modules/devenv"];
         withOverlays = ["with-overlays"];
       };
     };
