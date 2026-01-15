@@ -46,9 +46,10 @@
 
 ### Config
 
+* [Home Manager Homes ❄️](https://tangled.org/@overby.me/overby.me/tree/main/homes)
 * [Home Manager Modules ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/home-manager)
+* [NixOS Hosts ❄️](https://tangled.org/@overby.me/overby.me/tree/main/hosts)
 * [NixOS Modules ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/nixos)
-* [NixOS Devices ❄️](https://tangled.org/@overby.me/overby.me/tree/main/devices)
 * [Devenv Shells ❄️](https://tangled.org/@overby.me/overby.me/tree/main/shells)
 
 ### Packages
