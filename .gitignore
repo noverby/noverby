@@ -22,3 +22,9 @@ presentations/*.pdf
 presentations/*.html
 
 flamegraph.svg
+
+# Configs
+/biome.json
+/deno.json
+/rumdl.toml
+/typos.toml
