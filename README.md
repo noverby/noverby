@@ -86,7 +86,6 @@
 
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
-| 🚧 | Architecture | [X86-64 🔒](https://en.wikipedia.org/wiki/X86-64) | [RISC-V 📖](https://en.wikipedia.org/wiki/RISC-V), [ARM 🔒](https://en.wikipedia.org/wiki/ARM_architecture_family) | |
 | 🚫 | CPU | [AMD 🇺🇸](https://en.wikipedia.org/wiki/AMD) | | [Intel 🇺🇸](https://en.wikipedia.org/wiki/Intel) |
 | 🚫 | GPU | [AMD 🇺🇸](https://en.wikipedia.org/wiki/AMD) | [Vortex 📖](https://github.com/vortexgpgpu/vortex) | [Intel 🇺🇸](https://en.wikipedia.org/wiki/Intel), [NVIDIA 🇺🇸](https://en.wikipedia.org/wiki/NVIDIA) |
 | 🚫 | Laptop | [Thinkpad T14 Ryzen 7 Pro Gen 6](https://www.lenovo.com/dk/da/p/laptops/thinkpad/thinkpadt/lenovo-thinkpad-t14s-gen-6-14-inch-amd-laptop/len101t0109) | [Tuxedo ARM Laptop 🇪🇺](https://www.tuxedocomputers.com/en/TUXEDO-on-ARM-is-coming.tuxedo), [StarLabs Systems 🇬🇧](https://starlabs.systems) | [Framework 13 🇺🇸](https://frame.work/products/laptop-diy-13-gen-intel), [Dell XPS 13 Plus 9320 🇺🇸](https://www.dell.com/support/home/da-dk/product-support/product/xps-13-9320-laptop) |
@@ -108,6 +107,7 @@
 
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
+| 🚧 | Architecture | [X86-64 🔒](https://en.wikipedia.org/wiki/X86-64) | [RISC-V 📖](https://en.wikipedia.org/wiki/RISC-V), [ARM 🔒](https://en.wikipedia.org/wiki/ARM_architecture_family) | |
 | 🚧 | Firmware | [Thinkpad UEFI 🔒](https://en.wikipedia.org/wiki/UEFI) | [Coreboot 💣](https://coreboot.org), [Oreboot 🦀](https://github.com/oreboot/oreboot) | |
 | ✅ | Internet of Things Connectivity | [Matter 📖](https://en.wikipedia.org/wiki/Matter_(standard)), [Zigbee 📖](https://en.wikipedia.org/wiki/Zigbee) | | |
 | 🚧 | Wireless Media | [Google ChromeCast 🔒](https://en.wikipedia.org/wiki/Chromecast) | [MatterCast 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | [Miracast 📖](https://en.wikipedia.org/wiki/Miracast) |
