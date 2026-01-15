@@ -32,7 +32,7 @@ rustPlatform.buildRustPackage rec {
     description = "A service manager that is able to run \"traditional\" systemd services, written in rust";
     homepage = "https://github.com/KillingSpark/rustysd";
     license = lib.licenses.mit;
-    maintainers = with lib.maintainers; [];
+    maintainers = with lib.maintainers; [noverby];
     mainProgram = "rustysd";
   };
 }

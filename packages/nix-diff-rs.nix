@@ -27,7 +27,7 @@ rustPlatform.buildRustPackage rec {
     description = "A Rust port of nix-diff, a tool to explain why two Nix derivations differ";
     homepage = "https://github.com/Mic92/nix-diff-rs";
     license = lib.licenses.bsd3;
-    maintainers = with lib.maintainers; [];
+    maintainers = with lib.maintainers; [noverby];
     mainProgram = "nix-diff";
   };
 }

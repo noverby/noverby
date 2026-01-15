@@ -29,7 +29,7 @@ buildGoModule rec {
     description = "An age plugin that uses FIDO2 security keys with the PRF extension for file encryption";
     homepage = "https://github.com/FiloSottile/typage";
     license = lib.licenses.bsd3;
-    maintainers = with lib.maintainers; [];
+    maintainers = with lib.maintainers; [noverby];
     mainProgram = "age-plugin-fido2prf";
   };
 }

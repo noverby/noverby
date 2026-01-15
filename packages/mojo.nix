@@ -150,7 +150,7 @@ stdenv.mkDerivation rec {
     description = "Mojo Programming Language";
     homepage = "https://www.modular.com/mojo";
     platforms = platforms.linux;
-    maintainers = [];
+    maintainers = with lib.maintainers; [noverby];
     license = licenses.unfree;
   };
 }

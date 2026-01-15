@@ -28,7 +28,7 @@ rustPlatform.buildRustPackage rec {
     description = "Process isolation for Linux using namespaces, resource limits, landlock and seccomp";
     homepage = "https://github.com/souk4711/hakoniwa";
     license = lib.licenses.gpl3;
-    maintainers = with lib.maintainers; [];
+    maintainers = with lib.maintainers; [noverby];
     mainProgram = "hakoniwa";
   };
 }
