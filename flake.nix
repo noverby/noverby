@@ -131,6 +131,7 @@
       inherit inputs;
       imports = [
         ./modules/flakelight/devenvModules.nix
+        ./modules/flakelight/devenvConfigurations.nix
       ];
       nixpkgs.config = {
         allowUnfree = true;
@@ -146,7 +147,7 @@
         nixosModules = ["modules/nixos" "modules/nixos/hardware" "modules/nixos/desktop"];
         homeConfigurations = ["configurations/home-manager"];
         homeModules = ["modules/home-manager" "modules/home-manager/users" "modules/home-manager/desktop"];
-        devShells = ["configurations/devenv"];
+        devenvConfigurations = ["configurations/devenv"];
         devenvModules = ["modules/devenv"];
         withOverlays = ["with-overlays"];
       };
