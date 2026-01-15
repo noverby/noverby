@@ -2,8 +2,8 @@
   description = "Personal Monorepo";
 
   inputs = {
-    # TODO: Convert to env
-    devenv-root = {
+    # Pass env through input
+    env = {
       url = "file+file:///dev/null";
       flake = false;
     };

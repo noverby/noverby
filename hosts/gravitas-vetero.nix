@@ -10,12 +10,12 @@
     stateVersion = "25.05";
   };
 
-  modules = with inputs; [
-    home-manager.nixosModules.home-manager
-    self.nixosModules.dell-xps-9320
-    self.nixosModules.cosmic
-    self.nixosModules.gnome
-    self.nixosModules.base
-    self.nixosModules.home-manager
+  modules = with inputs.self.nixosModules; [
+    inputs.home-manager.nixosModules.home-manager
+    dell-xps-9320
+    cosmic
+    gnome
+    core
+    home-manager
   ];
 }
