@@ -149,7 +149,8 @@
         homeModules = ["modules/home-manager" "modules/home-manager/users" "modules/home-manager/desktop"];
         devenvConfigurations = ["configurations/devenv"];
         devenvModules = ["modules/devenv"];
-        withOverlays = ["with-overlays"];
+        withOverlays = ["nix/with-overlays"];
+        formatters = ["nix/formatters"];
       };
     };
 }
