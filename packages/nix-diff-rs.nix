@@ -4,7 +4,7 @@
   fetchFromGitHub,
   rust-jemalloc-sys,
 }:
-rustPlatform.buildRustPackage rec {
+rustPlatform.buildRustPackage {
   pname = "nix-diff-rs";
   version = "unstable-2025-11-02";
 
