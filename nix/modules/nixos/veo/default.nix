@@ -10,19 +10,4 @@
       User = "root"; # or specify a different user
     };
   };
-
-  services.udev = {
-    packages = [
-      pkgs.nrf-udev
-      pkgs.segger-jlink
-    ];
-
-    extraRules = ''
-      # FTDI
-      SUBSYSTEM=="usb", ATTR{idVendor}=="0403", ATTR{idProduct}=="6011", MODE="0666"
-
-      # Jetson
-      SUBSYSTEM=="usb", ATTR{idVendor}=="0955", ATTR{idProduct}="7c18", MODE="0666"
-    '';
-  };
 }
