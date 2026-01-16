@@ -129,17 +129,13 @@
   outputs = inputs:
     inputs.flakelight ./. {
       inherit inputs;
+      nixpkgs.config = {
+        allowUnfree = true;
+      };
       imports = [
         ./nix/modules/flakelight/devenvModules.nix
         ./nix/modules/flakelight/devenvConfigurations.nix
       ];
-      nixpkgs.config = {
-        allowUnfree = true;
-        segger-jlink.acceptLicense = true;
-        permittedInsecurePackages = [
-          "segger-jlink-qt4-874"
-        ];
-      };
       nixDirAliases = {
         flakelightModules = ["modules/flakelight"];
         nixosConfigurations = ["configurations/nixos"];
