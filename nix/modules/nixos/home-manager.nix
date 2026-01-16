@@ -21,7 +21,7 @@ in {
     useGlobalPkgs = false;
     useUserPackages = true;
     extraSpecialArgs = {
-      inherit inputs pkgs stateVersion;
+      inherit inputs pkgs stateVersion src;
     };
   };
 }
