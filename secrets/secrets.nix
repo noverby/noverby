@@ -4,4 +4,6 @@ let
 in {
   "resolved.age".publicKeys = [noverby nitrokey3-fido2-hmac];
   "u2f-keys.age".publicKeys = [noverby nitrokey3-fido2-hmac];
+  "id_ed25519.age".publicKeys = [noverby nitrokey3-fido2-hmac];
+  "id_rsa.age".publicKeys = [noverby nitrokey3-fido2-hmac];
 }
