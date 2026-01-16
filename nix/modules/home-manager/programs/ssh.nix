@@ -34,6 +34,13 @@
     '';
   };
 
+  home.file = let
+    publicKeys = import (src + /secrets/publicKeys.nix);
+  in {
+    ".ssh/id_ed25519.pub".text = publicKeys.noverby-ssh-ed25519;
+    ".ssh/id_rsa.pub".text = publicKeys.noverby-ssh-rsa;
+  };
+
   age.secrets = {
     id_ed25519 = {
       file = src + /secrets/id_ed25519.age;
