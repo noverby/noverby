@@ -1,9 +1,16 @@
 let
-  noverby = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOachAYzBH8Qaorvbck99Fw+v6md3BeVtfL5PJ/byv4Cc";
-  nitrokey3-fido2-hmac = "age1efazxe5tgepdv5czxzj5x844dj265dar4sej42qc8mjp2czulazslqutuw";
+  publicKeys = (import ./publicKeys.nix).all;
 in {
-  "resolved.age".publicKeys = [noverby nitrokey3-fido2-hmac];
-  "u2f-keys.age".publicKeys = [noverby nitrokey3-fido2-hmac];
-  "id_ed25519.age".publicKeys = [noverby nitrokey3-fido2-hmac];
-  "id_rsa.age".publicKeys = [noverby nitrokey3-fido2-hmac];
+  "resolved.age" = {
+    inherit publicKeys;
+  };
+  "u2f-keys.age" = {
+    inherit publicKeys;
+  };
+  "id_ed25519.age" = {
+    inherit publicKeys;
+  };
+  "id_rsa.age" = {
+    inherit publicKeys;
+  };
 }
