@@ -136,11 +136,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1768738650,
-        "narHash": "sha256-oe9/b2DkYNlGg1GdX7n8U87y49CvXHED7nMGEE3WzjI=",
+        "lastModified": 1768815419,
+        "narHash": "sha256-Kpol6rStnF9X2AJ35x8A7/dMF6eiJatktRMM9MOtchQ=",
         "owner": "cachix",
         "repo": "devenv",
-        "rev": "43328b8bc4096055622390ee4fc21b5977aab2e3",
+        "rev": "81552494542f06f8eda3da2b1f0b08f3ce79fa60",
         "type": "github"
       },
       "original": {
