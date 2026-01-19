@@ -78,6 +78,7 @@
       url = "github:jamesbrink/nxv";
       inputs = {
         nixpkgs.follows = "nixpkgs";
+        flake-utils.follows = "flake-utils";
         rust-overlay.follows = "rust-overlay";
         crane.follows = "crane";
       };
