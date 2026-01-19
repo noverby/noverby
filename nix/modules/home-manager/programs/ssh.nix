@@ -41,16 +41,19 @@
     ".ssh/id_rsa.pub".text = publicKeys.noverby-ssh-rsa;
   };
 
-  age.secrets = {
-    id_ed25519 = {
-      file = src + /secrets/id_ed25519.age;
-      path = "${config.home.homeDirectory}/.ssh/id_ed25519";
-      mode = "600";
-    };
-    id_rsa = {
-      file = src + /secrets/id_rsa.age;
-      path = "${config.home.homeDirectory}/.ssh/id_rsa";
-      mode = "600";
+  age = {
+    identityPaths = ["${config.home.homeDirectory}/.age/id_fido2"];
+    secrets = {
+      id_ed25519 = {
+        file = src + /secrets/id_ed25519.age;
+        path = "${config.home.homeDirectory}/.ssh/id_ed25519";
+        mode = "600";
+      };
+      id_rsa = {
+        file = src + /secrets/id_rsa.age;
+        path = "${config.home.homeDirectory}/.ssh/id_rsa";
+        mode = "600";
+      };
     };
   };
 }
