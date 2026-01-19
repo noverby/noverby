@@ -1,7 +1,7 @@
 {
 	"agent": {
 		"default_model": {
-			"model": "codestral-latest",
+			"model": "devstral-medium-latest",
 			"provider": "mistral"
 		}
 	},
