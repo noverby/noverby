@@ -9,6 +9,13 @@
       typos.enable = true;
       rustfmt.enable = true;
       rumdl.enable = true;
+      mktoc = {
+        enable = true;
+        package = pkgs.mktoc;
+        name = "pre-commit-mktoc";
+        entry = "${pkgs.mktoc}/bin/mktoc";
+        files = "README\\.md$";
+      };
       nil = {
         enable = true;
         entry = builtins.toString (pkgs.writeShellScript "precommit-nil" ''
