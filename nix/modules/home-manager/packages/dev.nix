@@ -4,6 +4,7 @@
     lazyjj
     glab
     granted
+    mistral-vibe
 
     # System dev
     #lldb
