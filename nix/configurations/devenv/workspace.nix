@@ -20,8 +20,6 @@
     harper
     # Common
     just
-    rumdl
-    mktoc
     # Nix
     nixd
     nil
