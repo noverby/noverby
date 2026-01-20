@@ -2,7 +2,6 @@
 
 <!-- BEGIN mktoc -->
 
-- [Personal Monorepo](#personal-monorepo)
 - [📁 Repository](#-repository)
   - [📋 Configurations](#-configurations)
   - [🧩 Modules](#-modules)
@@ -33,6 +32,7 @@
   - [🌐 Browser Extensions](#-browser-extensions)
   - [📱 Mobile](#-mobile)
 <!-- END mktoc -->
+
 
 | Category | Specifiers |
 |----------|----------------------|
