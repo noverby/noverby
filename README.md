@@ -21,9 +21,9 @@
 - [System](#system)
   - [Core](#core)
   - [Libraries](#libraries)
-  - [Nix](#nix)
   - [Infrastructure](#infrastructure)
 - [Development](#development)
+  - [Nix](#nix)
 - [Applications](#applications)
   - [Command Line](#command-line)
   - [Desktop Environment](#desktop-environment)
@@ -272,31 +272,6 @@
 
 </details>
 
-### Nix
-
-<details open>
-
-| Status | Component | Current | Research & Development | Compatibility | Legacy |
-|:-:|-|-|-|-|-|
-| 🚧 | Package Manager | [Nix 🌐💣](https://github.com/NixOS/nix) | [Snix 🦀](https://git.snix.dev/snix/snix) | ⬅️ | |
-| 🚧 | Language | [Nix 🌐💣](https://github.com/NixOS/nix) | [Nickel 🦀](https://github.com/tweag/nickel), [Glistix 🦀](https://github.com/Glistix/glistix) | | |
-| ✅ | Formatter | [Alejandra 🦀](https://github.com/kamadorueda/alejandra) | | | [Nixfmt λ](https://github.com/NixOS/nixfmt) |
-| ✅ | Static Analyzer | [Statix 🦀](https://github.com/oppiliappan/statix), [Deadnix 🦀](https://github.com/astro/deadnix), [Nixpkgs-Lint 🦀](https://github.com/nix-community/nixpkgs-lint) | | | |
-| ✅ | Language Server | [Nil 🦀](https://github.com/oxalica/nil) | | | [Nixd 💣](https://github.com/nix-community/nixd) |
-| 🚧 | Binary Cache | [Cachix 🔒λ](https://github.com/cachix/cachix) | [Harmonia 🦀](https://github.com/nix-community/harmonia) | 🆗 | [Attic 🦀](https://github.com/zhaofengli/attic) |
-| ✅ | Config Manager | [Home Manager 🌐❄️](https://github.com/nix-community/home-manager) | | | |
-| ✅ | Secret Manager | [Ragenix 🦀❄️](https://github.com/yaxitech/ragenix) | | | [Agenix 🐹❄️](https://github.com/ryantm/agenix) |
-| ✅ | Deployment | [Colmena 🦀️❄️](https://github.com/zhaofengli/colmena) | | | |
-| ✅ | Developer Environment | [Devenv 🦀️❄️](https://github.com/cachix/devenv) | [Organist ❄️](https://github.com/nickel-lang/organist) | 🆗 | |
-| ✅ | Flake Framework | [Flakelight ❄️](https://github.com/nix-community/flakelight) | | | [Flake-parts ❄️](https://github.com/hercules-ci/flake-parts) |
-| ✅ | File Locator | [Nix-index 🦀](https://github.com/nix-community/nix-index), [Comma 🦀](https://github.com/nix-community/comma) | | | |
-| ✅ | Rust Integration | [Crate2nix 🦀❄️](https://github.com/nix-community/crate2nix) | | | [Crane ❄️](https://github.com/ipetkov/crane) |
-| ✅ | Package Generation | [Nix-init 🦀](https://github.com/nix-community/nix-init) + [Nurl 🦀](https://github.com/nix-community/nurl) | | | |
-| ✅ | Derivation Difference | [Nix-diff-rs 🦀](https://github.com/Mic92/nix-diff-rs) | | | [Nix-diff λ](https://github.com/Gabriella439/nix-diff) |
-| ✅ | Dependency Explorer | [Nix-du 🦀](https://github.com/symphorien/nix-du) | | | [Nix-tree λ](https://github.com/utdemir/nix-tree) |
-
-</details>
-
 ### Infrastructure
 
 <details open>
@@ -343,6 +318,31 @@
 | 🚧 | ECMAScript Typechecker | [TypeScript 🐒](https://github.com/microsoft/typescript) | [Ezno 🦀](https://github.com/kaleidawave/ezno), [TypeScript Go 🐹](https://github.com/microsoft/typescript-go) | 🆗 | |
 | ✅ | Certificate Generation | [Rcgen 🦀](https://github.com/rustls/rcgen) | | 🆗 | [Mkcert 🐹](https://github.com/FiloSottile/mkcert) |
 | ✅ | TCP Tunnel | [Bore 🦀](https://github.com/ekzhang/bore) | | 🆗 | |
+
+</details>
+
+### Nix
+
+<details open>
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| 🚧 | Package Manager | [Nix 🌐💣](https://github.com/NixOS/nix) | [Snix 🦀](https://git.snix.dev/snix/snix) | ⬅️ | |
+| 🚧 | Language | [Nix 🌐💣](https://github.com/NixOS/nix) | [Nickel 🦀](https://github.com/tweag/nickel), [Glistix 🦀](https://github.com/Glistix/glistix) | | |
+| ✅ | Formatter | [Alejandra 🦀](https://github.com/kamadorueda/alejandra) | | | [Nixfmt λ](https://github.com/NixOS/nixfmt) |
+| ✅ | Static Analyzer | [Statix 🦀](https://github.com/oppiliappan/statix), [Deadnix 🦀](https://github.com/astro/deadnix), [Nixpkgs-Lint 🦀](https://github.com/nix-community/nixpkgs-lint) | | | |
+| ✅ | Language Server | [Nil 🦀](https://github.com/oxalica/nil) | | | [Nixd 💣](https://github.com/nix-community/nixd) |
+| 🚧 | Binary Cache | [Cachix 🔒λ](https://github.com/cachix/cachix) | [Harmonia 🦀](https://github.com/nix-community/harmonia) | 🆗 | [Attic 🦀](https://github.com/zhaofengli/attic) |
+| ✅ | Config Manager | [Home Manager 🌐❄️](https://github.com/nix-community/home-manager) | | | |
+| ✅ | Secret Manager | [Ragenix 🦀❄️](https://github.com/yaxitech/ragenix) | | | [Agenix 🐹❄️](https://github.com/ryantm/agenix) |
+| ✅ | Deployment | [Colmena 🦀️❄️](https://github.com/zhaofengli/colmena) | | | |
+| ✅ | Developer Environment | [Devenv 🦀️❄️](https://github.com/cachix/devenv) | [Organist ❄️](https://github.com/nickel-lang/organist) | 🆗 | |
+| ✅ | Flake Framework | [Flakelight ❄️](https://github.com/nix-community/flakelight) | | | [Flake-parts ❄️](https://github.com/hercules-ci/flake-parts) |
+| ✅ | File Locator | [Nix-index 🦀](https://github.com/nix-community/nix-index), [Comma 🦀](https://github.com/nix-community/comma) | | | |
+| ✅ | Rust Integration | [Crate2nix 🦀❄️](https://github.com/nix-community/crate2nix) | | | [Crane ❄️](https://github.com/ipetkov/crane) |
+| ✅ | Package Generation | [Nix-init 🦀](https://github.com/nix-community/nix-init) + [Nurl 🦀](https://github.com/nix-community/nurl) | | | |
+| ✅ | Derivation Difference | [Nix-diff-rs 🦀](https://github.com/Mic92/nix-diff-rs) | | | [Nix-diff λ](https://github.com/Gabriella439/nix-diff) |
+| ✅ | Dependency Explorer | [Nix-du 🦀](https://github.com/symphorien/nix-du) | | | [Nix-tree λ](https://github.com/utdemir/nix-tree) |
 
 </details>
 
