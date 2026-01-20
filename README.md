@@ -1,6 +1,37 @@
 # Personal Monorepo
 
-## Specifiers
+<!-- BEGIN mktoc -->
+
+- [Personal Monorepo](#personal-monorepo)
+- [Repository](#repository)
+  - [Configurations](#configurations)
+  - [Modules](#modules)
+  - [Packages](#packages)
+  - [Projects](#projects)
+- [Hardware](#hardware)
+- [Services](#services)
+  - [Personal](#personal)
+  - [Social](#social)
+  - [Cloud](#cloud)
+- [Standards](#standards)
+  - [Hardware Interface](#hardware-interface)
+  - [Software Interface](#software-interface)
+  - [Encoding](#encoding)
+  - [Protocol](#protocol)
+- [System](#system)
+  - [Core](#core)
+  - [Libraries](#libraries)
+  - [Nix](#nix)
+  - [Infrastructure](#infrastructure)
+- [Development](#development)
+- [Applications](#applications)
+  - [Command Line](#command-line)
+  - [Desktop Environment](#desktop-environment)
+  - [Productivity](#productivity)
+  - [Media](#media)
+  - [Browser Extensions](#browser-extensions)
+  - [Mobile](#mobile)
+<!-- END mktoc -->
 
 | Category | Specifiers |
 |----------|----------------------|
