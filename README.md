@@ -24,6 +24,7 @@
   - [Infrastructure](#infrastructure)
 - [Development](#development)
   - [Nix](#nix)
+  - [Web](#web)
 - [Applications](#applications)
   - [Command Line](#command-line)
   - [Desktop Environment](#desktop-environment)
@@ -313,13 +314,7 @@
 | ✅ | Environment Loader | [Direnv 🐹](https://github.com/direnv/direnv) | [Envy 🦀](https://github.com/mre/envy) | ⬅️ | |
 | ✅ | Pager | [Tailspin 🦀](https://github.com/bensadeh/tailspin) | | 🆗 | [Less 💣](https://github.com/gwsw/less) |
 | ✅ | Performance Profiler | [Samply 🦀](https://github.com/mstange/samply) | | 🆗 | [Perf 💣](https://perf.wiki.kernel.org/) |
-| 🚧 | Web Bundler | [Rsbuild 🦀](https://github.com/web-infra-dev/rsbuild), [Webpack 🐒](https://github.com/webpack/webpack), [Turbopack 🦀](https://github.com/vercel/turbo) | [Farm 🦀](https://github.com/farm-fe/farm) | 🆗 | |
-| ✅ | Web Formatter | [Biome 🦀](https://github.com/biomejs/biome) | | 🆗 | |
-| 🚧 | ECMAScript Typechecker | [TypeScript 🐒](https://github.com/microsoft/typescript) | [Ezno 🦀](https://github.com/kaleidawave/ezno), [TypeScript Go 🐹](https://github.com/microsoft/typescript-go) | 🆗 | |
-| ✅ | Certificate Generation | [Rcgen 🦀](https://github.com/rustls/rcgen) | | 🆗 | [Mkcert 🐹](https://github.com/FiloSottile/mkcert) |
 | ✅ | TCP Tunnel | [Bore 🦀](https://github.com/ekzhang/bore) | | 🆗 | |
-
-</details>
 
 ### Nix
 
@@ -343,6 +338,19 @@
 | ✅ | Package Generation | [Nix-init 🦀](https://github.com/nix-community/nix-init) + [Nurl 🦀](https://github.com/nix-community/nurl) | | | |
 | ✅ | Derivation Difference | [Nix-diff-rs 🦀](https://github.com/Mic92/nix-diff-rs) | | | [Nix-diff λ](https://github.com/Gabriella439/nix-diff) |
 | ✅ | Dependency Explorer | [Nix-du 🦀](https://github.com/symphorien/nix-du) | | | [Nix-tree λ](https://github.com/utdemir/nix-tree) |
+
+</details>
+
+### Web
+
+<details open>
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| 🚧 | Web Bundler | [Rsbuild 🦀](https://github.com/web-infra-dev/rsbuild), [Webpack 🐒](https://github.com/webpack/webpack), [Turbopack 🦀](https://github.com/vercel/turbo) | [Farm 🦀](https://github.com/farm-fe/farm) | 🆗 | |
+| ✅ | Web Formatter | [Biome 🦀](https://github.com/biomejs/biome) | | 🆗 | |
+| 🚧 | ECMAScript Typechecker | [TypeScript 🐒](https://github.com/microsoft/typescript) | [Ezno 🦀](https://github.com/kaleidawave/ezno), [TypeScript Go 🐹](https://github.com/microsoft/typescript-go) | 🆗 | |
+| ✅ | Certificate Generation | [Rcgen 🦀](https://github.com/rustls/rcgen) | | 🆗 | [Mkcert 🐹](https://github.com/FiloSottile/mkcert) |
 
 </details>
 
