@@ -3,35 +3,35 @@
 <!-- BEGIN mktoc -->
 
 - [Personal Monorepo](#personal-monorepo)
-- [Repository](#repository)
-  - [Configurations](#configurations)
-  - [Modules](#modules)
-  - [Packages](#packages)
-  - [Projects](#projects)
-- [Hardware](#hardware)
-- [Services](#services)
-  - [Personal](#personal)
-  - [Social](#social)
-  - [Cloud](#cloud)
-- [Standards](#standards)
-  - [Hardware Interface](#hardware-interface)
-  - [Software Interface](#software-interface)
-  - [Encoding](#encoding)
-  - [Protocol](#protocol)
-- [System](#system)
-  - [Core](#core)
-  - [Libraries](#libraries)
-  - [Infrastructure](#infrastructure)
-- [Development](#development)
-  - [Nix](#nix)
-  - [Web](#web)
-- [Applications](#applications)
-  - [Command Line](#command-line)
-  - [Desktop Environment](#desktop-environment)
-  - [Productivity](#productivity)
-  - [Media](#media)
-  - [Browser Extensions](#browser-extensions)
-  - [Mobile](#mobile)
+- [📁 Repository](#-repository)
+  - [📋 Configurations](#-configurations)
+  - [🧩 Modules](#-modules)
+  - [📦 Packages](#-packages)
+  - [🚀 Projects](#-projects)
+- [💻 Hardware](#-hardware)
+- [🌐 Services](#-services)
+  - [🔒 Personal](#-personal)
+  - [👥 Social](#-social)
+  - [☁️ Cloud](#☁️-cloud)
+- [📏 Standards](#-standards)
+  - [🔌 Hardware Interface](#-hardware-interface)
+  - [🔗 Software Interface](#-software-interface)
+  - [📝 Encoding](#-encoding)
+  - [📡 Protocol](#-protocol)
+- [🖥️ System](#🖥️-system)
+  - [⚙️ Core](#⚙️-core)
+  - [📚 Libraries](#-libraries)
+  - [🏗️ Infrastructure](#🏗️-infrastructure)
+- [🛠️ Development](#🛠️-development)
+  - [❄️ Nix](#❄️-nix)
+  - [🌐 Web](#-web)
+- [📱 Applications](#-applications)
+  - [💻 Command Line](#-command-line)
+  - [🖥️ Desktop Environment](#🖥️-desktop-environment)
+  - [🚀 Productivity](#-productivity)
+  - [🎨 Media](#-media)
+  - [🌐 Browser Extensions](#-browser-extensions)
+  - [📱 Mobile](#-mobile)
 <!-- END mktoc -->
 
 | Category | Specifiers |
@@ -42,22 +42,22 @@
 | **Language** | 🔥 [Mojo](https://en.wikipedia.org/wiki/Mojo_(programming_language)), 🐍 Python, ❄️ Nix/[Nickel](https://github.com/tweag/nickel), 🦀 Rust, 🐹 Go, 💣 C/C++, 🐒 [ECMAScript](https://en.wikipedia.org/wiki/ECMAScript), 🐷 Java/Kotlin, 🌙 Lua, λ Haskell |
 | **Miscellaneous** | 🇽➡️🇾 Migrating from X to Y, 👁️ [Sentientist](https://en.wikipedia.org/wiki/Sentientism) |
 
-## Repository
+## 📁 Repository
 
-### Configurations
+### 📋 Configurations
 
 * [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/home-manager)
 * [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/nixos)
 * [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/devenv)
 
-### Modules
+### 🧩 Modules
 
 * [Flakelight ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/flakelight)
 * [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager)
 * [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos)
 * [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/devenv)
 
-### Packages
+### 📦 Packages
 
 * [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo.nix): Mojo development toolchain
 * [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cavif-rs/default.nix): AVIF image encoder CLI tool
@@ -74,13 +74,13 @@
 * [Layout 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/layout.nix): Graphviz dot renderer
 * [Age-plugin-fido2prf 🐹](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/age-plugin-fido2prf.nix): FIDO2 PRF plugin for age
 
-### Projects
+### 🚀 Projects
 
 * [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/homepage): Personal website and portfolio
 * [Wiki 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/wiki): Platform for political conference & beyond
 * [Mojo-Wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/mojo-wasm): WebAssembly interop layer for Mojo
 
-## Hardware
+## 💻 Hardware
 
 <details open>
 
@@ -99,9 +99,9 @@
 
 </details>
 
-## Services
+## 🌐 Services
 
-### Personal
+### 🔒 Personal
 
 <details open>
 
@@ -126,7 +126,7 @@
 
 </details>
 
-### Social
+### 👥 Social
 
 <details open>
 
@@ -151,7 +151,7 @@
 
 </details>
 
-### Cloud
+### ☁️ Cloud
 
 <details open>
 
@@ -168,9 +168,9 @@
 
 </details>
 
-## Standards
+## 📏 Standards
 
-### Hardware Interface
+### 🔌 Hardware Interface
 
 <details open>
 
@@ -187,7 +187,7 @@
 
 </details>
 
-### Software Interface
+### 🔗 Software Interface
 
 <details open>
 
@@ -203,7 +203,7 @@
 
 </details>
 
-### Encoding
+### 📝 Encoding
 
 <details open>
 
@@ -218,7 +218,7 @@
 
 </details>
 
-### Protocol
+### 📡 Protocol
 
 <details open>
 
@@ -230,9 +230,9 @@
 
 </details>
 
-## System
+## 🖥️ System
 
-### Core
+### ⚙️ Core
 
 <details open>
 
@@ -250,7 +250,7 @@
 
 </details>
 
-### Libraries
+### 📚 Libraries
 
 <details open>
 
@@ -273,7 +273,7 @@
 
 </details>
 
-### Infrastructure
+### 🏗️ Infrastructure
 
 <details open>
 
@@ -292,7 +292,7 @@
 
 </details>
 
-## Development
+## 🛠️ Development
 
 <details open>
 
@@ -316,7 +316,7 @@
 | ✅ | Performance Profiler | [Samply 🦀](https://github.com/mstange/samply) | | 🆗 | [Perf 💣](https://perf.wiki.kernel.org/) |
 | ✅ | TCP Tunnel | [Bore 🦀](https://github.com/ekzhang/bore) | | 🆗 | |
 
-### Nix
+### ❄️ Nix
 
 <details open>
 
@@ -341,7 +341,7 @@
 
 </details>
 
-### Web
+### 🌐 Web
 
 <details open>
 
@@ -354,9 +354,9 @@
 
 </details>
 
-## Applications
+## 📱 Applications
 
-### Command Line
+### 💻 Command Line
 
 <details open>
 
@@ -389,7 +389,7 @@
 
 </details>
 
-### Desktop Environment
+### 🖥️ Desktop Environment
 
 <details open>
 
@@ -403,7 +403,7 @@
 
 </details>
 
-### Productivity
+### 🚀 Productivity
 
 <details open>
 
@@ -419,7 +419,7 @@
 
 </details>
 
-### Media
+### 🎨 Media
 
 <details open>
 
@@ -436,7 +436,7 @@
 
 </details>
 
-### Browser Extensions
+### 🌐 Browser Extensions
 
 <details open>
 
@@ -449,7 +449,7 @@
 
 </details>
 
-### Mobile
+### 📱 Mobile
 
 <details open>
 
