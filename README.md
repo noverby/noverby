@@ -49,18 +49,28 @@
 
 ### 📋 Configurations
 
+<details open>
+
 * [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/home-manager)
 * [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/nixos)
 * [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/devenv)
 
+</details>
+
 ### 🧩 Modules
+
+<details open>
 
 * [Flakelight ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/flakelight)
 * [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager)
 * [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos)
 * [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/devenv)
 
+</details>
+
 ### 📦 Packages
+
+<details open>
 
 * [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo.nix): Mojo development toolchain
 * [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cavif-rs/default.nix): AVIF image encoder CLI tool
@@ -77,11 +87,17 @@
 * [Layout 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/layout.nix): Graphviz dot renderer
 * [Age-plugin-fido2prf 🐹](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/age-plugin-fido2prf.nix): FIDO2 PRF plugin for age
 
+</details>
+
 ### 🚀 Projects
+
+<details open>
 
 * [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/homepage): Personal website and portfolio
 * [Wiki 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/wiki): Platform for political conference & beyond
 * [Mojo-Wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/mojo-wasm): WebAssembly interop layer for Mojo
+
+</details>
 
 ## 💻 Hardware
 
