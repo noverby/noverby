@@ -1,6 +1,7 @@
 # Personal Monorepo
 
-<!-- BEGIN mktoc -->
+<!-- BEGIN mktoc {"min_depth": 2, "wrap_in_details": true} -->
+<details><summary>Table of Contents</summary>
 
 - [📁 Repository](#-repository)
   - [📋 Configurations](#-configurations)
@@ -31,6 +32,8 @@
   - [🎨 Media](#-media)
   - [🌐 Browser Extensions](#-browser-extensions)
   - [📱 Mobile](#-mobile)
+
+</details>
 <!-- END mktoc -->
 
 
