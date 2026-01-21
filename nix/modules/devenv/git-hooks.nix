@@ -13,7 +13,7 @@
         enable = true;
         package = pkgs.mktoc;
         name = "pre-commit-mktoc";
-        entry = "${pkgs.mktoc}/bin/mktoc -m 2";
+        entry = "${pkgs.mktoc}/bin/mktoc";
         files = "README\\.md$";
       };
       nil = {
