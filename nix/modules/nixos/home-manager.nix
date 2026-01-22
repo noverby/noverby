@@ -18,7 +18,7 @@
 in {
   home-manager = {
     inherit users;
-    useGlobalPkgs = false;
+    useGlobalPkgs = true;
     useUserPackages = true;
     extraSpecialArgs = {
       inherit inputs pkgs stateVersion src;
