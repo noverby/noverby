@@ -18,7 +18,7 @@
       };
       nil = {
         enable = true;
-        entry = builtins.toString (pkgs.writeShellScript "precommit-nil" ''
+        entry = "${pkgs.writeShellScript "precommit-nil" ''
           errors=false
           echo Checking: $@
           for file in $(echo "$@"); do
@@ -33,7 +33,7 @@
           if [[ $errors == true ]]; then
             exit 1
           fi
-        '');
+        ''}";
       };
       commitlint-rs = {
         enable = true;

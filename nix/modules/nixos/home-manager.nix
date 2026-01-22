@@ -7,13 +7,13 @@
   ...
 }: let
   usersPath = src + /nix/modules/home-manager/users;
-  users = builtins.listToAttrs (
+  users = lib.listToAttrs (
     map (
       file: {
         name = lib.removeSuffix ".nix" file;
         value = usersPath + "/${file}";
       }
-    ) (builtins.attrNames (builtins.readDir usersPath))
+    ) (lib.attrNames (lib.readDir usersPath))
   );
 in {
   home-manager = {

@@ -1,20 +1,24 @@
-{pkgs, ...}: {
+{
+  pkgs,
+  lib,
+  ...
+}: {
   home = {
     packages = [
       (
-        pkgs.writeScriptBin "vi" (builtins.readFile ./vi)
+        pkgs.writeScriptBin "vi" (lib.readFile ./vi)
       )
       (
-        pkgs.writeScriptBin "uf" (builtins.readFile ./uf)
+        pkgs.writeScriptBin "uf" (lib.readFile ./uf)
       )
       (
-        pkgs.writeScriptBin "zed-uf" (builtins.readFile ./zed-uf)
+        pkgs.writeScriptBin "zed-uf" (lib.readFile ./zed-uf)
       )
       (
-        pkgs.writeScriptBin "zellij-cwd" (builtins.readFile ./zellij-cwd)
+        pkgs.writeScriptBin "zellij-cwd" (lib.readFile ./zellij-cwd)
       )
       (
-        pkgs.writeScriptBin "nix-flamegraph" (builtins.readFile ./nix-flamegraph)
+        pkgs.writeScriptBin "nix-flamegraph" (lib.readFile ./nix-flamegraph)
       )
     ];
   };
