@@ -1,4 +1,8 @@
-{pkgs, ...}: {
+{
+  pkgs,
+  lib,
+  ...
+}: {
   programs.zen-browser = {
     enable = true;
     nativeMessagingHosts = [pkgs.firefoxpwa];
@@ -13,8 +17,8 @@
           "browser.ml.chat.sidebar" = true;
         };
         # Catppucccin
-        userChrome = builtins.readFile ./userChrome.css;
-        userContent = builtins.readFile ./userContent.css;
+        userChrome = lib.readFile ./userChrome.css;
+        userContent = lib.readFile ./userContent.css;
       };
       dev =
         default

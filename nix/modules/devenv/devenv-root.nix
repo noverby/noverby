@@ -1,13 +1,13 @@
 {
   inputs,
-  config,
+  lib,
   ...
 }: let
-  envJson = builtins.readFile inputs.env.outPath;
+  envJson = lib.readFile inputs.env.outPath;
   env =
     if envJson != ""
-    then builtins.fromJSON envJson
-    else {PWD = "${config.home.homeDirectory}/Work/${config.home.username}";};
+    then lib.fromJSON envJson
+    else {PWD = "/home/noverby/Work/noverby";};
 in {
   devenv.root = env.PWD;
 }

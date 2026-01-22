@@ -25,9 +25,9 @@ in {
 
       overwriteVSCodeSymlink = let
         inherit (config.programs.vscode.profiles.default) userSettings;
-        jsonSettings = pkgs.writeText "tmp_vscode_settings" (builtins.toJSON userSettings);
+        jsonSettings = pkgs.writeText "tmp_vscode_settings" (lib.toJSON userSettings);
         inherit (config.programs.vscode.profiles.default) keybindings;
-        jsonKeybindings = pkgs.writeText "tmp_vscode_keybindings" (builtins.toJSON keybindings);
+        jsonKeybindings = pkgs.writeText "tmp_vscode_keybindings" (lib.toJSON keybindings);
       in
         lib.hm.dag.entryAfter ["linkGeneration"] ''
           rm -rf "${settingsPath}" "${keybindingsPath}"
@@ -53,8 +53,8 @@ in {
         thenuprojectcontributors.vscode-nushell-lang
         ms-azuretools.vscode-docker
       ];
-      userSettings = builtins.fromJSON (builtins.readFile ./settings.json);
-      keybindings = builtins.fromJSON (builtins.readFile ./keybindings.json);
+      userSettings = lib.fromJSON (lib.readFile ./settings.json);
+      keybindings = lib.fromJSON (lib.readFile ./keybindings.json);
     };
   };
 }
