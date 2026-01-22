@@ -31,9 +31,9 @@
       keymapPath = "${configDir}/keymap.json";
       tasksPath = "${configDir}/tasks.json";
 
-      userKeymaps = builtins.readFile ./keymap.json;
-      userSettings = builtins.readFile ./settings.json;
-      userTasks = builtins.readFile ./tasks.json;
+      userKeymaps = lib.readFile ./keymap.json;
+      userSettings = lib.readFile ./settings.json;
+      userTasks = lib.readFile ./tasks.json;
     in {
       removeExistingZedSettings = lib.hm.dag.entryBefore ["checkLinkTargets"] ''
         rm -rf "${settingsPath}" "${keymapPath}"

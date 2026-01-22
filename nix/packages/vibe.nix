@@ -47,14 +47,14 @@ rustPlatform.buildRustPackage rec {
   doCheck = false;
 
   postInstall = ''
-    wrapProgram $out/bin/$pname --prefix LD_LIBRARY_PATH : ${builtins.toString (lib.makeLibraryPath [
+    wrapProgram $out/bin/$pname --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [
       # Without wayland in library path, this warning is raised:
       # "No windowing system present. Using surfaceless platform"
       wayland
       # Without vulkan-loader present, wgpu won't find any adapter
       vulkan-loader
       mesa
-    ])}
+    ]}
   '';
 
   LD_LIBRARY_PATH = "$LD_LIBRARY_PATH:${lib.makeLibraryPath buildInputs}";

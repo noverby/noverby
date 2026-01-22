@@ -1,12 +1,13 @@
 {
   inputs,
   src,
+  lib,
   ...
 }: {
   system = "x86_64-linux";
 
   specialArgs = {
-    inherit src inputs;
+    inherit src inputs lib;
     stateVersion = "24.05";
   };
 

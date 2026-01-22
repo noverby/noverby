@@ -2,6 +2,7 @@
   stateVersion,
   pkgs,
   config,
+  lib,
   ...
 }: {
   home = {
@@ -75,8 +76,8 @@
       Templates.source = symlink "${homeDirectory}/Sync/Templates";
       "Work/proj".source = symlink "${homeDirectory}/Sync/Projects";
       "Work/wiki".source = symlink "${homeDirectory}/Sync/Documents/Wiki";
-      "Work/tmp/.keep".source = builtins.toFile "keep" "";
-      ".ssh/socket/.keep".source = builtins.toFile "keep" "";
+      "Work/tmp/.keep".source = lib.toFile "keep" "";
+      ".ssh/socket/.keep".source = lib.toFile "keep" "";
       ".local/share/wallpapers/current.png".source = "${(pkgs.nix-wallpaper.override {
         preset = "catppuccin-mocha";
         logoSize = 10;

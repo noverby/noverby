@@ -1,4 +1,4 @@
-_: {
+{lib, ...}: {
   xdg = {
     enable = true;
     mimeApps = {
@@ -17,7 +17,7 @@ _: {
           "application/x-extension-xht"
         ];
       in
-        builtins.listToAttrs (map (mime: {
+        lib.listToAttrs (map (mime: {
             name = mime;
             value = "zen-beta.desktop";
           })
@@ -61,7 +61,7 @@ _: {
           "application/x-python"
         ];
       in
-        builtins.listToAttrs (map (mime: {
+        lib.listToAttrs (map (mime: {
             name = mime;
             value = "dev.zed.Zed.desktop";
           })
