@@ -9,5 +9,8 @@
     enable = true;
     theme = spicePkgs.themes.catppuccin;
     colorScheme = "mocha";
+    enabledCustomApps = [
+      spicePkgs.apps.ncsVisualizer
+    ];
   };
 }
