@@ -18,16 +18,17 @@
   - [🔗 Software Interface](#-software-interface)
   - [📝 Encoding](#-encoding)
   - [📡 Protocol](#-protocol)
-- [🖥️ System](#🖥️-system)
+- [🖥️ System](#-system)
   - [⚙️ Core](#⚙️-core)
   - [📚 Libraries](#-libraries)
-  - [🏗️ Infrastructure](#🏗️-infrastructure)
-- [🛠️ Development](#🛠️-development)
+  - [🏗️ Infrastructure](#-infrastructure)
+- [🛠️ Development](#-development)
   - [❄️ Nix](#❄️-nix)
   - [🌐 Web](#-web)
+  - [🐍 Python](#-python)
 - [📱 Applications](#-applications)
   - [💻 Command Line](#-command-line)
-  - [🖥️ Desktop Environment](#🖥️-desktop-environment)
+  - [🖥️ Desktop Environment](#-desktop-environment)
   - [🚀 Productivity](#-productivity)
   - [🎨 Media](#-media)
   - [🌐 Browser Extensions](#-browser-extensions)
@@ -35,6 +36,7 @@
 
 </details>
 <!-- END mktoc -->
+
 
 
 
@@ -373,6 +375,19 @@
 | ✅ | Web Formatter | [Biome 🦀](https://github.com/biomejs/biome) | | 🆗 | |
 | 🚧 | ECMAScript Typechecker | [TypeScript 🐒](https://github.com/microsoft/typescript) | [Ezno 🦀](https://github.com/kaleidawave/ezno), [TypeScript Go 🐹](https://github.com/microsoft/typescript-go) | 🆗 | |
 | ✅ | Certificate Generation | [Rcgen 🦀](https://github.com/rustls/rcgen) | | 🆗 | [Mkcert 🐹](https://github.com/FiloSottile/mkcert) |
+
+</details>
+
+### 🐍 Python
+
+<details open>
+
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Package Manager | [Uv 🦀](https://github.com/astral-sh/uv) | | 🆗 | [Poetry 🐍](https://github.com/python-poetry/poetry) |
+| ✅ | Formatter | [Ruff 🦀](https://github.com/astral-sh/ruff) | | 🆗 | [Black 🐍](https://github.com/psf/black) |
+| ✅ | Linter | [Ruff 🦀](https://github.com/astral-sh/ruff) | | 🆗 | [Flake8 🐍](https://github.com/PyCQA/flake8) |
+| ✅ | Type Checker | [Ty 🦀](https://github.com/astral-sh/ty) | | 🆗 | [Mypy 🐍](https://github.com/python/mypy) |
 
 </details>
 
