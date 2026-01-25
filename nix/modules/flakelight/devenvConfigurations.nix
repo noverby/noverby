@@ -6,6 +6,11 @@
 }: let
   inherit (lib) mkOption mkMerge mapAttrs;
   inherit (lib.types) lazyAttrsOf unspecified;
+
+  # Create an extended lib with builtin functions
+  extendedLib = lib.extend (final: prev: {
+    inherit (builtins) toJSON fromJSON toFile toString readDir filterSource;
+  });
 in {
   options = {
     devenvConfigurations = mkOption {
@@ -21,7 +26,10 @@ in {
         devShells = mapAttrs (name: cfg:
           inputs.devenv.lib.mkShell {
             inherit inputs pkgs;
-            modules = [cfg];
+            lib = extendedLib;
+            modules = [
+              cfg
+            ];
           })
         config.devenvConfigurations;
       };
