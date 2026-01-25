@@ -49,6 +49,10 @@
             trigger = ":us";
             replace = "🇺🇸";
           }
+          {
+            trigger = ":at";
+            replace = "🌀";
+          }
         ];
       };
     };
