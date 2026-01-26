@@ -40,6 +40,11 @@
     cavif-rs
     presenterm
     python313Packages.weasyprint
+    (python313.withPackages (pp:
+      with pp; [
+        pip
+        notebook
+      ]))
     # DevOps
     scaleway-cli
   ];
