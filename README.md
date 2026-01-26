@@ -1,7 +1,6 @@
 # [@overby.me](https://tangled.org/overby.me/overby.me)
 
-<!-- BEGIN mktoc {"min_depth": 2, "wrap_in_details": true} -->
-<details><summary>Table of Contents</summary>
+<!-- BEGIN mktoc {"min_depth": 2} -->
 
 - [📁 Repository](#-repository)
   - [📋 Configurations](#-configurations)
@@ -12,29 +11,27 @@
 - [🌐 Services](#-services)
   - [🔒 Personal](#-personal)
   - [👥 Social](#-social)
-  - [☁️ Cloud](#☁️-cloud)
+  - [☁️ Cloud](#️-cloud)
 - [📏 Standards](#-standards)
   - [🔌 Hardware Interface](#-hardware-interface)
   - [🔗 Software Interface](#-software-interface)
   - [📝 Encoding](#-encoding)
   - [📡 Protocol](#-protocol)
-- [🖥️ System](#-system)
-  - [⚙️ Core](#⚙️-core)
+- [🖥️ System](#️-system)
+  - [⚙️ Core](#️-core)
   - [📚 Libraries](#-libraries)
-  - [🏗️ Infrastructure](#-infrastructure)
-- [🛠️ Development](#-development)
-  - [❄️ Nix](#❄️-nix)
+  - [🏗️ Infrastructure](#️-infrastructure)
+- [🛠️ Development](#️-development)
+  - [❄️ Nix](#️-nix)
   - [🌐 Web](#-web)
   - [🐍 Python](#-python)
 - [📱 Applications](#-applications)
   - [💻 Command Line](#-command-line)
-  - [🖥️ Desktop Environment](#-desktop-environment)
+  - [🖥️ Desktop Environment](#️-desktop-environment)
   - [🚀 Productivity](#-productivity)
   - [🎨 Media](#-media)
   - [🌐 Browser Extensions](#-browser-extensions)
   - [📱 Mobile](#-mobile)
-
-</details>
 <!-- END mktoc -->
 
 | Category | Specifiers |
