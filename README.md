@@ -85,6 +85,7 @@
 * [Vibe 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/vibe.nix): A desktop audio visualizer
 * [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/sunsetc.nix): SSH in Rust
 * [Layout 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/layout.nix): Graphviz dot renderer
+* [Cpx 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cpx.nix):  Cp reimagined 
 * [Age-plugin-fido2prf 🐹](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/age-plugin-fido2prf.nix): FIDO2 PRF plugin for age
 
 </details>
