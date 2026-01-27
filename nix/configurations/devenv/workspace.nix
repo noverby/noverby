@@ -44,7 +44,9 @@
       with pp; [
         pip
         notebook
+        jupyter-console
       ]))
+    sidecar
     # DevOps
     scaleway-cli
   ];
