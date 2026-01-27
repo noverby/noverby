@@ -141,7 +141,7 @@ const nodes = [
 		id: "Codeberg",
 		desc: "Codeberg\nProfile",
 		icon: "codeberg.avif",
-		url: "https://codeberg.org/noverby",
+		url: "https://codeberg.org/overby-me",
 	},
 	{
 		id: "Tangled",
