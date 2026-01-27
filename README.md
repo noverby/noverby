@@ -40,7 +40,7 @@
 | **Control** | 🌐 [Nonprofit](https://en.wikipedia.org/wiki/Nonprofit_organization), 🏛️ [Public Authority](https://en.wikipedia.org/wiki/Public_administration), ⚖️ [Benefit Corp](https://en.wikipedia.org/wiki/Benefit_corporation), 📖 [Open Standard](https://en.wikipedia.org/wiki/Open_standard), 🏡 Self-hosted, 🔒 [Proprietary](https://en.wiktionary.org/wiki/proprietary), ⏳ [BSL](https://en.wikipedia.org/wiki/Business_Source_License) |
 | **Compatibility** | 🆗 Not needed, ⬅️ Backward compatible |
 | **Language** | 🔥 [Mojo](https://en.wikipedia.org/wiki/Mojo_(programming_language)), 🐍 Python, ❄️ Nix/[Nickel](https://github.com/tweag/nickel), 🦀 Rust, 🐹 Go, 💣 C/C++, 🐒 [ECMAScript](https://en.wikipedia.org/wiki/ECMAScript), 🐷 Java/Kotlin, 🌙 Lua, λ Haskell |
-| **Miscellaneous** | 🇽➡️🇾 Migrating from X to Y, 🌀 [Atmosphere (AT Protocol)](https://atproto.com) , 👁️ [Sentientist](https://en.wikipedia.org/wiki/Sentientism) |
+| **Miscellaneous** | 🇽➡️🇾 Migrating from 🇽 to 🇾, 🌀 [Atmosphere (AT Protocol)](https://atproto.com) , 👁️ [Sentientist](https://en.wikipedia.org/wiki/Sentientism) |
 
 ## 📁 Repository
 
@@ -94,7 +94,7 @@
 <details open>
 
 * [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/homepage): Personal website and portfolio
-* [Wiki 🐒➡️🦀@](https://tangled.org/@overby.me/overby.me/tree/main/projects/wiki): Platform for political conference & beyond
+* [Wiki 🐒➡️🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/projects/wiki): Platform for political conference & beyond
 * [Mojo-Wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/mojo-wasm): WebAssembly interop layer for Mojo
 
 </details>
