@@ -48,6 +48,7 @@
         notebook
         jupyter-console
         deno-jupyter-kernel
+        mojo-jupyter-kernel
       ]))
     sidecar
     # DevOps
