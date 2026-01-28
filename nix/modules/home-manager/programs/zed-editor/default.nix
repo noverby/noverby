@@ -6,7 +6,7 @@
 }: {
   programs.zed-editor = {
     enable = true;
-    package = pkgs.zed-latest;
+    package = pkgs.pkgsUnstable.zed-editor;
     extensions = [
       "biome"
       "nix"
@@ -25,6 +25,15 @@
     ];
   };
   home = {
+    packages = with pkgs; [
+      # Install Zed nightly without zeditor conflict
+      (writeShellApplication {
+        name = "zed-nightly";
+        text = ''
+          exec ${lib.getExe zed-latest} "$@"
+        '';
+      })
+    ];
     activation = let
       configDir = "${config.xdg.configHome}/zed";
       settingsPath = "${configDir}/settings.json";
