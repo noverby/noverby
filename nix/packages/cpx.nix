@@ -3,7 +3,6 @@
   rustPlatform,
   fetchFromGitHub,
 }:
-
 rustPlatform.buildRustPackage {
   pname = "cpx";
   version = "unstable";
@@ -21,7 +20,7 @@ rustPlatform.buildRustPackage {
     description = "";
     homepage = "https://github.com/11happy/cpx";
     license = lib.licenses.mit;
-    maintainers = with lib.maintainers; [ noverby ];
+    maintainers = with lib.maintainers; [noverby];
     mainProgram = "cpx";
   };
 }
