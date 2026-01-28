@@ -3,18 +3,7 @@
   rustPlatform,
   fetchFromGitHub,
   pkg-config,
-  atk,
-  cairo,
-  gdk-pixbuf,
-  glib,
-  gtk3,
-  libsoup_3,
-  openssl,
-  pango,
   webkitgtk_4_1,
-  wrapGAppsHook3,
-  wayland,
-  libxkbcommon,
 }:
 rustPlatform.buildRustPackage rec {
   pname = "sidecar";
