@@ -70,6 +70,8 @@
 <details open>
 
 * [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo.nix): Mojo development toolchain
+* [Mojo-jupyter-kernel 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo-jupyter-kernel.nix): Jupyter Notebook kernel for Mojo
+* [Deno-jupyter-kernel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/deno-jupyter-kernel.nix): Jupyter Notebook kernel for Deno
 * [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cavif-rs/default.nix): AVIF image encoder CLI tool
 * [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/rcgen.nix): X.509 certificate generation CLI tool
 * [Hakoniwa 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/hakoniwa.nix): Process isolation CLI tool
@@ -85,7 +87,6 @@
 * [Wondermagick 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/wondermagick/default.nix): Memory-safe replacement for Imagemagick
 * [Cpx 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cpx.nix): Cp reimagined 
 * [Sidecar 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/sidecar/default.nix): Jupyter Notebook viewer
-* [Deno-jupyter-kernel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/deno-jupyter-kernel.nix): Jupyter Notebook kernel for Deno
 * [Age-plugin-fido2prf 🐹](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/age-plugin-fido2prf.nix): FIDO2 PRF plugin for age
 
 </details>
