@@ -31,7 +31,6 @@
     openssl
     # Mojo
     mojo
-    python3
     llvmPackages_latest.llvm
     llvmPackages_latest.lld
     # Deno
@@ -39,7 +38,10 @@
     # Media
     cavif-rs
     presenterm
-    python313Packages.weasyprint
+    (writeShellScriptBin "weasyprint" ''
+      exec ${python313Packages.weasyprint}/bin/weasyprint "$@"
+    '')
+    # Jupyter
     (python313.withPackages (pp:
       with pp; [
         pip
