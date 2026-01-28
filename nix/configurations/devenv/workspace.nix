@@ -47,6 +47,7 @@
         pip
         notebook
         jupyter-console
+        deno-jupyter-kernel
       ]))
     sidecar
     # DevOps

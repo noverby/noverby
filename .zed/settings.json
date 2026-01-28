@@ -22,5 +22,11 @@
 		"hide_hidden": true,
 		"hide_gitignore": true
 	},
-	"hidden_files": ["**/.*", "**/*.lock"]
+	"hidden_files": ["**/.*", "**/*.lock"],
+	"jupyter": {
+		"kernel_selections": {
+			"python": "python3",
+			"typescript": "deno"
+		}
+	}
 }
