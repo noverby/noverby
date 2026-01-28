@@ -602,6 +602,7 @@
         "rust-overlay": "rust-overlay",
         "spicetify-nix": "spicetify-nix",
         "systems": "systems",
+        "zed": "zed",
         "zen-browser": "zen-browser"
       }
     },
@@ -682,6 +683,35 @@
       "original": {
         "owner": "numtide",
         "repo": "treefmt-nix",
+        "type": "github"
+      }
+    },
+    "zed": {
+      "inputs": {
+        "crane": [
+          "crane"
+        ],
+        "flake-compat": [
+          "flake-compat"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": [
+          "rust-overlay"
+        ]
+      },
+      "locked": {
+        "lastModified": 1769592850,
+        "narHash": "sha256-+x2IOH9Sfob8iOJBBnpTLtM74Zl2Imux3QGu3Su0sHs=",
+        "owner": "zed-industries",
+        "repo": "zed",
+        "rev": "3339c2d982e79c993076c20b78eb3c8cbd16fb71",
+        "type": "github"
+      },
+      "original": {
+        "owner": "zed-industries",
+        "repo": "zed",
         "type": "github"
       }
     },

@@ -74,6 +74,15 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.home-manager.follows = "home-manager";
     };
+    zed = {
+      url = "github:zed-industries/zed";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        crane.follows = "crane";
+        rust-overlay.follows = "rust-overlay";
+        flake-compat.follows = "flake-compat";
+      };
+    };
     nxv = {
       url = "github:jamesbrink/nxv";
       inputs = {
