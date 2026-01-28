@@ -106,7 +106,6 @@ stdenv.mkDerivation rec {
     mv $out/bin/mojo $out/bin/mojo-unwrapped
     cat > $out/bin/mojo << EOF
     #!${stdenv.shell}
-    mkdir -p /tmp/crashdb
     export MODULAR_HOME=$out/etc/modular
     export TERMINFO_DIRS=$out/share/terminfo
     exec $out/bin/mojo-unwrapped "\$@"
@@ -118,7 +117,6 @@ stdenv.mkDerivation rec {
     mv $out/bin/mojo-lldb $out/bin/mojo-lldb-unwrapped
     cat > $out/bin/mojo-lldb << EOF
     #!${stdenv.shell}
-    mkdir -p /tmp/crashdb
     export MODULAR_HOME=$out/etc/modular
     export TERMINFO_DIRS=$out/share/terminfo
     exec $out/bin/mojo-lldb-unwrapped "\$@"
@@ -129,14 +127,13 @@ stdenv.mkDerivation rec {
     mv $out/bin/mojo-lsp-server $out/bin/mojo-lsp-server-unwrapped
     cat > $out/bin/mojo-lsp-server << EOF
     #!${stdenv.shell}
-    mkdir -p /tmp/crashdb
     export MODULAR_HOME=$out/etc/modular
     exec $out/bin/mojo-lsp-server-unwrapped -I $out/lib/mojo "\$@"
     EOF
     chmod +x $out/bin/mojo-lsp-server
 
     # /etc/modular/crashdb needs to be mutable
-    ln -s /tmp/crashdb $out/etc/modular/crashdb
+    ln -s /tmp/ $out/etc/modular/crashdb
   '';
 
   doInstallCheck = true;
