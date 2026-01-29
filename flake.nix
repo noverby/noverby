@@ -8,9 +8,17 @@
       flake = false;
     };
 
-    # Nixpkgs
+    # Nix
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+    lix = {
+      url = "git+https://git.lix.systems/lix-project/lix?ref=refs/tags/2.94.0";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        flake-compat.follows = "flake-compat";
+        pre-commit-hooks.follows = "git-hooks";
+      };
+    };
 
     # Config support
     flakelight = {
