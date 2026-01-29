@@ -26,6 +26,10 @@
             replace = "🔥";
           }
           {
+            trigger = ":cpp";
+            replace = "💣";
+          }
+          {
             trigger = ":ok";
             replace = "✅";
           }
