@@ -49,6 +49,7 @@
         jupyter-console
         deno-jupyter-kernel
         mojo-jupyter-kernel
+        rust-jupyter-kernel
       ]))
     sidecar
     # DevOps
