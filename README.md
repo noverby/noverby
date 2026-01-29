@@ -390,6 +390,7 @@
 | ✅ | Formatter | [Ruff 🦀](https://github.com/astral-sh/ruff) | | 🆗 | [Black 🐍](https://github.com/psf/black) |
 | ✅ | Linter | [Ruff 🦀](https://github.com/astral-sh/ruff) | | 🆗 | [Flake8 🐍](https://github.com/PyCQA/flake8) |
 | ✅ | Type Checker | [Ty 🦀](https://github.com/astral-sh/ty) | | 🆗 | [Mypy 🐍](https://github.com/python/mypy) |
+| ✅ | Profiler | [Py-spy 🦀](https://github.com/benfred/py-spy) | | 🆗 | [Yappi ](https://github.com/sumerc/yappi) |
 
 </details>
 
