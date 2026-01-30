@@ -50,6 +50,7 @@
         deno-jupyter-kernel
         mojo-jupyter-kernel
         rust-jupyter-kernel
+        xeus-lix
       ]))
     sidecar
     # DevOps
