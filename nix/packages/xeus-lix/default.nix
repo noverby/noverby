@@ -1,0 +1,64 @@
+{
+  lib,
+  stdenv,
+  fetchFromGitHub,
+  cmake,
+  python3,
+  pkg-config,
+  xeus,
+  xeus-zmq,
+  cppzmq,
+  openssl,
+  nlohmann_json,
+  libuuid,
+  boost,
+  lix,
+  capnproto,
+  libsodium,
+}:
+stdenv.mkDerivation {
+  pname = "xeus-lix";
+  version = "unstable";
+
+  src = fetchFromGitHub {
+    owner = "ptrpaws";
+    repo = "xeus-lix";
+    rev = "a88bd9e02f8c960f02cb5642fbe36e6a2fc6cbc7";
+    hash = "sha256-5S6ErMn5iJCJek3FmKLgQdIHDau7YTvVql39UeO2YHk=";
+  };
+
+  patches = [
+    ./xeus-lix.patch
+  ];
+
+  nativeBuildInputs = [
+    cmake
+    pkg-config
+  ];
+
+  buildInputs = [
+    lix.dev
+    capnproto
+    xeus
+    xeus-zmq
+    cppzmq
+    openssl
+    nlohmann_json
+    libuuid
+    boost
+    libsodium
+  ];
+
+  cmakeFlags = [
+    "-DPython3_EXECUTABLE=${python3}/bin/python3"
+  ];
+
+  meta = {
+    description = "";
+    homepage = "https://github.com/ptrpaws/xeus-lix";
+    license = lib.licenses.lgpl21Only;
+    maintainers = with lib.maintainers; [noverby];
+    mainProgram = "xlix";
+    platforms = lib.platforms.all;
+  };
+}

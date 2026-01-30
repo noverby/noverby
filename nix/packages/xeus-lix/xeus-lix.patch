@@ -1,0 +1,193 @@
+diff --git a/src/lix_eval_helpers.cpp b/src/lix_eval_helpers.cpp
+index 1234567..89abcde 100644
+--- a/src/lix_eval_helpers.cpp
++++ b/src/lix_eval_helpers.cpp
+@@ -139,9 +139,9 @@ namespace xeus_lix
+             return markdown_stream.str();
+         }
+         // try to get the documentation comment if it's a lambda with a source position
+-        else if (v.isLambda() && v.lambda.fun->pos != nix::noPos)
++        else if (v.isLambda() && v.lambda().fun->pos != nix::noPos)
+         {
+-            auto pos = m_evaluator->positions[v.lambda.fun->pos];
++            auto pos = m_evaluator->positions[v.lambda().fun->pos];
+             if (auto path = std::get_if<nix::CheckedSourcePath>(&pos.origin))
+             {
+                 auto docComment = lambdaDocsForPos(*path, pos);
+diff --git a/src/lix_interpreter.cpp b/src/lix_interpreter.cpp
+index 78d0526..8298711 100644
+--- a/src/lix_interpreter.cpp
++++ b/src/lix_interpreter.cpp
+@@ -101,11 +101,10 @@ namespace xeus_lix
+                     [&](nix::ExprReplBindings& bindings) {
+                         for (auto& [name, expr] : bindings.symbols)
+                         {
+-                            nix::Value* val = m_evaluator->mem.allocValue();
+-                            expr->eval(*m_evalState, *m_localEnv, *val);
++                            expr->eval(*m_evalState, *m_localEnv, m_localEnv->values[m_displacement]);
+                             (void)expr.release();
+                             m_staticEnv->vars.insert_or_assign(name, m_displacement);
+-                            m_localEnv->values[m_displacement++] = val;
++                            m_displacement++;
+                         }
+                     },
+                     [&](std::unique_ptr<nix::Expr>& expr) {
+@@ -120,18 +119,17 @@ namespace xeus_lix
+                             if (val.type() == nix::nAttrs)
+                             {
+                                 // a `_toMime` attribute signals a rich representation
+-                                if (auto it = val.attrs->find(m_evaluator->symbols.create("_toMime"));
+-                                    it != val.attrs->end())
++                                if (auto attr = val.attrs()->get(m_evaluator->symbols.create("_toMime")))
+                                 {
+-                                    nix::Value& mime_set_val = *it->value;
+-                                    m_evalState->forceAttrs(mime_set_val, it->pos, "while rendering _toMime");
++                                    nix::Value& mime_set_val = attr->value;
++                                    m_evalState->forceAttrs(mime_set_val, attr->pos, "while rendering _toMime");
+ 
+                                     nl::json data_bundle;
+-                                    for (const auto& attr : *mime_set_val.attrs)
++                                    for (const auto& attr : *mime_set_val.attrs())
+                                     {
+                                         std::string_view mime_type_sv = m_evaluator->symbols[attr.name];
+                                         std::string mime_type(mime_type_sv);
+-                                        nix::Value& data_val_ref = *attr.value;
++                                        nix::Value& data_val_ref = attr.value;
+                                         std::string data_str(
+                                             m_evalState->forceString(data_val_ref, attr.pos, "mime data")
+                                         );
+@@ -402,7 +400,7 @@ namespace xeus_lix
+ 
+                 if (base_val.type() == nix::nAttrs)
+                 {
+-                    for (const auto& attr : *base_val.attrs)
++                    for (const auto& attr : *base_val.attrs())
+                     {
+                         std::string_view attr_name_sv = m_evaluator->symbols[attr.name];
+                         std::string attr_name(attr_name_sv);
+diff --git a/src/lix_logger.cpp b/src/lix_logger.cpp
+index 1234567..89abcde 100644
+--- a/src/lix_logger.cpp
++++ b/src/lix_logger.cpp
+@@ -8,7 +8,7 @@ namespace xeus_lix
+     }
+ 
+     // called by lix to log general messages.
+-    void JupyterLogger::log(nix::Verbosity lvl, const std::string_view s)
++    nix::Logger::BufferState JupyterLogger::log(nix::Verbosity lvl, const std::string_view s)
+     {
+         // error/warn: redirected to stderr of cell
+         if (lvl <= nix::lvlWarn) {
+@@ -19,10 +19,11 @@ namespace xeus_lix
+             p_interpreter->publish_stream("stdout", std::string(s) + "\n");
+         }
+         // talkative+: ignore
++        return nix::Logger::BufferState::HasSpace;
+     }
+ 
+     // called by lix to log structured error information.
+-    void JupyterLogger::logEI(const nix::ErrorInfo& ei)
++    nix::Logger::BufferState JupyterLogger::logEI(const nix::ErrorInfo& ei)
+     {
+         std::stringstream oss;
+         // use lix's own error formatting utility.
+@@ -30,26 +31,30 @@ namespace xeus_lix
+         nix::showErrorInfo(oss, ei, nix::loggerSettings.showTrace.get());
+         // ErrorInfo structures are typically more severe and should always be shown.
+         p_interpreter->publish_stream("stderr", oss.str());
++        return nix::Logger::BufferState::HasSpace;
+     }
+ 
+     // we don't need the following methods for now
+ 
+-    void JupyterLogger::startActivity(
++    nix::Logger::BufferState JupyterLogger::startActivityImpl(
+         nix::ActivityId,
+         nix::Verbosity,
+         nix::ActivityType,
+         const std::string&,
+         const Fields&,
+         nix::ActivityId
+     )
+     {
++        return nix::Logger::BufferState::HasSpace;
+     }
+ 
+-    void JupyterLogger::stopActivity(nix::ActivityId)
++    nix::Logger::BufferState JupyterLogger::stopActivityImpl(nix::ActivityId)
+     {
++        return nix::Logger::BufferState::HasSpace;
+     }
+ 
+-    void JupyterLogger::result(nix::ActivityId, nix::ResultType, const Fields&)
++    nix::Logger::BufferState JupyterLogger::resultImpl(nix::ActivityId, nix::ResultType, const Fields&)
+     {
++        return nix::Logger::BufferState::HasSpace;
+     }
+ }
+diff --git a/src/lix_logger.hpp b/src/lix_logger.hpp
+index 1234567..89abcde 100644
+--- a/src/lix_logger.hpp
++++ b/src/lix_logger.hpp
+@@ -14,15 +14,15 @@ namespace xeus_lix
+         explicit JupyterLogger(interpreter* interp);
+ 
+         // redirects general log messages
+-        void log(nix::Verbosity lvl, std::string_view s) override;
++        nix::Logger::BufferState log(nix::Verbosity lvl, std::string_view s) override;
+         // redirects structured error info
+-        void logEI(const nix::ErrorInfo& ei) override;
++        nix::Logger::BufferState logEI(const nix::ErrorInfo& ei) override;
+ 
+         // the following are part of the nix::Logger interface but not implemented yet
+-        void startActivity(nix::ActivityId, nix::Verbosity, nix::ActivityType, const std::string&, const Fields&, nix::ActivityId)
++        nix::Logger::BufferState startActivityImpl(nix::ActivityId, nix::Verbosity, nix::ActivityType, const std::string&, const Fields&, nix::ActivityId)
+             override;
+-        void stopActivity(nix::ActivityId) override;
+-        void result(nix::ActivityId, nix::ResultType, const Fields&) override;
++        nix::Logger::BufferState stopActivityImpl(nix::ActivityId) override;
++        nix::Logger::BufferState resultImpl(nix::ActivityId, nix::ResultType, const Fields&) override;
+ 
+     private:
+         interpreter* p_interpreter;
+diff --git a/src/lix_repl_commands.cpp b/src/lix_repl_commands.cpp
+index 99249e0..732c589 100644
+--- a/src/lix_repl_commands.cpp
++++ b/src/lix_repl_commands.cpp
+@@ -103,7 +103,7 @@ namespace xeus_lix
+         nix::Bindings* auto_args = m_evaluator->buildBindings(0).finish();
+         m_evalState->autoCallFunction(*auto_args, v, v_autocalled, nix::noPos);
+         m_evalState->forceAttrs(v_autocalled, nix::noPos, "while loading file attributes");
+-        add_to_scope(*v_autocalled.attrs);
++        add_to_scope(*v_autocalled.attrs());
+         m_loaded_files.push_back(path.to_string());
+     }
+ 
+@@ -152,7 +152,7 @@ namespace xeus_lix
+         nix::Value v(nix::Value::null_t{});
+         eval_pure_expression(arg, v);
+         m_evalState->forceAttrs(v, nix::noPos, "while evaluating attribute set for :add");
+-        add_to_scope(*v.attrs);
++        add_to_scope(*v.attrs());
+     }
+ 
+     // :b <expr> - Build a derivation
+@@ -304,13 +304,17 @@ namespace xeus_lix
+                 flakeRef,
+                 nix::flake::LockFlags{ .updateLockFile = false,
+                                        .useRegistries = !nix::evalSettings.pureEval.get(),
+-                                       .allowUnlocked = !nix::evalSettings.pureEval.get() }
++                                       .allowUnlocked = !nix::evalSettings.pureEval.get(),
++                                       .referenceLockFilePath = {},
++                                       .outputLockFilePath = {},
++                                       .inputOverrides = {},
++                                       .inputUpdates = {} }
+             ),
+             v
+         );
+         m_evalState->forceAttrs(v, nix::noPos, "while loading flake outputs");
+-        add_to_scope(*v.attrs);
++        add_to_scope(*v.attrs());
+     }
+ 
+     // :p <expr> - Evaluate and print expression recursively Strings are printed directly, without escaping.
