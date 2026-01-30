@@ -16,7 +16,7 @@
   capnproto,
   libsodium,
 }:
-stdenv.mkDerivation {
+python3.pkgs.toPythonModule (stdenv.mkDerivation {
   pname = "xeus-lix";
   version = "unstable";
 
@@ -61,4 +61,4 @@ stdenv.mkDerivation {
     mainProgram = "xlix";
     platforms = lib.platforms.all;
   };
-}
+})
