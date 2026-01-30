@@ -72,6 +72,7 @@
 * [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo.nix): Mojo development toolchain
 * [Mojo-jupyter-kernel 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo-jupyter-kernel.nix): Jupyter Notebook kernel for Mojo
 * [Deno-jupyter-kernel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/deno-jupyter-kernel.nix): Jupyter Notebook kernel for Deno
+* [Xeus-lix 💣](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/xeus-lix/default.nix): Xeus Lix Jupyter Kernel
 * [Rust-jupyter-kernel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/Rust-jupyter-kernel.nix): Jupyter Notebook kernel for Rust
 * [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cavif-rs/default.nix): AVIF image encoder CLI tool
 * [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/rcgen.nix): X.509 certificate generation CLI tool
