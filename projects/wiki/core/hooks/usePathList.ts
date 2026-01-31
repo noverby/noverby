@@ -1,13 +1,9 @@
-import { useRouter } from "next/router";
+import { useLocation } from 'react-router-dom';
 
 const usePathList = () => {
-	const router = useRouter();
-	const query = router.query;
-	return Array.isArray(query.path)
-		? query.path
-		: query.path
-			? [query.path]
-			: [];
+	const { pathname } = useLocation();
+	const path = decodeURIComponent(pathname);
+	return path ? path.split("/").filter(Boolean) : [];
 };
 
 export default usePathList;
