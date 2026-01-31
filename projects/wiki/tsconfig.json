@@ -2,7 +2,7 @@
 	"compilerOptions": {
 		"target": "ES6",
 		"lib": ["DOM", "ESNext"],
-		"jsx": "preserve",
+		"jsx": "react-jsx",
 		"moduleResolution": "Node",
 		"forceConsistentCasingInFileNames": true,
 		"strict": true,
@@ -12,7 +12,8 @@
 		"allowJs": true,
 		"baseUrl": ".",
 		"paths": {
-			"comps": ["components"],
+			"comps": ["src/components"],
+			"components": ["src/components"],
 			"hooks": ["core/hooks"],
 			"gql": ["core/gql"],
 			"nhost": ["core/nhost"],
@@ -21,7 +22,9 @@
 			"core/path": ["core/path"],
 			"core/document": ["core/document"],
 			"core/constants": ["core/constants"],
-			"core/util": ["core/util"]
+			"core/util": ["core/util"],
+			"core/bugfender": ["core/bugfender"],
+			"core/theme/*": ["core/theme/*"]
 		},
 		"skipLibCheck": true,
 		"resolveJsonModule": true,
@@ -29,20 +32,8 @@
 		"sourceMap": true,
 		"allowSyntheticDefaultImports": true,
 		"downlevelIteration": true,
-		"module": "esnext",
-		"incremental": true,
-		"plugins": [
-			{
-				"name": "next"
-			}
-		]
+		"module": "esnext"
 	},
-	"include": [
-		"next-env.d.ts",
-		"next.config.mjs",
-		"**/*.ts",
-		"**/*.tsx",
-		".next/types/**/*.ts"
-	],
-	"exclude": ["node_modules"]
+	"include": ["**/*.ts", "**/*.tsx"],
+	"exclude": ["node_modules", "dist", "out", ".next"]
 }

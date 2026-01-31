@@ -28,11 +28,11 @@ import {
 import { Avatar as MuiAvatar, Skeleton, Typography } from "@mui/material";
 import { Box } from "@mui/system";
 import type { Maybe } from "gql";
-import FilePdfBoxIcon from "./svg/file-pdf-box.svg";
-import MicrosoftExcelIcon from "./svg/microsoft-excel.svg";
-import MicrosoftPowerpointIcon from "./svg/microsoft-powerpoint.svg";
-import MicrosoftWordIcon from "./svg/microsoft-word.svg";
-import VideoBoxIcon from "./svg/video-box.svg";
+import FilePdfBoxIcon from "./svg/file-pdf-box.svg?react";
+import MicrosoftExcelIcon from "./svg/microsoft-excel.svg?react";
+import MicrosoftPowerpointIcon from "./svg/microsoft-powerpoint.svg?react";
+import MicrosoftWordIcon from "./svg/microsoft-word.svg?react";
+import VideoBoxIcon from "./svg/video-box.svg?react";
 
 const getLetter = (index: number) => {
 	const f = String.fromCharCode(65 + (index % 26));
@@ -51,7 +51,7 @@ const IconId = ({
 	name?: string;
 	avatar?: boolean;
 	child?: boolean;
-}) => {
+  }) => {
 	switch (mimeId) {
 		case "wiki/search":
 			return <Search />;
