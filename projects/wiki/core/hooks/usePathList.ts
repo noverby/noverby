@@ -1,7 +1,8 @@
 import { useLocation } from 'react-router-dom';
 
 const usePathList = () => {
-	const path = useLocation().pathname;
+	const { pathname } = useLocation();
+	const path = decodeURIComponent(pathname);
 	return path ? path.split("/").filter(Boolean) : [];
 };
 
