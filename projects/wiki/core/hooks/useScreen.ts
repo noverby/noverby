@@ -1,8 +1,8 @@
-import { useRouter } from "next/router";
+import { useSearchParams } from "react-router-dom";
 
 const useScreen = () => {
-	const router = useRouter();
-	return router.query.app === "screen";
+	const [searchParams] = useSearchParams();
+	return searchParams.get("app") === "screen";
 };
 
 export default useScreen;

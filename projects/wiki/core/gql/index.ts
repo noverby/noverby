@@ -22,7 +22,7 @@ const getHeaders = (): Record<string, string> =>
 					"x-hasura-role": "public",
 				};
 
-const url = `https://${process.env.NEXT_PUBLIC_NHOST_SUBDOMAIN}.hasura.${process.env.NEXT_PUBLIC_NHOST_REGION}.nhost.run/v1/graphql`;
+const url = `https://${process.env.PUBLIC_NHOST_SUBDOMAIN}.hasura.${process.env.PUBLIC_NHOST_REGION}.nhost.run/v1/graphql`;
 
 const queryFetcher: QueryFetcher = async (
 	{ query, variables, operationName },
