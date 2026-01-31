@@ -39,7 +39,7 @@
 | **State** | ✅ Good for now, 🚧 WIP, 🚫 Blocked, ❓ Undecided |
 | **Control** | 🌐 [Nonprofit](https://en.wikipedia.org/wiki/Nonprofit_organization), 🏛️ [Public Authority](https://en.wikipedia.org/wiki/Public_administration), ⚖️ [Benefit Corp](https://en.wikipedia.org/wiki/Benefit_corporation), 📖 [Open Standard](https://en.wikipedia.org/wiki/Open_standard), 🏡 Self-hosted, 🔒 [Proprietary](https://en.wiktionary.org/wiki/proprietary), ⏳ [BSL](https://en.wikipedia.org/wiki/Business_Source_License) |
 | **Compatibility** | 🆗 Not needed, ⬅️ Backward compatible |
-| **Language** | 🔥 [Mojo](https://en.wikipedia.org/wiki/Mojo_(programming_language)), 🐍 Python, ❄️ Nix/[Nickel](https://github.com/tweag/nickel), 🦀 Rust, 🐹 Go, 💣 C/C++, 🐒 [ECMAScript](https://en.wikipedia.org/wiki/ECMAScript), 🐷 Java/Kotlin, 🌙 Lua, λ Haskell |
+| **Language** | 🔥 [Mojo](https://en.wikipedia.org/wiki/Mojo_(programming_language)), 🐍 Python, ❄️ Nix/[Nickel](https://github.com/tweag/nickel), 🦀 Rust, 🦪 Nushell, 🐹 Go, 💣 C/C++, 🐒 [ECMAScript](https://en.wikipedia.org/wiki/ECMAScript), 🐷 Java/Kotlin, 🌙 Lua, λ Haskell |
 | **Miscellaneous** | 🇽➡️🇾 Migrating from 🇽 to 🇾, 🌀 [Atmosphere (AT Protocol)](https://atproto.com) , 👁️ [Sentientist](https://en.wikipedia.org/wiki/Sentientism) |
 
 ## 📁 Repository
@@ -71,8 +71,9 @@
 
 * [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo.nix): Mojo development toolchain
 * [Mojo-jupyter-kernel 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo-jupyter-kernel.nix): Jupyter Notebook kernel for Mojo
-* [Deno-jupyter-kernel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/deno-jupyter-kernel.nix): Jupyter Notebook kernel for Deno
-* [Xeus-lix 💣](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/xeus-lix/default.nix): Xeus Lix Jupyter Kernel
+* [Deno-jupyter-kernel 🐒](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/deno-jupyter-kernel.nix): Jupyter Notebook kernel for Deno
+* [Nu-jupyter-kernel 🦪](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/nu-jupyter-kernel.nix): Jupyter Notebook kernel for Nushell
+* [Xeus-lix ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/xeus-lix/default.nix): Jupyter Notebook kernel for Nix
 * [Rust-jupyter-kernel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/Rust-jupyter-kernel.nix): Jupyter Notebook kernel for Rust
 * [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cavif-rs/default.nix): AVIF image encoder CLI tool
 * [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/rcgen.nix): X.509 certificate generation CLI tool
@@ -403,16 +404,16 @@
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Shell | [Nushell 🦀](https://github.com/nushell/nushell) | | [Brush 🦀](https://github.com/reubeno/brush), [Rusty Bash 🦀](https://github.com/shellgei/rusty_bash) | [Bash 💣](https://git.savannah.gnu.org/cgit/bash.git) |
+| ✅ | Shell | [Nushell 🦪🦀](https://github.com/nushell/nushell) | | [Brush 🦀](https://github.com/reubeno/brush), [Rusty Bash 🦀](https://github.com/shellgei/rusty_bash) | [Bash 💣](https://git.savannah.gnu.org/cgit/bash.git) |
 | ✅ | Shell Prompt | [Starship 🦀](https://github.com/starship/starship) | | 🆗 | |
-| ✅ | Core Utilities | [Nushell Builtins 🦀](https://github.com/nushell/nushell) | | [Uutils 🦀](https://github.com/uutils/coreutils) | [Coreutils 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Core Utilities | [Nushell Builtins 🦪🦀](https://github.com/nushell/nushell) | | [Uutils 🦀](https://github.com/uutils/coreutils) | [Coreutils 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Change Directory | [Zoxide 🦀](https://github.com/ajeetdsouza/zoxide) | [Lacy 🦀](https://github.com/timothebot/lacy) | ⬅️ | [Bash Cd 💣](https://git.savannah.gnu.org/cgit/bash.git) |
-| ✅ | Copy | [Nushell Cp 🦀](https://github.com/nushell/nushell) | [Cpx 🦀](https://github.com/11happy/cpx) | ⬅️ | [Bash Cp 💣](https://git.savannah.gnu.org/cgit/bash.git) |
+| ✅ | Copy | [Nushell Cp 🦪🦀](https://github.com/nushell/nushell) | [Cpx 🦀](https://github.com/11happy/cpx) | ⬅️ | [Bash Cp 💣](https://git.savannah.gnu.org/cgit/bash.git) |
 | ✅ | Directory Usage | [Dust 🦀](https://github.com/bootandy/dust) | | [Uutils 🦀](https://github.com/uutils/coreutils) | [Coreutils 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Superuser | [Sudo-rs 🦀](https://github.com/memorysafety/sudo-rs) | | ⬅️ | [Sudo 💣](https://www.sudo.ws/repos/sudo) |
 | ✅ | Fortune | [Fortune-kind 🦀](https://github.com/cafkafk/fortune-kind) | | ⬅️ | [Fortune-mod 💣](https://github.com/shlomif/fortune-mod) |
 | ✅ | List Processes | [Procs 🦀](https://github.com/dalance/procs) | | 🆗 | [Ps 💣](https://gitlab.com/procps-ng/procps) |
-| ✅ | List Files | [Nushell Builtins 🦀](https://github.com/nushell/nushell) | [Eza 🦀](https://github.com/eza-community/eza) | 🆗 | [Ls 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | List Files | [Nushell Ls 🦪🦀](https://github.com/nushell/nushell) | [Eza 🦀](https://github.com/eza-community/eza) | 🆗 | [Ls 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Find Files | [Fd 🦀](https://github.com/sharkdp/fd) | | [Uutils Findutils 🦀](https://github.com/uutils/findutils) | [Findutils 💣](https://git.savannah.gnu.org/cgit/findutils.git) |
 | ✅ | Find Patterns | [Ripgrep 🦀](https://github.com/BurntSushi/ripgrep) | | 🆗 | [Grep 💣](https://git.savannah.gnu.org/cgit/grep.git) |
 | ✅ | Find & Replace | [Ast-grep 🦀](https://github.com/ast-grep/ast-grep) | | 🆗 | [Sed 💣](https://www.gnu.org/software/sed) |
