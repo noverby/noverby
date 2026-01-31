@@ -11,12 +11,6 @@ export default defineConfig({
 		entry: {
 			index: "./src/index.tsx",
 		},
-		define: {
-			"process.env.NHOST_SUBDOMAIN": JSON.stringify(
-				process.env.NHOST_SUBDOMAIN,
-			),
-			"process.env.NHOST_REGION": JSON.stringify(process.env.NHOST_REGION),
-		},
 	},
 	server: {
 		historyApiFallback: true,
