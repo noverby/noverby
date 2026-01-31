@@ -1,8 +1,7 @@
-import { useParams } from "react-router-dom";
+import { useLocation } from 'react-router-dom';
 
 const usePathList = () => {
-	const params = useParams();
-	const path = params["*"];
+	const path = useLocation().pathname;
 	return path ? path.split("/").filter(Boolean) : [];
 };
 
