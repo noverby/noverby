@@ -1,7 +1,7 @@
 build: install build-gqty build-rsbuild
 
 build-rsbuild:
-    export NEXT_PUBLIC_GIT_COMMIT_SHA=$(git rev-parse HEAD)
+    export PUBLIC_GIT_COMMIT_SHA=$(git rev-parse HEAD)
     deno run -A npm:@rsbuild/core build
 
 build-gqty:
