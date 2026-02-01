@@ -157,6 +157,8 @@
 
         ./projects/homepage
         ./projects/wiki
+
+        ./presentations
       ];
       nixDirAliases = {
         flakelightModules = ["modules/flakelight"];
