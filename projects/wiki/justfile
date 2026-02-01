@@ -1,6 +1,6 @@
-build: install build-gqty build-next
+build: install build-gqty build-rsbuild
 
-build-next:
+build-rsbuild:
     export NEXT_PUBLIC_GIT_COMMIT_SHA=$(git rev-parse HEAD)
     deno run -A npm:@rsbuild/core build
 
