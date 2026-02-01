@@ -156,6 +156,7 @@
         ./nix/modules/flakelight/devenvConfigurations.nix
 
         ./projects/homepage
+        ./projects/mojo-wasm
         ./projects/wiki
 
         ./presentations
