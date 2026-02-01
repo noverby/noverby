@@ -154,6 +154,8 @@
         ./nix/modules/flakelight/libBuiltins.nix
         ./nix/modules/flakelight/devenvModules.nix
         ./nix/modules/flakelight/devenvConfigurations.nix
+
+        ./projects/wiki
       ];
       nixDirAliases = {
         flakelightModules = ["modules/flakelight"];
