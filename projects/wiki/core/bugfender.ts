@@ -19,7 +19,7 @@ export const initBugfender = async () => {
 			logBrowserEvents: true,
 			// Log UI events (clicks, form submissions, etc.)
 			logUIEvents: true,
-			build: process.env.NEXT_PUBLIC_GIT_COMMIT_SHA ?? "dev",
+			build: process.env.PUBLIC_GIT_COMMIT_SHA ?? "dev",
 		});
 
 		isInitialized = true;
