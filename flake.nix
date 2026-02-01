@@ -155,6 +155,7 @@
         ./nix/modules/flakelight/devenvModules.nix
         ./nix/modules/flakelight/devenvConfigurations.nix
 
+        ./projects/homepage
         ./projects/wiki
       ];
       nixDirAliases = {
