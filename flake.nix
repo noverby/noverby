@@ -88,7 +88,7 @@
         nixpkgs.follows = "nixpkgs";
         crane.follows = "crane";
         rust-overlay.follows = "rust-overlay";
-        flake-compat.follows = "flake-compat";
+        flake-parts.follows = "flake-parts";
       };
     };
     nxv = {
@@ -108,7 +108,7 @@
       inputs.systems.follows = "systems";
     };
     catppuccin = {
-      url = "github:catppuccin/nix";
+      url = "github:catppuccin/nix/release-25.11";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nix-wallpaper = {
