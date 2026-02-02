@@ -37,7 +37,7 @@ const HomeApp = () => {
 					</Suspense>
 				</Grid>
 			)}
-			<Grid size={{ xs: 12, lg: 8 }}>
+			<Grid size={{ xs: 12, lg: isAuthenticated ? 8 : 12 }}>
 				{isAuthenticated && !largeScreen ? (
 					<Card>
 						<HomeList />
