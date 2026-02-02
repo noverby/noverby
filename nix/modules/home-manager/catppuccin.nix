@@ -1,7 +1,6 @@
 _: {
   catppuccin = {
     enable = true;
-    qt5ct.enable = true;
     kvantum.enable = false;
   };
   qt = {
