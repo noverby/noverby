@@ -21,7 +21,16 @@ import type { Descendant } from "slate";
 const Editor = ({ node }: { node: Node }) => {
 	const link = useLink();
 	const query = node.useQuery();
-	const update = node.useUpdate();
+	const update = node.useUpdate({
+		refetch: (_, node) => [
+			node?.members()?.map(({ id, name, node, user }) => ({
+				id,
+				name,
+				email: user?.displayName,
+				mimeId: node?.mimeId,
+			})),
+		],
+	});
 	const nodeMembers = node.useMembers();
 	const data = query?.data();
 	const [fileId, setFileId] = useState<string | undefined>();
