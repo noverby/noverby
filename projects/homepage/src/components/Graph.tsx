@@ -98,10 +98,10 @@ const nodes = [
 		url: "https://signal.me/#eu/BKjgrHvQhqgDPpy9p2VfcfVj6yx0mJtVGOX8GQ_2htxhX7cDxhREVad8oWL1qAMj",
 	},
 	{
-		id: "Spotify",
-		desc: "Spotify\nProfile",
-		icon: "spotify.avif",
-		url: "https://open.spotify.com/user/1148979230?si=218d80965cb8458f",
+		id: "Rocksky",
+		desc: "Rocksky\nProfile",
+		icon: "rocksky.avif",
+		url: "https://rocksky.app/profile/overby.me",
 	},
 	{
 		id: "GitHub",
@@ -202,7 +202,7 @@ const links = [
 	{ source: "Commerce", target: "Veo" },
 	{ source: "Commerce", target: "GitHub" },
 	{ source: "Immerse", target: "PixelFed" },
-	{ source: "Immerse", target: "Spotify" },
+	{ source: "Immerse", target: "Rocksky" },
 	{ source: "Immerse", target: "NeoDB" },
 	{ source: "Immerse", target: "Wikipedia" },
 	{ source: "Immerse", target: "HappyCow" },
