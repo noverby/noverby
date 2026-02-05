@@ -21,7 +21,6 @@
       "harper"
       "jj-lsp"
       "meson"
-      "mistral-vibe"
     ];
   };
   home = {
