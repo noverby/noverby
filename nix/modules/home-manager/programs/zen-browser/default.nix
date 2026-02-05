@@ -15,6 +15,7 @@
           "browser.ml.chat.shortcuts" = true;
           "browser.ml.chat.shortcuts.custom" = true;
           "browser.ml.chat.sidebar" = true;
+          "layout.spellcheckDefault" = 0;
         };
         # Catppucccin
         userChrome = lib.readFile ./userChrome.css;
