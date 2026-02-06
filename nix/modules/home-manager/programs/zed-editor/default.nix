@@ -24,16 +24,9 @@
     ];
   };
   home = {
-    packages = with pkgs; [
-      # Install Zed nightly with Jupyter notebook support and without zeditor conflict
-      (writeShellApplication {
-        name = "zed-nightly";
-        text = ''
-          export LOCAL_NOTEBOOK_DEV=1
-          exec ${lib.getExe zed-latest} "$@"
-        '';
-      })
-    ];
+    env = {
+      LOCAL_NOTEBOOK_DEV = 1;
+    };
     activation = let
       configDir = "${config.xdg.configHome}/zed";
       settingsPath = "${configDir}/settings.json";
