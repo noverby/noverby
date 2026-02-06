@@ -25,7 +25,7 @@
     ];
   };
   home = {
-    env = {
+    sessionVariables = {
       LOCAL_NOTEBOOK_DEV = 1;
     };
     activation = let
