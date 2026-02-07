@@ -48,9 +48,11 @@
 
 <details open>
 
-* [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/home-manager)
-* [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/nixos)
-* [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/devenv)
+| Configuration | Description |
+|-|-|
+| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/home-manager) | Home Manager configurations |
+| [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/nixos) | NixOS configurations |
+| [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/devenv) | Devenv configurations |
 
 </details>
 
@@ -58,10 +60,12 @@
 
 <details open>
 
-* [Flakelight ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/flakelight)
-* [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager)
-* [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos)
-* [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/devenv)
+| Module | Description |
+|-|-|
+| [Flakelight ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/flakelight) | Flakelight modules |
+| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager) | Home Manager modules |
+| [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos) | NixOS modules |
+| [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/devenv) | Devenv modules |
 
 </details>
 
@@ -117,9 +121,11 @@
 
 <details open>
 
-* [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/homepage): Personal website and portfolio
-* [Wiki 🐒➡️🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/projects/wiki): Platform for political conference & beyond
-* [Mojo-Wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/mojo-wasm): WebAssembly interop layer for Mojo
+| Project | Description |
+|-|-|
+| [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/homepage) | Personal website and portfolio |
+| [Wiki 🐒➡️🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/projects/wiki) | Platform for political conference & beyond |
+| [Mojo-Wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/mojo-wasm) | WebAssembly interop layer for Mojo |
 
 </details>
 
