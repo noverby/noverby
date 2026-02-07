@@ -69,28 +69,47 @@
 
 <details open>
 
-* [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo.nix): Mojo development toolchain
-* [Mojo-jupyter-kernel 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo-jupyter-kernel.nix): Jupyter Notebook kernel for Mojo
-* [Deno-jupyter-kernel 🐒](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/deno-jupyter-kernel.nix): Jupyter Notebook kernel for Deno
-* [Nu-jupyter-kernel 🦪](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/nu-jupyter-kernel.nix): Jupyter Notebook kernel for Nushell
-* [Xeus-lix ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/xeus-lix/default.nix): Jupyter Notebook kernel for Nix
-* [Rust-jupyter-kernel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/Rust-jupyter-kernel.nix): Jupyter Notebook kernel for Rust
-* [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cavif-rs/default.nix): AVIF image encoder CLI tool
-* [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/rcgen.nix): X.509 certificate generation CLI tool
-* [Hakoniwa 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/hakoniwa.nix): Process isolation CLI tool
-* [Envy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/envy.nix): Environment loader CLI tool
-* [Nix-sweep 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/nix-sweep.nix): Nix garbage collector
-* [Forkfs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/forkfs.nix): Sandbox a process's changes to file system
-* [Busd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/busd.nix): A D-Bus bus implementation in Rust
-* [Rustysd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/rustysd.nix): A Systemd replacement in Rust
-* [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/lacy.nix): Fast magical cd alternative
-* [Vibe 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/vibe.nix): A desktop audio visualizer
-* [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/sunsetc.nix): SSH in Rust
-* [Layout 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/layout/default.nix): Graphviz dot renderer
-* [Wondermagick 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/wondermagick/default.nix): Memory-safe replacement for Imagemagick
-* [Cpx 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cpx.nix): Cp reimagined 
-* [Sidecar 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/sidecar/default.nix): Jupyter Notebook viewer
-* [Age-plugin-fido2prf 🐹](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/age-plugin-fido2prf.nix): FIDO2 PRF plugin for age
+#### Jupyter
+| Package | Description |
+|-|-|
+| [Deno-jupyter-kernel 🐒](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/deno-jupyter-kernel.nix) | Jupyter Notebook kernel for Deno |
+| [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo.nix) | Mojo development toolchain |
+| [Mojo-jupyter-kernel 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo-jupyter-kernel.nix) | Jupyter Notebook kernel for Mojo |
+| [Nu-jupyter-kernel 🦪](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/nu-jupyter-kernel.nix) | Jupyter Notebook kernel for Nushell |
+| [Rust-jupyter-kernel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/Rust-jupyter-kernel.nix) | Jupyter Notebook kernel for Rust |
+| [Sidecar 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/sidecar/default.nix) | Jupyter Notebook viewer |
+| [Xeus-lix ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/xeus-lix/default.nix) | Jupyter Notebook kernel for Nix |
+
+#### Development
+| Package | Description |
+|-|-|
+| [Envy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/envy.nix) | Environment loader CLI tool |
+| [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/lacy.nix) | Fast magical cd alternative |
+| [Nix-sweep 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/nix-sweep.nix) | Nix garbage collector |
+| [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/rcgen.nix) | X.509 certificate generation CLI tool |
+
+#### Media
+| Package | Description |
+|-|-|
+| [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cavif-rs/default.nix) | AVIF image encoder CLI tool |
+| [Layout 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/layout/default.nix) | Graphviz dot renderer |
+| [Vibe 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/vibe.nix) | A desktop audio visualizer |
+| [Wondermagick 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/wondermagick/default.nix) | Memory-safe replacement for Imagemagick |
+
+#### System
+| Package | Description |
+|-|-|
+| [Busd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/busd.nix) | A D-Bus bus implementation in Rust |
+| [Cpx 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cpx.nix) | Cp reimagined |
+| [Rustysd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/rustysd.nix) | A Systemd replacement in Rust |
+| [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/sunsetc.nix) | SSH in Rust |
+
+#### Security
+| Package | Description |
+|-|-|
+| [Age-plugin-fido2prf 🐹](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/age-plugin-fido2prf.nix) | FIDO2 PRF plugin for age |
+| [Forkfs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/forkfs.nix) | Sandbox a process's changes to file system |
+| [Hakoniwa 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/hakoniwa.nix) | Process isolation CLI tool |
 
 </details>
 
@@ -154,23 +173,44 @@
 
 <details open>
 
+#### Communication
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Messaging | [Etke.cc Matrix 🇪🇺](https://etke.cc) | | [Matrix 🌐](https://matrix.org), [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org), [Automattic Beeper 🔒🇺🇸](https://www.beeper.com), [Meta Messenger 🔒🇺🇸](https://messenger.com), [Meta WhatsApp 🔒🇺🇸](https://whatsapp.com) |
 | ✅ | Event Hosting | [Smoke Signal Events 🌐🌀](https://smokesignal.events), [Meetup 🔒🇪🇺](https://meetup.com) | | [AT Protocol 🌀](https://atproto.com) | [Meta Facebook Events 🔒🇺🇸](https://facebook.com) |
+
+#### Media Sharing
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
 | ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | [Flashes 🔒🇪🇺🌀](https://github.com/birdsongapps/Flashes) | [AT Protocol 🌀](https://atproto.com) | [Meta Instagram 🔒🇺🇸](https://instagram.com) |
 | 🚧 | Long-form Video | [Alphabet YouTube 🔒🇺🇸](https://youtube.com) | [Skytube 🔒🇺🇸🌀](https://skytube.video) | [AT Protocol 🌀](https://atproto.com) | |
 | 🚧 | Short-form Video | | [SkyLight 🔒🇺🇸🌀](https://skylight.social), [Spark 🔒🇺🇸🌀](https://sprk.so) | | [ByteDance TikTok 🔒🇨🇳](https://www.tiktok.com) |
 | 🚧 | Live Streaming | [Stream.place 🌀](https://stream.place/) | | [AT Protocol 🌀](https://atproto.com) | [Twitch 🔒🇺🇸](https://twitch.tv) |
+
+#### Discussion Platforms
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
 | ✅ | Discussion | [Lemmy World 🌐🇪🇺](https://lemmy.world) | [Frontpage 🔒🇬🇧🌀](https://frontpage.fyi) | [AT Protocol 🌀](https://atproto.com) | [Reddit 🔒🇺🇸](https://reddit.com), [Lemmy.ml 🌐🇪🇺](https://lemmy.world) |
 | 🚧 | Microblogging | [Bluesky ⚖️🇺🇸🌀](https://bsky.app/profile/overby.me) | [Eurosky 🌐🇪🇺🌀](https://eurosky.social) | [AT Protocol 🌀](https://atproto.com), [X-Cancel](https://xcancel.com) | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [X-Twitter 🔒🇺🇸](https://x.com), [Meta Threads 🔒🇺🇸](https://www.threads.net) |
+
+#### Cataloging Services
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
 | ✅ | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | | [Amazon Goodreads 🔒🇺🇸](https://www.goodreads.com/niclasoverby) |
 | ✅ | [Film Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | | [Letterboxd 🔒🇳🇿](https://letterboxd.com/niclasoverby), [Amazon IMDB 🔒🇺🇸](https://www.imdb.com) |
 | ✅ | [Music Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Rocksky 🇲🇬🌀](https://rocksky.app/profile/overby.me) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | | [Spotify 🔒🇪🇺](https://open.spotify.com/user/1148979230) |
 | 🚫 | [Fitness Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Garmin Connect 🔒🇺🇸](https://connect.garmin.com) | [FitTrackee 🐍](https://github.com/SamR1/FitTrackee) | [GPX 📖](https://en.wikipedia.org/wiki/GPS_Exchange_Format) | [Strava 🔒🇺🇸](https://www.strava.com/athletes/116425039) |
 | ✅ | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [HappyCow 👁️🔒🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | [OpenVegeMap](https://github.com/Rudloff/openvegemap) | 🆗 | |
+
+#### Collaboration & Knowledge
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
 | ✅ | Collaboration | [AppFlowy 🦀](https://github.com/AppFlowy-IO/AppFlowy) | | [Import](https://docs.appflowy.io/docs/guides/import-from-notion) | [Notion 🔒🇺🇸](https://notion.so) |
 | ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Wikipedia 🌐](https://en.wikipedia.org/wiki/User:Niclas_Overby) | [Ibis 🦀](https://github.com/Nutomic/ibis) | 🆗 | |
+
+#### Social & Dating
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
 | ✅ | Dating | [Veggly 🔒👁️🇧🇷](https://veggly.app) | | 🆗 | [Tinder 🔒🇺🇸](https://tinder.com) |
 
 </details>
