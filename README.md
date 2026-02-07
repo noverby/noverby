@@ -54,6 +54,22 @@
 | [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/nixos) | NixOS configurations |
 | [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/devenv) | Devenv configurations |
 
+#### Home Manager Configurations
+| Configuration | Description |
+|-|-|
+| [Noverby](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/home-manager/noverby.nix) | Main Home Manager configuration |
+
+#### NixOS Configurations
+| Configuration | Description |
+|-|-|
+| [Gravitas](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/nixos/gravitas.nix) | Main NixOS configuration |
+| [Gravitas Vero](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/nixos/gravitas-vetero.nix) | Alternative NixOS configuration |
+
+#### Devenv Configurations
+| Configuration | Description |
+|-|-|
+| [Workspace](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/devenv/workspace.nix) | Main Devenv configuration |
+
 </details>
 
 ### 🧩 Modules
@@ -66,6 +82,50 @@
 | [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager) | Home Manager modules |
 | [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos) | NixOS modules |
 | [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/devenv) | Devenv modules |
+
+#### Flakelight Modules
+| Module | Description |
+|-|-|
+| [Devenv Configurations](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/flakelight/devenvConfigurations.nix) | Devenv configurations module |
+| [Devenv Modules](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/flakelight/devenvModules.nix) | Devenv modules module |
+| [Lib Builtins](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/flakelight/libBuiltins.nix) | Library builtins module |
+
+#### Home Manager Modules
+| Module | Description |
+|-|-|
+| [Catppuccin](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager/catppuccin.nix) | Catppuccin theme module |
+| [Desktop GNOME](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager/desktop/gnome.nix) | GNOME desktop module |
+| [Desktop XR](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager/desktop/xr.nix) | XR desktop module |
+| [Home](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager/home.nix) | Home module |
+| [Nix](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager/nix.nix) | Nix module |
+| [Packages](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager/packages) | Package module |
+| [Programs](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager/programs) | Program module |
+| [Services](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager/services) | Service module |
+| [Systemd](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager/systemd.nix) | Systemd module |
+| [Users](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager/users) | Users module |
+| [Vibe](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager/vibe.nix) | Vibe module |
+| [XDG](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager/xdg.nix) | XDG module |
+
+#### NixOS Modules
+| Module | Description |
+|-|-|
+| [Age](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos/age.nix) | Age encryption module |
+| [Catppuccin](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos/catppuccin.nix) | Catppuccin theme module |
+| [Core](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos/core) | Core system modules |
+| [Desktop](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos/desktop) | Desktop environment modules |
+| [Hardware](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos/hardware) | Hardware-specific modules |
+| [Home Manager](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos/home-manager.nix) | Home Manager integration |
+| [Nitrokey](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos/nitrokey.nix) | Nitrokey module |
+| [Programs](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos/programs) | Program modules |
+| [Services](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos/services) | Service modules |
+| [Veo](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos/veo) | Veo modules |
+
+#### Devenv Modules
+| Module | Description |
+|-|-|
+| [Configs](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/devenv/configs/default.nix) | Default configuration |
+| [Devenv Root](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/devenv/devenv-root.nix) | Devenv root module |
+| [Git Hooks](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/devenv/git-hooks.nix) | Git hooks module |
 
 </details>
 
