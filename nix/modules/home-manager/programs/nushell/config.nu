@@ -54,12 +54,12 @@ $env.PATH = ($env.PATH | split row (char esep))
 
 def --env uo [] { let res = uf | $in; cd $res }
 
-def ghash [] {git rev-parse HEAD | tr -d '\\n' | wl-copy; git rev-parse HEAD}
+def jhash [] {jj log -r @ --no-graph -T 'commit_id' | tr -d '\\n' | wl-copy; jj log -r @ --no-graph -T 'commit_id'}
 
 def show [] {to json | jless}
 
-def ggg [] {
-  git push -f
+def jjj [] {
+  jj git push
   gh pr create --fill
   gh pr comment --body 'bors merge'
 }
@@ -69,17 +69,17 @@ def dhost [num: int] {
   $known_hosts | enumerate | where index != ($num - 1) | get item | save -f ~/.ssh/known_hosts
 }
 
-def gdf [branch: string] {
-  gco $branch
+def jdf [branch: string] {
+  jco $branch
   let elems = $branch | split row "/"
   if ($elems | length) == 4 {
-    gco $"bump-($elems | last 2 | str join "-")"
+    jco $"bump-($elems | last 2 | str join "-")"
 
   } else if ($elems | length) == 3 {
-    gco $"bump-($elems | get 2)"
+    jco $"bump-($elems | get 2)"
   }
-  git commit --amend --no-edit
-  git push
+  jj squash
+  jj git push
   gh pr create --fill
 }
 
@@ -112,45 +112,45 @@ def --env assume [profile?: string = ""] {
  }
 
 def yarn-lock-update [] {
-  try { grm }
-  let root = git rev-parse --show-toplevel
-  git reset $"($root)/.pnp.cjs" $"($root)/yarn.lock"
+  try { jrm }
+  let root = jj workspace root
+  jj restore $"($root)/.pnp.cjs" $"($root)/yarn.lock"
   yarn
-  git add $"($root)/.pnp.cjs" $"($root)/yarn.lock"
+  jj file track $"($root)/.pnp.cjs" $"($root)/yarn.lock"
 }
 
-def gco [branch_name: string] {
-    git fetch origin
+def jco [branch_name: string] {
+    jj git fetch
 
-    let local_exists = (git show-ref --quiet $"refs/heads/($branch_name)" | complete | get exit_code) == 0
-    let remote_exists = (git show-ref --quiet $"refs/remotes/origin/($branch_name)" | complete | get exit_code) == 0
+    let bookmark_exists = (jj bookmark list | lines | any {|line| $line | str contains $branch_name})
+    let remote_exists = (jj bookmark list --all | lines | any {|line| $line | str contains $"($branch_name)@origin"})
 
-    if $local_exists {
-        git checkout $branch_name
+    if $bookmark_exists {
+        jj new $branch_name
     } else if $remote_exists {
-        git checkout -b $branch_name --track $"origin/($branch_name)"
+        jj new $"($branch_name)@origin"
+        jj bookmark create $branch_name
     } else {
-        git checkout -b $branch_name
+        jj bookmark create $branch_name
     }
 }
 
-def gcom [] {
-  git fetch origin
-  let default_branch = (git symbolic-ref refs/remotes/origin/HEAD | str replace "refs/remotes/origin/" "")
-  gco $default_branch
+def jcom [] {
+  jj git fetch
+  let default_branch = (jj config get git.default-remote-bookmark? | default "main")
+  jj new $"($default_branch)@origin"
 }
 
-def grm [] {
-  git fetch origin
-  let default_branch = (git symbolic-ref refs/remotes/origin/HEAD | str replace "refs/remotes/origin/" "")
-  git rebase $default_branch
+def jrm [] {
+  jj git fetch
+  let default_branch = (jj config get git.default-remote-bookmark? | default "main")
+  jj rebase -d $"($default_branch)@origin"
 }
 
-def greset [] {
-  git fetch origin
-  let default_branch = (git symbolic-ref refs/remotes/origin/HEAD | str replace "refs/remotes/origin/" "")
-  let base = (git merge-base HEAD $default_branch)
-  git reset --soft $base
+def jreset [] {
+  jj git fetch
+  let default_branch = (jj config get git.default-remote-bookmark? | default "main")
+  jj squash --into (jj log -r $"roots(@::($default_branch)@origin)" --no-graph -T 'change_id' | lines | first)
 }
 
 # Use Zellij-cwd in Zed terminal
