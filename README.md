@@ -236,7 +236,8 @@
 | ✅ | Text | [UTF-8 📖](https://en.wikipedia.org/wiki/UTF-8) | | [UTF-16 📖](https://en.wikipedia.org/wiki/UTF-16) |
 | ✅ | Object Notation | [JSON 📖](https://www.json.org) | [KDL](https://kdl.dev), [EON](https://github.com/emilk/eon) | |
 | ✅ | Binary Object Notation | [CBOR 📖](https://cbor.io) | | |
-| ✅ | Image Codec | [AVIF 📖](https://en.wikipedia.org/wiki/AVIF) | | [PNG 📖](https://en.wikipedia.org/wiki/Portable_Network_Graphics), [JPEG 📖](https://en.wikipedia.org/wiki/JPEG) |
+| ✅ | Image Codec (Lossy) | [AVIF 📖](https://en.wikipedia.org/wiki/AVIF) | | [JPEG 📖](https://en.wikipedia.org/wiki/JPEG) |
+| ✅ | Image Codec (Lossless) | [PNG 📖](https://en.wikipedia.org/wiki/Portable_Network_Graphics) | [AVIF (lossless) 📖](https://en.wikipedia.org/wiki/AVIF) | |
 | ✅ | Audio Codec | [Opus 📖](https://opus-codec.org) | | [AAC 🔒](https://en.wikipedia.org/wiki/Advanced_Audio_Coding) |
 | ✅ | Video Codec | [AV1 📖](https://aomedia.org/av1-features/get-started) | | [H.264 🔒](https://en.wikipedia.org/wiki/Advanced_Video_Coding) |
 
