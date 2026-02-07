@@ -20,6 +20,9 @@
       (
         pkgs.writeScriptBin "nix-flamegraph" (lib.readFile ./nix-flamegraph)
       )
+      (
+        pkgs.writeScriptBin "git" (lib.readFile ./git)
+      )
     ];
   };
 }
