@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+# Git wrapper that refuses to run git and suggests using jj instead
+
+echo "❌ Git is disabled in this environment."
+echo "💡 Please use 'jj' (Jujutsu) instead for version control operations."
+echo ""
+echo "Common jj commands:"
+echo "  jj status        - Show working copy status"
+echo "  jj log          - Show commit history"
+echo "  jj diff         - Show changes"
+echo "  jj add <file>   - Stage files"
+echo "  jj commit       - Create a new commit"
+echo "  jj branch       - List and manage branches"
+echo "  jj push         - Push changes to remote"
+echo "  jj pull         - Pull changes from remote"
+echo ""
+echo "For more information, run: jj help"
+echo ""
+echo "If you really need to use git, you can use the full path:"
+echo "  $(which git) "$@
+
+exit 1
