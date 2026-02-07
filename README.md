@@ -13,10 +13,10 @@
   - [👥 Social Platforms](#-social-platforms)
   - [☁️ Cloud](#-cloud)
 - [📏 Standards](#-standards)
-  - [🔌 Hardware Standards](#-hardware-standards)
-  - [🔗 Software Standards](#-software-standards)
-  - [📝 Data Standards](#-data-standards)
-  - [📡 Network Standards](#-network-standards)
+  - [🔌 Hardware](#-hardware)
+  - [🔗 Software](#-software)
+  - [📝 Data](#-data)
+  - [📡 Network](#-network)
 - [🖥️ System](#-system)
   - [⚙️ Core](#-core)
   - [📚 Libraries](#-libraries)
@@ -300,7 +300,7 @@
 
 ## 📏 Standards
 
-### 🔌 Hardware Standards
+### 🔌 Hardware
 
 <details open>
 
@@ -326,7 +326,7 @@
 
 </details>
 
-### 🔗 Software Standards
+### 🔗 Software
 
 <details open>
 
@@ -343,7 +343,7 @@
 
 </details>
 
-### 📝 Data Standards
+### 📝 Data
 
 <details open>
 
@@ -364,7 +364,7 @@
 
 </details>
 
-### 📡 Network Standards
+### 📡 Network
 
 <details open>
 
