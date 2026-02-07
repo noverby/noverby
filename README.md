@@ -1,6 +1,6 @@
 # [@overby.me](https://tangled.org/overby.me/overby.me)
 
-<!-- BEGIN mktoc {"min_depth": 2} -->
+<!-- BEGIN mktoc {"min_depth": 2, "max_depth": 3} -->
 
 - [📁 Repository](#-repository)
   - [📋 Configurations](#-configurations)
@@ -10,24 +10,24 @@
 - [💻 Hardware](#-hardware)
 - [🌐 Services](#-services)
   - [🔒 Personal](#-personal)
-  - [👥 Social](#-social)
-  - [☁️ Cloud](#️-cloud)
+  - [👥 Social Platforms](#-social-platforms)
+  - [☁️ Cloud](#-cloud)
 - [📏 Standards](#-standards)
-  - [🔌 Hardware Interface](#-hardware-interface)
-  - [🔗 Software Interface](#-software-interface)
-  - [📝 Encoding](#-encoding)
-  - [📡 Protocol](#-protocol)
-- [🖥️ System](#️-system)
-  - [⚙️ Core](#️-core)
+  - [🔌 Hardware Standards](#-hardware-standards)
+  - [🔗 Software Standards](#-software-standards)
+  - [📝 Data Standards](#-data-standards)
+  - [📡 Network Standards](#-network-standards)
+- [🖥️ System](#-system)
+  - [⚙️ Core](#-core)
   - [📚 Libraries](#-libraries)
-  - [🏗️ Infrastructure](#️-infrastructure)
-- [🛠️ Development](#️-development)
-  - [❄️ Nix](#️-nix)
+  - [🏗️ Infrastructure](#-infrastructure)
+- [🛠️ Development](#-development)
+  - [❄️ Nix](#-nix)
   - [🌐 Web](#-web)
   - [🐍 Python](#-python)
 - [📱 Applications](#-applications)
   - [💻 Command Line](#-command-line)
-  - [🖥️ Desktop Environment](#️-desktop-environment)
+  - [🖥️ Desktop Environment](#-desktop-environment)
   - [🚀 Productivity](#-productivity)
   - [🎨 Media](#-media)
   - [🌐 Browser Extensions](#-browser-extensions)
@@ -175,17 +175,17 @@
 
 </details>
 
-### 👥 Social
+### 👥 Social Platforms
 
 <details open>
 
-#### Communication
+#### Communication Platforms
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Messaging | [Etke.cc Matrix 🇪🇺](https://etke.cc) | | [Matrix 🌐](https://matrix.org), [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org), [Automattic Beeper 🔒🇺🇸](https://www.beeper.com), [Meta Messenger 🔒🇺🇸](https://messenger.com), [Meta WhatsApp 🔒🇺🇸](https://whatsapp.com) |
 | ✅ | Event Hosting | [Smoke Signal Events 🌐🌀](https://smokesignal.events), [Meetup 🔒🇪🇺](https://meetup.com) | | [AT Protocol 🌀](https://atproto.com) | [Meta Facebook Events 🔒🇺🇸](https://facebook.com) |
 
-#### Media Sharing
+#### Media Platforms
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | [Flashes 🔒🇪🇺🌀](https://github.com/birdsongapps/Flashes) | [AT Protocol 🌀](https://atproto.com) | [Meta Instagram 🔒🇺🇸](https://instagram.com) |
@@ -196,10 +196,10 @@
 #### Discussion Platforms
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Discussion | [Lemmy World 🌐🇪🇺](https://lemmy.world) | [Frontpage 🔒🇬🇧🌀](https://frontpage.fyi) | [AT Protocol 🌀](https://atproto.com) | [Reddit 🔒🇺🇸](https://reddit.com), [Lemmy.ml 🌐🇪🇺](https://lemmy.world) |
+| ✅ | Discussion Forums | [Lemmy World 🌐🇪🇺](https://lemmy.world) | [Frontpage 🔒🇬🇧🌀](https://frontpage.fyi) | [AT Protocol 🌀](https://atproto.com) | [Reddit 🔒🇺🇸](https://reddit.com), [Lemmy.ml 🌐🇪🇺](https://lemmy.world) |
 | 🚧 | Microblogging | [Bluesky ⚖️🇺🇸🌀](https://bsky.app/profile/overby.me) | [Eurosky 🌐🇪🇺🌀](https://eurosky.social) | [AT Protocol 🌀](https://atproto.com), [X-Cancel](https://xcancel.com) | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [X-Twitter 🔒🇺🇸](https://x.com), [Meta Threads 🔒🇺🇸](https://www.threads.net) |
 
-#### Cataloging Services
+#### Content Cataloging
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | | [Amazon Goodreads 🔒🇺🇸](https://www.goodreads.com/niclasoverby) |
@@ -211,7 +211,7 @@
 #### Collaboration & Knowledge
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Collaboration | [AppFlowy 🦀](https://github.com/AppFlowy-IO/AppFlowy) | | [Import](https://docs.appflowy.io/docs/guides/import-from-notion) | [Notion 🔒🇺🇸](https://notion.so) |
+| ✅ | Collaboration Tools | [AppFlowy 🦀](https://github.com/AppFlowy-IO/AppFlowy) | | [Import](https://docs.appflowy.io/docs/guides/import-from-notion) | [Notion 🔒🇺🇸](https://notion.so) |
 | ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Wikipedia 🌐](https://en.wikipedia.org/wiki/User:Niclas_Overby) | [Ibis 🦀](https://github.com/Nutomic/ibis) | 🆗 | |
 
 #### Social & Dating
@@ -240,27 +240,37 @@
 
 ## 📏 Standards
 
-### 🔌 Hardware Interface
+### 🔌 Hardware Standards
 
 <details open>
 
+#### Architecture & Firmware
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | Architecture | [X86-64 🔒](https://en.wikipedia.org/wiki/X86-64) | [RISC-V 📖](https://en.wikipedia.org/wiki/RISC-V), [ARM 🔒](https://en.wikipedia.org/wiki/ARM_architecture_family) | |
 | 🚧 | Firmware | [Thinkpad UEFI 🔒](https://en.wikipedia.org/wiki/UEFI) | [Coreboot 💣](https://coreboot.org), [Oreboot 🦀](https://github.com/oreboot/oreboot) | |
+
+#### Connectivity & Interfaces
+| Status | Component | Current | Research & Development | Legacy |
+|:-:|-|-|-|-|
 | ✅ | Internet of Things Connectivity | [Matter 📖](https://en.wikipedia.org/wiki/Matter_(standard)), [Zigbee 📖](https://en.wikipedia.org/wiki/Zigbee) | | |
 | 🚧 | Wireless Media | [Google ChromeCast 🔒](https://en.wikipedia.org/wiki/Chromecast) | [MatterCast 📖](https://en.wikipedia.org/wiki/Matter_(standard)) | [Miracast 📖](https://en.wikipedia.org/wiki/Miracast) |
 | ✅ | Peripheral Interface | [USB4 📖](https://www.usb.org/usb4) | | [Thunderbolt 3 🔒](https://en.wikipedia.org/wiki/Thunderbolt_(interface)) |
 | ✅ | Display Interface | [DisplayPort 📖](https://en.wikipedia.org/wiki/DisplayPort) | | [HDMI 2.1 🔒](https://en.wikipedia.org/wiki/HDMI) |
+
+#### Navigation & Positioning
+| Status | Component | Current | Research & Development | Legacy |
+|:-:|-|-|-|-|
 | 🚧 | Satellite Navigation | [Galileo 🇪🇺](https://www.euspa.europa.eu/eu-space-programme/galileo), [GPS 🏛️🇺🇸](https://www.gps.gov) | | |
 | 🚧 | Satellite Internet | | [Iris² 🏛️🇪🇺](https://defence-industry-space.ec.europa.eu/eu-space-policy/iris2_en) | [Starlink 🔒🇺🇸](https://www.starlink.com) |
 
 </details>
 
-### 🔗 Software Interface
+### 🔗 Software Standards
 
 <details open>
 
+#### System & Compute Interfaces
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | Application Binary Interface | [System V ABI 📖](https://wiki.osdev.org/System_V_ABI) | [CrABI 📖](https://github.com/rust-lang/rust/pull/105586) | |
@@ -273,15 +283,20 @@
 
 </details>
 
-### 📝 Encoding
+### 📝 Data Standards
 
 <details open>
 
+#### Text & Object Notation
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
 | ✅ | Text | [UTF-8 📖](https://en.wikipedia.org/wiki/UTF-8) | | [UTF-16 📖](https://en.wikipedia.org/wiki/UTF-16) |
 | ✅ | Object Notation | [JSON 📖](https://www.json.org) | [KDL](https://kdl.dev), [EON](https://github.com/emilk/eon) | |
 | ✅ | Binary Object Notation | [CBOR 📖](https://cbor.io) | | |
+
+#### Media Codecs
+| Status | Component | Current | Research & Development | Legacy |
+|:-:|-|-|-|-|
 | ✅ | Image Codec (Lossy) | [AVIF 📖](https://en.wikipedia.org/wiki/AVIF) | | [JPEG 📖](https://en.wikipedia.org/wiki/JPEG) |
 | ✅ | Image Codec (Lossless) | [PNG 📖](https://en.wikipedia.org/wiki/Portable_Network_Graphics) | [AVIF (lossless) 📖](https://en.wikipedia.org/wiki/AVIF) | |
 | ✅ | Audio Codec | [Opus 📖](https://opus-codec.org) | | [AAC 🔒](https://en.wikipedia.org/wiki/Advanced_Audio_Coding) |
@@ -289,10 +304,11 @@
 
 </details>
 
-### 📡 Protocol
+### 📡 Network Standards
 
 <details open>
 
+#### Network & Web Protocols
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | Network Transport | [TCP 📖](https://en.wikipedia.org/wiki/Transmission_Control_Protocol) | [QUIC 📖](https://www.chromium.org/quic/) | |
@@ -369,25 +385,34 @@
 
 <details open>
 
+#### Languages & Compilers
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | 🚧 | Compiler Framework | [Mlir 💣](https://github.com/llvm/llvm-project/tree/main/mlir), [LLVM 💣](https://github.com/llvm/llvm-project) | [Cranelift 🦀](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift) | ⬅️ | |
 | 🚧 | Linker | [Mold 💣](https://github.com/rui314/mold) | [Wild 🦀](https://github.com/davidlattimore/wild) | ⬅️ | [GNU ld 💣](https://sourceware.org/binutils) |
 | ✅ | System Language | [Mojo 🔒🔥](https://github.com/modularml/mojo), [Rust 🦀](https://github.com/rust-lang/rust) | | [cxx 🦀](https://github.com/dtolnay/cxx), [bindgen 🦀](https://github.com/rust-lang/rust-bindgen) | |
 | ✅ | Scripting Language | [Mojo 🔒🔥](https://github.com/modularml/mojo) | | [RustPython 🦀](https://github.com/RustPython/RustPython), [WASI 📖](https://github.com/WebAssembly/WASI), [Interface Types 📖](https://github.com/WebAssembly/interface-types/tree/main/proposals/interface-types) | [TypeScript 🐒🐹](https://github.com/microsoft/TypeScript) |
-| 🚧 | Version Control | [Jujutsu 🦀](https://github.com/jj-vcs/jj), [Git 💣](https://github.com/git/git) | [Gitoxide 🦀](https://github.com/Byron/gitoxide) | [Gix 🦀](https://github.com/GitoxideLabs/gitoxide/blob/main/crate-status.md#gix) | |
-| ✅ | Version Control TUI | [Lazyjj 🦀](https://github.com/Cretezy/lazyjj) | | | |
-| ✅ | Merger | [Mergiraf 🦀](https://codeberg.org/mergiraf/mergiraf) | | ⬅️ | |
+
+#### Tools & Utilities
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
 | ✅ | Build Script | [Just 🦀](https://github.com/casey/just) | | Rusty Make ([Rusty Bash 🦀](https://github.com/shellgei/rusty_bash)) | [GNU Make 💣](https://git.savannah.gnu.org/cgit/make.git) |
 | ✅ | Editor | [Helix 🦀](https://github.com/helix-editor/helix) | | 🆗 | [Neovim 💣](https://github.com/neovim/neovim) |
 | ✅ | IDE | [Zed 🦀](https://github.com/zed-industries/zed) | | [LSP](https://github.com/microsoft/language-server-protocol), [DAP](https://github.com/Microsoft/debug-adapter-protocol), [BSP](https://github.com/build-server-protocol/build-server-protocol) | [VS Codium 🐒💣](https://github.com/VSCodium/vscodium) |
-| ✅ | Pre-commit Manager | [Prek 🦀](https://github.com/j178/prek) | | | [Pre-commit 🐍](https://github.com/pre-commit/pre-commit) |
 | ✅ | System Call Tracing | [Lurk 🦀](https://github.com/JakWai01/lurk), [Tracexec 🦀](https://github.com/kxxt/tracexec) | | 🆗 | [Strace 💣](https://github.com/strace/strace) |
 | ✅ | Network Client | [Xh 🦀](https://github.com/ducaale/xh) | | 🆗 | [Curl 💣](https://github.com/curl/curl) |
 | ✅ | Environment Loader | [Direnv 🐹](https://github.com/direnv/direnv) | [Envy 🦀](https://github.com/mre/envy) | ⬅️ | |
 | ✅ | Pager | [Tailspin 🦀](https://github.com/bensadeh/tailspin) | | 🆗 | [Less 💣](https://github.com/gwsw/less) |
 | ✅ | Performance Profiler | [Samply 🦀](https://github.com/mstange/samply) | | 🆗 | [Perf 💣](https://perf.wiki.kernel.org/) |
 | ✅ | TCP Tunnel | [Bore 🦀](https://github.com/ekzhang/bore) | | 🆗 | |
+
+#### Version Control
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| 🚧 | Version Control | [Jujutsu 🦀](https://github.com/jj-vcs/jj), [Git 💣](https://github.com/git/git) | [Gitoxide 🦀](https://github.com/Byron/gitoxide) | [Gix 🦀](https://github.com/GitoxideLabs/gitoxide/blob/main/crate-status.md#gix) | |
+| ✅ | Version Control TUI | [Lazyjj 🦀](https://github.com/Cretezy/lazyjj) | | | |
+| ✅ | Merger | [Mergiraf 🦀](https://codeberg.org/mergiraf/mergiraf) | | ⬅️ | |
+| ✅ | Pre-commit Manager | [Prek 🦀](https://github.com/j178/prek) | | | [Pre-commit 🐍](https://github.com/pre-commit/pre-commit) |
 
 </details>
 
@@ -451,33 +476,47 @@
 
 <details open>
 
+#### Filesystem Operations
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
-| ✅ | Shell | [Nushell 🦪🦀](https://github.com/nushell/nushell) | | [Brush 🦀](https://github.com/reubeno/brush), [Rusty Bash 🦀](https://github.com/shellgei/rusty_bash) | [Bash 💣](https://git.savannah.gnu.org/cgit/bash.git) |
-| ✅ | Shell Prompt | [Starship 🦀](https://github.com/starship/starship) | | 🆗 | |
-| ✅ | Core Utilities | [Nushell Builtins 🦪🦀](https://github.com/nushell/nushell) | | [Uutils 🦀](https://github.com/uutils/coreutils) | [Coreutils 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Change Directory | [Zoxide 🦀](https://github.com/ajeetdsouza/zoxide) | [Lacy 🦀](https://github.com/timothebot/lacy) | ⬅️ | [Bash Cd 💣](https://git.savannah.gnu.org/cgit/bash.git) |
 | ✅ | Copy | [Nushell Cp 🦪🦀](https://github.com/nushell/nushell) | [Cpx 🦀](https://github.com/11happy/cpx) | ⬅️ | [Bash Cp 💣](https://git.savannah.gnu.org/cgit/bash.git) |
 | ✅ | Directory Usage | [Dust 🦀](https://github.com/bootandy/dust) | | [Uutils 🦀](https://github.com/uutils/coreutils) | [Coreutils 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
-| ✅ | Superuser | [Sudo-rs 🦀](https://github.com/memorysafety/sudo-rs) | | ⬅️ | [Sudo 💣](https://www.sudo.ws/repos/sudo) |
-| ✅ | Fortune | [Fortune-kind 🦀](https://github.com/cafkafk/fortune-kind) | | ⬅️ | [Fortune-mod 💣](https://github.com/shlomif/fortune-mod) |
-| ✅ | List Processes | [Procs 🦀](https://github.com/dalance/procs) | | 🆗 | [Ps 💣](https://gitlab.com/procps-ng/procps) |
-| ✅ | List Files | [Nushell Ls 🦪🦀](https://github.com/nushell/nushell) | [Eza 🦀](https://github.com/eza-community/eza) | 🆗 | [Ls 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
 | ✅ | Find Files | [Fd 🦀](https://github.com/sharkdp/fd) | | [Uutils Findutils 🦀](https://github.com/uutils/findutils) | [Findutils 💣](https://git.savannah.gnu.org/cgit/findutils.git) |
 | ✅ | Find Patterns | [Ripgrep 🦀](https://github.com/BurntSushi/ripgrep) | | 🆗 | [Grep 💣](https://git.savannah.gnu.org/cgit/grep.git) |
 | ✅ | Find & Replace | [Ast-grep 🦀](https://github.com/ast-grep/ast-grep) | | 🆗 | [Sed 💣](https://www.gnu.org/software/sed) |
 | ✅ | File Differences | [Batdiff 🦀](https://github.com/eth-p/bat-extras) + [Delta 🦀](https://github.com/dandavison/delta) | [Difftastic 🦀](https://github.com/wilfred/difftastic) | [Uutils Diffutils 🦀](https://github.com/uutils/diffutils) | [Diffutils 💣](https://git.savannah.gnu.org/cgit/diffutils.git) |
 | ✅ | Hex Viewer | [Hyxel 🦀](https://github.com/hyxel/hyxel) | | | [Util Linux Hexdump 💣](https://github.com/util-linux/util-linux) |
-| ✅ | Terminal Workspace | [Zellij 🦀](https://github.com/zellij-org/zellij) | | 🆗 | [Tmux 💣](https://github.com/tmux/tmux) |
-| ✅ | Parallel Processing | [Rust Parallel 🦀](https://github.com/aaronriekenberg/rust-parallel) | | 🆗 | [GNU Parallel 💣](https://git.savannah.gnu.org/cgit/parallel.git) |
-| ✅ | Process Monitor | [Bottom 🦀](https://github.com/ClementTsang/bottom) | | 🆗 | [Top 💣](https://gitlab.com/procps-ng/procps) |
-| ✅ | Fuzzy Finder | [Television 🦀](https://github.com/alexpasmantier/television) | | 🆗 | [Fzf 🐹](https://github.com/junegunn/fzf) |
-| ✅ | Ping | [Gping 🦀](https://github.com/orf/gping) | | | [Ping 💣](https://git.savannah.gnu.org/cgit/inetutils.git) |
-| ✅ | Benchmark | [Hyperfine 🦀](https://github.com/sharkdp/hyperfine) | | | [time 💣](https://www.gnu.org/software/time) |
-| ✅ | Port Scanner | [RustScan 🦀](https://github.com/rustscan/rustscan) | | 🆗 | [Nmap 💣](https://github.com/nmap/nmap) |
 | ✅ | Tree Viewer | [Tre 🦀](https://github.com/dduan/tre) | | 🆗 | [Tree 💣](https://oldmanprogrammer.net/source.php?dir=projects/tree) |
+
+#### Process Management
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | List Processes | [Procs 🦀](https://github.com/dalance/procs) | | 🆗 | [Ps 💣](https://gitlab.com/procps-ng/procps) |
+| ✅ | Process Monitor | [Bottom 🦀](https://github.com/ClementTsang/bottom) | | 🆗 | [Top 💣](https://gitlab.com/procps-ng/procps) |
+| ✅ | Parallel Processing | [Rust Parallel 🦀](https://github.com/aaronriekenberg/rust-parallel) | | 🆗 | [GNU Parallel 💣](https://git.savannah.gnu.org/cgit/parallel.git) |
+| ✅ | Terminal Workspace | [Zellij 🦀](https://github.com/zellij-org/zellij) | | 🆗 | [Tmux 💣](https://github.com/tmux/tmux) |
+
+#### Networking
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Network Client | [Xh 🦀](https://github.com/ducaale/xh) | | 🆗 | [Curl 💣](https://github.com/curl/curl) |
+| ✅ | Ping | [Gping 🦀](https://github.com/orf/gping) | | | [Ping 💣](https://git.savannah.gnu.org/cgit/inetutils.git) |
+| ✅ | Port Scanner | [RustScan 🦀](https://github.com/rustscan/rustscan) | | 🆗 | [Nmap 💣](https://github.com/nmap/nmap) |
 | 🚧 | PGP | [GnuPG 💣](https://gnupg.org) | [Sequoia-PGP 🦀](https://gitlab.com/sequoia-pgp/sequoia) | 🆗 | |
 | 🚧 | SSH | [OpenSSH 💣](https://github.com/openssh/openssh-portable) | [Sunset 🦀](https://github.com/mkj/sunset) | 🆗 | |
+
+#### System Utilities
+| Status | Component | Current | Research & Development | Compatibility | Legacy |
+|:-:|-|-|-|-|-|
+| ✅ | Shell | [Nushell 🦪🦀](https://github.com/nushell/nushell) | | [Brush 🦀](https://github.com/reubeno/brush), [Rusty Bash 🦀](https://github.com/shellgei/rusty_bash) | [Bash 💣](https://git.savannah.gnu.org/cgit/bash.git) |
+| ✅ | Shell Prompt | [Starship 🦀](https://github.com/starship/starship) | | 🆗 | |
+| ✅ | Core Utilities | [Nushell Builtins 🦪🦀](https://github.com/nushell/nushell) | | [Uutils 🦀](https://github.com/uutils/coreutils) | [Coreutils 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | List Files | [Nushell Ls 🦪🦀](https://github.com/nushell/nushell) | [Eza 🦀](https://github.com/eza-community/eza) | 🆗 | [Ls 💣](https://git.savannah.gnu.org/cgit/coreutils.git) |
+| ✅ | Superuser | [Sudo-rs 🦀](https://github.com/memorysafety/sudo-rs) | | ⬅️ | [Sudo 💣](https://www.sudo.ws/repos/sudo) |
+| ✅ | Fortune | [Fortune-kind 🦀](https://github.com/cafkafk/fortune-kind) | | ⬅️ | [Fortune-mod 💣](https://github.com/shlomif/fortune-mod) |
+| ✅ | Fuzzy Finder | [Television 🦀](https://github.com/alexpasmantier/television) | | 🆗 | [Fzf 🐹](https://github.com/junegunn/fzf) |
+| ✅ | Benchmark | [Hyperfine 🦀](https://github.com/sharkdp/hyperfine) | | | [time 💣](https://www.gnu.org/software/time) |
 
 </details>
 
