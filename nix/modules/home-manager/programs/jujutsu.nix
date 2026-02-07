@@ -2,6 +2,10 @@
   programs.jujutsu = {
     enable = true;
     settings = {
+      user = {
+        name = "Niclas Overby";
+        email = "niclas@overby.me";
+      };
       ui = {
         pager = "delta";
         diff-formatter = ":git";
