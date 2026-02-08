@@ -21,7 +21,7 @@
         pkgs.writeScriptBin "nix-flamegraph" (lib.readFile ./nix-flamegraph)
       )
       (
-        pkgs.writeScriptBin "git" (lib.readFile ./git)
+        pkgs.writeScriptBin "git-jj-wrapper" (lib.readFile ./git-jj-wrapper)
       )
     ];
   };

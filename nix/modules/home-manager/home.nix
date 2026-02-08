@@ -15,6 +15,7 @@
     shellAliases = {
       xopen = "xdg-open";
       diff = "batdiff";
+      git = "git-jj-wrapper";
       ga = "jj file track";
       gc = "jj commit";
       gcm = "jj commit -m";
