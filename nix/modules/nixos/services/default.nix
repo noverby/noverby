@@ -8,7 +8,6 @@
     ./openssh.nix
     ./printing.nix
     ./resolved.nix
-    ./tailscale.nix
     ./xserver.nix
   ];
 }
