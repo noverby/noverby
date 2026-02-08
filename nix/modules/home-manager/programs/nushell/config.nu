@@ -150,7 +150,7 @@ def jrm [] {
 def jreset [] {
   jj git fetch
   let default_branch = (jj config get git.default-remote-bookmark? | default "main")
-  jj squash --into (jj log -r $"roots(@::($default_branch)@origin)" --no-graph -T 'change_id' | lines | first)
+  jj squash --into (jj log -r $"roots(\@::($default_branch)\@origin)" --no-graph -T 'change_id' | lines | first)
 }
 
 # Use Zellij-cwd in Zed terminal
