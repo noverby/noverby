@@ -56,6 +56,8 @@ rustPlatform.buildRustPackage rec {
     };
   };
 
+  cargoBuildFlags = ["-p" "constellation" "-p" "spacedust" "-p" "slingshot" "-p" "ufos" "-p" "pocket"];
+
   nativeBuildInputs = [
     pkg-config
     perl
