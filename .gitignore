@@ -1,7 +1,7 @@
 .devenv
 .direnv
 .env
-result
+result*
 tmp
 build
 dist
@@ -28,3 +28,7 @@ flamegraph.svg
 /deno.json
 /rumdl.toml
 /typos.toml
+
+*.qcow2
+*.img
+*.raw
