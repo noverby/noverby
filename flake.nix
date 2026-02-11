@@ -159,6 +159,7 @@
         ./projects/homepage
         ./projects/mojo-wasm
         ./projects/wiki
+        ./projects/oxidized-nixos
 
         ./presentations
       ];
