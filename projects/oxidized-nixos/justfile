@@ -1,0 +1,23 @@
+default: run
+
+build:
+    nixos-rebuild build-image --image-variant qemu --flake .#oxidized-nixos
+    qemu-img convert -p -f qcow2 -O raw result/nixos-image-*-x86_64-linux.qcow2 oxidized-nixos.raw
+
+run:
+    #!/usr/bin/env bash
+    KERNEL=$(nix build --print-out-paths .#nixosConfigurations.oxidized-nixos.config.system.build.kernel)/bzImage
+    INITRD=$(nix build --print-out-paths .#nixosConfigurations.oxidized-nixos.config.system.build.initialRamdisk)/initrd
+    cloud-hypervisor \
+      --kernel "$KERNEL" \
+      --initramfs "$INITRD" \
+      --disk path=oxidized-nixos.raw \
+      --cmdline "console=ttyS0 root=LABEL=nixos init=/nix/var/nix/profiles/system/init" \
+      --cpus boot=2 \
+      --memory size=4096M \
+      --serial tty \
+      --console off
+
+clean:
+    rm result
+    rm oxidized-nixos.raw
