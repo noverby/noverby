@@ -3,6 +3,8 @@
     settings = {
       netrc-file = "/home/noverby/.netrc";
       max-jobs = 100;
+      connect-timeout = 1;
+      stalled-download-timeout = 1;
       trusted-users = ["root" "noverby"];
       experimental-features = "nix-command flakes ca-derivations";
       download-buffer-size = 1024 * 1024 * 1024;
