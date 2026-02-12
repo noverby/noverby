@@ -21,3 +21,6 @@ run:
 clean:
     rm result
     rm oxidized-nixos.raw
+
+tree:
+    nix-tree --derivation .#nixosConfigurations.oxidized-nixos.config.system.build.toplevel
