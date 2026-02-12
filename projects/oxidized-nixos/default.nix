@@ -32,6 +32,8 @@
             password = "oxidized";
           };
         };
+
+        services.getty.autologinUser = "oxidized";
       })
     ];
   };
