@@ -1,4 +1,10 @@
 {
+  devShells.oxidized-nixos = pkgs: {
+    packages = with pkgs; [
+      just
+      nix-tree
+    ];
+  };
   nixosConfigurations.oxidized-nixos = {
     inputs,
     lib,
