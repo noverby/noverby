@@ -34,7 +34,11 @@
         };
 
         services.getty.autologinUser = "oxidized";
-        security.sudo.wheelNeedsPassword = false;
+        security.sudo.enable = false;
+        security.sudo-rs = {
+          enable = true;
+          wheelNeedsPassword = false;
+        };
       })
     ];
   };
