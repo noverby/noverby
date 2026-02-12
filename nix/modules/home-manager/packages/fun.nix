@@ -3,5 +3,6 @@
     # Very serious tools
     genact
     fortune-kind
+    microfetch
   ];
 }
