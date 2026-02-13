@@ -1,0 +1,24 @@
+[Unit]
+After=1-2.target
+Before=3_2.service
+
+[Service]
+ExecStartPre= /usr/bin/echo "2_1 PreStart"
+ExecStartPre= /usr/bin/echo "2_1 PreStart"
+ExecStartPre= /usr/bin/echo "2_1 PreStart"
+ExecStartPre= /usr/bin/echo "2_1 PreStart"
+ExecStartPre= /usr/bin/echo "2_1 PreStart"
+ExecStartPre= /usr/bin/echo "2_1 PreStart"
+ExecStartPre= /usr/bin/echo "2_1 PreStart"
+ExecStartPre= /usr/bin/echo "2_1 PreStart"
+ExecStartPre= /usr/bin/echo "2_1 PreStart"
+ExecStartPre= /usr/bin/echo "2_1 PreStart"
+ExecStartPre= /usr/bin/echo "2_1 PreStart"
+ExecStart= /usr/bin/echo "2_1"
+ExecStartPost= /usr/bin/echo    "2_1 PostStart"
+ExecStop= /usr/bin/echo         "2_1 Stop"
+ExecStopPost= /usr/bin/echo     "2_1 PostStop"
+Type=oneshot
+
+[Install]
+WantedBy=2-3.target
