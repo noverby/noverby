@@ -156,6 +156,7 @@
 | [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/lacy.nix) | Fast magical cd alternative |
 | [Nix-sweep 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/nix-sweep.nix) | Nix garbage collector |
 | [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/rcgen.nix) | X.509 certificate generation CLI tool |
+| [Starship-jj 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/starship-jj.nix) | Starship plugin for jj |
 
 #### Media
 | Package | Description |
