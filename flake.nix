@@ -160,6 +160,7 @@
         ./projects/mojo-wasm
         ./projects/wiki
         ./projects/oxidized-nixos
+        ./projects/rustysd
 
         ./presentations
       ];

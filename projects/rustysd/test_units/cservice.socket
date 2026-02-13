@@ -1,0 +1,11 @@
+[Unit]
+Description=test Socket
+
+[Socket]
+FileDescriptorName= SockeyMcSocketFace
+
+# ListenStream= 127.0.0.1:9030
+# ListenStream= 127.0.0.1:9031
+
+[Install]
+WantedBy=sockets.target

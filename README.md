@@ -170,7 +170,6 @@
 |-|-|
 | [Busd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/busd.nix) | A D-Bus bus implementation in Rust |
 | [Cpx 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cpx.nix) | Cp reimagined |
-| [Rustysd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/rustysd.nix) | A Systemd replacement in Rust |
 | [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/sunsetc.nix) | SSH in Rust |
 
 #### Security
@@ -193,6 +192,7 @@
 | [Wiki 🐒➡️🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/projects/wiki) | Platform for political conference & beyond |
 | [Mojo-Wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/mojo-wasm) | WebAssembly interop layer for Mojo |
 | [Oxidized NixOS 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/projects/oxidized-nixos) | NixOS with Rust user space |
+| [Rustysd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/rustysd.nix) | A Systemd replacement in Rust |
 
 </details>
 

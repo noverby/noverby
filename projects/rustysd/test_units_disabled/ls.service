@@ -1,0 +1,7 @@
+[Unit]
+requires= ls2
+Before= ls2
+
+[Service]
+Exec= /usr/bin/ls /etc
+Restart= no
