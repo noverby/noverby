@@ -146,6 +146,8 @@
           enable = true;
           wheelNeedsPassword = false;
         };
+
+        #systemd.package = pkgs.rustysd;
       })
     ];
   };
