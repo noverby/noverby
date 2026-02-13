@@ -142,7 +142,6 @@
 | Package | Description |
 |-|-|
 | [Deno-jupyter-kernel 🐒](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/deno-jupyter-kernel.nix) | Jupyter Notebook kernel for Deno |
-| [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo.nix) | Mojo development toolchain |
 | [Mojo-jupyter-kernel 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo-jupyter-kernel.nix) | Jupyter Notebook kernel for Mojo |
 | [Nu-jupyter-kernel 🦪](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/nu-jupyter-kernel.nix) | Jupyter Notebook kernel for Nushell |
 | [Rust-jupyter-kernel 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/Rust-jupyter-kernel.nix) | Jupyter Notebook kernel for Rust |
@@ -152,6 +151,7 @@
 #### Development
 | Package | Description |
 |-|-|
+| [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo.nix) | Mojo development toolchain |
 | [Envy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/envy.nix) | Environment loader CLI tool |
 | [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/lacy.nix) | Fast magical cd alternative |
 | [Nix-sweep 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/nix-sweep.nix) | Nix garbage collector |
