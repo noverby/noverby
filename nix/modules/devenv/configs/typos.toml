@@ -2,7 +2,9 @@
 extend-ignore-re = [
   "Automattic",
   "Tre",
-  "tre"
+  "tre",
+  "Importd",
+  "Localed"
 ]
 
 [files]
