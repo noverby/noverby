@@ -46,7 +46,7 @@
 
 ### 📋 Configurations
 
-<details closed>
+<details open>
 
 | Configuration | Description |
 |-|-|
@@ -74,7 +74,7 @@
 
 ### 🧩 Modules
 
-<details closed>
+<details open>
 
 | Module | Description |
 |-|-|
@@ -131,7 +131,7 @@
 
 ### 📦 Packages
 
-<details closed>
+<details open>
 
 #### Jupyter
 | Package | Description |
@@ -179,7 +179,7 @@
 
 ### 🚀 Projects
 
-<details closed>
+<details open>
 
 | Project | Description |
 |-|-|
@@ -191,7 +191,7 @@
 
 ## 💻 Hardware
 
-<details closed>
+<details open>
 
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
@@ -212,7 +212,7 @@
 
 ### 🔒 Personal
 
-<details closed>
+<details open>
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -237,7 +237,7 @@
 
 ### 👥 Social Platforms
 
-<details closed>
+<details open>
 
 #### Communication Platforms
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
@@ -283,7 +283,7 @@
 
 ### ☁️ Cloud
 
-<details closed>
+<details open>
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -302,7 +302,7 @@
 
 ### 🔌 Hardware
 
-<details closed>
+<details open>
 
 #### Architecture & Firmware
 | Status | Component | Current | Research & Development | Legacy |
@@ -328,7 +328,7 @@
 
 ### 🔗 Software
 
-<details closed>
+<details open>
 
 #### System & Compute Interfaces
 | Status | Component | Current | Research & Development | Legacy |
@@ -345,7 +345,7 @@
 
 ### 📝 Data
 
-<details closed>
+<details open>
 
 #### Text & Object Notation
 | Status | Component | Current | Research & Development | Legacy |
@@ -366,7 +366,7 @@
 
 ### 📡 Network
 
-<details closed>
+<details open>
 
 #### Network & Web Protocols
 | Status | Component | Current | Research & Development | Legacy |
@@ -382,7 +382,7 @@
 
 ### ⚙️ Core
 
-<details closed>
+<details open>
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -400,7 +400,7 @@
 
 ### 📚 Libraries
 
-<details closed>
+<details open>
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -423,7 +423,7 @@
 
 ### 🏗️ Infrastructure
 
-<details closed>
+<details open>
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -443,7 +443,7 @@
 
 ## 🛠️ Development
 
-<details closed>
+<details open>
 
 #### Languages & Compilers
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
@@ -478,7 +478,7 @@
 
 ### ❄️ Nix
 
-<details closed>
+<details open>
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -505,7 +505,7 @@
 
 ### 🌐 Web
 
-<details closed>
+<details open>
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -518,7 +518,7 @@
 
 ### 🐍 Python
 
-<details closed>
+<details open>
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -534,7 +534,7 @@
 
 ### 💻 Command Line
 
-<details closed>
+<details open>
 
 #### Filesystem Operations
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
@@ -583,7 +583,7 @@
 
 ### 🖥️ Desktop Environment
 
-<details closed>
+<details open>
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -597,7 +597,7 @@
 
 ### 🚀 Productivity
 
-<details closed>
+<details open>
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -613,7 +613,7 @@
 
 ### 🎨 Media
 
-<details closed>
+<details open>
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -630,7 +630,7 @@
 
 ### 🌐 Browser Extensions
 
-<details closed>
+<details open>
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
@@ -643,7 +643,7 @@
 
 ### 📱 Mobile
 
-<details closed>
+<details open>
 
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
