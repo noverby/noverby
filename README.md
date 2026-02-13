@@ -1,5 +1,6 @@
 # [@overby.me](https://tangled.org/overby.me/overby.me)
 
+<a id="toc"></a>
 <!-- BEGIN mktoc {"min_depth": 2, "max_depth": 3} -->
 
 - [📁 Repository](#-repository)
@@ -43,8 +44,10 @@
 | **Miscellaneous** | 🇽➡️🇾 Migrating from 🇽 to 🇾, 🌀 [Atmosphere (AT Protocol)](https://atproto.com) , 👁️ [Sentientist](https://en.wikipedia.org/wiki/Sentientism) |
 
 ## 📁 Repository
+[⬆](#toc)
 
 ### 📋 Configurations
+[⬆](#toc)
 
 <details open>
 
@@ -73,6 +76,7 @@
 </details>
 
 ### 🧩 Modules
+[⬆](#toc)
 
 <details open>
 
@@ -130,6 +134,7 @@
 </details>
 
 ### 📦 Packages
+[⬆](#toc)
 
 <details open>
 
@@ -178,6 +183,7 @@
 </details>
 
 ### 🚀 Projects
+[⬆](#toc)
 
 <details open>
 
@@ -191,6 +197,7 @@
 </details>
 
 ## 💻 Hardware
+[⬆](#toc)
 
 <details open>
 
@@ -210,8 +217,10 @@
 </details>
 
 ## 🌐 Services
+[⬆](#toc)
 
 ### 🔒 Personal
+[⬆](#toc)
 
 <details open>
 
@@ -237,6 +246,7 @@
 </details>
 
 ### 👥 Social Platforms
+[⬆](#toc)
 
 <details open>
 
@@ -283,6 +293,7 @@
 </details>
 
 ### ☁️ Cloud
+[⬆](#toc)
 
 <details open>
 
@@ -300,8 +311,10 @@
 </details>
 
 ## 📏 Standards
+[⬆](#toc)
 
 ### 🔌 Hardware
+[⬆](#toc)
 
 <details open>
 
@@ -328,6 +341,7 @@
 </details>
 
 ### 🔗 Software
+[⬆](#toc)
 
 <details open>
 
@@ -345,6 +359,7 @@
 </details>
 
 ### 📝 Data
+[⬆](#toc)
 
 <details open>
 
@@ -366,6 +381,7 @@
 </details>
 
 ### 📡 Network
+[⬆](#toc)
 
 <details open>
 
@@ -380,8 +396,10 @@
 </details>
 
 ## 🖥️ System
+[⬆](#toc)
 
 ### ⚙️ Core
+[⬆](#toc)
 
 <details open>
 
@@ -400,6 +418,7 @@
 </details>
 
 ### 📚 Libraries
+[⬆](#toc)
 
 <details open>
 
@@ -423,6 +442,7 @@
 </details>
 
 ### 🏗️ Infrastructure
+[⬆](#toc)
 
 <details open>
 
@@ -443,6 +463,7 @@
 </details>
 
 ## 🛠️ Development
+[⬆](#toc)
 
 <details open>
 
@@ -478,6 +499,7 @@
 </details>
 
 ### ❄️ Nix
+[⬆](#toc)
 
 <details open>
 
@@ -505,6 +527,7 @@
 </details>
 
 ### 🌐 Web
+[⬆](#toc)
 
 <details open>
 
@@ -518,6 +541,7 @@
 </details>
 
 ### 🐍 Python
+[⬆](#toc)
 
 <details open>
 
@@ -532,8 +556,10 @@
 </details>
 
 ## 📱 Applications
+[⬆](#toc)
 
 ### 💻 Command Line
+[⬆](#toc)
 
 <details open>
 
@@ -583,6 +609,7 @@
 </details>
 
 ### 🖥️ Desktop Environment
+[⬆](#toc)
 
 <details open>
 
@@ -597,6 +624,7 @@
 </details>
 
 ### 🚀 Productivity
+[⬆](#toc)
 
 <details open>
 
@@ -613,6 +641,7 @@
 </details>
 
 ### 🎨 Media
+[⬆](#toc)
 
 <details open>
 
@@ -630,6 +659,7 @@
 </details>
 
 ### 🌐 Browser Extensions
+[⬆](#toc)
 
 <details open>
 
@@ -643,6 +673,7 @@
 </details>
 
 ### 📱 Mobile
+[⬆](#toc)
 
 <details open>
 
