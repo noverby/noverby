@@ -18,16 +18,18 @@ mod pipe_eventfd {
     // EventFd(Read,Write)
 
     impl EventFd {
-        pub fn read_end(&self) -> RawFd {
+        #[must_use]
+        pub const fn read_end(&self) -> RawFd {
             self.0
         }
-        pub fn write_end(&self) -> RawFd {
+        #[must_use]
+        pub const fn write_end(&self) -> RawFd {
             self.1
         }
     }
 
     pub fn make_event_fd() -> Result<EventFd, String> {
-        let (r, w) = nix::unistd::pipe().map_err(|e| format!("Error creating pipe, {}", e))?;
+        let (r, w) = nix::unistd::pipe().map_err(|e| format!("Error creating pipe, {e}"))?;
         Ok(EventFd(r, w))
     }
 
@@ -40,10 +42,10 @@ mod pipe_eventfd {
         //something other than 0 so all waiting select() wake up
         let zeros: *const [u8] = &[1u8; 8][..];
         unsafe {
-            let pointer: *const std::ffi::c_void = zeros as *const std::ffi::c_void;
+            let pointer: *const std::ffi::c_void = zeros.cast::<std::ffi::c_void>();
             let x = libc::write(eventfd, pointer, 8);
             if x <= 0 {
-                error!("Did not notify eventfd {}: err: {}", eventfd, x);
+                error!("Did not notify eventfd {eventfd}: err: {x}");
             } else {
                 trace!("notify eventfd");
             }
@@ -54,7 +56,7 @@ mod pipe_eventfd {
         trace!("reset pipe eventfd");
         let buf: *mut [u8] = &mut [0u8; 8][..];
         unsafe {
-            let pointer: *mut std::ffi::c_void = buf as *mut std::ffi::c_void;
+            let pointer: *mut std::ffi::c_void = buf.cast::<std::ffi::c_void>();
             libc::read(eventfd.0, pointer, 8)
         };
     }

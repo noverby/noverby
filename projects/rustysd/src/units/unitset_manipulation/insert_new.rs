@@ -1,6 +1,6 @@
 use log::trace;
 
-use crate::runtime_info::*;
+use crate::runtime_info::{RuntimeInfo, UnitTable};
 use crate::units;
 
 use std::collections::HashMap;
@@ -11,14 +11,12 @@ use std::path::PathBuf;
 fn find_new_unit_path(unit_dirs: &[PathBuf], find_name: &str) -> Result<Option<PathBuf>, String> {
     for dir in unit_dirs {
         for entry in
-            fs::read_dir(dir).map_err(|e| format!("Error while opening dir {:?}: {}", dir, e))?
+            fs::read_dir(dir).map_err(|e| format!("Error while opening dir {dir:?}: {e}"))?
         {
             let entry = entry.unwrap();
             let meta = entry.metadata().unwrap();
-            if meta.file_type().is_file() {
-                if entry.file_name() == find_name {
-                    return Ok(Some(entry.path()));
-                }
+            if meta.file_type().is_file() && entry.file_name() == find_name {
+                return Ok(Some(entry.path()));
             }
             if meta.file_type().is_dir() {
                 if let Some(p) = find_new_unit_path(&[entry.path()], find_name)? {
@@ -31,7 +29,7 @@ fn find_new_unit_path(unit_dirs: &[PathBuf], find_name: &str) -> Result<Option<P
     Ok(None)
 }
 
-/// Loads a unit with a given name. It searches all pathes recursively until it finds a file with a matching name
+/// Loads a unit with a given name. It searches all paths recursively until it finds a file with a matching name
 pub fn load_new_unit(unit_dirs: &[PathBuf], find_name: &str) -> Result<units::Unit, String> {
     if let Some(unit_path) = find_new_unit_path(unit_dirs, find_name)? {
         let content = fs::read_to_string(&unit_path).map_err(|e| {
@@ -58,15 +56,12 @@ pub fn load_new_unit(unit_dirs: &[PathBuf], find_name: &str) -> Result<units::Un
                 .map_err(|e| format!("{}", units::ParsingError::new(e, unit_path)))?
                 .try_into()?
         } else {
-            return Err(format!(
-                "File suffix not recognized for file {:?}",
-                unit_path
-            ));
+            return Err(format!("File suffix not recognized for file {unit_path:?}"));
         };
 
         Ok(unit)
     } else {
-        Err(format!("Cannot find unit file for unit: {}", find_name))
+        Err(format!("Cannot find unit file for unit: {find_name}"))
     }
 }
 
@@ -102,7 +97,7 @@ fn check_all_names_exist(
             names_needed.remove(&unit.id).unwrap();
         }
     }
-    if names_needed.len() > 0 {
+    if !names_needed.is_empty() {
         return Err(format!(
             "Names referenced by unit but not found in the known set of units: {:?}",
             names_needed.keys().collect::<Vec<_>>()
@@ -120,7 +115,7 @@ pub fn insert_new_units(new_units: UnitTable, run_info: &mut RuntimeInfo) -> Res
         trace!("Check all names exist");
         check_all_names_exist(&new_units, unit_table)?;
 
-        for (new_id, new_unit) in new_units.into_iter() {
+        for (new_id, new_unit) in new_units {
             trace!("Add new unit: {}", new_unit.id.name);
             // Setup relations of before <-> after / requires <-> requiredby
             for unit in unit_table.values_mut() {

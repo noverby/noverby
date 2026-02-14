@@ -10,10 +10,11 @@ fn open_stdio(setting: &Option<StdIoOption>) -> Result<StdIo, String> {
         Some(StdIoOption::File(path)) => {
             let file = std::fs::OpenOptions::new()
                 .create(true)
+                .truncate(true)
                 .write(true)
                 .read(true)
                 .open(path)
-                .map_err(|e| format!("Error opening file: {:?}: {}", path, e))?;
+                .map_err(|e| format!("Error opening file: {path:?}: {e}"))?;
             Ok(StdIo::File(file))
         }
         Some(StdIoOption::AppendFile(path)) => {
@@ -22,7 +23,7 @@ fn open_stdio(setting: &Option<StdIoOption>) -> Result<StdIo, String> {
                 .append(true)
                 .read(true)
                 .open(path)
-                .map_err(|e| format!("Error opening file: {:?}: {}", path, e))?;
+                .map_err(|e| format!("Error opening file: {path:?}: {e}"))?;
             Ok(StdIo::File(file))
         }
         None => {
@@ -42,7 +43,7 @@ pub fn prepare_service(
     if !notification_socket_path.exists() {
         std::fs::create_dir_all(notification_socket_path).unwrap();
     }
-    let daemon_socket_path = notification_socket_path.join(format!("{}.notifiy_socket", &name));
+    let daemon_socket_path = notification_socket_path.join(format!("{}.notify_socket", &name));
 
     // NOTIFY_SOCKET
     let notify_socket_env_var = if daemon_socket_path.starts_with(".") {

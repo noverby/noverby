@@ -1,9 +1,9 @@
 use log::trace;
 
-use crate::runtime_info::*;
-use crate::units::*;
+use crate::runtime_info::{RuntimeInfo, UnitTable};
+use crate::units::UnitId;
 
-/// Remove this unit from the run_info and cleanup all references to it
+/// Remove this unit from the `run_info` and cleanup all references to it
 pub fn remove_unit_with_dependencies(
     remove_id: UnitId,
     run_info: &mut RuntimeInfo,
@@ -22,7 +22,7 @@ pub fn remove_unit_with_dependencies(
         check_deactivated_recursive(id, run_info)?;
     }
 
-    remove_with_depending_units(remove_id.clone(), &mut run_info.unit_table);
+    remove_with_depending_units(remove_id, &mut run_info.unit_table);
 
     Ok(())
 }
@@ -33,12 +33,7 @@ fn check_deactivated_recursive(remove_id: UnitId, run_info: &RuntimeInfo) -> Res
     let status_locked = unit.common.status.read().unwrap();
 
     // If the unit is not stopped, return the name of the unit and stop the recursion
-    if !status_locked.is_stopped() {
-        Err(format!(
-            "This unit wasn't stopped before removing: {}",
-            unit.id.name
-        ))
-    } else {
+    if status_locked.is_stopped() {
         let next_units = {
             let unit = run_info.unit_table.get(&remove_id).unwrap();
             unit.common.dependencies.required_by.clone()
@@ -47,6 +42,11 @@ fn check_deactivated_recursive(remove_id: UnitId, run_info: &RuntimeInfo) -> Res
             check_deactivated_recursive(next_id, run_info)?;
         }
         Ok(())
+    } else {
+        Err(format!(
+            "This unit wasn't stopped before removing: {}",
+            unit.id.name
+        ))
     }
 }
 
@@ -67,11 +67,9 @@ fn find_all_depending(rm_id: UnitId, unit_table: &UnitTable, ids: &mut Vec<UnitI
     }
 
     let mut new_ids = Vec::new();
-    for (id, unit) in unit_table.iter() {
-        if *id != rm_id {
-            if unit.common.unit.refs_by_name.contains(&rm_id) {
-                new_ids.push(id.clone());
-            }
+    for (id, unit) in unit_table {
+        if *id != rm_id && unit.common.unit.refs_by_name.contains(&rm_id) {
+            new_ids.push(id.clone());
         }
     }
 
@@ -84,7 +82,7 @@ fn find_all_depending(rm_id: UnitId, unit_table: &UnitTable, ids: &mut Vec<UnitI
 
 /// Remove all occurrences in other units and all units that explicitly mention this unit in their config
 fn remove_with_depending_units(rm_id: UnitId, unit_table: &mut UnitTable) {
-    trace!("Remove unit: {:?}", rm_id);
+    trace!("Remove unit: {rm_id:?}");
     // follow the units install section and check if the units have this unit in their Install-/Unit-config.
     // If so, remove them too
 
@@ -92,10 +90,8 @@ fn remove_with_depending_units(rm_id: UnitId, unit_table: &mut UnitTable) {
     // first remove all depending units
     let mut next_ids = Vec::new();
     for (id, unit) in unit_table.iter() {
-        if *id != rm_id {
-            if unit.common.unit.refs_by_name.contains(&rm_id) {
-                next_ids.push(id.clone());
-            }
+        if *id != rm_id && unit.common.unit.refs_by_name.contains(&rm_id) {
+            next_ids.push(id.clone());
         }
     }
 

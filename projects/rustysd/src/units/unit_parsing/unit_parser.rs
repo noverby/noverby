@@ -3,7 +3,10 @@
 
 use log::{debug, warn};
 
-use crate::units::*;
+use crate::units::{
+    EnvVars, ParsedExecSection, ParsedInstallSection, ParsedUnitSection, ParsingErrorReason,
+    StdIoOption,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -34,15 +37,12 @@ pub fn parse_file(content: &str) -> Result<ParsedFile, ParsingErrorReason> {
 
         if line.starts_with('[') {
             if sections.contains_key(&current_section_name) {
-                return Err(ParsingErrorReason::SectionTooOften(
-                    current_section_name.to_owned(),
-                ));
-            } else {
-                sections.insert(
-                    current_section_name.clone(),
-                    parse_section(&current_section_lines),
-                );
+                return Err(ParsingErrorReason::SectionTooOften(current_section_name));
             }
+            sections.insert(
+                current_section_name.clone(),
+                parse_section(&current_section_lines),
+            );
             current_section_name = line.into();
             current_section_lines.clear();
         } else {
@@ -52,40 +52,41 @@ pub fn parse_file(content: &str) -> Result<ParsedFile, ParsingErrorReason> {
     }
 
     // insert last section
-    if sections.contains_key(&current_section_name) {
-        return Err(ParsingErrorReason::SectionTooOften(
-            current_section_name.to_owned(),
-        ));
+    if let std::collections::hash_map::Entry::Vacant(e) =
+        sections.entry(current_section_name.clone())
+    {
+        e.insert(parse_section(&current_section_lines));
     } else {
-        sections.insert(current_section_name, parse_section(&current_section_lines));
+        return Err(ParsingErrorReason::SectionTooOften(current_section_name));
     }
 
     Ok(sections)
 }
 
+#[must_use]
 pub fn map_tuples_to_second<X, Y: Clone>(v: Vec<(X, Y)>) -> Vec<Y> {
     v.iter().map(|(_, scnd)| scnd.clone()).collect()
 }
 
+#[must_use]
 pub fn string_to_bool(s: &str) -> bool {
-    if s.len() == 0 {
+    if s.is_empty() {
         return false;
     }
 
     let s_upper = &s.to_uppercase();
-    let c: char = s_upper.chars().nth(0).unwrap();
+    let c: char = s_upper.chars().next().unwrap();
 
     let is_num_and_one = s.len() == 1 && c == '1';
     *s_upper == *"YES" || *s_upper == *"TRUE" || is_num_and_one
 }
 
 fn parse_environment(raw_line: &str) -> Result<EnvVars, ParsingErrorReason> {
-    debug!("raw line: {}", raw_line);
+    debug!("raw line: {raw_line}");
     let split = shlex::split(raw_line).ok_or(ParsingErrorReason::Generic(format!(
-        "Could not parse cmdline: {}",
-        raw_line
+        "Could not parse cmdline: {raw_line}"
     )))?;
-    debug!("split: {:?}", split);
+    debug!("split: {split:?}");
     let mut vars: Vec<(String, String)> = Vec::new();
 
     for pair in split {
@@ -109,7 +110,7 @@ pub fn parse_unit_section(
     let documentation = section.remove("DOCUMENTATION");
 
     for key in section.keys() {
-        warn!("Ignoring unsupported setting in [Unit] section: {}", key);
+        warn!("Ignoring unsupported setting in [Unit] section: {key}");
     }
 
     Ok(ParsedUnitSection {
@@ -130,10 +131,9 @@ fn make_stdio_option(setting: &str) -> Result<StdIoOption, ParsingErrorReason> {
         let p = setting.trim_start_matches("append:");
         Ok(StdIoOption::AppendFile(p.into()))
     } else {
-        return Err(ParsingErrorReason::UnsupportedSetting(format!(
-            "StandardOutput: {}",
-            setting
-        )));
+        Err(ParsingErrorReason::UnsupportedSetting(format!(
+            "StandardOutput: {setting}"
+        )))
     }
 }
 
@@ -223,14 +223,14 @@ pub fn parse_exec_section(
     let supplementary_groups = match supplementary_groups {
         None => Vec::new(),
         Some(vec) => vec.iter().fold(Vec::new(), |mut acc, (_id, list)| {
-            acc.extend(list.split(' ').map(|x| x.to_string()));
+            acc.extend(list.split(' ').map(std::string::ToString::to_string));
             acc
         }),
     };
 
     let environment = match environment {
         Some(vec) => {
-            debug!("Env vec: {:?}", vec);
+            debug!("Env vec: {vec:?}");
             Some(parse_environment(&vec[0].1)?)
         }
         None => None,
@@ -239,8 +239,8 @@ pub fn parse_exec_section(
     Ok(ParsedExecSection {
         user,
         group,
-        stderr_path,
         stdout_path,
+        stderr_path,
         supplementary_groups,
         environment,
     })
@@ -253,7 +253,7 @@ pub fn parse_install_section(
     let requiredby = section.remove("REQUIREDBY");
 
     for key in section.keys() {
-        warn!("Ignoring unsupported setting in [Install] section: {}", key);
+        warn!("Ignoring unsupported setting in [Install] section: {key}");
     }
 
     Ok(ParsedInstallSection {
@@ -265,43 +265,26 @@ pub fn parse_install_section(
 pub fn get_file_list(path: &PathBuf) -> Result<Vec<std::fs::DirEntry>, ParsingErrorReason> {
     if !path.exists() {
         return Err(ParsingErrorReason::Generic(format!(
-            "Path to services does not exist: {:?}",
-            path
+            "Path to services does not exist: {path:?}"
         )));
     }
     if !path.is_dir() {
         return Err(ParsingErrorReason::Generic(format!(
-            "Path to services does not exist: {:?}",
-            path
+            "Path to services does not exist: {path:?}"
         )));
     }
     let mut files: Vec<_> = match std::fs::read_dir(path) {
-        Ok(iter) => {
-            let files_vec = iter.fold(Ok(Vec::new()), |acc, file| {
-                if let Ok(mut files) = acc {
-                    match file {
-                        Ok(f) => {
-                            files.push(f);
-                            Ok(files)
-                        }
-                        Err(e) => Err(e),
-                    }
-                } else {
-                    acc
-                }
-            });
-            match files_vec {
-                Ok(files) => files,
-                Err(e) => return Err(ParsingErrorReason::FileError(Box::new(e))),
-            }
-        }
+        Ok(iter) => iter
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| ParsingErrorReason::FileError(Box::new(e)))?,
         Err(e) => return Err(ParsingErrorReason::FileError(Box::new(e))),
     };
-    files.sort_by(|l, r| l.path().cmp(&r.path()));
+    files.sort_by_key(std::fs::DirEntry::path);
 
     Ok(files)
 }
 
+#[must_use]
 pub fn parse_section(lines: &[&str]) -> ParsedSection {
     let mut entries: ParsedSection = HashMap::new();
 
@@ -313,9 +296,7 @@ pub fn parse_section(lines: &[&str]) -> ParsedSection {
         }
 
         //check if this is a key value pair
-        let pos = if let Some(pos) = line.find(|c| c == '=') {
-            pos
-        } else {
+        let Some(pos) = line.find('=') else {
             continue;
         };
         let (name, value) = line.split_at(pos);
@@ -323,9 +304,9 @@ pub fn parse_section(lines: &[&str]) -> ParsedSection {
         let value = value.trim_start_matches('=');
         let value = value.trim();
         let name = name.trim().to_uppercase();
-        let values: Vec<String> = value.split(',').map(|x| x.into()).collect();
+        let values: Vec<String> = value.split(',').map(std::convert::Into::into).collect();
 
-        let vec = entries.entry(name).or_insert_with(Vec::new);
+        let vec = entries.entry(name).or_default();
         for value in values {
             vec.push((entry_number, value));
             entry_number += 1;

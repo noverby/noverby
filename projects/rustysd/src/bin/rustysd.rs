@@ -7,9 +7,6 @@ fn main() {
     } else if exec_name.ends_with("rustysd") {
         rustysd::entrypoints::run_service_manager();
     } else {
-        eprintln!(
-            "Can only start as rustysd or exec_helper. Was: {}",
-            exec_name
-        )
+        eprintln!("Can only start as rustysd or exec_helper. Was: {exec_name}");
     }
 }

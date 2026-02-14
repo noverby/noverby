@@ -1,8 +1,8 @@
 //! Activate units (recursively and parallel along the dependency tree)
 
-use crate::runtime_info::*;
+use crate::runtime_info::{ArcMutRuntimeInfo, RuntimeInfo, UnitTable};
 use crate::services::ServiceErrorReason;
-use crate::units::*;
+use crate::units::{UnitId, UnitStatus};
 
 use log::{error, trace};
 use std::sync::{Arc, Mutex};
@@ -84,13 +84,10 @@ impl std::fmt::Display for UnitOperationError {
 }
 
 pub fn unstarted_deps(id: &UnitId, run_info: &RuntimeInfo) -> Vec<UnitId> {
-    let unit = match run_info.unit_table.get(id) {
-        Some(unit) => unit,
-        None => {
-            // If this occurs, there is a flaw in the handling of dependencies
-            // IDs should be purged globally when units get removed
-            return vec![];
-        }
+    let Some(unit) = run_info.unit_table.get(id) else {
+        // If this occurs, there is a flaw in the handling of dependencies
+        // IDs should be purged globally when units get removed
+        return vec![];
     };
 
     // if not all dependencies are yet started ignore this call. This unit will be activated again when
@@ -130,11 +127,9 @@ pub enum ActivationSource {
 }
 
 impl ActivationSource {
-    pub fn is_socket_activation(&self) -> bool {
-        match self {
-            ActivationSource::SocketActivation => true,
-            _ => false,
-        }
+    #[must_use]
+    pub const fn is_socket_activation(&self) -> bool {
+        matches!(self, Self::SocketActivation)
     }
 }
 
@@ -146,32 +141,29 @@ pub fn activate_unit(
     run_info: &RuntimeInfo,
     source: ActivationSource,
 ) -> std::result::Result<StartResult, UnitOperationError> {
-    trace!("Activate id: {:?}", id_to_start);
+    trace!("Activate id: {id_to_start:?}");
 
-    let unit = match run_info.unit_table.get(&id_to_start) {
-        Some(unit) => unit,
-        None => {
-            // If this occurs, there is a flaw in the handling of dependencies
-            // IDs should be purged globally when units get removed
-            return Err(UnitOperationError {
-                reason: UnitOperationErrorReason::GenericStartError(
-                    "Tried to activate a unit that can not be found".into(),
-                ),
-                unit_name: id_to_start.name.clone(),
-                unit_id: id_to_start.clone(),
-            });
-        }
+    let Some(unit) = run_info.unit_table.get(&id_to_start) else {
+        // If this occurs, there is a flaw in the handling of dependencies
+        // IDs should be purged globally when units get removed
+        return Err(UnitOperationError {
+            reason: UnitOperationErrorReason::GenericStartError(
+                "Tried to activate a unit that can not be found".into(),
+            ),
+            unit_name: id_to_start.name.clone(),
+            unit_id: id_to_start,
+        });
     };
 
     let next_services_ids = unit.common.dependencies.before.clone();
 
-    unit.activate(run_info.clone(), source)
+    unit.activate(run_info, source)
         .map(|_| StartResult::Started(next_services_ids))
 }
 
-/// Walk the unit graph and find all units that need to be started to be able to start all units in ids_to_start.
+/// Walk the unit graph and find all units that need to be started to be able to start all units in `ids_to_start`.
 ///
-/// This extends the ids_to_start with the additional ids
+/// This extends the `ids_to_start` with the additional ids
 pub fn collect_unit_start_subgraph(ids_to_start: &mut Vec<UnitId>, unit_table: &UnitTable) {
     // iterate until the set-size doesnt change anymore. This works because there is only a finite set of units that can be added here.
     // This requires that ids only appear once in the set
@@ -185,20 +177,17 @@ pub fn collect_unit_start_subgraph(ids_to_start: &mut Vec<UnitId>, unit_table: &
         }
         new_ids.sort();
         new_ids.dedup();
-        new_ids = new_ids
-            .into_iter()
-            .filter(|id| !ids_to_start.contains(id))
-            .collect();
+        new_ids.retain(|id| !ids_to_start.contains(id));
 
-        if new_ids.len() == 0 {
+        if new_ids.is_empty() {
             break;
-        } else {
-            ids_to_start.extend(new_ids);
         }
+        ids_to_start.extend(new_ids);
     }
 }
 
-/// Collects the subgraph of units that need to be started to reach the target_id (Note: not required to be a unit of type .target).
+/// Collects the subgraph of units that need to be started to reach the `target_id` (Note: not required to be a unit of type .target).
+///
 /// Then starts these units as concurrently as possible respecting the before <-> after ordering
 pub fn activate_needed_units(
     target_id: UnitId,
@@ -209,14 +198,14 @@ pub fn activate_needed_units(
         let run_info = run_info.read().unwrap();
         collect_unit_start_subgraph(&mut needed_ids, &run_info.unit_table);
     }
-    trace!("Needed units to start {:?}: {:?}", target_id, needed_ids);
+    trace!("Needed units to start {target_id:?}: {needed_ids:?}");
 
     // collect all 'root' units. These are units that do not have any 'after' relations to other unstarted units.
     // These can be started and the the graph can be traversed and other units can be started as soon as
     // all other units they depend on are started. This works because the units form an DAG if only
     // the 'after' relations are considered for traversal.
-    let root_units = { find_startable_units(&needed_ids, &*run_info.read().unwrap()) };
-    trace!("Root units found: {:?}", root_units);
+    let root_units = { find_startable_units(&needed_ids, &run_info.read().unwrap()) };
+    trace!("Root units found: {root_units:?}");
 
     // TODO make configurable or at least make guess about amount of threads
     let tpool = ThreadPool::new(6);
@@ -231,9 +220,9 @@ pub fn activate_needed_units(
 
     tpool.join();
     // TODO can we handle errors in a more meaningful way?
-    let errs = (&*errors.lock().unwrap()).clone();
+    let errs = (*errors.lock().unwrap()).clone();
     for err in &errs {
-        error!("Error while activating unit graph: {}", err);
+        error!("Error while activating unit graph: {err}");
     }
     errs
 }
@@ -250,9 +239,9 @@ fn find_startable_units(ids: &Vec<UnitId>, run_info: &RuntimeInfo) -> Vec<UnitId
     startable
 }
 
-/// Start all units in ids_to_start and push jobs into the threadpool to start all following units.
+/// Start all units in `ids_to_start` and push jobs into the threadpool to start all following units.
 ///
-/// Only do so for the units in filter_ids
+/// Only do so for the units in `filter_ids`
 fn activate_units_recursive(
     ids_to_start: Vec<UnitId>,
     filter_ids: Arc<Vec<UnitId>>,
@@ -260,10 +249,10 @@ fn activate_units_recursive(
     tpool: ThreadPool,
     errors: Arc<Mutex<Vec<UnitOperationError>>>,
 ) {
-    let startables = { find_startable_units(&ids_to_start, &*run_info.read().unwrap()) };
+    let startables = { find_startable_units(&ids_to_start, &run_info.read().unwrap()) };
     let startables: Vec<UnitId> = startables
         .into_iter()
-        .filter(|id| filter_ids.contains(&id))
+        .filter(|id| filter_ids.contains(id))
         .collect();
 
     for id in startables {
@@ -275,7 +264,7 @@ fn activate_units_recursive(
         tpool.execute(move || {
             match activate_unit(
                 id,
-                &*run_info_copy.read().unwrap(),
+                &run_info_copy.read().unwrap(),
                 ActivationSource::Regular,
             ) {
                 Ok(StartResult::Started(next_services_ids)) => {
@@ -304,7 +293,7 @@ fn activate_units_recursive(
                         // This should not happen though, since we filter the units beforehand
                         // to only get the startables
                     } else {
-                        error!("Error while activating unit {}", e);
+                        error!("Error while activating unit {e}");
                         errors_copy.lock().unwrap().push(e);
                     }
                 }

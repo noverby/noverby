@@ -1,5 +1,10 @@
-use crate::runtime_info::*;
-use crate::units::*;
+use crate::runtime_info::{ArcMutRuntimeInfo, UnitTable};
+use crate::units::{
+    insert_new_units, load_all_units, load_new_unit, ActivationSource, Specific, Unit, UnitIdKind,
+    UnitStatus,
+};
+
+use std::fmt::Write as _;
 
 use log::trace;
 use serde_json::Value;
@@ -20,7 +25,7 @@ pub fn open_all_sockets(run_info: ArcMutRuntimeInfo, conf: &crate::config::Confi
     use std::os::unix::net::UnixListener;
     std::fs::create_dir_all(&conf.notification_sockets_dir).unwrap();
     let unixsock = UnixListener::bind(&control_sock_path).unwrap();
-    accept_control_connections_unix_socket(run_info.clone(), unixsock);
+    accept_control_connections_unix_socket(run_info, unixsock);
     //let tcpsock = std::net::TcpListener::bind("127.0.0.1:8080").unwrap();
     //accept_control_connections_tcp(
     //    run_info.clone(),
@@ -54,122 +59,78 @@ fn parse_command(call: &super::jsonrpc2::Call) -> Result<Command, ParseError> {
     let command = match call.method.as_str() {
         "status" => {
             let name = match &call.params {
-                Some(params) => match params {
-                    Value::String(s) => Some(s.clone()),
-                    _ => {
-                        return Err(ParseError::ParamsInvalid(format!(
-                            "Params must be either none or a single string"
-                        )))
-                    }
-                },
+                Some(Value::String(s)) => Some(s.clone()),
+                Some(_) => {
+                    return Err(ParseError::ParamsInvalid(
+                        "Params must be either none or a single string".to_string(),
+                    ))
+                }
                 None => None,
             };
             Command::Status(name)
         }
         "restart" => {
             let name = match &call.params {
-                Some(params) => match params {
-                    Value::String(s) => s.clone(),
-                    _ => {
-                        return Err(ParseError::ParamsInvalid(format!(
-                            "Params must be a single string"
-                        )))
-                    }
-                },
-                None => {
-                    return Err(ParseError::ParamsInvalid(format!(
-                        "Params must be a single string"
-                    )))
+                Some(Value::String(s)) => s.clone(),
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "Params must be a single string".to_string(),
+                    ))
                 }
             };
             Command::Restart(name)
         }
         "start" => {
             let name = match &call.params {
-                Some(params) => match params {
-                    Value::String(s) => s.clone(),
-                    _ => {
-                        return Err(ParseError::ParamsInvalid(format!(
-                            "Params must be a single string"
-                        )))
-                    }
-                },
-                None => {
-                    return Err(ParseError::ParamsInvalid(format!(
-                        "Params must be a single string"
-                    )))
+                Some(Value::String(s)) => s.clone(),
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "Params must be a single string".to_string(),
+                    ))
                 }
             };
             Command::Start(name)
         }
         "start-all" => {
             let name = match &call.params {
-                Some(params) => match params {
-                    Value::String(s) => s.clone(),
-                    _ => {
-                        return Err(ParseError::ParamsInvalid(format!(
-                            "Params must be a single string"
-                        )))
-                    }
-                },
-                None => {
-                    return Err(ParseError::ParamsInvalid(format!(
-                        "Params must be a single string"
-                    )))
+                Some(Value::String(s)) => s.clone(),
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "Params must be a single string".to_string(),
+                    ))
                 }
             };
             Command::StartAll(name)
         }
         "remove" => {
             let name = match &call.params {
-                Some(params) => match params {
-                    Value::String(s) => s.clone(),
-                    _ => {
-                        return Err(ParseError::ParamsInvalid(format!(
-                            "Params must be a single string"
-                        )))
-                    }
-                },
-                None => {
-                    return Err(ParseError::ParamsInvalid(format!(
-                        "Params must be a single string"
-                    )))
+                Some(Value::String(s)) => s.clone(),
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "Params must be a single string".to_string(),
+                    ))
                 }
             };
             Command::Remove(name)
         }
         "stop" => {
             let name = match &call.params {
-                Some(params) => match params {
-                    Value::String(s) => s.clone(),
-                    _ => {
-                        return Err(ParseError::ParamsInvalid(format!(
-                            "Params must be a single string"
-                        )))
-                    }
-                },
-                None => {
-                    return Err(ParseError::ParamsInvalid(format!(
-                        "Params must be a single string"
-                    )))
+                Some(Value::String(s)) => s.clone(),
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "Params must be a single string".to_string(),
+                    ))
                 }
             };
             Command::Stop(name)
         }
         "stop-all" => {
             let name = match &call.params {
-                Some(params) => match params {
-                    Value::String(s) => s.clone(),
-                    _ => {
-                        return Err(ParseError::ParamsInvalid(format!(
-                            "Params must be a single string"
-                        )))
-                    }
-                },
-                None => {
-                    return Err(ParseError::ParamsInvalid(format!(
-                        "Params must be a single string"
-                    )))
+                Some(Value::String(s)) => s.clone(),
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "Params must be a single string".to_string(),
+                    ))
                 }
             };
             Command::StopAll(name)
@@ -185,17 +146,16 @@ fn parse_command(call: &super::jsonrpc2::Call) -> Result<Command, ParseError> {
                             "service" => UnitIdKind::Service,
                             _ => {
                                 return Err(ParseError::ParamsInvalid(format!(
-                                    "Kind not recognized: {}",
-                                    s
+                                    "Kind not recognized: {s}"
                                 )))
                             }
                         };
                         Some(kind)
                     }
                     _ => {
-                        return Err(ParseError::ParamsInvalid(format!(
-                            "Params must be a single string"
-                        )))
+                        return Err(ParseError::ParamsInvalid(
+                            "Params must be a single string".to_string(),
+                        ))
                     }
                 },
                 None => None,
@@ -215,23 +175,23 @@ fn parse_command(call: &super::jsonrpc2::Call) -> Result<Command, ParseError> {
                             if let Value::String(name) = name {
                                 str_names.push(name.clone());
                             } else {
-                                return Err(ParseError::ParamsInvalid(format!(
-                                    "Params must be at least one string"
-                                )));
+                                return Err(ParseError::ParamsInvalid(
+                                    "Params must be at least one string".to_string(),
+                                ));
                             }
                         }
                         str_names
                     }
                     _ => {
-                        return Err(ParseError::ParamsInvalid(format!(
-                            "Params must be at least one string"
-                        )))
+                        return Err(ParseError::ParamsInvalid(
+                            "Params must be at least one string".to_string(),
+                        ))
                     }
                 },
                 None => {
-                    return Err(ParseError::ParamsInvalid(format!(
-                        "Params must be at least one string"
-                    )))
+                    return Err(ParseError::ParamsInvalid(
+                        "Params must be at least one string".to_string(),
+                    ))
                 }
             };
             Command::LoadNew(names)
@@ -250,7 +210,7 @@ fn parse_command(call: &super::jsonrpc2::Call) -> Result<Command, ParseError> {
 pub fn format_socket(socket_unit: &Unit, status: UnitStatus) -> Value {
     let mut map = serde_json::Map::new();
     map.insert("Name".into(), Value::String(socket_unit.id.name.clone()));
-    map.insert("Status".into(), Value::String(format!("{:?}", status)));
+    map.insert("Status".into(), Value::String(format!("{status:?}")));
 
     if let Specific::Socket(sock) = &socket_unit.specific {
         map.insert(
@@ -275,14 +235,14 @@ pub fn format_socket(socket_unit: &Unit, status: UnitStatus) -> Value {
 pub fn format_target(socket_unit: &Unit, status: UnitStatus) -> Value {
     let mut map = serde_json::Map::new();
     map.insert("Name".into(), Value::String(socket_unit.id.name.clone()));
-    map.insert("Status".into(), Value::String(format!("{:?}", status)));
+    map.insert("Status".into(), Value::String(format!("{status:?}")));
     Value::Object(map)
 }
 
 pub fn format_service(srvc_unit: &Unit, status: UnitStatus) -> Value {
     let mut map = serde_json::Map::new();
     map.insert("Name".into(), Value::String(srvc_unit.id.name.clone()));
-    map.insert("Status".into(), Value::String(format!("{:?}", status)));
+    map.insert("Status".into(), Value::String(format!("{status:?}")));
     if let Specific::Service(srvc) = &srvc_unit.specific {
         map.insert(
             "Sockets".into(),
@@ -312,12 +272,12 @@ pub fn format_service(srvc_unit: &Unit, status: UnitStatus) -> Value {
 }
 
 fn find_units_with_name<'a>(unit_name: &str, unit_table: &'a UnitTable) -> Vec<&'a Unit> {
-    trace!("Find unit for name: {}", unit_name);
+    trace!("Find unit for name: {unit_name}");
     unit_table
         .values()
         .filter(|unit| {
             let name = unit.id.name.clone();
-            name.starts_with(&unit_name)
+            name.starts_with(unit_name)
         })
         .collect()
 }
@@ -327,12 +287,12 @@ fn find_units_with_pattern<'a>(
     name_pattern: &str,
     unit_table_locked: &'a UnitTable,
 ) -> Vec<&'a Unit> {
-    trace!("Find units matching pattern: {}", name_pattern);
+    trace!("Find units matching pattern: {name_pattern}");
     let units: Vec<_> = unit_table_locked
         .values()
         .filter(|unit| {
             let name = unit.id.name.clone();
-            name.starts_with(&name_pattern)
+            name.starts_with(name_pattern)
         })
         .collect();
     units
@@ -355,25 +315,18 @@ pub fn execute_command(
                 if units.len() > 1 {
                     let names: Vec<_> = units.iter().map(|unit| unit.id.name.clone()).collect();
                     return Err(format!(
-                        "More than one unit found with name: {}: {:?}",
-                        unit_name, names
+                        "More than one unit found with name: {unit_name}: {names:?}"
                     ));
                 }
-                if units.len() == 0 {
-                    return Err(format!("No unit found with name: {}", unit_name));
+                if units.is_empty() {
+                    return Err(format!("No unit found with name: {unit_name}"));
                 }
-                let x = units[0].id.clone();
-                x
+
+                units[0].id.clone()
             };
 
-            match crate::units::reactivate_unit(id, run_info).map_err(|e| format!("{}", e)) {
-                Err(e) => {
-                    return Err(e);
-                }
-                Ok(_) => {
-                    // Happy
-                }
-            };
+            crate::units::reactivate_unit(id, run_info).map_err(|e| format!("{e}"))?;
+            // Happy
         }
         Command::Start(unit_name) => {
             let run_info = &*run_info.read().unwrap();
@@ -383,27 +336,19 @@ pub fn execute_command(
                 if units.len() > 1 {
                     let names: Vec<_> = units.iter().map(|unit| unit.id.name.clone()).collect();
                     return Err(format!(
-                        "More than one unit found with name: {}: {:?}",
-                        unit_name, names
+                        "More than one unit found with name: {unit_name}: {names:?}"
                     ));
                 }
-                if units.len() == 0 {
-                    return Err(format!("No unit found with name: {}", unit_name));
+                if units.is_empty() {
+                    return Err(format!("No unit found with name: {unit_name}"));
                 }
-                let x = units[0].id.clone();
-                x
+
+                units[0].id.clone()
             };
 
-            match crate::units::activate_unit(id, run_info, ActivationSource::Regular)
-                .map_err(|e| format!("{}", e))
-            {
-                Err(e) => {
-                    return Err(e);
-                }
-                Ok(_) => {
-                    // Happy
-                }
-            };
+            crate::units::activate_unit(id, run_info, ActivationSource::Regular)
+                .map_err(|e| format!("{e}"))?;
+            // Happy
         }
         Command::StartAll(unit_name) => {
             let id = {
@@ -413,22 +358,21 @@ pub fn execute_command(
                 if units.len() > 1 {
                     let names: Vec<_> = units.iter().map(|unit| unit.id.name.clone()).collect();
                     return Err(format!(
-                        "More than one unit found with name: {}: {:?}",
-                        unit_name, names
+                        "More than one unit found with name: {unit_name}: {names:?}"
                     ));
                 }
-                if units.len() == 0 {
-                    return Err(format!("No unit found with name: {}", unit_name));
+                if units.is_empty() {
+                    return Err(format!("No unit found with name: {unit_name}"));
                 }
-                let x = units[0].id.clone();
-                x
+
+                units[0].id.clone()
             };
 
             let errs = crate::units::activate_needed_units(id, run_info);
-            if errs.len() > 0 {
+            if !errs.is_empty() {
                 let mut errstr = String::from("Errors while starting the units:");
                 for err in errs {
-                    errstr.push_str(&format!("\n{:?}", err));
+                    let _ = write!(errstr, "\n{err:?}");
                 }
                 return Err(errstr);
             }
@@ -440,19 +384,17 @@ pub fn execute_command(
                 if units.len() > 1 {
                     let names: Vec<_> = units.iter().map(|unit| unit.id.name.clone()).collect();
                     return Err(format!(
-                        "More than one unit found with name: {}: {:?}",
-                        unit_name, names
+                        "More than one unit found with name: {unit_name}: {names:?}"
                     ));
                 }
-                if units.len() == 0 {
-                    return Err(format!("No unit found with name: {}", unit_name));
+                if units.is_empty() {
+                    return Err(format!("No unit found with name: {unit_name}"));
                 }
-                let x = units[0].id.clone();
-                x
+
+                units[0].id.clone()
             };
 
-            crate::units::remove_unit_with_dependencies(id, run_info)
-                .map_err(|e| format!("{}", e))?;
+            crate::units::remove_unit_with_dependencies(id, run_info)?;
         }
         Command::Stop(unit_name) => {
             let run_info = &*run_info.read().unwrap();
@@ -461,25 +403,18 @@ pub fn execute_command(
                 if units.len() > 1 {
                     let names: Vec<_> = units.iter().map(|unit| unit.id.name.clone()).collect();
                     return Err(format!(
-                        "More than one unit found with name: {}: {:?}",
-                        unit_name, names
+                        "More than one unit found with name: {unit_name}: {names:?}"
                     ));
                 }
-                if units.len() == 0 {
-                    return Err(format!("No unit found with name: {}", unit_name));
+                if units.is_empty() {
+                    return Err(format!("No unit found with name: {unit_name}"));
                 }
-                let x = units[0].id.clone();
-                x
+
+                units[0].id.clone()
             };
 
-            match crate::units::deactivate_unit(&id, run_info).map_err(|e| format!("{}", e)) {
-                Err(e) => {
-                    return Err(e);
-                }
-                Ok(_) => {
-                    // Happy
-                }
-            };
+            crate::units::deactivate_unit(&id, run_info).map_err(|e| format!("{e}"))?;
+            // Happy
         }
         Command::StopAll(unit_name) => {
             let run_info = &*run_info.read().unwrap();
@@ -488,80 +423,68 @@ pub fn execute_command(
                 if units.len() > 1 {
                     let names: Vec<_> = units.iter().map(|unit| unit.id.name.clone()).collect();
                     return Err(format!(
-                        "More than one unit found with name: {}: {:?}",
-                        unit_name, names
+                        "More than one unit found with name: {unit_name}: {names:?}"
                     ));
                 }
-                if units.len() == 0 {
-                    return Err(format!("No unit found with name: {}", unit_name));
+                if units.is_empty() {
+                    return Err(format!("No unit found with name: {unit_name}"));
                 }
-                let x = units[0].id.clone();
-                x
+
+                units[0].id.clone()
             };
 
-            match crate::units::deactivate_unit_recursive(&id, run_info)
-                .map_err(|e| format!("{}", e))
-            {
-                Err(e) => {
-                    return Err(e);
-                }
-                Ok(_) => {
-                    // Happy
-                }
-            };
+            crate::units::deactivate_unit_recursive(&id, run_info).map_err(|e| format!("{e}"))?;
+            // Happy
         }
         Command::Status(unit_name) => {
             let run_info = &*run_info.read().unwrap();
             let unit_table = &run_info.unit_table;
-            match unit_name {
-                Some(name) => {
-                    //list specific
-                    let units = find_units_with_pattern(&name, unit_table);
-                    for unit in units {
-                        let status = { unit.common.status.read().unwrap().clone() };
-                        if name.ends_with(".service") {
-                            result_vec
-                                .as_array_mut()
-                                .unwrap()
-                                .push(format_service(&unit, status));
-                        } else if name.ends_with(".socket") {
-                            result_vec
-                                .as_array_mut()
-                                .unwrap()
-                                .push(format_socket(&unit, status));
-                        } else if name.ends_with(".target") {
-                            result_vec
-                                .as_array_mut()
-                                .unwrap()
-                                .push(format_target(&unit, status));
-                        } else {
-                            return Err("Name suffix not recognized".into());
-                        }
+            if let Some(name) = unit_name {
+                //list specific
+                let units = find_units_with_pattern(&name, unit_table);
+                for unit in units {
+                    let status = { unit.common.status.read().unwrap().clone() };
+                    if name.ends_with(".service") {
+                        result_vec
+                            .as_array_mut()
+                            .unwrap()
+                            .push(format_service(unit, status));
+                    } else if name.ends_with(".socket") {
+                        result_vec
+                            .as_array_mut()
+                            .unwrap()
+                            .push(format_socket(unit, status));
+                    } else if name.ends_with(".target") {
+                        result_vec
+                            .as_array_mut()
+                            .unwrap()
+                            .push(format_target(unit, status));
+                    } else {
+                        return Err("Name suffix not recognized".into());
                     }
                 }
-                None => {
-                    //list all
-                    let strings: Vec<_> = unit_table
-                        .iter()
-                        .map(|(_id, unit)| {
-                            let status = { unit.common.status.read().unwrap().clone() };
-                            match unit.specific {
-                                Specific::Socket(_) => format_socket(&unit, status),
-                                Specific::Service(_) => format_service(&unit, status),
-                                Specific::Target(_) => format_target(&unit, status),
-                            }
-                        })
-                        .collect();
-                    for s in strings {
-                        result_vec.as_array_mut().unwrap().push(s);
-                    }
+            } else {
+                //list all
+                let strings: Vec<_> = unit_table
+                    .values()
+                    .map(|unit| {
+                        let status = { unit.common.status.read().unwrap().clone() };
+                        match unit.specific {
+                            Specific::Socket(_) => format_socket(unit, status),
+                            Specific::Service(_) => format_service(unit, status),
+                            Specific::Target(_) => format_target(unit, status),
+                        }
+                    })
+                    .collect();
+                for s in strings {
+                    result_vec.as_array_mut().unwrap().push(s);
                 }
             }
         }
         Command::ListUnits(kind) => {
             let run_info = &*run_info.read().unwrap();
             let unit_table = &run_info.unit_table;
-            for (id, unit) in unit_table.iter() {
+            for (id, unit) in unit_table {
                 let include = if let Some(kind) = kind {
                     id.kind == kind
                 } else {
@@ -579,7 +502,7 @@ pub fn execute_command(
             let run_info = &mut *run_info.write().unwrap();
             let mut map = std::collections::HashMap::new();
             for name in &names {
-                let unit = load_new_unit(&run_info.config.unit_dirs, &name)?;
+                let unit = load_new_unit(&run_info.config.unit_dirs, name)?;
                 map.insert(unit.id.clone(), unit);
             }
             insert_new_units(map, run_info)?;
@@ -589,7 +512,7 @@ pub fn execute_command(
             let unit_table = &run_info.unit_table;
             // get all units there are
             let units = load_all_units(&run_info.config.unit_dirs, &run_info.config.target_unit)
-                .map_err(|e| format!("Error while loading unit definitons: {:?}", e))?;
+                .map_err(|e| format!("Error while loading unit definitions: {e:?}"))?;
 
             // collect all names
             let existing_names = unit_table
@@ -627,7 +550,7 @@ pub fn execute_command(
             let unit_table = &run_info.unit_table;
             // get all units there are
             let units = load_all_units(&run_info.config.unit_dirs, &run_info.config.target_unit)
-                .map_err(|e| format!("Error while loading unit definitons: {:?}", e))?;
+                .map_err(|e| format!("Error while loading unit definitions: {e:?}"))?;
 
             // collect all names
             let existing_names = unit_table
@@ -638,13 +561,11 @@ pub fn execute_command(
             // filter out existing units
             let mut ignored_units_names = Vec::new();
             let mut new_units_names = Vec::new();
-            let mut new_units = std::collections::HashMap::new();
-            for (id, unit) in units {
+            for (_id, unit) in units {
                 if existing_names.contains(&unit.id.name) {
                     ignored_units_names.push(Value::String(unit.id.name.clone()));
                 } else {
                     new_units_names.push(Value::String(unit.id.name.clone()));
-                    new_units.insert(id, unit);
                 }
             }
 
@@ -668,20 +589,20 @@ pub fn execute_command(
 }
 
 use std::io::Read;
-use std::io::Write;
-pub fn listen_on_commands<T: 'static + Read + Write + Send>(
+use std::io::Write as IoWrite;
+pub fn listen_on_commands<T: 'static + Read + IoWrite + Send>(
     mut source: Box<T>,
     run_info: ArcMutRuntimeInfo,
 ) {
     std::thread::spawn(move || loop {
         match super::jsonrpc2::get_next_call(source.as_mut()) {
             Err(e) => {
-                if let serde_json::error::Category::Eof = e.classify() {
+                if e.classify() == serde_json::error::Category::Eof {
                     // ignore, just stop reading
                 } else {
                     let err = super::jsonrpc2::make_error(
                         super::jsonrpc2::PARSE_ERROR,
-                        format!("{}", e),
+                        format!("{e}"),
                         None,
                     );
                     let msg = super::jsonrpc2::make_error_response(None, err);
@@ -720,7 +641,7 @@ pub fn listen_on_commands<T: 'static + Read + Write + Send>(
                                 source.write_all(response_string.as_bytes()).unwrap();
                             }
                             Ok(cmd) => {
-                                trace!("Execute command: {:?}", cmd);
+                                trace!("Execute command: {cmd:?}");
                                 let msg = match execute_command(cmd, run_info.clone()) {
                                     Err(e) => {
                                         let err = super::jsonrpc2::make_error(
@@ -751,13 +672,13 @@ pub fn accept_control_connections_unix_socket(
 ) {
     std::thread::spawn(move || loop {
         let stream = Box::new(source.accept().unwrap().0);
-        listen_on_commands(stream, run_info.clone())
+        listen_on_commands(stream, run_info.clone());
     });
 }
 
 pub fn accept_control_connections_tcp(run_info: ArcMutRuntimeInfo, source: std::net::TcpListener) {
     std::thread::spawn(move || loop {
         let stream = Box::new(source.accept().unwrap().0);
-        listen_on_commands(stream, run_info.clone())
+        listen_on_commands(stream, run_info.clone());
     });
 }

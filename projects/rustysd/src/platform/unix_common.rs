@@ -11,8 +11,7 @@ pub fn make_seqpacket_socket(path: &std::path::PathBuf) -> Result<RawFd, String>
     let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_SEQPACKET, protocol) };
     if fd < 0 {
         return Err(format!(
-            "Could not opensequential packet  socket. Result was: {}",
-            fd,
+            "Could not opensequential packet  socket. Result was: {fd}",
         ));
     }
     // then bind the socket to the path

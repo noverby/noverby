@@ -1,8 +1,8 @@
 use log::{error, trace};
 
-use crate::runtime_info::*;
+use crate::runtime_info::{ArcMutRuntimeInfo, PidEntry, RuntimeInfo};
 use crate::signal_handler::ChildTermination;
-use crate::units::*;
+use crate::units::{ServiceRestart, ServiceType, Specific, UnitOperationErrorReason, UnitStatus};
 
 pub fn service_exit_handler_new_thread(
     pid: nix::unistd::Pid,
@@ -10,8 +10,8 @@ pub fn service_exit_handler_new_thread(
     run_info: ArcMutRuntimeInfo,
 ) {
     std::thread::spawn(move || {
-        if let Err(e) = service_exit_handler(pid, code, &*run_info.read().unwrap()) {
-            error!("{}", e);
+        if let Err(e) = service_exit_handler(pid, code, &run_info.read().unwrap()) {
+            error!("{e}");
         }
     });
 }
@@ -21,45 +21,34 @@ pub fn service_exit_handler(
     code: ChildTermination,
     run_info: &RuntimeInfo,
 ) -> Result<(), String> {
-    trace!("Exit handler with pid: {}", pid);
+    trace!("Exit handler with pid: {pid}");
 
     // Handle exiting of helper processes and oneshot processes
     {
         let pid_table_locked = &mut *run_info.pid_table.lock().unwrap();
         let entry = pid_table_locked.get(&pid);
-        match entry {
-            Some(entry) => match entry {
+        if let Some(entry) = entry {
+            match entry {
                 PidEntry::Service(_id, _srvctype) => {
                     // ignore at this point, will be handled below
                 }
                 PidEntry::Helper(_id, srvc_name) => {
-                    trace!(
-                        "Helper process for service: {} exited with: {:?}",
-                        srvc_name,
-                        code
-                    );
+                    trace!("Helper process for service: {srvc_name} exited with: {code:?}");
                     // this will be collected by the thread that waits for the helper process to exit
                     pid_table_locked.insert(pid, PidEntry::HelperExited(code));
                     return Ok(());
                 }
-                PidEntry::HelperExited(_) => {
-                    // TODO is this sensibel? How do we handle this?
+                PidEntry::HelperExited(_) | PidEntry::ServiceExited(_) => {
+                    // TODO is this sensible? How do we handle this?
                     error!("Pid exited that was already saved as exited");
                     return Ok(());
                 }
-                PidEntry::ServiceExited(_) => {
-                    // TODO is this sensibel? How do we handle this?
-                    error!("Pid exited that was already saved as exited");
-                    return Ok(());
-                }
-            },
-            None => {
-                trace!(
-                    "All processes spawned by rustysd have a pid entry. This did not: {}. Probably a rerooted orphan that got killed.",
-                    pid
-                );
-                return Ok(());
             }
+        } else {
+            trace!(
+                "All processes spawned by rustysd have a pid entry. This did not: {pid}. Probably a rerooted orphan that got killed."
+            );
+            return Ok(());
         }
     }
 
@@ -70,17 +59,11 @@ pub fn service_exit_handler(
         match entry {
             Some(entry) => match entry {
                 PidEntry::Service(id, _srvctype) => {
-                    trace!("Save service as exited. PID: {}", pid);
+                    trace!("Save service as exited. PID: {pid}");
                     pid_table_locked.insert(pid, PidEntry::ServiceExited(code));
                     id
                 }
-                PidEntry::Helper(_id, _srvc_name) => {
-                    unreachable!();
-                }
-                PidEntry::HelperExited(_) => {
-                    unreachable!();
-                }
-                PidEntry::ServiceExited(_) => {
+                PidEntry::Helper(..) | PidEntry::HelperExited(_) | PidEntry::ServiceExited(_) => {
                     unreachable!();
                 }
             },
@@ -90,11 +73,8 @@ pub fn service_exit_handler(
         }
     };
 
-    let unit = match run_info.unit_table.get(&srvc_id) {
-        Some(unit) => unit,
-        None => {
-            panic!("Tried to run a unit that has been removed from the map");
-        }
+    let Some(unit) = run_info.unit_table.get(&srvc_id) else {
+        panic!("Tried to run a unit that has been removed from the map");
     };
 
     // kill oneshot service processes. There should be none but just in case...
@@ -122,11 +102,7 @@ pub fn service_exit_handler(
                 code
             );
 
-            if srvc.conf.restart == ServiceRestart::Always {
-                true
-            } else {
-                false
-            }
+            srvc.conf.restart == ServiceRestart::Always
         } else {
             false
         }
@@ -142,15 +118,12 @@ pub fn service_exit_handler(
     }
 
     if restart_unit {
-        trace!("Restart service {} after it died", name);
-        crate::units::reactivate_unit(srvc_id, run_info).map_err(|e| format!("{}", e))?;
+        trace!("Restart service {name} after it died");
+        crate::units::reactivate_unit(srvc_id, run_info).map_err(|e| format!("{e}"))?;
     } else {
-        trace!(
-            "Recursively killing all services requiring service {}",
-            name
-        );
+        trace!("Recursively killing all services requiring service {name}");
         loop {
-            let res = crate::units::deactivate_unit_recursive(&srvc_id, run_info.clone());
+            let res = crate::units::deactivate_unit_recursive(&srvc_id, run_info);
             let retry = if let Err(e) = &res {
                 if let UnitOperationErrorReason::DependencyError(_) = e.reason {
                     // Only retry if this is the case. This only occurs if, while the units are being deactivated,
@@ -164,7 +137,7 @@ pub fn service_exit_handler(
                 false
             };
             if !retry {
-                res.map_err(|e| format!("{}", e))?;
+                res.map_err(|e| format!("{e}"))?;
             }
         }
     }

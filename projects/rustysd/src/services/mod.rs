@@ -9,6 +9,7 @@ mod fork_parent;
 mod kill_os_specific;
 mod prepare_service;
 mod service_exit_handler;
+#[allow(clippy::module_inception)]
 mod services;
 mod start_service;
 pub use service_exit_handler::*;

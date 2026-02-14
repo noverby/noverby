@@ -1,6 +1,11 @@
 use log::warn;
 
-use crate::units::*;
+use crate::units::{
+    map_tuples_to_second, parse_install_section, parse_unit_section, string_to_bool, Commandline,
+    CommandlinePrefix, NotifyKind, ParsedCommonConfig, ParsedFile, ParsedSection,
+    ParsedServiceConfig, ParsedServiceSection, ParsingErrorReason, ServiceRestart, ServiceType,
+    Timeout,
+};
 use std::path::PathBuf;
 
 pub fn parse_service(
@@ -24,17 +29,12 @@ pub fn parse_service(
             }
 
             _ => {
-                warn!(
-                    "Ignoring unknown section in service unit {:?}: {}",
-                    path, name
-                );
+                warn!("Ignoring unknown section in service unit {path:?}: {name}");
             }
         }
     }
 
-    let service_config = if let Some(service_config) = service_config {
-        service_config
-    } else {
+    let Some(service_config) = service_config else {
         return Err(ParsingErrorReason::SectionNotFound("Service".to_owned()));
     };
 
@@ -51,27 +51,24 @@ pub fn parse_service(
 fn parse_timeout(descr: &str) -> Timeout {
     if descr.to_uppercase() == "INFINITY" {
         Timeout::Infinity
+    } else if let Ok(secs) = descr.parse::<u64>() {
+        Timeout::Duration(std::time::Duration::from_secs(secs))
     } else {
-        match descr.parse::<u64>() {
-            Ok(secs) => Timeout::Duration(std::time::Duration::from_secs(secs)),
-            Err(_) => {
-                let mut sum = 0;
-                let split = descr.split(' ').collect::<Vec<_>>();
-                for t in &split {
-                    if t.ends_with("min") {
-                        let mins = t[0..t.len() - 3].parse::<u64>().unwrap();
-                        sum += mins * 60;
-                    } else if t.ends_with("hrs") {
-                        let hrs = t[0..t.len() - 3].parse::<u64>().unwrap();
-                        sum += hrs * 60 * 60;
-                    } else if t.ends_with("s") {
-                        let secs = t[0..t.len() - 1].parse::<u64>().unwrap();
-                        sum += secs;
-                    }
-                }
-                Timeout::Duration(std::time::Duration::from_secs(sum))
+        let mut sum = 0;
+        let split = descr.split(' ').collect::<Vec<_>>();
+        for t in &split {
+            if t.ends_with("min") {
+                let mins = t[0..t.len() - 3].parse::<u64>().unwrap();
+                sum += mins * 60;
+            } else if t.ends_with("hrs") {
+                let hrs = t[0..t.len() - 3].parse::<u64>().unwrap();
+                sum += hrs * 60 * 60;
+            } else if t.ends_with('s') {
+                let secs = t[0..t.len() - 1].parse::<u64>().unwrap();
+                sum += secs;
             }
         }
+        Timeout::Duration(std::time::Duration::from_secs(sum))
     }
 }
 
@@ -85,13 +82,11 @@ fn parse_cmdlines(raw_lines: &Vec<(u32, String)>) -> Result<Vec<Commandline>, Pa
 
 fn parse_cmdline(raw_line: &str) -> Result<Commandline, ParsingErrorReason> {
     let mut split = shlex::split(raw_line).ok_or(ParsingErrorReason::Generic(format!(
-        "Could not parse cmdline: {}",
-        raw_line
+        "Could not parse cmdline: {raw_line}"
     )))?;
     if split.is_empty() {
         return Err(ParsingErrorReason::Generic(format!(
-            "Empty command line: {}",
-            raw_line
+            "Empty command line: {raw_line}"
         )));
     }
     let mut cmd = split.remove(0);
@@ -173,7 +168,7 @@ fn parse_service_section(
     let exec_config = super::parse_exec_section(&mut section)?;
 
     for key in section.keys() {
-        warn!("Ignoring unsupported setting in [Service] section: {}", key);
+        warn!("Ignoring unsupported setting in [Service] section: {key}");
     }
 
     let starttimeout = match starttimeout {
@@ -253,7 +248,7 @@ fn parse_service_section(
                         ))
                     }
                 }
-            } else if vec.len() == 0 {
+            } else if vec.is_empty() {
                 return Err(ParsingErrorReason::MissingSetting("Type".to_owned()));
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
@@ -346,7 +341,7 @@ fn parse_service_section(
     let dbus_name = match dbus_name {
         Some(vec) => {
             if vec.len() == 1 {
-                Some(vec[0].1.to_owned())
+                Some(vec[0].1.clone())
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "BusName".to_owned(),
@@ -357,10 +352,8 @@ fn parse_service_section(
         None => None,
     };
 
-    if let ServiceType::Dbus = srcv_type {
-        if dbus_name.is_none() {
-            return Err(ParsingErrorReason::MissingSetting("BusName".to_owned()));
-        }
+    if srcv_type == ServiceType::Dbus && dbus_name.is_none() {
+        return Err(ParsingErrorReason::MissingSetting("BusName".to_owned()));
     }
 
     Ok(ParsedServiceSection {

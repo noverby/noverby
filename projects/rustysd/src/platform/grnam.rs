@@ -7,21 +7,20 @@ pub struct GroupEntry {
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 fn make_group_from_libc(groupname: &str, group: &libc::group) -> Result<GroupEntry, String> {
     let gid = nix::unistd::Gid::from_raw(group.gr_gid);
-    let pw = if !group.gr_passwd.is_null() {
+    let pw = if group.gr_passwd.is_null() {
+        None
+    } else {
         let mut vec = Vec::new();
         let mut ptr = group.gr_passwd;
         loop {
             let byte = unsafe { *ptr } as u8;
             if byte == b'\0' {
                 break;
-            } else {
-                vec.push(byte);
             }
+            vec.push(byte);
             unsafe { ptr = ptr.add(1) };
         }
         Some(vec)
-    } else {
-        None
     };
     Ok(GroupEntry {
         name: groupname.to_string(),
@@ -39,7 +38,7 @@ fn getgrnam(groupname: &str) -> Result<GroupEntry, String> {
     // TODO check errno
     let res = unsafe { libc::getgrnam(pointer) };
     if res.is_null() {
-        return Err(format!("No entry found for groupname: {}", groupname));
+        return Err(format!("No entry found for groupname: {groupname}"));
     }
     let res = unsafe { *res };
     make_group_from_libc(groupname, &res)
@@ -58,10 +57,9 @@ pub fn getgrnam_r(groupname: &str) -> Result<GroupEntry, String> {
     };
 
     let group_ptr = &mut group;
-    let group_ptr_ptr = &mut (group_ptr as *mut libc::group);
+    let group_ptr_ptr = &mut std::ptr::from_mut::<libc::group>(group_ptr);
     loop {
-        let mut buf = Vec::with_capacity(buf_size);
-        buf.resize(buf_size, 0i8);
+        let mut buf = vec![0; buf_size];
 
         let errno = unsafe {
             libc::getgrnam_r(
@@ -77,17 +75,16 @@ pub fn getgrnam_r(groupname: &str) -> Result<GroupEntry, String> {
             // error case
             if errno == libc::ERANGE {
                 // need more bytes in buf
-                buf_size = buf_size * 2;
+                buf_size *= 2;
             } else {
-                return Err(format!("Error calling getpwnam_r: {}", errno));
+                return Err(format!("Error calling getpwnam_r: {errno}"));
             }
         } else {
             // just for safety check this, but this is the happy result
-            if (group_ptr as *mut libc::group).eq(&*group_ptr_ptr) {
+            if std::ptr::from_mut::<libc::group>(group_ptr).eq(&*group_ptr_ptr) {
                 return make_group_from_libc(groupname, &*group_ptr);
-            } else {
-                return Err(format!("The **group ({:?}) should have pointed to the same location as the *group ({:?})", group_ptr_ptr, group_ptr));
             }
+            return Err(format!("The **group ({group_ptr_ptr:?}) should have pointed to the same location as the *group ({group_ptr:?})"));
         }
     }
 }

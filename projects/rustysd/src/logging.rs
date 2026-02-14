@@ -7,7 +7,7 @@ pub fn setup_logging(conf: &crate::config::LoggingConfig) -> Result<(), String> 
                 record.target(),
                 record.level(),
                 message
-            ))
+            ));
         })
         .level(log::LevelFilter::Trace);
 
@@ -21,5 +21,5 @@ pub fn setup_logging(conf: &crate::config::LoggingConfig) -> Result<(), String> 
 
     logger
         .apply()
-        .map_err(|e| format!("Error while stting up logger: {}", e))
+        .map_err(|e| format!("Error while setting up logger: {e}"))
 }
