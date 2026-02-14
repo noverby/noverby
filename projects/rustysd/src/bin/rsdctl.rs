@@ -37,7 +37,7 @@ fn main() {
     let params = if args.len() == 2 {
         Some(Value::String(args[1].clone()))
     } else if args.len() > 1 {
-        Some({ args[1..].iter().cloned().map(Value::String).collect() })
+        Some(args[1..].iter().cloned().map(Value::String).collect())
     } else {
         None
     };
