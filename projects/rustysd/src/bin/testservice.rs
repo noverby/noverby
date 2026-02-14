@@ -22,11 +22,10 @@ fn handle_unix_client(mut stream: UnixStream) {
                 if bytes == 0 {
                     println!("\nUnix stream finished");
                     break;
-                } else {
-                    print!("{}", String::from_utf8(data[0..bytes].to_vec()).unwrap())
                 }
+                print!("{}", String::from_utf8(data[0..bytes].to_vec()).unwrap());
             }
-            Err(e) => println!("\n Got error from unix stream: {}", e),
+            Err(e) => println!("\n Got error from unix stream: {e}"),
         }
     }
 }
@@ -40,10 +39,10 @@ fn handle_upd(fd: i32) {
             match stream.recv(&mut data[..]) {
                 Ok(bytes) => {
                     print!("Got new bytes on udp socket! Now printing stuff from the stream: ");
-                    print!("{}", String::from_utf8(data[0..bytes].to_vec()).unwrap())
+                    print!("{}", String::from_utf8(data[0..bytes].to_vec()).unwrap());
                 }
                 Err(e) => {
-                    println!("\n Got error from udp socket: {}", e);
+                    println!("\n Got error from udp socket: {e}");
                     return;
                 }
             }
@@ -59,10 +58,10 @@ fn handle_unix_datagram(fd: i32) {
             match stream.recv(&mut data[..]) {
                 Ok(bytes) => {
                     print!("Got new bytes on unix datagram socket! Now printing stuff from the stream: ");
-                    print!("{}", String::from_utf8(data[0..bytes].to_vec()).unwrap())
+                    print!("{}", String::from_utf8(data[0..bytes].to_vec()).unwrap());
                 }
                 Err(e) => {
-                    println!("\n Got error from unix datagram socket: {}", e);
+                    println!("\n Got error from unix datagram socket: {e}");
                     return;
                 }
             }
@@ -81,7 +80,7 @@ fn unix_accept(fd: i32) {
                 }
                 Err(err) => {
                     /* connection failed */
-                    println!("Error while accepting new unix connections: {}", err);
+                    println!("Error while accepting new unix connections: {err}");
                     break;
                 }
             }
@@ -131,7 +130,7 @@ fn handle_tcp_client(mut stream: TcpStream) {
     loop {
         match stream.read(&mut data[..]) {
             Ok(bytes) => print!("{}", String::from_utf8(data[0..bytes].to_vec()).unwrap()),
-            Err(e) => println!("\n Got error from tcp stream: {}", e),
+            Err(e) => println!("\n Got error from tcp stream: {e}"),
         }
     }
 }
@@ -146,7 +145,7 @@ fn tcp_accept(fd: i32) -> std::thread::JoinHandle<()> {
                 }
                 Err(err) => {
                     /* connection failed */
-                    println!("Error while accepting new tcp connections: {}", err);
+                    println!("Error while accepting new tcp connections: {err}");
                     break;
                 }
             }
@@ -155,12 +154,13 @@ fn tcp_accept(fd: i32) -> std::thread::JoinHandle<()> {
 }
 
 fn main() {
-    if (nix::unistd::getpid().as_raw() / 10) % 10 != 0 {
-        panic!("My service is very bad. It immediately panics at startup.");
-    }
+    assert!(
+        (nix::unistd::getpid().as_raw() / 10) % 10 == 0,
+        "My service is very bad. It immediately panics at startup."
+    );
 
     println!(
-        "STARTED DEAMON WITH PID: {} AND FDS: {}",
+        "STARTED DAEMON WITH PID: {} AND FDS: {}",
         env::var("LISTEN_PID").unwrap(),
         env::var("LISTEN_FDS").unwrap(),
     );
@@ -203,12 +203,12 @@ fn main() {
     stream.connect(socket_path).unwrap();
     stream.send(&b"STATUS=Next message that should be read before the READY message\nREADY=1\nSTATUS=Next message that should not be read directly after the fork\n"[..]).unwrap();
 
-    //create a child so we can see that orphanes are killed too
-    match unsafe { nix::unistd::fork() } {
-        Ok(nix::unistd::ForkResult::Child) => {
-            std::thread::sleep(std::time::Duration::from_secs(1000000));
-        }
-        _ => {}
+    //create a child so we can see that orphans are killed too
+    if matches!(
+        unsafe { nix::unistd::fork() },
+        Ok(nix::unistd::ForkResult::Child)
+    ) {
+        std::thread::sleep(std::time::Duration::from_secs(1_000_000));
     }
     // random service failure because we write horrible services that crash constantly
     std::thread::spawn(move || {
@@ -219,7 +219,7 @@ fn main() {
     let mut counter = 0;
     loop {
         stream
-            .send(format!("STATUS=Looping since {} seconds\n", counter).as_bytes())
+            .send(format!("STATUS=Looping since {counter} seconds\n").as_bytes())
             .unwrap();
         std::thread::sleep(std::time::Duration::from_secs(1));
         counter += 1;

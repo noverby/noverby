@@ -11,14 +11,14 @@ pub use unix_sockets::*;
 use std::{os::unix::io::AsRawFd, os::unix::io::RawFd};
 
 use crate::fd_store::FDStore;
-use crate::units::*;
+use crate::units::{SocketConfig, UnitId};
 
 pub fn close_raw_fd(fd: RawFd) {
     loop {
         match nix::unistd::close(fd) {
             Ok(()) => break,
             Err(e) => {
-                if let nix::errno::Errno::EBADF = e {
+                if e == nix::errno::Errno::EBADF {
                     break;
                 }
                 // Other errors (EINTR and EIO) mean that we should try again
@@ -46,26 +46,27 @@ pub enum SpecializedSocketConfig {
 impl SpecializedSocketConfig {
     fn open(&self) -> Result<Box<dyn AsRawFd + Send + Sync>, String> {
         match self {
-            SpecializedSocketConfig::UnixSocket(conf) => conf.open(),
-            SpecializedSocketConfig::TcpSocket(conf) => conf.open(),
-            SpecializedSocketConfig::UdpSocket(conf) => conf.open(),
-            SpecializedSocketConfig::Fifo(conf) => conf.open(),
+            Self::UnixSocket(conf) => conf.open(),
+            Self::TcpSocket(conf) => conf.open(),
+            Self::UdpSocket(conf) => conf.open(),
+            Self::Fifo(conf) => conf.open(),
         }
     }
     fn close(&self, rawfd: RawFd) -> Result<(), String> {
         match self {
-            SpecializedSocketConfig::UnixSocket(conf) => conf.close(rawfd),
-            SpecializedSocketConfig::TcpSocket(conf) => conf.close(rawfd),
-            SpecializedSocketConfig::UdpSocket(conf) => conf.close(rawfd),
-            SpecializedSocketConfig::Fifo(conf) => conf.close(rawfd),
+            Self::UnixSocket(conf) => conf.close(rawfd),
+            Self::TcpSocket(conf) => conf.close(rawfd),
+            Self::UdpSocket(conf) => conf.close(rawfd),
+            Self::Fifo(conf) => conf.close(rawfd),
         }
     }
 }
 
 impl Socket {
+    #[must_use]
     pub fn build_name_list(&self, conf: SocketConfig) -> String {
         let mut name_list = String::with_capacity(
-            conf.filedesc_name.as_bytes().len() * conf.sockets.len() + conf.sockets.len(),
+            conf.filedesc_name.len() * conf.sockets.len() + conf.sockets.len(),
         );
         name_list.push_str(&conf.filedesc_name);
         for _ in 0..conf.sockets.len() - 1 {
@@ -114,10 +115,8 @@ impl Socket {
         fd_store: &mut FDStore,
     ) -> Result<(), String> {
         if let Some(fds) = fd_store.remove_global(&name) {
-            for idx in 0..fds.len() {
-                conf.sockets[idx]
-                    .specialized
-                    .close(fds[idx].2.as_raw_fd())?;
+            for (sock_conf, fd_entry) in conf.sockets.iter().zip(fds.iter()) {
+                sock_conf.specialized.close(fd_entry.2.as_raw_fd())?;
             }
         }
         Ok(())

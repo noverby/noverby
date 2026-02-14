@@ -2,8 +2,8 @@
 //!
 //! Currently configurable:
 //! ### Logging
-//! 1. Wether or not to log to disk (and the dir to put the logs in)
-//! 1. Wether or not to log to stdout
+//! 1. Whether or not to log to disk (and the dir to put the logs in)
+//! 1. Whether or not to log to stdout
 //!
 //! ### General config
 //! 1. Where to find the units (one or more directories)
@@ -40,12 +40,12 @@ fn load_toml(
     settings: &mut HashMap<String, SettingValue>,
 ) -> Result<(), String> {
     let mut file =
-        File::open(config_path).map_err(|e| format!("Error while opening config file: {}", e))?;
+        File::open(config_path).map_err(|e| format!("Error while opening config file: {e}"))?;
     let mut config = String::new();
     file.read_to_string(&mut config).unwrap();
 
     let toml_conf =
-        toml::from_str(&config).map_err(|e| format!("Error while decoding config toml: {}", e))?;
+        toml::from_str(&config).map_err(|e| format!("Error while decoding config toml: {e}"))?;
 
     if let toml::Value::Table(map) = &toml_conf {
         if let Some(toml::Value::Array(elems)) = map.get("unit_dirs") {
@@ -58,7 +58,7 @@ fn load_toml(
                             if let toml::Value::String(s) = e {
                                 SettingValue::Str(s.clone())
                             } else {
-                                SettingValue::Str("".to_owned())
+                                SettingValue::Str(String::new())
                             }
                         })
                         .collect(),
@@ -96,9 +96,9 @@ fn load_json(
     settings: &mut HashMap<String, SettingValue>,
 ) -> Result<(), String> {
     let mut file =
-        File::open(config_path).map_err(|e| format!("Error while decoding config json: {}", e))?;
+        File::open(config_path).map_err(|e| format!("Error while decoding config json: {e}"))?;
     let json_conf = serde_json::from_reader(&mut file)
-        .map_err(|e| format!("Error while decoding config json: {}", e))?;
+        .map_err(|e| format!("Error while decoding config json: {e}"))?;
 
     if let serde_json::Value::Object(map) = &json_conf {
         if let Some(serde_json::Value::Array(elems)) = map.get("unit_dirs") {
@@ -111,7 +111,7 @@ fn load_json(
                             if let serde_json::Value::String(s) = e {
                                 SettingValue::Str(s.clone())
                             } else {
-                                SettingValue::Str("".to_owned())
+                                SettingValue::Str(String::new())
                             }
                         })
                         .collect(),
@@ -175,7 +175,7 @@ pub fn load_config(config_path: &Option<PathBuf>) -> (LoggingConfig, Result<Conf
     };
 
     std::env::vars().for_each(|(key, value)| {
-        let mut new_key: Vec<String> = key.split('_').map(|part| part.to_lowercase()).collect();
+        let mut new_key: Vec<String> = key.split('_').map(str::to_lowercase).collect();
         //drop prefix
         if *new_key[0] == *"rustysd" {
             new_key.remove(0);
@@ -222,17 +222,17 @@ pub fn load_config(config_path: &Option<PathBuf>) -> (LoggingConfig, Result<Conf
             .fold(Vec::new(), |mut acc, el| {
                 if let Some(path) = el {
                     if path.exists() {
-                        acc.push(path)
+                        acc.push(path);
                     }
                 }
                 acc
             }),
-        _ => Vec::new(),
+        SettingValue::Boolean(_) => Vec::new(),
     });
 
     let config = Config {
         unit_dirs: unit_dirs.unwrap_or_else(|| vec![PathBuf::from("./unitfiles")]),
-        target_unit: target_unit.unwrap_or("default.target".to_owned()),
+        target_unit: target_unit.unwrap_or_else(|| "default.target".to_owned()),
 
         notification_sockets_dir: notification_sockets_dir
             .unwrap_or_else(|| PathBuf::from("./notifications")),
@@ -245,17 +245,17 @@ pub fn load_config(config_path: &Option<PathBuf>) -> (LoggingConfig, Result<Conf
 
     let conf = if let Some(json_conf) = json_conf {
         if toml_conf.is_some() {
-            Err(format!("Found both json and toml conf!"))
+            Err("Found both json and toml conf!".to_string())
         } else {
             match json_conf {
                 Err(e) => Err(e),
-                Ok(_) => Ok(config),
+                Ok(()) => Ok(config),
             }
         }
     } else {
         match toml_conf {
             Some(Err(e)) => Err(e),
-            Some(Ok(_)) => Ok(config),
+            Some(Ok(())) => Ok(config),
             None => {
                 if *config_path_toml == default_config_path_toml {
                     Ok(config)

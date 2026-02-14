@@ -152,9 +152,9 @@ pub struct EnvVars {
     pub vars: Vec<(String, String)>,
 }
 
-impl ToString for Commandline {
-    fn to_string(&self) -> String {
-        format!("{:?}", self)
+impl std::fmt::Display for Commandline {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
     }
 }
 
@@ -165,8 +165,9 @@ pub struct ParsingError {
 }
 
 impl ParsingError {
-    pub fn new(reason: ParsingErrorReason, path: std::path::PathBuf) -> ParsingError {
-        ParsingError {
+    #[must_use]
+    pub const fn new(reason: ParsingErrorReason, path: std::path::PathBuf) -> Self {
+        Self {
             inner: reason,
             path,
         }
@@ -276,6 +277,6 @@ impl std::error::Error for ParsingError {
 
 impl std::convert::From<Box<std::io::Error>> for ParsingErrorReason {
     fn from(err: Box<std::io::Error>) -> Self {
-        ParsingErrorReason::FileError(err)
+        Self::FileError(err)
     }
 }

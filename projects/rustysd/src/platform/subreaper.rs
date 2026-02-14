@@ -11,7 +11,6 @@ pub fn become_subreaper(set: bool) {
         };
         if res < 0 {
             error!("Couldnt set subreaper for rustysd");
-            return;
         }
     }
 }

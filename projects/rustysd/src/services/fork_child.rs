@@ -1,9 +1,9 @@
 use std::os::unix::io::RawFd;
 
-/// After forking we setup the all filedescriptors, move into a new process group and then exec the exec_helper
+/// After forking we setup the all filedescriptors, move into a new process group and then exec the `exec_helper`
 ///
 /// Note that this is called between fork and exec. This means this needs to be careful about what we call here!
-/// At least on linux this is a good reference: https://man7.org/linux/man-pages/man7/signal-safety.7.html
+/// At least on linux this is a good reference: <https://man7.org/linux/man-pages/man7/signal-safety.7.html>
 pub fn after_fork_child(
     selfpath: &std::ffi::CStr,
     self_args: &[*const libc::c_char],
@@ -36,15 +36,12 @@ pub fn after_fork_child(
     write_to_stderr("Exec the exec helper");
 
     // Finally exec the exec_helper
-    match unsafe { libc::execv(selfpath.as_ptr(), self_args.as_ptr().cast()) } {
-        -1 => {
-            write_to_stderr("execv errored");
-            std::process::exit(1);
-        }
-        _ => {
-            write_to_stderr("execv returned Ok()... This should never happen");
-            std::process::exit(1);
-        }
+    if unsafe { libc::execv(selfpath.as_ptr(), self_args.as_ptr().cast()) } == -1 {
+        write_to_stderr("execv errored");
+        std::process::exit(1);
+    } else {
+        write_to_stderr("execv returned Ok()... This should never happen");
+        std::process::exit(1);
     }
 }
 
@@ -52,10 +49,14 @@ fn write_to_stderr(msg: &str) {
     unsafe {
         libc::write(
             libc::STDERR_FILENO,
-            (msg.as_bytes() as *const [u8]).cast(),
-            msg.as_bytes().len() as _,
+            std::ptr::from_ref::<[u8]>(msg.as_bytes()).cast(),
+            msg.len() as _,
         );
-        libc::write(libc::STDERR_FILENO, (&b'\n' as *const u8).cast(), 1 as _);
+        libc::write(
+            libc::STDERR_FILENO,
+            std::ptr::from_ref::<u8>(&b'\n').cast(),
+            1 as _,
+        );
     }
 }
 
@@ -114,7 +115,9 @@ fn dup_fds(sockets: &mut [RawFd]) {
             }
         }
 
-        if new_fd as i32 != old_fd {
+        if new_fd as i32 == old_fd {
+            // nothing to do, already correct fd
+        } else {
             //ignore output. newfd might already be closed.
             // TODO check for actual errors other than bad_fd
             let _ = nix::unistd::close(new_fd as i32);
@@ -123,9 +126,7 @@ fn dup_fds(sockets: &mut [RawFd]) {
                 write_to_stderr("Could not dup2 fd");
                 std::process::exit(1);
             }
-            let _ = unsafe { libc::close(old_fd as i32) };
-        } else {
-            // nothing to do, already correct fd
+            let _ = unsafe { libc::close(old_fd) };
         }
 
         unsafe {

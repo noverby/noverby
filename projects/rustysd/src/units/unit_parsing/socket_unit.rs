@@ -1,7 +1,13 @@
 use log::warn;
 
-use crate::sockets::*;
-use crate::units::*;
+use crate::sockets::{
+    FifoConfig, SocketKind, SpecializedSocketConfig, TcpSocketConfig, UdpSocketConfig,
+    UnixSocketConfig,
+};
+use crate::units::{
+    parse_install_section, parse_unit_section, ParsedCommonConfig, ParsedFile, ParsedSection,
+    ParsedSingleSocketConfig, ParsedSocketConfig, ParsedSocketSection, ParsingErrorReason,
+};
 use std::path::PathBuf;
 
 pub fn parse_socket(
@@ -28,17 +34,13 @@ pub fn parse_socket(
             }
 
             _ => {
-                warn!(
-                    "Ignoring unknown section in socket unit {:?}: {}",
-                    path, name
-                );
+                warn!("Ignoring unknown section in socket unit {path:?}: {name}");
             }
         }
     }
 
-    let socket_config = match socket_config {
-        Some(conf) => conf,
-        None => return Err(ParsingErrorReason::SectionNotFound("Socket".to_owned())),
+    let Some(socket_config) = socket_config else {
+        return Err(ParsingErrorReason::SectionNotFound("Socket".to_owned()));
     };
 
     Ok(ParsedSocketConfig {
@@ -82,7 +84,7 @@ fn parse_socket_section(
     let exec_config = super::parse_exec_section(&mut section)?;
 
     for key in section.keys() {
-        warn!("Ignoring unsupported setting in [Socket] section: {}", key);
+        warn!("Ignoring unsupported setting in [Socket] section: {key}");
     }
     let fdname = match fdname {
         None => None,
@@ -92,7 +94,7 @@ fn parse_socket_section(
                     "FileDescriptorName".to_owned(),
                     super::map_tuples_to_second(vec),
                 ));
-            } else if vec.len() == 0 {
+            } else if vec.is_empty() {
                 None
             } else {
                 Some(vec.remove(0).1)
@@ -101,7 +103,7 @@ fn parse_socket_section(
     };
 
     let services = services
-        .map(|vec| super::map_tuples_to_second(vec))
+        .map(super::map_tuples_to_second)
         .unwrap_or_default();
 
     let mut socket_kinds: Vec<(u32, SocketKind)> = Vec::new();
@@ -132,7 +134,7 @@ fn parse_socket_section(
 
     // we need to preserve the original ordering
     socket_kinds.sort_by(|l, r| u32::cmp(&l.0, &r.0));
-    let socket_kinds: Vec<SocketKind> = socket_kinds.drain(..).map(|(_, kind)| kind).collect();
+    let socket_kinds: Vec<SocketKind> = socket_kinds.into_iter().map(|(_, kind)| kind).collect();
 
     let mut socket_configs = Vec::new();
 

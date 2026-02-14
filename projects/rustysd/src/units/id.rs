@@ -13,6 +13,7 @@ pub struct UnitId {
     pub name: String,
 }
 impl UnitId {
+    #[must_use]
     pub fn name_without_suffix(&self) -> String {
         let split: Vec<_> = self.name.split('.').collect();
         split[0..split.len() - 1].join(".")
@@ -21,19 +22,19 @@ impl UnitId {
 
 impl fmt::Debug for UnitId {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.write_str(format!("{}", self.name).as_str())
+        fmt.write_str(self.name.clone().as_str())
     }
 }
 
 impl fmt::Display for UnitId {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.write_str(format!("{:?}", self).as_str())
+        fmt.write_str(format!("{self:?}").as_str())
     }
 }
 
 impl std::cmp::PartialOrd for UnitId {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.name.partial_cmp(&other.name)
+        Some(self.cmp(other))
     }
 }
 

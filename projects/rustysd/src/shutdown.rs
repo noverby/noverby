@@ -3,11 +3,11 @@ use log::info;
 use log::trace;
 use log::warn;
 
-use crate::runtime_info::*;
-use crate::units::*;
+use crate::runtime_info::{ArcMutRuntimeInfo, RuntimeInfo, UnitTable};
+use crate::units::{Specific, StatusStopped, UnitId, UnitStatus};
 
 fn get_next_service_to_shutdown(unit_table: &UnitTable) -> Option<UnitId> {
-    for (_, unit) in unit_table.iter() {
+    for unit in unit_table.values() {
         let status = &unit.common.status;
         {
             let status_locked = status.read().unwrap();
@@ -21,24 +21,23 @@ fn get_next_service_to_shutdown(unit_table: &UnitTable) -> Option<UnitId> {
             .dependencies
             .before
             .iter()
-            .cloned()
-            .filter(|next_id| {
+            .filter(|&next_id| {
                 let unit = unit_table.get(next_id).unwrap();
                 let status = &unit.common.status;
                 let status_locked = status.read().unwrap();
                 status_locked.is_started()
             })
+            .cloned()
             .collect::<Vec<_>>();
         if kill_before.is_empty() {
             trace!("Chose unit: {}", unit.id.name);
             return Some(unit.id.clone());
-        } else {
-            trace!(
-                "Dont kill service {} yet. These Units depend on it: {:?}",
-                unit.id.name,
-                kill_before
-            );
         }
+        trace!(
+            "Dont kill service {} yet. These Units depend on it: {:?}",
+            unit.id.name,
+            kill_before
+        );
     }
     None
 }
@@ -61,7 +60,7 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
                 Ok(()) => {
                     trace!("Killed service unit: {}", unit.id.name);
                 }
-                Err(e) => error!("{}", e),
+                Err(e) => error!("{e}"),
             }
             if let Some(datagram) = &mut_state.srvc.notifications {
                 match datagram.shutdown(std::net::Shutdown::Both) {
@@ -99,13 +98,12 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
         Specific::Socket(specific) => {
             let mut_state = &mut *specific.state.write().unwrap();
             trace!("Close socket unit: {}", unit.id.name);
-            match mut_state.sock.close_all(
+            if let Err(e) = mut_state.sock.close_all(
                 &specific.conf,
                 unit.id.name.clone(),
-                &mut *run_info.fd_store.write().unwrap(),
+                &mut run_info.fd_store.write().unwrap(),
             ) {
-                Err(e) => error!("Error while closing sockets: {}", e),
-                Ok(()) => {}
+                error!("Error while closing sockets: {e}")
             }
             trace!("Closed socket unit: {}", unit.id.name);
         }
@@ -167,7 +165,7 @@ pub fn shutdown_sequence(run_info: ArcMutRuntimeInfo) {
                 Ok(()) => {
                     trace!("Removed control socket");
                 }
-                Err(e) => error!("Error removing control socket: {}", e),
+                Err(e) => error!("Error removing control socket: {e}"),
             }
         }
 

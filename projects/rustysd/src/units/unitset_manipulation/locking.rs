@@ -1,5 +1,5 @@
 use crate::runtime_info::UnitTable;
-use crate::units::*;
+use crate::units::{UnitId, UnitStatus};
 use std::collections::HashMap;
 
 use std::sync::{RwLockReadGuard, RwLockWriteGuard};
@@ -8,13 +8,14 @@ use std::sync::{RwLockReadGuard, RwLockWriteGuard};
 ///
 /// This is needed to be able to lock a unit exclusively and all related units shared so we can uphold
 /// invariants while running an operation on the exclusively locked unit.
-pub fn acquire_locks<'table>(
+#[must_use]
+pub fn acquire_locks(
     mut lock_exclusive: Vec<UnitId>,
     mut lock_shared: Vec<UnitId>,
-    unit_table: &'table UnitTable,
+    unit_table: &UnitTable,
 ) -> (
-    HashMap<UnitId, RwLockWriteGuard<'table, UnitStatus>>,
-    HashMap<UnitId, RwLockReadGuard<'table, UnitStatus>>,
+    HashMap<UnitId, RwLockWriteGuard<'_, UnitStatus>>,
+    HashMap<UnitId, RwLockReadGuard<'_, UnitStatus>>,
 ) {
     let mut exclusive = HashMap::new();
     let mut shared = HashMap::new();
@@ -23,12 +24,13 @@ pub fn acquire_locks<'table>(
     lock_exclusive.dedup();
     lock_shared.sort();
     lock_shared.dedup();
-    if lock_exclusive.iter().any(|id| lock_shared.contains(id)) {
-        panic!("Cant lock shared and exclusive at the same time!");
-    }
+    assert!(
+        !lock_exclusive.iter().any(|id| lock_shared.contains(id)),
+        "Cant lock shared and exclusive at the same time!"
+    );
 
     while !lock_shared.is_empty() && !lock_exclusive.is_empty() {
-        if &lock_exclusive.last().unwrap() < &lock_shared.last().unwrap() {
+        if lock_exclusive.last().unwrap() < lock_shared.last().unwrap() {
             let id = lock_exclusive.remove(lock_exclusive.len() - 1);
             let unit = unit_table.get(&id).unwrap();
             let locked_status = unit.common.status.write().unwrap();
