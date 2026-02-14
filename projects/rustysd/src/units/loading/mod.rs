@@ -2,8 +2,11 @@ mod dependency_resolving;
 pub use dependency_resolving::*;
 use log::{trace, warn};
 
-use crate::runtime_info::*;
-use crate::units::*;
+use crate::runtime_info::UnitTable;
+use crate::units::{
+    get_file_list, parse_file, parse_service, parse_socket, parse_target, ParsingError,
+    ParsingErrorReason, Specific, Unit, UnitId,
+};
 
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -21,8 +24,8 @@ pub struct DependencyError {
 }
 
 impl std::convert::From<String> for DependencyError {
-    fn from(s: String) -> DependencyError {
-        DependencyError { msg: s }
+    fn from(s: String) -> Self {
+        Self { msg: s }
     }
 }
 
@@ -34,13 +37,13 @@ impl std::fmt::Display for DependencyError {
 
 impl std::convert::From<DependencyError> for LoadingError {
     fn from(s: DependencyError) -> Self {
-        LoadingError::Dependency(s)
+        Self::Dependency(s)
     }
 }
 
 impl std::convert::From<ParsingError> for LoadingError {
     fn from(s: ParsingError) -> Self {
-        LoadingError::Parsing(s)
+        Self::Parsing(s)
     }
 }
 
@@ -116,13 +119,12 @@ fn parse_all_units(
     targets: &mut std::collections::HashMap<UnitId, Unit>,
     path: &PathBuf,
 ) -> Result<(), ParsingError> {
-    let files = get_file_list(path)
-        .map_err(|e| ParsingError::new(ParsingErrorReason::from(e), path.clone()))?;
+    let files = get_file_list(path).map_err(|e| ParsingError::new(e, path.clone()))?;
     for entry in files {
         if entry.path().is_dir() {
             parse_all_units(services, sockets, targets, &entry.path())?;
         } else {
-            let raw = match std::fs::read_to_string(&entry.path()) {
+            let raw = match std::fs::read_to_string(entry.path()) {
                 Ok(raw) => raw,
                 Err(e) => {
                     warn!(
@@ -149,8 +151,7 @@ fn parse_all_units(
             if entry.path().to_str().unwrap().ends_with(".service") {
                 trace!("Service found: {:?}", entry.path());
                 match parse_service(parsed_file, &entry.path()).and_then(|parsed| {
-                    TryInto::<Unit>::try_into(parsed)
-                        .map_err(|err| ParsingErrorReason::Generic(err))
+                    TryInto::<Unit>::try_into(parsed).map_err(ParsingErrorReason::Generic)
                 }) {
                     Ok(unit) => {
                         services.insert(unit.id.clone(), unit);
@@ -162,8 +163,7 @@ fn parse_all_units(
             } else if entry.path().to_str().unwrap().ends_with(".socket") {
                 trace!("Socket found: {:?}", entry.path());
                 match parse_socket(parsed_file, &entry.path()).and_then(|parsed| {
-                    TryInto::<Unit>::try_into(parsed)
-                        .map_err(|err| ParsingErrorReason::Generic(err))
+                    TryInto::<Unit>::try_into(parsed).map_err(ParsingErrorReason::Generic)
                 }) {
                     Ok(unit) => {
                         sockets.insert(unit.id.clone(), unit);
@@ -175,8 +175,7 @@ fn parse_all_units(
             } else if entry.path().to_str().unwrap().ends_with(".target") {
                 trace!("Target found: {:?}", entry.path());
                 match parse_target(parsed_file, &entry.path()).and_then(|parsed| {
-                    TryInto::<Unit>::try_into(parsed)
-                        .map_err(|err| ParsingErrorReason::Generic(err))
+                    TryInto::<Unit>::try_into(parsed).map_err(ParsingErrorReason::Generic)
                 }) {
                     Ok(unit) => {
                         targets.insert(unit.id.clone(), unit);

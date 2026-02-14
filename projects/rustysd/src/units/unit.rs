@@ -1,9 +1,13 @@
 use log::trace;
 
-use crate::runtime_info::*;
+use crate::runtime_info::RuntimeInfo;
 use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
-use crate::units::*;
+use crate::units::{
+    acquire_locks, ActivationSource, Commandline, EnvVars, NotifyKind, ServiceRestart, ServiceType,
+    StatusStarted, StatusStopped, StdIoOption, Timeout, UnitId, UnitIdKind, UnitOperationError,
+    UnitOperationErrorReason, UnitStatus,
+};
 
 use std::sync::RwLock;
 
@@ -48,15 +52,15 @@ impl SocketState {
                 conf,
                 id.name.clone(),
                 id.clone(),
-                &mut *run_info.fd_store.write().unwrap(),
+                &mut run_info.fd_store.write().unwrap(),
             )
             .map_err(|e| UnitOperationError {
                 unit_name: id.name.clone(),
                 unit_id: id.clone(),
-                reason: UnitOperationErrorReason::SocketOpenError(format!("{}", e)),
+                reason: UnitOperationErrorReason::SocketOpenError(format!("{e}")),
             });
         match open_res {
-            Ok(_) => {
+            Ok(()) => {
                 let mut status = status.write().unwrap();
                 *status = UnitStatus::Started(StatusStarted::Running);
                 run_info.notify_eventfds();
@@ -81,9 +85,9 @@ impl SocketState {
         let close_result = self
             .sock
             .close_all(
-                &conf,
+                conf,
                 id.name.clone(),
-                &mut *run_info.fd_store.write().unwrap(),
+                &mut run_info.fd_store.write().unwrap(),
             )
             .map_err(|e| UnitOperationError {
                 unit_name: id.name.clone(),
@@ -91,7 +95,7 @@ impl SocketState {
                 reason: UnitOperationErrorReason::SocketCloseError(e),
             });
         match &close_result {
-            Ok(_) => {
+            Ok(()) => {
                 let mut status = status.write().unwrap();
                 *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
             }
@@ -99,7 +103,7 @@ impl SocketState {
                 let mut status = status.write().unwrap();
                 *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![e.reason.clone()]);
             }
-        };
+        }
         close_result
     }
 
@@ -113,9 +117,9 @@ impl SocketState {
         let close_result = self
             .sock
             .close_all(
-                &conf,
+                conf,
                 id.name.clone(),
-                &mut *run_info.fd_store.write().unwrap(),
+                &mut run_info.fd_store.write().unwrap(),
             )
             .map_err(|e| UnitOperationError {
                 unit_name: id.name.clone(),
@@ -137,15 +141,15 @@ impl SocketState {
                 conf,
                 id.name.clone(),
                 id.clone(),
-                &mut *run_info.fd_store.write().unwrap(),
+                &mut run_info.fd_store.write().unwrap(),
             )
             .map_err(|e| UnitOperationError {
                 unit_name: id.name.clone(),
                 unit_id: id.clone(),
-                reason: UnitOperationErrorReason::SocketOpenError(format!("{}", e)),
+                reason: UnitOperationErrorReason::SocketOpenError(format!("{e}")),
             });
         match open_res {
-            Ok(_) => {
+            Ok(()) => {
                 let mut status = status.write().unwrap();
                 *status = UnitStatus::Started(StatusStarted::Running);
                 run_info.notify_eventfds();
@@ -221,14 +225,14 @@ impl ServiceState {
     ) -> Result<(), UnitOperationError> {
         let kill_result = self
             .srvc
-            .kill(&conf, id.clone(), &id.name, run_info)
+            .kill(conf, id.clone(), &id.name, run_info)
             .map_err(|e| UnitOperationError {
                 unit_name: id.name.clone(),
                 unit_id: id.clone(),
                 reason: UnitOperationErrorReason::ServiceStopError(e),
             });
         match &kill_result {
-            Ok(_) => {
+            Ok(()) => {
                 let mut status = status.write().unwrap();
                 *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
             }
@@ -249,7 +253,7 @@ impl ServiceState {
     ) -> Result<(), UnitOperationError> {
         let kill_result = self
             .srvc
-            .kill(&conf, id.clone(), &id.name, run_info)
+            .kill(conf, id.clone(), &id.name, run_info)
             .map_err(|e| UnitOperationError {
                 unit_name: id.name.clone(),
                 unit_id: id.clone(),
@@ -360,26 +364,14 @@ enum LockedState<'a> {
 }
 
 impl Unit {
-    pub fn is_service(&self) -> bool {
-        if let UnitIdKind::Service = self.id.kind {
-            true
-        } else {
-            false
-        }
+    pub const fn is_service(&self) -> bool {
+        matches!(self.id.kind, UnitIdKind::Service)
     }
-    pub fn is_socket(&self) -> bool {
-        if let UnitIdKind::Socket = self.id.kind {
-            true
-        } else {
-            false
-        }
+    pub const fn is_socket(&self) -> bool {
+        matches!(self.id.kind, UnitIdKind::Socket)
     }
-    pub fn is_target(&self) -> bool {
-        if let UnitIdKind::Target = self.id.kind {
-            true
-        } else {
-            false
-        }
+    pub const fn is_target(&self) -> bool {
+        matches!(self.id.kind, UnitIdKind::Target)
     }
 
     pub fn name_without_suffix(&self) -> String {
@@ -532,9 +524,8 @@ impl Unit {
                     if source == ActivationSource::SocketActivation {
                         // Dont need activation
                         return Ok(self_status.clone());
-                    } else {
-                        // Need activation
                     }
+                    // Need activation
                 }
                 _ => {
                     // Need activation
@@ -593,14 +584,10 @@ impl Unit {
 
         {
             let self_status = &*self.common.status.read().unwrap();
-            match self_status {
-                UnitStatus::Stopped(_, _) => {
-                    return Ok(());
-                }
-                _ => {
-                    // Need deactivation
-                }
+            if let UnitStatus::Stopped(_, _) = self_status {
+                return Ok(());
             }
+            // Need deactivation
         }
 
         self.state_transition_stopping(run_info).map_err(|bad_ids| {
@@ -723,8 +710,8 @@ pub struct UnitConfig {
 /// so all dependencies go both ways.
 ///
 /// These vecs are meant like this:
-/// Dependencies::after: this unit should start after these units have been started
-/// Dependencies::before: this unit should start before these units have been started
+/// `Dependencies::after`: this unit should start after these units have been started
+/// `Dependencies::before`: this unit should start before these units have been started
 /// ....
 pub struct Dependencies {
     pub wants: Vec<UnitId>,
@@ -752,25 +739,27 @@ impl Dependencies {
         self.after.dedup();
     }
 
+    #[must_use]
     pub fn kill_before_this(&self) -> Vec<UnitId> {
         let mut ids = Vec::new();
         ids.extend(self.required_by.iter().cloned());
         ids
     }
+    #[must_use]
     pub fn start_before_this(&self) -> Vec<UnitId> {
         let mut ids = Vec::new();
         ids.extend(self.after.iter().cloned());
         ids
     }
+    #[must_use]
     pub fn start_concurrently_with_this(&self) -> Vec<UnitId> {
         let mut ids = Vec::new();
         ids.extend(self.wants.iter().cloned());
         ids.extend(self.requires.iter().cloned());
-        let ids = ids
-            .into_iter()
-            .filter(|id| !self.after.contains(&id))
-            .collect();
-        ids
+
+        ids.into_iter()
+            .filter(|id| !self.after.contains(id))
+            .collect()
     }
 
     /// Remove all occurrences of this id from the vec
@@ -789,6 +778,7 @@ impl Dependencies {
         Self::remove_from_vec(&mut self.after, id);
     }
 
+    #[must_use]
     pub fn comes_after(&self, name: &str) -> bool {
         for id in &self.after {
             if id.eq(name) {
@@ -797,6 +787,7 @@ impl Dependencies {
         }
         false
     }
+    #[must_use]
     pub fn comes_before(&self, name: &str) -> bool {
         for id in &self.before {
             if id.eq(name) {
@@ -805,6 +796,7 @@ impl Dependencies {
         }
         false
     }
+    #[must_use]
     pub fn requires(&self, name: &str) -> bool {
         for id in &self.requires {
             if id.eq(name) {
@@ -813,6 +805,7 @@ impl Dependencies {
         }
         false
     }
+    #[must_use]
     pub fn required_by(&self, name: &str) -> bool {
         for id in &self.required_by {
             if id.eq(name) {
@@ -821,6 +814,7 @@ impl Dependencies {
         }
         false
     }
+    #[must_use]
     pub fn wants(&self, name: &str) -> bool {
         for id in &self.wants {
             if id.eq(name) {
@@ -829,6 +823,7 @@ impl Dependencies {
         }
         false
     }
+    #[must_use]
     pub fn wanted_by(&self, name: &str) -> bool {
         for id in &self.wanted_by {
             if id.eq(name) {

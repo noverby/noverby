@@ -1,6 +1,12 @@
-use crate::services::*;
-use crate::sockets::*;
-use crate::units::*;
+use crate::services::Service;
+use crate::sockets::Socket;
+use crate::units::{
+    Common, CommonState, Dependencies, ExecConfig, ParsedExecSection, ParsedInstallSection,
+    ParsedServiceConfig, ParsedSingleSocketConfig, ParsedSocketConfig, ParsedTargetConfig,
+    ParsedUnitSection, ParsingErrorReason, PlatformSpecificServiceFields, ServiceConfig,
+    ServiceSpecific, ServiceState, SingleSocketConfig, SocketConfig, SocketSpecific, SocketState,
+    Specific, TargetSpecific, TargetState, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus,
+};
 
 #[cfg(feature = "cgroups")]
 use log::trace;
@@ -53,7 +59,7 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
         specific: Specific::Service(ServiceSpecific {
             conf: ServiceConfig {
                 exec_config: conf.srvc.exec_section.try_into()?,
-                sockets: sockets,
+                sockets,
                 accept: conf.srvc.accept,
                 dbus_name: conf.srvc.dbus_name,
                 restart: conf.srvc.restart,
@@ -107,8 +113,11 @@ pub fn unit_from_parsed_socket(conf: ParsedSocketConfig) -> Result<Unit, String>
         specific: Specific::Socket(SocketSpecific {
             conf: SocketConfig {
                 exec_config: conf.sock.exec_section.try_into()?,
-                filedesc_name: conf.sock.filedesc_name.unwrap_or("unknown".to_owned()),
-                services: services,
+                filedesc_name: conf
+                    .sock
+                    .filedesc_name
+                    .unwrap_or_else(|| "unknown".to_owned()),
+                services,
                 sockets: conf.sock.sockets.into_iter().map(Into::into).collect(),
             },
             state: RwLock::new(SocketState {
@@ -134,8 +143,8 @@ pub fn unit_from_parsed_target(conf: ParsedTargetConfig) -> Result<Unit, String>
 }
 
 impl From<ParsedSingleSocketConfig> for SingleSocketConfig {
-    fn from(parsed: ParsedSingleSocketConfig) -> SingleSocketConfig {
-        SingleSocketConfig {
+    fn from(parsed: ParsedSingleSocketConfig) -> Self {
+        Self {
             kind: parsed.kind,
             specialized: parsed.specialized,
         }
@@ -144,57 +153,51 @@ impl From<ParsedSingleSocketConfig> for SingleSocketConfig {
 
 impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
     type Error = String;
-    fn try_from(parsed: ParsedExecSection) -> Result<ExecConfig, String> {
+    fn try_from(parsed: ParsedExecSection) -> Result<Self, String> {
         let uid = if let Some(user) = &parsed.user {
             if let Ok(uid) = user.parse::<u32>() {
                 Some(nix::unistd::Uid::from_raw(uid))
+            } else if let Ok(pwentry) =
+                crate::platform::pwnam::getpwnam_r(user).map_err(ParsingErrorReason::Generic)
+            {
+                Some(pwentry.uid)
             } else {
-                if let Ok(pwentry) = crate::platform::pwnam::getpwnam_r(&user)
-                    .map_err(|e| ParsingErrorReason::Generic(e))
-                {
-                    Some(pwentry.uid)
-                } else {
-                    return Err(format!("Couldnt get uid for username: {}", user));
-                }
+                return Err(format!("Couldnt get uid for username: {user}"));
             }
         } else {
             None
         };
-        let uid = uid.unwrap_or(nix::unistd::getuid());
+        let uid = uid.unwrap_or_else(nix::unistd::getuid);
 
         let gid = if let Some(group) = &parsed.group {
             if let Ok(gid) = group.parse::<u32>() {
                 Some(nix::unistd::Gid::from_raw(gid))
+            } else if let Ok(groupentry) =
+                crate::platform::grnam::getgrnam_r(group).map_err(ParsingErrorReason::Generic)
+            {
+                Some(groupentry.gid)
             } else {
-                if let Ok(groupentry) = crate::platform::grnam::getgrnam_r(&group)
-                    .map_err(|e| ParsingErrorReason::Generic(e))
-                {
-                    Some(groupentry.gid)
-                } else {
-                    return Err(format!("Couldnt get gid for groupname: {}", group));
-                }
+                return Err(format!("Couldnt get gid for groupname: {group}"));
             }
         } else {
             None
         };
-        let gid = gid.unwrap_or(nix::unistd::getgid());
+        let gid = gid.unwrap_or_else(nix::unistd::getgid);
 
         let mut supp_gids = Vec::new();
         for group in &parsed.supplementary_groups {
             let gid = if let Ok(gid) = group.parse::<u32>() {
                 nix::unistd::Gid::from_raw(gid)
+            } else if let Ok(groupentry) =
+                crate::platform::grnam::getgrnam_r(group).map_err(ParsingErrorReason::Generic)
+            {
+                groupentry.gid
             } else {
-                if let Ok(groupentry) = crate::platform::grnam::getgrnam_r(&group)
-                    .map_err(|e| ParsingErrorReason::Generic(e))
-                {
-                    groupentry.gid
-                } else {
-                    return Err(format!("Couldnt get gid for groupname: {}", group));
-                }
+                return Err(format!("Couldnt get gid for groupname: {group}"));
             };
             supp_gids.push(gid);
         }
-        Ok(ExecConfig {
+        Ok(Self {
             user: uid,
             group: gid,
             supplementary_groups: supp_gids,
@@ -254,8 +257,8 @@ fn make_common_from_parsed(
             wanted_by,
             requires,
             required_by,
-            after,
             before,
+            after,
         },
     })
 }
@@ -280,8 +283,7 @@ impl std::convert::TryInto<UnitId> for &str {
             })
         } else {
             Err(format!(
-                "{} is not a valid unit name. The suffix is not supported.",
-                self
+                "{self} is not a valid unit name. The suffix is not supported."
             ))
         }
     }
@@ -289,19 +291,19 @@ impl std::convert::TryInto<UnitId> for &str {
 
 impl std::convert::TryFrom<ParsedServiceConfig> for Unit {
     type Error = String;
-    fn try_from(conf: ParsedServiceConfig) -> Result<Unit, String> {
+    fn try_from(conf: ParsedServiceConfig) -> Result<Self, String> {
         unit_from_parsed_service(conf)
     }
 }
 impl std::convert::TryFrom<ParsedSocketConfig> for Unit {
     type Error = String;
-    fn try_from(conf: ParsedSocketConfig) -> Result<Unit, String> {
+    fn try_from(conf: ParsedSocketConfig) -> Result<Self, String> {
         unit_from_parsed_socket(conf)
     }
 }
 impl std::convert::TryFrom<ParsedTargetConfig> for Unit {
     type Error = String;
-    fn try_from(conf: ParsedTargetConfig) -> Result<Unit, String> {
+    fn try_from(conf: ParsedTargetConfig) -> Result<Self, String> {
         unit_from_parsed_target(conf)
     }
 }

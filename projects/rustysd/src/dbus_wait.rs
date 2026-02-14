@@ -1,4 +1,5 @@
 //! Systemd has the feature to wait on services that have type dbus. This means it waits until a speicifc name has been grabbed on the bus.
+//!
 //! This is made optional here to not have a hard dependency on libdbus.
 
 #[cfg(feature = "dbus_support")]
@@ -25,7 +26,7 @@ mod no_dbus_support {
     ) -> Result<WaitResult, Box<dyn Error>> {
         Err("Dbus is not supported in this build")?;
 
-        // remove warinings about unused code in the enum
+        // remove warnings about unused code in the enum
         let _ = WaitResult::Ok;
         let _ = WaitResult::Timedout;
         unreachable!();
@@ -53,17 +54,17 @@ mod dbus_support {
     use std::sync::{Arc, Mutex};
 
     #[derive(Debug)]
-    struct NameOwnerChangedHappend {
+    struct NameOwnerChangedHappened {
         pub sender: Vec<String>,
     }
 
-    impl arg::AppendAll for NameOwnerChangedHappend {
+    impl arg::AppendAll for NameOwnerChangedHappened {
         fn append(&self, i: &mut arg::IterAppend) {
             arg::RefArg::append(&self.sender, i);
         }
     }
 
-    impl arg::ReadAll for NameOwnerChangedHappend {
+    impl arg::ReadAll for NameOwnerChangedHappened {
         fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
             let mut vec: Vec<String> = Vec::new();
             loop {
@@ -72,11 +73,11 @@ mod dbus_support {
                     Err(_) => break,
                 }
             }
-            Ok(NameOwnerChangedHappend { sender: vec })
+            Ok(NameOwnerChangedHappened { sender: vec })
         }
     }
 
-    impl dbus::message::SignalArgs for NameOwnerChangedHappend {
+    impl dbus::message::SignalArgs for NameOwnerChangedHappened {
         const NAME: &'static str = "NameOwnerChanged";
         const INTERFACE: &'static str = "org.freedesktop.DBus";
     }
@@ -119,7 +120,7 @@ mod dbus_support {
         let stoparc_cb = stoparc.clone();
 
         let name = name.to_owned();
-        let _id = obj.match_signal(move |h: NameOwnerChangedHappend, _: &Connection| {
+        let _id = obj.match_signal(move |h: NameOwnerChangedHappened, _: &Connection| {
             if h.sender[0] == name {
                 (*stoparc_cb.lock().unwrap()) = true;
             }

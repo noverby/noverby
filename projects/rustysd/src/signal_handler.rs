@@ -1,6 +1,6 @@
 //! Handle signals send to this process from either the outside or the child processes
 
-use crate::runtime_info::*;
+use crate::runtime_info::ArcMutRuntimeInfo;
 use crate::services;
 use log::error;
 use log::info;
@@ -24,7 +24,7 @@ pub fn handle_signals(mut signals: Signals, run_info: ArcMutRuntimeInfo) {
                                     run_info_clone,
                                 ),
                                 Err(e) => {
-                                    error!("{}", e);
+                                    error!("{e}");
                                 }
                             }
                         });
@@ -49,10 +49,11 @@ pub enum ChildTermination {
 }
 
 impl ChildTermination {
-    pub fn success(&self) -> bool {
+    #[must_use]
+    pub const fn success(&self) -> bool {
         match self {
-            ChildTermination::Signal(_) => false,
-            ChildTermination::Exit(code) => *code == 0,
+            Self::Signal(_) => false,
+            Self::Exit(code) => *code == 0,
         }
     }
 }
@@ -78,15 +79,15 @@ fn get_next_exited_child() -> Option<ChildIterElem> {
                 None
             }
             _ => {
-                trace!("Ignored child signal received with code: {:?}", exit_status);
+                trace!("Ignored child signal received with code: {exit_status:?}");
                 // return next child, we dont care about other events like stop/continue of children
                 get_next_exited_child()
             }
         },
         Err(e) => {
-            if let nix::Error::ECHILD = e {
+            if e == nix::Error::ECHILD {
             } else {
-                trace!("Error while waiting: {}", e);
+                trace!("Error while waiting: {e}");
             }
             Some(Err(e))
         }

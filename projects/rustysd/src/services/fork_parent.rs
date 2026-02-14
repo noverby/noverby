@@ -2,11 +2,11 @@ use log::error;
 use log::trace;
 use log::warn;
 
-use crate::runtime_info::*;
+use crate::runtime_info::{PidEntry, RuntimeInfo};
 use crate::services::RunCmdError;
 use crate::services::Service;
 use crate::units::ServiceConfig;
-use crate::units::*;
+use crate::units::{CommandlinePrefix, ServiceType};
 
 pub fn wait_for_service(
     srvc: &mut Service,
@@ -25,17 +25,12 @@ pub fn wait_for_service(
     let duration_timeout = srvc.get_start_timeout(conf);
     match conf.srcv_type {
         ServiceType::Notify => {
-            trace!(
-                "[FORK_PARENT] Waiting for a notification for service {}",
-                name
-            );
+            trace!("[FORK_PARENT] Waiting for a notification for service {name}");
 
             //let duration_timeout = Some(std::time::Duration::from_nanos(1_000_000_000_000));
             let mut buf = [0u8; 512];
             loop {
-                let stream = if let Some(stream) = &srvc.notifications {
-                    stream
-                } else {
+                let Some(stream) = &srvc.notifications else {
                     return Err(RunCmdError::Generic(
                         "No notification socket but is required".into(),
                     ));
@@ -47,8 +42,7 @@ pub fn wait_for_service(
                         pid_table_locked.get(&srvc.pid.unwrap())
                     {
                         trace!(
-                            "The service {} has exited before sending a READY=1 notification",
-                            name
+                            "The service {name} has exited before sending a READY=1 notification"
                         );
                         let pid_entry = pid_table_locked.remove(&srvc.pid.unwrap());
                         if let Some(PidEntry::ServiceExited(code)) = pid_entry {
@@ -60,58 +54,52 @@ pub fn wait_for_service(
                 if let Some(duration_timeout) = duration_timeout {
                     let duration_elapsed = start_time.elapsed();
                     if duration_elapsed > duration_timeout {
-                        trace!("[FORK_PARENT] Service {} notification timed out", name);
+                        trace!("[FORK_PARENT] Service {name} notification timed out");
                         return Err(RunCmdError::Timeout(
                             conf.exec.to_string(),
-                            format!("{:?}", duration_timeout),
+                            format!("{duration_timeout:?}"),
                         ));
-                    } else {
-                        let duration_till_timeout = duration_timeout - duration_elapsed;
-                        stream
-                            .set_read_timeout(Some(duration_till_timeout))
-                            .unwrap();
                     }
+                    let duration_till_timeout = duration_timeout - duration_elapsed;
+                    stream
+                        .set_read_timeout(Some(duration_till_timeout))
+                        .unwrap();
                 }
                 let bytes = match stream.recv(&mut buf[..]) {
                     Ok(bytes) => bytes,
                     Err(e) => match e.kind() {
-                        std::io::ErrorKind::WouldBlock => 0,
-                        std::io::ErrorKind::Interrupted => 0,
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted => 0,
                         _ => panic!("{}", e),
                     },
                 };
                 srvc.notifications_buffer
-                    .push_str(&String::from_utf8(buf[..bytes].to_vec()).unwrap());
-                crate::notification_handler::handle_notifications_from_buffer(srvc, &name);
+                    .push_str(core::str::from_utf8(&buf[..bytes]).unwrap());
+                crate::notification_handler::handle_notifications_from_buffer(srvc, name);
                 if srvc.signaled_ready {
                     srvc.signaled_ready = false;
-                    trace!("[FORK_PARENT] Service {} sent READY=1 notification", name);
+                    trace!("[FORK_PARENT] Service {name} sent READY=1 notification");
                     break;
-                } else {
-                    trace!("[FORK_PARENT] Service {} still not ready", name);
                 }
+                trace!("[FORK_PARENT] Service {name} still not ready");
             }
             if let Some(stream) = &srvc.notifications {
                 stream.set_read_timeout(None).unwrap();
             }
         }
         ServiceType::Simple => {
-            trace!("[FORK_PARENT] service {} doesnt notify", name);
+            trace!("[FORK_PARENT] service {name} doesnt notify");
         }
         ServiceType::OneShot => {
-            trace!(
-                "[FORK_PARENT] Waiting for oneshot service to exit: {}",
-                name
-            );
+            trace!("[FORK_PARENT] Waiting for oneshot service to exit: {name}");
             let mut counter = 1u64;
             let pid = srvc.pid.unwrap();
             loop {
                 if let Some(time_out) = duration_timeout {
                     if start_time.elapsed() >= time_out {
-                        error!("oneshot service {} reached timeout", name);
+                        error!("oneshot service {name} reached timeout");
                         return Err(RunCmdError::Timeout(
                             conf.exec.to_string(),
-                            format!("{:?}", duration_timeout),
+                            format!("{duration_timeout:?}"),
                         ));
                     }
                 }
@@ -124,20 +112,19 @@ pub fn wait_for_service(
                                     // Still running. Wait more
                                 }
                                 PidEntry::ServiceExited(_) => {
-                                    trace!("End wait for {}", name);
+                                    trace!("End wait for {name}");
                                     let entry_owned = pid_table_locked.remove(&pid).unwrap();
                                     if let PidEntry::ServiceExited(code) = entry_owned {
-                                        if !code.success() {
-                                            if !conf
+                                        if !code.success()
+                                            && !conf
                                                 .exec
                                                 .prefixes
                                                 .contains(&CommandlinePrefix::Minus)
-                                            {
-                                                return Err(RunCmdError::BadExitCode(
-                                                    conf.exec.to_string(),
-                                                    code,
-                                                ));
-                                            }
+                                        {
+                                            return Err(RunCmdError::BadExitCode(
+                                                conf.exec.to_string(),
+                                                code,
+                                            ));
                                         }
                                     }
                                     break;
@@ -157,7 +144,7 @@ pub fn wait_for_service(
                             }
                         }
                         None => {
-                            // Should not happen. Either there is an Helper entry oder a Exited entry
+                            // Should not happen. Either there is an Helper entry or a Exited entry
                             unreachable!("No entry for child found")
                         }
                     }
@@ -171,38 +158,37 @@ pub fn wait_for_service(
                 let sleep_cap = std::time::Duration::from_millis(10);
                 let sleep_dur = sleep_dur.min(sleep_cap);
                 if sleep_dur < sleep_cap {
-                    counter = counter * 2;
+                    counter *= 2;
                 }
                 std::thread::sleep(sleep_dur);
             }
         }
         ServiceType::Dbus => {
             if let Some(dbus_name) = &conf.dbus_name {
-                trace!("[FORK_PARENT] Waiting for dbus name: {}", dbus_name);
-                match crate::dbus_wait::wait_for_name_system_bus(&dbus_name, duration_timeout) {
+                trace!("[FORK_PARENT] Waiting for dbus name: {dbus_name}");
+                match crate::dbus_wait::wait_for_name_system_bus(dbus_name, duration_timeout) {
                     Ok(res) => match res {
                         crate::dbus_wait::WaitResult::Ok => {
-                            trace!("[FORK_PARENT] Found dbus name on bus: {}", dbus_name);
+                            trace!("[FORK_PARENT] Found dbus name on bus: {dbus_name}");
                         }
                         crate::dbus_wait::WaitResult::Timedout => {
-                            warn!("[FORK_PARENT] Did not find dbus name on bus: {}", dbus_name);
+                            warn!("[FORK_PARENT] Did not find dbus name on bus: {dbus_name}");
                             return Err(RunCmdError::Timeout(
                                 conf.exec.to_string(),
-                                format!("{:?}", duration_timeout),
+                                format!("{duration_timeout:?}"),
                             ));
                         }
                     },
                     Err(e) => {
                         return Err(RunCmdError::WaitError(
                             conf.exec.to_string(),
-                            format!("Error while waiting for dbus name: {}", e),
+                            format!("Error while waiting for dbus name: {e}"),
                         ));
                     }
                 }
             } else {
                 return Err(RunCmdError::Generic(format!(
-                    "[FORK_PARENT] No busname given for service: {:?}",
-                    name
+                    "[FORK_PARENT] No busname given for service: {name:?}"
                 )));
             }
         }

@@ -2,8 +2,8 @@
 use log::error;
 use log::trace;
 
-use crate::runtime_info::*;
-use crate::units::*;
+use crate::runtime_info::ArcMutRuntimeInfo;
+use crate::units::{ActivationSource, Specific, StatusStarted, UnitId, UnitStatus};
 
 pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
     std::thread::spawn(move || loop {
@@ -36,8 +36,7 @@ pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
                         }
                         if srvc_unit.is_none() {
                             error!(
-                                "Socket unit {:?} activated, but the service could not be found",
-                                socket_id
+                                "Socket unit {socket_id:?} activated, but the service could not be found"
                             );
                         }
                         if let Some(srvc_unit) = srvc_unit {
@@ -46,18 +45,11 @@ pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
                                 status_locked.clone()
                             };
 
-                            if srvc_status != UnitStatus::Started(StatusStarted::WaitingForSocket) {
-                                // This should not happen too often because the sockets of a service
-                                // should only be listened on if the service is currently waiting on socket activation
-                                trace!(
-                                    "Ignore socket activation. Service has status: {:?}",
-                                    srvc_status
-                                );
-                            } else {
+                            if srvc_status == UnitStatus::Started(StatusStarted::WaitingForSocket) {
                                 // the service unit gets activated
                                 match crate::units::activate_unit(
                                     srvc_unit.id.clone(),
-                                    &*run_info,
+                                    &run_info,
                                     ActivationSource::SocketActivation,
                                 ) {
                                     Ok(_) => {
@@ -73,19 +65,24 @@ pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
                                         );
                                     }
                                     Err(e) => {
-                                        format!(
-                                                "Error while starting service from socket activation: {}",
-                                                e
+                                        error!(
+                                                "Error while starting service from socket activation: {e}"
                                             );
                                     }
                                 }
+                            } else {
+                                // This should not happen too often because the sockets of a service
+                                // should only be listened on if the service is currently waiting on socket activation
+                                trace!(
+                                    "Ignore socket activation. Service has status: {srvc_status:?}"
+                                );
                             }
                         }
                     }
                 }
             }
             Err(e) => {
-                error!("Error in socket activation loop: {}", e);
+                error!("Error in socket activation loop: {e}");
                 break;
             }
         }
@@ -133,10 +130,10 @@ pub fn wait_for_socket(run_info: ArcMutRuntimeInfo) -> Result<Vec<UnitId>, Strin
             Ok(activated_ids)
         }
         Err(e) => {
-            if let nix::Error::EINTR = e {
+            if e == nix::Error::EINTR {
                 Ok(Vec::new())
             } else {
-                Err(format!("Error while selecting: {}", e))
+                Err(format!("Error while selecting: {e}"))
             }
         }
     }

@@ -22,10 +22,10 @@ pub fn run_service_manager() {
 
     if let Some(path) = &cli_args.conf {
         if !path.exists() {
-            unrecoverable_error(format!("config path given that does not exist"));
+            unrecoverable_error("config path given that does not exist".to_string());
         }
         if !path.is_dir() {
-            unrecoverable_error(format!("config path given that is not a directory"));
+            unrecoverable_error("config path given that is not a directory".to_string());
         }
     }
 
@@ -35,7 +35,7 @@ pub fn run_service_manager() {
     let conf = match conf {
         Ok(conf) => conf,
         Err(e) => {
-            error!("Error while loading the conf: {}", e);
+            error!("Error while loading the conf: {e}");
             unrecoverable_error(format!(
                 "Reading conf did not work. See stdout or log at: {:?}",
                 log_conf.log_dir
@@ -52,17 +52,15 @@ pub fn run_service_manager() {
 
     // TODO make configurable
     let should_go_to_new_session = false;
-    if should_go_to_new_session {
-        if !move_to_new_session() {
-            return;
-        }
+    if should_go_to_new_session && !move_to_new_session() {
+        return;
     }
 
     crate::platform::become_subreaper(true);
 
     let run_info = prepare_runtimeinfo(&conf, cli_args.dry_run);
 
-    let signals = match Signals::new(&[
+    let signals = match Signals::new([
         signal_hook::consts::SIGCHLD,
         signal_hook::consts::SIGTERM,
         signal_hook::consts::SIGINT,
@@ -70,7 +68,7 @@ pub fn run_service_manager() {
     ]) {
         Ok(signals) => signals,
         Err(e) => {
-            unrecoverable_error(format!("Couldnt setup listening to the signals: {}", e));
+            unrecoverable_error(format!("Couldnt setup listening to the signals: {e}"));
             // unrecoverable_error always shutsdown rustysd
             unreachable!("");
         }
@@ -90,13 +88,13 @@ pub fn run_service_manager() {
     trace!("Started all helper threads. Start activating units");
 
     let target_id: units::UnitId = {
-        let run_info: &runtime_info::RuntimeInfo = &*run_info.read().unwrap();
+        let run_info: &runtime_info::RuntimeInfo = &run_info.read().unwrap();
         use std::convert::TryInto;
         run_info.config.target_unit.as_str().try_into().unwrap()
     };
 
     // parallel startup of all services
-    units::activate_needed_units(target_id, run_info.clone());
+    units::activate_needed_units(target_id, run_info);
 
     handle.join().unwrap();
 }
@@ -109,31 +107,25 @@ fn find_shell_path() -> Option<std::path::PathBuf> {
     ];
 
     // TODO make configurable
-    for p in possible_paths {
-        if p.exists() {
-            return Some(p);
-        }
-    }
-    None
+    possible_paths.into_iter().find(|p| p.exists())
 }
 
 fn unrecoverable_error(error: String) {
     if nix::unistd::getpid().as_raw() == 1 {
-        eprintln!("Unrecoverable error: {}", error);
+        eprintln!("Unrecoverable error: {error}");
         if let Some(shell_path) = find_shell_path() {
             match std::process::Command::new(shell_path).spawn() {
                 Ok(mut child) => match child.wait() {
                     Ok(_) => {
                         let dur = std::time::Duration::from_secs(10);
-                        eprintln!("Returned from shell. Will exit after sleeping: {:?}", dur);
+                        eprintln!("Returned from shell. Will exit after sleeping: {dur:?}");
                         std::thread::sleep(dur);
                         std::process::exit(1);
                     }
                     Err(e) => {
                         let dur = std::time::Duration::from_secs(1_000_000);
                         eprintln!(
-                            "Error while waiting on the shell: {}. Will sleep for {:?} and then exit",
-                            e, dur
+                            "Error while waiting on the shell: {e}. Will sleep for {dur:?} and then exit"
                         );
                         std::thread::sleep(dur);
                         std::process::exit(1);
@@ -142,8 +134,7 @@ fn unrecoverable_error(error: String) {
                 Err(e) => {
                     let dur = std::time::Duration::from_secs(1_000_000);
                     eprintln!(
-                        "Error while starting the shell: {}. Will sleep for {:?} and then exit",
-                        e, dur
+                        "Error while starting the shell: {e}. Will sleep for {dur:?} and then exit"
                     );
                     std::thread::sleep(dur);
                     std::process::exit(1);
@@ -151,10 +142,7 @@ fn unrecoverable_error(error: String) {
             }
         } else {
             let dur = std::time::Duration::from_secs(10);
-            eprintln!(
-                "Cannot find a shell for emergency. Will sleep for {:?} and then exit",
-                dur
-            );
+            eprintln!("Cannot find a shell for emergency. Will sleep for {dur:?} and then exit");
             std::thread::sleep(dur);
             std::process::exit(1);
         }
@@ -171,7 +159,7 @@ fn move_to_new_session() -> bool {
         }
         Ok(nix::unistd::ForkResult::Parent { .. }) => false,
         Err(e) => {
-            error!("Fork before setsid failed: {}", e);
+            error!("Fork before setsid failed: {e}");
             false
         }
     }
@@ -230,13 +218,13 @@ fn prepare_runtimeinfo(conf: &config::Config, dry_run: bool) -> runtime_info::Ar
                 for circle in &circles {
                     error!("-- Next circle --");
                     for id in circle {
-                        error!("{}", id);
+                        error!("{id}");
                     }
                     error!("-- End circle --");
                 }
             }
             units::SanityCheckError::Generic(msg) => {
-                error!("Unit dependencies did not pass sanity checks: {}", msg);
+                error!("Unit dependencies did not pass sanity checks: {msg}");
             }
         }
         unrecoverable_error("Unit dependencies did not pass sanity check".into());
@@ -251,44 +239,41 @@ fn prepare_runtimeinfo(conf: &config::Config, dry_run: bool) -> runtime_info::Ar
 
     let pid_table = Mutex::new(std::collections::HashMap::new());
 
-    let run_info = Arc::new(RwLock::new(runtime_info::RuntimeInfo {
-        unit_table: unit_table,
-        pid_table: pid_table,
+    Arc::new(RwLock::new(runtime_info::RuntimeInfo {
+        unit_table,
+        pid_table,
         fd_store: std::sync::RwLock::new(crate::fd_store::FDStore::default()),
         config: conf.clone(),
         stdout_eventfd: platform::make_event_fd().unwrap(),
         stderr_eventfd: platform::make_event_fd().unwrap(),
         notification_eventfd: platform::make_event_fd().unwrap(),
         socket_activation_eventfd: platform::make_event_fd().unwrap(),
-    }));
-
-    run_info
+    }))
 }
 
 fn start_notification_handler_thread(run_info: runtime_info::ArcMutRuntimeInfo) {
     std::thread::spawn(move || {
-        notification_handler::handle_all_streams(run_info.clone());
+        notification_handler::handle_all_streams(run_info);
     });
 }
 fn start_stdout_handler_thread(run_info: runtime_info::ArcMutRuntimeInfo) {
     std::thread::spawn(move || {
-        notification_handler::handle_all_std_out(run_info.clone());
+        notification_handler::handle_all_std_out(run_info);
     });
 }
 fn start_stderr_handler_thread(run_info: runtime_info::ArcMutRuntimeInfo) {
     std::thread::spawn(move || {
-        notification_handler::handle_all_std_err(run_info.clone());
+        notification_handler::handle_all_std_err(run_info);
     });
 }
 fn start_signal_handler_thread(
     signals: Signals,
     run_info: runtime_info::ArcMutRuntimeInfo,
 ) -> std::thread::JoinHandle<()> {
-    let handle = std::thread::spawn(move || {
+    std::thread::spawn(move || {
         // listen on signals from the child processes
         signal_handler::handle_signals(signals, run_info);
-    });
-    handle
+    })
 }
 
 use clap::Parser;

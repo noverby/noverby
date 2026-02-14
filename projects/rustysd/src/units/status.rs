@@ -1,4 +1,4 @@
-use crate::units::*;
+use crate::units::UnitOperationErrorReason;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum UnitStatus {
@@ -23,16 +23,12 @@ pub enum StatusStopped {
 }
 
 impl UnitStatus {
-    pub fn is_stopped(&self) -> bool {
-        match self {
-            UnitStatus::Stopped(_, _) => true,
-            _ => false,
-        }
+    #[must_use]
+    pub const fn is_stopped(&self) -> bool {
+        matches!(self, Self::Stopped(_, _))
     }
-    pub fn is_started(&self) -> bool {
-        match self {
-            UnitStatus::Started(_) => true,
-            _ => false,
-        }
+    #[must_use]
+    pub const fn is_started(&self) -> bool {
+        matches!(self, Self::Started(_))
     }
 }

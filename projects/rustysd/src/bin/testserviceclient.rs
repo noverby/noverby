@@ -42,6 +42,6 @@ fn main() {
 
             std::thread::sleep(std::time::Duration::from_secs(2));
         },
-        Err(e) => eprintln!("Error while forking: {}", e),
+        Err(e) => eprintln!("Error while forking: {e}"),
     }
 }

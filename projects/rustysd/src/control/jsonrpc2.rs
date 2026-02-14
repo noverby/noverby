@@ -7,7 +7,7 @@ pub struct Call {
 }
 
 impl Call {
-    pub fn from_json(val: &Value) -> Result<Call, String> {
+    pub fn from_json(val: &Value) -> Result<Self, String> {
         match val {
             Value::Object(map) => {
                 let method = map.get("method");
@@ -18,15 +18,16 @@ impl Call {
                     Value::String(s) => s.clone(),
                     _ => return Err("method was not  a string".into()),
                 };
-                let params = map.get("params").map(|x| x.clone());
-                let id = map.get("id").clone().map(|x| x.clone());
+                let params = map.get("params").cloned();
+                let id = map.get("id").cloned();
 
-                Ok(Call { method, params, id })
+                Ok(Self { method, params, id })
             }
             _ => Err("Value wasn't an object".into()),
         }
     }
 
+    #[must_use]
     pub fn to_json(&self) -> Value {
         let mut map = serde_json::Map::new();
         map.insert("jsonrpc".into(), Value::String("2.0".into()));
@@ -42,6 +43,7 @@ impl Call {
     }
 }
 
+#[must_use]
 pub fn make_result_response(id: Option<Value>, result: Value) -> Value {
     let mut response = serde_json::Map::new();
     response.insert("jsonrpc".into(), "2.0".into());
@@ -69,7 +71,8 @@ pub struct Error {
     data: Option<Value>,
 }
 
-pub fn make_error(code: i64, message: String, data: Option<Value>) -> Error {
+#[must_use]
+pub const fn make_error(code: i64, message: String, data: Option<Value>) -> Error {
     Error {
         code,
         message,
@@ -77,6 +80,7 @@ pub fn make_error(code: i64, message: String, data: Option<Value>) -> Error {
     }
 }
 
+#[must_use]
 pub fn make_error_response(id: Option<Value>, error: Error) -> Value {
     let mut json_err = serde_json::Map::new();
     json_err.insert(
@@ -86,7 +90,7 @@ pub fn make_error_response(id: Option<Value>, error: Error) -> Value {
     json_err.insert("message".into(), Value::String(error.message.clone()));
 
     if let Some(data) = error.data {
-        json_err.insert("data".into(), data.clone());
+        json_err.insert("data".into(), data);
     }
 
     let mut response = serde_json::Map::new();

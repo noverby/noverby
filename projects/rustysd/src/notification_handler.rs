@@ -6,10 +6,10 @@ use log::trace;
 use log::warn;
 
 use crate::platform::reset_event_fd;
-use crate::runtime_info::*;
+use crate::runtime_info::ArcMutRuntimeInfo;
 use crate::services::Service;
 use crate::services::StdIo;
-use crate::units::*;
+use crate::units::{Specific, UnitId};
 use std::{collections::HashMap, os::unix::io::AsRawFd};
 
 fn collect_from_srvc<F>(run_info: ArcMutRuntimeInfo, f: F) -> HashMap<i32, UnitId>
@@ -69,7 +69,7 @@ pub fn handle_all_streams(run_info: ArcMutRuntimeInfo) {
 
                                     let old_flags =
                                         nix::fcntl::OFlag::from_bits(old_flags).unwrap();
-                                    let mut new_flags = old_flags.clone();
+                                    let mut new_flags = old_flags;
                                     new_flags.insert(nix::fcntl::OFlag::O_NONBLOCK);
                                     nix::fcntl::fcntl(
                                         *fd,
@@ -104,7 +104,7 @@ pub fn handle_all_streams(run_info: ArcMutRuntimeInfo) {
                 }
             }
             Err(e) => {
-                warn!("Error while selecting: {}", e);
+                warn!("Error while selecting: {e}");
             }
         }
     }
@@ -149,7 +149,7 @@ pub fn handle_all_std_out(run_info: ArcMutRuntimeInfo) {
                                 let old_flags =
                                     nix::fcntl::fcntl(*fd, nix::fcntl::FcntlArg::F_GETFL).unwrap();
                                 let old_flags = nix::fcntl::OFlag::from_bits(old_flags).unwrap();
-                                let mut new_flags = old_flags.clone();
+                                let mut new_flags = old_flags;
                                 new_flags.insert(nix::fcntl::OFlag::O_NONBLOCK);
                                 nix::fcntl::fcntl(*fd, nix::fcntl::FcntlArg::F_SETFL(new_flags))
                                     .unwrap();
@@ -173,7 +173,7 @@ pub fn handle_all_std_out(run_info: ArcMutRuntimeInfo) {
                 }
             }
             Err(e) => {
-                warn!("Error while selecting: {}", e);
+                warn!("Error while selecting: {e}");
             }
         }
     }
@@ -218,7 +218,7 @@ pub fn handle_all_std_err(run_info: ArcMutRuntimeInfo) {
                                 let old_flags =
                                     nix::fcntl::fcntl(*fd, nix::fcntl::FcntlArg::F_GETFL).unwrap();
                                 let old_flags = nix::fcntl::OFlag::from_bits(old_flags).unwrap();
-                                let mut new_flags = old_flags.clone();
+                                let mut new_flags = old_flags;
                                 new_flags.insert(nix::fcntl::OFlag::O_NONBLOCK);
                                 nix::fcntl::fcntl(*fd, nix::fcntl::FcntlArg::F_SETFL(new_flags))
                                     .unwrap();
@@ -241,7 +241,7 @@ pub fn handle_all_std_err(run_info: ArcMutRuntimeInfo) {
                 }
             }
             Err(e) => {
-                warn!("Error while selecting: {}", e);
+                warn!("Error while selecting: {e}");
             }
         }
     }

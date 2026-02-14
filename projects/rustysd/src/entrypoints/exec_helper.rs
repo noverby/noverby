@@ -42,7 +42,7 @@ fn prepare_exec_args(
 pub fn run_exec_helper() {
     println!("Exec helper trying to read config from stdin");
     let config: ExecHelperConfig = serde_json::from_reader(std::io::stdin()).unwrap();
-    println!("Apply config: {:?}", config);
+    println!("Apply config: {config:?}");
 
     nix::unistd::close(libc::STDIN_FILENO).expect("I want to be able to close this fd!");
 
@@ -54,13 +54,14 @@ pub fn run_exec_helper() {
     }
 
     if nix::unistd::getuid().is_root() {
+        let supp_gids: Vec<nix::unistd::Gid> = config
+            .supplementary_groups
+            .iter()
+            .map(|gid| nix::unistd::Gid::from_raw(*gid))
+            .collect();
         match crate::platform::drop_privileges(
             nix::unistd::Gid::from_raw(config.group),
-            &config
-                .supplementary_groups
-                .iter()
-                .map(|gid| nix::unistd::Gid::from_raw(*gid))
-                .collect(),
+            &supp_gids,
             nix::unistd::Uid::from_raw(config.user),
         ) {
             Ok(()) => { /* Happy */ }
@@ -77,7 +78,7 @@ pub fn run_exec_helper() {
     let (cmd, args) = prepare_exec_args(&config.cmd, &config.args);
 
     // setup environment vars
-    for (k, v) in config.env.iter() {
+    for (k, v) in &config.env {
         std::env::set_var(k, v);
     }
 

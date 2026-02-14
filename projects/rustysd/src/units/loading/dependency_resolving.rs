@@ -1,8 +1,8 @@
 use log::trace;
 use log::warn;
 
-use crate::runtime_info::*;
-use crate::units::*;
+use crate::runtime_info::UnitTable;
+use crate::units::{Dependencies, ServiceConfig, SocketConfig, Specific, Unit, UnitId, UnitIdKind};
 
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -18,13 +18,11 @@ pub fn prune_units(
         }
         result
     });
-    let startunit_id = if let Some(startunit) = startunit {
-        startunit
-    } else {
-        return Err(format!("Target unit {} not found", target_unit_name));
+    let Some(startunit_id) = startunit else {
+        return Err(format!("Target unit {target_unit_name} not found"));
     };
     // This vec will record the unit ids that will be kept
-    let mut ids_to_keep = vec![startunit_id.clone()];
+    let mut ids_to_keep = vec![startunit_id];
     crate::units::collect_unit_start_subgraph(&mut ids_to_keep, unit_table);
 
     // walk the tree along the wants/requires/before/... relations and record which ids are needed
@@ -52,7 +50,7 @@ pub fn prune_units(
                     .iter()
                     .filter(|id| ids_to_keep.contains(id))
                     .cloned()
-                    .collect()
+                    .collect();
             }
             Specific::Socket(specific) => {
                 specific.conf.services = specific
@@ -61,7 +59,7 @@ pub fn prune_units(
                     .iter()
                     .filter(|id| ids_to_keep.contains(id))
                     .cloned()
-                    .collect()
+                    .collect();
             }
             Specific::Target(_) => { /**/ }
         }
@@ -72,7 +70,7 @@ pub fn prune_units(
             .before
             .iter()
             .filter(|id| ids_to_keep.contains(id))
-            .map(|id| id.clone())
+            .cloned()
             .collect();
 
         unit.common.dependencies.after = unit
@@ -81,7 +79,7 @@ pub fn prune_units(
             .after
             .iter()
             .filter(|id| ids_to_keep.contains(id))
-            .map(|id| id.clone())
+            .cloned()
             .collect();
 
         unit.common.dependencies.requires = unit
@@ -90,7 +88,7 @@ pub fn prune_units(
             .requires
             .iter()
             .filter(|id| ids_to_keep.contains(id))
-            .map(|id| id.clone())
+            .cloned()
             .collect();
 
         unit.common.dependencies.wants = unit
@@ -99,7 +97,7 @@ pub fn prune_units(
             .wants
             .iter()
             .filter(|id| ids_to_keep.contains(id))
-            .map(|id| id.clone())
+            .cloned()
             .collect();
 
         unit.common.dependencies.required_by = unit
@@ -108,7 +106,7 @@ pub fn prune_units(
             .required_by
             .iter()
             .filter(|id| ids_to_keep.contains(id))
-            .map(|id| id.clone())
+            .cloned()
             .collect();
 
         unit.common.dependencies.wanted_by = unit
@@ -117,7 +115,7 @@ pub fn prune_units(
             .wanted_by
             .iter()
             .filter(|id| ids_to_keep.contains(id))
-            .map(|id| id.clone())
+            .cloned()
             .collect();
 
         unit.dedup_dependencies();
@@ -125,7 +123,7 @@ pub fn prune_units(
     Ok(())
 }
 
-/// make edges between units visible on bot sides: required <-> required_by  after <-> before
+/// make edges between units visible on bot sides: required <-> `required_by`  after <-> before
 ///
 /// Also adds all implicit dependencies between units (currently only a subset of the ones defined
 /// by systemd)
@@ -145,10 +143,10 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
             required_by.push((id.clone(), unit.id.clone()));
         }
         for id in &conf.before {
-            after.push((unit.id.clone(), id.clone()))
+            after.push((unit.id.clone(), id.clone()));
         }
         for id in &conf.after {
-            before.push((unit.id.clone(), id.clone()))
+            before.push((unit.id.clone(), id.clone()));
         }
         for id in &conf.wanted_by {
             wanted_by.push((unit.id.clone(), id.clone()));
@@ -159,22 +157,16 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
     }
 
     for (wanted, wanting) in wanted_by {
-        trace!("{:?} wants {:?}", wanting, wanted);
+        trace!("{wanting:?} wants {wanted:?}");
         if let Some(unit) = units.get_mut(&wanting) {
             unit.common.dependencies.wants.push(wanted.clone());
         } else {
-            warn!(
-                "Dependency {:?} wants {:?}, but {:?} not found",
-                wanting, wanted, wanting
-            );
+            warn!("Dependency {wanting:?} wants {wanted:?}, but {wanting:?} not found");
         }
         if let Some(unit) = units.get_mut(&wanted) {
             unit.common.dependencies.wanted_by.push(wanting);
         } else {
-            warn!(
-                "Dependency {:?} wanted by {:?}, but {:?} not found",
-                wanted, wanting, wanted
-            );
+            warn!("Dependency {wanted:?} wanted by {wanting:?}, but {wanted:?} not found");
         }
     }
 
@@ -182,18 +174,12 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
         if let Some(unit) = units.get_mut(&requiring) {
             unit.common.dependencies.requires.push(required.clone());
         } else {
-            warn!(
-                "Dependency {:?} requires {:?}, but {:?} not found",
-                requiring, required, requiring
-            );
+            warn!("Dependency {requiring:?} requires {required:?}, but {requiring:?} not found");
         }
         if let Some(unit) = units.get_mut(&required) {
             unit.common.dependencies.required_by.push(requiring);
         } else {
-            warn!(
-                "Dependency {:?} required by {:?}, but {:?} not found",
-                required, requiring, required
-            );
+            warn!("Dependency {required:?} required by {requiring:?}, but {required:?} not found");
         }
     }
 
@@ -201,20 +187,14 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
         if let Some(unit) = units.get_mut(&after) {
             unit.common.dependencies.before.push(before);
         } else {
-            warn!(
-                "Dependency {:?} before {:?}, but {:?} not found",
-                before, after, after
-            );
+            warn!("Dependency {before:?} before {after:?}, but {after:?} not found");
         }
     }
     for (after, before) in after {
         if let Some(unit) = units.get_mut(&before) {
             unit.common.dependencies.after.push(after);
         } else {
-            warn!(
-                "Dependency {:?} after {:?}, but {:?} not found",
-                after, before, before
-            );
+            warn!("Dependency {after:?} after {before:?}, but {before:?} not found");
         }
     }
 
@@ -285,7 +265,7 @@ fn add_sock_srvc_relations(
 }
 
 /// This takes a set of services and sockets and matches them both by their name and their
-/// respective explicit settings. It adds appropriate before/after and requires/required_by relations.
+/// respective explicit settings. It adds appropriate before/after and `requires/required_by` relations.
 fn apply_sockets_to_services(unit_table: &mut UnitTable) -> Result<(), String> {
     let mut service_ids = Vec::new();
     let mut socket_ids = Vec::new();
@@ -365,12 +345,11 @@ fn apply_sockets_to_services(unit_table: &mut UnitTable) -> Result<(), String> {
         unit_table.insert(sock_unit.id.clone(), sock_unit);
         if counter > 1 {
             return Err(format!(
-                "Added socket: {} to too many services (should be at most one): {}",
-                sock_name, counter
+                "Added socket: {sock_name} to too many services (should be at most one): {counter}"
             ));
         }
         if counter == 0 {
-            warn!("Added socket: {} to no service", sock_name);
+            warn!("Added socket: {sock_name} to no service");
         }
     }
 

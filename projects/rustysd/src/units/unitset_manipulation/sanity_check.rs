@@ -1,5 +1,5 @@
-use crate::units::*;
-use std::collections::HashMap;
+use crate::units::{Unit, UnitId};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum SanityCheckError {
@@ -12,43 +12,33 @@ pub enum SanityCheckError {
 pub fn sanity_check_dependencies(
     unit_table: &HashMap<UnitId, Unit>,
 ) -> Result<(), SanityCheckError> {
-    let mut root_ids = Vec::new();
-    for unit in unit_table.values() {
-        if unit.common.dependencies.after.len() == 0 {
-            root_ids.push(unit.id.clone());
-        }
-    }
     // check whether there are cycles in the startup sequence
-    let mut finished_ids = HashMap::new();
-    let mut not_finished_ids: HashMap<_, _> =
-        unit_table.keys().cloned().map(|id| (id, ())).collect();
+    let mut finished_ids = HashSet::new();
+    let mut not_finished_ids: HashSet<_> = unit_table.keys().cloned().collect();
     let mut circles = Vec::new();
 
     loop {
         //if no nodes left -> no cycles
-        let root_id = if not_finished_ids.len() == 0 {
+        let root_id = if not_finished_ids.is_empty() {
             break;
         } else {
             // find new node that has no incoming edges anymore
-            let root_id = not_finished_ids
-                .keys()
-                .filter(|id| {
-                    let unit = unit_table.get(id).unwrap();
-                    let in_degree = unit.common.dependencies.after.iter().fold(0, |acc, id| {
-                        if finished_ids.contains_key(id) {
-                            acc
-                        } else {
-                            acc + 1
-                        }
-                    });
-                    in_degree == 0
-                })
-                .nth(0);
+            let root_id = not_finished_ids.iter().find(|id| {
+                let unit = unit_table.get(id).unwrap();
+                let in_degree = unit.common.dependencies.after.iter().fold(0, |acc, id| {
+                    if finished_ids.contains(id) {
+                        acc
+                    } else {
+                        acc + 1
+                    }
+                });
+                in_degree == 0
+            });
             if let Some(id) = root_id {
                 id.clone()
             } else {
                 // make sensible error-message
-                circles.push(not_finished_ids.keys().cloned().collect());
+                circles.push(not_finished_ids.iter().cloned().collect());
                 break;
             }
         };
@@ -62,8 +52,8 @@ pub fn sanity_check_dependencies(
             &mut finished_ids,
             &mut not_finished_ids,
         ) {
-            circles.extend(new_circles)
-        };
+            circles.extend(new_circles);
+        }
     }
     if circles.is_empty() {
         Ok(())
@@ -76,10 +66,10 @@ fn search_backedge(
     id: &UnitId,
     unit_table: &HashMap<UnitId, Unit>,
     visited_ids: &mut Vec<UnitId>,
-    finished_ids: &mut HashMap<UnitId, ()>,
-    not_finished_ids: &mut HashMap<UnitId, ()>,
+    finished_ids: &mut HashSet<UnitId>,
+    not_finished_ids: &mut HashSet<UnitId>,
 ) -> Result<(), SanityCheckError> {
-    if finished_ids.contains_key(id) {
+    if finished_ids.contains(id) {
         return Ok(());
     }
 
@@ -93,7 +83,7 @@ fn search_backedge(
         }
         let circle_ids = visited_ids[circle_start_idx..].to_vec();
         for circleid in &circle_ids {
-            finished_ids.insert(circleid.clone(), ());
+            finished_ids.insert(circleid.clone());
             not_finished_ids.remove(circleid);
         }
 
@@ -110,12 +100,10 @@ fn search_backedge(
             finished_ids,
             not_finished_ids,
         );
-        if res.is_err() {
-            return res;
-        }
+        res?;
     }
     visited_ids.pop();
-    finished_ids.insert(id.clone(), ());
+    finished_ids.insert(id.clone());
     not_finished_ids.remove(id);
 
     Ok(())

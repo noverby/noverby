@@ -1,17 +1,21 @@
 use log::error;
 use log::trace;
 
-use super::start_service::*;
-use crate::runtime_info::*;
-use crate::units::*;
+use super::start_service::start_service;
+use crate::runtime_info::{PidEntry, RuntimeInfo};
+use crate::units::{
+    ActivationSource, Commandline, CommandlinePrefix, ServiceConfig, ServiceType, Timeout, UnitId,
+    UnitStatus,
+};
 
+use std::fmt::Write as _;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::os::unix::net::UnixDatagram;
 use std::process::{Command, Stdio};
 
-/// This looks like std::process::Stdio but it can be some more stuff like journal or kmsg so I explicitly
+/// This looks like `std::process::Stdio` but it can be some more stuff like journal or kmsg so I explicitly
 /// made a new enum here
 #[derive(Debug)]
 pub enum StdIo {
@@ -23,18 +27,18 @@ pub enum StdIo {
 }
 
 impl StdIo {
+    #[must_use]
     pub fn write_fd(&self) -> RawFd {
         match self {
-            StdIo::File(f) => f.as_raw_fd(),
-            StdIo::Null(f) => f.as_raw_fd(),
-            StdIo::Piped(_r, w) => *w,
+            Self::File(f) | Self::Null(f) => f.as_raw_fd(),
+            Self::Piped(_r, w) => *w,
         }
     }
+    #[must_use]
     pub fn read_fd(&self) -> RawFd {
         match self {
-            StdIo::File(f) => f.as_raw_fd(),
-            StdIo::Null(f) => f.as_raw_fd(),
-            StdIo::Piped(r, _w) => *r,
+            Self::File(f) | Self::Null(f) => f.as_raw_fd(),
+            Self::Piped(r, _w) => *r,
         }
     }
 }
@@ -72,22 +76,21 @@ pub enum RunCmdError {
 impl std::fmt::Display for RunCmdError {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         let msg = match self {
-            RunCmdError::BadExitCode(cmd, exit) => format!("{} exited with: {:?}", cmd, exit),
-            RunCmdError::ExitBeforeNotify(cmd, exit) => {
-                format!("{} exited before sendeinf READY=1 with: {:?}", cmd, exit)
+            Self::BadExitCode(cmd, exit) => format!("{cmd} exited with: {exit:?}"),
+            Self::ExitBeforeNotify(cmd, exit) => {
+                format!("{cmd} exited before sendeinf READY=1 with: {exit:?}")
             }
-            RunCmdError::SpawnError(cmd, err) => format!("{} failed to spawn with: {:?}", cmd, err),
-            RunCmdError::WaitError(cmd, err) => {
-                format!("{} could not be waited on because: {:?}", cmd, err)
+            Self::SpawnError(cmd, err) => format!("{cmd} failed to spawn with: {err:?}"),
+            Self::WaitError(cmd, err) => {
+                format!("{cmd} could not be waited on because: {err:?}")
             }
-            RunCmdError::CreatingShmemFailed(cmd, err) => format!(
-                "{} could not create shared memory for passing the chainloading config: {:?}",
-                cmd, err
+            Self::CreatingShmemFailed(cmd, err) => format!(
+                "{cmd} could not create shared memory for passing the chainloading config: {err:?}"
             ),
-            RunCmdError::Timeout(cmd, err) => format!("{} reached its timeout: {:?}", cmd, err),
-            RunCmdError::Generic(err) => format!("Generic error: {}", err),
+            Self::Timeout(cmd, err) => format!("{cmd} reached its timeout: {err:?}"),
+            Self::Generic(err) => format!("Generic error: {err}"),
         };
-        fmt.write_str(format!("{}", msg).as_str())
+        fmt.write_str(msg.as_str())
     }
 }
 
@@ -118,39 +121,39 @@ impl std::fmt::Display for ServiceErrorReason {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         let msg = match self {
             // one failed
-            ServiceErrorReason::PrestartFailed(e) => format!("Perstart failed: {}", e),
-            ServiceErrorReason::PoststartFailed(e) => format!("Poststart failed: {}", e),
-            ServiceErrorReason::StartFailed(e) => format!("Start failed: {}", e),
-            ServiceErrorReason::StopFailed(e) => format!("Stop failed: {}", e),
-            ServiceErrorReason::PoststopFailed(e) => format!("Poststop failed: {}", e),
+            Self::PrestartFailed(e) => format!("Perstart failed: {e}"),
+            Self::PoststartFailed(e) => format!("Poststart failed: {e}"),
+            Self::StartFailed(e) => format!("Start failed: {e}"),
+            Self::StopFailed(e) => format!("Stop failed: {e}"),
+            Self::PoststopFailed(e) => format!("Poststop failed: {e}"),
 
             // Both failed
-            ServiceErrorReason::PrestartAndPoststopFailed(e, e2) => {
-                format!("Perstart failed: {} and Poststop failed too: {}", e, e2)
+            Self::PrestartAndPoststopFailed(e, e2) => {
+                format!("Perstart failed: {e} and Poststop failed too: {e2}")
             }
-            ServiceErrorReason::PoststartAndPoststopFailed(e, e2) => {
-                format!("Poststart failed: {} and Poststop failed too: {}", e, e2)
+            Self::PoststartAndPoststopFailed(e, e2) => {
+                format!("Poststart failed: {e} and Poststop failed too: {e2}")
             }
-            ServiceErrorReason::StartAndPoststopFailed(e, e2) => {
-                format!("Start failed: {} and Poststop failed too: {}", e, e2)
+            Self::StartAndPoststopFailed(e, e2) => {
+                format!("Start failed: {e} and Poststop failed too: {e2}")
             }
-            ServiceErrorReason::StopAndPoststopFailed(e, e2) => {
-                format!("Stop failed: {} and Poststop failed too: {}", e, e2)
+            Self::StopAndPoststopFailed(e, e2) => {
+                format!("Stop failed: {e} and Poststop failed too: {e2}")
             }
 
             // other errors
-            ServiceErrorReason::Generic(e) => format!("Service error: {}", e),
-            ServiceErrorReason::AlreadyHasPID(e) => {
-                format!("Tried to start already running service (PID: {})", e)
+            Self::Generic(e) => format!("Service error: {e}"),
+            Self::AlreadyHasPID(e) => {
+                format!("Tried to start already running service (PID: {e})")
             }
-            ServiceErrorReason::AlreadyHasPGID(e) => {
-                format!("Tried to start already running service: (PGID: {})", e)
+            Self::AlreadyHasPGID(e) => {
+                format!("Tried to start already running service: (PGID: {e})")
             }
-            ServiceErrorReason::PreparingFailed(e) => {
-                format!("Preparing of service failed because: {}", e)
+            Self::PreparingFailed(e) => {
+                format!("Preparing of service failed because: {e}")
             }
         };
-        fmt.write_str(format!("{}", msg).as_str())
+        fmt.write_str(msg.as_str())
     }
 }
 
@@ -175,7 +178,7 @@ impl Service {
             ));
         }
         if source.is_socket_activation() || conf.sockets.is_empty() {
-            trace!("Start service {}", name);
+            trace!("Start service {name}");
 
             super::prepare_service::prepare_service(
                 self,
@@ -183,11 +186,11 @@ impl Service {
                 name,
                 &run_info.config.notification_sockets_dir,
             )
-            .map_err(|e| ServiceErrorReason::PreparingFailed(e))?;
-            self.run_prestart(conf, id.clone(), name, run_info.clone())
+            .map_err(ServiceErrorReason::PreparingFailed)?;
+            self.run_prestart(conf, id.clone(), name, run_info)
                 .map_err(|prestart_err| {
-                    match self.run_poststop(conf, id.clone(), name, run_info.clone()) {
-                        Ok(_) => ServiceErrorReason::PrestartFailed(prestart_err),
+                    match self.run_poststop(conf, id.clone(), name, run_info) {
+                        Ok(()) => ServiceErrorReason::PrestartFailed(prestart_err),
                         Err(poststop_err) => ServiceErrorReason::PrestartAndPoststopFailed(
                             prestart_err,
                             poststop_err,
@@ -203,27 +206,27 @@ impl Service {
                     &run_info.config.self_path,
                     self,
                     conf,
-                    name.clone(),
-                    &*run_info.fd_store.read().unwrap(),
+                    name,
+                    &run_info.fd_store.read().unwrap(),
                 )
-                .map_err(|e| ServiceErrorReason::StartFailed(e))?;
+                .map_err(ServiceErrorReason::StartFailed)?;
                 if let Some(new_pid) = self.pid {
                     pid_table_locked.insert(new_pid, PidEntry::Service(id.clone(), conf.srcv_type));
                 }
             }
 
             super::fork_parent::wait_for_service(self, conf, name, run_info).map_err(
-                |start_err| match self.run_poststop(conf, id.clone(), name, run_info.clone()) {
-                    Ok(_) => ServiceErrorReason::StartFailed(start_err),
+                |start_err| match self.run_poststop(conf, id.clone(), name, run_info) {
+                    Ok(()) => ServiceErrorReason::StartFailed(start_err),
                     Err(poststop_err) => {
                         ServiceErrorReason::StartAndPoststopFailed(start_err, poststop_err)
                     }
                 },
             )?;
-            self.run_poststart(conf, id.clone(), name, run_info.clone())
+            self.run_poststart(conf, id.clone(), name, run_info)
                 .map_err(|poststart_err| {
-                    match self.run_poststop(conf, id.clone(), name, run_info.clone()) {
-                        Ok(_) => ServiceErrorReason::PrestartFailed(poststart_err),
+                    match self.run_poststop(conf, id.clone(), name, run_info) {
+                        Ok(()) => ServiceErrorReason::PrestartFailed(poststart_err),
                         Err(poststop_err) => ServiceErrorReason::PoststartAndPoststopFailed(
                             poststart_err,
                             poststop_err,
@@ -232,31 +235,25 @@ impl Service {
                 })?;
             Ok(StartResult::Started)
         } else {
-            trace!(
-                "Ignore service {} start, waiting for socket activation instead",
-                name,
-            );
+            trace!("Ignore service {name} start, waiting for socket activation instead",);
             Ok(StartResult::WaitingForSocket)
         }
     }
 
     pub fn kill_all_remaining_processes(&mut self, conf: &ServiceConfig, name: &str) {
-        trace!("Kill all process for {}", name);
+        trace!("Kill all process for {name}");
         if let Some(proc_group) = self.process_group {
             // TODO handle these errors
             match nix::sys::signal::kill(proc_group, nix::sys::signal::Signal::SIGKILL) {
-                Ok(_) => trace!("Success killing process group for service {}", name,),
-                Err(e) => error!("Error killing process group for service {}: {}", name, e,),
+                Ok(()) => trace!("Success killing process group for service {name}",),
+                Err(e) => error!("Error killing process group for service {name}: {e}",),
             }
         } else {
             trace!("Tried to kill service that didn't have a process-group. This might have resulted in orphan processes.");
         }
         match super::kill_os_specific::kill(conf, nix::sys::signal::Signal::SIGKILL) {
-            Ok(_) => trace!("Success killing process os specificly for service {}", name,),
-            Err(e) => error!(
-                "Error killing process os specificly for service {}: {}",
-                name, e,
-            ),
+            Ok(()) => trace!("Success killing process os specifically for service {name}",),
+            Err(e) => error!("Error killing process os specifically for service {name}: {e}",),
         }
     }
 
@@ -267,7 +264,7 @@ impl Service {
         name: &str,
         run_info: &RuntimeInfo,
     ) -> Result<(), RunCmdError> {
-        self.run_stop_cmd(conf, id, name, run_info.clone())
+        self.run_stop_cmd(conf, id, name, run_info)
     }
     pub fn kill(
         &mut self,
@@ -279,62 +276,56 @@ impl Service {
         self.stop(conf, id.clone(), name, run_info)
             .map_err(|stop_err| {
                 trace!(
-                    "Stop process failed with: {:?} for service: {}. Running poststop commands",
-                    stop_err,
-                    name
+                    "Stop process failed with: {stop_err:?} for service: {name}. Running poststop commands"
                 );
                 match self.run_poststop(conf, id.clone(), name, run_info) {
-                    Ok(_) => ServiceErrorReason::StopFailed(stop_err),
+                    Ok(()) => ServiceErrorReason::StopFailed(stop_err),
                     Err(poststop_err) => {
                         ServiceErrorReason::StopAndPoststopFailed(stop_err, poststop_err)
                     }
                 }
             })
-            .and_then(|_| {
+            .and_then(|()| {
                 trace!(
-                    "Stop processes for service: {} ran succesfully. Running poststop commands",
-                    name
+                    "Stop processes for service: {name} ran successfully. Running poststop commands"
                 );
                 self.run_poststop(conf, id.clone(), name, run_info)
-                    .map_err(|e| ServiceErrorReason::PoststopFailed(e))
+                    .map_err(ServiceErrorReason::PoststopFailed)
             })
     }
 
-    pub fn get_start_timeout(&self, conf: &ServiceConfig) -> Option<std::time::Duration> {
+    #[must_use]
+    pub const fn get_start_timeout(&self, conf: &ServiceConfig) -> Option<std::time::Duration> {
         if let Some(timeout) = &conf.starttimeout {
             match timeout {
                 Timeout::Duration(dur) => Some(*dur),
                 Timeout::Infinity => None,
             }
-        } else {
-            if let Some(timeout) = &conf.generaltimeout {
-                match timeout {
-                    Timeout::Duration(dur) => Some(*dur),
-                    Timeout::Infinity => None,
-                }
-            } else {
-                // TODO is 1 sec ok?
-                Some(std::time::Duration::from_millis(1000))
-            }
-        }
-    }
-
-    fn get_stop_timeout(&self, conf: &ServiceConfig) -> Option<std::time::Duration> {
-        if let Some(timeout) = &conf.stoptimeout {
+        } else if let Some(timeout) = &conf.generaltimeout {
             match timeout {
                 Timeout::Duration(dur) => Some(*dur),
                 Timeout::Infinity => None,
             }
         } else {
-            if let Some(timeout) = &conf.generaltimeout {
-                match timeout {
-                    Timeout::Duration(dur) => Some(*dur),
-                    Timeout::Infinity => None,
-                }
-            } else {
-                // TODO is 1 sec ok?
-                Some(std::time::Duration::from_millis(1000))
+            // TODO is 1 sec ok?
+            Some(std::time::Duration::from_millis(1000))
+        }
+    }
+
+    const fn get_stop_timeout(&self, conf: &ServiceConfig) -> Option<std::time::Duration> {
+        if let Some(timeout) = &conf.stoptimeout {
+            match timeout {
+                Timeout::Duration(dur) => Some(*dur),
+                Timeout::Infinity => None,
             }
+        } else if let Some(timeout) = &conf.generaltimeout {
+            match timeout {
+                Timeout::Duration(dur) => Some(*dur),
+                Timeout::Infinity => None,
+            }
+        } else {
+            // TODO is 1 sec ok?
+            Some(std::time::Duration::from_millis(1000))
         }
     }
 
@@ -371,7 +362,7 @@ impl Service {
         cmd.stdout(stdout);
         cmd.stderr(stderr);
         cmd.stdin(Stdio::null());
-        trace!("Run {:?} for service: {}", cmdline, name);
+        trace!("Run {cmdline:?} for service: {name}");
         let spawn_result = {
             let mut pid_table_locked = run_info.pid_table.lock().unwrap();
             let res = cmd.spawn();
@@ -385,46 +376,35 @@ impl Service {
         };
         match spawn_result {
             Ok(mut child) => {
-                trace!("Wait for {:?} for service: {}", cmdline, name);
+                trace!("Wait for {cmdline:?} for service: {name}");
                 let wait_result: Result<(), RunCmdError> = match wait_for_helper_child(
-                    &mut child, run_info, timeout,
+                    &child, run_info, timeout,
                 ) {
                     WaitResult::InTime(Err(e)) => {
-                        return Err(RunCmdError::WaitError(
-                            cmdline.to_string(),
-                            format!("{}", e),
-                        ));
+                        return Err(RunCmdError::WaitError(cmdline.to_string(), format!("{e}")));
                     }
                     WaitResult::InTime(Ok(exitstatus)) => {
                         if exitstatus.success() {
-                            trace!("success running {:?} for service: {}", cmdline, name);
+                            trace!("success running {cmdline:?} for service: {name}");
+                            Ok(())
+                        } else if cmdline.prefixes.contains(&CommandlinePrefix::Minus) {
+                            trace!(
+                                    "Ignore error exit code: {exitstatus:?} while running {cmdline:?} for service: {name}"
+                                );
                             Ok(())
                         } else {
-                            if cmdline.prefixes.contains(&CommandlinePrefix::Minus) {
-                                trace!(
-                                        "Ignore error exit code: {:?} while running {:?} for service: {}",
-                                        exitstatus,
-                                        cmdline,
-                                        name
-                                    );
-                                Ok(())
-                            } else {
-                                trace!(
-                                    "Error exit code: {:?} while running {:?} for service: {}",
-                                    exitstatus,
-                                    cmdline,
-                                    name
-                                );
-                                Err(RunCmdError::BadExitCode(cmdline.to_string(), exitstatus))
-                            }
+                            trace!(
+                                "Error exit code: {exitstatus:?} while running {cmdline:?} for service: {name}"
+                            );
+                            Err(RunCmdError::BadExitCode(cmdline.to_string(), exitstatus))
                         }
                     }
                     WaitResult::TimedOut => {
-                        trace!("Timeout running {:?} for service: {}", cmdline, name);
+                        trace!("Timeout running {cmdline:?} for service: {name}");
                         let _ = child.kill();
                         Err(RunCmdError::Timeout(
                             cmdline.to_string(),
-                            format!("Timeout ({:?}) reached", timeout),
+                            format!("Timeout ({timeout:?}) reached"),
                         ))
                     }
                 };
@@ -453,10 +433,7 @@ impl Service {
                     .remove(&nix::unistd::Pid::from_raw(child.id() as i32));
                 wait_result
             }
-            Err(e) => Err(RunCmdError::SpawnError(
-                cmdline.to_string(),
-                format!("{}", e),
-            )),
+            Err(e) => Err(RunCmdError::SpawnError(cmdline.to_string(), format!("{e}"))),
         }
     }
 
@@ -469,7 +446,7 @@ impl Service {
         run_info: &RuntimeInfo,
     ) -> Result<(), RunCmdError> {
         for cmd in cmds {
-            self.run_cmd(cmd, id.clone(), name, timeout, run_info.clone())?;
+            self.run_cmd(cmd, id.clone(), name, timeout, run_info)?;
         }
         Ok(())
     }
@@ -486,7 +463,7 @@ impl Service {
         }
         let timeout = self.get_stop_timeout(conf);
         let cmds = conf.stop.clone();
-        self.run_all_cmds(&cmds, id, name, timeout, run_info.clone())
+        self.run_all_cmds(&cmds, id, name, timeout, run_info)
     }
     fn run_prestart(
         &mut self,
@@ -500,7 +477,7 @@ impl Service {
         }
         let timeout = self.get_start_timeout(conf);
         let cmds = conf.startpre.clone();
-        self.run_all_cmds(&cmds, id, name, timeout, run_info.clone())
+        self.run_all_cmds(&cmds, id, name, timeout, run_info)
     }
     fn run_poststart(
         &mut self,
@@ -514,7 +491,7 @@ impl Service {
         }
         let timeout = self.get_start_timeout(conf);
         let cmds = conf.startpost.clone();
-        self.run_all_cmds(&cmds, id, name, timeout, run_info.clone())
+        self.run_all_cmds(&cmds, id, name, timeout, run_info)
     }
     fn run_poststop(
         &mut self,
@@ -523,10 +500,10 @@ impl Service {
         name: &str,
         run_info: &RuntimeInfo,
     ) -> Result<(), RunCmdError> {
-        trace!("Run poststop for {}", name);
+        trace!("Run poststop for {name}");
         let timeout = self.get_stop_timeout(conf);
         let cmds = conf.stoppost.clone();
-        let res = self.run_all_cmds(&cmds, id, name, timeout, run_info.clone());
+        let res = self.run_all_cmds(&cmds, id, name, timeout, run_info);
 
         if conf.srcv_type != ServiceType::OneShot {
             // already happened when the oneshot process exited in the exit handler
@@ -542,7 +519,7 @@ impl Service {
         prefix.push('[');
         prefix.push_str(name);
         prefix.push(']');
-        prefix.push_str(&format!("[{:?}]", *status));
+        let _ = write!(prefix, "[{status:?}]");
         prefix.push(' ');
         let mut outbuf: Vec<u8> = Vec::new();
         while self.stdout_buffer.contains(&b'\n') {
@@ -566,9 +543,9 @@ impl Service {
     pub fn log_stderr_lines(&mut self, name: &str, status: &UnitStatus) -> std::io::Result<()> {
         let mut prefix = String::new();
         prefix.push('[');
-        prefix.push_str(&name);
+        prefix.push_str(name);
         prefix.push(']');
-        prefix.push_str(&format!("[{:?}]", *status));
+        let _ = write!(prefix, "[{status:?}]");
         prefix.push_str("[STDERR]");
         prefix.push(' ');
 
@@ -600,11 +577,11 @@ enum WaitResult {
 
 /// Wait for the termination of a subprocess, with an optional timeout.
 /// An error does not mean that the waiting actually failed.
-/// This might also happen because it was collected by the signal_handler.
-/// This could be fixed by using the waitid() with WNOWAIT in the signal handler but
+/// This might also happen because it was collected by the `signal_handler`.
+/// This could be fixed by using the `waitid()` with WNOWAIT in the signal handler but
 /// that has not been ported to rust
 fn wait_for_helper_child(
-    child: &mut std::process::Child,
+    child: &std::process::Child,
     run_info: &RuntimeInfo,
     time_out: Option<std::time::Duration>,
 ) -> WaitResult {
@@ -646,7 +623,7 @@ fn wait_for_helper_child(
                     }
                 }
                 None => {
-                    // Should not happen. Either there is an Helper entry oder a Exited entry
+                    // Should not happen. Either there is an Helper entry or a Exited entry
                     unreachable!("No entry for child found")
                 }
             }
@@ -660,7 +637,7 @@ fn wait_for_helper_child(
         let sleep_cap = std::time::Duration::from_millis(10);
         let sleep_dur = sleep_dur.min(sleep_cap);
         if sleep_dur < sleep_cap {
-            counter = counter * 2;
+            counter *= 2;
         }
         std::thread::sleep(sleep_dur);
     }

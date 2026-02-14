@@ -31,7 +31,7 @@ fn start_service_with_filedescriptors(
         );
         return Err(RunCmdError::SpawnError(
             conf.exec.cmd.clone(),
-            format!("Executable does not exist"),
+            "Executable does not exist".to_string(),
         ));
     }
     if !cmd.is_file() {
@@ -41,7 +41,7 @@ fn start_service_with_filedescriptors(
         );
         return Err(RunCmdError::SpawnError(
             conf.exec.cmd.clone(),
-            format!("Executable does not exist (is a directory)"),
+            "Executable does not exist (is a directory)".to_string(),
         ));
     }
 
@@ -57,13 +57,12 @@ fn start_service_with_filedescriptors(
             p.to_str().unwrap().to_owned()
         } else {
             return Err(RunCmdError::Generic(format!(
-                "Tried to start service: {} without a notifications path",
-                name,
+                "Tried to start service: {name} without a notifications path",
             )));
         }
     };
 
-    super::fork_os_specific::pre_fork_os_specific(conf).map_err(|e| RunCmdError::Generic(e))?;
+    super::fork_os_specific::pre_fork_os_specific(conf).map_err(RunCmdError::Generic)?;
 
     let mut fds = Vec::new();
     let mut names = Vec::new();
@@ -91,12 +90,12 @@ fn start_service_with_filedescriptors(
     // We transfer the config via a anonymous shared memory file
     let exec_helper_conf = crate::entrypoints::ExecHelperConfig {
         name: name.to_owned(),
-        cmd: cmd,
+        cmd,
         args: conf.exec.args.clone(),
         env: vec![
             ("LISTEN_FDS".to_owned(), format!("{}", names.len())),
             ("LISTEN_FDNAMES".to_owned(), names.join(":")),
-            ("NOTIFY_SOCKET".to_owned(), notifications_path.clone()),
+            ("NOTIFY_SOCKET".to_owned(), notifications_path),
         ],
         group: conf.exec_config.group.as_raw(),
         supplementary_groups: conf
@@ -114,8 +113,8 @@ fn start_service_with_filedescriptors(
 
     // crate the shared memory file
     let exec_helper_conf_fd = shmemfdrs::create_shmem(
-        &std::ffi::CString::new(name).unwrap(),
-        marshalled_config.as_bytes().len() + 1,
+        std::ffi::CString::new(name).unwrap(),
+        marshalled_config.len() + 1,
     );
     if exec_helper_conf_fd < 0 {
         return Err(RunCmdError::CreatingShmemFailed(
@@ -131,7 +130,7 @@ fn start_service_with_filedescriptors(
     exec_helper_conf_file
         .write_all(marshalled_config.as_bytes())
         .unwrap();
-    exec_helper_conf_file.write(&[b'\n']).unwrap();
+    exec_helper_conf_file.write_all(b"\n").unwrap();
     use std::io::Seek;
     exec_helper_conf_file
         .seek(std::io::SeekFrom::Start(0))
@@ -179,7 +178,7 @@ fn start_service_with_filedescriptors(
                 exec_helper_conf_fd,
             );
         }
-        Err(e) => error!("Fork for service: {} failed with: {}", name, e),
+        Err(e) => error!("Fork for service: {name} failed with: {e}"),
     }
     Ok(())
 }
