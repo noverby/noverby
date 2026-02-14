@@ -63,7 +63,7 @@ pub fn parse_file(content: &str) -> Result<ParsedFile, ParsingErrorReason> {
     Ok(sections)
 }
 
-pub fn map_tupels_to_second<X, Y: Clone>(v: Vec<(X, Y)>) -> Vec<Y> {
+pub fn map_tuples_to_second<X, Y: Clone>(v: Vec<(X, Y)>) -> Vec<Y> {
     v.iter().map(|(_, scnd)| scnd.clone()).collect()
 }
 
@@ -106,6 +106,7 @@ pub fn parse_unit_section(
     let after = section.remove("AFTER");
     let before = section.remove("BEFORE");
     let description = section.remove("DESCRIPTION");
+    let documentation = section.remove("DOCUMENTATION");
 
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Unit] section: {}", key);
@@ -113,10 +114,11 @@ pub fn parse_unit_section(
 
     Ok(ParsedUnitSection {
         description: description.map(|x| (x[0]).1.clone()).unwrap_or_default(),
-        wants: map_tupels_to_second(wants.unwrap_or_default()),
-        requires: map_tupels_to_second(requires.unwrap_or_default()),
-        after: map_tupels_to_second(after.unwrap_or_default()),
-        before: map_tupels_to_second(before.unwrap_or_default()),
+        documentation: map_tuples_to_second(documentation.unwrap_or_default()),
+        wants: map_tuples_to_second(wants.unwrap_or_default()),
+        requires: map_tuples_to_second(requires.unwrap_or_default()),
+        after: map_tuples_to_second(after.unwrap_or_default()),
+        before: map_tuples_to_second(before.unwrap_or_default()),
     })
 }
 
@@ -153,7 +155,7 @@ pub fn parse_exec_section(
             } else if vec.len() > 1 {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "User".into(),
-                    super::map_tupels_to_second(vec),
+                    super::map_tuples_to_second(vec),
                 ));
             } else {
                 None
@@ -169,7 +171,7 @@ pub fn parse_exec_section(
             } else if vec.len() > 1 {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "Group".into(),
-                    super::map_tupels_to_second(vec),
+                    super::map_tuples_to_second(vec),
                 ));
             } else {
                 None
@@ -184,7 +186,7 @@ pub fn parse_exec_section(
             } else if vec.len() > 1 {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "Standardoutput".into(),
-                    super::map_tupels_to_second(vec),
+                    super::map_tuples_to_second(vec),
                 ));
             } else {
                 None
@@ -205,7 +207,7 @@ pub fn parse_exec_section(
             } else if vec.len() > 1 {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "Standarderror".into(),
-                    super::map_tupels_to_second(vec),
+                    super::map_tuples_to_second(vec),
                 ));
             } else {
                 None
@@ -255,8 +257,8 @@ pub fn parse_install_section(
     }
 
     Ok(ParsedInstallSection {
-        wanted_by: map_tupels_to_second(wantedby.unwrap_or_default()),
-        required_by: map_tupels_to_second(requiredby.unwrap_or_default()),
+        wanted_by: map_tuples_to_second(wantedby.unwrap_or_default()),
+        required_by: map_tuples_to_second(requiredby.unwrap_or_default()),
     })
 }
 

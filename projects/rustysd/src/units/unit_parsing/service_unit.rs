@@ -183,7 +183,7 @@ fn parse_service_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "TimeoutStartSec".to_owned(),
-                    super::map_tupels_to_second(vec),
+                    super::map_tuples_to_second(vec),
                 ));
             }
         }
@@ -196,7 +196,7 @@ fn parse_service_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "TimeoutStopSec".to_owned(),
-                    super::map_tupels_to_second(vec),
+                    super::map_tuples_to_second(vec),
                 ));
             }
         }
@@ -209,7 +209,7 @@ fn parse_service_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "TimeoutSec".to_owned(),
-                    super::map_tupels_to_second(vec),
+                    super::map_tuples_to_second(vec),
                 ));
             }
         }
@@ -223,7 +223,7 @@ fn parse_service_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "ExecStart".to_owned(),
-                    super::map_tupels_to_second(vec),
+                    super::map_tuples_to_second(vec),
                 ));
             }
         }
@@ -258,7 +258,7 @@ fn parse_service_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "Type".to_owned(),
-                    super::map_tupels_to_second(vec),
+                    super::map_tuples_to_second(vec),
                 ));
             }
         }
@@ -283,7 +283,7 @@ fn parse_service_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "NotifyAccess".to_owned(),
-                    super::map_tupels_to_second(vec),
+                    super::map_tuples_to_second(vec),
                 ));
             }
         }
@@ -324,7 +324,7 @@ fn parse_service_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "Restart".to_owned(),
-                    super::map_tupels_to_second(vec),
+                    super::map_tuples_to_second(vec),
                 ));
             }
         }
@@ -337,7 +337,7 @@ fn parse_service_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "Accept".to_owned(),
-                    super::map_tupels_to_second(vec),
+                    super::map_tuples_to_second(vec),
                 ));
             }
         }
@@ -350,7 +350,7 @@ fn parse_service_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "BusName".to_owned(),
-                    super::map_tupels_to_second(vec),
+                    super::map_tuples_to_second(vec),
                 ));
             }
         }
@@ -377,7 +377,7 @@ fn parse_service_section(
         starttimeout,
         stoptimeout,
         generaltimeout,
-        sockets: map_tupels_to_second(sockets.unwrap_or_default()),
+        sockets: map_tuples_to_second(sockets.unwrap_or_default()),
         exec_section: exec_config,
     })
 }

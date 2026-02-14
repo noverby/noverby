@@ -8,7 +8,7 @@ use std::sync::{RwLockReadGuard, RwLockWriteGuard};
 ///
 /// This is needed to be able to lock a unit exclusively and all related units shared so we can uphold
 /// invariants while running an operation on the exclusively locked unit.
-pub fn aquire_locks<'table>(
+pub fn acquire_locks<'table>(
     mut lock_exclusive: Vec<UnitId>,
     mut lock_shared: Vec<UnitId>,
     unit_table: &'table UnitTable,
