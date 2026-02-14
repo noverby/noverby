@@ -703,6 +703,10 @@ pub struct UnitConfig {
     /// This is needed for adding/removing units. All units in this set must be present
     /// or this unit is considered invalid os it has to be removed too / cannot be added.
     pub refs_by_name: Vec<UnitId>,
+
+    /// Whether to add implicit default dependencies (e.g. on sysinit.target / shutdown.target).
+    /// Defaults to true, matching systemd behavior.
+    pub default_dependencies: bool,
 }
 
 #[derive(Debug, Clone)]
