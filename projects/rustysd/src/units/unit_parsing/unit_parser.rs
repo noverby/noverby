@@ -104,6 +104,7 @@ pub fn parse_unit_section(
 ) -> Result<ParsedUnitSection, ParsingErrorReason> {
     let wants = section.remove("WANTS");
     let requires = section.remove("REQUIRES");
+    let conflicts = section.remove("CONFLICTS");
     let after = section.remove("AFTER");
     let before = section.remove("BEFORE");
     let description = section.remove("DESCRIPTION");
@@ -118,6 +119,7 @@ pub fn parse_unit_section(
         documentation: map_tuples_to_second(documentation.unwrap_or_default()),
         wants: map_tuples_to_second(wants.unwrap_or_default()),
         requires: map_tuples_to_second(requires.unwrap_or_default()),
+        conflicts: map_tuples_to_second(conflicts.unwrap_or_default()),
         after: map_tuples_to_second(after.unwrap_or_default()),
         before: map_tuples_to_second(before.unwrap_or_default()),
     })

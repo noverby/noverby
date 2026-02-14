@@ -34,6 +34,7 @@ pub struct ParsedUnitSection {
 
     pub wants: Vec<String>,
     pub requires: Vec<String>,
+    pub conflicts: Vec<String>,
     pub before: Vec<String>,
     pub after: Vec<String>,
 }

@@ -220,6 +220,10 @@ fn make_common_from_parsed(
     for name in unit.requires {
         requires.push(name.as_str().try_into()?);
     }
+    let mut conflicts = Vec::new();
+    for name in unit.conflicts {
+        conflicts.push(name.as_str().try_into()?);
+    }
     let mut wanted_by = Vec::new();
     for name in install.wanted_by {
         wanted_by.push(name.as_str().try_into()?);
@@ -242,6 +246,7 @@ fn make_common_from_parsed(
     refs_by_name.extend(wanted_by.iter().cloned());
     refs_by_name.extend(requires.iter().cloned());
     refs_by_name.extend(required_by.iter().cloned());
+    refs_by_name.extend(conflicts.iter().cloned());
     refs_by_name.extend(before.iter().cloned());
     refs_by_name.extend(after.iter().cloned());
 
@@ -257,6 +262,8 @@ fn make_common_from_parsed(
             wanted_by,
             requires,
             required_by,
+            conflicts,
+            conflicted_by: Vec::new(),
             before,
             after,
         },

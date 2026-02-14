@@ -4,7 +4,7 @@ use crate::runtime_info::{ArcMutRuntimeInfo, RuntimeInfo, UnitTable};
 use crate::services::ServiceErrorReason;
 use crate::units::{UnitId, UnitStatus};
 
-use log::{error, trace};
+use log::{error, trace, warn};
 use std::sync::{Arc, Mutex};
 use threadpool::ThreadPool;
 
@@ -154,6 +154,32 @@ pub fn activate_unit(
             unit_id: id_to_start,
         });
     };
+
+    // Stop any conflicting units before activating this one
+    let conflicting_ids: Vec<UnitId> = unit
+        .common
+        .dependencies
+        .conflicts
+        .iter()
+        .chain(unit.common.dependencies.conflicted_by.iter())
+        .cloned()
+        .collect();
+    for conflict_id in &conflicting_ids {
+        if let Some(conflict_unit) = run_info.unit_table.get(conflict_id) {
+            let status = conflict_unit.common.status.read().unwrap();
+            if status.is_started() {
+                drop(status);
+                trace!(
+                    "Stopping conflicting unit {:?} before starting {:?}",
+                    conflict_id,
+                    id_to_start
+                );
+                if let Err(e) = conflict_unit.deactivate(run_info) {
+                    warn!("Failed to stop conflicting unit {:?}: {}", conflict_id, e);
+                }
+            }
+        }
+    }
 
     let next_services_ids = unit.common.dependencies.before.clone();
 
