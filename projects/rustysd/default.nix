@@ -42,13 +42,22 @@
   packages.rustysd-systemd = {
     lib,
     runCommand,
+    writeText,
     makeBinaryWrapper,
     rustysd,
     kbd,
     kmod,
     util-linuxMinimal,
     systemd,
-  }:
+  }: let
+    rustysdConfig = writeText "rustysd_config.toml" ''
+      unit_dirs = ["/etc/systemd/system", "/run/systemd/system"]
+      target_unit = "default.target"
+      notifications_dir = "/run/rustysd/notifications"
+      log_to_stdout = true
+      log_to_disk = false
+    '';
+  in
     runCommand "rustysd-systemd-${rustysd.version}" {
       nativeBuildInputs = [makeBinaryWrapper];
 
@@ -91,6 +100,10 @@
       # Make copied files writable so we can overwrite them
       chmod -R u+w $out
 
+      # Install rustysd config for NixOS
+      mkdir -p $out/etc/rustysd
+      cp ${rustysdConfig} $out/etc/rustysd/rustysd_config.toml
+
       # Start with all systemd binaries
       mkdir -p $out/bin
       for bin in ${systemd}/bin/*; do
@@ -115,7 +128,8 @@
       # We can't symlink because rustysd's main() dispatches on argv[0]
       # ending with "rustysd", so we need a wrapper script.
       rm -f $out/lib/systemd/systemd
-      makeBinaryWrapper ${rustysd}/bin/rustysd $out/lib/systemd/systemd
+      makeBinaryWrapper ${rustysd}/bin/rustysd $out/lib/systemd/systemd \
+        --add-flags "--conf $out/etc/rustysd"
 
       # Replace all references to the real systemd store path with
       # the rustysd-systemd output path so NixOS module substitutions work.

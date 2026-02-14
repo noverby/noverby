@@ -1,3 +1,5 @@
+use log::warn;
+
 use crate::units::*;
 use std::path::PathBuf;
 
@@ -16,7 +18,12 @@ pub fn parse_target(
             "[Install]" => {
                 install_config = Some(parse_install_section(section)?);
             }
-            _ => return Err(ParsingErrorReason::UnknownSection(name.to_owned())),
+            _ => {
+                warn!(
+                    "Ignoring unknown section in target unit {:?}: {}",
+                    path, name
+                );
+            }
         }
     }
 

@@ -1,3 +1,5 @@
+use log::warn;
+
 use crate::sockets::*;
 use crate::units::*;
 use std::path::PathBuf;
@@ -25,7 +27,12 @@ pub fn parse_socket(
                 install_config = Some(parse_install_section(section)?);
             }
 
-            _ => return Err(ParsingErrorReason::UnknownSection(name.to_owned())),
+            _ => {
+                warn!(
+                    "Ignoring unknown section in socket unit {:?}: {}",
+                    path, name
+                );
+            }
         }
     }
 
@@ -74,10 +81,8 @@ fn parse_socket_section(
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
-    if !section.is_empty() {
-        return Err(ParsingErrorReason::UnusedSetting(
-            section.keys().next().unwrap().to_owned(),
-        ));
+    for key in section.keys() {
+        warn!("Ignoring unsupported setting in [Socket] section: {}", key);
     }
     let fdname = match fdname {
         None => None,

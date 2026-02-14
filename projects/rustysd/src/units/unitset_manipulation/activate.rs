@@ -178,9 +178,10 @@ pub fn collect_unit_start_subgraph(ids_to_start: &mut Vec<UnitId>, unit_table: &
     loop {
         let mut new_ids = Vec::new();
         for id in ids_to_start.iter() {
-            let unit = unit_table.get(id).unwrap();
-            new_ids.extend(unit.common.dependencies.start_before_this());
-            new_ids.extend(unit.common.dependencies.start_concurrently_with_this());
+            if let Some(unit) = unit_table.get(id) {
+                new_ids.extend(unit.common.dependencies.start_before_this());
+                new_ids.extend(unit.common.dependencies.start_concurrently_with_this());
+            }
         }
         new_ids.sort();
         new_ids.dedup();

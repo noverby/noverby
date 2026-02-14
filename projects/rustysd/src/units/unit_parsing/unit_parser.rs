@@ -1,7 +1,7 @@
 //! Parse all supported unit types / options for these and do needed operations like matching services <-> sockets and adding implicit dependencies like
 //! all sockets to socket.target
 
-use log::debug;
+use log::{debug, warn};
 
 use crate::units::*;
 use std::collections::HashMap;
@@ -20,6 +20,9 @@ pub fn parse_file(content: &str) -> Result<ParsedFile, ParsingErrorReason> {
     // remove lines before the first section
     while !lines_left.is_empty() && !lines_left[0].starts_with('[') {
         lines_left = &lines_left[1..];
+    }
+    if lines_left.is_empty() {
+        return Ok(sections);
     }
     let mut current_section_name: String = lines_left[0].into();
     let mut current_section_lines = Vec::new();
@@ -104,10 +107,8 @@ pub fn parse_unit_section(
     let before = section.remove("BEFORE");
     let description = section.remove("DESCRIPTION");
 
-    if !section.is_empty() {
-        return Err(ParsingErrorReason::UnusedSetting(
-            section.keys().next().unwrap().to_owned(),
-        ));
+    for key in section.keys() {
+        warn!("Ignoring unsupported setting in [Unit] section: {}", key);
     }
 
     Ok(ParsedUnitSection {
@@ -249,10 +250,8 @@ pub fn parse_install_section(
     let wantedby = section.remove("WANTEDBY");
     let requiredby = section.remove("REQUIREDBY");
 
-    if !section.is_empty() {
-        return Err(ParsingErrorReason::UnusedSetting(
-            section.keys().next().unwrap().to_owned(),
-        ));
+    for key in section.keys() {
+        warn!("Ignoring unsupported setting in [Install] section: {}", key);
     }
 
     Ok(ParsedInstallSection {

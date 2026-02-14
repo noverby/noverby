@@ -1,3 +1,5 @@
+use log::warn;
+
 use crate::units::*;
 use std::path::PathBuf;
 
@@ -21,7 +23,12 @@ pub fn parse_service(
                 install_config = Some(parse_install_section(section)?);
             }
 
-            _ => return Err(ParsingErrorReason::UnknownSection(name.to_owned())),
+            _ => {
+                warn!(
+                    "Ignoring unknown section in service unit {:?}: {}",
+                    path, name
+                );
+            }
         }
     }
 
@@ -81,6 +88,12 @@ fn parse_cmdline(raw_line: &str) -> Result<Commandline, ParsingErrorReason> {
         "Could not parse cmdline: {}",
         raw_line
     )))?;
+    if split.is_empty() {
+        return Err(ParsingErrorReason::Generic(format!(
+            "Empty command line: {}",
+            raw_line
+        )));
+    }
     let mut cmd = split.remove(0);
 
     let mut prefixes = Vec::new();
@@ -159,10 +172,8 @@ fn parse_service_section(
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
-    if !section.is_empty() {
-        return Err(ParsingErrorReason::UnusedSetting(
-            section.keys().next().unwrap().to_owned(),
-        ));
+    for key in section.keys() {
+        warn!("Ignoring unsupported setting in [Service] section: {}", key);
     }
 
     let starttimeout = match starttimeout {
