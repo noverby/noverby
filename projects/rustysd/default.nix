@@ -129,6 +129,7 @@
       # ending with "rustysd", so we need a wrapper script.
       rm -f $out/lib/systemd/systemd
       makeBinaryWrapper ${rustysd}/bin/rustysd $out/lib/systemd/systemd \
+        --argv0 rustysd \
         --add-flags "--conf $out/etc/rustysd"
 
       # Replace all references to the real systemd store path with
