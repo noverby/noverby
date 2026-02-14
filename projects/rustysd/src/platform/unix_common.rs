@@ -1,4 +1,4 @@
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{BorrowedFd, RawFd};
 
 pub fn make_seqpacket_socket(path: &std::path::PathBuf) -> Result<RawFd, String> {
     //let addr_family = nix::sys::socket::AddressFamily::Unix;
@@ -17,7 +17,8 @@ pub fn make_seqpacket_socket(path: &std::path::PathBuf) -> Result<RawFd, String>
     // then bind the socket to the path
     nix::sys::socket::bind(fd, &unix_addr).unwrap();
     // then make the socket an accepting one
-    nix::sys::socket::listen(fd, 128).unwrap();
+    let borrowed = unsafe { BorrowedFd::borrow_raw(fd) };
+    nix::sys::socket::listen(&borrowed, nix::sys::socket::Backlog::new(128).unwrap()).unwrap();
 
     Ok(fd)
 }

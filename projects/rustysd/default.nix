@@ -18,7 +18,7 @@
         ];
       };
 
-      cargoHash = "sha256-7McI8t3zWCGNMRmoposXK9xfl7Y0VMCSLnPA5h1L4HE=";
+      cargoHash = "sha256-4G0hkqXX1ftfngsEmzkPUVZzgNmySWsvoDDElJb3LME=";
 
       nativeBuildInputs = [
         pkg-config

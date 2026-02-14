@@ -9,7 +9,7 @@ pub use pipe_eventfd::*;
 
 #[cfg(not(feature = "linux_eventfd"))]
 mod pipe_eventfd {
-    use std::os::unix::io::RawFd;
+    use std::os::unix::io::{IntoRawFd, RawFd};
 
     use log::{error, trace};
 
@@ -30,7 +30,7 @@ mod pipe_eventfd {
 
     pub fn make_event_fd() -> Result<EventFd, String> {
         let (r, w) = nix::unistd::pipe().map_err(|e| format!("Error creating pipe, {e}"))?;
-        Ok(EventFd(r, w))
+        Ok(EventFd(r.into_raw_fd(), w.into_raw_fd()))
     }
 
     pub fn notify_event_fd(eventfd: EventFd) {
@@ -84,9 +84,15 @@ mod linux_eventfd {
     }
 
     pub fn make_event_fd() -> Result<EventFd, String> {
-        let fd = nix::sys::eventfd::eventfd(0, nix::sys::eventfd::EfdFlags::EFD_CLOEXEC)
-            .map_err(|e| format!("Error while creating eventfd: {}", e))?;
-        Ok(EventFd(fd))
+        use std::os::unix::io::AsRawFd;
+        let fd = nix::sys::eventfd::EventFd::from_value_and_flags(
+            0,
+            nix::sys::eventfd::EfdFlags::EFD_CLOEXEC,
+        )
+        .map_err(|e| format!("Error while creating eventfd: {}", e))?;
+        let raw = fd.as_raw_fd();
+        std::mem::forget(fd);
+        Ok(EventFd(raw))
     }
 
     pub fn notify_event_fd(eventfd: EventFd) {
