@@ -160,26 +160,44 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
 
     for (wanted, wanting) in wanted_by {
         trace!("{:?} wants {:?}", wanting, wanted);
-        let unit = units.get_mut(&wanting).unwrap();
-        unit.common.dependencies.wants.push(wanted.clone());
-        let unit = units.get_mut(&wanted).unwrap();
-        unit.common.dependencies.wanted_by.push(wanting);
+        if let Some(unit) = units.get_mut(&wanting) {
+            unit.common.dependencies.wants.push(wanted.clone());
+        } else {
+            warn!("Dependency {:?} wants {:?}, but {:?} not found", wanting, wanted, wanting);
+        }
+        if let Some(unit) = units.get_mut(&wanted) {
+            unit.common.dependencies.wanted_by.push(wanting);
+        } else {
+            warn!("Dependency {:?} wanted by {:?}, but {:?} not found", wanted, wanting, wanted);
+        }
     }
 
     for (required, requiring) in required_by {
-        let unit = units.get_mut(&requiring).unwrap();
-        unit.common.dependencies.requires.push(required.clone());
-        let unit = units.get_mut(&required).unwrap();
-        unit.common.dependencies.required_by.push(requiring);
+        if let Some(unit) = units.get_mut(&requiring) {
+            unit.common.dependencies.requires.push(required.clone());
+        } else {
+            warn!("Dependency {:?} requires {:?}, but {:?} not found", requiring, required, requiring);
+        }
+        if let Some(unit) = units.get_mut(&required) {
+            unit.common.dependencies.required_by.push(requiring);
+        } else {
+            warn!("Dependency {:?} required by {:?}, but {:?} not found", required, requiring, required);
+        }
     }
 
     for (before, after) in before {
-        let unit = units.get_mut(&after).unwrap();
-        unit.common.dependencies.before.push(before);
+        if let Some(unit) = units.get_mut(&after) {
+            unit.common.dependencies.before.push(before);
+        } else {
+            warn!("Dependency {:?} before {:?}, but {:?} not found", before, after, after);
+        }
     }
     for (after, before) in after {
-        let unit = units.get_mut(&before).unwrap();
-        unit.common.dependencies.after.push(after);
+        if let Some(unit) = units.get_mut(&before) {
+            unit.common.dependencies.after.push(after);
+        } else {
+            warn!("Dependency {:?} after {:?}, but {:?} not found", after, before, before);
+        }
     }
 
     add_all_implicit_relations(units)?;
