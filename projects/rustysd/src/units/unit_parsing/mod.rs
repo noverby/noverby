@@ -27,7 +27,6 @@ pub struct ParsedTargetConfig {
     pub common: ParsedCommonConfig,
 }
 
-#[derive(Default)]
 pub struct ParsedUnitSection {
     pub description: String,
     pub documentation: Vec<String>,
@@ -37,6 +36,25 @@ pub struct ParsedUnitSection {
     pub conflicts: Vec<String>,
     pub before: Vec<String>,
     pub after: Vec<String>,
+
+    /// Whether to add implicit default dependencies (e.g. on sysinit.target / shutdown.target).
+    /// Defaults to true, matching systemd behavior.
+    pub default_dependencies: bool,
+}
+
+impl Default for ParsedUnitSection {
+    fn default() -> Self {
+        Self {
+            description: String::new(),
+            documentation: Vec::new(),
+            wants: Vec::new(),
+            requires: Vec::new(),
+            conflicts: Vec::new(),
+            before: Vec::new(),
+            after: Vec::new(),
+            default_dependencies: true,
+        }
+    }
 }
 #[derive(Clone)]
 pub struct ParsedSingleSocketConfig {

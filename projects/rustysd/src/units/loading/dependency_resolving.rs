@@ -249,9 +249,106 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
 ///
 /// This is currently only a subset of all implicit relations systemd applies
 fn add_all_implicit_relations(units: &mut UnitTable) -> Result<(), String> {
+    add_default_dependency_relations(units);
     add_socket_target_relations(units);
     apply_sockets_to_services(units)?;
     Ok(())
+}
+
+/// Applies the implicit default dependencies for units that have `DefaultDependencies=yes` (the default).
+///
+/// Following systemd's behavior:
+/// - For all unit types: `Conflicts=shutdown.target` and `Before=shutdown.target`
+/// - For services and sockets: additionally `Requires=sysinit.target` and `After=sysinit.target basic.target`
+///
+/// These are only applied if the respective targets exist in the unit table.
+/// `shutdown.target` itself is excluded from getting default dependencies to avoid circular deps.
+fn add_default_dependency_relations(units: &mut UnitTable) {
+    let shutdown_id: UnitId = "shutdown.target".try_into().unwrap();
+    let sysinit_id: UnitId = "sysinit.target".try_into().unwrap();
+    let basic_id: UnitId = "basic.target".try_into().unwrap();
+
+    let has_shutdown = units.contains_key(&shutdown_id);
+    let has_sysinit = units.contains_key(&sysinit_id);
+    let has_basic = units.contains_key(&basic_id);
+
+    if !has_shutdown && !has_sysinit && !has_basic {
+        return;
+    }
+
+    let mut add_after_to_sysinit = Vec::new();
+    let mut add_after_to_basic = Vec::new();
+    let mut add_after_to_shutdown = Vec::new();
+
+    for unit in units.values_mut() {
+        if !unit.common.unit.default_dependencies {
+            continue;
+        }
+        // Don't add default deps to shutdown.target itself
+        if unit.id == shutdown_id {
+            continue;
+        }
+
+        // All units with default deps get Conflicts= and Before= on shutdown.target
+        if has_shutdown {
+            unit.common.dependencies.conflicts.push(shutdown_id.clone());
+            unit.common.dependencies.before.push(shutdown_id.clone());
+            add_after_to_shutdown.push(unit.id.clone());
+        }
+
+        // Services and sockets additionally get Requires= and After= on sysinit.target
+        // and After= on basic.target (for services)
+        match unit.id.kind {
+            UnitIdKind::Service => {
+                if has_sysinit {
+                    unit.common.dependencies.requires.push(sysinit_id.clone());
+                    unit.common.dependencies.after.push(sysinit_id.clone());
+                    add_after_to_sysinit.push(unit.id.clone());
+                }
+                if has_basic {
+                    unit.common.dependencies.after.push(basic_id.clone());
+                    add_after_to_basic.push(unit.id.clone());
+                }
+            }
+            UnitIdKind::Socket => {
+                if has_sysinit {
+                    unit.common.dependencies.requires.push(sysinit_id.clone());
+                    unit.common.dependencies.after.push(sysinit_id.clone());
+                    add_after_to_sysinit.push(unit.id.clone());
+                }
+            }
+            UnitIdKind::Target => {
+                // Targets only get the shutdown.target conflict/before (already added above)
+            }
+        }
+
+        unit.common.dependencies.dedup();
+    }
+
+    // Add the reverse relations to the targets
+    if has_shutdown {
+        let shutdown = units.get_mut(&shutdown_id).unwrap();
+        for id in &add_after_to_shutdown {
+            shutdown.common.dependencies.conflicted_by.push(id.clone());
+            shutdown.common.dependencies.after.push(id.clone());
+        }
+        shutdown.common.dependencies.dedup();
+    }
+    if has_sysinit {
+        let sysinit = units.get_mut(&sysinit_id).unwrap();
+        for id in &add_after_to_sysinit {
+            sysinit.common.dependencies.required_by.push(id.clone());
+            sysinit.common.dependencies.before.push(id.clone());
+        }
+        sysinit.common.dependencies.dedup();
+    }
+    if has_basic {
+        let basic = units.get_mut(&basic_id).unwrap();
+        for id in &add_after_to_basic {
+            basic.common.dependencies.before.push(id.clone());
+        }
+        basic.common.dependencies.dedup();
+    }
 }
 
 /// There is an implicit *.socket before sockets.target relation

@@ -109,10 +109,15 @@ pub fn parse_unit_section(
     let before = section.remove("BEFORE");
     let description = section.remove("DESCRIPTION");
     let documentation = section.remove("DOCUMENTATION");
+    let default_dependencies = section.remove("DEFAULTDEPENDENCIES");
 
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Unit] section: {key}");
     }
+
+    let default_dependencies = default_dependencies
+        .map(|x| string_to_bool(&x[0].1))
+        .unwrap_or(true);
 
     Ok(ParsedUnitSection {
         description: description.map(|x| (x[0]).1.clone()).unwrap_or_default(),
@@ -122,6 +127,7 @@ pub fn parse_unit_section(
         conflicts: map_tuples_to_second(conflicts.unwrap_or_default()),
         after: map_tuples_to_second(after.unwrap_or_default()),
         before: map_tuples_to_second(before.unwrap_or_default()),
+        default_dependencies,
     })
 }
 
