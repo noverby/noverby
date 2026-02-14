@@ -187,9 +187,9 @@ fn pid1_specific_setup() {
         {
             let fd = console.as_raw_fd();
             // dup2 the console fd onto stdin(0), stdout(1), stderr(2)
-            let _ = nix::unistd::dup2(fd, libc::STDIN_FILENO);
-            let _ = nix::unistd::dup2(fd, libc::STDOUT_FILENO);
-            let _ = nix::unistd::dup2(fd, libc::STDERR_FILENO);
+            let _ = unsafe { libc::dup2(fd, libc::STDIN_FILENO) };
+            let _ = unsafe { libc::dup2(fd, libc::STDOUT_FILENO) };
+            let _ = unsafe { libc::dup2(fd, libc::STDERR_FILENO) };
             // The original fd is closed when `console` is dropped (if > 2).
         }
     }
@@ -280,8 +280,8 @@ use clap::Parser;
 
 #[derive(Parser, Debug)]
 struct CliArgs {
-    #[clap(short, long, value_parser)]
+    #[arg(short, long)]
     conf: Option<std::path::PathBuf>,
-    #[clap(short, long, value_parser)]
+    #[arg(short, long)]
     dry_run: bool,
 }

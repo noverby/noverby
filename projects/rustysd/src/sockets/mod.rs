@@ -8,22 +8,22 @@ use log::trace;
 pub use network_sockets::*;
 pub use unix_sockets::*;
 
-use std::{os::unix::io::AsRawFd, os::unix::io::RawFd};
+use std::os::unix::io::{AsRawFd, BorrowedFd, RawFd};
 
 use crate::fd_store::FDStore;
 use crate::units::{SocketConfig, UnitId};
 
 pub fn close_raw_fd(fd: RawFd) {
     loop {
-        match nix::unistd::close(fd) {
-            Ok(()) => break,
-            Err(e) => {
-                if e == nix::errno::Errno::EBADF {
-                    break;
-                }
-                // Other errors (EINTR and EIO) mean that we should try again
-            }
+        let ret = unsafe { libc::close(fd) };
+        if ret == 0 {
+            break;
         }
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(libc::EBADF) {
+            break;
+        }
+        // Other errors (EINTR and EIO) mean that we should try again
     }
 }
 
@@ -91,7 +91,7 @@ impl Socket {
             // the ńeeded fd's will be duped which unsets the flag again
             let new_fd = as_raw_fd.as_raw_fd();
             nix::fcntl::fcntl(
-                new_fd,
+                unsafe { BorrowedFd::borrow_raw(new_fd) },
                 nix::fcntl::FcntlArg::F_SETFD(nix::fcntl::FdFlag::FD_CLOEXEC),
             )
             .unwrap();
