@@ -718,6 +718,8 @@ pub struct Dependencies {
     pub wanted_by: Vec<UnitId>,
     pub requires: Vec<UnitId>,
     pub required_by: Vec<UnitId>,
+    pub conflicts: Vec<UnitId>,
+    pub conflicted_by: Vec<UnitId>,
     pub before: Vec<UnitId>,
     pub after: Vec<UnitId>,
 }
@@ -727,6 +729,8 @@ impl Dependencies {
         self.wants.sort();
         self.wanted_by.sort();
         self.required_by.sort();
+        self.conflicts.sort();
+        self.conflicted_by.sort();
         self.before.sort();
         self.after.sort();
         self.requires.sort();
@@ -735,6 +739,8 @@ impl Dependencies {
         self.requires.dedup();
         self.wanted_by.dedup();
         self.required_by.dedup();
+        self.conflicts.dedup();
+        self.conflicted_by.dedup();
         self.before.dedup();
         self.after.dedup();
     }
@@ -774,6 +780,8 @@ impl Dependencies {
         Self::remove_from_vec(&mut self.wanted_by, id);
         Self::remove_from_vec(&mut self.requires, id);
         Self::remove_from_vec(&mut self.required_by, id);
+        Self::remove_from_vec(&mut self.conflicts, id);
+        Self::remove_from_vec(&mut self.conflicted_by, id);
         Self::remove_from_vec(&mut self.before, id);
         Self::remove_from_vec(&mut self.after, id);
     }

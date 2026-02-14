@@ -137,6 +137,17 @@ pub fn insert_new_units(new_units: UnitTable, run_info: &mut RuntimeInfo) -> Res
                 if new_unit.common.dependencies.wanted_by.contains(&unit.id) {
                     unit.common.dependencies.wants.push(new_id.clone());
                 }
+                if new_unit.common.dependencies.conflicts.contains(&unit.id) {
+                    unit.common.dependencies.conflicted_by.push(new_id.clone());
+                }
+                if new_unit
+                    .common
+                    .dependencies
+                    .conflicted_by
+                    .contains(&unit.id)
+                {
+                    unit.common.dependencies.conflicts.push(new_id.clone());
+                }
             }
             unit_table.insert(new_id, new_unit);
         }
