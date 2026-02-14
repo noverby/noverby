@@ -2,13 +2,8 @@
   packages.rustysd = {
     lib,
     rustPlatform,
-    fetchFromGitHub,
     pkg-config,
     dbus,
-    kbd,
-    kmod,
-    util-linuxMinimal,
-    systemd,
   }:
     rustPlatform.buildRustPackage {
       pname = "rustysd";
@@ -35,45 +30,27 @@
 
       doCheck = false;
 
-      postInstall = ''
-        # Copy data/config files from systemd that NixOS modules expect
-        cp -r ${systemd}/example $out/example
-        cp -r ${systemd}/lib $out/lib
-        cp -r ${systemd}/etc $out/etc 2>/dev/null || true
-        cp -r ${systemd}/share $out/share 2>/dev/null || true
+      meta = {
+        description = "A service manager that is able to run \"traditional\" systemd services, written in rust";
+        homepage = "https://github.com/KillingSpark/rustysd";
+        license = lib.licenses.mit;
+        maintainers = with lib.maintainers; [noverby];
+        mainProgram = "rustysd";
+      };
+    };
 
-        # Copy systemd binaries that NixOS modules expect, but do not
-        # overwrite any binaries already provided by rustysd itself.
-        for bin in ${systemd}/bin/*; do
-          name=$(basename "$bin")
-          if [ ! -e "$out/bin/$name" ]; then
-            cp -a "$bin" "$out/bin/$name"
-          fi
-        done
-
-        # Provide sbin as a symlink to bin (matching systemd layout)
-        if [ ! -e "$out/sbin" ]; then
-          ln -s bin "$out/sbin"
-        fi
-
-        # Replace all references to the real systemd store path with
-        # the rustysd output path so NixOS module substitutions work.
-        find $out -type f | while read -r f; do
-          if file "$f" | grep -q text; then
-            substituteInPlace "$f" \
-              --replace-quiet "${systemd}" "$out"
-          fi
-        done
-
-        # Fix broken symlinks that pointed within the systemd package
-        find $out -type l | while read -r link; do
-          target=$(readlink "$link")
-          if [[ "$target" == ${systemd}* ]]; then
-            newtarget="$out''${target#${systemd}}"
-            ln -sf "$newtarget" "$link"
-          fi
-        done
-      '';
+  packages.rustysd-systemd = {
+    lib,
+    runCommand,
+    makeBinaryWrapper,
+    rustysd,
+    kbd,
+    kmod,
+    util-linuxMinimal,
+    systemd,
+  }:
+    runCommand "rustysd-systemd-${rustysd.version}" {
+      nativeBuildInputs = [makeBinaryWrapper];
 
       passthru = {
         inherit kbd kmod;
@@ -97,12 +74,65 @@
         withUtmp = false;
       };
 
-      meta = {
-        description = "A service manager that is able to run \"traditional\" systemd services, written in rust";
-        homepage = "https://github.com/KillingSpark/rustysd";
-        license = lib.licenses.mit;
-        maintainers = with lib.maintainers; [noverby];
-        mainProgram = "rustysd";
-      };
-    };
+      meta =
+        rustysd.meta
+        // {
+          description = "Rustysd packaged as a systemd drop-in replacement for NixOS";
+        };
+    } ''
+      mkdir -p $out
+
+      # Copy data/config files from systemd that NixOS modules expect
+      cp -r ${systemd}/example $out/example
+      cp -r ${systemd}/lib $out/lib
+      cp -r ${systemd}/etc $out/etc 2>/dev/null || true
+      cp -r ${systemd}/share $out/share 2>/dev/null || true
+
+      # Make copied files writable so we can overwrite them
+      chmod -R u+w $out
+
+      # Start with all systemd binaries
+      mkdir -p $out/bin
+      for bin in ${systemd}/bin/*; do
+        name=$(basename "$bin")
+        cp -a "$bin" "$out/bin/$name"
+      done
+
+      # Overwrite with rustysd binaries (takes precedence)
+      for bin in ${rustysd}/bin/*; do
+        name=$(basename "$bin")
+        cp -a "$bin" "$out/bin/$name"
+      done
+
+      # Provide sbin as a symlink to bin (matching systemd layout)
+      if [ ! -e "$out/sbin" ]; then
+        ln -s bin "$out/sbin"
+      fi
+
+      # Replace the systemd init binary with a wrapper that execs rustysd,
+      # so NixOS actually boots with rustysd as PID 1 instead of systemd.
+      # NixOS uses $out/lib/systemd/systemd as the init binary (stage-2).
+      # We can't symlink because rustysd's main() dispatches on argv[0]
+      # ending with "rustysd", so we need a wrapper script.
+      rm -f $out/lib/systemd/systemd
+      makeBinaryWrapper ${rustysd}/bin/rustysd $out/lib/systemd/systemd
+
+      # Replace all references to the real systemd store path with
+      # the rustysd-systemd output path so NixOS module substitutions work.
+      find $out -type f | while read -r f; do
+        if file "$f" | grep -q text; then
+          substituteInPlace "$f" \
+            --replace-quiet "${systemd}" "$out"
+        fi
+      done
+
+      # Fix broken symlinks that pointed within the systemd package
+      find $out -type l | while read -r link; do
+        target=$(readlink "$link")
+        if [[ "$target" == ${systemd}* ]]; then
+          newtarget="$out''${target#${systemd}}"
+          ln -sf "$newtarget" "$link"
+        fi
+      done
+    '';
 }
