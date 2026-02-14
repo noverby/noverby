@@ -7,7 +7,16 @@
       alejandra.enable = true;
       statix.enable = true;
       typos.enable = true;
-      rustfmt.enable = true;
+      rustfmt = {
+        enable = true;
+        entry = "${pkgs.writeShellScript "rustfmt-multi-project" ''
+          for manifest in $(${pkgs.findutils}/bin/find . -name Cargo.toml -not -path '*/target/*'); do
+            echo "Running cargo fmt for $manifest"
+            ${pkgs.cargo}/bin/cargo fmt --manifest-path "$manifest"
+          done
+        ''}";
+        pass_filenames = false;
+      };
       rumdl.enable = true;
       mktoc = {
         enable = true;
