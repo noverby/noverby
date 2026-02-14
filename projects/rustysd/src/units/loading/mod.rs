@@ -1,6 +1,6 @@
 mod dependency_resolving;
 pub use dependency_resolving::*;
-use log::trace;
+use log::{trace, warn};
 
 use crate::runtime_info::*;
 use crate::units::*;
@@ -120,42 +120,71 @@ fn parse_all_units(
         .map_err(|e| ParsingError::new(ParsingErrorReason::from(e), path.clone()))?;
     for entry in files {
         if entry.path().is_dir() {
-            parse_all_units(services, sockets, targets, path)?;
+            parse_all_units(services, sockets, targets, &entry.path())?;
         } else {
-            let raw = std::fs::read_to_string(&entry.path()).map_err(|e| {
-                ParsingError::new(ParsingErrorReason::from(Box::new(e)), path.clone())
-            })?;
+            let raw = match std::fs::read_to_string(&entry.path()) {
+                Ok(raw) => raw,
+                Err(e) => {
+                    warn!(
+                        "Skipping unit {:?}: could not read file: {}",
+                        entry.path(),
+                        e
+                    );
+                    continue;
+                }
+            };
 
-            let parsed_file = parse_file(&raw)
-                .map_err(|e| ParsingError::new(ParsingErrorReason::from(e), path.clone()))?;
+            let parsed_file = match parse_file(&raw) {
+                Ok(pf) => pf,
+                Err(e) => {
+                    warn!(
+                        "Skipping unit {:?}: could not parse file: {:?}",
+                        entry.path(),
+                        e
+                    );
+                    continue;
+                }
+            };
 
             if entry.path().to_str().unwrap().ends_with(".service") {
                 trace!("Service found: {:?}", entry.path());
-                let unit: Unit = parse_service(parsed_file, &entry.path())
-                    .map_err(|e| ParsingError::new(ParsingErrorReason::from(e), path.clone()))?
-                    .try_into()
-                    .map_err(|err| {
-                        ParsingError::new(ParsingErrorReason::Generic(err), path.clone())
-                    })?;
-                services.insert(unit.id.clone(), unit);
+                match parse_service(parsed_file, &entry.path()).and_then(|parsed| {
+                    TryInto::<Unit>::try_into(parsed)
+                        .map_err(|err| ParsingErrorReason::Generic(err))
+                }) {
+                    Ok(unit) => {
+                        services.insert(unit.id.clone(), unit);
+                    }
+                    Err(e) => {
+                        warn!("Skipping service {:?}: {:?}", entry.path(), e);
+                    }
+                }
             } else if entry.path().to_str().unwrap().ends_with(".socket") {
                 trace!("Socket found: {:?}", entry.path());
-                let unit: Unit = parse_socket(parsed_file, &entry.path())
-                    .map_err(|e| ParsingError::new(ParsingErrorReason::from(e), path.clone()))?
-                    .try_into()
-                    .map_err(|err| {
-                        ParsingError::new(ParsingErrorReason::Generic(err), path.clone())
-                    })?;
-                sockets.insert(unit.id.clone(), unit);
+                match parse_socket(parsed_file, &entry.path()).and_then(|parsed| {
+                    TryInto::<Unit>::try_into(parsed)
+                        .map_err(|err| ParsingErrorReason::Generic(err))
+                }) {
+                    Ok(unit) => {
+                        sockets.insert(unit.id.clone(), unit);
+                    }
+                    Err(e) => {
+                        warn!("Skipping socket {:?}: {:?}", entry.path(), e);
+                    }
+                }
             } else if entry.path().to_str().unwrap().ends_with(".target") {
                 trace!("Target found: {:?}", entry.path());
-                let unit: Unit = parse_target(parsed_file, &entry.path())
-                    .map_err(|e| ParsingError::new(ParsingErrorReason::from(e), path.clone()))?
-                    .try_into()
-                    .map_err(|err| {
-                        ParsingError::new(ParsingErrorReason::Generic(err), path.clone())
-                    })?;
-                targets.insert(unit.id.clone(), unit);
+                match parse_target(parsed_file, &entry.path()).and_then(|parsed| {
+                    TryInto::<Unit>::try_into(parsed)
+                        .map_err(|err| ParsingErrorReason::Generic(err))
+                }) {
+                    Ok(unit) => {
+                        targets.insert(unit.id.clone(), unit);
+                    }
+                    Err(e) => {
+                        warn!("Skipping target {:?}: {:?}", entry.path(), e);
+                    }
+                }
             }
         }
     }
