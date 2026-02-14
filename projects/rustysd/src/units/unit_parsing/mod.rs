@@ -30,6 +30,7 @@ pub struct ParsedTargetConfig {
 #[derive(Default)]
 pub struct ParsedUnitSection {
     pub description: String,
+    pub documentation: Vec<String>,
 
     pub wants: Vec<String>,
     pub requires: Vec<String>,
@@ -200,7 +201,7 @@ impl std::fmt::Display for ParsingError {
             ParsingErrorReason::UnusedSetting(name) => {
                 write!(
                     f,
-                    "In file {:?}: unused setting {} occured",
+                    "In file {:?}: unused setting {} occurred",
                     self.path, name
                 )?;
             }
@@ -224,7 +225,7 @@ impl std::fmt::Display for ParsingError {
             ParsingErrorReason::SectionTooOften(name) => {
                 write!(
                     f,
-                    "In file {:?}: section {} occured multiple times",
+                    "In file {:?}: section {} occurred multiple times",
                     self.path, name
                 )?;
             }
@@ -245,7 +246,7 @@ impl std::fmt::Display for ParsingError {
             ParsingErrorReason::SettingTooManyValues(name, values) => {
                 write!(
                     f,
-                    "In file {:?}: setting {} occured with too many values: {:?}",
+                    "In file {:?}: setting {} occurred with too many values: {:?}",
                     self.path, name, values
                 )?;
             }

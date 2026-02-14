@@ -50,7 +50,7 @@ fn check_deactivated_recursive(remove_id: UnitId, run_info: &RuntimeInfo) -> Res
     }
 }
 
-/// Remove all occurences of this ID in other units.
+/// Remove all occurrences of this ID in other units.
 /// This requires that this unit is removed at the same time
 /// as all units that mention this unit by name!
 fn remove_single_unit(rm_id: UnitId, unit_table: &mut UnitTable) {
@@ -82,7 +82,7 @@ fn find_all_depending(rm_id: UnitId, unit_table: &UnitTable, ids: &mut Vec<UnitI
     }
 }
 
-/// Remove all occurences in other units and all units that explicitly mention this unit in their config
+/// Remove all occurrences in other units and all units that explicitly mention this unit in their config
 fn remove_with_depending_units(rm_id: UnitId, unit_table: &mut UnitTable) {
     trace!("Remove unit: {:?}", rm_id);
     // follow the units install section and check if the units have this unit in their Install-/Unit-config.

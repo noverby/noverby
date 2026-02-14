@@ -12,7 +12,7 @@ pub fn after_fork_child(
     new_stderr: RawFd,
     exec_helper_config: RawFd,
 ) {
-    // DO NOT USE THE LOGGER HERE. It aquires a global lock which might be held at the time of forking
+    // DO NOT USE THE LOGGER HERE. It acquires a global lock which might be held at the time of forking
     // But since this is the only thread that is in the child process the lock will never be released!
     //
     // Also:

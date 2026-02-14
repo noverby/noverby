@@ -397,7 +397,7 @@ impl Unit {
     /// 1. All units that have a before relation to this unit have been run at least once
     /// 1. All of the above that are required by this unit are in the state 'Started'
     fn state_transition_starting(&self, run_info: &RuntimeInfo) -> Result<(), Vec<UnitId>> {
-        let (mut self_lock, others) = aquire_locks(
+        let (mut self_lock, others) = acquire_locks(
             vec![self.id.clone()],
             self.common.dependencies.after.clone(),
             &run_info.unit_table,
@@ -435,7 +435,7 @@ impl Unit {
     /// 1. All units that have a before relation to this unit have been run at least once
     /// 1. All of the above that are required by this unit are in the state 'Started'
     fn state_transition_restarting(&self, run_info: &RuntimeInfo) -> Result<bool, Vec<UnitId>> {
-        let (mut self_lock, others) = aquire_locks(
+        let (mut self_lock, others) = acquire_locks(
             vec![self.id.clone()],
             self.common.dependencies.after.clone(),
             &run_info.unit_table,
@@ -472,7 +472,7 @@ impl Unit {
     /// This is the case if:
     /// 1. All units that have a requires relation to this unit have been stopped
     fn state_transition_stopping(&self, run_info: &RuntimeInfo) -> Result<(), Vec<UnitId>> {
-        let (mut self_lock, others) = aquire_locks(
+        let (mut self_lock, others) = acquire_locks(
             vec![self.id.clone()],
             self.common.dependencies.kill_before_this(),
             &run_info.unit_table,
@@ -711,6 +711,7 @@ impl Unit {
 #[derive(Debug, Clone)]
 pub struct UnitConfig {
     pub description: String,
+    pub documentation: Vec<String>,
 
     /// This is needed for adding/removing units. All units in this set must be present
     /// or this unit is considered invalid os it has to be removed too / cannot be added.
@@ -772,7 +773,7 @@ impl Dependencies {
         ids
     }
 
-    /// Remove all occurences of this id from the vec
+    /// Remove all occurrences of this id from the vec
     fn remove_from_vec(ids: &mut Vec<UnitId>, id: &UnitId) {
         while let Some(idx) = ids.iter().position(|e| *e == *id) {
             ids.remove(idx);
