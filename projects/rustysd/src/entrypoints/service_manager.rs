@@ -178,21 +178,42 @@ fn move_to_new_session() -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn remount_root_rw() {
-    // TODO maybe need more flags
+fn pid1_specific_setup() {
+    if nix::unistd::getpid().as_raw() != 1 {
+        return;
+    }
+
+    // When running as PID 1, the inherited stdin/stdout/stderr may be broken
+    // pipes (e.g. the NixOS stage-2 init script redirects stdout through a
+    // tee process that can die before exec'ing the service manager).  Reopen
+    // all three standard file descriptors to /dev/console, matching what
+    // systemd does at startup.  This ensures logging actually reaches the
+    // console instead of hitting a dead pipe and panicking.
+    use std::os::unix::io::AsRawFd;
+    let console_path = std::path::Path::new("/dev/console");
+    if console_path.exists() {
+        if let Ok(console) = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(console_path)
+        {
+            let fd = console.as_raw_fd();
+            // dup2 the console fd onto stdin(0), stdout(1), stderr(2)
+            let _ = nix::unistd::dup2(fd, libc::STDIN_FILENO);
+            let _ = nix::unistd::dup2(fd, libc::STDOUT_FILENO);
+            let _ = nix::unistd::dup2(fd, libc::STDERR_FILENO);
+            // The original fd is closed when `console` is dropped (if > 2).
+        }
+    }
+
+    // Remount root filesystem read-write if needed.
     let flags = nix::mount::MsFlags::MS_REMOUNT;
     let source: Option<&str> = None;
     let fs_type: Option<&str> = None;
     let data: Option<&str> = None;
-    nix::mount::mount(source, "/", fs_type, flags, data).unwrap();
+    let _ = nix::mount::mount(source, "/", fs_type, flags, data);
 }
 
-#[cfg(target_os = "linux")]
-fn pid1_specific_setup() {
-    if nix::unistd::getpid().as_raw() == 0 {
-        remount_root_rw();
-    }
-}
 #[cfg(not(target_os = "linux"))]
 fn pid1_specific_setup() {}
 
