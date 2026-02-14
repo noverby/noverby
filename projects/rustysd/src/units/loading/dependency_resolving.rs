@@ -118,6 +118,24 @@ pub fn prune_units(
             .cloned()
             .collect();
 
+        unit.common.dependencies.conflicts = unit
+            .common
+            .dependencies
+            .conflicts
+            .iter()
+            .filter(|id| ids_to_keep.contains(id))
+            .cloned()
+            .collect();
+
+        unit.common.dependencies.conflicted_by = unit
+            .common
+            .dependencies
+            .conflicted_by
+            .iter()
+            .filter(|id| ids_to_keep.contains(id))
+            .cloned()
+            .collect();
+
         unit.dedup_dependencies();
     }
     Ok(())
@@ -132,6 +150,7 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
     let mut wanted_by: Vec<(UnitId, UnitId)> = Vec::new();
     let mut before = Vec::new();
     let mut after = Vec::new();
+    let mut conflicts = Vec::new();
 
     for unit in (*units).values_mut() {
         trace!("Fill deps for unit: {:?}", unit.id);
@@ -141,6 +160,12 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
         }
         for id in &conf.requires {
             required_by.push((id.clone(), unit.id.clone()));
+        }
+        for id in &conf.conflicts {
+            conflicts.push((unit.id.clone(), id.clone()));
+        }
+        for id in &conf.conflicted_by {
+            conflicts.push((id.clone(), unit.id.clone()));
         }
         for id in &conf.before {
             after.push((unit.id.clone(), id.clone()));
@@ -195,6 +220,19 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
             unit.common.dependencies.after.push(after);
         } else {
             warn!("Dependency {after:?} after {before:?}, but {before:?} not found");
+        }
+    }
+
+    for (conflicting, conflicted) in conflicts {
+        if let Some(unit) = units.get_mut(&conflicting) {
+            unit.common.dependencies.conflicts.push(conflicted.clone());
+        } else {
+            warn!("Dependency {conflicting:?} conflicts with {conflicted:?}, but {conflicting:?} not found");
+        }
+        if let Some(unit) = units.get_mut(&conflicted) {
+            unit.common.dependencies.conflicted_by.push(conflicting);
+        } else {
+            warn!("Dependency {conflicted:?} conflicted by {conflicting:?}, but {conflicted:?} not found");
         }
     }
 
