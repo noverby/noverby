@@ -1,3 +1,3 @@
 {pkgs, ...}: {
-  systemd.package = pkgs.rustysd;
+  systemd.package = pkgs.rustysd-systemd;
 }
