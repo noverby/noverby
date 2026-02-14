@@ -2,7 +2,7 @@ use super::StdIo;
 use crate::services::Service;
 use crate::units::ServiceConfig;
 use crate::units::StdIoOption;
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, BorrowedFd, IntoRawFd};
 use std::os::unix::net::UnixDatagram;
 
 fn open_stdio(setting: &Option<StdIoOption>) -> Result<StdIo, String> {
@@ -28,7 +28,7 @@ fn open_stdio(setting: &Option<StdIoOption>) -> Result<StdIo, String> {
         }
         None => {
             let (r, w) = nix::unistd::pipe().unwrap();
-            Ok(super::StdIo::Piped(r, w))
+            Ok(super::StdIo::Piped(r.into_raw_fd(), w.into_raw_fd()))
         }
     }
 }
@@ -61,7 +61,7 @@ pub fn prepare_service(
         // close these fd's on exec. They must not show up in child processes
         let new_listener_fd = stream.as_raw_fd();
         nix::fcntl::fcntl(
-            new_listener_fd,
+            unsafe { BorrowedFd::borrow_raw(new_listener_fd) },
             nix::fcntl::FcntlArg::F_SETFD(nix::fcntl::FdFlag::FD_CLOEXEC),
         )
         .unwrap();

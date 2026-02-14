@@ -120,7 +120,7 @@ fn dup_fds(sockets: &mut [RawFd]) {
         } else {
             //ignore output. newfd might already be closed.
             // TODO check for actual errors other than bad_fd
-            let _ = nix::unistd::close(new_fd as i32);
+            let _ = unsafe { libc::close(new_fd as i32) };
             let actual_new_fd = unsafe { libc::dup2(old_fd, new_fd as RawFd) };
             if actual_new_fd != new_fd {
                 write_to_stderr("Could not dup2 fd");

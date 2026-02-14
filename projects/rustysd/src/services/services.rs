@@ -11,6 +11,8 @@ use crate::units::{
 use std::fmt::Write as _;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
+use std::os::unix::io::BorrowedFd;
+use std::os::unix::io::IntoRawFd;
 use std::os::unix::io::RawFd;
 use std::os::unix::net::UnixDatagram;
 use std::process::{Command, Stdio};
@@ -344,16 +346,16 @@ impl Service {
         use std::os::unix::io::FromRawFd;
         let stdout = if let Some(stdio) = &self.stdout {
             unsafe {
-                let duped = nix::unistd::dup(stdio.write_fd()).unwrap();
-                Stdio::from(std::fs::File::from_raw_fd(duped))
+                let duped = nix::unistd::dup(BorrowedFd::borrow_raw(stdio.write_fd())).unwrap();
+                Stdio::from(std::fs::File::from_raw_fd(duped.into_raw_fd()))
             }
         } else {
             Stdio::piped()
         };
         let stderr = if let Some(stdio) = &self.stderr {
             unsafe {
-                let duped = nix::unistd::dup(stdio.write_fd()).unwrap();
-                Stdio::from(std::fs::File::from_raw_fd(duped))
+                let duped = nix::unistd::dup(BorrowedFd::borrow_raw(stdio.write_fd())).unwrap();
+                Stdio::from(std::fs::File::from_raw_fd(duped.into_raw_fd()))
             }
         } else {
             Stdio::piped()
