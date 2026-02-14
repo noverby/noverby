@@ -246,6 +246,7 @@ fn make_common_from_parsed(
         status: RwLock::new(UnitStatus::NeverStarted),
         unit: UnitConfig {
             description: unit.description,
+            documentation: unit.documentation,
             refs_by_name,
         },
         dependencies: Dependencies {

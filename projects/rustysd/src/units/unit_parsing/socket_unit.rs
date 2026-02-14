@@ -90,7 +90,7 @@ fn parse_socket_section(
             if vec.len() > 1 {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "FileDescriptorName".to_owned(),
-                    super::map_tupels_to_second(vec),
+                    super::map_tuples_to_second(vec),
                 ));
             } else if vec.len() == 0 {
                 None
@@ -101,7 +101,7 @@ fn parse_socket_section(
     };
 
     let services = services
-        .map(|vec| super::map_tupels_to_second(vec))
+        .map(|vec| super::map_tuples_to_second(vec))
         .unwrap_or_default();
 
     let mut socket_kinds: Vec<(u32, SocketKind)> = Vec::new();

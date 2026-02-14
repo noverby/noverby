@@ -21,7 +21,7 @@ fn start_service_with_filedescriptors(
     let cmd = which(&conf.exec.cmd).map_err(|err| {
         RunCmdError::SpawnError(
             name.to_owned(),
-            format!("Could not resolve command to an exectuable file: {err:?}"),
+            format!("Could not resolve command to an executable file: {err:?}"),
         )
     })?;
     if !cmd.exists() {
@@ -48,7 +48,7 @@ fn start_service_with_filedescriptors(
     // 1. fork
     // 1. in fork use dup2 to map all relevant file desrciptors to 3..x
     // 1. in fork mark all other file descriptors with FD_CLOEXEC
-    // 1. in fork set relevant env varibales $LISTEN_FDS $LISTEN_PID
+    // 1. in fork set relevant env variables $LISTEN_FDS $LISTEN_PID
     // 1. in fork execve the cmd with the args
     // 1. in parent set pid and return. Waiting will be done afterwards if necessary
 
@@ -142,7 +142,11 @@ fn start_service_with_filedescriptors(
     let name_arg = std::ffi::CString::new("exec_helper").unwrap();
     let self_args = [name_arg.as_ptr(), std::ptr::null()];
 
-    trace!("Start main executable for service: {name}: {:?} {:?}", exec_helper_conf.cmd, exec_helper_conf.args);
+    trace!(
+        "Start main executable for service: {name}: {:?} {:?}",
+        exec_helper_conf.cmd,
+        exec_helper_conf.args
+    );
     match unsafe { nix::unistd::fork() } {
         Ok(nix::unistd::ForkResult::Parent { child, .. }) => {
             // make sure the file exists until after we fork before closing it
