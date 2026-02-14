@@ -2,6 +2,27 @@ use crate::runtime_info::*;
 use crate::units::Unit;
 use std::convert::TryInto;
 
+fn find_bin(cmd: &str) -> String {
+    // Search common binary directories for the command
+    for dir in &[
+        "/usr/bin",
+        "/bin",
+        "/usr/local/bin",
+        "/run/current-system/sw/bin",
+    ] {
+        let path = format!("{}/{}", dir, cmd);
+        if std::path::Path::new(&path).exists() {
+            return path;
+        }
+    }
+    // On NixOS and similar, binaries may only be in PATH via the nix store.
+    // Use /usr/bin/env to resolve at runtime by returning it as a wrapper.
+    if std::path::Path::new("/usr/bin/env").exists() {
+        return format!("/usr/bin/env {}", cmd);
+    }
+    panic!("Could not find `{}` in any standard location", cmd);
+}
+
 #[test]
 fn test_service_state_transitions() {
     let run_info = std::sync::Arc::new(std::sync::RwLock::new(RuntimeInfo {
@@ -36,11 +57,13 @@ fn test_service_state_transitions() {
 
 fn successful(run_info: ArcMutRuntimeInfo) {
     let descr = "This is a description";
-    let service_execstart = "/bin/sleep 10";
-    let service_execpre = "/bin/true";
-    let service_execpost = "/bin/true";
-    let service_stop = "/bin/true";
-    let service_stoppost = "/bin/true";
+    let bin_sleep = find_bin("sleep");
+    let bin_true = find_bin("true");
+    let service_execstart = format!("{} 10", bin_sleep);
+    let service_execpre = &bin_true;
+    let service_execpost = &bin_true;
+    let service_stop = &bin_true;
+    let service_stoppost = &bin_true;
 
     let test_service_str = format!(
         r#"
@@ -92,11 +115,13 @@ fn successful(run_info: ArcMutRuntimeInfo) {
 fn failing_startexec(run_info: ArcMutRuntimeInfo) {
     let descr = "This is a description";
     let service_type = "oneshot";
-    let service_execstart = "/bin/false";
-    let service_execpre = "/bin/true";
-    let service_execpost = "/bin/true";
-    let service_stop = "/bin/true";
-    let service_stoppost = "/bin/true";
+    let bin_false = find_bin("false");
+    let bin_true = find_bin("true");
+    let service_execstart = &bin_false;
+    let service_execpre = &bin_true;
+    let service_execpost = &bin_true;
+    let service_stop = &bin_true;
+    let service_stoppost = &bin_true;
 
     let test_service_str = format!(
         r#"
