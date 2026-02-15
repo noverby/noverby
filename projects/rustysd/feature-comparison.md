@@ -1983,8 +1983,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionDirectoryNotEmpty=">ConditionDirectoryNotEmpty=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed, stored, and evaluated at runtime. Supports negation (<code>!</code> prefix) and multiple directives (all must pass). Checks whether the path exists, is a directory, and contains at least one entry.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionFileNotEmpty=">ConditionFileNotEmpty=</a></td>

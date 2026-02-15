@@ -30852,3 +30852,302 @@ fn test_remove_ipc_socket_unit() {
         "RemoveIPC should work in socket units"
     );
 }
+
+// ==============================
+// ConditionDirectoryNotEmpty= tests
+// ==============================
+
+#[test]
+fn test_condition_directory_not_empty_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionDirectoryNotEmpty = /etc
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "ConditionDirectoryNotEmpty= should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_condition_directory_not_empty_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionDirectoryNotEmpty = /etc/myapp.d
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::DirectoryNotEmpty { path, negate } => {
+            assert_eq!(path, "/etc/myapp.d");
+            assert!(!negate, "Should not be negated");
+        }
+        other => panic!("Expected DirectoryNotEmpty condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_directory_not_empty_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionDirectoryNotEmpty = !/etc/myapp.d
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::DirectoryNotEmpty { path, negate } => {
+            assert_eq!(path, "/etc/myapp.d");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected DirectoryNotEmpty condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_directory_not_empty_multiple() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionDirectoryNotEmpty = /etc/myapp.d
+    ConditionDirectoryNotEmpty = /var/lib/myapp
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 2);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::DirectoryNotEmpty { path, negate } => {
+            assert_eq!(path, "/etc/myapp.d");
+            assert!(!negate);
+        }
+        other => panic!("Expected DirectoryNotEmpty condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::DirectoryNotEmpty { path, negate } => {
+            assert_eq!(path, "/var/lib/myapp");
+            assert!(!negate);
+        }
+        other => panic!("Expected DirectoryNotEmpty condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_directory_not_empty_with_other_conditions() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathExists = /etc/myconfig
+    ConditionDirectoryNotEmpty = /etc/myapp.d
+    ConditionFileNotEmpty = /etc/hostname
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 3);
+
+    // PathExists is parsed first
+    assert!(matches!(
+        &service.common.unit.conditions[0],
+        crate::units::UnitCondition::PathExists { .. }
+    ));
+
+    // FileNotEmpty is parsed before DirectoryNotEmpty
+    assert!(matches!(
+        &service.common.unit.conditions[1],
+        crate::units::UnitCondition::FileNotEmpty { .. }
+    ));
+
+    // DirectoryNotEmpty is parsed last
+    match &service.common.unit.conditions[2] {
+        crate::units::UnitCondition::DirectoryNotEmpty { path, negate } => {
+            assert_eq!(path, "/etc/myapp.d");
+            assert!(!negate);
+        }
+        other => panic!("Expected DirectoryNotEmpty condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_directory_not_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    ConditionDirectoryNotEmpty = !/var/lib/myapp/data
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(unit.common.unit.conditions.len(), 1);
+    match &unit.common.unit.conditions[0] {
+        crate::units::UnitCondition::DirectoryNotEmpty { path, negate } => {
+            assert_eq!(path, "/var/lib/myapp/data");
+            assert!(negate, "Negation should survive unit conversion");
+        }
+        other => panic!("Expected DirectoryNotEmpty condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_directory_not_empty_in_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    ConditionDirectoryNotEmpty = /etc/myapp.d
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.common.unit.conditions.len(), 1);
+    match &socket.common.unit.conditions[0] {
+        crate::units::UnitCondition::DirectoryNotEmpty { path, negate } => {
+            assert_eq!(path, "/etc/myapp.d");
+            assert!(!negate);
+        }
+        other => panic!("Expected DirectoryNotEmpty condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_directory_not_empty_in_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    ConditionDirectoryNotEmpty = !/etc/disabled.d
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(target.common.unit.conditions.len(), 1);
+    match &target.common.unit.conditions[0] {
+        crate::units::UnitCondition::DirectoryNotEmpty { path, negate } => {
+            assert_eq!(path, "/etc/disabled.d");
+            assert!(negate);
+        }
+        other => panic!("Expected DirectoryNotEmpty condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_directory_not_empty_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let has_directory_not_empty = service
+        .common
+        .unit
+        .conditions
+        .iter()
+        .any(|c| matches!(c, crate::units::UnitCondition::DirectoryNotEmpty { .. }));
+    assert!(
+        !has_directory_not_empty,
+        "No DirectoryNotEmpty condition should be present by default"
+    );
+}
+
+#[test]
+fn test_condition_directory_not_empty_mixed_negation() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionDirectoryNotEmpty = /etc/myapp.d
+    ConditionDirectoryNotEmpty = !/var/empty
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 2);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::DirectoryNotEmpty { path, negate } => {
+            assert_eq!(path, "/etc/myapp.d");
+            assert!(!negate, "First should not be negated");
+        }
+        other => panic!("Expected DirectoryNotEmpty condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::DirectoryNotEmpty { path, negate } => {
+            assert_eq!(path, "/var/empty");
+            assert!(negate, "Second should be negated");
+        }
+        other => panic!("Expected DirectoryNotEmpty condition, got {:?}", other),
+    }
+}
