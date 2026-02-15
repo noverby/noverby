@@ -420,6 +420,7 @@ pub fn parse_exec_section(
     let capability_bounding_set = section.remove("CAPABILITYBOUNDINGSET");
     let protect_clock = section.remove("PROTECTCLOCK");
     let protect_home = section.remove("PROTECTHOME");
+    let protect_hostname = section.remove("PROTECTHOSTNAME");
 
     let user = match user {
         None => None,
@@ -647,6 +648,21 @@ pub fn parse_exec_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "ProtectClock".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        // systemd default: false
+        None => false,
+    };
+
+    let protect_hostname = match protect_hostname {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "ProtectHostname".to_owned(),
                     super::map_tuples_to_second(vec),
                 ));
             }
@@ -1245,6 +1261,7 @@ pub fn parse_exec_section(
             }
             None => super::ProtectHome::default(),
         },
+        protect_hostname,
     })
 }
 

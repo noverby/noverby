@@ -19169,3 +19169,291 @@ fn test_runtime_directory_preserve_default_preserved_after_unit_conversion() {
         panic!("Expected service unit");
     }
 }
+
+// ============================================================
+// ProtectHostname= parsing tests
+// ============================================================
+
+#[test]
+fn test_protect_hostname_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_hostname, false,
+        "ProtectHostname should default to false when not specified"
+    );
+}
+
+#[test]
+fn test_protect_hostname_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectHostname = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_hostname, true,
+        "ProtectHostname=yes should parse to true"
+    );
+}
+
+#[test]
+fn test_protect_hostname_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectHostname = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_hostname, true,
+        "ProtectHostname=true should parse to true"
+    );
+}
+
+#[test]
+fn test_protect_hostname_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectHostname = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_hostname, false,
+        "ProtectHostname=no should parse to false"
+    );
+}
+
+#[test]
+fn test_protect_hostname_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectHostname = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_hostname, false,
+        "ProtectHostname=false should parse to false"
+    );
+}
+
+#[test]
+fn test_protect_hostname_numeric_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectHostname = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_hostname, true,
+        "ProtectHostname=1 should parse to true"
+    );
+}
+
+#[test]
+fn test_protect_hostname_numeric_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectHostname = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_hostname, false,
+        "ProtectHostname=0 should parse to false"
+    );
+}
+
+#[test]
+fn test_protect_hostname_case_insensitive_upper() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectHostname = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_hostname, true,
+        "ProtectHostname should be case-insensitive (YES)"
+    );
+}
+
+#[test]
+fn test_protect_hostname_case_insensitive_mixed() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectHostname = True
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_hostname, true,
+        "ProtectHostname should be case-insensitive (True)"
+    );
+}
+
+#[test]
+fn test_protect_hostname_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectHostname = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "ProtectHostname should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_protect_hostname_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectHostname = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.protect_hostname, true,
+            "ProtectHostname=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_protect_hostname_default_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.protect_hostname, false,
+            "Default ProtectHostname=false should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_protect_hostname_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    ProtectHostname = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.protect_hostname, true,
+        "ProtectHostname=yes should work in socket units"
+    );
+}
