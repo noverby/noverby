@@ -207,6 +207,8 @@ pub fn parse_unit_section(
     let allow_isolate = section.remove("ALLOWISOLATE");
     let job_timeout_sec = section.remove("JOBTIMEOUTSEC");
     let job_timeout_action = section.remove("JOBTIMEOUTACTION");
+    let refuse_manual_start = section.remove("REFUSEMANUALSTART");
+    let refuse_manual_stop = section.remove("REFUSEMANUALSTOP");
 
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Unit] section: {key}");
@@ -242,6 +244,14 @@ pub fn parse_unit_section(
         .unwrap_or(false);
 
     let allow_isolate = allow_isolate
+        .map(|x| string_to_bool(&x[0].1))
+        .unwrap_or(false);
+
+    let refuse_manual_start = refuse_manual_start
+        .map(|x| string_to_bool(&x[0].1))
+        .unwrap_or(false);
+
+    let refuse_manual_stop = refuse_manual_stop
         .map(|x| string_to_bool(&x[0].1))
         .unwrap_or(false);
 
@@ -375,6 +385,8 @@ pub fn parse_unit_section(
         allow_isolate,
         job_timeout_sec,
         job_timeout_action,
+        refuse_manual_start,
+        refuse_manual_stop,
     })
 }
 

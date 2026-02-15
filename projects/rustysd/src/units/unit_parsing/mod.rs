@@ -513,6 +513,18 @@ pub struct ParsedUnitSection {
     /// Uses the same action values as `SuccessAction=`/`FailureAction=`.
     /// Parsed and stored; no runtime enforcement yet.
     pub job_timeout_action: UnitAction,
+
+    /// If true, this unit may not be started manually (e.g. via `systemctl start`).
+    /// It can only be started as a dependency of another unit.
+    /// Defaults to false, matching systemd's `RefuseManualStart=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub refuse_manual_start: bool,
+
+    /// If true, this unit may not be stopped manually (e.g. via `systemctl stop`).
+    /// It can only be stopped as a dependency of another unit.
+    /// Defaults to false, matching systemd's `RefuseManualStop=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub refuse_manual_stop: bool,
 }
 
 impl Default for ParsedUnitSection {
@@ -536,6 +548,8 @@ impl Default for ParsedUnitSection {
             allow_isolate: false,
             job_timeout_sec: None,
             job_timeout_action: UnitAction::default(),
+            refuse_manual_start: false,
+            refuse_manual_stop: false,
         }
     }
 }
