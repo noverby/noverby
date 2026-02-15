@@ -248,6 +248,12 @@ pub struct ParsedServiceSection {
     /// See systemd.resource-control(5).
     pub memory_pressure_watch: MemoryPressureWatch,
 
+    /// ReloadSignal= — configures the UNIX process signal to send to the
+    /// service's main process when asked to reload. Defaults to SIGHUP.
+    /// Only effective with Type=notify-reload. Parsed and stored; not yet
+    /// used at runtime. See systemd.service(5).
+    pub reload_signal: Option<nix::sys::signal::Signal>,
+
     pub exec_section: ParsedExecSection,
 }
 
