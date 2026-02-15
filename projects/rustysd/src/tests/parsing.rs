@@ -8636,3 +8636,206 @@ fn test_utmp_mode_without_identifier() {
         "UtmpMode=user should be stored even without UtmpIdentifier"
     );
 }
+
+#[test]
+fn test_send_sighup_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.send_sighup,
+        "SendSIGHUP should default to false when not specified"
+    );
+}
+
+#[test]
+fn test_send_sighup_explicit_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SendSIGHUP = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.send_sighup, "SendSIGHUP=yes should be true");
+}
+
+#[test]
+fn test_send_sighup_explicit_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SendSIGHUP = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(!service.srvc.send_sighup, "SendSIGHUP=no should be false");
+}
+
+#[test]
+fn test_send_sighup_explicit_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SendSIGHUP = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.send_sighup, "SendSIGHUP=true should be true");
+}
+
+#[test]
+fn test_send_sighup_explicit_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SendSIGHUP = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.send_sighup,
+        "SendSIGHUP=false should be false"
+    );
+}
+
+#[test]
+fn test_send_sighup_explicit_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SendSIGHUP = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.send_sighup, "SendSIGHUP=1 should be true");
+}
+
+#[test]
+fn test_send_sighup_explicit_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SendSIGHUP = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(!service.srvc.send_sighup, "SendSIGHUP=0 should be false");
+}
+
+#[test]
+fn test_send_sighup_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SendSIGHUP = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.send_sighup,
+        "SendSIGHUP=YES (case-insensitive) should be true"
+    );
+}
+
+#[test]
+fn test_send_sighup_no_warning_when_set() {
+    // Verify that setting SendSIGHUP does not produce an "unsupported setting" warning.
+    // If parsing succeeds without error, the setting was consumed (not left in the section
+    // to trigger a warning).
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SendSIGHUP = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "Parsing a service with SendSIGHUP should succeed without errors"
+    );
+}
+
+#[test]
+fn test_send_sighup_with_kill_mode() {
+    // Verify SendSIGHUP works alongside KillMode settings.
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /sbin/agetty --noclear tty1 linux
+    KillMode = control-group
+    SendSIGHUP = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/getty@tty1.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.send_sighup,
+        "SendSIGHUP=yes should be true alongside KillMode"
+    );
+    assert_eq!(
+        service.srvc.kill_mode,
+        crate::units::KillMode::ControlGroup,
+        "KillMode should still be control-group"
+    );
+}

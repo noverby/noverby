@@ -256,9 +256,27 @@ impl Service {
 
     pub fn kill_all_remaining_processes(&mut self, conf: &ServiceConfig, name: &str) {
         trace!(
-            "Kill all process for {name} (kill_mode: {:?})",
-            conf.kill_mode
+            "Kill all process for {name} (kill_mode: {:?}, send_sighup: {})",
+            conf.kill_mode,
+            conf.send_sighup
         );
+
+        // SendSIGHUP= — send SIGHUP to remaining processes before SIGKILL.
+        // This notifies shell-like processes that their connection has been
+        // severed, matching systemd.kill(5) behaviour.
+        if conf.send_sighup {
+            if let Some(proc_group) = self.process_group {
+                match nix::sys::signal::kill(proc_group, nix::sys::signal::Signal::SIGHUP) {
+                    Ok(()) => {
+                        trace!("SendSIGHUP: success sending SIGHUP to process group for service {name}")
+                    }
+                    Err(e) => {
+                        trace!("SendSIGHUP: error sending SIGHUP to process group for service {name}: {e}")
+                    }
+                }
+            }
+        }
+
         match conf.kill_mode {
             KillMode::ControlGroup => {
                 if let Some(proc_group) = self.process_group {

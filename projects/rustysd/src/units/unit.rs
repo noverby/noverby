@@ -1029,6 +1029,11 @@ pub struct ServiceConfig {
     /// SuccessExitStatus= — additional exit codes and signals that are
     /// considered a successful (clean) service termination.
     pub success_exit_status: SuccessExitStatus,
+    /// SendSIGHUP= — if true, send SIGHUP to remaining processes immediately
+    /// after the stop signal (e.g. SIGTERM). This is useful for shell-like
+    /// services that need to be notified their connection has been severed.
+    /// Defaults to false. See systemd.kill(5).
+    pub send_sighup: bool,
 }
 
 /// The immutable config of a socket unit

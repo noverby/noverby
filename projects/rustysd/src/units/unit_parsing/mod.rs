@@ -224,6 +224,12 @@ pub struct ParsedServiceSection {
     /// considered a successful (clean) service termination.
     pub success_exit_status: crate::units::SuccessExitStatus,
 
+    /// SendSIGHUP= — if true, send SIGHUP to remaining processes immediately
+    /// after the stop signal (e.g. SIGTERM). This is useful for shell-like
+    /// services that need to be notified their connection has been severed.
+    /// Defaults to false. See systemd.kill(5).
+    pub send_sighup: bool,
+
     pub exec_section: ParsedExecSection,
 }
 
