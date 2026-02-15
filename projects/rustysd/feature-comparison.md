@@ -225,8 +225,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LimitNOFILE=">LimitNOFILE=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✅</td>
+  <td>Supports single value (sets both soft and hard), soft:hard notation, and infinity</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LimitAS=">LimitAS=</a></td>

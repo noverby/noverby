@@ -1872,3 +1872,245 @@ fn test_tasks_max_with_other_settings() {
     );
     assert_eq!(service.srvc.kill_mode, crate::units::KillMode::Process);
 }
+
+#[test]
+fn test_limit_nofile_not_set() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.limit_nofile, None);
+}
+
+#[test]
+fn test_limit_nofile_single_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LimitNOFILE = 65536
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.limit_nofile,
+        Some(crate::units::ResourceLimit {
+            soft: crate::units::RLimitValue::Value(65536),
+            hard: crate::units::RLimitValue::Value(65536),
+        })
+    );
+}
+
+#[test]
+fn test_limit_nofile_soft_hard() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LimitNOFILE = 1024:65536
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.limit_nofile,
+        Some(crate::units::ResourceLimit {
+            soft: crate::units::RLimitValue::Value(1024),
+            hard: crate::units::RLimitValue::Value(65536),
+        })
+    );
+}
+
+#[test]
+fn test_limit_nofile_infinity() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LimitNOFILE = infinity
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.limit_nofile,
+        Some(crate::units::ResourceLimit {
+            soft: crate::units::RLimitValue::Infinity,
+            hard: crate::units::RLimitValue::Infinity,
+        })
+    );
+}
+
+#[test]
+fn test_limit_nofile_infinity_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LimitNOFILE = Infinity
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.limit_nofile,
+        Some(crate::units::ResourceLimit {
+            soft: crate::units::RLimitValue::Infinity,
+            hard: crate::units::RLimitValue::Infinity,
+        })
+    );
+}
+
+#[test]
+fn test_limit_nofile_soft_infinity_hard_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LimitNOFILE = infinity:524288
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.limit_nofile,
+        Some(crate::units::ResourceLimit {
+            soft: crate::units::RLimitValue::Infinity,
+            hard: crate::units::RLimitValue::Value(524288),
+        })
+    );
+}
+
+#[test]
+fn test_limit_nofile_soft_value_hard_infinity() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LimitNOFILE = 1024:infinity
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.limit_nofile,
+        Some(crate::units::ResourceLimit {
+            soft: crate::units::RLimitValue::Value(1024),
+            hard: crate::units::RLimitValue::Infinity,
+        })
+    );
+}
+
+#[test]
+fn test_limit_nofile_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Restart = always
+    LimitNOFILE = 8192
+    KillMode = process
+    TasksMax = 512
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.restart, crate::units::ServiceRestart::Always);
+    assert_eq!(
+        service.srvc.limit_nofile,
+        Some(crate::units::ResourceLimit {
+            soft: crate::units::RLimitValue::Value(8192),
+            hard: crate::units::RLimitValue::Value(8192),
+        })
+    );
+    assert_eq!(service.srvc.kill_mode, crate::units::KillMode::Process);
+    assert_eq!(
+        service.srvc.tasks_max,
+        Some(crate::units::TasksMax::Value(512))
+    );
+}
+
+#[test]
+fn test_limit_nofile_value_one() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LimitNOFILE = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.limit_nofile,
+        Some(crate::units::ResourceLimit {
+            soft: crate::units::RLimitValue::Value(1),
+            hard: crate::units::RLimitValue::Value(1),
+        })
+    );
+}
+
+#[test]
+fn test_limit_nofile_both_infinity() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LimitNOFILE = infinity:infinity
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.limit_nofile,
+        Some(crate::units::ResourceLimit {
+            soft: crate::units::RLimitValue::Infinity,
+            hard: crate::units::RLimitValue::Infinity,
+        })
+    );
+}
