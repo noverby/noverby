@@ -158,6 +158,7 @@ pub fn parse_unit_section(
     let success_action = section.remove("SUCCESSACTION");
     let failure_action = section.remove("FAILUREACTION");
     let part_of = section.remove("PARTOF");
+    let ignore_on_isolate = section.remove("IGNOREONISOLATE");
 
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Unit] section: {key}");
@@ -166,6 +167,10 @@ pub fn parse_unit_section(
     let default_dependencies = default_dependencies
         .map(|x| string_to_bool(&x[0].1))
         .unwrap_or(true);
+
+    let ignore_on_isolate = ignore_on_isolate
+        .map(|x| string_to_bool(&x[0].1))
+        .unwrap_or(false);
 
     let mut conditions = Vec::new();
     for (_, value) in condition_path_exists.unwrap_or_default() {
@@ -223,6 +228,7 @@ pub fn parse_unit_section(
         before: map_tuples_to_second(split_list_values(before.unwrap_or_default())),
         part_of: map_tuples_to_second(split_list_values(part_of.unwrap_or_default())),
         default_dependencies,
+        ignore_on_isolate,
         conditions,
         success_action,
         failure_action,
