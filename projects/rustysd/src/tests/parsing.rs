@@ -26341,6 +26341,533 @@ fn test_condition_file_not_empty_defaults_to_empty() {
 }
 
 // ============================================================
+// OnFailure= parsing tests
+// ============================================================
+
+#[test]
+fn test_on_failure_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    OnFailure = failure-handler.service
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "OnFailure= should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_on_failure_single_unit() {
+    let test_service_str = r#"
+    [Unit]
+    OnFailure = failure-handler.service
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.on_failure,
+        vec!["failure-handler.service"]
+    );
+}
+
+#[test]
+fn test_on_failure_multiple_units_space_separated() {
+    let test_service_str = r#"
+    [Unit]
+    OnFailure = handler1.service handler2.service handler3.service
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.on_failure,
+        vec!["handler1.service", "handler2.service", "handler3.service"]
+    );
+}
+
+#[test]
+fn test_on_failure_multiple_directives() {
+    let test_service_str = r#"
+    [Unit]
+    OnFailure = handler1.service
+    OnFailure = handler2.service
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.on_failure,
+        vec!["handler1.service", "handler2.service"]
+    );
+}
+
+#[test]
+fn test_on_failure_defaults_to_empty() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A simple service
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.on_failure.is_empty(),
+        "OnFailure should default to empty"
+    );
+}
+
+#[test]
+fn test_on_failure_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    OnFailure = failure-handler.service notify-admin.service
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(
+        unit.common.unit.on_failure,
+        vec!["failure-handler.service", "notify-admin.service"],
+        "OnFailure should survive unit conversion"
+    );
+}
+
+#[test]
+fn test_on_failure_in_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    OnFailure = socket-failure.service
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.common.unit.on_failure,
+        vec!["socket-failure.service"]
+    );
+}
+
+#[test]
+fn test_on_failure_in_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    OnFailure = target-failure.service
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        target.common.unit.on_failure,
+        vec!["target-failure.service"]
+    );
+}
+
+// ============================================================
+// OnFailureJobMode= parsing tests
+// ============================================================
+
+#[test]
+fn test_on_failure_job_mode_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    OnFailureJobMode = replace
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "OnFailureJobMode= should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_on_failure_job_mode_defaults_to_replace() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A simple service
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.on_failure_job_mode,
+        crate::units::OnFailureJobMode::Replace,
+        "OnFailureJobMode should default to Replace"
+    );
+}
+
+#[test]
+fn test_on_failure_job_mode_replace() {
+    let test_service_str = r#"
+    [Unit]
+    OnFailureJobMode = replace
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.on_failure_job_mode,
+        crate::units::OnFailureJobMode::Replace,
+    );
+}
+
+#[test]
+fn test_on_failure_job_mode_fail() {
+    let test_service_str = r#"
+    [Unit]
+    OnFailureJobMode = fail
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.on_failure_job_mode,
+        crate::units::OnFailureJobMode::Fail,
+    );
+}
+
+#[test]
+fn test_on_failure_job_mode_replace_irreversibly() {
+    let test_service_str = r#"
+    [Unit]
+    OnFailureJobMode = replace-irreversibly
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.on_failure_job_mode,
+        crate::units::OnFailureJobMode::ReplaceIrreversibly,
+    );
+}
+
+#[test]
+fn test_on_failure_job_mode_isolate() {
+    let test_service_str = r#"
+    [Unit]
+    OnFailureJobMode = isolate
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.on_failure_job_mode,
+        crate::units::OnFailureJobMode::Isolate,
+    );
+}
+
+#[test]
+fn test_on_failure_job_mode_flush() {
+    let test_service_str = r#"
+    [Unit]
+    OnFailureJobMode = flush
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.on_failure_job_mode,
+        crate::units::OnFailureJobMode::Flush,
+    );
+}
+
+#[test]
+fn test_on_failure_job_mode_ignore_dependencies() {
+    let test_service_str = r#"
+    [Unit]
+    OnFailureJobMode = ignore-dependencies
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.on_failure_job_mode,
+        crate::units::OnFailureJobMode::IgnoreDependencies,
+    );
+}
+
+#[test]
+fn test_on_failure_job_mode_ignore_requirements() {
+    let test_service_str = r#"
+    [Unit]
+    OnFailureJobMode = ignore-requirements
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.on_failure_job_mode,
+        crate::units::OnFailureJobMode::IgnoreRequirements,
+    );
+}
+
+#[test]
+fn test_on_failure_job_mode_case_insensitive() {
+    let test_service_str = r#"
+    [Unit]
+    OnFailureJobMode = Replace-Irreversibly
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.on_failure_job_mode,
+        crate::units::OnFailureJobMode::ReplaceIrreversibly,
+        "OnFailureJobMode should be case insensitive"
+    );
+}
+
+#[test]
+fn test_on_failure_job_mode_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    OnFailureJobMode = isolate
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(
+        unit.common.unit.on_failure_job_mode,
+        crate::units::OnFailureJobMode::Isolate,
+        "OnFailureJobMode should survive unit conversion"
+    );
+}
+
+#[test]
+fn test_on_failure_with_job_mode() {
+    let test_service_str = r#"
+    [Unit]
+    OnFailure = failure-handler.service
+    OnFailureJobMode = fail
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.on_failure,
+        vec!["failure-handler.service"]
+    );
+    assert_eq!(
+        service.common.unit.on_failure_job_mode,
+        crate::units::OnFailureJobMode::Fail,
+    );
+}
+
+#[test]
+fn test_on_failure_job_mode_in_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    OnFailure = socket-failure.service
+    OnFailureJobMode = flush
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.common.unit.on_failure,
+        vec!["socket-failure.service"]
+    );
+    assert_eq!(
+        socket.common.unit.on_failure_job_mode,
+        crate::units::OnFailureJobMode::Flush,
+    );
+}
+
+#[test]
+fn test_on_failure_job_mode_in_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    OnFailureJobMode = ignore-dependencies
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        target.common.unit.on_failure_job_mode,
+        crate::units::OnFailureJobMode::IgnoreDependencies,
+    );
+}
+
+// ============================================================
 // ProtectProc= parsing tests
 // ============================================================
 
