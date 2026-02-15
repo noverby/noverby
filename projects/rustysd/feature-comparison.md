@@ -1892,8 +1892,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionVirtualization=">ConditionVirtualization=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and evaluated at activation time. Supports boolean (yes/no), category (vm/container), specific technology names, and ! negation. Detection via DMI, /proc, cgroup, and container marker files.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionHost=">ConditionHost=</a></td>
