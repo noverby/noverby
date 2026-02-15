@@ -25118,3 +25118,255 @@ fn test_protect_proc_in_socket_unit() {
         "ProtectProc should work in socket units"
     );
 }
+
+// ============================================================
+// X- vendor extension settings tests
+// ============================================================
+// systemd silently ignores settings prefixed with X- (vendor extensions).
+// rustysd should do the same — no "unsupported setting" warnings.
+
+#[test]
+fn test_x_vendor_extension_in_service_section_no_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    X-ReloadIfChanged = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "X- prefixed settings should be silently ignored, not cause errors"
+    );
+}
+
+#[test]
+fn test_x_vendor_extension_multiple_in_service_section() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    X-ReloadIfChanged = true
+    X-StopIfChanged = false
+    X-RestartIfChanged = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "Multiple X- prefixed settings should all be silently ignored"
+    );
+}
+
+#[test]
+fn test_x_vendor_extension_with_regular_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    Type = simple
+    Restart = always
+    X-ReloadIfChanged = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.srcv_type,
+        crate::units::ServiceType::Simple,
+        "Regular settings should still be parsed correctly alongside X- extensions"
+    );
+    assert_eq!(
+        service.srvc.restart,
+        crate::units::ServiceRestart::Always,
+        "Restart should still be parsed correctly alongside X- extensions"
+    );
+}
+
+#[test]
+fn test_x_vendor_extension_in_unit_section() {
+    let test_service_str = r#"
+    [Unit]
+    Description = Test service
+    X-SomeVendorSetting = value
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "X- prefixed settings in [Unit] section should be silently ignored"
+    );
+}
+
+#[test]
+fn test_x_vendor_extension_in_install_section() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    [Install]
+    WantedBy = multi-user.target
+    X-AssociatedUnit = foo.service
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.install.wanted_by,
+        vec!["multi-user.target".to_owned()],
+        "WantedBy should still parse correctly alongside X- extensions in [Install]"
+    );
+}
+
+#[test]
+fn test_x_vendor_extension_in_socket_section() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    X-CustomVendorOption = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+    assert!(
+        result.is_ok(),
+        "X- prefixed settings in [Socket] section should be silently ignored"
+    );
+}
+
+#[test]
+fn test_x_vendor_extension_section_in_service_unit() {
+    let test_service_str = r#"
+    [Unit]
+    Description = Test service
+    [Service]
+    ExecStart = /bin/myservice
+    [X-CustomSection]
+    SomeKey = SomeValue
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "X- prefixed sections should be silently ignored in service units"
+    );
+}
+
+#[test]
+fn test_x_vendor_extension_section_in_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    [X-VendorSection]
+    Foo = bar
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+    assert!(
+        result.is_ok(),
+        "X- prefixed sections should be silently ignored in socket units"
+    );
+}
+
+#[test]
+fn test_x_vendor_extension_section_in_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    Description = Test target
+    [X-NixOS]
+    ReloadIfChanged = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let result = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    );
+    assert!(
+        result.is_ok(),
+        "X- prefixed sections should be silently ignored in target units"
+    );
+}
+
+#[test]
+fn test_x_vendor_extension_nixos_reload_if_changed() {
+    // This is a real-world NixOS pattern that was causing warnings
+    let test_service_str = r#"
+    [Unit]
+    Description = NixOS managed service
+    [Service]
+    ExecStart = /bin/myservice
+    X-ReloadIfChanged = true
+    X-StopIfChanged = false
+    [Install]
+    WantedBy = multi-user.target
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    // Verify the regular settings are still parsed correctly
+    assert_eq!(
+        service.common.install.wanted_by,
+        vec!["multi-user.target".to_owned()],
+    );
+}
+
+#[test]
+fn test_x_vendor_extension_case_preserved() {
+    // Keys are uppercased during parsing, so X-Foo becomes X-FOO
+    // Make sure the X- prefix check works regardless of original casing
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    x-lowercased = value
+    X-UPPERCASED = value
+    X-MixedCase = value
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "X- prefixed settings should be ignored regardless of original casing"
+    );
+}
