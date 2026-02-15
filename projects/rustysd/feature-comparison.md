@@ -1150,8 +1150,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#RemainAfterExit=">RemainAfterExit=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Service stays active after clean exit when enabled</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#GuessMainPID=">GuessMainPID=</a></td>
