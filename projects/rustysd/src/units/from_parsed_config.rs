@@ -187,6 +187,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             working_directory: parsed.working_directory,
             state_directory: parsed.state_directory,
             runtime_directory: parsed.runtime_directory,
+            runtime_directory_preserve: parsed.runtime_directory_preserve,
             tty_path: parsed.tty_path,
             tty_reset: parsed.tty_reset,
             tty_vhangup: parsed.tty_vhangup,

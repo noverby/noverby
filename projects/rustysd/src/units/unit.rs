@@ -6,9 +6,9 @@ use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
     acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KeyringMode, KillMode,
     MemoryPressureWatch, NotifyKind, ProtectHome, ProtectSystem, ResourceLimit, RestrictNamespaces,
-    ServiceRestart, ServiceType, StandardInput, StatusStarted, StatusStopped, StdIoOption,
-    TasksMax, Timeout, UnitAction, UnitCondition, UnitId, UnitIdKind, UnitOperationError,
-    UnitOperationErrorReason, UnitStatus, UtmpMode,
+    RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput, StatusStarted,
+    StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition, UnitId, UnitIdKind,
+    UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode,
 };
 
 use std::sync::RwLock;
@@ -943,6 +943,12 @@ pub struct ExecConfig {
     /// RUNTIME_DIRECTORY environment variable is set to a colon-separated
     /// list of the absolute paths. Matches systemd.exec(5).
     pub runtime_directory: Vec<String>,
+    /// RuntimeDirectoryPreserve= — controls whether runtime directories
+    /// (created by `RuntimeDirectory=`) are removed when the service stops.
+    /// Can be `no` (default, always remove), `yes` (always preserve), or
+    /// `restart` (preserve across restarts, remove on full stop). Parsed and
+    /// stored; no runtime enforcement yet. See systemd.exec(5).
+    pub runtime_directory_preserve: RuntimeDirectoryPreserve,
     pub tty_path: Option<std::path::PathBuf>,
     /// TTYReset= — reset the TTY to sane defaults before use.
     /// Matches systemd: resets termios, keyboard mode, switches to text mode.
