@@ -444,6 +444,11 @@ pub struct ParsedExecSection {
     /// accumulate; an empty assignment resets the list. Parsed and stored;
     /// no runtime enforcement yet. See systemd.exec(5).
     pub capability_bounding_set: Vec<String>,
+    /// ProtectHome= — controls whether /home, /root, and /run/user are
+    /// accessible to the service. Can be `no` (default), `yes` (inaccessible),
+    /// `read-only`, or `tmpfs`. Parsed and stored; no runtime enforcement yet
+    /// (requires mount namespace support). See systemd.exec(5).
+    pub protect_home: ProtectHome,
 }
 
 /// The type of utmp/wtmp record to create for a service.
@@ -589,6 +594,30 @@ pub enum ProtectSystem {
 }
 
 impl Default for ProtectSystem {
+    fn default() -> Self {
+        Self::No
+    }
+}
+
+/// ProtectHome= — controls whether /home, /root, and /run/user are
+/// accessible to the service. See systemd.exec(5).
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub enum ProtectHome {
+    /// No protection (default). Directories are left accessible as normal.
+    No,
+    /// Make /home, /root, and /run/user inaccessible and empty for the
+    /// service's processes.
+    Yes,
+    /// Make /home, /root, and /run/user read-only for the service's
+    /// processes.
+    ReadOnly,
+    /// Mount a tmpfs file system on /home, /root, and /run/user for the
+    /// service's processes. Files or directories below these may be
+    /// created but are not visible to other processes.
+    Tmpfs,
+}
+
+impl Default for ProtectHome {
     fn default() -> Self {
         Self::No
     }
