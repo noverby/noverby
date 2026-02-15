@@ -1179,6 +1179,10 @@ pub struct ExecConfig {
     /// class is 4. Parsed and stored; no runtime enforcement yet.
     /// See systemd.exec(5).
     pub io_scheduling_priority: Option<u8>,
+    /// UMask= — sets the file mode creation mask (umask) for executed
+    /// processes. Takes an octal value (e.g. 0022, 0077). Defaults to 0022.
+    /// Parsed and stored; no runtime enforcement yet. See systemd.exec(5).
+    pub umask: Option<u32>,
 }
 
 #[cfg(target_os = "linux")]

@@ -234,6 +234,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             private_users: parsed.private_users,
             io_scheduling_class: parsed.io_scheduling_class,
             io_scheduling_priority: parsed.io_scheduling_priority,
+            umask: parsed.umask,
         })
     }
 }
