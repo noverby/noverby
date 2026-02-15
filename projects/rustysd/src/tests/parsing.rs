@@ -269,6 +269,241 @@ fn test_socket_working_directory_not_set() {
 }
 
 #[test]
+fn test_default_dependencies_defaults_to_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.default_dependencies,
+        "DefaultDependencies should default to true when not specified"
+    );
+}
+
+#[test]
+fn test_default_dependencies_explicit_yes() {
+    let test_service_str = r#"
+    [Unit]
+    DefaultDependencies = yes
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.default_dependencies,
+        "DefaultDependencies=yes should be true"
+    );
+}
+
+#[test]
+fn test_default_dependencies_explicit_no() {
+    let test_service_str = r#"
+    [Unit]
+    DefaultDependencies = no
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.common.unit.default_dependencies,
+        "DefaultDependencies=no should be false"
+    );
+}
+
+#[test]
+fn test_default_dependencies_explicit_true() {
+    let test_service_str = r#"
+    [Unit]
+    DefaultDependencies = true
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.default_dependencies,
+        "DefaultDependencies=true should be true"
+    );
+}
+
+#[test]
+fn test_default_dependencies_explicit_false() {
+    let test_service_str = r#"
+    [Unit]
+    DefaultDependencies = false
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.common.unit.default_dependencies,
+        "DefaultDependencies=false should be false"
+    );
+}
+
+#[test]
+fn test_default_dependencies_explicit_1() {
+    let test_service_str = r#"
+    [Unit]
+    DefaultDependencies = 1
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.default_dependencies,
+        "DefaultDependencies=1 should be true"
+    );
+}
+
+#[test]
+fn test_default_dependencies_explicit_0() {
+    let test_service_str = r#"
+    [Unit]
+    DefaultDependencies = 0
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.common.unit.default_dependencies,
+        "DefaultDependencies=0 should be false"
+    );
+}
+
+#[test]
+fn test_default_dependencies_target_defaults_to_true() {
+    let test_target_str = r#"
+    [Unit]
+    Description = Test target
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert!(
+        target.common.unit.default_dependencies,
+        "Target DefaultDependencies should default to true"
+    );
+}
+
+#[test]
+fn test_default_dependencies_target_explicit_no() {
+    let test_target_str = r#"
+    [Unit]
+    Description = Test target
+    DefaultDependencies = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert!(
+        !target.common.unit.default_dependencies,
+        "Target DefaultDependencies=no should be false"
+    );
+}
+
+#[test]
+fn test_default_dependencies_socket_defaults_to_true() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.common.unit.default_dependencies,
+        "Socket DefaultDependencies should default to true"
+    );
+}
+
+#[test]
+fn test_default_dependencies_socket_explicit_no() {
+    let test_socket_str = r#"
+    [Unit]
+    DefaultDependencies = no
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket.common.unit.default_dependencies,
+        "Socket DefaultDependencies=no should be false"
+    );
+}
+
+#[test]
 fn test_socket_parsing() {
     let descr = "This is a description";
     let unit_before1 = "unit_before2";
