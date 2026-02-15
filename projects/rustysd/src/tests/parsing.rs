@@ -34223,3 +34223,377 @@ fn test_device_no_unsupported_warning() {
         "Device should be in BindsTo= without being skipped"
     );
 }
+
+// ===============================================================
+// MaxConnections= and MaxConnectionsPerSource= socket setting tests
+// ===============================================================
+
+#[test]
+fn test_max_connections_defaults_to_64() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.max_connections, 64,
+        "MaxConnections should default to 64"
+    );
+}
+
+#[test]
+fn test_max_connections_explicit_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    MaxConnections = 128
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.max_connections, 128);
+}
+
+#[test]
+fn test_max_connections_zero() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    MaxConnections = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.max_connections, 0);
+}
+
+#[test]
+fn test_max_connections_empty_resets_to_default() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    MaxConnections =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.max_connections, 64,
+        "Empty MaxConnections= should reset to default 64"
+    );
+}
+
+#[test]
+fn test_max_connections_invalid_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    MaxConnections = notanumber
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_err(), "Invalid MaxConnections value should error");
+}
+
+#[test]
+fn test_max_connections_per_source_defaults_to_max_connections() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.max_connections_per_source, socket.sock.max_connections,
+        "MaxConnectionsPerSource should default to MaxConnections"
+    );
+}
+
+#[test]
+fn test_max_connections_per_source_defaults_to_explicit_max_connections() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    MaxConnections = 256
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.max_connections_per_source, 256,
+        "MaxConnectionsPerSource should default to the explicit MaxConnections value"
+    );
+}
+
+#[test]
+fn test_max_connections_per_source_explicit_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    MaxConnectionsPerSource = 32
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.max_connections_per_source, 32);
+}
+
+#[test]
+fn test_max_connections_per_source_zero() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    MaxConnectionsPerSource = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.max_connections_per_source, 0);
+}
+
+#[test]
+fn test_max_connections_per_source_empty_resets_to_max_connections() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    MaxConnections = 100
+    MaxConnectionsPerSource =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.max_connections_per_source, 100,
+        "Empty MaxConnectionsPerSource= should reset to MaxConnections value"
+    );
+}
+
+#[test]
+fn test_max_connections_per_source_invalid_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    MaxConnectionsPerSource = notanumber
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(
+        result.is_err(),
+        "Invalid MaxConnectionsPerSource value should error"
+    );
+}
+
+#[test]
+fn test_max_connections_both_set() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    MaxConnections = 512
+    MaxConnectionsPerSource = 16
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.max_connections, 512);
+    assert_eq!(socket.sock.max_connections_per_source, 16);
+}
+
+#[test]
+fn test_max_connections_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    MaxConnections = 200
+    MaxConnectionsPerSource = 10
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert_eq!(
+            sock.conf.max_connections, 200,
+            "MaxConnections should survive unit conversion"
+        );
+        assert_eq!(
+            sock.conf.max_connections_per_source, 10,
+            "MaxConnectionsPerSource should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_max_connections_default_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert_eq!(
+            sock.conf.max_connections, 64,
+            "Default MaxConnections (64) should survive unit conversion"
+        );
+        assert_eq!(
+            sock.conf.max_connections_per_source, 64,
+            "Default MaxConnectionsPerSource should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_max_connections_no_unsupported_warning() {
+    // Ensure that MaxConnections and MaxConnectionsPerSource no longer
+    // trigger "Ignoring unsupported setting in [Socket] section" warnings.
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    MaxConnections = 100
+    MaxConnectionsPerSource = 50
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    // If parsing succeeds and the values are correct, no warning was emitted
+    assert_eq!(socket.sock.max_connections, 100);
+    assert_eq!(socket.sock.max_connections_per_source, 50);
+}
+
+#[test]
+fn test_max_connections_with_whitespace() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    MaxConnections =   256
+    MaxConnectionsPerSource =   32
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.max_connections, 256,
+        "MaxConnections should handle whitespace"
+    );
+    assert_eq!(
+        socket.sock.max_connections_per_source, 32,
+        "MaxConnectionsPerSource should handle whitespace"
+    );
+}
+
+#[test]
+fn test_max_connections_large_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    MaxConnections = 1000000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.max_connections, 1_000_000);
+    assert_eq!(
+        socket.sock.max_connections_per_source, 1_000_000,
+        "MaxConnectionsPerSource should default to the large MaxConnections value"
+    );
+}
