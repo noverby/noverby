@@ -9053,3 +9053,250 @@ fn test_glob_match_multiple_stars() {
     assert!(crate::entrypoints::glob_match("a*b*c", "aXXbYYc"));
     assert!(!crate::entrypoints::glob_match("a*b*c", "aXXcYYb"));
 }
+
+#[test]
+fn test_unset_environment_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.unset_environment.is_empty());
+}
+
+#[test]
+fn test_unset_environment_single_variable_name() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UnsetEnvironment = FOO
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.unset_environment,
+        vec!["FOO".to_owned()]
+    );
+}
+
+#[test]
+fn test_unset_environment_multiple_variable_names() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UnsetEnvironment = FOO BAR BAZ
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.unset_environment,
+        vec!["FOO".to_owned(), "BAR".to_owned(), "BAZ".to_owned(),]
+    );
+}
+
+#[test]
+fn test_unset_environment_variable_assignment() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UnsetEnvironment = FOO=bar
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.unset_environment,
+        vec!["FOO=bar".to_owned()]
+    );
+}
+
+#[test]
+fn test_unset_environment_multiple_directives_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UnsetEnvironment = FOO
+    UnsetEnvironment = BAR
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.unset_environment,
+        vec!["FOO".to_owned(), "BAR".to_owned()]
+    );
+}
+
+#[test]
+fn test_unset_environment_empty_resets() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UnsetEnvironment = FOO BAR
+    UnsetEnvironment =
+    UnsetEnvironment = BAZ
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    // The empty assignment resets the list, so only BAZ remains
+    assert_eq!(
+        service.srvc.exec_section.unset_environment,
+        vec!["BAZ".to_owned()]
+    );
+}
+
+#[test]
+fn test_unset_environment_quoted_tokens() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UnsetEnvironment = "FOO=hello world" BAR
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.unset_environment,
+        vec!["FOO=hello world".to_owned(), "BAR".to_owned()]
+    );
+}
+
+#[test]
+fn test_unset_environment_mixed_names_and_assignments() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UnsetEnvironment = FOO BAR=value BAZ
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.unset_environment,
+        vec!["FOO".to_owned(), "BAR=value".to_owned(), "BAZ".to_owned(),]
+    );
+}
+
+#[test]
+fn test_unset_environment_no_unsupported_warning() {
+    // UnsetEnvironment= should be recognized and not trigger a warning
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UnsetEnvironment = FOO
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    // Verify the value is parsed correctly — if it showed up as an
+    // unsupported warning instead, the field would be empty.
+    assert_eq!(
+        service.srvc.exec_section.unset_environment,
+        vec!["FOO".to_owned()]
+    );
+}
+
+#[test]
+fn test_unset_environment_with_environment() {
+    // UnsetEnvironment= coexists with Environment= — both should be parsed
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Environment = FOO=bar BAZ=qux
+    UnsetEnvironment = FOO
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    // Environment= should still be parsed
+    assert!(service.srvc.exec_section.environment.is_some());
+    let env = service.srvc.exec_section.environment.as_ref().unwrap();
+    assert_eq!(
+        env.vars,
+        vec![
+            ("FOO".to_owned(), "bar".to_owned()),
+            ("BAZ".to_owned(), "qux".to_owned()),
+        ]
+    );
+    // UnsetEnvironment= should also be parsed
+    assert_eq!(
+        service.srvc.exec_section.unset_environment,
+        vec!["FOO".to_owned()]
+    );
+}
+
+#[test]
+fn test_unset_environment_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    UnsetEnvironment = FOO BAR
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.unset_environment,
+        vec!["FOO".to_owned(), "BAR".to_owned()]
+    );
+}

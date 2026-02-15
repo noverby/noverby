@@ -565,7 +565,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#UnsetEnvironment=">UnsetEnvironment=</a></td>
-  <td>❌</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
