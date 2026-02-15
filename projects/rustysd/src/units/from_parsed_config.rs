@@ -218,6 +218,10 @@ fn make_common_from_parsed(
     for name in unit.wants {
         wants.push(name.as_str().try_into()?);
     }
+    // Also= in [Install] is treated as a soft (wants) dependency
+    for name in install.also {
+        wants.push(name.as_str().try_into()?);
+    }
     let mut requires = Vec::new();
     for name in unit.requires {
         requires.push(name.as_str().try_into()?);
