@@ -1498,3 +1498,1006 @@ fn test_conflicts_chain_three_units() {
         "Conflicts should NOT be transitive: C should not be conflicted_by A"
     );
 }
+
+// ========================================================================
+// Tests for break_dependency_cycles
+// ========================================================================
+
+#[test]
+fn test_break_cycles_no_cycle() {
+    // A DAG with no cycles: break_dependency_cycles should return empty and not modify anything
+    let target_a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = A
+        Before = b.target
+        DefaultDependencies = no
+        "#,
+    );
+    let target_b = make_target(
+        "b.target",
+        r#"
+        [Unit]
+        Description = B
+        Before = c.target
+        DefaultDependencies = no
+        "#,
+    );
+    let target_c = make_target("c.target", &target_unit_str_with_default_deps("C", "no"));
+
+    let id_a = target_a.id.clone();
+    let id_b = target_b.id.clone();
+    let id_c = target_c.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target_a.id.clone(), target_a);
+    unit_table.insert(target_b.id.clone(), target_b);
+    unit_table.insert(target_c.id.clone(), target_c);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let broken = crate::units::break_dependency_cycles(&mut unit_table);
+    assert!(broken.is_empty(), "No cycles should be found in a DAG");
+
+    // Verify ordering is preserved
+    let a = unit_table.get(&id_a).unwrap();
+    assert!(a.common.dependencies.before.contains(&id_b));
+    let b = unit_table.get(&id_b).unwrap();
+    assert!(b.common.dependencies.before.contains(&id_c));
+    assert!(b.common.dependencies.after.contains(&id_a));
+    let c = unit_table.get(&id_c).unwrap();
+    assert!(c.common.dependencies.after.contains(&id_b));
+}
+
+#[test]
+fn test_break_cycles_simple_three_unit_cycle() {
+    // 1 -> 2 -> 3 -> 1 (cycle via After edges, which produce Before reverse edges)
+    let target1 = make_target(
+        "1.target",
+        r#"
+        [Unit]
+        Description = Target
+        After = 3.target
+        DefaultDependencies = no
+        "#,
+    );
+    let target2 = make_target(
+        "2.target",
+        r#"
+        [Unit]
+        Description = Target
+        After = 1.target
+        DefaultDependencies = no
+        "#,
+    );
+    let target3 = make_target(
+        "3.target",
+        r#"
+        [Unit]
+        Description = Target
+        After = 2.target
+        DefaultDependencies = no
+        "#,
+    );
+
+    let id1 = target1.id.clone();
+    let id2 = target2.id.clone();
+    let id3 = target3.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target1.id.clone(), target1);
+    unit_table.insert(target2.id.clone(), target2);
+    unit_table.insert(target3.id.clone(), target3);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    // Confirm cycle exists before breaking
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_err(),
+        "Cycle should be detected before breaking"
+    );
+
+    let broken = crate::units::break_dependency_cycles(&mut unit_table);
+    assert!(
+        !broken.is_empty(),
+        "Should have found and broken at least one cycle"
+    );
+
+    // After breaking, all three IDs should appear in the broken cycles
+    let all_ids_in_cycles: std::collections::HashSet<_> =
+        broken.iter().flatten().cloned().collect();
+    assert!(all_ids_in_cycles.contains(&id1));
+    assert!(all_ids_in_cycles.contains(&id2));
+    assert!(all_ids_in_cycles.contains(&id3));
+
+    // After breaking, the graph should be a valid DAG
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_ok(),
+        "Graph should be a DAG after breaking cycles"
+    );
+}
+
+#[test]
+fn test_break_cycles_two_unit_cycle() {
+    // Minimal cycle: A before B, B before A
+    let target_a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = A
+        Before = b.target
+        After = b.target
+        DefaultDependencies = no
+        "#,
+    );
+    let target_b = make_target(
+        "b.target",
+        r#"
+        [Unit]
+        Description = B
+        DefaultDependencies = no
+        "#,
+    );
+
+    let id_a = target_a.id.clone();
+    let id_b = target_b.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target_a.id.clone(), target_a);
+    unit_table.insert(target_b.id.clone(), target_b);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_err(),
+        "Should detect the 2-unit cycle"
+    );
+
+    let broken = crate::units::break_dependency_cycles(&mut unit_table);
+    assert!(!broken.is_empty(), "Should break the 2-unit cycle");
+
+    let all_ids_in_cycles: std::collections::HashSet<_> =
+        broken.iter().flatten().cloned().collect();
+    assert!(all_ids_in_cycles.contains(&id_a));
+    assert!(all_ids_in_cycles.contains(&id_b));
+
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_ok(),
+        "Graph should be a DAG after breaking the 2-unit cycle"
+    );
+}
+
+#[test]
+fn test_break_cycles_self_loop() {
+    // A unit with Before and After pointing to itself
+    let target_a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = A
+        Before = a.target
+        After = a.target
+        DefaultDependencies = no
+        "#,
+    );
+
+    let id_a = target_a.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target_a.id.clone(), target_a);
+
+    // Don't call fill_dependencies since self-referencing won't resolve to another unit,
+    // but we set it up directly
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let _broken = crate::units::break_dependency_cycles(&mut unit_table);
+
+    // After breaking, the self-loop edges should be removed
+    let a = unit_table.get(&id_a).unwrap();
+    assert!(
+        !a.common.dependencies.before.contains(&id_a),
+        "Self-loop before edge should be removed"
+    );
+    assert!(
+        !a.common.dependencies.after.contains(&id_a),
+        "Self-loop after edge should be removed"
+    );
+
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_ok(),
+        "Graph should be a DAG after breaking self-loop"
+    );
+}
+
+#[test]
+fn test_break_cycles_large_cycle() {
+    // 5-unit cycle: 1 -> 2 -> 3 -> 4 -> 5 -> 1
+    let t1 = make_target(
+        "1.target",
+        r#"
+        [Unit]
+        Description = 1
+        After = 5.target
+        DefaultDependencies = no
+        "#,
+    );
+    let t2 = make_target(
+        "2.target",
+        r#"
+        [Unit]
+        Description = 2
+        After = 1.target
+        DefaultDependencies = no
+        "#,
+    );
+    let t3 = make_target(
+        "3.target",
+        r#"
+        [Unit]
+        Description = 3
+        After = 2.target
+        DefaultDependencies = no
+        "#,
+    );
+    let t4 = make_target(
+        "4.target",
+        r#"
+        [Unit]
+        Description = 4
+        After = 3.target
+        DefaultDependencies = no
+        "#,
+    );
+    let t5 = make_target(
+        "5.target",
+        r#"
+        [Unit]
+        Description = 5
+        After = 4.target
+        DefaultDependencies = no
+        "#,
+    );
+
+    let id1 = t1.id.clone();
+    let id2 = t2.id.clone();
+    let id3 = t3.id.clone();
+    let id4 = t4.id.clone();
+    let id5 = t5.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(t1.id.clone(), t1);
+    unit_table.insert(t2.id.clone(), t2);
+    unit_table.insert(t3.id.clone(), t3);
+    unit_table.insert(t4.id.clone(), t4);
+    unit_table.insert(t5.id.clone(), t5);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_err(),
+        "Should detect the 5-unit cycle"
+    );
+
+    let broken = crate::units::break_dependency_cycles(&mut unit_table);
+    assert!(!broken.is_empty(), "Should break the 5-unit cycle");
+
+    let all_ids_in_cycles: std::collections::HashSet<_> =
+        broken.iter().flatten().cloned().collect();
+    assert!(all_ids_in_cycles.contains(&id1));
+    assert!(all_ids_in_cycles.contains(&id2));
+    assert!(all_ids_in_cycles.contains(&id3));
+    assert!(all_ids_in_cycles.contains(&id4));
+    assert!(all_ids_in_cycles.contains(&id5));
+
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_ok(),
+        "Graph should be a DAG after breaking the 5-unit cycle"
+    );
+}
+
+#[test]
+fn test_break_cycles_two_independent_cycles() {
+    // Two disjoint cycles: {a,b,c} and {x,y,z}
+    // Cycle 1: a -> b -> c -> a
+    let a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = A
+        After = c.target
+        DefaultDependencies = no
+        "#,
+    );
+    let b = make_target(
+        "b.target",
+        r#"
+        [Unit]
+        Description = B
+        After = a.target
+        DefaultDependencies = no
+        "#,
+    );
+    let c = make_target(
+        "c.target",
+        r#"
+        [Unit]
+        Description = C
+        After = b.target
+        DefaultDependencies = no
+        "#,
+    );
+    // Cycle 2: x -> y -> z -> x
+    let x = make_target(
+        "x.target",
+        r#"
+        [Unit]
+        Description = X
+        After = z.target
+        DefaultDependencies = no
+        "#,
+    );
+    let y = make_target(
+        "y.target",
+        r#"
+        [Unit]
+        Description = Y
+        After = x.target
+        DefaultDependencies = no
+        "#,
+    );
+    let z = make_target(
+        "z.target",
+        r#"
+        [Unit]
+        Description = Z
+        After = y.target
+        DefaultDependencies = no
+        "#,
+    );
+
+    let id_a = a.id.clone();
+    let id_b = b.id.clone();
+    let id_c = c.id.clone();
+    let id_x = x.id.clone();
+    let id_y = y.id.clone();
+    let id_z = z.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(a.id.clone(), a);
+    unit_table.insert(b.id.clone(), b);
+    unit_table.insert(c.id.clone(), c);
+    unit_table.insert(x.id.clone(), x);
+    unit_table.insert(y.id.clone(), y);
+    unit_table.insert(z.id.clone(), z);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_err(),
+        "Should detect cycles before breaking"
+    );
+
+    let broken = crate::units::break_dependency_cycles(&mut unit_table);
+    assert!(!broken.is_empty(), "Should break both cycles");
+
+    // All six IDs should appear in the broken cycles
+    let all_ids_in_cycles: std::collections::HashSet<_> =
+        broken.iter().flatten().cloned().collect();
+    assert!(all_ids_in_cycles.contains(&id_a));
+    assert!(all_ids_in_cycles.contains(&id_b));
+    assert!(all_ids_in_cycles.contains(&id_c));
+    assert!(all_ids_in_cycles.contains(&id_x));
+    assert!(all_ids_in_cycles.contains(&id_y));
+    assert!(all_ids_in_cycles.contains(&id_z));
+
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_ok(),
+        "Graph should be a DAG after breaking both cycles"
+    );
+}
+
+#[test]
+fn test_break_cycles_preserves_acyclic_ordering() {
+    // Mix of cyclic and acyclic units:
+    // Acyclic chain: p -> q (p before q)
+    // Cycle: a -> b -> c -> a
+    // The acyclic ordering must be preserved after breaking.
+    let p = make_target(
+        "p.target",
+        r#"
+        [Unit]
+        Description = P
+        Before = q.target
+        DefaultDependencies = no
+        "#,
+    );
+    let q = make_target("q.target", &target_unit_str_with_default_deps("Q", "no"));
+    // Cycle
+    let a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = A
+        After = c.target
+        DefaultDependencies = no
+        "#,
+    );
+    let b = make_target(
+        "b.target",
+        r#"
+        [Unit]
+        Description = B
+        After = a.target
+        DefaultDependencies = no
+        "#,
+    );
+    let c = make_target(
+        "c.target",
+        r#"
+        [Unit]
+        Description = C
+        After = b.target
+        DefaultDependencies = no
+        "#,
+    );
+
+    let id_p = p.id.clone();
+    let id_q = q.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(p.id.clone(), p);
+    unit_table.insert(q.id.clone(), q);
+    unit_table.insert(a.id.clone(), a);
+    unit_table.insert(b.id.clone(), b);
+    unit_table.insert(c.id.clone(), c);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let broken = crate::units::break_dependency_cycles(&mut unit_table);
+    assert!(!broken.is_empty(), "Should break the cycle");
+
+    // Acyclic ordering p -> q must still be intact
+    let p_unit = unit_table.get(&id_p).unwrap();
+    assert!(
+        p_unit.common.dependencies.before.contains(&id_q),
+        "Acyclic Before edge p -> q should be preserved"
+    );
+    let q_unit = unit_table.get(&id_q).unwrap();
+    assert!(
+        q_unit.common.dependencies.after.contains(&id_p),
+        "Acyclic After edge q -> p should be preserved"
+    );
+
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_ok(),
+        "Graph should be a DAG after breaking cycles"
+    );
+}
+
+#[test]
+fn test_break_cycles_preserves_non_ordering_deps() {
+    // A cycle between two units that also have Wants/Requires/Conflicts.
+    // Breaking the cycle should only remove Before/After edges, not other deps.
+    let svc_a = make_service(
+        "a.service",
+        r#"
+        [Unit]
+        Description = A
+        Wants = b.service
+        Requires = b.service
+        Conflicts = b.service
+        Before = b.service
+        After = b.service
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+    let svc_b = make_service(
+        "b.service",
+        r#"
+        [Unit]
+        Description = B
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let id_a = svc_a.id.clone();
+    let id_b = svc_b.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(svc_a.id.clone(), svc_a);
+    unit_table.insert(svc_b.id.clone(), svc_b);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let broken = crate::units::break_dependency_cycles(&mut unit_table);
+    assert!(!broken.is_empty(), "Should break the cycle");
+
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_ok(),
+        "Graph should be a DAG after breaking"
+    );
+
+    // Non-ordering deps must be preserved
+    let a = unit_table.get(&id_a).unwrap();
+    assert!(
+        a.common.dependencies.wants.contains(&id_b),
+        "Wants should be preserved after cycle breaking"
+    );
+    assert!(
+        a.common.dependencies.requires.contains(&id_b),
+        "Requires should be preserved after cycle breaking"
+    );
+    assert!(
+        a.common.dependencies.conflicts.contains(&id_b),
+        "Conflicts should be preserved after cycle breaking"
+    );
+}
+
+#[test]
+fn test_break_cycles_removes_both_before_and_after_edges() {
+    // Verify that when a cycle is broken, both the Before edge on the source unit
+    // and the corresponding After edge on the destination unit are removed.
+    let target_a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = A
+        After = b.target
+        DefaultDependencies = no
+        "#,
+    );
+    let target_b = make_target(
+        "b.target",
+        r#"
+        [Unit]
+        Description = B
+        After = a.target
+        DefaultDependencies = no
+        "#,
+    );
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target_a.id.clone(), target_a);
+    unit_table.insert(target_b.id.clone(), target_b);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    // Before breaking: a has before=[b], after=[b]; b has before=[a], after=[a]
+    // (fill_dependencies makes the reverse edges)
+    let broken = crate::units::break_dependency_cycles(&mut unit_table);
+    assert!(!broken.is_empty());
+
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_ok(),
+        "Graph should be a DAG after breaking"
+    );
+
+    // One direction should remain and the other should be removed.
+    // Verify consistency: for every Before edge X->Y, Y must have After edge Y->X, and vice versa.
+    for unit in unit_table.values() {
+        for before_id in &unit.common.dependencies.before {
+            if let Some(target_unit) = unit_table.get(before_id) {
+                assert!(
+                    target_unit.common.dependencies.after.contains(&unit.id),
+                    "Before edge {}->{} has no matching After edge",
+                    unit.id,
+                    before_id
+                );
+            }
+        }
+        for after_id in &unit.common.dependencies.after {
+            if let Some(source_unit) = unit_table.get(after_id) {
+                assert!(
+                    source_unit.common.dependencies.before.contains(&unit.id),
+                    "After edge {}->{} has no matching Before edge",
+                    unit.id,
+                    after_id
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_break_cycles_returns_cycle_members() {
+    // Verify that the returned Vec<Vec<UnitId>> contains exactly the units in each cycle
+    let a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = A
+        After = c.target
+        DefaultDependencies = no
+        "#,
+    );
+    let b = make_target(
+        "b.target",
+        r#"
+        [Unit]
+        Description = B
+        After = a.target
+        DefaultDependencies = no
+        "#,
+    );
+    let c = make_target(
+        "c.target",
+        r#"
+        [Unit]
+        Description = C
+        After = b.target
+        DefaultDependencies = no
+        "#,
+    );
+    // d is not part of any cycle
+    let d = make_target("d.target", &target_unit_str_with_default_deps("D", "no"));
+
+    let id_a = a.id.clone();
+    let id_b = b.id.clone();
+    let id_c = c.id.clone();
+    let id_d = d.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(a.id.clone(), a);
+    unit_table.insert(b.id.clone(), b);
+    unit_table.insert(c.id.clone(), c);
+    unit_table.insert(d.id.clone(), d);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let broken = crate::units::break_dependency_cycles(&mut unit_table);
+
+    let all_ids_in_cycles: std::collections::HashSet<_> =
+        broken.iter().flatten().cloned().collect();
+
+    // The cycle members should be present
+    assert!(all_ids_in_cycles.contains(&id_a));
+    assert!(all_ids_in_cycles.contains(&id_b));
+    assert!(all_ids_in_cycles.contains(&id_c));
+
+    // The non-cycle member should NOT appear in any broken cycle
+    assert!(
+        !all_ids_in_cycles.contains(&id_d),
+        "Non-cyclic unit d should not appear in broken cycles"
+    );
+}
+
+#[test]
+fn test_break_cycles_service_target_mixed_cycle() {
+    // Cycle across different unit types: service -> target -> service
+    let svc = make_service(
+        "app.service",
+        r#"
+        [Unit]
+        Description = App
+        Before = setup.target
+        After = setup.target
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+    let tgt = make_target(
+        "setup.target",
+        &target_unit_str_with_default_deps("Setup", "no"),
+    );
+
+    let svc_id = svc.id.clone();
+    let tgt_id = tgt.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(svc.id.clone(), svc);
+    unit_table.insert(tgt.id.clone(), tgt);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_err(),
+        "Should detect the cross-type cycle"
+    );
+
+    let broken = crate::units::break_dependency_cycles(&mut unit_table);
+    assert!(!broken.is_empty(), "Should break the cross-type cycle");
+
+    let all_ids_in_cycles: std::collections::HashSet<_> =
+        broken.iter().flatten().cloned().collect();
+    assert!(all_ids_in_cycles.contains(&svc_id));
+    assert!(all_ids_in_cycles.contains(&tgt_id));
+
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_ok(),
+        "Graph should be a DAG after breaking cross-type cycle"
+    );
+}
+
+#[test]
+fn test_break_cycles_finds_real_cycle_not_fake_dump() {
+    // Regression test: previously, when no node had in-degree 0, the cycle
+    // detection would dump ALL remaining nodes from a HashSet as a single
+    // "cycle" in arbitrary order. The cycle-breaker would then try to remove
+    // an edge between two arbitrary nodes that might not even be connected,
+    // causing an infinite loop (the "spam" bug).
+    //
+    // This test sets up a chain with a real cycle embedded in it:
+    //   a -> b -> c -> d -> e -> f -> c  (cycle is c -> d -> e -> f -> c)
+    // The fix should find the actual cycle path, not dump all 6 nodes.
+    let a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = A
+        Before = b.target
+        DefaultDependencies = no
+        "#,
+    );
+    let b = make_target(
+        "b.target",
+        r#"
+        [Unit]
+        Description = B
+        Before = c.target
+        After = a.target
+        DefaultDependencies = no
+        "#,
+    );
+    let c = make_target(
+        "c.target",
+        r#"
+        [Unit]
+        Description = C
+        Before = d.target
+        After = b.target
+        After = f.target
+        DefaultDependencies = no
+        "#,
+    );
+    let d = make_target(
+        "d.target",
+        r#"
+        [Unit]
+        Description = D
+        Before = e.target
+        After = c.target
+        DefaultDependencies = no
+        "#,
+    );
+    let e = make_target(
+        "e.target",
+        r#"
+        [Unit]
+        Description = E
+        Before = f.target
+        After = d.target
+        DefaultDependencies = no
+        "#,
+    );
+    let f = make_target(
+        "f.target",
+        r#"
+        [Unit]
+        Description = F
+        Before = c.target
+        After = e.target
+        DefaultDependencies = no
+        "#,
+    );
+
+    let id_a = a.id.clone();
+    let id_b = b.id.clone();
+    let id_c = c.id.clone();
+    let id_d = d.id.clone();
+    let id_e = e.id.clone();
+    let id_f = f.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(a.id.clone(), a);
+    unit_table.insert(b.id.clone(), b);
+    unit_table.insert(c.id.clone(), c);
+    unit_table.insert(d.id.clone(), d);
+    unit_table.insert(e.id.clone(), e);
+    unit_table.insert(f.id.clone(), f);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    // Confirm cycle exists
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_err(),
+        "Cycle should be detected"
+    );
+
+    let broken = crate::units::break_dependency_cycles(&mut unit_table);
+    assert!(
+        !broken.is_empty(),
+        "Should have found and broken at least one cycle"
+    );
+
+    // The cycle members should be a subset of {c, d, e, f} — a and b are not in any cycle
+    let all_ids_in_cycles: std::collections::HashSet<_> =
+        broken.iter().flatten().cloned().collect();
+    assert!(
+        !all_ids_in_cycles.contains(&id_a),
+        "a.target is not part of any cycle"
+    );
+    assert!(
+        !all_ids_in_cycles.contains(&id_b),
+        "b.target is not part of any cycle"
+    );
+    // At least some of the real cycle members should be present
+    let cycle_members_found = [&id_c, &id_d, &id_e, &id_f]
+        .iter()
+        .filter(|id| all_ids_in_cycles.contains(id))
+        .count();
+    assert!(
+        cycle_members_found >= 2,
+        "At least 2 of the real cycle members should appear in broken cycles, found {}",
+        cycle_members_found
+    );
+
+    // After breaking, the graph should be a valid DAG
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_ok(),
+        "Graph should be a DAG after breaking cycles"
+    );
+}
+
+#[test]
+fn test_cycle_detection_ignores_nonexistent_after_deps() {
+    // Regression test: if a unit has After= referencing a unit that doesn't
+    // exist in the table, the in-degree calculation should ignore it.
+    // Previously, non-existent deps were counted, making in-degree > 0 for
+    // all nodes, which triggered the fallback that dumped everything as a
+    // "cycle" and caused an infinite loop.
+    let svc = make_service(
+        "myapp.service",
+        r#"
+        [Unit]
+        Description = My App
+        After = nonexistent.service
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+    let tgt = make_target(
+        "default.target",
+        r#"
+        [Unit]
+        Description = Default
+        DefaultDependencies = no
+        "#,
+    );
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(svc.id.clone(), svc);
+    unit_table.insert(tgt.id.clone(), tgt);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    // There is no cycle — the non-existent After= dep should be ignored
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_ok(),
+        "Non-existent After= dependency should not cause a false cycle"
+    );
+
+    // break_dependency_cycles should also complete without hanging
+    let broken = crate::units::break_dependency_cycles(&mut unit_table);
+    assert!(
+        broken.is_empty(),
+        "No cycles should be found when After= references a non-existent unit"
+    );
+}
+
+#[test]
+fn test_cycle_detection_many_nodes_one_cycle() {
+    // Stress test: 10-node chain with a cycle at the end.
+    // Ensures the DFS-based cycle finder scales and doesn't
+    // exhibit O(n!) behavior or infinite loops.
+    //
+    // Chain: n1 -> n2 -> n3 -> ... -> n8 -> n9 -> n10 -> n8 (cycle: n8 -> n9 -> n10 -> n8)
+    let names: Vec<String> = (1..=10).map(|i| format!("n{}.target", i)).collect();
+
+    let mut units = Vec::new();
+    for i in 0..10 {
+        let mut before_str = String::new();
+        let mut after_str = String::new();
+
+        // Chain: each node is Before the next
+        if i < 9 {
+            before_str = format!("Before = {}", names[i + 1]);
+        }
+        if i > 0 {
+            after_str = format!("After = {}", names[i - 1]);
+        }
+        // Close the cycle: n10 (index 9) is Before n8 (index 7)
+        if i == 9 {
+            before_str = format!("Before = {}", names[7]);
+        }
+        // n8 (index 7) also has After = n10
+        if i == 7 {
+            after_str = format!("{}\nAfter = {}", after_str, names[9]);
+        }
+
+        let unit_str = format!(
+            r#"
+            [Unit]
+            Description = Node {}
+            {}
+            {}
+            DefaultDependencies = no
+            "#,
+            i + 1,
+            before_str,
+            after_str
+        );
+
+        units.push(make_target(&names[i], &unit_str));
+    }
+
+    let mut unit_table = std::collections::HashMap::new();
+    for u in units {
+        unit_table.insert(u.id.clone(), u);
+    }
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_err(),
+        "Cycle should be detected in the 10-node graph"
+    );
+
+    let broken = crate::units::break_dependency_cycles(&mut unit_table);
+    assert!(
+        !broken.is_empty(),
+        "Should have broken at least one cycle in the 10-node graph"
+    );
+
+    assert!(
+        crate::units::sanity_check_dependencies(&unit_table).is_ok(),
+        "Graph should be a DAG after breaking cycles in the 10-node graph"
+    );
+}
