@@ -33860,3 +33860,366 @@ fn test_memory_min_with_whitespace() {
         "MemoryMin with extra whitespace should still parse correctly"
     );
 }
+
+// ===============================================================
+// Device unit type support tests
+// ===============================================================
+
+#[test]
+fn test_device_unit_id_conversion() {
+    use std::convert::TryInto;
+
+    let id: Result<crate::units::UnitId, _> =
+        <&str as TryInto<crate::units::UnitId>>::try_into("dev-ttyS0.device");
+    assert!(id.is_ok());
+    let id = id.unwrap();
+    assert_eq!(id.name, "dev-ttyS0.device");
+    assert_eq!(id.kind, crate::units::UnitIdKind::Device);
+}
+
+#[test]
+fn test_device_unit_id_sda() {
+    use std::convert::TryInto;
+
+    let id: crate::units::UnitId = "dev-sda.device".try_into().unwrap();
+    assert_eq!(id.name, "dev-sda.device");
+    assert_eq!(id.kind, crate::units::UnitIdKind::Device);
+}
+
+#[test]
+fn test_device_unit_id_with_specifier() {
+    use std::convert::TryInto;
+
+    let id: crate::units::UnitId = "dev-%i.device".try_into().unwrap();
+    assert_eq!(id.name, "dev-%i.device");
+    assert_eq!(id.kind, crate::units::UnitIdKind::Device);
+}
+
+#[test]
+fn test_device_unit_id_nested_path() {
+    use std::convert::TryInto;
+
+    let id: crate::units::UnitId = "sys-subsystem-net-devices-eth0.device".try_into().unwrap();
+    assert_eq!(id.name, "sys-subsystem-net-devices-eth0.device");
+    assert_eq!(id.kind, crate::units::UnitIdKind::Device);
+}
+
+#[test]
+fn test_device_in_after_dependency() {
+    let test_service_str = r#"
+    [Unit]
+    After = dev-ttyS0.device
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.after,
+        vec!["dev-ttyS0.device".to_owned()]
+    );
+}
+
+#[test]
+fn test_device_in_requires_dependency() {
+    let test_service_str = r#"
+    [Unit]
+    Requires = dev-sda.device
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.requires,
+        vec!["dev-sda.device".to_owned()]
+    );
+}
+
+#[test]
+fn test_device_in_wants_dependency() {
+    let test_service_str = r#"
+    [Unit]
+    Wants = dev-ttyUSB0.device
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.wants,
+        vec!["dev-ttyUSB0.device".to_owned()]
+    );
+}
+
+#[test]
+fn test_device_in_binds_to_dependency() {
+    let test_service_str = r#"
+    [Unit]
+    BindsTo = dev-%i.device
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.binds_to,
+        vec!["dev-%i.device".to_owned()]
+    );
+}
+
+#[test]
+fn test_device_in_after_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    After = dev-ttyS0.device
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    let device_id = crate::units::UnitId {
+        name: "dev-ttyS0.device".to_owned(),
+        kind: crate::units::UnitIdKind::Device,
+    };
+
+    assert!(
+        unit.common.dependencies.after.contains(&device_id),
+        "Device unit should be preserved in After= after unit conversion"
+    );
+}
+
+#[test]
+fn test_device_in_requires_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    Requires = dev-sda.device
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    let device_id = crate::units::UnitId {
+        name: "dev-sda.device".to_owned(),
+        kind: crate::units::UnitIdKind::Device,
+    };
+
+    assert!(
+        unit.common.dependencies.requires.contains(&device_id),
+        "Device unit should be preserved in Requires= after unit conversion"
+    );
+}
+
+#[test]
+fn test_device_in_binds_to_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    BindsTo = dev-%i.device
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    let device_id = crate::units::UnitId {
+        name: "dev-%i.device".to_owned(),
+        kind: crate::units::UnitIdKind::Device,
+    };
+
+    assert!(
+        unit.common.dependencies.binds_to.contains(&device_id),
+        "Device unit should be preserved in BindsTo= after unit conversion"
+    );
+}
+
+#[test]
+fn test_device_in_refs_by_name_after_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    After = dev-ttyS0.device
+    Requires = dev-sda.device
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    let tty_device_id = crate::units::UnitId {
+        name: "dev-ttyS0.device".to_owned(),
+        kind: crate::units::UnitIdKind::Device,
+    };
+    let sda_device_id = crate::units::UnitId {
+        name: "dev-sda.device".to_owned(),
+        kind: crate::units::UnitIdKind::Device,
+    };
+
+    assert!(
+        unit.common.unit.refs_by_name.contains(&tty_device_id),
+        "Device unit from After= should appear in refs_by_name"
+    );
+    assert!(
+        unit.common.unit.refs_by_name.contains(&sda_device_id),
+        "Device unit from Requires= should appear in refs_by_name"
+    );
+}
+
+#[test]
+fn test_device_mixed_with_other_unit_types() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    After = dev-ttyS0.device -.mount user.slice network.target
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    let device_id = crate::units::UnitId {
+        name: "dev-ttyS0.device".to_owned(),
+        kind: crate::units::UnitIdKind::Device,
+    };
+    let mount_id = crate::units::UnitId {
+        name: "-.mount".to_owned(),
+        kind: crate::units::UnitIdKind::Mount,
+    };
+    let slice_id = crate::units::UnitId {
+        name: "user.slice".to_owned(),
+        kind: crate::units::UnitIdKind::Slice,
+    };
+    let target_id = crate::units::UnitId {
+        name: "network.target".to_owned(),
+        kind: crate::units::UnitIdKind::Target,
+    };
+
+    assert!(
+        unit.common.dependencies.after.contains(&device_id),
+        "Device unit should be in After="
+    );
+    assert!(
+        unit.common.dependencies.after.contains(&mount_id),
+        "Mount unit should be in After="
+    );
+    assert!(
+        unit.common.dependencies.after.contains(&slice_id),
+        "Slice unit should be in After="
+    );
+    assert!(
+        unit.common.dependencies.after.contains(&target_id),
+        "Target unit should be in After="
+    );
+}
+
+#[test]
+fn test_device_no_unsupported_warning() {
+    // Ensure that device units in dependency lists no longer trigger
+    // "Skipping unsupported unit type" warnings.
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    After = dev-%i.device
+    BindsTo = dev-%i.device
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    // If the conversion succeeds and the device is in the dependency lists,
+    // no warning was emitted.
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    let device_id = crate::units::UnitId {
+        name: "dev-%i.device".to_owned(),
+        kind: crate::units::UnitIdKind::Device,
+    };
+
+    assert!(
+        unit.common.dependencies.after.contains(&device_id),
+        "Device should be in After= without being skipped"
+    );
+    assert!(
+        unit.common.dependencies.binds_to.contains(&device_id),
+        "Device should be in BindsTo= without being skipped"
+    );
+}

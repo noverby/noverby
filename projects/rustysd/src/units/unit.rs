@@ -382,6 +382,9 @@ impl Unit {
     pub const fn is_mount(&self) -> bool {
         matches!(self.id.kind, UnitIdKind::Mount)
     }
+    pub const fn is_device(&self) -> bool {
+        matches!(self.id.kind, UnitIdKind::Device)
+    }
 
     pub fn name_without_suffix(&self) -> String {
         let split: Vec<_> = self.id.name.split('.').collect();
