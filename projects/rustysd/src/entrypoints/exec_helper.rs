@@ -122,20 +122,27 @@ fn setup_stdin(config: &ExecHelperConfig) {
                 }
             };
 
-            // For tty-force, steal the TTY from whatever process currently owns it
-            // by using TIOCNOTTY on the current controlling terminal first,
-            // then use vhangup after acquiring.
-            if config.stdin_option == StandardInput::TtyForce {
-                // Become session leader so we can acquire a controlling terminal
-                unsafe {
-                    libc::setsid();
+            // Become session leader so we can acquire a controlling terminal.
+            // This is required for ALL tty modes, not just tty-force.
+            // Without being a session leader, TIOCSCTTY will fail and the
+            // shell won't have a controlling terminal (no job control, no
+            // signals, etc).
+            //
+            // Note: setsid() may fail with EPERM if we are already a session
+            // leader (e.g. fork_child already called setsid() for us). That's
+            // fine — we just need to BE a session leader, not create a new one.
+            unsafe {
+                let ret = libc::setsid();
+                if ret == -1 {
+                    let err = std::io::Error::last_os_error();
+                    // EPERM means we're already a session leader — that's OK.
+                    if err.raw_os_error() != Some(libc::EPERM) {
+                        eprintln!("[EXEC_HELPER {}] setsid() failed: {}", config.name, err);
+                    }
                 }
             }
 
-            let mut flags = libc::O_RDWR | libc::O_NOCTTY;
-            if config.stdin_option == StandardInput::TtyFail {
-                flags |= libc::O_EXCL;
-            }
+            let flags = libc::O_RDWR | libc::O_NOCTTY;
 
             let tty_fd = unsafe { libc::open(tty_path_cstr.as_ptr(), flags) };
             if tty_fd < 0 {
@@ -162,10 +169,30 @@ fn setup_stdin(config: &ExecHelperConfig) {
                 return;
             }
 
-            if config.stdin_option == StandardInput::TtyForce {
-                // Make this TTY our controlling terminal
-                unsafe {
-                    libc::ioctl(tty_fd, libc::TIOCSCTTY, 1);
+            // Make this TTY our controlling terminal.
+            // For tty-force, pass 1 to steal the TTY even if another session owns it.
+            // For tty/tty-fail, pass 0 which will fail if another session owns it.
+            // This matches systemd's behavior where all tty modes acquire a
+            // controlling terminal — they only differ in how conflicts are handled.
+            let force_arg: libc::c_int = if config.stdin_option == StandardInput::TtyForce {
+                1
+            } else {
+                0
+            };
+            unsafe {
+                let ret = libc::ioctl(tty_fd, libc::TIOCSCTTY, force_arg);
+                if ret < 0 {
+                    let err = std::io::Error::last_os_error();
+                    eprintln!(
+                        "[EXEC_HELPER {}] Failed to acquire controlling terminal {:?}: {}",
+                        config.name, tty_path, err
+                    );
+                    if config.stdin_option == StandardInput::TtyFail {
+                        libc::close(tty_fd);
+                        std::process::exit(1);
+                    }
+                    // For tty/tty-force, continue anyway — the fd is still usable
+                    // for I/O even without being the controlling terminal.
                 }
             }
 
