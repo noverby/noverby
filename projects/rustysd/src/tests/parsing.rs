@@ -5669,3 +5669,308 @@ fn test_no_service_section_defaults_actions_to_none() {
         crate::units::UnitAction::None,
     );
 }
+
+// ============================================================
+// Alias= parsing tests
+// ============================================================
+
+#[test]
+fn test_alias_empty_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.install.alias.is_empty(),
+        "Alias should be empty when not specified"
+    );
+}
+
+#[test]
+fn test_alias_single() {
+    let test_service_str = r#"
+    [Install]
+    Alias = dbus-org.freedesktop.foo.service
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.install.alias,
+        vec!["dbus-org.freedesktop.foo.service".to_owned()]
+    );
+}
+
+#[test]
+fn test_alias_multiple_entries() {
+    let test_service_str = r#"
+    [Install]
+    Alias = foo.service
+    Alias = bar.service
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.install.alias,
+        vec!["foo.service".to_owned(), "bar.service".to_owned()]
+    );
+}
+
+#[test]
+fn test_alias_space_separated() {
+    let test_service_str = r#"
+    [Install]
+    Alias = foo.service bar.service
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.install.alias,
+        vec!["foo.service".to_owned(), "bar.service".to_owned()]
+    );
+}
+
+#[test]
+fn test_alias_with_wantedby() {
+    let test_service_str = r#"
+    [Install]
+    Alias = alt-name.service
+    WantedBy = multi-user.target
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.install.alias,
+        vec!["alt-name.service".to_owned()]
+    );
+    assert_eq!(
+        service.common.install.wanted_by,
+        vec!["multi-user.target".to_owned()]
+    );
+}
+
+#[test]
+fn test_alias_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    Description = A target with alias
+
+    [Install]
+    Alias = alt.target
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(target.common.install.alias, vec!["alt.target".to_owned()]);
+}
+
+#[test]
+fn test_alias_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+
+    [Install]
+    Alias = alt.socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.common.install.alias, vec!["alt.socket".to_owned()]);
+}
+
+#[test]
+fn test_alias_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    Description = Service with alias
+    [Install]
+    Alias = dbus-org.freedesktop.foo.service
+    Alias = alt-name.service
+    [Service]
+    ExecStart = /usr/bin/testcmd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+
+    assert_eq!(
+        unit.common.unit.aliases,
+        vec![
+            "dbus-org.freedesktop.foo.service".to_owned(),
+            "alt-name.service".to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn test_alias_empty_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /usr/bin/testcmd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+
+    assert!(
+        unit.common.unit.aliases.is_empty(),
+        "Aliases should be empty when Alias= is not specified"
+    );
+}
+
+#[test]
+fn test_alias_with_also_and_wantedby() {
+    let test_service_str = r#"
+    [Install]
+    Alias = alt.service
+    Also = helper.service
+    WantedBy = multi-user.target
+    RequiredBy = some.target
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.install.alias, vec!["alt.service".to_owned()]);
+    assert_eq!(
+        service.common.install.also,
+        vec!["helper.service".to_owned()]
+    );
+    assert_eq!(
+        service.common.install.wanted_by,
+        vec!["multi-user.target".to_owned()]
+    );
+    assert_eq!(
+        service.common.install.required_by,
+        vec!["some.target".to_owned()]
+    );
+}
+
+#[test]
+fn test_alias_dbus_pattern() {
+    // Common systemd pattern: D-Bus activated services use Alias= to create
+    // a dbus-org.freedesktop.* symlink
+    let test_service_str = r#"
+    [Unit]
+    Description = Accounts Service
+
+    [Service]
+    Type = simple
+    ExecStart = /usr/libexec/accounts-daemon
+
+    [Install]
+    Alias = dbus-org.freedesktop.Accounts.service
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/accounts-daemon.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.install.alias,
+        vec!["dbus-org.freedesktop.Accounts.service".to_owned()]
+    );
+}
+
+#[test]
+fn test_alias_comma_separated() {
+    let test_service_str = r#"
+    [Install]
+    Alias = foo.service,bar.service
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.install.alias,
+        vec!["foo.service".to_owned(), "bar.service".to_owned()]
+    );
+}

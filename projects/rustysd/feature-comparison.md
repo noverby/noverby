@@ -2090,8 +2090,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Alias=">Alias=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Alternative names for the unit; units can be looked up by any of their aliases</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#WantedBy=">WantedBy=</a></td>
