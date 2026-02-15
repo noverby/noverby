@@ -236,6 +236,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             io_scheduling_priority: parsed.io_scheduling_priority,
             umask: parsed.umask,
             proc_subset: parsed.proc_subset,
+            nice: parsed.nice,
         })
     }
 }
