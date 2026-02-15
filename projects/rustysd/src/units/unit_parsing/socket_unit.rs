@@ -85,6 +85,8 @@ fn parse_socket_section(
     let datagrams = section.remove("LISTENDATAGRAM");
     let seqpacks = section.remove("LISTENSEQUENTIALPACKET");
     let fifos = section.remove("LISTENFIFO");
+    let max_connections = section.remove("MAXCONNECTIONS");
+    let max_connections_per_source = section.remove("MAXCONNECTIONSPERSOURCE");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -200,10 +202,58 @@ fn parse_socket_section(
         socket_configs.push(ParsedSingleSocketConfig { kind, specialized });
     }
 
+    let max_connections: u64 = match max_connections {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    64
+                } else {
+                    val.parse::<u64>().map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "MaxConnections is not a valid non-negative integer: {val}"
+                        ))
+                    })?
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "MaxConnections".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => 64,
+    };
+
+    let max_connections_per_source: u64 = match max_connections_per_source {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    max_connections
+                } else {
+                    val.parse::<u64>().map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "MaxConnectionsPerSource is not a valid non-negative integer: {val}"
+                        ))
+                    })?
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "MaxConnectionsPerSource".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => max_connections,
+    };
+
     Ok(ParsedSocketSection {
         filedesc_name: fdname,
         services,
         sockets: socket_configs,
+        max_connections,
+        max_connections_per_source,
         exec_section: exec_config,
     })
 }
