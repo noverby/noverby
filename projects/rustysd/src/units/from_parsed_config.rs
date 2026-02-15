@@ -208,6 +208,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             protect_control_groups: parsed.protect_control_groups,
             protect_kernel_modules: parsed.protect_kernel_modules,
             restrict_suid_sgid: parsed.restrict_suid_sgid,
+            protect_kernel_logs: parsed.protect_kernel_logs,
         })
     }
 }
