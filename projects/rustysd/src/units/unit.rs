@@ -1054,6 +1054,13 @@ pub struct ExecConfig {
     /// and stored; no runtime enforcement yet (requires mount namespace and
     /// seccomp support). See systemd.exec(5).
     pub protect_kernel_logs: bool,
+    /// ProtectKernelTunables= — if true, kernel variables accessible through
+    /// /proc/sys/, /sys/, /proc/sysrq-trigger, /proc/latency_stats,
+    /// /proc/acpi, /proc/timer_stats, /proc/fs, and /proc/irq will be made
+    /// read-only to all processes of the unit. Defaults to false. Parsed and
+    /// stored; no runtime enforcement yet (requires mount namespace support).
+    /// See systemd.exec(5).
+    pub protect_kernel_tunables: bool,
     /// ProtectClock= — if true, writes to the system and hardware clock are
     /// denied. Defaults to false. Parsed and stored; no runtime enforcement
     /// yet (requires seccomp and device access restrictions).
