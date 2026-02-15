@@ -175,6 +175,7 @@ fn parse_service_section(
     let srcv_type = section.remove("TYPE");
     let accept = section.remove("ACCEPT");
     let dbus_name = section.remove("BUSNAME");
+    let pid_file = section.remove("PIDFILE");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -394,6 +395,7 @@ fn parse_service_section(
                     "notify" => ServiceType::Notify,
                     "notify-reload" => ServiceType::NotifyReload,
                     "oneshot" => ServiceType::OneShot,
+                    "forking" => ServiceType::Forking,
                     "dbus" => {
                         if cfg!(feature = "dbus_support") {
                             ServiceType::Dbus
@@ -527,6 +529,22 @@ fn parse_service_section(
         return Err(ParsingErrorReason::MissingSetting("BusName".to_owned()));
     }
 
+    let pid_file = match pid_file {
+        None => None,
+        Some(mut vec) => {
+            if vec.len() == 1 {
+                Some(std::path::PathBuf::from(vec.remove(0).1))
+            } else if vec.len() > 1 {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "PIDFile".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            } else {
+                None
+            }
+        }
+    };
+
     Ok(ParsedServiceSection {
         srcv_type,
         notifyaccess,
@@ -538,6 +556,7 @@ fn parse_service_section(
         limit_nofile,
         accept,
         dbus_name,
+        pid_file,
         exec,
         stop,
         stoppost,

@@ -921,6 +921,9 @@ pub struct ServiceConfig {
     pub exec_config: ExecConfig,
     pub platform_specific: PlatformSpecificServiceFields,
     pub dbus_name: Option<String>,
+    /// PIDFile= — path to a file that contains the PID of the main daemon
+    /// process after a Type=forking service has started.
+    pub pid_file: Option<std::path::PathBuf>,
     pub sockets: Vec<UnitId>,
 }
 
