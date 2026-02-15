@@ -3119,3 +3119,105 @@ fn test_resolve_gid_unknown_group_fails() {
         "Unknown group name should fail at resolve time"
     );
 }
+
+/// Regression test: commas in ExecStart command arguments must not be treated
+/// as value separators. This mirrors the real systemd-udev-trigger.service
+/// which uses `--prioritized-subsystem=module,block,tpmrm,net,tty,input`.
+#[test]
+fn test_execstart_commas_in_arguments_not_split() {
+    let test_service_str = r#"
+    [Unit]
+    Description=Coldplug All udev Devices
+    Documentation=man:udev(7) man:systemd-udevd.service(8)
+    DefaultDependencies=no
+    Wants=systemd-udevd.service
+    After=systemd-udevd-kernel.socket systemd-udevd-control.socket
+    Before=sysinit.target
+
+    [Service]
+    Type=oneshot
+    ExecStart=-udevadm trigger --type=all --action=add --prioritized-subsystem=module,block,tpmrm,net,tty,input
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/etc/systemd/system/systemd-udev-trigger.service"),
+    )
+    .unwrap();
+
+    // The ExecStart must parse as a single command line, not be rejected as
+    // SettingTooManyValues.
+    let exec = service
+        .srvc
+        .exec
+        .as_ref()
+        .expect("ExecStart should be parsed");
+    assert_eq!(exec.cmd, "udevadm");
+    assert_eq!(
+        exec.args,
+        vec![
+            "trigger".to_owned(),
+            "--type=all".to_owned(),
+            "--action=add".to_owned(),
+            "--prioritized-subsystem=module,block,tpmrm,net,tty,input".to_owned(),
+        ]
+    );
+    // The leading '-' should be parsed as a Minus prefix
+    assert_eq!(exec.prefixes, vec![crate::units::CommandlinePrefix::Minus]);
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::OneShot);
+}
+
+/// Verify that commas in Environment= values are preserved and not split.
+#[test]
+fn test_environment_commas_in_values_preserved() {
+    let test_service_str = r#"
+    [Service]
+    Type=simple
+    ExecStart=/bin/true
+    Environment=OPTS=--flag=a,b,c
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let env = service
+        .srvc
+        .exec_section
+        .environment
+        .expect("should have env");
+    assert_eq!(env.vars.len(), 1);
+    assert_eq!(env.vars[0].0, "OPTS");
+    assert_eq!(env.vars[0].1, "--flag=a,b,c");
+}
+
+/// Verify that Documentation= with space-separated URIs on a single line
+/// is correctly split (systemd uses space-separated lists for this field).
+#[test]
+fn test_documentation_space_separated_single_line() {
+    let test_service_str = r#"
+    [Unit]
+    Documentation=man:udev(7) man:systemd-udevd.service(8)
+    [Service]
+    ExecStart=/bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.documentation,
+        vec![
+            "man:udev(7)".to_owned(),
+            "man:systemd-udevd.service(8)".to_owned(),
+        ]
+    );
+}

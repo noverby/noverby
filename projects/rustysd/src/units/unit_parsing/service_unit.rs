@@ -545,7 +545,7 @@ fn parse_service_section(
         starttimeout,
         stoptimeout,
         generaltimeout,
-        sockets: map_tuples_to_second(sockets.unwrap_or_default()),
+        sockets: map_tuples_to_second(super::split_list_values(sockets.unwrap_or_default())),
         exec_section: exec_config,
     })
 }
