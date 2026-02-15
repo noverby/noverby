@@ -409,6 +409,11 @@ pub struct ParsedExecSection {
     /// no runtime enforcement yet (requires mount namespace support).
     /// See systemd.exec(5).
     pub protect_control_groups: bool,
+    /// ProtectKernelModules= — if true, explicit kernel module loading and
+    /// unloading is denied. This also makes /usr/lib/modules/ inaccessible.
+    /// Defaults to false. Parsed and stored; no runtime enforcement yet
+    /// (requires mount namespace and seccomp support). See systemd.exec(5).
+    pub protect_kernel_modules: bool,
 }
 
 /// The type of utmp/wtmp record to create for a service.
