@@ -270,6 +270,7 @@ fn make_common_from_parsed(
             documentation: unit.documentation,
             refs_by_name,
             default_dependencies: unit.default_dependencies,
+            conditions: unit.conditions,
         },
         dependencies: Dependencies {
             wants,

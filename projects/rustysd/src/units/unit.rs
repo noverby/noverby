@@ -6,7 +6,7 @@ use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
     acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KillMode, NotifyKind,
     ResourceLimit, ServiceRestart, ServiceType, StandardInput, StatusStarted, StatusStopped,
-    StdIoOption, TasksMax, Timeout, UnitId, UnitIdKind, UnitOperationError,
+    StdIoOption, TasksMax, Timeout, UnitCondition, UnitId, UnitIdKind, UnitOperationError,
     UnitOperationErrorReason, UnitStatus,
 };
 
@@ -708,6 +708,11 @@ pub struct UnitConfig {
     /// Whether to add implicit default dependencies (e.g. on sysinit.target / shutdown.target).
     /// Defaults to true, matching systemd behavior.
     pub default_dependencies: bool,
+
+    /// Conditions that must all be true for the unit to activate.
+    /// If any condition fails, the unit is skipped (not treated as an error).
+    /// Matches systemd's ConditionPathExists=, ConditionPathIsDirectory=, etc.
+    pub conditions: Vec<UnitCondition>,
 }
 
 #[derive(Debug, Clone)]

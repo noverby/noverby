@@ -173,6 +173,22 @@ pub fn activate_unit(
         });
     };
 
+    // Check unit conditions (ConditionPathExists=, etc.) before activation.
+    // If any condition fails, the unit is skipped — this is not an error,
+    // matching systemd's behavior of silently skipping condition-failed units.
+    for condition in &unit.common.unit.conditions {
+        if !condition.check() {
+            warn!(
+                "Condition failed for unit {:?}: {:?}. Skipping activation.",
+                id_to_start, condition
+            );
+            // Return the next services so the dependency graph can still proceed.
+            // The unit itself just won't be started.
+            let next_services_ids = unit.common.dependencies.before.clone();
+            return Ok(StartResult::Started(next_services_ids));
+        }
+    }
+
     // Stop any conflicting units before activating this one
     let conflicting_ids: Vec<UnitId> = unit
         .common

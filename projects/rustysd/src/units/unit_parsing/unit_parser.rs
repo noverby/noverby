@@ -110,6 +110,8 @@ pub fn parse_unit_section(
     let description = section.remove("DESCRIPTION");
     let documentation = section.remove("DOCUMENTATION");
     let default_dependencies = section.remove("DEFAULTDEPENDENCIES");
+    let condition_path_exists = section.remove("CONDITIONPATHEXISTS");
+    let condition_path_is_directory = section.remove("CONDITIONPATHISDIRECTORY");
 
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Unit] section: {key}");
@@ -118,6 +120,24 @@ pub fn parse_unit_section(
     let default_dependencies = default_dependencies
         .map(|x| string_to_bool(&x[0].1))
         .unwrap_or(true);
+
+    let mut conditions = Vec::new();
+    for (_, value) in condition_path_exists.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        conditions.push(super::UnitCondition::PathExists { path, negate });
+    }
+    for (_, value) in condition_path_is_directory.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        conditions.push(super::UnitCondition::PathIsDirectory { path, negate });
+    }
 
     Ok(ParsedUnitSection {
         description: description.map(|x| (x[0]).1.clone()).unwrap_or_default(),
@@ -128,6 +148,7 @@ pub fn parse_unit_section(
         after: map_tuples_to_second(after.unwrap_or_default()),
         before: map_tuples_to_second(before.unwrap_or_default()),
         default_dependencies,
+        conditions,
     })
 }
 
