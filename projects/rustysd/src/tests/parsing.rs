@@ -24694,6 +24694,461 @@ fn test_io_scheduling_priority_with_whitespace() {
 }
 
 // ============================================================
+// IOSchedulingClass= parsing tests
+// ============================================================
+
+#[test]
+fn test_io_scheduling_class_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = best-effort
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "IOSchedulingClass= should not cause errors");
+}
+
+#[test]
+fn test_io_scheduling_class_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::None,
+        "IOSchedulingClass should default to None"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_none_string() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = none
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::None,
+        "IOSchedulingClass=none should be None"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_none_numeric() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::None,
+        "IOSchedulingClass=0 should be None"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_realtime_string() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = realtime
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::Realtime,
+        "IOSchedulingClass=realtime should be Realtime"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_realtime_numeric() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::Realtime,
+        "IOSchedulingClass=1 should be Realtime"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_best_effort_string() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = best-effort
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::BestEffort,
+        "IOSchedulingClass=best-effort should be BestEffort"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_best_effort_numeric() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = 2
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::BestEffort,
+        "IOSchedulingClass=2 should be BestEffort"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_idle_string() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = idle
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::Idle,
+        "IOSchedulingClass=idle should be Idle"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_idle_numeric() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = 3
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::Idle,
+        "IOSchedulingClass=3 should be Idle"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = Best-Effort
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::BestEffort,
+        "IOSchedulingClass should be case insensitive"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_case_insensitive_realtime() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = REALTIME
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::Realtime,
+        "IOSchedulingClass=REALTIME should be Realtime (case insensitive)"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_invalid_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = fifo
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "IOSchedulingClass=fifo should be an error (not a valid class)"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_invalid_numeric() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = 4
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "IOSchedulingClass=4 should be an error (valid values are 0-3)"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_empty_resets_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::None,
+        "IOSchedulingClass= (empty) should reset to None"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass =  idle
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::Idle,
+        "IOSchedulingClass should handle surrounding whitespace"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = realtime
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.io_scheduling_class,
+            crate::units::IOSchedulingClass::Realtime,
+            "IOSchedulingClass=realtime should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_io_scheduling_class_default_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.io_scheduling_class,
+            crate::units::IOSchedulingClass::None,
+            "IOSchedulingClass default (None) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_io_scheduling_class_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with IO scheduling class
+    [Socket]
+    ListenStream = /run/test.sock
+    IOSchedulingClass = idle
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::Idle,
+        "IOSchedulingClass should work in socket units"
+    );
+}
+
+#[test]
+fn test_io_scheduling_class_with_priority() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingClass = best-effort
+    IOSchedulingPriority = 4
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_class,
+        crate::units::IOSchedulingClass::BestEffort,
+        "IOSchedulingClass=best-effort should work alongside IOSchedulingPriority"
+    );
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_priority,
+        Some(4),
+        "IOSchedulingPriority=4 should work alongside IOSchedulingClass"
+    );
+}
+
+// ============================================================
 // LockPersonality= parsing tests
 // ============================================================
 
