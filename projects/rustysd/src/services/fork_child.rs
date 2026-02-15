@@ -86,10 +86,20 @@ fn dup_stdio(new_stdout: RawFd, new_stderr: RawFd, exec_helper_config: RawFd) {
 }
 
 fn move_into_new_process_group() {
-    //make this process the process group leader
+    // Create a new session (and process group) so that:
+    // 1. The process is isolated from the parent's process group (same as setpgid(getpid(), 0))
+    // 2. The process becomes a session leader, which is required for TIOCSCTTY
+    //    to succeed later in the exec_helper when setting up a controlling
+    //    terminal for TTY-based services (e.g. debug-shell.service).
+    //
+    // Previously this used setpgid(getpid(), 0) which made the process a
+    // process group leader but NOT a session leader. That caused setsid() in
+    // the exec_helper to fail with EPERM (can't create a session if already a
+    // process group leader), which in turn made TIOCSCTTY fail, leaving TTY
+    // services without a controlling terminal.
     unsafe {
-        if libc::setpgid(libc::getpid(), 0) != 0 {
-            write_to_stderr("Could not move to new process group");
+        if libc::setsid() == -1 {
+            write_to_stderr("Could not create new session");
             std::process::exit(1);
         }
     };
