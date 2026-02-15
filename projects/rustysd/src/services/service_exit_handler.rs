@@ -6,6 +6,74 @@ use crate::units::{
     ServiceRestart, ServiceType, Specific, Timeout, UnitOperationErrorReason, UnitStatus,
 };
 
+/// Determine whether a service should be restarted given its `Restart=`
+/// policy and the way it terminated.
+///
+/// The logic mirrors systemd's restart table
+/// (<https://www.freedesktop.org/software/systemd/man/systemd.service.html#Restart=>):
+///
+/// | Exit reason        | no | always | on-success | on-failure | on-abnormal | on-abort | on-watchdog |
+/// |--------------------|----|--------|------------|------------|-------------|----------|-------------|
+/// | Clean exit (0)     |    |   X    |     X      |            |             |          |             |
+/// | Unclean exit (!=0) |    |   X    |            |     X      |             |          |             |
+/// | Clean signal       |    |   X    |     X      |            |             |          |             |
+/// | Unclean signal     |    |   X    |            |     X      |      X      |    X     |             |
+/// | Timeout            |    |   X    |            |     X      |      X      |          |             |
+/// | Watchdog           |    |   X    |            |     X      |      X      |          |      X      |
+///
+/// "Clean" signals are SIGHUP, SIGINT, SIGTERM, and SIGPIPE (matching systemd defaults).
+fn should_restart(policy: &ServiceRestart, termination: &ChildTermination) -> bool {
+    match policy {
+        ServiceRestart::No => false,
+        ServiceRestart::Always => true,
+        ServiceRestart::OnSuccess => termination.success() || is_clean_signal(termination),
+        ServiceRestart::OnFailure => {
+            // Non-zero exit, unclean signal, or timeout (timeout is not
+            // currently tracked separately – a killed-by-signal counts).
+            match termination {
+                ChildTermination::Exit(code) => *code != 0,
+                ChildTermination::Signal(sig) => !is_clean_signal_value(*sig),
+            }
+        }
+        ServiceRestart::OnAbnormal => {
+            // Unclean signal or timeout – not on any exit code.
+            match termination {
+                ChildTermination::Exit(_) => false,
+                ChildTermination::Signal(sig) => !is_clean_signal_value(*sig),
+            }
+        }
+        ServiceRestart::OnAbort => {
+            // Unclean signal only.
+            match termination {
+                ChildTermination::Exit(_) => false,
+                ChildTermination::Signal(sig) => !is_clean_signal_value(*sig),
+            }
+        }
+        ServiceRestart::OnWatchdog => {
+            // Watchdog timeout only – rustysd does not implement watchdog yet,
+            // so this never triggers a restart.
+            false
+        }
+    }
+}
+
+/// Returns `true` if the termination was one of the "clean" signals that
+/// systemd treats as a successful exit: SIGHUP, SIGINT, SIGTERM, SIGPIPE.
+fn is_clean_signal(termination: &ChildTermination) -> bool {
+    match termination {
+        ChildTermination::Signal(sig) => is_clean_signal_value(*sig),
+        ChildTermination::Exit(_) => false,
+    }
+}
+
+fn is_clean_signal_value(sig: nix::sys::signal::Signal) -> bool {
+    use nix::sys::signal::Signal;
+    matches!(
+        sig,
+        Signal::SIGHUP | Signal::SIGINT | Signal::SIGTERM | Signal::SIGPIPE
+    )
+}
+
 pub fn service_exit_handler_new_thread(
     pid: nix::unistd::Pid,
     code: ChildTermination,
@@ -105,7 +173,7 @@ pub fn service_exit_handler(
             );
 
             (
-                srvc.conf.restart == ServiceRestart::Always,
+                should_restart(&srvc.conf.restart, &code),
                 srvc.conf.restart_sec.clone(),
             )
         } else {

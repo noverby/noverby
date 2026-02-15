@@ -479,9 +479,14 @@ fn parse_service_section(
     let restart = match restart {
         Some(vec) => {
             if vec.len() == 1 {
-                match vec[0].1.to_uppercase().as_str() {
+                match vec[0].1.to_uppercase().replace('-', "").as_str() {
                     "ALWAYS" => ServiceRestart::Always,
                     "NO" => ServiceRestart::No,
+                    "ONSUCCESS" => ServiceRestart::OnSuccess,
+                    "ONFAILURE" => ServiceRestart::OnFailure,
+                    "ONABNORMAL" => ServiceRestart::OnAbnormal,
+                    "ONABORT" => ServiceRestart::OnAbort,
+                    "ONWATCHDOG" => ServiceRestart::OnWatchdog,
 
                     name => {
                         return Err(ParsingErrorReason::UnknownSetting(
