@@ -1978,8 +1978,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionPathIsReadWrite=">ConditionPathIsReadWrite=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed, stored, and evaluated at runtime. Checks write access via access(2) W_OK. Supports negation.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionDirectoryNotEmpty=">ConditionDirectoryNotEmpty=</a></td>
