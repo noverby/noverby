@@ -1067,6 +1067,11 @@ pub struct ServiceConfig {
     /// Only effective with Type=notify-reload. Parsed and stored; not yet
     /// used at runtime. See systemd.service(5).
     pub reload_signal: Option<nix::sys::signal::Signal>,
+
+    /// DelegateSubgroup= — place unit processes in the specified subgroup of
+    /// the unit's control group. Only effective when Delegate= is enabled.
+    /// Parsed and stored; not yet used at runtime. See systemd.resource-control(5).
+    pub delegate_subgroup: Option<String>,
 }
 
 /// The immutable config of a socket unit

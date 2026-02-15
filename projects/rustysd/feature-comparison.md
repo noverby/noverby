@@ -1089,6 +1089,11 @@ This document is meant as a simple way of checking whether all features you need
   <td>Supports boolean (yes/no) and controller list forms. When enabled with cgroups, chowns the cgroup directory to the service user for sub-hierarchy management.</td>
 </tr>
 <tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#DelegateSubgroup=">DelegateSubgroup=</a></td>
+  <td>✔️</td>
+  <td>Parsed and stored. Only effective when Delegate= is enabled. Not yet used at runtime.</td>
+</tr>
+<tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#DisableControllers=">DisableControllers=</a></td>
   <td>❌</td>
   <td></td>
