@@ -226,6 +226,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             lock_personality: parsed.lock_personality,
             protect_proc: parsed.protect_proc,
             private_tmp: parsed.private_tmp,
+            private_devices: parsed.private_devices,
         })
     }
 }

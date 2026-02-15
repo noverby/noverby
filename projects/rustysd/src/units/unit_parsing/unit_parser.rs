@@ -452,6 +452,7 @@ pub fn parse_exec_section(
     let lock_personality = section.remove("LOCKPERSONALITY");
     let protect_proc = section.remove("PROTECTPROC");
     let private_tmp = section.remove("PRIVATETMP");
+    let private_devices = section.remove("PRIVATEDEVICES");
 
     let user = match user {
         None => None,
@@ -739,6 +740,21 @@ pub fn parse_exec_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "PrivateTmp".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        // systemd default: false
+        None => false,
+    };
+
+    let private_devices = match private_devices {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "PrivateDevices".to_owned(),
                     super::map_tuples_to_second(vec),
                 ));
             }
@@ -1450,6 +1466,7 @@ pub fn parse_exec_section(
             None => super::ProtectProc::default(),
         },
         private_tmp,
+        private_devices,
     })
 }
 
