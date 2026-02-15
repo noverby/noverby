@@ -255,6 +255,7 @@ fn parse_service_section(
     let ip_address_allow = section.remove("IPADDRESSALLOW");
     let ip_address_deny = section.remove("IPADDRESSDENY");
     let file_descriptor_store_max = section.remove("FILEDESCRIPTORSTOREMAX");
+    let kill_signal = section.remove("KILLSIGNAL");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -763,6 +764,36 @@ fn parse_service_section(
                 } else {
                     return Err(ParsingErrorReason::SettingTooManyValues(
                         "ReloadSignal".to_owned(),
+                        map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        kill_signal: match kill_signal {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let raw = vec[0].1.trim();
+                    if raw.is_empty() {
+                        None
+                    } else {
+                        match parse_signal_name(raw) {
+                            Some(sig) => Some(sig),
+                            None => {
+                                if let Ok(num) = raw.parse::<i32>() {
+                                    nix::sys::signal::Signal::try_from(num).ok()
+                                } else {
+                                    return Err(ParsingErrorReason::UnknownSetting(
+                                        "KillSignal".to_owned(),
+                                        raw.to_owned(),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "KillSignal".to_owned(),
                         map_tuples_to_second(vec),
                     ));
                 }

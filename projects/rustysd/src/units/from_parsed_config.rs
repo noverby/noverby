@@ -88,6 +88,7 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 success_exit_status: conf.srvc.success_exit_status,
                 memory_pressure_watch: conf.srvc.memory_pressure_watch,
                 reload_signal: conf.srvc.reload_signal,
+                kill_signal: conf.srvc.kill_signal,
                 delegate_subgroup: conf.srvc.delegate_subgroup,
                 keyring_mode: conf.srvc.keyring_mode,
                 device_allow: conf.srvc.device_allow,
