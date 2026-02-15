@@ -943,3 +943,558 @@ fn test_default_deps_full_service_with_all_targets() {
     let basic = unit_table.get(&basic_id).unwrap();
     assert!(basic.common.dependencies.before.contains(&service_id));
 }
+
+#[test]
+fn test_conflicts_bidirectional() {
+    // When unit A declares Conflicts=B, fill_dependencies should make it bidirectional:
+    // A.conflicts contains B, B.conflicted_by contains A
+    let target_a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = Target A
+        Conflicts = b.target
+        DefaultDependencies = no
+        "#,
+    );
+    let target_b = make_target(
+        "b.target",
+        &target_unit_str_with_default_deps("Target B", "no"),
+    );
+
+    let id_a = target_a.id.clone();
+    let id_b = target_b.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target_a.id.clone(), target_a);
+    unit_table.insert(target_b.id.clone(), target_b);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let a = unit_table.get(&id_a).unwrap();
+    assert!(
+        a.common.dependencies.conflicts.contains(&id_b),
+        "A should have Conflicts=B"
+    );
+
+    let b = unit_table.get(&id_b).unwrap();
+    assert!(
+        b.common.dependencies.conflicted_by.contains(&id_a),
+        "B should have ConflictedBy=A"
+    );
+}
+
+#[test]
+fn test_conflicts_one_way_does_not_reverse_conflicts_field() {
+    // When only A declares Conflicts=B, the relationship is one-directional:
+    // A.conflicts=[B], B.conflicted_by=[A]
+    // But B does NOT get conflicts=[A], and A does NOT get conflicted_by=[B]
+    let target_a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = Target A
+        Conflicts = b.target
+        DefaultDependencies = no
+        "#,
+    );
+    let target_b = make_target(
+        "b.target",
+        &target_unit_str_with_default_deps("Target B", "no"),
+    );
+
+    let id_a = target_a.id.clone();
+    let id_b = target_b.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target_a.id.clone(), target_a);
+    unit_table.insert(target_b.id.clone(), target_b);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    // A declared the conflict, so A.conflicts has B
+    let a = unit_table.get(&id_a).unwrap();
+    assert!(
+        a.common.dependencies.conflicts.contains(&id_b),
+        "A should have Conflicts=B"
+    );
+
+    // B gets the reverse: conflicted_by=[A]
+    let b = unit_table.get(&id_b).unwrap();
+    assert!(
+        b.common.dependencies.conflicted_by.contains(&id_a),
+        "B should have ConflictedBy=A"
+    );
+
+    // B should NOT get conflicts=[A] — only A declared the conflict
+    assert!(
+        !b.common.dependencies.conflicts.contains(&id_a),
+        "B should NOT have Conflicts=A (only A declared the conflict)"
+    );
+
+    // A should NOT get conflicted_by=[B] — B didn't declare a conflict on A
+    let a = unit_table.get(&id_a).unwrap();
+    assert!(
+        !a.common.dependencies.conflicted_by.contains(&id_b),
+        "A should NOT have ConflictedBy=B (B did not declare a conflict)"
+    );
+}
+
+#[test]
+fn test_conflicts_mutual() {
+    // Both A and B declare Conflicts on each other
+    let target_a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = Target A
+        Conflicts = b.target
+        DefaultDependencies = no
+        "#,
+    );
+    let target_b = make_target(
+        "b.target",
+        r#"
+        [Unit]
+        Description = Target B
+        Conflicts = a.target
+        DefaultDependencies = no
+        "#,
+    );
+
+    let id_a = target_a.id.clone();
+    let id_b = target_b.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target_a.id.clone(), target_a);
+    unit_table.insert(target_b.id.clone(), target_b);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let a = unit_table.get(&id_a).unwrap();
+    assert!(
+        a.common.dependencies.conflicts.contains(&id_b),
+        "A should have Conflicts=B"
+    );
+    assert!(
+        a.common.dependencies.conflicted_by.contains(&id_b),
+        "A should have ConflictedBy=B"
+    );
+
+    let b = unit_table.get(&id_b).unwrap();
+    assert!(
+        b.common.dependencies.conflicts.contains(&id_a),
+        "B should have Conflicts=A"
+    );
+    assert!(
+        b.common.dependencies.conflicted_by.contains(&id_a),
+        "B should have ConflictedBy=A"
+    );
+}
+
+#[test]
+fn test_conflicts_dedup_after_fill() {
+    // Mutual conflicts should be deduped so each ID appears only once
+    let target_a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = Target A
+        Conflicts = b.target
+        DefaultDependencies = no
+        "#,
+    );
+    let target_b = make_target(
+        "b.target",
+        r#"
+        [Unit]
+        Description = Target B
+        Conflicts = a.target
+        DefaultDependencies = no
+        "#,
+    );
+
+    let id_a = target_a.id.clone();
+    let id_b = target_b.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target_a.id.clone(), target_a);
+    unit_table.insert(target_b.id.clone(), target_b);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let a = unit_table.get(&id_a).unwrap();
+    let count_b_in_conflicts = a
+        .common
+        .dependencies
+        .conflicts
+        .iter()
+        .filter(|id| **id == id_b)
+        .count();
+    assert_eq!(
+        count_b_in_conflicts, 1,
+        "B should appear exactly once in A.conflicts after dedup"
+    );
+
+    let count_b_in_conflicted_by = a
+        .common
+        .dependencies
+        .conflicted_by
+        .iter()
+        .filter(|id| **id == id_b)
+        .count();
+    assert_eq!(
+        count_b_in_conflicted_by, 1,
+        "B should appear exactly once in A.conflicted_by after dedup"
+    );
+}
+
+#[test]
+fn test_conflicts_multiple_targets() {
+    // A conflicts with both B and C
+    let target_a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = Target A
+        Conflicts = b.target,c.target
+        DefaultDependencies = no
+        "#,
+    );
+    let target_b = make_target(
+        "b.target",
+        &target_unit_str_with_default_deps("Target B", "no"),
+    );
+    let target_c = make_target(
+        "c.target",
+        &target_unit_str_with_default_deps("Target C", "no"),
+    );
+
+    let id_a = target_a.id.clone();
+    let id_b = target_b.id.clone();
+    let id_c = target_c.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target_a.id.clone(), target_a);
+    unit_table.insert(target_b.id.clone(), target_b);
+    unit_table.insert(target_c.id.clone(), target_c);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let a = unit_table.get(&id_a).unwrap();
+    assert!(
+        a.common.dependencies.conflicts.contains(&id_b),
+        "A should have Conflicts=B"
+    );
+    assert!(
+        a.common.dependencies.conflicts.contains(&id_c),
+        "A should have Conflicts=C"
+    );
+
+    let b = unit_table.get(&id_b).unwrap();
+    assert!(
+        b.common.dependencies.conflicted_by.contains(&id_a),
+        "B should have ConflictedBy=A"
+    );
+
+    let c = unit_table.get(&id_c).unwrap();
+    assert!(
+        c.common.dependencies.conflicted_by.contains(&id_a),
+        "C should have ConflictedBy=A"
+    );
+}
+
+#[test]
+fn test_conflicts_service_with_service() {
+    // Service-to-service conflict
+    let svc_a = make_service(
+        "a.service",
+        r#"
+        [Unit]
+        Conflicts = b.service
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+    let svc_b = make_service(
+        "b.service",
+        r#"
+        [Unit]
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let id_a = svc_a.id.clone();
+    let id_b = svc_b.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(svc_a.id.clone(), svc_a);
+    unit_table.insert(svc_b.id.clone(), svc_b);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let a = unit_table.get(&id_a).unwrap();
+    assert!(
+        a.common.dependencies.conflicts.contains(&id_b),
+        "Service A should have Conflicts=B"
+    );
+
+    let b = unit_table.get(&id_b).unwrap();
+    assert!(
+        b.common.dependencies.conflicted_by.contains(&id_a),
+        "Service B should have ConflictedBy=A"
+    );
+}
+
+#[test]
+fn test_conflicts_cross_unit_types() {
+    // Service conflicts with a target
+    let service = make_service(
+        "myapp.service",
+        r#"
+        [Unit]
+        Conflicts = rescue.target
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+    let target = make_target(
+        "rescue.target",
+        &target_unit_str_with_default_deps("Rescue", "no"),
+    );
+
+    let svc_id = service.id.clone();
+    let tgt_id = target.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(service.id.clone(), service);
+    unit_table.insert(target.id.clone(), target);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let svc = unit_table.get(&svc_id).unwrap();
+    assert!(
+        svc.common.dependencies.conflicts.contains(&tgt_id),
+        "Service should have Conflicts=rescue.target"
+    );
+
+    let tgt = unit_table.get(&tgt_id).unwrap();
+    assert!(
+        tgt.common.dependencies.conflicted_by.contains(&svc_id),
+        "rescue.target should have ConflictedBy=myapp.service"
+    );
+}
+
+#[test]
+fn test_conflicts_refs_by_name_includes_conflicts() {
+    // Conflicts should be included in refs_by_name so pruning works correctly
+    let service = make_service(
+        "myapp.service",
+        r#"
+        [Unit]
+        Conflicts = other.service
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let other_id: crate::units::UnitId = "other.service".try_into().unwrap();
+
+    assert!(
+        service.common.unit.refs_by_name.contains(&other_id),
+        "refs_by_name should include conflicting unit IDs"
+    );
+}
+
+#[test]
+fn test_conflicts_no_conflict_when_not_specified() {
+    // Two units with no conflict relationship
+    let target_a = make_target(
+        "a.target",
+        &target_unit_str_with_default_deps("Target A", "no"),
+    );
+    let target_b = make_target(
+        "b.target",
+        &target_unit_str_with_default_deps("Target B", "no"),
+    );
+
+    let id_a = target_a.id.clone();
+    let id_b = target_b.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target_a.id.clone(), target_a);
+    unit_table.insert(target_b.id.clone(), target_b);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let a = unit_table.get(&id_a).unwrap();
+    assert!(
+        !a.common.dependencies.conflicts.contains(&id_b),
+        "A should NOT have Conflicts=B when not declared"
+    );
+    assert!(
+        !a.common.dependencies.conflicted_by.contains(&id_b),
+        "A should NOT have ConflictedBy=B when not declared"
+    );
+
+    let b = unit_table.get(&id_b).unwrap();
+    assert!(
+        !b.common.dependencies.conflicts.contains(&id_a),
+        "B should NOT have Conflicts=A when not declared"
+    );
+    assert!(
+        !b.common.dependencies.conflicted_by.contains(&id_a),
+        "B should NOT have ConflictedBy=A when not declared"
+    );
+}
+
+#[test]
+fn test_conflicts_with_before_after_ordering() {
+    // Conflicts can coexist with ordering relations
+    let target_a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = Target A
+        Conflicts = b.target
+        Before = b.target
+        DefaultDependencies = no
+        "#,
+    );
+    let target_b = make_target(
+        "b.target",
+        &target_unit_str_with_default_deps("Target B", "no"),
+    );
+
+    let id_a = target_a.id.clone();
+    let id_b = target_b.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target_a.id.clone(), target_a);
+    unit_table.insert(target_b.id.clone(), target_b);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let a = unit_table.get(&id_a).unwrap();
+    assert!(
+        a.common.dependencies.conflicts.contains(&id_b),
+        "A should have Conflicts=B"
+    );
+    assert!(
+        a.common.dependencies.before.contains(&id_b),
+        "A should have Before=B"
+    );
+
+    let b = unit_table.get(&id_b).unwrap();
+    assert!(
+        b.common.dependencies.conflicted_by.contains(&id_a),
+        "B should have ConflictedBy=A"
+    );
+    assert!(
+        b.common.dependencies.after.contains(&id_a),
+        "B should have After=A (reverse of A's Before)"
+    );
+}
+
+#[test]
+fn test_conflicts_chain_three_units() {
+    // A conflicts with B, B conflicts with C — conflicts are NOT transitive
+    let target_a = make_target(
+        "a.target",
+        r#"
+        [Unit]
+        Description = Target A
+        Conflicts = b.target
+        DefaultDependencies = no
+        "#,
+    );
+    let target_b = make_target(
+        "b.target",
+        r#"
+        [Unit]
+        Description = Target B
+        Conflicts = c.target
+        DefaultDependencies = no
+        "#,
+    );
+    let target_c = make_target(
+        "c.target",
+        &target_unit_str_with_default_deps("Target C", "no"),
+    );
+
+    let id_a = target_a.id.clone();
+    let id_b = target_b.id.clone();
+    let id_c = target_c.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target_a.id.clone(), target_a);
+    unit_table.insert(target_b.id.clone(), target_b);
+    unit_table.insert(target_c.id.clone(), target_c);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    // A <-> B conflict
+    let a = unit_table.get(&id_a).unwrap();
+    assert!(a.common.dependencies.conflicts.contains(&id_b));
+
+    // B <-> C conflict
+    let b = unit_table.get(&id_b).unwrap();
+    assert!(b.common.dependencies.conflicts.contains(&id_c));
+    assert!(b.common.dependencies.conflicted_by.contains(&id_a));
+
+    // A should NOT conflict with C (not transitive)
+    let a = unit_table.get(&id_a).unwrap();
+    assert!(
+        !a.common.dependencies.conflicts.contains(&id_c),
+        "Conflicts should NOT be transitive: A should not conflict with C"
+    );
+    assert!(
+        !a.common.dependencies.conflicted_by.contains(&id_c),
+        "Conflicts should NOT be transitive: A should not be conflicted_by C"
+    );
+
+    let c = unit_table.get(&id_c).unwrap();
+    assert!(
+        !c.common.dependencies.conflicts.contains(&id_a),
+        "Conflicts should NOT be transitive: C should not conflict with A"
+    );
+    assert!(
+        !c.common.dependencies.conflicted_by.contains(&id_a),
+        "Conflicts should NOT be transitive: C should not be conflicted_by A"
+    );
+}
