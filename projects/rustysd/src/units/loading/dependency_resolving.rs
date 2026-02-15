@@ -332,8 +332,8 @@ fn add_default_dependency_relations(units: &mut UnitTable) {
                     add_after_to_sysinit.push(unit.id.clone());
                 }
             }
-            UnitIdKind::Target => {
-                // Targets only get the shutdown.target conflict/before (already added above)
+            UnitIdKind::Target | UnitIdKind::Slice => {
+                // Targets and slices only get the shutdown.target conflict/before (already added above)
             }
         }
 
@@ -427,8 +427,8 @@ fn apply_sockets_to_services(unit_table: &mut UnitTable) -> Result<(), String> {
             UnitIdKind::Socket => {
                 socket_ids.push(id.clone());
             }
-            UnitIdKind::Target => {
-                // ignore targets here
+            UnitIdKind::Target | UnitIdKind::Slice => {
+                // ignore targets and slices here
             }
         }
     }

@@ -208,6 +208,9 @@ pub struct ParsedServiceSection {
 
     pub sockets: Vec<String>,
 
+    /// Slice= — the slice unit to place this service in for resource management
+    pub slice: Option<String>,
+
     pub exec_section: ParsedExecSection,
 }
 

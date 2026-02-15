@@ -374,6 +374,9 @@ impl Unit {
     pub const fn is_target(&self) -> bool {
         matches!(self.id.kind, UnitIdKind::Target)
     }
+    pub const fn is_slice(&self) -> bool {
+        matches!(self.id.kind, UnitIdKind::Slice)
+    }
 
     pub fn name_without_suffix(&self) -> String {
         let split: Vec<_> = self.id.name.split('.').collect();
@@ -954,6 +957,8 @@ pub struct ServiceConfig {
     /// process after a Type=forking service has started.
     pub pid_file: Option<std::path::PathBuf>,
     pub sockets: Vec<UnitId>,
+    /// Slice= — the slice unit to place this service in for resource management
+    pub slice: Option<String>,
 }
 
 /// The immutable config of a socket unit
