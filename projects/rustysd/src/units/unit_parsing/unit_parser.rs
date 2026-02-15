@@ -204,6 +204,7 @@ pub fn parse_unit_section(
     let condition_kernel_module_loaded = section.remove("CONDITIONKERNELMODULELOADED");
     let condition_directory_not_empty = section.remove("CONDITIONDIRECTORYNOTEMPTY");
     let condition_kernel_command_line = section.remove("CONDITIONKERNELCOMMANDLINE");
+    let condition_control_group_controller = section.remove("CONDITIONCONTROLGROUPCONTROLLER");
     let success_action = section.remove("SUCCESSACTION");
     let failure_action = section.remove("FAILUREACTION");
     let part_of = section.remove("PARTOF");
@@ -390,6 +391,17 @@ pub fn parse_unit_section(
         };
         if !argument.is_empty() {
             conditions.push(super::UnitCondition::KernelCommandLine { argument, negate });
+        }
+    }
+    for (_, raw) in condition_control_group_controller.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (controller, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim().to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !controller.is_empty() {
+            conditions.push(super::UnitCondition::ControlGroupController { controller, negate });
         }
     }
 

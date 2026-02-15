@@ -2008,8 +2008,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionControlGroupController=">ConditionControlGroupController=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed, stored, and evaluated at runtime. Checks cgroupv2 controllers via /sys/fs/cgroup/cgroup.controllers with cgroupv1 /proc/cgroups fallback. Supports "v2" special value and negation.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionMemory=">ConditionMemory=</a></td>
