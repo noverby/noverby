@@ -31151,3 +31151,385 @@ fn test_condition_directory_not_empty_mixed_negation() {
         other => panic!("Expected DirectoryNotEmpty condition, got {:?}", other),
     }
 }
+
+// ==============================
+// ConditionKernelCommandLine= tests
+// ==============================
+
+#[test]
+fn test_condition_kernel_command_line_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionKernelCommandLine = quiet
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "ConditionKernelCommandLine= should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_condition_kernel_command_line_single_word_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionKernelCommandLine = quiet
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::KernelCommandLine { argument, negate } => {
+            assert_eq!(argument, "quiet");
+            assert!(!negate, "Should not be negated");
+        }
+        other => panic!("Expected KernelCommandLine condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_kernel_command_line_assignment_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionKernelCommandLine = systemd.unit=rescue.target
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::KernelCommandLine { argument, negate } => {
+            assert_eq!(argument, "systemd.unit=rescue.target");
+            assert!(!negate, "Should not be negated");
+        }
+        other => panic!("Expected KernelCommandLine condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_kernel_command_line_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionKernelCommandLine = !quiet
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::KernelCommandLine { argument, negate } => {
+            assert_eq!(argument, "quiet");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected KernelCommandLine condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_kernel_command_line_negated_assignment() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionKernelCommandLine = !systemd.unit=rescue.target
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::KernelCommandLine { argument, negate } => {
+            assert_eq!(argument, "systemd.unit=rescue.target");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected KernelCommandLine condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_kernel_command_line_multiple() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionKernelCommandLine = quiet
+    ConditionKernelCommandLine = splash
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 2);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::KernelCommandLine { argument, negate } => {
+            assert_eq!(argument, "quiet");
+            assert!(!negate);
+        }
+        other => panic!("Expected KernelCommandLine condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::KernelCommandLine { argument, negate } => {
+            assert_eq!(argument, "splash");
+            assert!(!negate);
+        }
+        other => panic!("Expected KernelCommandLine condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_kernel_command_line_mixed_negation() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionKernelCommandLine = quiet
+    ConditionKernelCommandLine = !debug
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 2);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::KernelCommandLine { argument, negate } => {
+            assert_eq!(argument, "quiet");
+            assert!(!negate, "First should not be negated");
+        }
+        other => panic!("Expected KernelCommandLine condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::KernelCommandLine { argument, negate } => {
+            assert_eq!(argument, "debug");
+            assert!(negate, "Second should be negated");
+        }
+        other => panic!("Expected KernelCommandLine condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_kernel_command_line_empty_ignored() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionKernelCommandLine =
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let has_kcl = service
+        .common
+        .unit
+        .conditions
+        .iter()
+        .any(|c| matches!(c, crate::units::UnitCondition::KernelCommandLine { .. }));
+    assert!(
+        !has_kcl,
+        "Empty ConditionKernelCommandLine= should not produce a condition"
+    );
+}
+
+#[test]
+fn test_condition_kernel_command_line_with_other_conditions() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathExists = /etc/myconfig
+    ConditionKernelCommandLine = quiet
+    ConditionFileNotEmpty = /etc/hostname
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 3);
+
+    // PathExists is parsed first
+    assert!(matches!(
+        &service.common.unit.conditions[0],
+        crate::units::UnitCondition::PathExists { .. }
+    ));
+
+    // FileNotEmpty is parsed before KernelCommandLine in the parsing order
+    assert!(matches!(
+        &service.common.unit.conditions[1],
+        crate::units::UnitCondition::FileNotEmpty { .. }
+    ));
+
+    // KernelCommandLine is parsed after FileNotEmpty
+    match &service.common.unit.conditions[2] {
+        crate::units::UnitCondition::KernelCommandLine { argument, negate } => {
+            assert_eq!(argument, "quiet");
+            assert!(!negate);
+        }
+        other => panic!("Expected KernelCommandLine condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_kernel_command_line_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    ConditionKernelCommandLine = !nosplash
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(unit.common.unit.conditions.len(), 1);
+    match &unit.common.unit.conditions[0] {
+        crate::units::UnitCondition::KernelCommandLine { argument, negate } => {
+            assert_eq!(argument, "nosplash");
+            assert!(negate, "Negation should survive unit conversion");
+        }
+        other => panic!("Expected KernelCommandLine condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_kernel_command_line_in_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    ConditionKernelCommandLine = systemd.debug
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.common.unit.conditions.len(), 1);
+    match &socket.common.unit.conditions[0] {
+        crate::units::UnitCondition::KernelCommandLine { argument, negate } => {
+            assert_eq!(argument, "systemd.debug");
+            assert!(!negate);
+        }
+        other => panic!("Expected KernelCommandLine condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_kernel_command_line_in_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    ConditionKernelCommandLine = !emergency
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(target.common.unit.conditions.len(), 1);
+    match &target.common.unit.conditions[0] {
+        crate::units::UnitCondition::KernelCommandLine { argument, negate } => {
+            assert_eq!(argument, "emergency");
+            assert!(negate);
+        }
+        other => panic!("Expected KernelCommandLine condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_kernel_command_line_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let has_kcl = service
+        .common
+        .unit
+        .conditions
+        .iter()
+        .any(|c| matches!(c, crate::units::UnitCondition::KernelCommandLine { .. }));
+    assert!(
+        !has_kcl,
+        "No KernelCommandLine condition should be present by default"
+    );
+}

@@ -68,6 +68,12 @@ pub enum UnitCondition {
     /// Checks whether the specified kernel module is currently loaded.
     /// On Linux this is determined by reading /proc/modules. See systemd.unit(5).
     KernelModuleLoaded { module: String, negate: bool },
+    /// ConditionKernelCommandLine=option (true if the kernel command line contains the option)
+    /// ConditionKernelCommandLine=!option (true if the kernel command line does NOT contain the option)
+    /// The argument is either a single word (checked as a standalone parameter or as the
+    /// left-hand side of an assignment) or a key=value assignment (checked for an exact match).
+    /// Reads from /proc/cmdline (or /proc/1/cmdline in containers). See systemd.unit(5).
+    KernelCommandLine { argument: String, negate: bool },
     /// ConditionDirectoryNotEmpty=/some/path (true if path exists as a directory and is not empty)
     /// ConditionDirectoryNotEmpty=!/some/path (true if path does NOT exist, is not a directory, or is empty)
     /// Checks whether the specified path exists, is a directory, and contains
@@ -506,6 +512,28 @@ impl UnitCondition {
                     !is_non_empty
                 } else {
                     is_non_empty
+                }
+            }
+            UnitCondition::KernelCommandLine { argument, negate } => {
+                let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+                let result = if argument.contains('=') {
+                    // Exact key=value match: look for the whole assignment as a
+                    // whitespace-delimited token on the command line.
+                    cmdline.split_whitespace().any(|token| token == argument)
+                } else {
+                    // Single word: match either the bare word or as the key
+                    // part of a key=value pair.
+                    cmdline.split_whitespace().any(|token| {
+                        token == argument
+                            || token
+                                .split_once('=')
+                                .map_or(false, |(key, _)| key == argument)
+                    })
+                };
+                if *negate {
+                    !result
+                } else {
+                    result
                 }
             }
         }
