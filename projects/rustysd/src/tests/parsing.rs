@@ -20048,3 +20048,288 @@ fn test_watchdog_sec_zero_preserved_after_unit_conversion() {
         panic!("Expected service unit");
     }
 }
+
+// ============================================================
+// ReadWritePaths= parsing tests
+// ============================================================
+
+#[test]
+fn test_read_write_paths_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.read_write_paths.is_empty(),
+        "ReadWritePaths should default to empty"
+    );
+}
+
+#[test]
+fn test_read_write_paths_single() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ReadWritePaths = /var/lib/myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.read_write_paths,
+        vec!["/var/lib/myapp".to_owned()]
+    );
+}
+
+#[test]
+fn test_read_write_paths_multiple_space_separated() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ReadWritePaths = /var/lib/myapp /var/log/myapp /run/myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.read_write_paths,
+        vec![
+            "/var/lib/myapp".to_owned(),
+            "/var/log/myapp".to_owned(),
+            "/run/myapp".to_owned()
+        ]
+    );
+}
+
+#[test]
+fn test_read_write_paths_multiple_directives_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ReadWritePaths = /var/lib/myapp
+    ReadWritePaths = /var/log/myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.read_write_paths,
+        vec!["/var/lib/myapp".to_owned(), "/var/log/myapp".to_owned()]
+    );
+}
+
+#[test]
+fn test_read_write_paths_empty_resets() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ReadWritePaths = /var/lib/myapp /var/log/myapp
+    ReadWritePaths =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.read_write_paths.is_empty(),
+        "Empty ReadWritePaths= should reset the list"
+    );
+}
+
+#[test]
+fn test_read_write_paths_empty_then_new_entry() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ReadWritePaths = /var/lib/myapp
+    ReadWritePaths =
+    ReadWritePaths = /var/log/newapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.read_write_paths,
+        vec!["/var/log/newapp".to_owned()]
+    );
+}
+
+#[test]
+fn test_read_write_paths_with_minus_prefix() {
+    // systemd allows a '-' prefix to suppress errors if the path doesn't exist
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ReadWritePaths = -/var/lib/optional
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.read_write_paths,
+        vec!["-/var/lib/optional".to_owned()]
+    );
+}
+
+#[test]
+fn test_read_write_paths_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ReadWritePaths = /var/lib/myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "ReadWritePaths should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_read_write_paths_with_protect_system_strict() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectSystem = strict
+    ReadWritePaths = /var/lib/myapp /var/log/myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_system,
+        crate::units::ProtectSystem::Strict,
+    );
+    assert_eq!(
+        service.srvc.exec_section.read_write_paths,
+        vec!["/var/lib/myapp".to_owned(), "/var/log/myapp".to_owned()]
+    );
+}
+
+#[test]
+fn test_read_write_paths_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ReadWritePaths = /var/lib/myapp /var/log/myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.read_write_paths.len(),
+            2,
+            "ReadWritePaths should survive unit conversion"
+        );
+        assert_eq!(srvc.conf.exec_config.read_write_paths[0], "/var/lib/myapp");
+        assert_eq!(srvc.conf.exec_config.read_write_paths[1], "/var/log/myapp");
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_read_write_paths_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.read_write_paths.is_empty(),
+            "Default empty ReadWritePaths should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_read_write_paths_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    ReadWritePaths = /var/lib/myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.read_write_paths,
+        vec!["/var/lib/myapp".to_owned()],
+        "ReadWritePaths should work in socket units"
+    );
+}

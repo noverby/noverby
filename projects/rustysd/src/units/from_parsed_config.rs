@@ -217,6 +217,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             protect_home: parsed.protect_home,
             protect_hostname: parsed.protect_hostname,
             system_call_architectures: parsed.system_call_architectures,
+            read_write_paths: parsed.read_write_paths,
         })
     }
 }

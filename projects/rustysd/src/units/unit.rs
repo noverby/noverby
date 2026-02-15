@@ -1082,6 +1082,13 @@ pub struct ExecConfig {
     /// accumulate; an empty assignment resets the list. Parsed and stored;
     /// no runtime seccomp enforcement yet. See systemd.exec(5).
     pub system_call_architectures: Vec<String>,
+    /// ReadWritePaths= — a space-separated list of file system paths that
+    /// should be made accessible read-write for the service, even if other
+    /// settings (like `ProtectSystem=strict`) would otherwise make them
+    /// read-only. Multiple directives accumulate; an empty assignment resets
+    /// the list. Parsed and stored; no runtime mount-namespace enforcement
+    /// yet. See systemd.exec(5).
+    pub read_write_paths: Vec<String>,
 }
 
 #[cfg(target_os = "linux")]
