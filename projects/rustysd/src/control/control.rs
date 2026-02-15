@@ -145,6 +145,7 @@ fn parse_command(call: &super::jsonrpc2::Call) -> Result<Command, ParseError> {
                             "socket" => UnitIdKind::Socket,
                             "service" => UnitIdKind::Service,
                             "slice" => UnitIdKind::Slice,
+                            "mount" => UnitIdKind::Mount,
                             _ => {
                                 return Err(ParseError::ParamsInvalid(format!(
                                     "Kind not recognized: {s}"
