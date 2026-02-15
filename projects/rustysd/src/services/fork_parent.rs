@@ -141,7 +141,7 @@ pub fn wait_for_service(
                                     trace!("End wait for {name}");
                                     let entry_owned = pid_table_locked.remove(&pid).unwrap();
                                     if let PidEntry::ServiceExited(code) = entry_owned {
-                                        if !code.success()
+                                        if !conf.success_exit_status.is_success(&code)
                                             && !conf
                                                 .exec
                                                 .as_ref()
@@ -222,7 +222,7 @@ pub fn wait_for_service(
                             trace!("[FORK_PARENT] Forking parent exited for {name}");
                             let entry_owned = pid_table_locked.remove(&pid).unwrap();
                             if let PidEntry::ServiceExited(code) = entry_owned {
-                                if !code.success()
+                                if !conf.success_exit_status.is_success(&code)
                                     && !conf
                                         .exec
                                         .as_ref()

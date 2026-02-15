@@ -215,6 +215,10 @@ pub struct ParsedServiceSection {
     /// the main process exits. Defaults to false. Commonly used with Type=oneshot.
     pub remain_after_exit: bool,
 
+    /// SuccessExitStatus= — additional exit codes and signals that are
+    /// considered a successful (clean) service termination.
+    pub success_exit_status: crate::units::SuccessExitStatus,
+
     pub exec_section: ParsedExecSection,
 }
 

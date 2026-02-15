@@ -3,8 +3,8 @@ use log::{error, info, trace};
 use crate::runtime_info::{ArcMutRuntimeInfo, PidEntry, RuntimeInfo};
 use crate::signal_handler::ChildTermination;
 use crate::units::{
-    ServiceRestart, ServiceType, Specific, Timeout, UnitAction, UnitOperationErrorReason,
-    UnitStatus,
+    ServiceRestart, ServiceType, Specific, SuccessExitStatus, Timeout, UnitAction,
+    UnitOperationErrorReason, UnitStatus,
 };
 
 /// Check whether a service has `RemainAfterExit=yes` configured.
@@ -13,6 +13,16 @@ fn has_remain_after_exit(unit: &crate::units::Unit) -> bool {
         srvc.conf.remain_after_exit
     } else {
         false
+    }
+}
+
+/// Retrieve the `SuccessExitStatus` config for a service unit, falling back
+/// to the empty default if the unit is not a service.
+fn get_success_exit_status(unit: &crate::units::Unit) -> SuccessExitStatus {
+    if let Specific::Service(srvc) = &unit.specific {
+        srvc.conf.success_exit_status.clone()
+    } else {
+        SuccessExitStatus::default()
     }
 }
 
@@ -31,32 +41,52 @@ fn has_remain_after_exit(unit: &crate::units::Unit) -> bool {
 /// | Timeout            |    |   X    |            |     X      |      X      |          |             |
 /// | Watchdog           |    |   X    |            |     X      |      X      |          |      X      |
 ///
-/// "Clean" signals are SIGHUP, SIGINT, SIGTERM, and SIGPIPE (matching systemd defaults).
-fn should_restart(policy: &ServiceRestart, termination: &ChildTermination) -> bool {
+/// "Clean" signals are SIGHUP, SIGINT, SIGTERM, and SIGPIPE (matching systemd
+/// defaults), plus any additional signals listed in `SuccessExitStatus=`.
+///
+/// "Clean" exit codes are 0 plus any additional codes listed in
+/// `SuccessExitStatus=`.
+fn should_restart(
+    policy: &ServiceRestart,
+    termination: &ChildTermination,
+    success_exit_status: &SuccessExitStatus,
+) -> bool {
     match policy {
         ServiceRestart::No => false,
         ServiceRestart::Always => true,
-        ServiceRestart::OnSuccess => termination.success() || is_clean_signal(termination),
+        ServiceRestart::OnSuccess => {
+            success_exit_status.is_success(termination)
+                || success_exit_status.is_clean_signal(termination)
+        }
         ServiceRestart::OnFailure => {
-            // Non-zero exit, unclean signal, or timeout (timeout is not
-            // currently tracked separately – a killed-by-signal counts).
+            // Non-zero exit (not in SuccessExitStatus), unclean signal, or
+            // timeout (timeout is not currently tracked separately – a
+            // killed-by-signal counts).
             match termination {
-                ChildTermination::Exit(code) => *code != 0,
-                ChildTermination::Signal(sig) => !is_clean_signal_value(*sig),
+                ChildTermination::Exit(code) => {
+                    *code != 0 && !success_exit_status.exit_codes.contains(code)
+                }
+                ChildTermination::Signal(sig) => {
+                    !is_clean_signal_value(*sig) && !success_exit_status.signals.contains(sig)
+                }
             }
         }
         ServiceRestart::OnAbnormal => {
             // Unclean signal or timeout – not on any exit code.
             match termination {
                 ChildTermination::Exit(_) => false,
-                ChildTermination::Signal(sig) => !is_clean_signal_value(*sig),
+                ChildTermination::Signal(sig) => {
+                    !is_clean_signal_value(*sig) && !success_exit_status.signals.contains(sig)
+                }
             }
         }
         ServiceRestart::OnAbort => {
             // Unclean signal only.
             match termination {
                 ChildTermination::Exit(_) => false,
-                ChildTermination::Signal(sig) => !is_clean_signal_value(*sig),
+                ChildTermination::Signal(sig) => {
+                    !is_clean_signal_value(*sig) && !success_exit_status.signals.contains(sig)
+                }
             }
         }
         ServiceRestart::OnWatchdog => {
@@ -64,15 +94,6 @@ fn should_restart(policy: &ServiceRestart, termination: &ChildTermination) -> bo
             // so this never triggers a restart.
             false
         }
-    }
-}
-
-/// Returns `true` if the termination was one of the "clean" signals that
-/// systemd treats as a successful exit: SIGHUP, SIGINT, SIGTERM, SIGPIPE.
-fn is_clean_signal(termination: &ChildTermination) -> bool {
-    match termination {
-        ChildTermination::Signal(sig) => is_clean_signal_value(*sig),
-        ChildTermination::Exit(_) => false,
     }
 }
 
@@ -157,6 +178,8 @@ pub fn service_exit_handler(
         panic!("Tried to run a unit that has been removed from the map");
     };
 
+    let success_exit_status = get_success_exit_status(unit);
+
     // kill oneshot service processes. There should be none but just in case...
     {
         if let Specific::Service(srvc) = &unit.specific {
@@ -169,7 +192,7 @@ pub fn service_exit_handler(
                 // RemainAfterExit=yes: keep the unit in Started status after a
                 // clean exit, matching systemd's behaviour for oneshot services
                 // that perform setup tasks.
-                if srvc.conf.remain_after_exit && code.success() {
+                if srvc.conf.remain_after_exit && success_exit_status.is_success(&code) {
                     trace!(
                         "Oneshot service {} exited cleanly with RemainAfterExit=yes, staying active",
                         unit.id.name
@@ -185,7 +208,7 @@ pub fn service_exit_handler(
     let success_action = &unit.common.unit.success_action;
     let failure_action = &unit.common.unit.failure_action;
 
-    if code.success() {
+    if success_exit_status.is_success(&code) {
         if *success_action != UnitAction::None {
             info!(
                 "Service {} exited successfully, triggering SuccessAction={:?}",
@@ -214,7 +237,7 @@ pub fn service_exit_handler(
             );
 
             (
-                should_restart(&srvc.conf.restart, &code),
+                should_restart(&srvc.conf.restart, &code, &success_exit_status),
                 srvc.conf.restart_sec.clone(),
             )
         } else {
@@ -233,7 +256,7 @@ pub fn service_exit_handler(
 
     // RemainAfterExit=yes: if the process exited cleanly, keep the service
     // in its current active state — do not restart, do not deactivate.
-    if has_remain_after_exit(unit) && code.success() {
+    if has_remain_after_exit(unit) && success_exit_status.is_success(&code) {
         trace!("Service {name} exited cleanly with RemainAfterExit=yes, staying active");
         return Ok(());
     }

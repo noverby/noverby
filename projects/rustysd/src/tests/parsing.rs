@@ -6860,3 +6860,431 @@ fn test_remain_after_exit_default_preserved_after_unit_conversion() {
         panic!("Expected a service unit");
     }
 }
+
+// ── SuccessExitStatus= parsing tests ──────────────────────────────────
+
+#[test]
+fn test_success_exit_status_empty_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.success_exit_status.exit_codes.is_empty());
+    assert!(service.srvc.success_exit_status.signals.is_empty());
+}
+
+#[test]
+fn test_success_exit_status_single_code() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = 42
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.success_exit_status.exit_codes, vec![42]);
+    assert!(service.srvc.success_exit_status.signals.is_empty());
+}
+
+#[test]
+fn test_success_exit_status_multiple_codes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = 42 75 100
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.success_exit_status.exit_codes,
+        vec![42, 75, 100]
+    );
+    assert!(service.srvc.success_exit_status.signals.is_empty());
+}
+
+#[test]
+fn test_success_exit_status_single_signal_with_prefix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = SIGTERM
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.success_exit_status.exit_codes.is_empty());
+    assert_eq!(
+        service.srvc.success_exit_status.signals,
+        vec![nix::sys::signal::Signal::SIGTERM]
+    );
+}
+
+#[test]
+fn test_success_exit_status_single_signal_without_prefix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = TERM
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.success_exit_status.exit_codes.is_empty());
+    assert_eq!(
+        service.srvc.success_exit_status.signals,
+        vec![nix::sys::signal::Signal::SIGTERM]
+    );
+}
+
+#[test]
+fn test_success_exit_status_mixed_codes_and_signals() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = 42 SIGUSR1 75 HUP
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.success_exit_status.exit_codes, vec![42, 75]);
+    assert_eq!(
+        service.srvc.success_exit_status.signals,
+        vec![
+            nix::sys::signal::Signal::SIGUSR1,
+            nix::sys::signal::Signal::SIGHUP,
+        ]
+    );
+}
+
+#[test]
+fn test_success_exit_status_multiple_entries_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = 42
+    SuccessExitStatus = SIGUSR2
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.success_exit_status.exit_codes, vec![42]);
+    assert_eq!(
+        service.srvc.success_exit_status.signals,
+        vec![nix::sys::signal::Signal::SIGUSR2]
+    );
+}
+
+#[test]
+fn test_success_exit_status_case_insensitive_signals() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = sigterm
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.success_exit_status.signals,
+        vec![nix::sys::signal::Signal::SIGTERM]
+    );
+}
+
+#[test]
+fn test_success_exit_status_with_other_settings() {
+    let test_service_str = r#"
+    [Unit]
+    Description = Test service with success exit status
+
+    [Service]
+    Type = oneshot
+    ExecStart = /bin/setup
+    RemainAfterExit = yes
+    SuccessExitStatus = 42 SIGUSR1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.success_exit_status.exit_codes, vec![42]);
+    assert_eq!(
+        service.srvc.success_exit_status.signals,
+        vec![nix::sys::signal::Signal::SIGUSR1]
+    );
+    assert!(service.srvc.remain_after_exit);
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::OneShot);
+}
+
+#[test]
+fn test_success_exit_status_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = 42 75 SIGUSR1 HUP
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(srvc.conf.success_exit_status.exit_codes, vec![42, 75]);
+        assert_eq!(
+            srvc.conf.success_exit_status.signals,
+            vec![
+                nix::sys::signal::Signal::SIGUSR1,
+                nix::sys::signal::Signal::SIGHUP,
+            ]
+        );
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+#[test]
+fn test_success_exit_status_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(srvc.conf.success_exit_status.exit_codes.is_empty());
+        assert!(srvc.conf.success_exit_status.signals.is_empty());
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+// ── SuccessExitStatus is_success / is_clean_signal tests ──────────────
+
+#[test]
+fn test_success_exit_status_is_success_default_exit_zero() {
+    let ses = crate::units::SuccessExitStatus::default();
+    assert!(ses.is_success(&crate::signal_handler::ChildTermination::Exit(0)));
+}
+
+#[test]
+fn test_success_exit_status_is_success_default_exit_nonzero() {
+    let ses = crate::units::SuccessExitStatus::default();
+    assert!(!ses.is_success(&crate::signal_handler::ChildTermination::Exit(1)));
+    assert!(!ses.is_success(&crate::signal_handler::ChildTermination::Exit(42)));
+}
+
+#[test]
+fn test_success_exit_status_is_success_extra_code() {
+    let ses = crate::units::SuccessExitStatus {
+        exit_codes: vec![42, 75],
+        signals: vec![],
+    };
+    assert!(ses.is_success(&crate::signal_handler::ChildTermination::Exit(0)));
+    assert!(ses.is_success(&crate::signal_handler::ChildTermination::Exit(42)));
+    assert!(ses.is_success(&crate::signal_handler::ChildTermination::Exit(75)));
+    assert!(!ses.is_success(&crate::signal_handler::ChildTermination::Exit(1)));
+    assert!(!ses.is_success(&crate::signal_handler::ChildTermination::Exit(100)));
+}
+
+#[test]
+fn test_success_exit_status_is_success_extra_signal() {
+    let ses = crate::units::SuccessExitStatus {
+        exit_codes: vec![],
+        signals: vec![nix::sys::signal::Signal::SIGUSR1],
+    };
+    assert!(
+        ses.is_success(&crate::signal_handler::ChildTermination::Signal(
+            nix::sys::signal::Signal::SIGUSR1
+        ))
+    );
+    assert!(
+        !ses.is_success(&crate::signal_handler::ChildTermination::Signal(
+            nix::sys::signal::Signal::SIGUSR2
+        ))
+    );
+}
+
+#[test]
+fn test_success_exit_status_is_clean_signal_defaults() {
+    let ses = crate::units::SuccessExitStatus::default();
+    // Built-in clean signals
+    assert!(
+        ses.is_clean_signal(&crate::signal_handler::ChildTermination::Signal(
+            nix::sys::signal::Signal::SIGHUP
+        ))
+    );
+    assert!(
+        ses.is_clean_signal(&crate::signal_handler::ChildTermination::Signal(
+            nix::sys::signal::Signal::SIGINT
+        ))
+    );
+    assert!(
+        ses.is_clean_signal(&crate::signal_handler::ChildTermination::Signal(
+            nix::sys::signal::Signal::SIGTERM
+        ))
+    );
+    assert!(
+        ses.is_clean_signal(&crate::signal_handler::ChildTermination::Signal(
+            nix::sys::signal::Signal::SIGPIPE
+        ))
+    );
+    // Not clean by default
+    assert!(
+        !ses.is_clean_signal(&crate::signal_handler::ChildTermination::Signal(
+            nix::sys::signal::Signal::SIGUSR1
+        ))
+    );
+    assert!(
+        !ses.is_clean_signal(&crate::signal_handler::ChildTermination::Signal(
+            nix::sys::signal::Signal::SIGKILL
+        ))
+    );
+}
+
+#[test]
+fn test_success_exit_status_is_clean_signal_extra() {
+    let ses = crate::units::SuccessExitStatus {
+        exit_codes: vec![],
+        signals: vec![nix::sys::signal::Signal::SIGUSR1],
+    };
+    // Extra signal is now clean
+    assert!(
+        ses.is_clean_signal(&crate::signal_handler::ChildTermination::Signal(
+            nix::sys::signal::Signal::SIGUSR1
+        ))
+    );
+    // Built-in clean signals still work
+    assert!(
+        ses.is_clean_signal(&crate::signal_handler::ChildTermination::Signal(
+            nix::sys::signal::Signal::SIGTERM
+        ))
+    );
+    // Other signals still not clean
+    assert!(
+        !ses.is_clean_signal(&crate::signal_handler::ChildTermination::Signal(
+            nix::sys::signal::Signal::SIGUSR2
+        ))
+    );
+}
+
+#[test]
+fn test_success_exit_status_is_clean_signal_not_exit() {
+    let ses = crate::units::SuccessExitStatus {
+        exit_codes: vec![42],
+        signals: vec![],
+    };
+    // Exit codes are not "clean signals"
+    assert!(!ses.is_clean_signal(&crate::signal_handler::ChildTermination::Exit(0)));
+    assert!(!ses.is_clean_signal(&crate::signal_handler::ChildTermination::Exit(42)));
+}
+
+#[test]
+fn test_success_exit_status_various_signal_names() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = USR1 USR2 SIGKILL QUIT
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.success_exit_status.signals,
+        vec![
+            nix::sys::signal::Signal::SIGUSR1,
+            nix::sys::signal::Signal::SIGUSR2,
+            nix::sys::signal::Signal::SIGKILL,
+            nix::sys::signal::Signal::SIGQUIT,
+        ]
+    );
+}
+
+#[test]
+fn test_success_exit_status_no_unsupported_warning() {
+    // SuccessExitStatus= should be parsed without generating an "unsupported setting" warning
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = 42
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    );
+
+    assert!(service.is_ok());
+    assert_eq!(
+        service.unwrap().srvc.success_exit_status.exit_codes,
+        vec![42]
+    );
+}
