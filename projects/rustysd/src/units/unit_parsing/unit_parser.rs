@@ -537,6 +537,7 @@ pub fn parse_exec_section(
     let private_users = section.remove("PRIVATEUSERS");
     let io_scheduling_class = section.remove("IOSCHEDULINGCLASS");
     let io_scheduling_priority = section.remove("IOSCHEDULINGPRIORITY");
+    let umask = section.remove("UMASK");
 
     let user = match user {
         None => None,
@@ -1645,6 +1646,38 @@ pub fn parse_exec_section(
                 } else if vec.len() > 1 {
                     return Err(ParsingErrorReason::SettingTooManyValues(
                         "IOSchedulingPriority".into(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                } else {
+                    None
+                }
+            }
+        },
+        umask: match umask {
+            None => None,
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let trimmed = vec[0].1.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        let val = u32::from_str_radix(trimmed, 8).map_err(|_| {
+                            ParsingErrorReason::UnknownSetting("UMask".to_owned(), vec[0].1.clone())
+                        })?;
+                        if val > 0o7777 {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "UMask".to_owned(),
+                                format!(
+                                    "{} (must be a valid octal mode, max 7777)",
+                                    vec[0].1.trim()
+                                ),
+                            ));
+                        }
+                        Some(val)
+                    }
+                } else if vec.len() > 1 {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "UMask".into(),
                         super::map_tuples_to_second(vec),
                     ));
                 } else {

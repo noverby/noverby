@@ -25149,6 +25149,342 @@ fn test_io_scheduling_class_with_priority() {
 }
 
 // ============================================================
+// UMask= parsing tests
+// ============================================================
+
+#[test]
+fn test_umask_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    UMask = 0022
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "UMask= should not cause errors");
+}
+
+#[test]
+fn test_umask_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.umask.is_none(),
+        "UMask should default to None"
+    );
+}
+
+#[test]
+fn test_umask_0022() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    UMask = 0022
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.umask,
+        Some(0o0022),
+        "UMask=0022 should be Some(0o0022)"
+    );
+}
+
+#[test]
+fn test_umask_0077() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    UMask = 0077
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.umask,
+        Some(0o0077),
+        "UMask=0077 should be Some(0o0077)"
+    );
+}
+
+#[test]
+fn test_umask_0000() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    UMask = 0000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.umask,
+        Some(0o0000),
+        "UMask=0000 should be Some(0)"
+    );
+}
+
+#[test]
+fn test_umask_0777() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    UMask = 0777
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.umask,
+        Some(0o0777),
+        "UMask=0777 should be Some(0o0777)"
+    );
+}
+
+#[test]
+fn test_umask_without_leading_zero() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    UMask = 77
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.umask,
+        Some(0o77),
+        "UMask=77 should be parsed as octal 077"
+    );
+}
+
+#[test]
+fn test_umask_three_digit() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    UMask = 022
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.umask,
+        Some(0o022),
+        "UMask=022 should be parsed as octal 022"
+    );
+}
+
+#[test]
+fn test_umask_invalid_non_octal_digit() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    UMask = 0089
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "UMask=0089 should be an error (8 and 9 are not valid octal digits)"
+    );
+}
+
+#[test]
+fn test_umask_invalid_string() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    UMask = permissive
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "UMask=permissive should be an error (must be octal integer)"
+    );
+}
+
+#[test]
+fn test_umask_empty_resets_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    UMask =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.umask.is_none(),
+        "UMask= (empty) should reset to None"
+    );
+}
+
+#[test]
+fn test_umask_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    UMask =  0027
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.umask,
+        Some(0o0027),
+        "UMask should handle surrounding whitespace"
+    );
+}
+
+#[test]
+fn test_umask_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    UMask = 0077
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.umask,
+            Some(0o0077),
+            "UMask=0077 should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_umask_none_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.umask.is_none(),
+            "UMask default (None) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_umask_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with umask
+    [Socket]
+    ListenStream = /run/test.sock
+    UMask = 0077
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.umask,
+        Some(0o0077),
+        "UMask should work in socket units"
+    );
+}
+
+// ============================================================
 // LockPersonality= parsing tests
 // ============================================================
 
