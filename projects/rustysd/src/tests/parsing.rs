@@ -7648,6 +7648,498 @@ fn test_ignore_on_isolate_no_unsupported_warning() {
     assert!(service.unwrap().common.unit.ignore_on_isolate);
 }
 
+// ── RequiresMountsFor= ────────────────────────────────────────────────
+
+#[test]
+fn test_path_to_mount_unit_name_root() {
+    assert_eq!(crate::units::path_to_mount_unit_name("/"), "-.mount");
+}
+
+#[test]
+fn test_path_to_mount_unit_name_single_component() {
+    assert_eq!(crate::units::path_to_mount_unit_name("/var"), "var.mount");
+}
+
+#[test]
+fn test_path_to_mount_unit_name_nested() {
+    assert_eq!(
+        crate::units::path_to_mount_unit_name("/var/log"),
+        "var-log.mount"
+    );
+}
+
+#[test]
+fn test_path_to_mount_unit_name_deeply_nested() {
+    assert_eq!(
+        crate::units::path_to_mount_unit_name("/var/log/myapp"),
+        "var-log-myapp.mount"
+    );
+}
+
+#[test]
+fn test_path_to_mount_unit_name_trailing_slash() {
+    assert_eq!(
+        crate::units::path_to_mount_unit_name("/var/log/"),
+        "var-log.mount"
+    );
+}
+
+#[test]
+fn test_mount_units_for_path_root() {
+    let units = crate::units::mount_units_for_path("/");
+    assert_eq!(units, vec!["-.mount"]);
+}
+
+#[test]
+fn test_mount_units_for_path_single() {
+    let units = crate::units::mount_units_for_path("/var");
+    assert_eq!(units, vec!["-.mount", "var.mount"]);
+}
+
+#[test]
+fn test_mount_units_for_path_nested() {
+    let units = crate::units::mount_units_for_path("/var/log");
+    assert_eq!(units, vec!["-.mount", "var.mount", "var-log.mount"]);
+}
+
+#[test]
+fn test_mount_units_for_path_deeply_nested() {
+    let units = crate::units::mount_units_for_path("/var/log/myapp");
+    assert_eq!(
+        units,
+        vec![
+            "-.mount",
+            "var.mount",
+            "var-log.mount",
+            "var-log-myapp.mount",
+        ]
+    );
+}
+
+#[test]
+fn test_requires_mounts_for_single_path() {
+    let test_service_str = r#"
+    [Unit]
+    RequiresMountsFor = /var/log
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    // Original paths stored
+    assert_eq!(
+        service.common.unit.requires_mounts_for,
+        vec!["/var/log".to_owned()]
+    );
+    // Implicit Requires= dependencies added
+    assert!(service.common.unit.requires.contains(&"-.mount".to_owned()));
+    assert!(service
+        .common
+        .unit
+        .requires
+        .contains(&"var.mount".to_owned()));
+    assert!(service
+        .common
+        .unit
+        .requires
+        .contains(&"var-log.mount".to_owned()));
+    // Implicit After= dependencies added
+    assert!(service.common.unit.after.contains(&"-.mount".to_owned()));
+    assert!(service.common.unit.after.contains(&"var.mount".to_owned()));
+    assert!(service
+        .common
+        .unit
+        .after
+        .contains(&"var-log.mount".to_owned()));
+}
+
+#[test]
+fn test_requires_mounts_for_multiple_paths() {
+    let test_service_str = r#"
+    [Unit]
+    RequiresMountsFor = /var/log /home/user
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.requires_mounts_for,
+        vec!["/var/log".to_owned(), "/home/user".to_owned()]
+    );
+    // Mount units from both paths
+    assert!(service.common.unit.requires.contains(&"-.mount".to_owned()));
+    assert!(service
+        .common
+        .unit
+        .requires
+        .contains(&"var.mount".to_owned()));
+    assert!(service
+        .common
+        .unit
+        .requires
+        .contains(&"var-log.mount".to_owned()));
+    assert!(service
+        .common
+        .unit
+        .requires
+        .contains(&"home.mount".to_owned()));
+    assert!(service
+        .common
+        .unit
+        .requires
+        .contains(&"home-user.mount".to_owned()));
+}
+
+#[test]
+fn test_requires_mounts_for_no_duplicate_mount_units() {
+    // Two paths sharing a prefix should not duplicate mount unit deps
+    let test_service_str = r#"
+    [Unit]
+    RequiresMountsFor = /var/log /var/cache
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    // "-.mount" and "var.mount" should appear only once each
+    let root_count = service
+        .common
+        .unit
+        .requires
+        .iter()
+        .filter(|u| *u == "-.mount")
+        .count();
+    assert_eq!(root_count, 1, "-.mount should appear exactly once");
+    let var_count = service
+        .common
+        .unit
+        .requires
+        .iter()
+        .filter(|u| *u == "var.mount")
+        .count();
+    assert_eq!(var_count, 1, "var.mount should appear exactly once");
+}
+
+#[test]
+fn test_requires_mounts_for_combined_with_explicit_requires() {
+    let test_service_str = r#"
+    [Unit]
+    Requires = network.target
+    RequiresMountsFor = /var/log
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    // Explicit dependency preserved
+    assert!(service
+        .common
+        .unit
+        .requires
+        .contains(&"network.target".to_owned()));
+    // Implicit mount deps also present
+    assert!(service.common.unit.requires.contains(&"-.mount".to_owned()));
+    assert!(service
+        .common
+        .unit
+        .requires
+        .contains(&"var-log.mount".to_owned()));
+}
+
+#[test]
+fn test_requires_mounts_for_combined_with_explicit_after() {
+    let test_service_str = r#"
+    [Unit]
+    After = network.target
+    RequiresMountsFor = /home
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    // Explicit After= preserved
+    assert!(service
+        .common
+        .unit
+        .after
+        .contains(&"network.target".to_owned()));
+    // Implicit mount After= also present
+    assert!(service.common.unit.after.contains(&"-.mount".to_owned()));
+    assert!(service.common.unit.after.contains(&"home.mount".to_owned()));
+}
+
+#[test]
+fn test_requires_mounts_for_no_duplicate_with_explicit_mount_dep() {
+    // If RequiresMountsFor generates a dep that's already in Requires=, no duplicate
+    let test_service_str = r#"
+    [Unit]
+    Requires = var.mount
+    After = var.mount
+    RequiresMountsFor = /var/log
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let var_req_count = service
+        .common
+        .unit
+        .requires
+        .iter()
+        .filter(|u| *u == "var.mount")
+        .count();
+    assert_eq!(
+        var_req_count, 1,
+        "var.mount should appear exactly once in requires"
+    );
+    let var_after_count = service
+        .common
+        .unit
+        .after
+        .iter()
+        .filter(|u| *u == "var.mount")
+        .count();
+    assert_eq!(
+        var_after_count, 1,
+        "var.mount should appear exactly once in after"
+    );
+}
+
+#[test]
+fn test_requires_mounts_for_root_path() {
+    let test_service_str = r#"
+    [Unit]
+    RequiresMountsFor = /
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.requires_mounts_for,
+        vec!["/".to_owned()]
+    );
+    assert!(service.common.unit.requires.contains(&"-.mount".to_owned()));
+    assert!(service.common.unit.after.contains(&"-.mount".to_owned()));
+}
+
+#[test]
+fn test_requires_mounts_for_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.common.unit.requires_mounts_for.is_empty());
+}
+
+#[test]
+fn test_requires_mounts_for_no_unsupported_warning() {
+    // RequiresMountsFor= should be recognized and not trigger a warning
+    let test_service_str = r#"
+    [Unit]
+    RequiresMountsFor = /var/log
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "Parsing RequiresMountsFor= should not produce an error"
+    );
+    // If it were unsupported, requires_mounts_for would be empty
+    assert!(!result.unwrap().common.unit.requires_mounts_for.is_empty());
+}
+
+#[test]
+fn test_requires_mounts_for_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    RequiresMountsFor = /var/log
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    let root_mount_id = crate::units::UnitId {
+        name: "-.mount".to_owned(),
+        kind: crate::units::UnitIdKind::Mount,
+    };
+    let var_mount_id = crate::units::UnitId {
+        name: "var.mount".to_owned(),
+        kind: crate::units::UnitIdKind::Mount,
+    };
+    let var_log_mount_id = crate::units::UnitId {
+        name: "var-log.mount".to_owned(),
+        kind: crate::units::UnitIdKind::Mount,
+    };
+    assert!(unit.common.dependencies.requires.contains(&root_mount_id));
+    assert!(unit.common.dependencies.requires.contains(&var_mount_id));
+    assert!(unit
+        .common
+        .dependencies
+        .requires
+        .contains(&var_log_mount_id));
+    assert!(unit.common.dependencies.after.contains(&root_mount_id));
+    assert!(unit.common.dependencies.after.contains(&var_mount_id));
+    assert!(unit.common.dependencies.after.contains(&var_log_mount_id));
+}
+
+#[test]
+fn test_requires_mounts_for_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    RequiresMountsFor = /run/myapp
+
+    [Socket]
+    ListenStream = /run/myapp/sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.common.unit.requires_mounts_for,
+        vec!["/run/myapp".to_owned()]
+    );
+    assert!(socket.common.unit.requires.contains(&"-.mount".to_owned()));
+    assert!(socket
+        .common
+        .unit
+        .requires
+        .contains(&"run.mount".to_owned()));
+    assert!(socket
+        .common
+        .unit
+        .requires
+        .contains(&"run-myapp.mount".to_owned()));
+    assert!(socket.common.unit.after.contains(&"-.mount".to_owned()));
+    assert!(socket
+        .common
+        .unit
+        .after
+        .contains(&"run-myapp.mount".to_owned()));
+}
+
+#[test]
+fn test_requires_mounts_for_multiple_directives_accumulate() {
+    let test_service_str = r#"
+    [Unit]
+    RequiresMountsFor = /var/log
+    RequiresMountsFor = /home/user
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service
+        .common
+        .unit
+        .requires_mounts_for
+        .contains(&"/var/log".to_owned()));
+    assert!(service
+        .common
+        .unit
+        .requires_mounts_for
+        .contains(&"/home/user".to_owned()));
+    // Mount units from both paths
+    assert!(service
+        .common
+        .unit
+        .requires
+        .contains(&"var-log.mount".to_owned()));
+    assert!(service
+        .common
+        .unit
+        .requires
+        .contains(&"home-user.mount".to_owned()));
+}
+
 // ── .mount in dependency lists ─────────────────────────────────────────
 
 #[test]

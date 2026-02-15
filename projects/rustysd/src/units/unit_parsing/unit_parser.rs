@@ -118,6 +118,47 @@ fn parse_environment(raw_line: &str) -> Result<EnvVars, ParsingErrorReason> {
     Ok(EnvVars { vars })
 }
 
+/// Convert an absolute path to a systemd-style mount unit name.
+///
+/// Examples:
+/// - `/` → `-.mount`
+/// - `/var` → `var.mount`
+/// - `/var/log` → `var-log.mount`
+#[allow(dead_code)]
+pub(crate) fn path_to_mount_unit_name(path: &str) -> String {
+    let trimmed = path.trim_matches('/');
+    if trimmed.is_empty() {
+        "-.mount".to_owned()
+    } else {
+        format!("{}.mount", trimmed.replace('/', "-"))
+    }
+}
+
+/// Return mount unit names for every prefix of the given absolute path,
+/// from `/` down to the path itself.
+///
+/// For `/var/log/myapp` this returns:
+/// `["-.mount", "var.mount", "var-log.mount", "var-log-myapp.mount"]`
+pub(crate) fn mount_units_for_path(path: &str) -> Vec<String> {
+    let mut units = vec!["-.mount".to_owned()];
+    let trimmed = path.trim_matches('/');
+    if trimmed.is_empty() {
+        return units;
+    }
+    let mut accumulated = String::new();
+    for component in trimmed.split('/') {
+        if !accumulated.is_empty() {
+            accumulated.push('-');
+        }
+        accumulated.push_str(component);
+        let name = format!("{accumulated}.mount");
+        if !units.contains(&name) {
+            units.push(name);
+        }
+    }
+    units
+}
+
 fn parse_unit_action(value: &str) -> Result<UnitAction, ParsingErrorReason> {
     match value.to_lowercase().replace('-', "").as_str() {
         "none" => Ok(UnitAction::None),
@@ -159,9 +200,27 @@ pub fn parse_unit_section(
     let failure_action = section.remove("FAILUREACTION");
     let part_of = section.remove("PARTOF");
     let ignore_on_isolate = section.remove("IGNOREONISOLATE");
+    let requires_mounts_for = section.remove("REQUIRESMOUNTSFOR");
 
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Unit] section: {key}");
+    }
+
+    // Parse RequiresMountsFor= paths and generate implicit mount unit deps
+    let requires_mounts_for_paths: Vec<String> =
+        map_tuples_to_second(split_list_values(requires_mounts_for.unwrap_or_default()));
+
+    let mut mount_unit_requires: Vec<String> = Vec::new();
+    let mut mount_unit_after: Vec<String> = Vec::new();
+    for path in &requires_mounts_for_paths {
+        for unit_name in mount_units_for_path(path) {
+            if !mount_unit_requires.contains(&unit_name) {
+                mount_unit_requires.push(unit_name.clone());
+            }
+            if !mount_unit_after.contains(&unit_name) {
+                mount_unit_after.push(unit_name);
+            }
+        }
     }
 
     let default_dependencies = default_dependencies
@@ -218,13 +277,28 @@ pub fn parse_unit_section(
         None => UnitAction::default(),
     };
 
+    // Merge explicit deps with implicit mount deps from RequiresMountsFor=
+    let mut requires_list = map_tuples_to_second(split_list_values(requires.unwrap_or_default()));
+    for name in mount_unit_requires {
+        if !requires_list.contains(&name) {
+            requires_list.push(name);
+        }
+    }
+
+    let mut after_list = map_tuples_to_second(split_list_values(after.unwrap_or_default()));
+    for name in mount_unit_after {
+        if !after_list.contains(&name) {
+            after_list.push(name);
+        }
+    }
+
     Ok(ParsedUnitSection {
         description: description.map(|x| (x[0]).1.clone()).unwrap_or_default(),
         documentation: map_tuples_to_second(split_list_values(documentation.unwrap_or_default())),
         wants: map_tuples_to_second(split_list_values(wants.unwrap_or_default())),
-        requires: map_tuples_to_second(split_list_values(requires.unwrap_or_default())),
+        requires: requires_list,
         conflicts: map_tuples_to_second(split_list_values(conflicts.unwrap_or_default())),
-        after: map_tuples_to_second(split_list_values(after.unwrap_or_default())),
+        after: after_list,
         before: map_tuples_to_second(split_list_values(before.unwrap_or_default())),
         part_of: map_tuples_to_second(split_list_values(part_of.unwrap_or_default())),
         default_dependencies,
@@ -232,6 +306,7 @@ pub fn parse_unit_section(
         conditions,
         success_action,
         failure_action,
+        requires_mounts_for: requires_mounts_for_paths,
     })
 }
 

@@ -1755,8 +1755,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#RequiresMountsFor=">RequiresMountsFor=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed; adds implicit Requires= and After= on .mount units for all path prefixes</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#OnFailureJobMode=">OnFailureJobMode=</a></td>
