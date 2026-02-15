@@ -1206,6 +1206,13 @@ pub struct ServiceConfig {
     /// Parsed and stored; no runtime enforcement yet (requires cgroup device
     /// controller). See systemd.resource-control(5).
     pub device_allow: Vec<String>,
+
+    /// WatchdogSec= — configures the watchdog timeout for the service. The
+    /// service must send a "WATCHDOG=1" notification via sd_notify() at least
+    /// once within this interval, or it will be considered failed. A value of
+    /// 0 or empty disables the watchdog. Parsed and stored; no runtime
+    /// enforcement yet. See systemd.service(5).
+    pub watchdog_sec: Option<Timeout>,
 }
 
 /// The immutable config of a socket unit

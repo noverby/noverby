@@ -1255,8 +1255,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#WatchdogSec=">WatchdogSec=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored (time span, e.g. 30s, 2min; 0 disables). No runtime watchdog enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#Restart=">Restart=</a></td>

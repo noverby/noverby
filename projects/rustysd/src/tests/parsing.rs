@@ -19751,3 +19751,300 @@ fn test_system_call_architectures_with_system_call_filter() {
     );
     assert!(!service.srvc.exec_section.system_call_filter.is_empty());
 }
+
+// ============================================================
+// WatchdogSec= parsing tests
+// ============================================================
+
+#[test]
+fn test_watchdog_sec_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.watchdog_sec, None,
+        "WatchdogSec should default to None when not specified"
+    );
+}
+
+#[test]
+fn test_watchdog_sec_seconds() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    WatchdogSec = 30
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.watchdog_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(30)
+        )),
+        "WatchdogSec=30 should parse as 30 seconds"
+    );
+}
+
+#[test]
+fn test_watchdog_sec_with_s_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    WatchdogSec = 15s
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.watchdog_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(15)
+        )),
+        "WatchdogSec=15s should parse as 15 seconds"
+    );
+}
+
+#[test]
+fn test_watchdog_sec_with_min_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    WatchdogSec = 2min
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.watchdog_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(120)
+        )),
+        "WatchdogSec=2min should parse as 120 seconds"
+    );
+}
+
+#[test]
+fn test_watchdog_sec_compound_duration() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    WatchdogSec = 1min 30s
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.watchdog_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(90)
+        )),
+        "WatchdogSec=1min 30s should parse as 90 seconds"
+    );
+}
+
+#[test]
+fn test_watchdog_sec_zero_disables() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    WatchdogSec = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.watchdog_sec, None,
+        "WatchdogSec=0 should disable the watchdog (None)"
+    );
+}
+
+#[test]
+fn test_watchdog_sec_infinity() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    WatchdogSec = infinity
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.watchdog_sec,
+        Some(crate::units::Timeout::Infinity),
+        "WatchdogSec=infinity should parse as Infinity"
+    );
+}
+
+#[test]
+fn test_watchdog_sec_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    WatchdogSec = 30s
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "WatchdogSec should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_watchdog_sec_with_restart_on_watchdog() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    WatchdogSec = 10s
+    Restart = on-watchdog
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.watchdog_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(10)
+        )),
+    );
+    assert_eq!(
+        service.srvc.restart,
+        crate::units::ServiceRestart::OnWatchdog,
+    );
+}
+
+#[test]
+fn test_watchdog_sec_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    WatchdogSec = 30s
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.watchdog_sec,
+            Some(crate::units::Timeout::Duration(
+                std::time::Duration::from_secs(30)
+            )),
+            "WatchdogSec=30s should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_watchdog_sec_none_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.watchdog_sec, None,
+            "Default WatchdogSec=None should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_watchdog_sec_zero_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    WatchdogSec = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.watchdog_sec, None,
+            "WatchdogSec=0 (disabled) should survive unit conversion as None"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
