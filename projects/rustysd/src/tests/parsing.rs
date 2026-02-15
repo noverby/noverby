@@ -17650,3 +17650,282 @@ fn test_protect_kernel_logs_socket_unit() {
         "ProtectKernelLogs=yes should work on socket units"
     );
 }
+
+// ============================================================
+// CapabilityBoundingSet= parsing tests
+// ============================================================
+
+#[test]
+fn test_capability_bounding_set_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.capability_bounding_set.is_empty(),
+        "CapabilityBoundingSet should default to empty"
+    );
+}
+
+#[test]
+fn test_capability_bounding_set_single_cap() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CapabilityBoundingSet = CAP_NET_ADMIN
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.capability_bounding_set,
+        vec!["CAP_NET_ADMIN"],
+    );
+}
+
+#[test]
+fn test_capability_bounding_set_multiple_caps() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CapabilityBoundingSet = CAP_NET_ADMIN CAP_SYS_PTRACE CAP_DAC_OVERRIDE
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.capability_bounding_set.len(), 3);
+    assert_eq!(
+        service.srvc.exec_section.capability_bounding_set[0],
+        "CAP_NET_ADMIN"
+    );
+    assert_eq!(
+        service.srvc.exec_section.capability_bounding_set[1],
+        "CAP_SYS_PTRACE"
+    );
+    assert_eq!(
+        service.srvc.exec_section.capability_bounding_set[2],
+        "CAP_DAC_OVERRIDE"
+    );
+}
+
+#[test]
+fn test_capability_bounding_set_deny_list() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CapabilityBoundingSet = ~CAP_SYS_ADMIN CAP_NET_RAW
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.capability_bounding_set.len(), 2);
+    assert_eq!(
+        service.srvc.exec_section.capability_bounding_set[0],
+        "~CAP_SYS_ADMIN"
+    );
+    assert_eq!(
+        service.srvc.exec_section.capability_bounding_set[1],
+        "CAP_NET_RAW"
+    );
+}
+
+#[test]
+fn test_capability_bounding_set_multiple_directives_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CapabilityBoundingSet = CAP_NET_ADMIN
+    CapabilityBoundingSet = CAP_SYS_PTRACE
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.capability_bounding_set.len(), 2);
+    assert_eq!(
+        service.srvc.exec_section.capability_bounding_set[0],
+        "CAP_NET_ADMIN"
+    );
+    assert_eq!(
+        service.srvc.exec_section.capability_bounding_set[1],
+        "CAP_SYS_PTRACE"
+    );
+}
+
+#[test]
+fn test_capability_bounding_set_empty_resets() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CapabilityBoundingSet = CAP_NET_ADMIN
+    CapabilityBoundingSet =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.capability_bounding_set.is_empty(),
+        "Empty CapabilityBoundingSet= should reset the list"
+    );
+}
+
+#[test]
+fn test_capability_bounding_set_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CapabilityBoundingSet = CAP_NET_ADMIN
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "CapabilityBoundingSet= should not cause errors"
+    );
+}
+
+#[test]
+fn test_capability_bounding_set_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CapabilityBoundingSet = CAP_NET_ADMIN CAP_SYS_PTRACE
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.capability_bounding_set.len(),
+            2,
+            "CapabilityBoundingSet should survive unit conversion"
+        );
+        assert_eq!(
+            srvc.conf.exec_config.capability_bounding_set[0],
+            "CAP_NET_ADMIN"
+        );
+        assert_eq!(
+            srvc.conf.exec_config.capability_bounding_set[1],
+            "CAP_SYS_PTRACE"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_capability_bounding_set_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.capability_bounding_set.is_empty(),
+            "Default empty CapabilityBoundingSet should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_capability_bounding_set_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with capability bounding set
+    [Socket]
+    ListenStream = /run/test.sock
+    CapabilityBoundingSet = CAP_NET_BIND_SERVICE
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.capability_bounding_set,
+        vec!["CAP_NET_BIND_SERVICE"],
+        "CapabilityBoundingSet should work on socket units"
+    );
+}
+
+#[test]
+fn test_capability_bounding_set_empty_string_drops_all() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CapabilityBoundingSet =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.capability_bounding_set.is_empty(),
+        "CapabilityBoundingSet= (empty) should result in empty list"
+    );
+}
