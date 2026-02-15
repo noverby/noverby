@@ -79,6 +79,12 @@ pub enum UnitCondition {
     /// Checks whether the specified path exists, is a directory, and contains
     /// at least one entry (besides "." and ".."). See systemd.unit(5).
     DirectoryNotEmpty { path: String, negate: bool },
+    /// ConditionPathIsReadWrite=/some/path (true if path exists on a read-write filesystem)
+    /// ConditionPathIsReadWrite=!/some/path (true if path does NOT exist or is on a read-only filesystem)
+    /// Checks whether the specified path exists and is on a read-write mounted
+    /// filesystem (i.e. not mounted read-only). Uses access(2) with W_OK.
+    /// See systemd.unit(5).
+    PathIsReadWrite { path: String, negate: bool },
     /// ConditionControlGroupController=controller (true if the cgroup controller is available)
     /// ConditionControlGroupController=!controller (true if the cgroup controller is NOT available)
     /// Checks whether a given cgroup controller (e.g. `cpu`, `memory`, `io`,
@@ -542,6 +548,23 @@ impl UnitCondition {
                     !result
                 } else {
                     result
+                }
+            }
+            UnitCondition::PathIsReadWrite { path, negate } => {
+                // Check whether the path is on a read-write filesystem.
+                // We use access(W_OK) which checks whether the process could
+                // write to the path — if the filesystem is read-only this
+                // will report false. For directories we check the directory
+                // itself; for files we check the file.
+                let is_rw = match nix::unistd::access(path.as_str(), nix::unistd::AccessFlags::W_OK)
+                {
+                    Ok(()) => true,
+                    Err(_) => false,
+                };
+                if *negate {
+                    !is_rw
+                } else {
+                    is_rw
                 }
             }
             UnitCondition::ControlGroupController { controller, negate } => {

@@ -205,6 +205,7 @@ pub fn parse_unit_section(
     let condition_directory_not_empty = section.remove("CONDITIONDIRECTORYNOTEMPTY");
     let condition_kernel_command_line = section.remove("CONDITIONKERNELCOMMANDLINE");
     let condition_control_group_controller = section.remove("CONDITIONCONTROLGROUPCONTROLLER");
+    let condition_path_is_read_write = section.remove("CONDITIONPATHISREADWRITE");
     let success_action = section.remove("SUCCESSACTION");
     let failure_action = section.remove("FAILUREACTION");
     let part_of = section.remove("PARTOF");
@@ -392,6 +393,14 @@ pub fn parse_unit_section(
         if !argument.is_empty() {
             conditions.push(super::UnitCondition::KernelCommandLine { argument, negate });
         }
+    }
+    for (_, value) in condition_path_is_read_write.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        conditions.push(super::UnitCondition::PathIsReadWrite { path, negate });
     }
     for (_, raw) in condition_control_group_controller.unwrap_or_default() {
         let trimmed = raw.trim();
