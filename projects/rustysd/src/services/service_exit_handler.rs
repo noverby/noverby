@@ -7,6 +7,15 @@ use crate::units::{
     UnitStatus,
 };
 
+/// Check whether a service has `RemainAfterExit=yes` configured.
+fn has_remain_after_exit(unit: &crate::units::Unit) -> bool {
+    if let Specific::Service(srvc) = &unit.specific {
+        srvc.conf.remain_after_exit
+    } else {
+        false
+    }
+}
+
 /// Determine whether a service should be restarted given its `Restart=`
 /// policy and the way it terminated.
 ///
@@ -156,6 +165,16 @@ pub fn service_exit_handler(
                 mut_state
                     .srvc
                     .kill_all_remaining_processes(&srvc.conf, &unit.id.name);
+
+                // RemainAfterExit=yes: keep the unit in Started status after a
+                // clean exit, matching systemd's behaviour for oneshot services
+                // that perform setup tasks.
+                if srvc.conf.remain_after_exit && code.success() {
+                    trace!(
+                        "Oneshot service {} exited cleanly with RemainAfterExit=yes, staying active",
+                        unit.id.name
+                    );
+                }
                 return Ok(());
             }
         }
@@ -210,6 +229,13 @@ pub fn service_exit_handler(
             trace!("Exit handler ignores exit of service {}. Its status is not 'Started'/'Starting', it is: {:?}", name, *status_locked);
             return Ok(());
         }
+    }
+
+    // RemainAfterExit=yes: if the process exited cleanly, keep the service
+    // in its current active state — do not restart, do not deactivate.
+    if has_remain_after_exit(unit) && code.success() {
+        trace!("Service {name} exited cleanly with RemainAfterExit=yes, staying active");
+        return Ok(());
     }
 
     if restart_unit {

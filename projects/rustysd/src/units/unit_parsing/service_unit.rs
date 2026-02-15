@@ -177,6 +177,7 @@ fn parse_service_section(
     let dbus_name = section.remove("BUSNAME");
     let pid_file = section.remove("PIDFILE");
     let slice = section.remove("SLICE");
+    let remain_after_exit = section.remove("REMAINAFTEREXIT");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -580,6 +581,15 @@ fn parse_service_section(
                 None
             }
         }),
+        remain_after_exit: remain_after_exit
+            .map(|vec| {
+                if vec.len() == 1 {
+                    string_to_bool(&vec[0].1)
+                } else {
+                    false
+                }
+            })
+            .unwrap_or(false),
         exec_section: exec_config,
     })
 }

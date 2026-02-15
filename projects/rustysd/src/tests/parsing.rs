@@ -6591,3 +6591,272 @@ fn test_slice_mixed_with_other_deps() {
         .contains(&"network.target".to_owned()));
     assert!(service.common.unit.wants.contains(&"user.slice".to_owned()));
 }
+
+// ── RemainAfterExit= parsing tests ────────────────────────────────────
+
+#[test]
+fn test_remain_after_exit_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(!service.srvc.remain_after_exit);
+}
+
+#[test]
+fn test_remain_after_exit_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RemainAfterExit = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.remain_after_exit);
+}
+
+#[test]
+fn test_remain_after_exit_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RemainAfterExit = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.remain_after_exit);
+}
+
+#[test]
+fn test_remain_after_exit_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RemainAfterExit = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.remain_after_exit);
+}
+
+#[test]
+fn test_remain_after_exit_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RemainAfterExit = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(!service.srvc.remain_after_exit);
+}
+
+#[test]
+fn test_remain_after_exit_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RemainAfterExit = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(!service.srvc.remain_after_exit);
+}
+
+#[test]
+fn test_remain_after_exit_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RemainAfterExit = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(!service.srvc.remain_after_exit);
+}
+
+#[test]
+fn test_remain_after_exit_with_oneshot() {
+    let test_service_str = r#"
+    [Service]
+    Type = oneshot
+    ExecStart = /bin/setup-something
+    RemainAfterExit = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.remain_after_exit);
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::OneShot);
+}
+
+#[test]
+fn test_remain_after_exit_with_simple() {
+    let test_service_str = r#"
+    [Service]
+    Type = simple
+    ExecStart = /bin/true
+    RemainAfterExit = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.remain_after_exit);
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::Simple);
+}
+
+#[test]
+fn test_remain_after_exit_with_other_settings() {
+    let test_service_str = r#"
+    [Unit]
+    Description = Setup service
+
+    [Service]
+    Type = oneshot
+    ExecStart = /bin/setup
+    RemainAfterExit = yes
+    Restart = no
+
+    [Install]
+    WantedBy = multi-user.target
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.remain_after_exit);
+    assert_eq!(service.common.unit.description, "Setup service".to_owned());
+}
+
+#[test]
+fn test_remain_after_exit_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    Type = oneshot
+    ExecStart = /bin/true
+    RemainAfterExit = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(srvc.conf.remain_after_exit);
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+#[test]
+fn test_remain_after_exit_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RemainAfterExit = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(!srvc.conf.remain_after_exit);
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+#[test]
+fn test_remain_after_exit_default_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(!srvc.conf.remain_after_exit);
+    } else {
+        panic!("Expected a service unit");
+    }
+}
