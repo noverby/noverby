@@ -162,7 +162,7 @@
         ./projects/oxidized-nixos
         ./projects/rustysd
 
-        ./presentations
+        ./slides
       ];
       nixDirAliases = {
         flakelightModules = ["modules/flakelight"];
