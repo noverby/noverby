@@ -197,6 +197,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             unset_environment: parsed.unset_environment,
             oom_score_adjust: parsed.oom_score_adjust,
             log_extra_fields: parsed.log_extra_fields,
+            dynamic_user: parsed.dynamic_user,
         })
     }
 }

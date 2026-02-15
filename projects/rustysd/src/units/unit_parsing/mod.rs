@@ -360,6 +360,11 @@ pub struct ParsedExecSection {
     /// for this unit. Each entry is a KEY=VALUE string. Multiple directives
     /// accumulate. Parsed and stored; not yet used at runtime. See systemd.exec(5).
     pub log_extra_fields: Vec<String>,
+    /// DynamicUser= — if true, a UNIX user and group pair is dynamically
+    /// allocated for this unit at runtime and released when the unit is stopped.
+    /// Defaults to false. Parsed and stored; no runtime enforcement yet.
+    /// See systemd.exec(5).
+    pub dynamic_user: bool,
 }
 
 /// The type of utmp/wtmp record to create for a service.
