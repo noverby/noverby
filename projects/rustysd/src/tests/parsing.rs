@@ -11726,3 +11726,338 @@ fn test_delegate_subgroup_none_preserved_after_unit_conversion() {
         panic!("Expected service unit");
     }
 }
+
+// ── KeyringMode= tests ───────────────────────────────────────────────
+
+#[test]
+fn test_keyring_mode_defaults_to_private() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.keyring_mode,
+        crate::units::KeyringMode::Private,
+        "KeyringMode should default to Private when not specified"
+    );
+}
+
+#[test]
+fn test_keyring_mode_inherit() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KeyringMode = inherit
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.keyring_mode,
+        crate::units::KeyringMode::Inherit,
+        "KeyringMode=inherit should parse correctly"
+    );
+}
+
+#[test]
+fn test_keyring_mode_private() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KeyringMode = private
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.keyring_mode,
+        crate::units::KeyringMode::Private,
+        "KeyringMode=private should parse correctly"
+    );
+}
+
+#[test]
+fn test_keyring_mode_shared() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KeyringMode = shared
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.keyring_mode,
+        crate::units::KeyringMode::Shared,
+        "KeyringMode=shared should parse correctly"
+    );
+}
+
+#[test]
+fn test_keyring_mode_case_insensitive_upper() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KeyringMode = INHERIT
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.keyring_mode,
+        crate::units::KeyringMode::Inherit,
+        "KeyringMode should be case-insensitive (uppercase)"
+    );
+}
+
+#[test]
+fn test_keyring_mode_case_insensitive_mixed() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KeyringMode = Private
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.keyring_mode,
+        crate::units::KeyringMode::Private,
+        "KeyringMode should be case-insensitive (mixed case)"
+    );
+}
+
+#[test]
+fn test_keyring_mode_case_insensitive_shared_upper() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KeyringMode = SHARED
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.keyring_mode,
+        crate::units::KeyringMode::Shared,
+        "KeyringMode should be case-insensitive (SHARED)"
+    );
+}
+
+#[test]
+fn test_keyring_mode_invalid_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KeyringMode = bogus
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "KeyringMode with an invalid value should produce a parsing error"
+    );
+}
+
+#[test]
+fn test_keyring_mode_no_unsupported_warning() {
+    // KeyringMode= should be parsed without generating an "unsupported setting" warning.
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KeyringMode = private
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "KeyringMode should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_keyring_mode_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KeyringMode =   shared
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.keyring_mode,
+        crate::units::KeyringMode::Shared,
+        "KeyringMode should handle surrounding whitespace"
+    );
+}
+
+#[test]
+fn test_keyring_mode_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KeyringMode = shared
+    KillMode = process
+    Restart = on-failure
+    Delegate = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.keyring_mode,
+        crate::units::KeyringMode::Shared,
+        "KeyringMode should work alongside other service settings"
+    );
+    assert_eq!(service.srvc.kill_mode, crate::units::KillMode::Process);
+    assert_eq!(
+        service.srvc.restart,
+        crate::units::ServiceRestart::OnFailure
+    );
+    assert_eq!(service.srvc.delegate, crate::units::Delegate::Yes);
+}
+
+#[test]
+fn test_keyring_mode_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KeyringMode = shared
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.keyring_mode,
+            crate::units::KeyringMode::Shared,
+            "KeyringMode=shared should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_keyring_mode_default_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.keyring_mode,
+            crate::units::KeyringMode::Private,
+            "KeyringMode default (Private) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_keyring_mode_inherit_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KeyringMode = inherit
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.keyring_mode,
+            crate::units::KeyringMode::Inherit,
+            "KeyringMode=inherit should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}

@@ -4,10 +4,10 @@ use crate::runtime_info::RuntimeInfo;
 use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
-    acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KillMode, MemoryPressureWatch,
-    NotifyKind, ResourceLimit, ServiceRestart, ServiceType, StandardInput, StatusStarted,
-    StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition, UnitId, UnitIdKind,
-    UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode,
+    acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KeyringMode, KillMode,
+    MemoryPressureWatch, NotifyKind, ResourceLimit, ServiceRestart, ServiceType, StandardInput,
+    StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition,
+    UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode,
 };
 
 use std::sync::RwLock;
@@ -1072,6 +1072,12 @@ pub struct ServiceConfig {
     /// the unit's control group. Only effective when Delegate= is enabled.
     /// Parsed and stored; not yet used at runtime. See systemd.resource-control(5).
     pub delegate_subgroup: Option<String>,
+
+    /// KeyringMode= — controls how the kernel session keyring is set up for
+    /// the service. Defaults to `private` for system services and `inherit`
+    /// for non-service units / user services. Parsed and stored; not yet
+    /// enforced at runtime. See systemd.exec(5).
+    pub keyring_mode: KeyringMode,
 }
 
 /// The immutable config of a socket unit

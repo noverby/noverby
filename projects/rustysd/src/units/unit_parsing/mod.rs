@@ -259,6 +259,12 @@ pub struct ParsedServiceSection {
     /// Parsed and stored; not yet used at runtime. See systemd.resource-control(5).
     pub delegate_subgroup: Option<String>,
 
+    /// KeyringMode= — controls how the kernel session keyring is set up for
+    /// the service. Defaults to `private` for system services and `inherit`
+    /// for non-service units / user services. Parsed and stored; not yet
+    /// enforced at runtime. See systemd.exec(5).
+    pub keyring_mode: KeyringMode,
+
     pub exec_section: ParsedExecSection,
 }
 
@@ -433,6 +439,28 @@ pub enum MemoryPressureWatch {
 impl Default for MemoryPressureWatch {
     fn default() -> Self {
         Self::Auto
+    }
+}
+
+/// KeyringMode= — controls how the kernel session keyring is set up for the
+/// service. See session-keyring(7) and systemd.exec(5).
+#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
+pub enum KeyringMode {
+    /// No special keyring setup; kernel default behaviour applies.
+    Inherit,
+    /// A new session keyring is allocated and not linked to the user keyring.
+    /// Recommended for system services so that multiple services under the
+    /// same UID do not share key material (default for system services).
+    Private,
+    /// A new session keyring is allocated and the user keyring of the
+    /// configured User= is linked into it, allowing key sharing between
+    /// units running under the same user.
+    Shared,
+}
+
+impl Default for KeyringMode {
+    fn default() -> Self {
+        Self::Private
     }
 }
 
