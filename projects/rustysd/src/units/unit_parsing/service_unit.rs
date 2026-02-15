@@ -4,10 +4,73 @@ use crate::units::{
     map_tuples_to_second, parse_install_section, parse_unit_section, string_to_bool, Commandline,
     CommandlinePrefix, Delegate, KillMode, NotifyKind, ParsedCommonConfig, ParsedFile,
     ParsedSection, ParsedServiceConfig, ParsedServiceSection, ParsingErrorReason, RLimitValue,
-    ResourceLimit, ServiceRestart, ServiceType, TasksMax, Timeout,
+    ResourceLimit, ServiceRestart, ServiceType, SuccessExitStatus, TasksMax, Timeout,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
+
+/// Parse a signal name string (with or without `SIG` prefix) into a
+/// `nix::sys::signal::Signal`.  Accepts e.g. `SIGTERM`, `TERM`, `SIGHUP`,
+/// `HUP`, etc.  Returns `None` for unrecognised names.
+fn parse_signal_name(s: &str) -> Option<nix::sys::signal::Signal> {
+    use nix::sys::signal::Signal;
+    let upper = s.to_uppercase();
+    let name = upper.strip_prefix("SIG").unwrap_or(&upper);
+    match name {
+        "HUP" => Some(Signal::SIGHUP),
+        "INT" => Some(Signal::SIGINT),
+        "QUIT" => Some(Signal::SIGQUIT),
+        "ILL" => Some(Signal::SIGILL),
+        "TRAP" => Some(Signal::SIGTRAP),
+        "ABRT" | "IOT" => Some(Signal::SIGABRT),
+        "BUS" => Some(Signal::SIGBUS),
+        "FPE" => Some(Signal::SIGFPE),
+        "KILL" => Some(Signal::SIGKILL),
+        "USR1" => Some(Signal::SIGUSR1),
+        "SEGV" => Some(Signal::SIGSEGV),
+        "USR2" => Some(Signal::SIGUSR2),
+        "PIPE" => Some(Signal::SIGPIPE),
+        "ALRM" => Some(Signal::SIGALRM),
+        "TERM" => Some(Signal::SIGTERM),
+        "CHLD" => Some(Signal::SIGCHLD),
+        "CONT" => Some(Signal::SIGCONT),
+        "STOP" => Some(Signal::SIGSTOP),
+        "TSTP" => Some(Signal::SIGTSTP),
+        "TTIN" => Some(Signal::SIGTTIN),
+        "TTOU" => Some(Signal::SIGTTOU),
+        "URG" => Some(Signal::SIGURG),
+        "XCPU" => Some(Signal::SIGXCPU),
+        "XFSZ" => Some(Signal::SIGXFSZ),
+        "VTALRM" => Some(Signal::SIGVTALRM),
+        "PROF" => Some(Signal::SIGPROF),
+        "WINCH" => Some(Signal::SIGWINCH),
+        "IO" => Some(Signal::SIGIO),
+        "SYS" => Some(Signal::SIGSYS),
+        "PWR" => Some(Signal::SIGPWR),
+        _ => None,
+    }
+}
+
+/// Parse a `SuccessExitStatus=` value.  The value is a space-separated list
+/// of tokens.  Numeric tokens are treated as exit codes; everything else is
+/// tried as a signal name.
+fn parse_success_exit_status(raw: &str) -> SuccessExitStatus {
+    let mut exit_codes = Vec::new();
+    let mut signals = Vec::new();
+    for token in raw.split_whitespace() {
+        if let Ok(code) = token.parse::<i32>() {
+            exit_codes.push(code);
+        } else if let Some(sig) = parse_signal_name(token) {
+            signals.push(sig);
+        } else {
+            warn!("SuccessExitStatus: ignoring unrecognised token: {token}");
+        }
+    }
+    SuccessExitStatus {
+        exit_codes,
+        signals,
+    }
+}
 
 pub fn parse_service(
     parsed_file: ParsedFile,
@@ -178,6 +241,7 @@ fn parse_service_section(
     let pid_file = section.remove("PIDFILE");
     let slice = section.remove("SLICE");
     let remain_after_exit = section.remove("REMAINAFTEREXIT");
+    let success_exit_status = section.remove("SUCCESSEXITSTATUS");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -590,6 +654,14 @@ fn parse_service_section(
                 }
             })
             .unwrap_or(false),
+        success_exit_status: success_exit_status
+            .map(|vec| {
+                // Merge all entries — systemd allows multiple SuccessExitStatus=
+                // lines and they accumulate.
+                let combined: Vec<String> = vec.into_iter().map(|(_, v)| v).collect();
+                parse_success_exit_status(&combined.join(" "))
+            })
+            .unwrap_or_default(),
         exec_section: exec_config,
     })
 }

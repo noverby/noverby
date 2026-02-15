@@ -83,6 +83,7 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 platform_specific,
                 slice: conf.srvc.slice,
                 remain_after_exit: conf.srvc.remain_after_exit,
+                success_exit_status: conf.srvc.success_exit_status,
             },
             state: RwLock::new(ServiceState {
                 common: CommonState::default(),
