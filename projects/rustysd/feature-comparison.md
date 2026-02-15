@@ -475,8 +475,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProtectKernelModules=">ProtectKernelModules=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored; no runtime enforcement yet (requires mount namespace and seccomp support)</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProtectKernelLogs=">ProtectKernelLogs=</a></td>
