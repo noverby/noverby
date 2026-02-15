@@ -12898,6 +12898,562 @@ fn test_job_timeout_action_default_preserved_after_unit_conversion() {
 }
 
 // ============================================================
+// RefuseManualStart= parsing tests
+// ============================================================
+
+#[test]
+fn test_refuse_manual_start_defaults_to_false() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A simple service
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.common.unit.refuse_manual_start,
+        "RefuseManualStart should default to false"
+    );
+}
+
+#[test]
+fn test_refuse_manual_start_true() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStart = yes
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.refuse_manual_start,
+        "RefuseManualStart=yes should be true"
+    );
+}
+
+#[test]
+fn test_refuse_manual_start_false() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStart = no
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.common.unit.refuse_manual_start,
+        "RefuseManualStart=no should be false"
+    );
+}
+
+#[test]
+fn test_refuse_manual_start_true_variant() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStart = true
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.refuse_manual_start,
+        "RefuseManualStart=true should be true"
+    );
+}
+
+#[test]
+fn test_refuse_manual_start_one_is_true() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStart = 1
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.refuse_manual_start,
+        "RefuseManualStart=1 should be true"
+    );
+}
+
+#[test]
+fn test_refuse_manual_start_zero_is_false() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStart = 0
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.common.unit.refuse_manual_start,
+        "RefuseManualStart=0 should be false"
+    );
+}
+
+#[test]
+fn test_refuse_manual_start_case_insensitive() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStart = Yes
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.refuse_manual_start,
+        "RefuseManualStart=Yes should be true (case insensitive)"
+    );
+}
+
+#[test]
+fn test_refuse_manual_start_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStart = yes
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "RefuseManualStart= should not cause errors");
+}
+
+#[test]
+fn test_refuse_manual_start_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStart = yes
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert!(
+        unit.common.unit.refuse_manual_start,
+        "RefuseManualStart=yes should survive unit conversion"
+    );
+}
+
+#[test]
+fn test_refuse_manual_start_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert!(
+        !unit.common.unit.refuse_manual_start,
+        "Default false RefuseManualStart should survive unit conversion"
+    );
+}
+
+#[test]
+fn test_refuse_manual_start_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    Description = A target that refuses manual start
+    RefuseManualStart = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert!(
+        target.common.unit.refuse_manual_start,
+        "RefuseManualStart should work on target units"
+    );
+}
+
+#[test]
+fn test_refuse_manual_start_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket that refuses manual start
+    RefuseManualStart = yes
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.common.unit.refuse_manual_start,
+        "RefuseManualStart should work on socket units"
+    );
+}
+
+// ============================================================
+// RefuseManualStop= parsing tests
+// ============================================================
+
+#[test]
+fn test_refuse_manual_stop_defaults_to_false() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A simple service
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.common.unit.refuse_manual_stop,
+        "RefuseManualStop should default to false"
+    );
+}
+
+#[test]
+fn test_refuse_manual_stop_true() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStop = yes
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.refuse_manual_stop,
+        "RefuseManualStop=yes should be true"
+    );
+}
+
+#[test]
+fn test_refuse_manual_stop_false() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStop = no
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.common.unit.refuse_manual_stop,
+        "RefuseManualStop=no should be false"
+    );
+}
+
+#[test]
+fn test_refuse_manual_stop_true_variant() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStop = true
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.refuse_manual_stop,
+        "RefuseManualStop=true should be true"
+    );
+}
+
+#[test]
+fn test_refuse_manual_stop_one_is_true() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStop = 1
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.refuse_manual_stop,
+        "RefuseManualStop=1 should be true"
+    );
+}
+
+#[test]
+fn test_refuse_manual_stop_zero_is_false() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStop = 0
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.common.unit.refuse_manual_stop,
+        "RefuseManualStop=0 should be false"
+    );
+}
+
+#[test]
+fn test_refuse_manual_stop_case_insensitive() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStop = Yes
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.refuse_manual_stop,
+        "RefuseManualStop=Yes should be true (case insensitive)"
+    );
+}
+
+#[test]
+fn test_refuse_manual_stop_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStop = yes
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "RefuseManualStop= should not cause errors");
+}
+
+#[test]
+fn test_refuse_manual_stop_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStop = yes
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert!(
+        unit.common.unit.refuse_manual_stop,
+        "RefuseManualStop=yes should survive unit conversion"
+    );
+}
+
+#[test]
+fn test_refuse_manual_stop_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert!(
+        !unit.common.unit.refuse_manual_stop,
+        "Default false RefuseManualStop should survive unit conversion"
+    );
+}
+
+#[test]
+fn test_refuse_manual_stop_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    Description = A target that refuses manual stop
+    RefuseManualStop = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert!(
+        target.common.unit.refuse_manual_stop,
+        "RefuseManualStop should work on target units"
+    );
+}
+
+#[test]
+fn test_refuse_manual_start_and_stop_together() {
+    let test_service_str = r#"
+    [Unit]
+    RefuseManualStart = yes
+    RefuseManualStop = yes
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.common.unit.refuse_manual_start);
+    assert!(service.common.unit.refuse_manual_stop);
+}
+
+#[test]
+fn test_refuse_manual_start_with_other_unit_settings() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A restricted service
+    RefuseManualStart = yes
+    IgnoreOnIsolate = yes
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.common.unit.refuse_manual_start);
+    assert!(service.common.unit.ignore_on_isolate);
+}
+
+// ============================================================
 // AllowIsolate= parsing tests
 // ============================================================
 
