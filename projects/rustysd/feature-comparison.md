@@ -355,8 +355,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProtectHome=">ProtectHome=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored (no/yes/read-only/tmpfs). No runtime mount-namespace enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#RuntimeDirectory=">RuntimeDirectory=</a></td>

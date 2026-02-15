@@ -418,6 +418,7 @@ pub fn parse_exec_section(
     let protect_kernel_logs = section.remove("PROTECTKERNELLOGS");
     let capability_bounding_set = section.remove("CAPABILITYBOUNDINGSET");
     let protect_clock = section.remove("PROTECTCLOCK");
+    let protect_home = section.remove("PROTECTHOME");
 
     let user = match user {
         None => None,
@@ -1195,6 +1196,30 @@ pub fn parse_exec_section(
                 entries
             }
             None => Vec::new(),
+        },
+        protect_home: match protect_home {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.trim().to_lowercase().as_str() {
+                        "no" | "false" | "0" => super::ProtectHome::No,
+                        "yes" | "true" | "1" => super::ProtectHome::Yes,
+                        "read-only" => super::ProtectHome::ReadOnly,
+                        "tmpfs" => super::ProtectHome::Tmpfs,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "ProtectHome".to_owned(),
+                                other.to_owned(),
+                            ))
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "ProtectHome".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => super::ProtectHome::default(),
         },
     })
 }
