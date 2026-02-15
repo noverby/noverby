@@ -897,6 +897,17 @@ pub struct ParsedSocketSection {
     pub filedesc_name: Option<String>,
     pub services: Vec<String>,
 
+    /// MaxConnections= — the maximum number of simultaneous connections for
+    /// Accept=yes sockets. Defaults to 64. Parsed and stored; no runtime
+    /// enforcement yet. See systemd.socket(5).
+    pub max_connections: u64,
+
+    /// MaxConnectionsPerSource= — the maximum number of simultaneous
+    /// connections for a service per source IP address. Defaults to the value
+    /// of MaxConnections=. Parsed and stored; no runtime enforcement yet.
+    /// See systemd.socket(5).
+    pub max_connections_per_source: u64,
+
     pub exec_section: ParsedExecSection,
 }
 pub struct ParsedServiceSection {

@@ -144,6 +144,8 @@ pub fn unit_from_parsed_socket(conf: ParsedSocketConfig) -> Result<Unit, String>
                     .unwrap_or_else(|| "unknown".to_owned()),
                 services,
                 sockets: conf.sock.sockets.into_iter().map(Into::into).collect(),
+                max_connections: conf.sock.max_connections,
+                max_connections_per_source: conf.sock.max_connections_per_source,
             },
             state: RwLock::new(SocketState {
                 common: CommonState::default(),

@@ -1453,13 +1453,13 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#MaxConnections=">MaxConnections=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored (unsigned integer, default 64). No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#MaxConnectionsPerSource=">MaxConnectionsPerSource=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored (unsigned integer, defaults to MaxConnections= value). No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#KeepAlive=">KeepAlive=</a></td>
