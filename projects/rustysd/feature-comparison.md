@@ -1308,6 +1308,11 @@ This document is meant as a simple way of checking whether all features you need
   <td>❌</td>
   <td></td>
 </tr>
+<tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ReloadSignal=">ReloadSignal=</a></td>
+  <td>✔️</td>
+  <td>Parsed and stored as a signal name (with or without SIG prefix, case-insensitive, or numeric). Only effective with Type=notify-reload. Defaults to SIGHUP. Not yet used at runtime.</td>
+</tr>
 </table>
 
 ## systemd.socket
