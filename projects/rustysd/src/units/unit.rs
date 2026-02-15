@@ -4,12 +4,12 @@ use crate::runtime_info::RuntimeInfo;
 use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
-    acquire_locks, ActivationSource, Commandline, Delegate, DevicePolicy, EnvVars, KeyringMode,
-    KillMode, MemoryPressureWatch, NotifyKind, OnFailureJobMode, ProtectHome, ProtectProc,
-    ProtectSystem, ResourceLimit, RestrictNamespaces, RuntimeDirectoryPreserve, ServiceRestart,
-    ServiceType, StandardInput, StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout,
-    UnitAction, UnitCondition, UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason,
-    UnitStatus, UtmpMode,
+    acquire_locks, ActivationSource, Commandline, Delegate, DevicePolicy, EnvVars,
+    IOSchedulingClass, KeyringMode, KillMode, MemoryPressureWatch, NotifyKind, OnFailureJobMode,
+    ProtectHome, ProtectProc, ProtectSystem, ResourceLimit, RestrictNamespaces,
+    RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput, StatusStarted,
+    StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition, UnitId, UnitIdKind,
+    UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode,
 };
 
 use std::sync::RwLock;
@@ -1167,6 +1167,12 @@ pub struct ExecConfig {
     /// user/group. Defaults to false. Parsed and stored; no runtime
     /// user-namespace enforcement yet. See systemd.exec(5).
     pub private_users: bool,
+    /// IOSchedulingClass= — sets the I/O scheduling class for executed
+    /// processes. Takes one of "none" (or "0"), "realtime" (or "1"),
+    /// "best-effort" (or "2"), or "idle" (or "3"). Defaults to None
+    /// (kernel default, which is best-effort). Parsed and stored; no
+    /// runtime ioprio_set() enforcement yet. See systemd.exec(5).
+    pub io_scheduling_class: IOSchedulingClass,
     /// IOSchedulingPriority= — sets the I/O scheduling priority for executed
     /// processes. Takes an integer between 0 (highest priority) and 7
     /// (lowest priority). The default priority for the best-effort scheduling

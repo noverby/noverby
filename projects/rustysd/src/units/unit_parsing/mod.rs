@@ -534,6 +534,32 @@ impl Default for DevicePolicy {
     }
 }
 
+/// IOSchedulingClass= — sets the I/O scheduling class for executed processes.
+/// Matches systemd's `IOSchedulingClass=` exec setting.
+/// See <https://www.freedesktop.org/software/systemd/man/systemd.exec.html#IOSchedulingClass=>.
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub enum IOSchedulingClass {
+    /// No explicit class set; the kernel default (best-effort) is used.
+    None,
+    /// Realtime I/O scheduling (class 1). Processes in this class are
+    /// always granted I/O access first. Use with caution — can starve
+    /// other processes.
+    Realtime,
+    /// Best-effort I/O scheduling (class 2). The default scheduling class.
+    /// I/O bandwidth is distributed based on the I/O priority within this
+    /// class.
+    BestEffort,
+    /// Idle I/O scheduling (class 3). Processes in this class only get
+    /// I/O time when no other process needs the disk.
+    Idle,
+}
+
+impl Default for IOSchedulingClass {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
 /// Job mode for OnFailure= units.
 /// Controls how the triggered failure units are enqueued.
 /// Matches systemd's `OnFailureJobMode=` setting.
@@ -1052,6 +1078,12 @@ pub struct ParsedExecSection {
     /// user/group. Defaults to false. Parsed and stored; no runtime
     /// user-namespace enforcement yet. See systemd.exec(5).
     pub private_users: bool,
+    /// IOSchedulingClass= — sets the I/O scheduling class for executed
+    /// processes. Takes one of "none" (or "0"), "realtime" (or "1"),
+    /// "best-effort" (or "2"), or "idle" (or "3"). Defaults to None
+    /// (kernel default, which is best-effort). Parsed and stored; no
+    /// runtime ioprio_set() enforcement yet. See systemd.exec(5).
+    pub io_scheduling_class: IOSchedulingClass,
     /// IOSchedulingPriority= — sets the I/O scheduling priority for executed
     /// processes. Takes an integer between 0 (highest priority) and 7
     /// (lowest priority). The default priority for the best-effort scheduling

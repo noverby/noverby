@@ -535,6 +535,7 @@ pub fn parse_exec_section(
     let private_devices = section.remove("PRIVATEDEVICES");
     let private_network = section.remove("PRIVATENETWORK");
     let private_users = section.remove("PRIVATEUSERS");
+    let io_scheduling_class = section.remove("IOSCHEDULINGCLASS");
     let io_scheduling_priority = section.remove("IOSCHEDULINGPRIORITY");
 
     let user = match user {
@@ -1598,6 +1599,32 @@ pub fn parse_exec_section(
         private_devices,
         private_network,
         private_users,
+        io_scheduling_class: match io_scheduling_class {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.trim().to_lowercase().as_str() {
+                        "none" | "0" | "" => super::IOSchedulingClass::None,
+                        "realtime" | "1" => super::IOSchedulingClass::Realtime,
+                        "best-effort" | "2" => super::IOSchedulingClass::BestEffort,
+                        "idle" | "3" => super::IOSchedulingClass::Idle,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "IOSchedulingClass".to_owned(),
+                                other.to_owned(),
+                            ))
+                        }
+                    }
+                } else if vec.len() > 1 {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "IOSchedulingClass".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                } else {
+                    super::IOSchedulingClass::default()
+                }
+            }
+            None => super::IOSchedulingClass::default(),
+        },
         io_scheduling_priority: match io_scheduling_priority {
             None => None,
             Some(vec) => {
