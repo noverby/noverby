@@ -7902,3 +7902,223 @@ fn test_mount_is_mount_method() {
     // A .service unit should not be a mount
     assert!(!unit.is_mount());
 }
+
+// ── StandardOutput=tty / StandardError=tty parsing tests ───────────────
+
+#[test]
+fn test_stdout_tty_parsed() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    StandardOutput = tty
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.stdout_path,
+        Some(crate::units::StdIoOption::Tty)
+    );
+}
+
+#[test]
+fn test_stderr_tty_parsed() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    StandardError = tty
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.stderr_path,
+        Some(crate::units::StdIoOption::Tty)
+    );
+}
+
+#[test]
+fn test_stdout_and_stderr_tty_parsed() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    StandardOutput = tty
+    StandardError = tty
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.stdout_path,
+        Some(crate::units::StdIoOption::Tty)
+    );
+    assert_eq!(
+        service.srvc.exec_section.stderr_path,
+        Some(crate::units::StdIoOption::Tty)
+    );
+}
+
+#[test]
+fn test_stdout_tty_with_stdin_tty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    StandardInput = tty
+    StandardOutput = tty
+    StandardError = tty
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.stdin_option,
+        crate::units::StandardInput::Tty
+    );
+    assert_eq!(
+        service.srvc.exec_section.stdout_path,
+        Some(crate::units::StdIoOption::Tty)
+    );
+    assert_eq!(
+        service.srvc.exec_section.stderr_path,
+        Some(crate::units::StdIoOption::Tty)
+    );
+}
+
+#[test]
+fn test_stdout_tty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    StandardOutput = tty
+    StandardError = tty
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.stdout_path,
+            Some(crate::units::StdIoOption::Tty)
+        );
+        assert_eq!(
+            srvc.conf.exec_config.stderr_path,
+            Some(crate::units::StdIoOption::Tty)
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_stdout_tty_with_tty_path() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    StandardInput = tty
+    StandardOutput = tty
+    TTYPath = /dev/tty1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.stdout_path,
+        Some(crate::units::StdIoOption::Tty)
+    );
+    assert_eq!(
+        service.srvc.exec_section.tty_path,
+        Some(std::path::PathBuf::from("/dev/tty1"))
+    );
+}
+
+#[test]
+fn test_stdout_tty_no_unsupported_warning() {
+    // StandardOutput=tty should be parsed without generating an "unsupported" warning
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    StandardOutput = tty
+    StandardError = tty
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    );
+
+    assert!(service.is_ok());
+    let service = service.unwrap();
+    assert_eq!(
+        service.srvc.exec_section.stdout_path,
+        Some(crate::units::StdIoOption::Tty)
+    );
+    assert_eq!(
+        service.srvc.exec_section.stderr_path,
+        Some(crate::units::StdIoOption::Tty)
+    );
+}
+
+#[test]
+fn test_stdout_tty_mixed_with_other_stdio() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    StandardInput = tty
+    StandardOutput = tty
+    StandardError = journal
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.stdin_option,
+        crate::units::StandardInput::Tty
+    );
+    assert_eq!(
+        service.srvc.exec_section.stdout_path,
+        Some(crate::units::StdIoOption::Tty)
+    );
+    assert_eq!(
+        service.srvc.exec_section.stderr_path,
+        Some(crate::units::StdIoOption::Journal)
+    );
+}
