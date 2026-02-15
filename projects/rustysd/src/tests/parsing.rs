@@ -11454,6 +11454,390 @@ fn test_reload_signal_with_whitespace() {
     );
 }
 
+// ── KillSignal= tests ───────────────────────────────────────────────
+
+#[test]
+fn test_kill_signal_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal, None,
+        "KillSignal should default to None when not specified"
+    );
+}
+
+#[test]
+fn test_kill_signal_sigterm() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = SIGTERM
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(nix::sys::signal::Signal::SIGTERM),
+        "KillSignal=SIGTERM should parse correctly"
+    );
+}
+
+#[test]
+fn test_kill_signal_sigkill() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = SIGKILL
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(nix::sys::signal::Signal::SIGKILL),
+        "KillSignal=SIGKILL should parse correctly"
+    );
+}
+
+#[test]
+fn test_kill_signal_sigint() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = SIGINT
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(nix::sys::signal::Signal::SIGINT),
+        "KillSignal=SIGINT should parse correctly"
+    );
+}
+
+#[test]
+fn test_kill_signal_sighup() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = SIGHUP
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(nix::sys::signal::Signal::SIGHUP),
+        "KillSignal=SIGHUP should parse correctly"
+    );
+}
+
+#[test]
+fn test_kill_signal_without_sig_prefix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = TERM
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(nix::sys::signal::Signal::SIGTERM),
+        "KillSignal=TERM (without SIG prefix) should parse correctly"
+    );
+}
+
+#[test]
+fn test_kill_signal_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = sigterm
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(nix::sys::signal::Signal::SIGTERM),
+        "KillSignal should be case-insensitive"
+    );
+}
+
+#[test]
+fn test_kill_signal_case_insensitive_mixed() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = SigKill
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(nix::sys::signal::Signal::SIGKILL),
+        "KillSignal should handle mixed-case signal names"
+    );
+}
+
+#[test]
+fn test_kill_signal_numeric() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = 15
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(nix::sys::signal::Signal::SIGTERM),
+        "KillSignal=15 should parse as SIGTERM (signal number 15)"
+    );
+}
+
+#[test]
+fn test_kill_signal_numeric_9() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = 9
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(nix::sys::signal::Signal::SIGKILL),
+        "KillSignal=9 should parse as SIGKILL (signal number 9)"
+    );
+}
+
+#[test]
+fn test_kill_signal_empty_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal, None,
+        "Empty KillSignal= should be None"
+    );
+}
+
+#[test]
+fn test_kill_signal_invalid_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = NOTASIGNAL
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "Invalid KillSignal value should produce an error"
+    );
+}
+
+#[test]
+fn test_kill_signal_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = SIGTERM
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "KillSignal= should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_kill_signal_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = SIGTERM
+    KillMode = process
+    Restart = on-failure
+    SendSIGHUP = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(nix::sys::signal::Signal::SIGTERM),
+    );
+    assert!(service.srvc.send_sighup);
+}
+
+#[test]
+fn test_kill_signal_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = SIGINT
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.kill_signal,
+            Some(nix::sys::signal::Signal::SIGINT),
+            "KillSignal should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_kill_signal_none_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.kill_signal, None,
+            "Default None KillSignal should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_kill_signal_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal =   SIGTERM
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(nix::sys::signal::Signal::SIGTERM),
+        "KillSignal should handle surrounding whitespace"
+    );
+}
+
 // ── DelegateSubgroup= tests ──────────────────────────────────────────
 
 #[test]
