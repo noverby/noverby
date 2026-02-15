@@ -29562,3 +29562,1025 @@ fn test_x_vendor_extension_case_preserved() {
         "X- prefixed settings should be ignored regardless of original casing"
     );
 }
+
+// ==============================
+// StartLimitIntervalSec= tests
+// ==============================
+
+#[test]
+fn test_start_limit_interval_sec_defaults_to_none() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A simple service
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_interval_sec, None,
+        "StartLimitIntervalSec should default to None"
+    );
+}
+
+#[test]
+fn test_start_limit_interval_sec_seconds() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitIntervalSec = 30
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_interval_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(30)
+        ))
+    );
+}
+
+#[test]
+fn test_start_limit_interval_sec_with_suffix() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitIntervalSec = 30s
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_interval_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(30)
+        ))
+    );
+}
+
+#[test]
+fn test_start_limit_interval_sec_infinity() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitIntervalSec = infinity
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_interval_sec,
+        Some(crate::units::Timeout::Infinity)
+    );
+}
+
+#[test]
+fn test_start_limit_interval_sec_infinity_case_insensitive() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitIntervalSec = INFINITY
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_interval_sec,
+        Some(crate::units::Timeout::Infinity)
+    );
+}
+
+#[test]
+fn test_start_limit_interval_sec_compound_duration() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitIntervalSec = 2min 30s
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_interval_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(150)
+        ))
+    );
+}
+
+#[test]
+fn test_start_limit_interval_sec_minutes() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitIntervalSec = 5min
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_interval_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(300)
+        ))
+    );
+}
+
+#[test]
+fn test_start_limit_interval_sec_zero_disables() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitIntervalSec = 0
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_interval_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(0)
+        )),
+        "StartLimitIntervalSec=0 should disable rate limiting"
+    );
+}
+
+#[test]
+fn test_start_limit_interval_sec_no_unsupported_warning() {
+    // This test verifies that StartLimitIntervalSec= is recognized and does not
+    // trigger the "Ignoring unsupported setting" warning.
+    let test_service_str = r#"
+    [Unit]
+    StartLimitIntervalSec = 10
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "StartLimitIntervalSec= should be recognized"
+    );
+}
+
+#[test]
+fn test_start_limit_interval_sec_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    StartLimitIntervalSec = 60
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+
+    assert_eq!(
+        unit.common.unit.start_limit_interval_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(60)
+        )),
+        "StartLimitIntervalSec should be preserved after unit conversion"
+    );
+}
+
+#[test]
+fn test_start_limit_interval_sec_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    Description = A target with start limit
+    StartLimitIntervalSec = 120
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        target.common.unit.start_limit_interval_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(120)
+        ))
+    );
+}
+
+#[test]
+fn test_start_limit_interval_sec_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with start limit
+    StartLimitIntervalSec = 90
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.common.unit.start_limit_interval_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(90)
+        ))
+    );
+}
+
+// ==============================
+// StartLimitBurst= tests
+// ==============================
+
+#[test]
+fn test_start_limit_burst_defaults_to_none() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A simple service
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_burst, None,
+        "StartLimitBurst should default to None"
+    );
+}
+
+#[test]
+fn test_start_limit_burst_value() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitBurst = 5
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.start_limit_burst, Some(5));
+}
+
+#[test]
+fn test_start_limit_burst_zero() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitBurst = 0
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.start_limit_burst, Some(0));
+}
+
+#[test]
+fn test_start_limit_burst_large_value() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitBurst = 1000
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.start_limit_burst, Some(1000));
+}
+
+#[test]
+fn test_start_limit_burst_invalid_value_errors() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitBurst = notanumber
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_err(),
+        "Invalid StartLimitBurst value should error"
+    );
+}
+
+#[test]
+fn test_start_limit_burst_negative_value_errors() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitBurst = -1
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_err(),
+        "Negative StartLimitBurst value should error"
+    );
+}
+
+#[test]
+fn test_start_limit_burst_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitBurst = 3
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(result.is_ok(), "StartLimitBurst= should be recognized");
+}
+
+#[test]
+fn test_start_limit_burst_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    StartLimitBurst = 10
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+
+    assert_eq!(
+        unit.common.unit.start_limit_burst,
+        Some(10),
+        "StartLimitBurst should be preserved after unit conversion"
+    );
+}
+
+#[test]
+fn test_start_limit_burst_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    Description = A target with start limit burst
+    StartLimitBurst = 7
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(target.common.unit.start_limit_burst, Some(7));
+}
+
+#[test]
+fn test_start_limit_burst_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with start limit burst
+    StartLimitBurst = 3
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.common.unit.start_limit_burst, Some(3));
+}
+
+// ==============================
+// StartLimitAction= tests
+// ==============================
+
+#[test]
+fn test_start_limit_action_defaults_to_none() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A simple service
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_action,
+        crate::units::UnitAction::None,
+        "StartLimitAction should default to None"
+    );
+}
+
+#[test]
+fn test_start_limit_action_none() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitAction = none
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_action,
+        crate::units::UnitAction::None,
+    );
+}
+
+#[test]
+fn test_start_limit_action_reboot() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitAction = reboot
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_action,
+        crate::units::UnitAction::Reboot,
+    );
+}
+
+#[test]
+fn test_start_limit_action_reboot_force() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitAction = reboot-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_action,
+        crate::units::UnitAction::RebootForce,
+    );
+}
+
+#[test]
+fn test_start_limit_action_reboot_immediate() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitAction = reboot-immediate
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_action,
+        crate::units::UnitAction::RebootImmediate,
+    );
+}
+
+#[test]
+fn test_start_limit_action_poweroff() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitAction = poweroff
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_action,
+        crate::units::UnitAction::Poweroff,
+    );
+}
+
+#[test]
+fn test_start_limit_action_poweroff_force() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitAction = poweroff-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_action,
+        crate::units::UnitAction::PoweroffForce,
+    );
+}
+
+#[test]
+fn test_start_limit_action_exit() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitAction = exit
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_action,
+        crate::units::UnitAction::Exit,
+    );
+}
+
+#[test]
+fn test_start_limit_action_exit_force() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitAction = exit-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_action,
+        crate::units::UnitAction::ExitForce,
+    );
+}
+
+#[test]
+fn test_start_limit_action_halt() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitAction = halt
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_action,
+        crate::units::UnitAction::Halt,
+    );
+}
+
+#[test]
+fn test_start_limit_action_kexec() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitAction = kexec
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_action,
+        crate::units::UnitAction::Kexec,
+    );
+}
+
+#[test]
+fn test_start_limit_action_case_insensitive() {
+    let cases = vec![
+        ("reboot-force", crate::units::UnitAction::RebootForce),
+        ("REBOOT-FORCE", crate::units::UnitAction::RebootForce),
+        ("Reboot-Force", crate::units::UnitAction::RebootForce),
+        ("POWEROFF", crate::units::UnitAction::Poweroff),
+        ("Poweroff", crate::units::UnitAction::Poweroff),
+        ("NONE", crate::units::UnitAction::None),
+        ("None", crate::units::UnitAction::None),
+    ];
+
+    for (input, expected) in cases {
+        let test_service_str = format!(
+            r#"
+            [Unit]
+            StartLimitAction = {}
+            [Service]
+            ExecStart = /bin/myservice
+            "#,
+            input
+        );
+
+        let parsed_file = crate::units::parse_file(&test_service_str).unwrap();
+        let service = crate::units::parse_service(
+            parsed_file,
+            &std::path::PathBuf::from("/path/to/unitfile.service"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            service.common.unit.start_limit_action, expected,
+            "StartLimitAction={} should parse to {:?}",
+            input, expected
+        );
+    }
+}
+
+#[test]
+fn test_start_limit_action_unknown_value_errors() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitAction = bogus
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_err(),
+        "Unknown StartLimitAction value should error"
+    );
+}
+
+#[test]
+fn test_start_limit_action_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitAction = none
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(result.is_ok(), "StartLimitAction= should be recognized");
+}
+
+#[test]
+fn test_start_limit_action_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    StartLimitAction = reboot-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+
+    assert_eq!(
+        unit.common.unit.start_limit_action,
+        crate::units::UnitAction::RebootForce,
+        "StartLimitAction should be preserved after unit conversion"
+    );
+}
+
+#[test]
+fn test_start_limit_action_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    Description = A target with start limit action
+    StartLimitAction = poweroff-force
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        target.common.unit.start_limit_action,
+        crate::units::UnitAction::PoweroffForce,
+    );
+}
+
+#[test]
+fn test_start_limit_action_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with start limit action
+    StartLimitAction = reboot
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.common.unit.start_limit_action,
+        crate::units::UnitAction::Reboot,
+    );
+}
+
+// ==============================
+// Combined StartLimit* tests
+// ==============================
+
+#[test]
+fn test_start_limit_all_three_settings_together() {
+    let test_service_str = r#"
+    [Unit]
+    StartLimitIntervalSec = 60
+    StartLimitBurst = 5
+    StartLimitAction = reboot
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_interval_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(60)
+        ))
+    );
+    assert_eq!(service.common.unit.start_limit_burst, Some(5));
+    assert_eq!(
+        service.common.unit.start_limit_action,
+        crate::units::UnitAction::Reboot
+    );
+}
+
+#[test]
+fn test_start_limit_with_other_unit_settings() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A service with start limits
+    FailureAction = reboot
+    StartLimitIntervalSec = 30
+    StartLimitBurst = 3
+    StartLimitAction = poweroff
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.start_limit_interval_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(30)
+        ))
+    );
+    assert_eq!(service.common.unit.start_limit_burst, Some(3));
+    assert_eq!(
+        service.common.unit.start_limit_action,
+        crate::units::UnitAction::Poweroff
+    );
+    assert_eq!(
+        service.common.unit.failure_action,
+        crate::units::UnitAction::Reboot,
+        "Other unit settings should not be affected"
+    );
+}
+
+#[test]
+fn test_start_limit_all_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    StartLimitIntervalSec = 120
+    StartLimitBurst = 10
+    StartLimitAction = halt
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+
+    assert_eq!(
+        unit.common.unit.start_limit_interval_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(120)
+        )),
+    );
+    assert_eq!(unit.common.unit.start_limit_burst, Some(10));
+    assert_eq!(
+        unit.common.unit.start_limit_action,
+        crate::units::UnitAction::Halt,
+    );
+}
+
+#[test]
+fn test_start_limit_defaults_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+
+    assert_eq!(unit.common.unit.start_limit_interval_sec, None);
+    assert_eq!(unit.common.unit.start_limit_burst, None);
+    assert_eq!(
+        unit.common.unit.start_limit_action,
+        crate::units::UnitAction::None,
+    );
+}
