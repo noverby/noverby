@@ -1795,13 +1795,13 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#FailureAction=">FailureAction=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✅</td>
+  <td>All action values supported (none, exit, reboot, poweroff, halt, kexec and their -force/-immediate variants). The -immediate variants call the reboot(2) syscall directly on Linux.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#SuccessAction=">SuccessAction=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✅</td>
+  <td>All action values supported (none, exit, reboot, poweroff, halt, kexec and their -force/-immediate variants). The -immediate variants call the reboot(2) syscall directly on Linux.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#FailureActionExitStatus=">FailureActionExitStatus=</a></td>

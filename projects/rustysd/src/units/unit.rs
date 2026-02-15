@@ -6,8 +6,8 @@ use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
     acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KillMode, NotifyKind,
     ResourceLimit, ServiceRestart, ServiceType, StandardInput, StatusStarted, StatusStopped,
-    StdIoOption, TasksMax, Timeout, UnitCondition, UnitId, UnitIdKind, UnitOperationError,
-    UnitOperationErrorReason, UnitStatus,
+    StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition, UnitId, UnitIdKind,
+    UnitOperationError, UnitOperationErrorReason, UnitStatus,
 };
 
 use std::sync::RwLock;
@@ -713,6 +713,14 @@ pub struct UnitConfig {
     /// If any condition fails, the unit is skipped (not treated as an error).
     /// Matches systemd's ConditionPathExists=, ConditionPathIsDirectory=, etc.
     pub conditions: Vec<UnitCondition>,
+
+    /// Action to take when the unit finishes successfully.
+    /// Matches systemd's `SuccessAction=` setting.
+    pub success_action: UnitAction,
+
+    /// Action to take when the unit fails.
+    /// Matches systemd's `FailureAction=` setting.
+    pub failure_action: UnitAction,
 }
 
 #[derive(Debug, Clone)]

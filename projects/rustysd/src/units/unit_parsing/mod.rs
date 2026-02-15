@@ -63,6 +63,50 @@ impl UnitCondition {
     }
 }
 
+/// Action to take when a unit succeeds or fails.
+///
+/// Matches systemd's `SuccessAction=` / `FailureAction=` settings.
+/// See <https://www.freedesktop.org/software/systemd/man/systemd.unit.html#SuccessAction=>.
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub enum UnitAction {
+    /// Do nothing (default).
+    None,
+    /// Initiate a clean shutdown of the service manager.
+    Exit,
+    /// Like `Exit`, but without waiting for running jobs to finish.
+    ExitForce,
+    /// Initiate a clean reboot.
+    Reboot,
+    /// Reboot immediately, skipping clean shutdown of remaining units.
+    RebootForce,
+    /// Reboot immediately via `reboot(2)`, skipping all cleanup.
+    RebootImmediate,
+    /// Initiate a clean poweroff.
+    Poweroff,
+    /// Poweroff immediately, skipping clean shutdown of remaining units.
+    PoweroffForce,
+    /// Poweroff immediately via `reboot(2)`, skipping all cleanup.
+    PoweroffImmediate,
+    /// Initiate a clean halt.
+    Halt,
+    /// Halt immediately, skipping clean shutdown of remaining units.
+    HaltForce,
+    /// Halt immediately via `reboot(2)`, skipping all cleanup.
+    HaltImmediate,
+    /// Initiate a kexec reboot.
+    Kexec,
+    /// Kexec immediately, skipping clean shutdown of remaining units.
+    KexecForce,
+    /// Kexec immediately via `reboot(2)`, skipping all cleanup.
+    KexecImmediate,
+}
+
+impl Default for UnitAction {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
 pub struct ParsedUnitSection {
     pub description: String,
     pub documentation: Vec<String>,
@@ -81,6 +125,14 @@ pub struct ParsedUnitSection {
     /// If any condition fails, the unit is skipped (not an error).
     /// Matches systemd's ConditionPathExists=, ConditionPathIsDirectory=, etc.
     pub conditions: Vec<UnitCondition>,
+
+    /// Action to take when the unit finishes successfully.
+    /// Matches systemd's `SuccessAction=` setting.
+    pub success_action: UnitAction,
+
+    /// Action to take when the unit fails.
+    /// Matches systemd's `FailureAction=` setting.
+    pub failure_action: UnitAction,
 }
 
 impl Default for ParsedUnitSection {
@@ -95,6 +147,8 @@ impl Default for ParsedUnitSection {
             after: Vec::new(),
             default_dependencies: true,
             conditions: Vec::new(),
+            success_action: UnitAction::default(),
+            failure_action: UnitAction::default(),
         }
     }
 }
