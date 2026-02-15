@@ -277,6 +277,7 @@ pub fn parse_exec_section(
     let tty_reset = section.remove("TTYRESET");
     let tty_vhangup = section.remove("TTYVHANGUP");
     let tty_vt_disallocate = section.remove("TTYVTDISALLOCATE");
+    let ignore_sigpipe = section.remove("IGNORESIGPIPE");
 
     let user = match user {
         None => None,
@@ -390,6 +391,21 @@ pub fn parse_exec_section(
             }
         }
         None => false,
+    };
+
+    let ignore_sigpipe = match ignore_sigpipe {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "IgnoreSIGPIPE".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        // systemd default: true — SIGPIPE is ignored
+        None => true,
     };
 
     let stdout_path = match stdout {
@@ -524,6 +540,7 @@ pub fn parse_exec_section(
         tty_reset,
         tty_vhangup,
         tty_vt_disallocate,
+        ignore_sigpipe,
     })
 }
 

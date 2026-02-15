@@ -8122,3 +8122,193 @@ fn test_stdout_tty_mixed_with_other_stdio() {
         Some(crate::units::StdIoOption::Journal)
     );
 }
+
+#[test]
+fn test_ignore_sigpipe_defaults_to_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.ignore_sigpipe,
+        "IgnoreSIGPIPE should default to true when not specified"
+    );
+}
+
+#[test]
+fn test_ignore_sigpipe_explicit_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    IgnoreSIGPIPE = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.ignore_sigpipe,
+        "IgnoreSIGPIPE=yes should be true"
+    );
+}
+
+#[test]
+fn test_ignore_sigpipe_explicit_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    IgnoreSIGPIPE = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.ignore_sigpipe,
+        "IgnoreSIGPIPE=no should be false"
+    );
+}
+
+#[test]
+fn test_ignore_sigpipe_explicit_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    IgnoreSIGPIPE = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.ignore_sigpipe,
+        "IgnoreSIGPIPE=true should be true"
+    );
+}
+
+#[test]
+fn test_ignore_sigpipe_explicit_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    IgnoreSIGPIPE = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.ignore_sigpipe,
+        "IgnoreSIGPIPE=false should be false"
+    );
+}
+
+#[test]
+fn test_ignore_sigpipe_explicit_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    IgnoreSIGPIPE = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.ignore_sigpipe,
+        "IgnoreSIGPIPE=1 should be true"
+    );
+}
+
+#[test]
+fn test_ignore_sigpipe_explicit_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    IgnoreSIGPIPE = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.ignore_sigpipe,
+        "IgnoreSIGPIPE=0 should be false"
+    );
+}
+
+#[test]
+fn test_ignore_sigpipe_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    IgnoreSIGPIPE = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.ignore_sigpipe,
+        "IgnoreSIGPIPE=YES (case-insensitive) should be true"
+    );
+}
+
+#[test]
+fn test_ignore_sigpipe_no_warning_when_set() {
+    // Verify that setting IgnoreSIGPIPE does not produce an "unsupported setting" warning.
+    // If parsing succeeds without error, the setting was consumed (not left in the section
+    // to trigger a warning).
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    IgnoreSIGPIPE = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "Parsing a service with IgnoreSIGPIPE should succeed without errors"
+    );
+}

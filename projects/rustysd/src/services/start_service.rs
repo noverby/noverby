@@ -242,6 +242,7 @@ fn start_service_with_filedescriptors(
         tty_reset: conf.exec_config.tty_reset,
         tty_vhangup: conf.exec_config.tty_vhangup,
         tty_vt_disallocate: conf.exec_config.tty_vt_disallocate,
+        ignore_sigpipe: conf.exec_config.ignore_sigpipe,
         stdout_is_inherit: matches!(
             conf.exec_config.stdout_path,
             None | Some(StdIoOption::Inherit)
