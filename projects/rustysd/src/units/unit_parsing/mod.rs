@@ -419,6 +419,11 @@ pub struct ParsedExecSection {
     /// denied. Defaults to false. Parsed and stored; no runtime enforcement
     /// yet (requires seccomp support). See systemd.exec(5).
     pub restrict_suid_sgid: bool,
+    /// ProtectKernelLogs= — if true, access to the kernel log ring buffer
+    /// (/dev/kmsg, /proc/kmsg, dmesg) is denied. Defaults to false. Parsed
+    /// and stored; no runtime enforcement yet (requires mount namespace and
+    /// seccomp support). See systemd.exec(5).
+    pub protect_kernel_logs: bool,
 }
 
 /// The type of utmp/wtmp record to create for a service.
