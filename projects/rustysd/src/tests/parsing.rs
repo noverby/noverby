@@ -13192,3 +13192,270 @@ fn test_job_timeout_sec_hours() {
         ))
     );
 }
+
+// ============================================================
+// ExecReload= parsing tests
+// ============================================================
+
+#[test]
+fn test_exec_reload_empty_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.reload.is_empty(),
+        "ExecReload should default to empty"
+    );
+}
+
+#[test]
+fn test_exec_reload_single_command() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ExecReload = /bin/kill -HUP $MAINPID
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload.len(),
+        1,
+        "Should have one reload command"
+    );
+    assert_eq!(service.srvc.reload[0].cmd, "/bin/kill");
+}
+
+#[test]
+fn test_exec_reload_multiple_commands() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ExecReload = /bin/kill -HUP $MAINPID
+    ExecReload = /bin/myservice --reload
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload.len(),
+        2,
+        "Should have two reload commands"
+    );
+    assert_eq!(service.srvc.reload[0].cmd, "/bin/kill");
+    assert_eq!(service.srvc.reload[1].cmd, "/bin/myservice");
+}
+
+#[test]
+fn test_exec_reload_with_arguments() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ExecReload = /usr/bin/myctl reload --config /etc/myservice.conf
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.reload.len(), 1);
+    assert_eq!(service.srvc.reload[0].cmd, "/usr/bin/myctl");
+    assert_eq!(
+        service.srvc.reload[0].args,
+        vec!["reload", "--config", "/etc/myservice.conf"]
+    );
+}
+
+#[test]
+fn test_exec_reload_with_minus_prefix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ExecReload = -/bin/kill -HUP $MAINPID
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.reload.len(), 1);
+    assert_eq!(service.srvc.reload[0].cmd, "/bin/kill");
+    assert!(
+        service.srvc.reload[0]
+            .prefixes
+            .contains(&crate::units::CommandlinePrefix::Minus),
+        "ExecReload with - prefix should have Minus prefix"
+    );
+}
+
+#[test]
+fn test_exec_reload_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ExecReload = /bin/kill -HUP $MAINPID
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "ExecReload should parse without error or warning"
+    );
+}
+
+#[test]
+fn test_exec_reload_with_other_exec_commands() {
+    let test_service_str = r#"
+    [Service]
+    ExecStartPre = /bin/prep
+    ExecStart = /bin/myservice
+    ExecReload = /bin/myservice --reload
+    ExecStop = /bin/myservice --stop
+    ExecStopPost = /bin/cleanup
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.startpre.len(), 1);
+    assert_eq!(service.srvc.reload.len(), 1);
+    assert_eq!(service.srvc.stop.len(), 1);
+    assert_eq!(service.srvc.stoppost.len(), 1);
+    assert_eq!(service.srvc.reload[0].cmd, "/bin/myservice");
+}
+
+#[test]
+fn test_exec_reload_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ExecReload = /bin/myservice --reload
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(srvc.conf.reload.len(), 1);
+        assert_eq!(srvc.conf.reload[0].cmd, "/bin/myservice");
+        assert_eq!(srvc.conf.reload[0].args, vec!["--reload"]);
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_exec_reload_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.reload.is_empty(),
+            "Empty ExecReload should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_exec_reload_with_notify_reload_type() {
+    let test_service_str = r#"
+    [Service]
+    Type = notify-reload
+    ExecStart = /bin/myservice
+    ExecReload = /bin/myservice --reload
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.reload.len(), 1);
+    assert_eq!(service.srvc.reload[0].cmd, "/bin/myservice");
+    assert_eq!(
+        service.srvc.srcv_type,
+        crate::units::ServiceType::NotifyReload,
+    );
+}
+
+#[test]
+fn test_exec_reload_with_at_prefix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ExecReload = @/bin/myservice myservice --reload
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.reload.len(), 1);
+    assert!(
+        service.srvc.reload[0]
+            .prefixes
+            .contains(&crate::units::CommandlinePrefix::AtSign),
+        "ExecReload with @ prefix should have AtSign prefix"
+    );
+}

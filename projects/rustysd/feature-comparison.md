@@ -1205,8 +1205,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ExecReload=">ExecReload=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored. Supports multiple commands, prefix characters (-/@), and arguments. No runtime enforcement yet (reload command not implemented).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ExecStop=">ExecStop=</a></td>
