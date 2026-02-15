@@ -153,6 +153,12 @@ pub struct ParsedUnitSection {
     /// Defaults to false, matching systemd's `StopWhenUnneeded=` setting.
     /// Parsed and stored; no runtime enforcement yet.
     pub stop_when_unneeded: bool,
+
+    /// Action to take when a job for this unit times out.
+    /// Matches systemd's `JobTimeoutAction=` setting.
+    /// Uses the same action values as `SuccessAction=`/`FailureAction=`.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub job_timeout_action: UnitAction,
 }
 
 impl Default for ParsedUnitSection {
@@ -173,6 +179,7 @@ impl Default for ParsedUnitSection {
             failure_action: UnitAction::default(),
             requires_mounts_for: Vec::new(),
             stop_when_unneeded: false,
+            job_timeout_action: UnitAction::default(),
         }
     }
 }

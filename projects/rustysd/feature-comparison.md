@@ -1845,8 +1845,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#JobTimeoutAction=">JobTimeoutAction=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored. Same action values as SuccessAction=/FailureAction=. No runtime enforcement yet (requires job timeout infrastructure).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#JobTimeoutRebootArgument=">JobTimeoutRebootArgument=</a></td>

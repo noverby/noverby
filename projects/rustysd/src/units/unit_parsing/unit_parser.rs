@@ -177,7 +177,7 @@ fn parse_unit_action(value: &str) -> Result<UnitAction, ParsingErrorReason> {
         "kexecforce" => Ok(UnitAction::KexecForce),
         "kexecimmediate" => Ok(UnitAction::KexecImmediate),
         other => Err(ParsingErrorReason::UnknownSetting(
-            "SuccessAction/FailureAction".to_owned(),
+            "SuccessAction/FailureAction/JobTimeoutAction".to_owned(),
             other.to_owned(),
         )),
     }
@@ -202,6 +202,7 @@ pub fn parse_unit_section(
     let ignore_on_isolate = section.remove("IGNOREONISOLATE");
     let requires_mounts_for = section.remove("REQUIRESMOUNTSFOR");
     let stop_when_unneeded = section.remove("STOPWHENUNNEEDED");
+    let job_timeout_action = section.remove("JOBTIMEOUTACTION");
 
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Unit] section: {key}");
@@ -282,6 +283,20 @@ pub fn parse_unit_section(
         None => UnitAction::default(),
     };
 
+    let job_timeout_action = match job_timeout_action {
+        Some(vec) => {
+            if vec.len() == 1 {
+                parse_unit_action(&vec[0].1)?
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "JobTimeoutAction".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => UnitAction::default(),
+    };
+
     // Merge explicit deps with implicit mount deps from RequiresMountsFor=
     let mut requires_list = map_tuples_to_second(split_list_values(requires.unwrap_or_default()));
     for name in mount_unit_requires {
@@ -313,6 +328,7 @@ pub fn parse_unit_section(
         failure_action,
         requires_mounts_for: requires_mounts_for_paths,
         stop_when_unneeded,
+        job_timeout_action,
     })
 }
 
