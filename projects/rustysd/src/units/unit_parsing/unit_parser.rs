@@ -199,6 +199,7 @@ pub fn parse_unit_section(
     let condition_virtualization = section.remove("CONDITIONVIRTUALIZATION");
     let condition_capability = section.remove("CONDITIONCAPABILITY");
     let condition_first_boot = section.remove("CONDITIONFIRSTBOOT");
+    let condition_file_is_executable = section.remove("CONDITIONFILEISEXECUTABLE");
     let success_action = section.remove("SUCCESSACTION");
     let failure_action = section.remove("FAILUREACTION");
     let part_of = section.remove("PARTOF");
@@ -308,6 +309,14 @@ pub fn parse_unit_section(
         };
         let value = string_to_bool(value_str);
         conditions.push(super::UnitCondition::FirstBoot { value, negate });
+    }
+    for (_, value) in condition_file_is_executable.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        conditions.push(super::UnitCondition::FileIsExecutable { path, negate });
     }
 
     let success_action = match success_action {
