@@ -15629,3 +15629,401 @@ fn test_restrict_realtime_with_other_settings() {
         crate::units::ProtectSystem::Strict,
     );
 }
+
+// ============================================================
+// RestrictAddressFamilies= parsing tests
+// ============================================================
+
+#[test]
+fn test_restrict_address_families_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service
+            .srvc
+            .exec_section
+            .restrict_address_families
+            .is_empty(),
+        "RestrictAddressFamilies should default to empty"
+    );
+}
+
+#[test]
+fn test_restrict_address_families_single() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictAddressFamilies = AF_UNIX
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_address_families.len(), 1);
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[0],
+        "AF_UNIX"
+    );
+}
+
+#[test]
+fn test_restrict_address_families_multiple_space_separated() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictAddressFamilies = AF_UNIX AF_INET AF_INET6
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_address_families.len(), 3);
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[0],
+        "AF_UNIX"
+    );
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[1],
+        "AF_INET"
+    );
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[2],
+        "AF_INET6"
+    );
+}
+
+#[test]
+fn test_restrict_address_families_deny_list_with_tilde() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictAddressFamilies = ~AF_PACKET AF_NETLINK
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_address_families.len(), 2);
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[0],
+        "~AF_PACKET"
+    );
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[1],
+        "AF_NETLINK"
+    );
+}
+
+#[test]
+fn test_restrict_address_families_multiple_directives_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictAddressFamilies = AF_UNIX
+    RestrictAddressFamilies = AF_INET
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_address_families.len(), 2);
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[0],
+        "AF_UNIX"
+    );
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[1],
+        "AF_INET"
+    );
+}
+
+#[test]
+fn test_restrict_address_families_empty_resets_list() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictAddressFamilies = AF_UNIX
+    RestrictAddressFamilies =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service
+            .srvc
+            .exec_section
+            .restrict_address_families
+            .is_empty(),
+        "Empty RestrictAddressFamilies= should reset the list"
+    );
+}
+
+#[test]
+fn test_restrict_address_families_empty_then_new_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictAddressFamilies = AF_UNIX
+    RestrictAddressFamilies =
+    RestrictAddressFamilies = AF_INET6
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_address_families.len(), 1);
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[0],
+        "AF_INET6"
+    );
+}
+
+#[test]
+fn test_restrict_address_families_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictAddressFamilies =   AF_UNIX   AF_INET
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_address_families.len(), 2);
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[0],
+        "AF_UNIX"
+    );
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[1],
+        "AF_INET"
+    );
+}
+
+#[test]
+fn test_restrict_address_families_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictAddressFamilies = AF_UNIX
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "RestrictAddressFamilies should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_restrict_address_families_tilde_deny_single() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictAddressFamilies = ~AF_PACKET
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_address_families.len(), 1);
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[0],
+        "~AF_PACKET"
+    );
+}
+
+#[test]
+fn test_restrict_address_families_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictAddressFamilies = AF_UNIX
+    RestrictAddressFamilies = AF_INET AF_INET6
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(srvc.conf.exec_config.restrict_address_families.len(), 3);
+        assert_eq!(
+            srvc.conf.exec_config.restrict_address_families[0],
+            "AF_UNIX"
+        );
+        assert_eq!(
+            srvc.conf.exec_config.restrict_address_families[1],
+            "AF_INET"
+        );
+        assert_eq!(
+            srvc.conf.exec_config.restrict_address_families[2],
+            "AF_INET6"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_restrict_address_families_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.restrict_address_families.is_empty(),
+            "Empty RestrictAddressFamilies should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_restrict_address_families_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with address family restriction
+    [Socket]
+    ListenStream = /run/test.sock
+    RestrictAddressFamilies = AF_UNIX AF_INET
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_section.restrict_address_families.len(), 2);
+    assert_eq!(
+        socket.sock.exec_section.restrict_address_families[0],
+        "AF_UNIX"
+    );
+    assert_eq!(
+        socket.sock.exec_section.restrict_address_families[1],
+        "AF_INET"
+    );
+}
+
+#[test]
+fn test_restrict_address_families_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictAddressFamilies = AF_UNIX AF_INET AF_INET6
+    RestrictRealtime = yes
+    SystemCallFilter = @basic-io
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.restrict_address_families.len(), 3);
+    assert_eq!(service.srvc.exec_section.restrict_realtime, true);
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 1);
+}
+
+#[test]
+fn test_restrict_address_families_complex_deny_list() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictAddressFamilies = AF_UNIX AF_INET AF_INET6 AF_NETLINK
+    RestrictAddressFamilies = ~AF_PACKET AF_BLUETOOTH
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    // 4 from first directive + 2 from second directive
+    assert_eq!(service.srvc.exec_section.restrict_address_families.len(), 6);
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[0],
+        "AF_UNIX"
+    );
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[4],
+        "~AF_PACKET"
+    );
+    assert_eq!(
+        service.srvc.exec_section.restrict_address_families[5],
+        "AF_BLUETOOTH"
+    );
+}
