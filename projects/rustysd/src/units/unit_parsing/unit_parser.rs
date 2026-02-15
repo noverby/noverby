@@ -404,6 +404,7 @@ pub fn parse_exec_section(
     let unset_environment = section.remove("UNSETENVIRONMENT");
     let oom_score_adjust = section.remove("OOMSCOREADJUST");
     let log_extra_fields = section.remove("LOGEXTRAFIELDS");
+    let dynamic_user = section.remove("DYNAMICUSER");
 
     let user = match user {
         None => None,
@@ -532,6 +533,21 @@ pub fn parse_exec_section(
         }
         // systemd default: true — SIGPIPE is ignored
         None => true,
+    };
+
+    let dynamic_user = match dynamic_user {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "DynamicUser".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        // systemd default: false
+        None => false,
     };
 
     let stdout_path = match stdout {
@@ -701,6 +717,7 @@ pub fn parse_exec_section(
         tty_vhangup,
         tty_vt_disallocate,
         ignore_sigpipe,
+        dynamic_user,
         utmp_identifier: match utmp_identifier {
             None => None,
             Some(mut vec) => {
