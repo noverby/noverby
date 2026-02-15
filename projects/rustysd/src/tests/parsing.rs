@@ -11015,3 +11015,441 @@ fn test_oom_score_adjust_with_whitespace() {
         "OOMScoreAdjust should handle surrounding whitespace"
     );
 }
+
+// ── ReloadSignal= tests ──────────────────────────────────────────────
+
+#[test]
+fn test_reload_signal_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal, None,
+        "ReloadSignal should default to None when not specified"
+    );
+}
+
+#[test]
+fn test_reload_signal_sighup() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = SIGHUP
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(nix::sys::signal::Signal::SIGHUP),
+        "ReloadSignal=SIGHUP should parse correctly"
+    );
+}
+
+#[test]
+fn test_reload_signal_sigusr1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = SIGUSR1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(nix::sys::signal::Signal::SIGUSR1),
+        "ReloadSignal=SIGUSR1 should parse correctly"
+    );
+}
+
+#[test]
+fn test_reload_signal_sigusr2() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = SIGUSR2
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(nix::sys::signal::Signal::SIGUSR2),
+        "ReloadSignal=SIGUSR2 should parse correctly"
+    );
+}
+
+#[test]
+fn test_reload_signal_sigterm() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = SIGTERM
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(nix::sys::signal::Signal::SIGTERM),
+        "ReloadSignal=SIGTERM should parse correctly"
+    );
+}
+
+#[test]
+fn test_reload_signal_without_sig_prefix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = HUP
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(nix::sys::signal::Signal::SIGHUP),
+        "ReloadSignal=HUP (without SIG prefix) should parse correctly"
+    );
+}
+
+#[test]
+fn test_reload_signal_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = sighup
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(nix::sys::signal::Signal::SIGHUP),
+        "ReloadSignal should be case-insensitive"
+    );
+}
+
+#[test]
+fn test_reload_signal_case_insensitive_mixed() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = SigUsr1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(nix::sys::signal::Signal::SIGUSR1),
+        "ReloadSignal should handle mixed-case signal names"
+    );
+}
+
+#[test]
+fn test_reload_signal_numeric() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(nix::sys::signal::Signal::SIGHUP),
+        "ReloadSignal=1 should parse as SIGHUP (signal number 1)"
+    );
+}
+
+#[test]
+fn test_reload_signal_numeric_10() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = 10
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(nix::sys::signal::Signal::SIGUSR1),
+        "ReloadSignal=10 should parse as SIGUSR1 (signal number 10)"
+    );
+}
+
+#[test]
+fn test_reload_signal_empty_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal, None,
+        "ReloadSignal with empty value should be treated as None"
+    );
+}
+
+#[test]
+fn test_reload_signal_invalid_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = NOTASIGNAL
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "Invalid signal name should produce an error"
+    );
+}
+
+#[test]
+fn test_reload_signal_no_unsupported_warning() {
+    // ReloadSignal= should be parsed without generating an "unsupported setting" warning
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = SIGHUP
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    );
+
+    // The key test is that parsing succeeds—if RELOADSIGNAL were still in the
+    // section map at the warning-loop point it would trigger a warning, but
+    // we can't capture log output here.  At minimum verify it parses.
+    assert!(
+        result.is_ok(),
+        "ReloadSignal should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_reload_signal_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = SIGUSR2
+    KillMode = process
+    Restart = on-failure
+    SendSIGHUP = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(nix::sys::signal::Signal::SIGUSR2),
+        "ReloadSignal should work alongside other service settings"
+    );
+    assert_eq!(service.srvc.kill_mode, crate::units::KillMode::Process);
+    assert_eq!(
+        service.srvc.restart,
+        crate::units::ServiceRestart::OnFailure
+    );
+    assert!(service.srvc.send_sighup);
+}
+
+#[test]
+fn test_reload_signal_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = SIGUSR1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.reload_signal,
+            Some(nix::sys::signal::Signal::SIGUSR1),
+            "ReloadSignal should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_reload_signal_none_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.reload_signal, None,
+            "ReloadSignal=None should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_reload_signal_sigwinch() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = SIGWINCH
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(nix::sys::signal::Signal::SIGWINCH),
+        "ReloadSignal=SIGWINCH should parse correctly"
+    );
+}
+
+#[test]
+fn test_reload_signal_sigint() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = SIGINT
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(nix::sys::signal::Signal::SIGINT),
+        "ReloadSignal=SIGINT should parse correctly"
+    );
+}
+
+#[test]
+fn test_reload_signal_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal =   SIGHUP
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(nix::sys::signal::Signal::SIGHUP),
+        "ReloadSignal should handle surrounding whitespace"
+    );
+}

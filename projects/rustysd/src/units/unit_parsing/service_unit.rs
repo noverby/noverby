@@ -7,6 +7,7 @@ use crate::units::{
     RLimitValue, ResourceLimit, ServiceRestart, ServiceType, SuccessExitStatus, TasksMax, Timeout,
 };
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::path::PathBuf;
 
 /// Parse a signal name string (with or without `SIG` prefix) into a
@@ -244,6 +245,7 @@ fn parse_service_section(
     let success_exit_status = section.remove("SUCCESSEXITSTATUS");
     let send_sighup = section.remove("SENDSIGHUP");
     let memory_pressure_watch = section.remove("MEMORYPRESSUREWATCH");
+    let reload_signal = section.remove("RELOADSIGNAL");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -703,6 +705,37 @@ fn parse_service_section(
                 parse_success_exit_status(&combined.join(" "))
             })
             .unwrap_or_default(),
+        reload_signal: match reload_signal {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let raw = vec[0].1.trim();
+                    if raw.is_empty() {
+                        None
+                    } else {
+                        match parse_signal_name(raw) {
+                            Some(sig) => Some(sig),
+                            None => {
+                                // Also try parsing as a plain integer signal number
+                                if let Ok(num) = raw.parse::<i32>() {
+                                    nix::sys::signal::Signal::try_from(num).ok()
+                                } else {
+                                    return Err(ParsingErrorReason::UnknownSetting(
+                                        "ReloadSignal".to_owned(),
+                                        raw.to_owned(),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "ReloadSignal".to_owned(),
+                        map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
         exec_section: exec_config,
     })
 }
