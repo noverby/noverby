@@ -4236,3 +4236,164 @@ fn test_service_pidfile_absolute_path() {
         Some(std::path::PathBuf::from("/var/run/sshd.pid")),
     );
 }
+
+// ============================================================
+// Type=idle parsing tests
+// ============================================================
+
+#[test]
+fn test_service_type_idle() {
+    let test_service_str = r#"
+    [Service]
+    Type = idle
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.srcv_type,
+        crate::units::ServiceType::Idle,
+        "Type=idle should parse as Idle"
+    );
+}
+
+#[test]
+fn test_service_type_idle_is_distinct_from_simple() {
+    let idle_str = r#"
+    [Service]
+    Type = idle
+    ExecStart = /bin/myservice
+    "#;
+
+    let simple_str = r#"
+    [Service]
+    Type = simple
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_idle = crate::units::parse_file(idle_str).unwrap();
+    let service_idle = crate::units::parse_service(
+        parsed_idle,
+        &std::path::PathBuf::from("/path/to/idle.service"),
+    )
+    .unwrap();
+
+    let parsed_simple = crate::units::parse_file(simple_str).unwrap();
+    let service_simple = crate::units::parse_service(
+        parsed_simple,
+        &std::path::PathBuf::from("/path/to/simple.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service_idle.srvc.srcv_type, crate::units::ServiceType::Idle);
+    assert_eq!(
+        service_simple.srvc.srcv_type,
+        crate::units::ServiceType::Simple
+    );
+    assert_ne!(
+        service_idle.srvc.srcv_type, service_simple.srvc.srcv_type,
+        "Idle and Simple should be distinct variants"
+    );
+}
+
+#[test]
+fn test_service_type_idle_with_other_settings() {
+    let test_service_str = r#"
+    [Unit]
+    Description = An idle service
+    [Service]
+    Type = idle
+    ExecStart = /bin/myservice --flag
+    Restart = always
+    NotifyAccess = none
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.srcv_type,
+        crate::units::ServiceType::Idle,
+        "Type=idle should parse correctly alongside other settings"
+    );
+    assert_eq!(service.common.unit.description, "An idle service");
+    assert_eq!(service.srvc.restart, crate::units::ServiceRestart::Always);
+    assert_eq!(service.srvc.notifyaccess, crate::units::NotifyKind::None);
+}
+
+#[test]
+fn test_service_type_idle_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    Description = Idle service test
+    [Service]
+    Type = idle
+    ExecStart = /usr/bin/testcmd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+
+    if let crate::units::Specific::Service(ref srvc) = unit.specific {
+        assert_eq!(srvc.conf.srcv_type, crate::units::ServiceType::Idle);
+    } else {
+        panic!("Expected Specific::Service");
+    }
+}
+
+#[test]
+fn test_service_type_idle_is_distinct_from_all_others() {
+    let types = vec![
+        ("simple", crate::units::ServiceType::Simple),
+        ("notify", crate::units::ServiceType::Notify),
+        ("notify-reload", crate::units::ServiceType::NotifyReload),
+        ("oneshot", crate::units::ServiceType::OneShot),
+        ("forking", crate::units::ServiceType::Forking),
+    ];
+
+    for (type_str, expected_type) in &types {
+        let service_str = format!(
+            r#"
+            [Service]
+            Type = {}
+            ExecStart = /bin/myservice
+            "#,
+            type_str
+        );
+
+        let parsed = crate::units::parse_file(&service_str).unwrap();
+        let service =
+            crate::units::parse_service(parsed, &std::path::PathBuf::from("/path/to/test.service"))
+                .unwrap();
+
+        assert_eq!(
+            &service.srvc.srcv_type, expected_type,
+            "Type={} should parse as {:?}",
+            type_str, expected_type
+        );
+        assert_ne!(
+            service.srvc.srcv_type,
+            crate::units::ServiceType::Idle,
+            "Type={} should be distinct from Idle",
+            type_str
+        );
+    }
+}

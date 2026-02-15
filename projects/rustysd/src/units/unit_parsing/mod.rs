@@ -196,6 +196,11 @@ pub enum ServiceType {
     /// read from that file; otherwise the service is tracked without a
     /// main PID.
     Forking,
+    /// Behaves like Simple, but the service manager delays starting the
+    /// service until all active jobs are dispatched (with a 5-second
+    /// timeout). This is primarily used for improving console output
+    /// ordering and has no effect on service dependencies.
+    Idle,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
