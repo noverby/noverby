@@ -31534,6 +31534,342 @@ fn test_condition_kernel_command_line_defaults_to_empty() {
     );
 }
 
+// ── ConditionPathIsReadWrite= ───────────────────────────────────────
+
+#[test]
+fn test_condition_path_is_read_write_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsReadWrite = /tmp
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "ConditionPathIsReadWrite= should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_condition_path_is_read_write_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsReadWrite = /tmp
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsReadWrite { path, negate } => {
+            assert_eq!(path, "/tmp");
+            assert!(!negate, "Should not be negated");
+        }
+        other => panic!("Expected PathIsReadWrite condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_read_write_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsReadWrite = !/sys
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsReadWrite { path, negate } => {
+            assert_eq!(path, "/sys");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected PathIsReadWrite condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_read_write_multiple() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsReadWrite = /tmp
+    ConditionPathIsReadWrite = /var
+    ConditionPathIsReadWrite = !/proc
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 3);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsReadWrite { path, negate } => {
+            assert_eq!(path, "/tmp");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathIsReadWrite condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::PathIsReadWrite { path, negate } => {
+            assert_eq!(path, "/var");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathIsReadWrite condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[2] {
+        crate::units::UnitCondition::PathIsReadWrite { path, negate } => {
+            assert_eq!(path, "/proc");
+            assert!(negate);
+        }
+        other => panic!("Expected PathIsReadWrite condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_read_write_with_other_conditions() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathExists = /etc/myconfig
+    ConditionPathIsReadWrite = /var/lib/myservice
+    ConditionPathIsDirectory = /run
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 3);
+
+    let has_path_exists = service
+        .common
+        .unit
+        .conditions
+        .iter()
+        .any(|c| matches!(c, crate::units::UnitCondition::PathExists { .. }));
+    assert!(has_path_exists, "Should have PathExists condition");
+
+    let has_rw = service
+        .common
+        .unit
+        .conditions
+        .iter()
+        .any(|c| matches!(c, crate::units::UnitCondition::PathIsReadWrite { .. }));
+    assert!(has_rw, "Should have PathIsReadWrite condition");
+
+    let has_dir = service
+        .common
+        .unit
+        .conditions
+        .iter()
+        .any(|c| matches!(c, crate::units::UnitCondition::PathIsDirectory { .. }));
+    assert!(has_dir, "Should have PathIsDirectory condition");
+}
+
+#[test]
+fn test_condition_path_is_read_write_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsReadWrite = /var
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+
+    assert_eq!(unit.common.unit.conditions.len(), 1);
+    match &unit.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsReadWrite { path, negate } => {
+            assert_eq!(path, "/var");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathIsReadWrite condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_read_write_in_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    ConditionPathIsReadWrite = /run
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.common.unit.conditions.len(), 1);
+    match &socket.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsReadWrite { path, negate } => {
+            assert_eq!(path, "/run");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathIsReadWrite condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_read_write_in_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    ConditionPathIsReadWrite = !/sys/firmware
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(target.common.unit.conditions.len(), 1);
+    match &target.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsReadWrite { path, negate } => {
+            assert_eq!(path, "/sys/firmware");
+            assert!(negate);
+        }
+        other => panic!("Expected PathIsReadWrite condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_read_write_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let has_rw = service
+        .common
+        .unit
+        .conditions
+        .iter()
+        .any(|c| matches!(c, crate::units::UnitCondition::PathIsReadWrite { .. }));
+    assert!(
+        !has_rw,
+        "No PathIsReadWrite condition should be present by default"
+    );
+}
+
+#[test]
+fn test_condition_path_is_read_write_mixed_negation() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsReadWrite = /tmp
+    ConditionPathIsReadWrite = !/proc/sys
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 2);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsReadWrite { path, negate } => {
+            assert_eq!(path, "/tmp");
+            assert!(!negate, "First should not be negated");
+        }
+        other => panic!("Expected PathIsReadWrite condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::PathIsReadWrite { path, negate } => {
+            assert_eq!(path, "/proc/sys");
+            assert!(negate, "Second should be negated");
+        }
+        other => panic!("Expected PathIsReadWrite condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_read_write_absolute_path() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsReadWrite = /var/lib/myservice/data
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsReadWrite { path, negate } => {
+            assert_eq!(path, "/var/lib/myservice/data");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathIsReadWrite condition, got {:?}", other),
+    }
+}
+
 // ── ConditionControlGroupController= ────────────────────────────────
 
 #[test]
