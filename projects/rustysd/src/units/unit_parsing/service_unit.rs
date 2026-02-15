@@ -256,6 +256,7 @@ fn parse_service_section(
     let delegate_subgroup = section.remove("DELEGATESUBGROUP");
     let keyring_mode = section.remove("KEYRINGMODE");
     let device_allow = section.remove("DEVICEALLOW");
+    let device_policy = section.remove("DEVICEPOLICY");
     let watchdog_sec = section.remove("WATCHDOGSEC");
     let ip_address_allow = section.remove("IPADDRESSALLOW");
     let ip_address_deny = section.remove("IPADDRESSDENY");
@@ -869,6 +870,29 @@ fn parse_service_section(
                 entries
             }
             None => Vec::new(),
+        },
+        device_policy: match device_policy {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.trim().to_lowercase().as_str() {
+                        "auto" | "" => super::DevicePolicy::Auto,
+                        "closed" => super::DevicePolicy::Closed,
+                        "strict" => super::DevicePolicy::Strict,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "DevicePolicy".to_owned(),
+                                other.to_owned(),
+                            ))
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "DevicePolicy".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => super::DevicePolicy::default(),
         },
         watchdog_sec,
         ip_address_allow: match ip_address_allow {

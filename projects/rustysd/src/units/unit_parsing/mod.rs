@@ -513,6 +513,27 @@ impl Default for UnitAction {
     }
 }
 
+/// DevicePolicy= — controls the policy for device access for the unit.
+/// Matches systemd's `DevicePolicy=` resource-control setting.
+/// See <https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#DevicePolicy=auto|closed|strict>.
+#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
+pub enum DevicePolicy {
+    /// No restrictions on device access (default).
+    Auto,
+    /// Only standard pseudo devices (/dev/null, /dev/zero, /dev/full,
+    /// /dev/random, /dev/urandom, /dev/tty, /dev/pts/ptmx) plus any
+    /// explicitly allowed via DeviceAllow= are accessible.
+    Closed,
+    /// Only devices explicitly listed in DeviceAllow= are accessible.
+    Strict,
+}
+
+impl Default for DevicePolicy {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
 /// Job mode for OnFailure= units.
 /// Controls how the triggered failure units are enqueued.
 /// Matches systemd's `OnFailureJobMode=` setting.
@@ -759,6 +780,13 @@ pub struct ParsedServiceSection {
     /// Parsed and stored; no runtime enforcement yet (requires cgroup device
     /// controller). See systemd.resource-control(5).
     pub device_allow: Vec<String>,
+
+    /// DevicePolicy= — controls the policy for device access for the unit.
+    /// Takes "auto" (default, no restrictions), "closed" (only standard
+    /// pseudo devices plus DeviceAllow= entries), or "strict" (only
+    /// DeviceAllow= entries). Parsed and stored; no runtime enforcement
+    /// yet (requires cgroup device controller). See systemd.resource-control(5).
+    pub device_policy: DevicePolicy,
 
     /// WatchdogSec= — configures the watchdog timeout for the service. The
     /// service must send a "WATCHDOG=1" notification via sd_notify() at least
