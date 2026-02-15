@@ -222,9 +222,17 @@ fn setup_stdin(config: &ExecHelperConfig) {
 }
 
 pub fn run_exec_helper() {
-    println!("Exec helper trying to read config from stdin");
     let config: ExecHelperConfig = serde_json::from_reader(std::io::stdin()).unwrap();
-    println!("Apply config: {config:?}");
+    eprintln!(
+        "[EXEC_HELPER {}] Starting: {}{}",
+        config.name,
+        config.cmd.display(),
+        if config.args.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", config.args.join(" "))
+        }
+    );
 
     nix::unistd::close(libc::STDIN_FILENO).expect("I want to be able to close this fd!");
 
@@ -350,7 +358,12 @@ pub fn run_exec_helper() {
 
     std::env::set_var("LISTEN_PID", format!("{}", nix::unistd::getpid()));
 
-    eprintln!("EXECV: {:?} {:?}", &cmd, &args);
+    eprintln!(
+        "[EXEC_HELPER {}] exec: {} {}",
+        config.name,
+        config.cmd.display(),
+        config.args.join(" ")
+    );
 
     nix::unistd::execv(&cmd, &args).unwrap();
 }
