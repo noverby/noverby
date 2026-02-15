@@ -99,7 +99,16 @@ pub fn unstarted_deps(id: &UnitId, run_info: &RuntimeInfo) -> Vec<UnitId> {
         .iter()
         .fold(Vec::new(), |mut acc, elem| {
             let required = unit.common.dependencies.requires.contains(elem);
-            let elem_unit = run_info.unit_table.get(elem).unwrap();
+            let Some(elem_unit) = run_info.unit_table.get(elem) else {
+                // Dependency not in unit table (e.g. optional unit that was
+                // never loaded, or removed during pruning/cycle-breaking).
+                // Treat it as ready so it doesn't block activation.
+                warn!(
+                    "Unit {:?} has an ordering dependency on {:?} which is not in the unit table. Ignoring.",
+                    id, elem
+                );
+                return acc;
+            };
             let status_locked = elem_unit.common.status.read().unwrap();
             let ready = if required {
                 status_locked.is_started()
