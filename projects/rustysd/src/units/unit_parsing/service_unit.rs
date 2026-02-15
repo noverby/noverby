@@ -8,7 +8,6 @@ use crate::units::{
     ServiceRestart, ServiceType, SuccessExitStatus, TasksMax, Timeout,
 };
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::path::PathBuf;
 
 /// Parse a signal name string (with or without `SIG` prefix) into a
@@ -51,6 +50,71 @@ fn parse_signal_name(s: &str) -> Option<nix::sys::signal::Signal> {
         "PWR" => Some(Signal::SIGPWR),
         _ => None,
     }
+}
+
+/// Linux kernel SIGRTMIN (before glibc reservations).  Systemd uses this
+/// value for `RTMIN+N` parsing.
+const SIGRTMIN_RAW: i32 = 34;
+/// Linux kernel SIGRTMAX.
+const SIGRTMAX_RAW: i32 = 64;
+
+/// Parse a signal specification into a raw signal number (`i32`).
+///
+/// Accepts everything `parse_signal_name` accepts, plus:
+/// - Plain integers (`"15"`, `"59"`)
+/// - `RTMIN`, `RTMIN+N`, `SIGRTMIN+N`
+/// - `RTMAX`, `RTMAX-N`, `SIGRTMAX-N`
+///
+/// Returns `None` for unrecognised values.
+fn parse_signal_to_raw(s: &str) -> Option<i32> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    // 1. Try standard named signals
+    if let Some(sig) = parse_signal_name(trimmed) {
+        return Some(sig as i32);
+    }
+
+    // 2. Try plain numeric
+    if let Ok(num) = trimmed.parse::<i32>() {
+        if num > 0 && num <= SIGRTMAX_RAW {
+            return Some(num);
+        }
+        return None;
+    }
+
+    // 3. Try RTMIN / RTMIN+N / RTMAX / RTMAX-N  (with optional SIG prefix)
+    let upper = trimmed.to_uppercase();
+    let name = upper.strip_prefix("SIG").unwrap_or(&upper);
+
+    if name == "RTMIN" {
+        return Some(SIGRTMIN_RAW);
+    }
+    if name == "RTMAX" {
+        return Some(SIGRTMAX_RAW);
+    }
+    if let Some(offset_str) = name.strip_prefix("RTMIN+") {
+        if let Ok(offset) = offset_str.trim().parse::<i32>() {
+            let sig = SIGRTMIN_RAW + offset;
+            if sig >= SIGRTMIN_RAW && sig <= SIGRTMAX_RAW {
+                return Some(sig);
+            }
+        }
+        return None;
+    }
+    if let Some(offset_str) = name.strip_prefix("RTMAX-") {
+        if let Ok(offset) = offset_str.trim().parse::<i32>() {
+            let sig = SIGRTMAX_RAW - offset;
+            if sig >= SIGRTMIN_RAW && sig <= SIGRTMAX_RAW {
+                return Some(sig);
+            }
+        }
+        return None;
+    }
+
+    None
 }
 
 /// Parse a `SuccessExitStatus=` value.  The value is a space-separated list
@@ -758,18 +822,13 @@ fn parse_service_section(
                     if raw.is_empty() {
                         None
                     } else {
-                        match parse_signal_name(raw) {
-                            Some(sig) => Some(sig),
+                        match parse_signal_to_raw(raw) {
+                            Some(num) => Some(num),
                             None => {
-                                // Also try parsing as a plain integer signal number
-                                if let Ok(num) = raw.parse::<i32>() {
-                                    nix::sys::signal::Signal::try_from(num).ok()
-                                } else {
-                                    return Err(ParsingErrorReason::UnknownSetting(
-                                        "ReloadSignal".to_owned(),
-                                        raw.to_owned(),
-                                    ));
-                                }
+                                return Err(ParsingErrorReason::UnknownSetting(
+                                    "ReloadSignal".to_owned(),
+                                    raw.to_owned(),
+                                ));
                             }
                         }
                     }
@@ -789,17 +848,13 @@ fn parse_service_section(
                     if raw.is_empty() {
                         None
                     } else {
-                        match parse_signal_name(raw) {
-                            Some(sig) => Some(sig),
+                        match parse_signal_to_raw(raw) {
+                            Some(num) => Some(num),
                             None => {
-                                if let Ok(num) = raw.parse::<i32>() {
-                                    nix::sys::signal::Signal::try_from(num).ok()
-                                } else {
-                                    return Err(ParsingErrorReason::UnknownSetting(
-                                        "KillSignal".to_owned(),
-                                        raw.to_owned(),
-                                    ));
-                                }
+                                return Err(ParsingErrorReason::UnknownSetting(
+                                    "KillSignal".to_owned(),
+                                    raw.to_owned(),
+                                ));
                             }
                         }
                     }

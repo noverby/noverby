@@ -838,7 +838,7 @@ This document is meant as a simple way of checking whether all features you need
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.kill.html#KillSignal=">KillSignal=</a></td>
   <td>✔️</td>
-  <td>Parsed and stored (signal name or number). No runtime enforcement.</td>
+  <td>Parsed and stored as raw signal number. Accepts signal names (with or without SIG prefix, case-insensitive), numeric values, and realtime signals (RTMIN, RTMIN+N, RTMAX, RTMAX-N). No runtime enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.kill.html#RestartKillSignal=">RestartKillSignal=</a></td>
@@ -1334,7 +1334,7 @@ This document is meant as a simple way of checking whether all features you need
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ReloadSignal=">ReloadSignal=</a></td>
   <td>✔️</td>
-  <td>Parsed and stored as a signal name (with or without SIG prefix, case-insensitive, or numeric). Only effective with Type=notify-reload. Defaults to SIGHUP. Not yet used at runtime.</td>
+  <td>Parsed and stored as raw signal number. Accepts signal names (with or without SIG prefix, case-insensitive), numeric values, and realtime signals (RTMIN, RTMIN+N, RTMAX, RTMAX-N). Only effective with Type=notify-reload. Defaults to SIGHUP. Not yet used at runtime.</td>
 </tr>
 </table>
 

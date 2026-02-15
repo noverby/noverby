@@ -11055,7 +11055,7 @@ fn test_reload_signal_sighup() {
 
     assert_eq!(
         service.srvc.reload_signal,
-        Some(nix::sys::signal::Signal::SIGHUP),
+        Some(libc::SIGHUP),
         "ReloadSignal=SIGHUP should parse correctly"
     );
 }
@@ -11077,7 +11077,7 @@ fn test_reload_signal_sigusr1() {
 
     assert_eq!(
         service.srvc.reload_signal,
-        Some(nix::sys::signal::Signal::SIGUSR1),
+        Some(libc::SIGUSR1),
         "ReloadSignal=SIGUSR1 should parse correctly"
     );
 }
@@ -11099,7 +11099,7 @@ fn test_reload_signal_sigusr2() {
 
     assert_eq!(
         service.srvc.reload_signal,
-        Some(nix::sys::signal::Signal::SIGUSR2),
+        Some(libc::SIGUSR2),
         "ReloadSignal=SIGUSR2 should parse correctly"
     );
 }
@@ -11121,7 +11121,7 @@ fn test_reload_signal_sigterm() {
 
     assert_eq!(
         service.srvc.reload_signal,
-        Some(nix::sys::signal::Signal::SIGTERM),
+        Some(libc::SIGTERM),
         "ReloadSignal=SIGTERM should parse correctly"
     );
 }
@@ -11143,7 +11143,7 @@ fn test_reload_signal_without_sig_prefix() {
 
     assert_eq!(
         service.srvc.reload_signal,
-        Some(nix::sys::signal::Signal::SIGHUP),
+        Some(libc::SIGHUP),
         "ReloadSignal=HUP (without SIG prefix) should parse correctly"
     );
 }
@@ -11165,7 +11165,7 @@ fn test_reload_signal_case_insensitive() {
 
     assert_eq!(
         service.srvc.reload_signal,
-        Some(nix::sys::signal::Signal::SIGHUP),
+        Some(libc::SIGHUP),
         "ReloadSignal should be case-insensitive"
     );
 }
@@ -11187,7 +11187,7 @@ fn test_reload_signal_case_insensitive_mixed() {
 
     assert_eq!(
         service.srvc.reload_signal,
-        Some(nix::sys::signal::Signal::SIGUSR1),
+        Some(libc::SIGUSR1),
         "ReloadSignal should handle mixed-case signal names"
     );
 }
@@ -11209,7 +11209,7 @@ fn test_reload_signal_numeric() {
 
     assert_eq!(
         service.srvc.reload_signal,
-        Some(nix::sys::signal::Signal::SIGHUP),
+        Some(libc::SIGHUP),
         "ReloadSignal=1 should parse as SIGHUP (signal number 1)"
     );
 }
@@ -11231,7 +11231,7 @@ fn test_reload_signal_numeric_10() {
 
     assert_eq!(
         service.srvc.reload_signal,
-        Some(nix::sys::signal::Signal::SIGUSR1),
+        Some(libc::SIGUSR1),
         "ReloadSignal=10 should parse as SIGUSR1 (signal number 10)"
     );
 }
@@ -11321,7 +11321,7 @@ fn test_reload_signal_with_other_settings() {
 
     assert_eq!(
         service.srvc.reload_signal,
-        Some(nix::sys::signal::Signal::SIGUSR2),
+        Some(libc::SIGUSR2),
         "ReloadSignal should work alongside other service settings"
     );
     assert_eq!(service.srvc.kill_mode, crate::units::KillMode::Process);
@@ -11353,7 +11353,7 @@ fn test_reload_signal_preserved_after_unit_conversion() {
     if let crate::units::Specific::Service(srvc) = &unit.specific {
         assert_eq!(
             srvc.conf.reload_signal,
-            Some(nix::sys::signal::Signal::SIGUSR1),
+            Some(libc::SIGUSR1),
             "ReloadSignal should survive unit conversion"
         );
     } else {
@@ -11405,7 +11405,7 @@ fn test_reload_signal_sigwinch() {
 
     assert_eq!(
         service.srvc.reload_signal,
-        Some(nix::sys::signal::Signal::SIGWINCH),
+        Some(libc::SIGWINCH),
         "ReloadSignal=SIGWINCH should parse correctly"
     );
 }
@@ -11427,7 +11427,7 @@ fn test_reload_signal_sigint() {
 
     assert_eq!(
         service.srvc.reload_signal,
-        Some(nix::sys::signal::Signal::SIGINT),
+        Some(libc::SIGINT),
         "ReloadSignal=SIGINT should parse correctly"
     );
 }
@@ -11449,9 +11449,260 @@ fn test_reload_signal_with_whitespace() {
 
     assert_eq!(
         service.srvc.reload_signal,
-        Some(nix::sys::signal::Signal::SIGHUP),
+        Some(libc::SIGHUP),
         "ReloadSignal should handle surrounding whitespace"
     );
+}
+
+// ── ReloadSignal= RTMIN/RTMAX tests ─────────────────────────────────
+
+#[test]
+fn test_reload_signal_rtmin() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = RTMIN
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(34),
+        "ReloadSignal=RTMIN should parse as signal 34"
+    );
+}
+
+#[test]
+fn test_reload_signal_rtmin_plus_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = RTMIN+0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(34),
+        "ReloadSignal=RTMIN+0 should parse as signal 34"
+    );
+}
+
+#[test]
+fn test_reload_signal_rtmin_plus_25() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = RTMIN+25
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(34 + 25),
+        "ReloadSignal=RTMIN+25 should parse as signal 59"
+    );
+}
+
+#[test]
+fn test_reload_signal_sigrtmin_plus_25() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = SIGRTMIN+25
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(34 + 25),
+        "ReloadSignal=SIGRTMIN+25 should parse as signal 59"
+    );
+}
+
+#[test]
+fn test_reload_signal_rtmin_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = sigrtmin+3
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(34 + 3),
+        "ReloadSignal=sigrtmin+3 should be case-insensitive"
+    );
+}
+
+#[test]
+fn test_reload_signal_rtmax() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = RTMAX
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(64),
+        "ReloadSignal=RTMAX should parse as signal 64"
+    );
+}
+
+#[test]
+fn test_reload_signal_rtmax_minus_5() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = RTMAX-5
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(64 - 5),
+        "ReloadSignal=RTMAX-5 should parse as signal 59"
+    );
+}
+
+#[test]
+fn test_reload_signal_sigrtmax_minus_5() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = SIGRTMAX-5
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(64 - 5),
+        "ReloadSignal=SIGRTMAX-5 should parse as signal 59"
+    );
+}
+
+#[test]
+fn test_reload_signal_rtmin_plus_30() {
+    // RTMIN+30 = 34+30 = 64 = RTMAX, should be valid
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = RTMIN+30
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.reload_signal,
+        Some(64),
+        "ReloadSignal=RTMIN+30 should parse as signal 64 (RTMAX)"
+    );
+}
+
+#[test]
+fn test_reload_signal_rtmin_out_of_range() {
+    // RTMIN+31 = 34+31 = 65, exceeds RTMAX=64
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = RTMIN+31
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "RTMIN+31 exceeds RTMAX and should produce an error"
+    );
+}
+
+#[test]
+fn test_reload_signal_rtmin_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ReloadSignal = RTMIN+25
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.reload_signal,
+            Some(34 + 25),
+            "ReloadSignal=RTMIN+25 should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
 }
 
 // ── KillSignal= tests ───────────────────────────────────────────────
@@ -11493,7 +11744,7 @@ fn test_kill_signal_sigterm() {
 
     assert_eq!(
         service.srvc.kill_signal,
-        Some(nix::sys::signal::Signal::SIGTERM),
+        Some(libc::SIGTERM),
         "KillSignal=SIGTERM should parse correctly"
     );
 }
@@ -11515,7 +11766,7 @@ fn test_kill_signal_sigkill() {
 
     assert_eq!(
         service.srvc.kill_signal,
-        Some(nix::sys::signal::Signal::SIGKILL),
+        Some(libc::SIGKILL),
         "KillSignal=SIGKILL should parse correctly"
     );
 }
@@ -11537,7 +11788,7 @@ fn test_kill_signal_sigint() {
 
     assert_eq!(
         service.srvc.kill_signal,
-        Some(nix::sys::signal::Signal::SIGINT),
+        Some(libc::SIGINT),
         "KillSignal=SIGINT should parse correctly"
     );
 }
@@ -11559,7 +11810,7 @@ fn test_kill_signal_sighup() {
 
     assert_eq!(
         service.srvc.kill_signal,
-        Some(nix::sys::signal::Signal::SIGHUP),
+        Some(libc::SIGHUP),
         "KillSignal=SIGHUP should parse correctly"
     );
 }
@@ -11581,7 +11832,7 @@ fn test_kill_signal_without_sig_prefix() {
 
     assert_eq!(
         service.srvc.kill_signal,
-        Some(nix::sys::signal::Signal::SIGTERM),
+        Some(libc::SIGTERM),
         "KillSignal=TERM (without SIG prefix) should parse correctly"
     );
 }
@@ -11603,7 +11854,7 @@ fn test_kill_signal_case_insensitive() {
 
     assert_eq!(
         service.srvc.kill_signal,
-        Some(nix::sys::signal::Signal::SIGTERM),
+        Some(libc::SIGTERM),
         "KillSignal should be case-insensitive"
     );
 }
@@ -11625,7 +11876,7 @@ fn test_kill_signal_case_insensitive_mixed() {
 
     assert_eq!(
         service.srvc.kill_signal,
-        Some(nix::sys::signal::Signal::SIGKILL),
+        Some(libc::SIGKILL),
         "KillSignal should handle mixed-case signal names"
     );
 }
@@ -11647,7 +11898,7 @@ fn test_kill_signal_numeric() {
 
     assert_eq!(
         service.srvc.kill_signal,
-        Some(nix::sys::signal::Signal::SIGTERM),
+        Some(libc::SIGTERM),
         "KillSignal=15 should parse as SIGTERM (signal number 15)"
     );
 }
@@ -11669,7 +11920,7 @@ fn test_kill_signal_numeric_9() {
 
     assert_eq!(
         service.srvc.kill_signal,
-        Some(nix::sys::signal::Signal::SIGKILL),
+        Some(libc::SIGKILL),
         "KillSignal=9 should parse as SIGKILL (signal number 9)"
     );
 }
@@ -11753,10 +12004,7 @@ fn test_kill_signal_with_other_settings() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.kill_signal,
-        Some(nix::sys::signal::Signal::SIGTERM),
-    );
+    assert_eq!(service.srvc.kill_signal, Some(libc::SIGTERM),);
     assert!(service.srvc.send_sighup);
 }
 
@@ -11781,7 +12029,7 @@ fn test_kill_signal_preserved_after_unit_conversion() {
     if let crate::units::Specific::Service(srvc) = &unit.specific {
         assert_eq!(
             srvc.conf.kill_signal,
-            Some(nix::sys::signal::Signal::SIGINT),
+            Some(libc::SIGINT),
             "KillSignal should survive unit conversion"
         );
     } else {
@@ -11833,9 +12081,106 @@ fn test_kill_signal_with_whitespace() {
 
     assert_eq!(
         service.srvc.kill_signal,
-        Some(nix::sys::signal::Signal::SIGTERM),
+        Some(libc::SIGTERM),
         "KillSignal should handle surrounding whitespace"
     );
+}
+
+// ── KillSignal= RTMIN/RTMAX tests ───────────────────────────────────
+
+#[test]
+fn test_kill_signal_rtmin_plus_3() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = RTMIN+3
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(34 + 3),
+        "KillSignal=RTMIN+3 should parse as signal 37"
+    );
+}
+
+#[test]
+fn test_kill_signal_sigrtmin_plus_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = SIGRTMIN+0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(34),
+        "KillSignal=SIGRTMIN+0 should parse as signal 34"
+    );
+}
+
+#[test]
+fn test_kill_signal_rtmax_minus_10() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = RTMAX-10
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(64 - 10),
+        "KillSignal=RTMAX-10 should parse as signal 54"
+    );
+}
+
+#[test]
+fn test_kill_signal_rtmin_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillSignal = SIGRTMIN+3
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.kill_signal,
+            Some(34 + 3),
+            "KillSignal=SIGRTMIN+3 should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
 }
 
 // ── DelegateSubgroup= tests ──────────────────────────────────────────
