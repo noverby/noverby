@@ -9846,6 +9846,397 @@ fn test_send_sighup_with_kill_mode() {
     );
 }
 
+// ── MemoryPressureWatch= ──────────────────────────────────────────────
+
+#[test]
+fn test_memory_pressure_watch_defaults_to_auto() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::Auto,
+        "MemoryPressureWatch should default to Auto when not specified"
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_auto() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = auto
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::Auto,
+        "MemoryPressureWatch=auto should be Auto"
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_on() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = on
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::On,
+        "MemoryPressureWatch=on should be On"
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_off() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = off
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::Off,
+        "MemoryPressureWatch=off should be Off"
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_skip() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = skip
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::Skip,
+        "MemoryPressureWatch=skip should be Skip"
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::On,
+        "MemoryPressureWatch=yes should be On"
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::Off,
+        "MemoryPressureWatch=no should be Off"
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::On,
+        "MemoryPressureWatch=true should be On"
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::Off,
+        "MemoryPressureWatch=false should be Off"
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::On,
+        "MemoryPressureWatch=1 should be On"
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::Off,
+        "MemoryPressureWatch=0 should be Off"
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = AUTO
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::Auto,
+        "MemoryPressureWatch=AUTO (case-insensitive) should be Auto"
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_case_insensitive_skip() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = Skip
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::Skip,
+        "MemoryPressureWatch=Skip (mixed case) should be Skip"
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_invalid_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = invalid
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "MemoryPressureWatch=invalid should produce a parsing error"
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_no_unsupported_warning() {
+    // MemoryPressureWatch= should be parsed without generating an "unsupported setting" warning
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = auto
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "Parsing a service with MemoryPressureWatch should succeed without errors"
+    );
+    assert_eq!(
+        result.unwrap().srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::Auto
+    );
+}
+
+#[test]
+fn test_memory_pressure_watch_combined_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = off
+    OOMScoreAdjust = 100
+    RuntimeDirectory = myapp
+    KillMode = control-group
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::Off
+    );
+    assert_eq!(service.srvc.exec_section.oom_score_adjust, Some(100));
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory,
+        vec!["myapp".to_owned()]
+    );
+    assert_eq!(service.srvc.kill_mode, crate::units::KillMode::ControlGroup);
+}
+
+#[test]
+fn test_memory_pressure_watch_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryPressureWatch = skip
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.memory_pressure_watch,
+            crate::units::MemoryPressureWatch::Skip,
+            "MemoryPressureWatch should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
 #[test]
 fn test_import_credential_defaults_to_empty() {
     let test_service_str = r#"

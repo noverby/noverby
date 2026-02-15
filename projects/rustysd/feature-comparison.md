@@ -1138,6 +1138,11 @@ This document is meant as a simple way of checking whether all features you need
   <td>❌</td>
   <td></td>
 </tr>
+<tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#MemoryPressureWatch=">MemoryPressureWatch=</a></td>
+  <td>✔️</td>
+  <td>Parsed and stored (auto/on/off/skip); no runtime PSI enforcement</td>
+</tr>
 </table>
 
 ## systemd.service
