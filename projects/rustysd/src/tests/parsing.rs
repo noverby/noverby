@@ -20333,3 +20333,740 @@ fn test_read_write_paths_socket_unit() {
         "ReadWritePaths should work in socket units"
     );
 }
+
+// ============================================================
+// IPAddressAllow= parsing tests
+// ============================================================
+
+#[test]
+fn test_ip_address_allow_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.ip_address_allow.is_empty(),
+        "IPAddressAllow should default to empty"
+    );
+}
+
+#[test]
+fn test_ip_address_allow_single_cidr() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = 192.168.1.0/24
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.ip_address_allow,
+        vec!["192.168.1.0/24".to_owned()]
+    );
+}
+
+#[test]
+fn test_ip_address_allow_any_keyword() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = any
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.ip_address_allow, vec!["any".to_owned()]);
+}
+
+#[test]
+fn test_ip_address_allow_localhost_keyword() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = localhost
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.ip_address_allow, vec!["localhost".to_owned()]);
+}
+
+#[test]
+fn test_ip_address_allow_link_local_keyword() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = link-local
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.ip_address_allow, vec!["link-local".to_owned()]);
+}
+
+#[test]
+fn test_ip_address_allow_multicast_keyword() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = multicast
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.ip_address_allow, vec!["multicast".to_owned()]);
+}
+
+#[test]
+fn test_ip_address_allow_multiple_space_separated() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = 192.168.1.0/24 10.0.0.0/8 172.16.0.0/12
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.ip_address_allow,
+        vec![
+            "192.168.1.0/24".to_owned(),
+            "10.0.0.0/8".to_owned(),
+            "172.16.0.0/12".to_owned()
+        ]
+    );
+}
+
+#[test]
+fn test_ip_address_allow_multiple_directives_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = 192.168.1.0/24
+    IPAddressAllow = 10.0.0.0/8
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.ip_address_allow,
+        vec!["192.168.1.0/24".to_owned(), "10.0.0.0/8".to_owned()]
+    );
+}
+
+#[test]
+fn test_ip_address_allow_empty_resets() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = 192.168.1.0/24
+    IPAddressAllow =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.ip_address_allow.is_empty(),
+        "Empty IPAddressAllow= should reset the list"
+    );
+}
+
+#[test]
+fn test_ip_address_allow_empty_then_new_entry() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = 192.168.1.0/24
+    IPAddressAllow =
+    IPAddressAllow = 10.0.0.0/8
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.ip_address_allow, vec!["10.0.0.0/8".to_owned()]);
+}
+
+#[test]
+fn test_ip_address_allow_ipv6() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = ::1/128 fe80::/10
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.ip_address_allow,
+        vec!["::1/128".to_owned(), "fe80::/10".to_owned()]
+    );
+}
+
+#[test]
+fn test_ip_address_allow_mixed_keywords_and_cidr() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = localhost 192.168.1.0/24 link-local
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.ip_address_allow,
+        vec![
+            "localhost".to_owned(),
+            "192.168.1.0/24".to_owned(),
+            "link-local".to_owned()
+        ]
+    );
+}
+
+#[test]
+fn test_ip_address_allow_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = any
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "IPAddressAllow should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_ip_address_allow_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = 192.168.1.0/24 10.0.0.0/8
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.ip_address_allow,
+            vec!["192.168.1.0/24".to_owned(), "10.0.0.0/8".to_owned()],
+            "IPAddressAllow should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_ip_address_allow_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.ip_address_allow.is_empty(),
+            "Default empty IPAddressAllow should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+// ============================================================
+// IPAddressDeny= parsing tests
+// ============================================================
+
+#[test]
+fn test_ip_address_deny_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.ip_address_deny.is_empty(),
+        "IPAddressDeny should default to empty"
+    );
+}
+
+#[test]
+fn test_ip_address_deny_single_cidr() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressDeny = 192.168.1.0/24
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.ip_address_deny,
+        vec!["192.168.1.0/24".to_owned()]
+    );
+}
+
+#[test]
+fn test_ip_address_deny_any_keyword() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressDeny = any
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.ip_address_deny, vec!["any".to_owned()]);
+}
+
+#[test]
+fn test_ip_address_deny_localhost_keyword() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressDeny = localhost
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.ip_address_deny, vec!["localhost".to_owned()]);
+}
+
+#[test]
+fn test_ip_address_deny_link_local_keyword() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressDeny = link-local
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.ip_address_deny, vec!["link-local".to_owned()]);
+}
+
+#[test]
+fn test_ip_address_deny_multicast_keyword() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressDeny = multicast
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.ip_address_deny, vec!["multicast".to_owned()]);
+}
+
+#[test]
+fn test_ip_address_deny_multiple_space_separated() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressDeny = 192.168.1.0/24 10.0.0.0/8 172.16.0.0/12
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.ip_address_deny,
+        vec![
+            "192.168.1.0/24".to_owned(),
+            "10.0.0.0/8".to_owned(),
+            "172.16.0.0/12".to_owned()
+        ]
+    );
+}
+
+#[test]
+fn test_ip_address_deny_multiple_directives_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressDeny = 192.168.1.0/24
+    IPAddressDeny = 10.0.0.0/8
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.ip_address_deny,
+        vec!["192.168.1.0/24".to_owned(), "10.0.0.0/8".to_owned()]
+    );
+}
+
+#[test]
+fn test_ip_address_deny_empty_resets() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressDeny = 192.168.1.0/24
+    IPAddressDeny =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.ip_address_deny.is_empty(),
+        "Empty IPAddressDeny= should reset the list"
+    );
+}
+
+#[test]
+fn test_ip_address_deny_empty_then_new_entry() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressDeny = 192.168.1.0/24
+    IPAddressDeny =
+    IPAddressDeny = 10.0.0.0/8
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.ip_address_deny, vec!["10.0.0.0/8".to_owned()]);
+}
+
+#[test]
+fn test_ip_address_deny_ipv6() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressDeny = ::1/128 fe80::/10
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.ip_address_deny,
+        vec!["::1/128".to_owned(), "fe80::/10".to_owned()]
+    );
+}
+
+#[test]
+fn test_ip_address_deny_mixed_keywords_and_cidr() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressDeny = any
+    IPAddressDeny = 192.168.1.0/24
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.ip_address_deny,
+        vec!["any".to_owned(), "192.168.1.0/24".to_owned()]
+    );
+}
+
+#[test]
+fn test_ip_address_deny_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressDeny = any
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "IPAddressDeny should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_ip_address_deny_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressDeny = 192.168.1.0/24 10.0.0.0/8
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.ip_address_deny,
+            vec!["192.168.1.0/24".to_owned(), "10.0.0.0/8".to_owned()],
+            "IPAddressDeny should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_ip_address_deny_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.ip_address_deny.is_empty(),
+            "Default empty IPAddressDeny should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+// ============================================================
+// IPAddressAllow= and IPAddressDeny= combined tests
+// ============================================================
+
+#[test]
+fn test_ip_address_allow_and_deny_together() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = localhost
+    IPAddressDeny = any
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.ip_address_allow, vec!["localhost".to_owned()]);
+    assert_eq!(service.srvc.ip_address_deny, vec!["any".to_owned()]);
+}
+
+#[test]
+fn test_ip_address_allow_and_deny_with_device_allow() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = 192.168.1.0/24
+    IPAddressDeny = any
+    DeviceAllow = /dev/null rw
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.ip_address_allow,
+        vec!["192.168.1.0/24".to_owned()]
+    );
+    assert_eq!(service.srvc.ip_address_deny, vec!["any".to_owned()]);
+    assert_eq!(service.srvc.device_allow, vec!["/dev/null rw".to_owned()]);
+}
+
+#[test]
+fn test_ip_address_allow_and_deny_preserved_together_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IPAddressAllow = localhost 192.168.1.0/24
+    IPAddressDeny = any
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.ip_address_allow,
+            vec!["localhost".to_owned(), "192.168.1.0/24".to_owned()],
+            "IPAddressAllow should survive unit conversion"
+        );
+        assert_eq!(
+            srvc.conf.ip_address_deny,
+            vec!["any".to_owned()],
+            "IPAddressDeny should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
