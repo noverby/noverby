@@ -3221,3 +3221,635 @@ fn test_documentation_space_separated_single_line() {
         ]
     );
 }
+
+// ============================================================
+// TTYReset=, TTYVHangup=, TTYVTDisallocate= parsing tests
+// ============================================================
+
+#[test]
+fn test_tty_reset_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.tty_reset,
+        "TTYReset should default to false when not specified"
+    );
+}
+
+#[test]
+fn test_tty_reset_explicit_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYReset = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.tty_reset,
+        "TTYReset=yes should be true"
+    );
+}
+
+#[test]
+fn test_tty_reset_explicit_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYReset = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.tty_reset,
+        "TTYReset=no should be false"
+    );
+}
+
+#[test]
+fn test_tty_reset_explicit_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYReset = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.tty_reset,
+        "TTYReset=true should be true"
+    );
+}
+
+#[test]
+fn test_tty_reset_explicit_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYReset = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.tty_reset,
+        "TTYReset=false should be false"
+    );
+}
+
+#[test]
+fn test_tty_reset_explicit_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYReset = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.tty_reset,
+        "TTYReset=1 should be true"
+    );
+}
+
+#[test]
+fn test_tty_reset_explicit_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYReset = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.tty_reset,
+        "TTYReset=0 should be false"
+    );
+}
+
+#[test]
+fn test_tty_vhangup_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.tty_vhangup,
+        "TTYVHangup should default to false when not specified"
+    );
+}
+
+#[test]
+fn test_tty_vhangup_explicit_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYVHangup = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.tty_vhangup,
+        "TTYVHangup=yes should be true"
+    );
+}
+
+#[test]
+fn test_tty_vhangup_explicit_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYVHangup = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.tty_vhangup,
+        "TTYVHangup=no should be false"
+    );
+}
+
+#[test]
+fn test_tty_vhangup_explicit_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYVHangup = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.tty_vhangup,
+        "TTYVHangup=true should be true"
+    );
+}
+
+#[test]
+fn test_tty_vhangup_explicit_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYVHangup = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.tty_vhangup,
+        "TTYVHangup=false should be false"
+    );
+}
+
+#[test]
+fn test_tty_vhangup_explicit_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYVHangup = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.tty_vhangup,
+        "TTYVHangup=1 should be true"
+    );
+}
+
+#[test]
+fn test_tty_vhangup_explicit_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYVHangup = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.tty_vhangup,
+        "TTYVHangup=0 should be false"
+    );
+}
+
+#[test]
+fn test_tty_vt_disallocate_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.tty_vt_disallocate,
+        "TTYVTDisallocate should default to false when not specified"
+    );
+}
+
+#[test]
+fn test_tty_vt_disallocate_explicit_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYVTDisallocate = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.tty_vt_disallocate,
+        "TTYVTDisallocate=yes should be true"
+    );
+}
+
+#[test]
+fn test_tty_vt_disallocate_explicit_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYVTDisallocate = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.tty_vt_disallocate,
+        "TTYVTDisallocate=no should be false"
+    );
+}
+
+#[test]
+fn test_tty_vt_disallocate_explicit_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYVTDisallocate = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.tty_vt_disallocate,
+        "TTYVTDisallocate=true should be true"
+    );
+}
+
+#[test]
+fn test_tty_vt_disallocate_explicit_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYVTDisallocate = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.tty_vt_disallocate,
+        "TTYVTDisallocate=false should be false"
+    );
+}
+
+#[test]
+fn test_tty_vt_disallocate_explicit_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYVTDisallocate = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.tty_vt_disallocate,
+        "TTYVTDisallocate=1 should be true"
+    );
+}
+
+#[test]
+fn test_tty_vt_disallocate_explicit_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYVTDisallocate = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.tty_vt_disallocate,
+        "TTYVTDisallocate=0 should be false"
+    );
+}
+
+#[test]
+fn test_tty_settings_all_enabled_together() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    StandardInput = tty
+    TTYPath = /dev/tty1
+    TTYReset = yes
+    TTYVHangup = yes
+    TTYVTDisallocate = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.tty_path,
+        Some(std::path::PathBuf::from("/dev/tty1"))
+    );
+    assert!(
+        service.srvc.exec_section.tty_reset,
+        "TTYReset=yes should be true"
+    );
+    assert!(
+        service.srvc.exec_section.tty_vhangup,
+        "TTYVHangup=yes should be true"
+    );
+    assert!(
+        service.srvc.exec_section.tty_vt_disallocate,
+        "TTYVTDisallocate=yes should be true"
+    );
+}
+
+#[test]
+fn test_tty_settings_mixed_values() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYReset = yes
+    TTYVHangup = no
+    TTYVTDisallocate = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.tty_reset,
+        "TTYReset=yes should be true"
+    );
+    assert!(
+        !service.srvc.exec_section.tty_vhangup,
+        "TTYVHangup=no should be false"
+    );
+    assert!(
+        service.srvc.exec_section.tty_vt_disallocate,
+        "TTYVTDisallocate=true should be true"
+    );
+}
+
+#[test]
+fn test_tty_settings_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    TTYReset = yes
+    TTYVHangup = true
+    TTYVTDisallocate = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket_unit = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket_unit.sock.exec_section.tty_reset,
+        "TTYReset=yes should be true in socket units"
+    );
+    assert!(
+        socket_unit.sock.exec_section.tty_vhangup,
+        "TTYVHangup=true should be true in socket units"
+    );
+    assert!(
+        socket_unit.sock.exec_section.tty_vt_disallocate,
+        "TTYVTDisallocate=1 should be true in socket units"
+    );
+}
+
+#[test]
+fn test_tty_settings_socket_unit_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket_unit = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket_unit.sock.exec_section.tty_reset,
+        "TTYReset should default to false in socket units"
+    );
+    assert!(
+        !socket_unit.sock.exec_section.tty_vhangup,
+        "TTYVHangup should default to false in socket units"
+    );
+    assert!(
+        !socket_unit.sock.exec_section.tty_vt_disallocate,
+        "TTYVTDisallocate should default to false in socket units"
+    );
+}
+
+#[test]
+fn test_tty_reset_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYReset = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.tty_reset,
+        "TTYReset=YES (uppercase) should be true"
+    );
+}
+
+#[test]
+fn test_tty_vhangup_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYVHangup = True
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.tty_vhangup,
+        "TTYVHangup=True (mixed case) should be true"
+    );
+}
+
+#[test]
+fn test_tty_vt_disallocate_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TTYVTDisallocate = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.tty_vt_disallocate,
+        "TTYVTDisallocate=YES (uppercase) should be true"
+    );
+}

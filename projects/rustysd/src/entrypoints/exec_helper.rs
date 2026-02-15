@@ -33,6 +33,18 @@ pub struct ExecHelperConfig {
     /// Defaults to /dev/console if not set.
     pub tty_path: Option<PathBuf>,
 
+    /// TTYReset= — reset the TTY to sane defaults before use.
+    /// Matches systemd: resets termios, keyboard mode, switches to text mode.
+    #[serde(default)]
+    pub tty_reset: bool,
+    /// TTYVHangup= — send TIOCVHANGUP to the TTY before use.
+    /// Disconnects prior sessions so the new service gets a clean terminal.
+    #[serde(default)]
+    pub tty_vhangup: bool,
+    /// TTYVTDisallocate= — deallocate or clear the VT before use.
+    #[serde(default)]
+    pub tty_vt_disallocate: bool,
+
     /// Whether StandardOutput is set to inherit (or journal/kmsg/unset).
     /// When true AND stdin is a TTY, stdout will be dup'd from the TTY fd.
     #[serde(default = "default_true")]
@@ -76,6 +88,183 @@ fn prepare_exec_args(
     }
 
     (cmd, args)
+}
+
+/// Open a terminal device, retrying on EIO.
+/// This matches systemd's open_terminal() which retries because a TTY in the
+/// process of being closed may temporarily return EIO.
+fn open_terminal(path: &std::ffi::CStr, flags: libc::c_int) -> libc::c_int {
+    for attempt in 0..20u32 {
+        let fd = unsafe { libc::open(path.as_ptr(), flags) };
+        if fd >= 0 {
+            return fd;
+        }
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() != Some(libc::EIO) {
+            return -1;
+        }
+        // EIO — TTY is being closed, retry after 50ms (max ~1s total)
+        if attempt >= 19 {
+            return -1;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    -1
+}
+
+/// Perform a "destructive" TTY reset before the service uses it.
+/// This matches systemd's exec_context_tty_reset(): it resets terminal settings,
+/// hangs up prior sessions, and optionally disallocates the VT.
+/// This is called BEFORE opening the TTY for stdin so the service gets a clean terminal.
+fn tty_reset_destructive(config: &ExecHelperConfig) {
+    let tty_path = match config.tty_path.as_deref() {
+        Some(p) => p,
+        None => std::path::Path::new("/dev/console"),
+    };
+
+    let tty_path_cstr = match std::ffi::CString::new(tty_path.to_string_lossy().as_bytes()) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    // Open the TTY non-blocking and without becoming controlling terminal
+    let fd = open_terminal(
+        &tty_path_cstr,
+        libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC | libc::O_NONBLOCK,
+    );
+    if fd < 0 {
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to open TTY {:?} for reset: {}",
+            config.name,
+            tty_path,
+            std::io::Error::last_os_error()
+        );
+        return;
+    }
+
+    if config.tty_reset {
+        // Reset terminal to sane defaults via termios
+        // This matches systemd's terminal_reset_ioctl()
+        unsafe {
+            // Disable exclusive mode
+            let _ = libc::ioctl(fd, libc::TIOCNXCL);
+
+            // Switch to text mode (KD_TEXT = 0x00)
+            let _ = libc::ioctl(
+                fd, 0x4B3A_u64, /* KDSETMODE */
+                0_i32,      /* KD_TEXT */
+            );
+
+            // Reset termios to sane defaults
+            let mut termios: libc::termios = std::mem::zeroed();
+            if libc::tcgetattr(fd, &mut termios) == 0 {
+                termios.c_iflag &= !(libc::IGNBRK
+                    | libc::BRKINT
+                    | libc::ISTRIP
+                    | libc::INLCR
+                    | libc::IGNCR
+                    | libc::IUCLC);
+                termios.c_iflag |= libc::ICRNL | libc::IMAXBEL | libc::IUTF8;
+                termios.c_oflag |= libc::ONLCR | libc::OPOST;
+                termios.c_cflag |= libc::CREAD;
+                termios.c_lflag = libc::ISIG
+                    | libc::ICANON
+                    | libc::IEXTEN
+                    | libc::ECHO
+                    | libc::ECHOE
+                    | libc::ECHOK
+                    | libc::ECHOCTL
+                    | libc::ECHOKE;
+
+                termios.c_cc[libc::VINTR] = 3; // ^C
+                termios.c_cc[libc::VQUIT] = 28; // ^\
+                termios.c_cc[libc::VERASE] = 127;
+                termios.c_cc[libc::VKILL] = 21; // ^U
+                termios.c_cc[libc::VEOF] = 4; // ^D
+                termios.c_cc[libc::VSTART] = 17; // ^Q
+                termios.c_cc[libc::VSTOP] = 19; // ^S
+                termios.c_cc[libc::VSUSP] = 26; // ^Z
+                termios.c_cc[libc::VLNEXT] = 22; // ^V
+                termios.c_cc[libc::VWERASE] = 23; // ^W
+                termios.c_cc[libc::VREPRINT] = 18; // ^R
+                termios.c_cc[libc::VEOL] = 0;
+                termios.c_cc[libc::VEOL2] = 0;
+                termios.c_cc[libc::VTIME] = 0;
+                termios.c_cc[libc::VMIN] = 1;
+
+                let _ = libc::tcsetattr(fd, libc::TCSANOW, &termios);
+            }
+
+            // Flush all pending I/O
+            let _ = libc::tcflush(fd, libc::TCIOFLUSH);
+        }
+    }
+
+    if config.tty_vhangup {
+        // Send TIOCVHANGUP — this disconnects any previous sessions from the TTY.
+        // This is critical: without it, switching to the VT may show a stale/dead session.
+        unsafe {
+            let ret = libc::ioctl(fd, libc::TIOCVHANGUP);
+            if ret < 0 {
+                eprintln!(
+                    "[EXEC_HELPER {}] TIOCVHANGUP failed on {:?}: {}",
+                    config.name,
+                    tty_path,
+                    std::io::Error::last_os_error()
+                );
+            }
+        }
+    }
+
+    // Close the fd used for reset — we'll re-open it for actual use.
+    // After vhangup the fd is dead anyway.
+    unsafe {
+        libc::close(fd);
+    }
+
+    if config.tty_vt_disallocate {
+        // Try to disallocate or at least clear the VT.
+        // Extract VT number from path like /dev/tty9
+        let tty_str = tty_path.to_string_lossy();
+        let tty_name = tty_str.strip_prefix("/dev/").unwrap_or(&tty_str);
+        if let Some(vt_num_str) = tty_name.strip_prefix("tty") {
+            if let Ok(vt_num) = vt_num_str.parse::<libc::c_int>() {
+                if vt_num > 0 {
+                    // Try VT_DISALLOCATE via /dev/tty0
+                    let tty0 = std::ffi::CString::new("/dev/tty0").unwrap();
+                    let tty0_fd = open_terminal(
+                        &tty0,
+                        libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC | libc::O_NONBLOCK,
+                    );
+                    if tty0_fd >= 0 {
+                        let ret = unsafe {
+                            libc::ioctl(tty0_fd, 0x5608 /* VT_DISALLOCATE */, vt_num)
+                        };
+                        unsafe {
+                            libc::close(tty0_fd);
+                        }
+                        if ret >= 0 {
+                            return; // Successfully disallocated
+                        }
+                        // EBUSY means the VT is active — fall through to clear it
+                    }
+                }
+            }
+        }
+
+        // If we can't disallocate, at least clear the screen
+        let clear_fd = open_terminal(
+            &tty_path_cstr,
+            libc::O_WRONLY | libc::O_NOCTTY | libc::O_CLOEXEC | libc::O_NONBLOCK,
+        );
+        if clear_fd >= 0 {
+            let clear_seq = b"\x1b[r\x1b[H\x1b[3J\x1bc";
+            unsafe {
+                let _ = libc::write(clear_fd, clear_seq.as_ptr().cast(), clear_seq.len());
+                libc::close(clear_fd);
+            }
+        }
+    }
 }
 
 /// Set up stdin for the service based on the StandardInput= setting.
@@ -142,9 +331,8 @@ fn setup_stdin(config: &ExecHelperConfig) {
                 }
             }
 
-            let flags = libc::O_RDWR | libc::O_NOCTTY;
-
-            let tty_fd = unsafe { libc::open(tty_path_cstr.as_ptr(), flags) };
+            // Use open_terminal() which retries on EIO, matching systemd behavior
+            let tty_fd = open_terminal(&tty_path_cstr, libc::O_RDWR | libc::O_NOCTTY);
             if tty_fd < 0 {
                 let err = std::io::Error::last_os_error();
                 eprintln!(
@@ -174,13 +362,27 @@ fn setup_stdin(config: &ExecHelperConfig) {
             // For tty/tty-fail, pass 0 which will fail if another session owns it.
             // This matches systemd's behavior where all tty modes acquire a
             // controlling terminal — they only differ in how conflicts are handled.
+            //
+            // Temporarily ignore SIGHUP during TIOCSCTTY, matching systemd's
+            // acquire_terminal() — if we already own the tty, TIOCSCTTY can
+            // generate a spurious SIGHUP.
             let force_arg: libc::c_int = if config.stdin_option == StandardInput::TtyForce {
                 1
             } else {
                 0
             };
             unsafe {
+                // Ignore SIGHUP during terminal acquisition
+                let mut old_sa: libc::sigaction = std::mem::zeroed();
+                let mut ignore_sa: libc::sigaction = std::mem::zeroed();
+                ignore_sa.sa_sigaction = libc::SIG_IGN;
+                libc::sigaction(libc::SIGHUP, &ignore_sa, &mut old_sa);
+
                 let ret = libc::ioctl(tty_fd, libc::TIOCSCTTY, force_arg);
+
+                // Restore old SIGHUP handler
+                libc::sigaction(libc::SIGHUP, &old_sa, std::ptr::null_mut());
+
                 if ret < 0 {
                     let err = std::io::Error::last_os_error();
                     eprintln!(
@@ -235,6 +437,19 @@ pub fn run_exec_helper() {
     );
 
     nix::unistd::close(libc::STDIN_FILENO).expect("I want to be able to close this fd!");
+
+    // Perform "destructive" TTY reset before opening the TTY for stdin.
+    // This matches systemd's exec_context_tty_reset() which is called before
+    // setup_input(). It resets terminal settings, hangs up prior sessions, and
+    // optionally disallocates the VT — ensuring the service gets a clean terminal.
+    match config.stdin_option {
+        StandardInput::Tty | StandardInput::TtyForce | StandardInput::TtyFail => {
+            if config.tty_reset || config.tty_vhangup || config.tty_vt_disallocate {
+                tty_reset_destructive(&config);
+            }
+        }
+        _ => {}
+    }
 
     // Set up stdin for the actual service process
     setup_stdin(&config);

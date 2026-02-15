@@ -878,6 +878,14 @@ pub struct ExecConfig {
     pub working_directory: Option<std::path::PathBuf>,
     pub state_directory: Vec<String>,
     pub tty_path: Option<std::path::PathBuf>,
+    /// TTYReset= — reset the TTY to sane defaults before use.
+    /// Matches systemd: resets termios, keyboard mode, switches to text mode.
+    pub tty_reset: bool,
+    /// TTYVHangup= — send TIOCVHANGUP to the TTY before use.
+    /// Disconnects prior sessions so the new service gets a clean terminal.
+    pub tty_vhangup: bool,
+    /// TTYVTDisallocate= — deallocate or clear the VT before use.
+    pub tty_vt_disallocate: bool,
 }
 
 #[cfg(target_os = "linux")]

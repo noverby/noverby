@@ -168,6 +168,15 @@ pub struct ParsedExecSection {
     pub working_directory: Option<PathBuf>,
     pub state_directory: Vec<String>,
     pub tty_path: Option<PathBuf>,
+    /// TTYReset= — reset the TTY to sane defaults before use (default: false).
+    /// Matches systemd behavior: resets termios, keyboard mode, switches to text mode.
+    pub tty_reset: bool,
+    /// TTYVHangup= — send TIOCVHANGUP to the TTY before use (default: false).
+    /// This disconnects any prior sessions from the TTY so the new service gets
+    /// a clean controlling terminal.
+    pub tty_vhangup: bool,
+    /// TTYVTDisallocate= — deallocate or clear the VT before use (default: false).
+    pub tty_vt_disallocate: bool,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]

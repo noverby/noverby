@@ -239,6 +239,9 @@ fn start_service_with_filedescriptors(
 
         stdin_option: conf.exec_config.stdin_option.clone(),
         tty_path: conf.exec_config.tty_path.clone(),
+        tty_reset: conf.exec_config.tty_reset,
+        tty_vhangup: conf.exec_config.tty_vhangup,
+        tty_vt_disallocate: conf.exec_config.tty_vt_disallocate,
         stdout_is_inherit: matches!(
             conf.exec_config.stdout_path,
             None | Some(StdIoOption::Inherit)

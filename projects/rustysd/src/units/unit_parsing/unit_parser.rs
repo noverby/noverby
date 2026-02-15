@@ -209,6 +209,9 @@ pub fn parse_exec_section(
     let working_directory = section.remove("WORKINGDIRECTORY");
     let state_directory = section.remove("STATEDIRECTORY");
     let tty_path = section.remove("TTYPATH");
+    let tty_reset = section.remove("TTYRESET");
+    let tty_vhangup = section.remove("TTYVHANGUP");
+    let tty_vt_disallocate = section.remove("TTYVTDISALLOCATE");
 
     let user = match user {
         None => None,
@@ -280,6 +283,48 @@ pub fn parse_exec_section(
                 None
             }
         }
+    };
+
+    let tty_reset = match tty_reset {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "TTYReset".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
+    let tty_vhangup = match tty_vhangup {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "TTYVHangup".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
+    let tty_vt_disallocate = match tty_vt_disallocate {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "TTYVTDisallocate".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
     };
 
     let stdout_path = match stdout {
@@ -411,6 +456,9 @@ pub fn parse_exec_section(
         working_directory,
         state_directory,
         tty_path,
+        tty_reset,
+        tty_vhangup,
+        tty_vt_disallocate,
     })
 }
 
