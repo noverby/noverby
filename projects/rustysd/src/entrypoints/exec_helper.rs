@@ -45,6 +45,12 @@ pub struct ExecHelperConfig {
     #[serde(default)]
     pub tty_vt_disallocate: bool,
 
+    /// IgnoreSIGPIPE= — if true (the default), SIGPIPE is set to SIG_IGN before
+    /// exec'ing the service binary. When false, the default SIGPIPE disposition
+    /// (terminate) is left in place. Matches systemd.exec(5).
+    #[serde(default = "default_true")]
+    pub ignore_sigpipe: bool,
+
     /// Whether StandardOutput is set to inherit (or journal/kmsg/tty/unset).
     /// When true AND stdin is a TTY, stdout will be dup'd from the TTY fd.
     #[serde(default = "default_true")]
@@ -652,6 +658,17 @@ pub fn run_exec_helper() {
         config.cmd.display(),
         config.args.join(" ")
     );
+
+    // Apply IgnoreSIGPIPE= setting. When true (the default), set SIGPIPE to
+    // SIG_IGN so that writes to broken pipes produce EPIPE errors instead of
+    // killing the process. When false, restore the default disposition.
+    unsafe {
+        if config.ignore_sigpipe {
+            libc::signal(libc::SIGPIPE, libc::SIG_IGN);
+        } else {
+            libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+        }
+    }
 
     nix::unistd::execv(&cmd, &args).unwrap();
 }

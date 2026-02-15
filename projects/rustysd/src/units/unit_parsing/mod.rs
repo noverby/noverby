@@ -262,6 +262,10 @@ pub struct ParsedExecSection {
     pub tty_vhangup: bool,
     /// TTYVTDisallocate= — deallocate or clear the VT before use (default: false).
     pub tty_vt_disallocate: bool,
+    /// IgnoreSIGPIPE= — if true (the default), SIGPIPE is set to SIG_IGN before
+    /// exec'ing the service binary. When false, the default SIGPIPE disposition
+    /// (terminate) is left in place. Matches systemd.exec(5).
+    pub ignore_sigpipe: bool,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]
