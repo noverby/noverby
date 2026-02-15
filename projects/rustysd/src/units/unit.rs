@@ -1212,6 +1212,11 @@ pub struct ExecConfig {
     /// and 19 (lowest priority). Parsed and stored; no runtime enforcement
     /// yet. See systemd.exec(5).
     pub nice: Option<i32>,
+    /// RemoveIPC= — if true, all System V and POSIX IPC objects owned by
+    /// the user and group of the executed processes are removed when the
+    /// unit is stopped. Defaults to false. Parsed and stored; no runtime
+    /// enforcement yet. See systemd.exec(5).
+    pub remove_ipc: bool,
 }
 
 #[cfg(target_os = "linux")]
