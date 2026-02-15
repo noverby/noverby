@@ -213,6 +213,7 @@ fn make_common_from_parsed(
     // Also= in [Install] is treated as a soft (wants) dependency
     wants.extend(collect_supported_unit_ids(install.also));
     let requires = collect_supported_unit_ids(unit.requires);
+    let part_of = collect_supported_unit_ids(unit.part_of);
     let conflicts = collect_supported_unit_ids(unit.conflicts);
     let wanted_by = collect_supported_unit_ids(install.wanted_by);
     let required_by = collect_supported_unit_ids(install.required_by);
@@ -224,6 +225,7 @@ fn make_common_from_parsed(
     refs_by_name.extend(wanted_by.iter().cloned());
     refs_by_name.extend(requires.iter().cloned());
     refs_by_name.extend(required_by.iter().cloned());
+    refs_by_name.extend(part_of.iter().cloned());
     refs_by_name.extend(conflicts.iter().cloned());
     refs_by_name.extend(before.iter().cloned());
     refs_by_name.extend(after.iter().cloned());
@@ -249,6 +251,8 @@ fn make_common_from_parsed(
             conflicted_by: Vec::new(),
             before,
             after,
+            part_of,
+            part_of_by: Vec::new(),
         },
     })
 }
