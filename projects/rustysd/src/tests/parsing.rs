@@ -16027,3 +16027,290 @@ fn test_restrict_address_families_complex_deny_list() {
         "AF_BLUETOOTH"
     );
 }
+
+// ============================================================
+// SystemCallErrorNumber= parsing tests
+// ============================================================
+
+#[test]
+fn test_system_call_error_number_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.system_call_error_number, None,
+        "SystemCallErrorNumber should default to None when not specified"
+    );
+}
+
+#[test]
+fn test_system_call_error_number_eperm() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallErrorNumber = EPERM
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.system_call_error_number,
+        Some("EPERM".to_owned()),
+        "SystemCallErrorNumber=EPERM should parse correctly"
+    );
+}
+
+#[test]
+fn test_system_call_error_number_eacces() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallErrorNumber = EACCES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.system_call_error_number,
+        Some("EACCES".to_owned()),
+        "SystemCallErrorNumber=EACCES should parse correctly"
+    );
+}
+
+#[test]
+fn test_system_call_error_number_enosys() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallErrorNumber = ENOSYS
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.system_call_error_number,
+        Some("ENOSYS".to_owned()),
+        "SystemCallErrorNumber=ENOSYS should parse correctly"
+    );
+}
+
+#[test]
+fn test_system_call_error_number_empty_resets_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallErrorNumber =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.system_call_error_number, None,
+        "Empty SystemCallErrorNumber= should reset to None"
+    );
+}
+
+#[test]
+fn test_system_call_error_number_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallErrorNumber =   EPERM
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.system_call_error_number,
+        Some("EPERM".to_owned()),
+        "SystemCallErrorNumber should handle leading/trailing whitespace"
+    );
+}
+
+#[test]
+fn test_system_call_error_number_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallErrorNumber = EPERM
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "SystemCallErrorNumber should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_system_call_error_number_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallErrorNumber = EPERM
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.system_call_error_number,
+            Some("EPERM".to_owned()),
+            "SystemCallErrorNumber=EPERM should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_system_call_error_number_none_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.system_call_error_number, None,
+            "Default SystemCallErrorNumber (None) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_system_call_error_number_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with syscall error number
+    [Socket]
+    ListenStream = /run/test.sock
+    SystemCallErrorNumber = EACCES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.system_call_error_number,
+        Some("EACCES".to_owned()),
+        "SystemCallErrorNumber=EACCES should work on socket units"
+    );
+}
+
+#[test]
+fn test_system_call_error_number_with_system_call_filter() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = @basic-io
+    SystemCallErrorNumber = EPERM
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.system_call_error_number,
+        Some("EPERM".to_owned()),
+    );
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 1);
+    assert_eq!(service.srvc.exec_section.system_call_filter[0], "@basic-io");
+}
+
+#[test]
+fn test_system_call_error_number_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallErrorNumber = EPERM
+    RestrictRealtime = yes
+    ProtectSystem = strict
+    RestrictAddressFamilies = AF_UNIX AF_INET
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.system_call_error_number,
+        Some("EPERM".to_owned()),
+    );
+    assert_eq!(service.srvc.exec_section.restrict_realtime, true);
+    assert_eq!(
+        service.srvc.exec_section.protect_system,
+        crate::units::ProtectSystem::Strict,
+    );
+    assert_eq!(service.srvc.exec_section.restrict_address_families.len(), 2);
+}

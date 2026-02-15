@@ -1016,6 +1016,12 @@ pub struct ExecConfig {
     /// empty assignment resets the list. Parsed and stored; no runtime seccomp
     /// enforcement yet. See systemd.exec(5).
     pub restrict_address_families: Vec<String>,
+    /// SystemCallErrorNumber= — the errno to return when a system call is
+    /// blocked by `SystemCallFilter=`. Takes an errno name such as `EPERM`
+    /// or `EACCES`. When not set, blocked calls result in SIGSYS (process
+    /// kill). Parsed and stored; no runtime seccomp enforcement yet.
+    /// See systemd.exec(5).
+    pub system_call_error_number: Option<String>,
 }
 
 #[cfg(target_os = "linux")]
