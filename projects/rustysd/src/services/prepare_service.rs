@@ -35,11 +35,14 @@ fn open_stdio(setting: &Option<StdIoOption>) -> Result<StdIo, String> {
                 .map_err(|e| format!("Error opening /dev/null: {e}"))?;
             Ok(StdIo::File(file))
         }
-        Some(StdIoOption::Inherit) | Some(StdIoOption::Journal) | Some(StdIoOption::Kmsg) => {
-            // For inherit/journal/kmsg: use a pipe so the service manager can
+        Some(StdIoOption::Inherit)
+        | Some(StdIoOption::Journal)
+        | Some(StdIoOption::Kmsg)
+        | Some(StdIoOption::Tty) => {
+            // For inherit/journal/kmsg/tty: use a pipe so the service manager can
             // capture and forward the output. The exec_helper will handle
             // overriding stdout/stderr to the TTY when StandardInput=tty is set
-            // (which is the typical use case for inherit).
+            // or when StandardOutput/StandardError=tty is set independently.
             let (r, w) = nix::unistd::pipe().unwrap();
             Ok(super::StdIo::Piped(r.into_raw_fd(), w.into_raw_fd()))
         }

@@ -239,6 +239,7 @@ fn make_stdio_option(setting: &str) -> Result<StdIoOption, ParsingErrorReason> {
     match setting.to_lowercase().as_str() {
         "null" | "" => Ok(StdIoOption::Null),
         "inherit" => Ok(StdIoOption::Inherit),
+        "tty" => Ok(StdIoOption::Tty),
         "journal" | "syslog" | "journal+console" | "syslog+console" => Ok(StdIoOption::Journal),
         "kmsg" | "kmsg+console" => Ok(StdIoOption::Kmsg),
         _ if setting.starts_with("file:") => {
