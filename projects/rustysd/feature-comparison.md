@@ -1913,8 +1913,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionKernelCommandLine=">ConditionKernelCommandLine=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed, stored, and evaluated at runtime. Supports negation (<code>!</code> prefix) and multiple directives (all must pass). Checks for a single word (as standalone or as key of a key=value pair) or an exact key=value assignment on the kernel command line (<code>/proc/cmdline</code>).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionKernelVersion=">ConditionKernelVersion=</a></td>
