@@ -1,5 +1,5 @@
 {
-  devShells.presentations = pkgs: {
+  devShells.slides = pkgs: {
     packages = with pkgs; [
       (python313.withPackages (pp:
         with pp; [
