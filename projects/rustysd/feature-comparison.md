@@ -494,6 +494,11 @@ This document is meant as a simple way of checking whether all features you need
   <td>Parsed and stored; no runtime enforcement yet (requires seccomp and device access restrictions)</td>
 </tr>
 <tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProtectProc=">ProtectProc=</a></td>
+  <td>✔️</td>
+  <td>Parsed and stored (default/noaccess/invisible/ptraceable). No runtime mount-namespace enforcement yet.</td>
+</tr>
+<tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#RestrictAddressFamilies=">RestrictAddressFamilies=</a></td>
   <td>✔️</td>
   <td>Parsed and stored (address family names, ~deny prefixes). No runtime seccomp enforcement.</td>
