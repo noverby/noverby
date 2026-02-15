@@ -4,8 +4,8 @@ use log::trace;
 use super::start_service::start_service;
 use crate::runtime_info::{PidEntry, RuntimeInfo};
 use crate::units::{
-    ActivationSource, Commandline, CommandlinePrefix, ServiceConfig, ServiceType, Timeout, UnitId,
-    UnitStatus,
+    ActivationSource, Commandline, CommandlinePrefix, KillMode, ServiceConfig, ServiceType,
+    Timeout, UnitId, UnitStatus,
 };
 
 use std::fmt::Write as _;
@@ -243,19 +243,69 @@ impl Service {
     }
 
     pub fn kill_all_remaining_processes(&mut self, conf: &ServiceConfig, name: &str) {
-        trace!("Kill all process for {name}");
-        if let Some(proc_group) = self.process_group {
-            // TODO handle these errors
-            match nix::sys::signal::kill(proc_group, nix::sys::signal::Signal::SIGKILL) {
-                Ok(()) => trace!("Success killing process group for service {name}",),
-                Err(e) => error!("Error killing process group for service {name}: {e}",),
+        trace!(
+            "Kill all process for {name} (kill_mode: {:?})",
+            conf.kill_mode
+        );
+        match conf.kill_mode {
+            KillMode::ControlGroup => {
+                if let Some(proc_group) = self.process_group {
+                    match nix::sys::signal::kill(proc_group, nix::sys::signal::Signal::SIGKILL) {
+                        Ok(()) => trace!("Success killing process group for service {name}"),
+                        Err(e) => error!("Error killing process group for service {name}: {e}"),
+                    }
+                } else {
+                    trace!("Tried to kill service that didn't have a process-group. This might have resulted in orphan processes.");
+                }
+                match super::kill_os_specific::kill(conf, nix::sys::signal::Signal::SIGKILL) {
+                    Ok(()) => trace!("Success killing process os specifically for service {name}"),
+                    Err(e) => {
+                        error!("Error killing process os specifically for service {name}: {e}")
+                    }
+                }
             }
-        } else {
-            trace!("Tried to kill service that didn't have a process-group. This might have resulted in orphan processes.");
-        }
-        match super::kill_os_specific::kill(conf, nix::sys::signal::Signal::SIGKILL) {
-            Ok(()) => trace!("Success killing process os specifically for service {name}",),
-            Err(e) => error!("Error killing process os specifically for service {name}: {e}",),
+            KillMode::Process => {
+                if let Some(pid) = self.pid {
+                    match nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGKILL) {
+                        Ok(()) => trace!("Success killing main process for service {name}"),
+                        Err(e) => error!("Error killing main process for service {name}: {e}"),
+                    }
+                } else {
+                    trace!("KillMode=process but service {name} has no main pid to kill");
+                }
+            }
+            KillMode::Mixed => {
+                // Send SIGTERM to the main process, SIGKILL to the rest of the group
+                if let Some(pid) = self.pid {
+                    match nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGTERM) {
+                        Ok(()) => {
+                            trace!("Success sending SIGTERM to main process for service {name}")
+                        }
+                        Err(e) => {
+                            error!("Error sending SIGTERM to main process for service {name}: {e}")
+                        }
+                    }
+                }
+                if let Some(proc_group) = self.process_group {
+                    match nix::sys::signal::kill(proc_group, nix::sys::signal::Signal::SIGKILL) {
+                        Ok(()) => {
+                            trace!("Success killing remaining process group for service {name}")
+                        }
+                        Err(e) => {
+                            error!("Error killing remaining process group for service {name}: {e}")
+                        }
+                    }
+                }
+                match super::kill_os_specific::kill(conf, nix::sys::signal::Signal::SIGKILL) {
+                    Ok(()) => trace!("Success killing process os specifically for service {name}"),
+                    Err(e) => {
+                        error!("Error killing process os specifically for service {name}: {e}")
+                    }
+                }
+            }
+            KillMode::None => {
+                trace!("KillMode=none for service {name}, not killing any remaining processes");
+            }
         }
     }
 
