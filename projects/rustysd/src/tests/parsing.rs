@@ -23698,6 +23698,274 @@ fn test_private_devices_with_other_settings() {
 }
 
 // ============================================================
+// PrivateNetwork= parsing tests
+// ============================================================
+
+#[test]
+fn test_private_network_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.private_network,
+        "PrivateNetwork should default to false"
+    );
+}
+
+#[test]
+fn test_private_network_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateNetwork = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.private_network,
+        "PrivateNetwork=yes should be true"
+    );
+}
+
+#[test]
+fn test_private_network_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateNetwork = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.private_network,
+        "PrivateNetwork=no should be false"
+    );
+}
+
+#[test]
+fn test_private_network_true_variant() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateNetwork = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.private_network,
+        "PrivateNetwork=true should be true"
+    );
+}
+
+#[test]
+fn test_private_network_one_is_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateNetwork = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.private_network,
+        "PrivateNetwork=1 should be true"
+    );
+}
+
+#[test]
+fn test_private_network_zero_is_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateNetwork = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.private_network,
+        "PrivateNetwork=0 should be false"
+    );
+}
+
+#[test]
+fn test_private_network_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateNetwork = Yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.private_network,
+        "PrivateNetwork=Yes should be true (case insensitive)"
+    );
+}
+
+#[test]
+fn test_private_network_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateNetwork = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "PrivateNetwork= should not cause errors");
+}
+
+#[test]
+fn test_private_network_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateNetwork = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.private_network,
+            "PrivateNetwork=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_private_network_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            !srvc.conf.exec_config.private_network,
+            "PrivateNetwork default (false) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_private_network_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with private network
+    [Socket]
+    ListenStream = /run/test.sock
+    PrivateNetwork = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.exec_section.private_network,
+        "PrivateNetwork should work in socket units"
+    );
+}
+
+#[test]
+fn test_private_network_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateNetwork = yes
+    PrivateDevices = yes
+    PrivateTmp = yes
+    ProtectSystem = strict
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.private_network);
+    assert!(service.srvc.exec_section.private_devices);
+    assert!(service.srvc.exec_section.private_tmp);
+}
+
+// ============================================================
 // LockPersonality= parsing tests
 // ============================================================
 

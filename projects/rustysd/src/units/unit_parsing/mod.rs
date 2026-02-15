@@ -932,6 +932,11 @@ pub struct ParsedExecSection {
     /// Defaults to false. Parsed and stored; no runtime mount-namespace
     /// enforcement yet. See systemd.exec(5).
     pub private_devices: bool,
+    /// PrivateNetwork= — if true, sets up a new network namespace for the
+    /// executed processes with only the loopback device "lo" (and no
+    /// external network connectivity). Defaults to false. Parsed and stored;
+    /// no runtime namespace enforcement yet. See systemd.exec(5).
+    pub private_network: bool,
 }
 
 /// The type of utmp/wtmp record to create for a service.
