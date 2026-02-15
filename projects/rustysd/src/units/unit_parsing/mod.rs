@@ -279,6 +279,11 @@ pub struct ParsedExecSection {
     /// UtmpMode= — the type of utmp/wtmp record to write. Defaults to `Init`.
     /// See systemd.exec(5).
     pub utmp_mode: UtmpMode,
+    /// ImportCredential= — glob patterns for credentials to import from the
+    /// system credential store into the service's credential directory.
+    /// Multiple patterns may be specified (the setting accumulates).
+    /// See systemd.exec(5).
+    pub import_credentials: Vec<String>,
 }
 
 /// The type of utmp/wtmp record to create for a service.

@@ -187,6 +187,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             ignore_sigpipe: parsed.ignore_sigpipe,
             utmp_identifier: parsed.utmp_identifier,
             utmp_mode: parsed.utmp_mode,
+            import_credentials: parsed.import_credentials,
         })
     }
 }

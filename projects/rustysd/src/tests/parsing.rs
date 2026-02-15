@@ -8839,3 +8839,217 @@ fn test_send_sighup_with_kill_mode() {
         "KillMode should still be control-group"
     );
 }
+
+#[test]
+fn test_import_credential_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.import_credentials.is_empty(),
+        "ImportCredential should default to empty when not specified"
+    );
+}
+
+#[test]
+fn test_import_credential_single_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ImportCredential = mycred
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.import_credentials,
+        vec!["mycred".to_owned()],
+        "ImportCredential=mycred should be stored"
+    );
+}
+
+#[test]
+fn test_import_credential_glob_pattern() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ImportCredential = myapp.*
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.import_credentials,
+        vec!["myapp.*".to_owned()],
+        "ImportCredential=myapp.* should be stored as-is"
+    );
+}
+
+#[test]
+fn test_import_credential_multiple_directives() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ImportCredential = first.secret
+    ImportCredential = second.*
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.import_credentials,
+        vec!["first.secret".to_owned(), "second.*".to_owned()],
+        "Multiple ImportCredential= lines should accumulate"
+    );
+}
+
+#[test]
+fn test_import_credential_whitespace_separated() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ImportCredential = cred-a cred-b
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.import_credentials,
+        vec!["cred-a".to_owned(), "cred-b".to_owned()],
+        "Whitespace-separated values should be split into individual patterns"
+    );
+}
+
+#[test]
+fn test_import_credential_no_warning_when_set() {
+    // Verify that setting ImportCredential does not produce an "unsupported setting" warning.
+    // If parsing succeeds without error, the setting was consumed (not left in the section
+    // to trigger a warning).
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ImportCredential = some.secret
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "Parsing a service with ImportCredential should succeed without errors"
+    );
+}
+
+#[test]
+fn test_import_credential_combined_with_environment() {
+    // Verify ImportCredential works alongside other exec settings.
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myapp
+    Environment = MY_VAR=hello
+    ImportCredential = myapp.key
+    ImportCredential = myapp.cert
+    User = nobody
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/myapp.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.import_credentials,
+        vec!["myapp.key".to_owned(), "myapp.cert".to_owned()],
+        "ImportCredential should accumulate alongside other settings"
+    );
+    assert!(
+        service.srvc.exec_section.environment.is_some(),
+        "Environment should still be parsed"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// glob_match tests (the helper used by ImportCredential= at runtime)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_glob_match_exact() {
+    assert!(crate::entrypoints::glob_match("hello", "hello"));
+    assert!(!crate::entrypoints::glob_match("hello", "world"));
+}
+
+#[test]
+fn test_glob_match_star() {
+    assert!(crate::entrypoints::glob_match("*", "anything"));
+    assert!(crate::entrypoints::glob_match("*", ""));
+    assert!(crate::entrypoints::glob_match("myapp.*", "myapp.key"));
+    assert!(crate::entrypoints::glob_match("myapp.*", "myapp.cert"));
+    assert!(crate::entrypoints::glob_match("myapp.*", "myapp."));
+    assert!(!crate::entrypoints::glob_match("myapp.*", "otherapp.key"));
+    assert!(crate::entrypoints::glob_match("*.key", "myapp.key"));
+    assert!(!crate::entrypoints::glob_match("*.key", "myapp.cert"));
+}
+
+#[test]
+fn test_glob_match_question_mark() {
+    assert!(crate::entrypoints::glob_match("cred?", "cred1"));
+    assert!(crate::entrypoints::glob_match("cred?", "credX"));
+    assert!(!crate::entrypoints::glob_match("cred?", "cred"));
+    assert!(!crate::entrypoints::glob_match("cred?", "cred12"));
+}
+
+#[test]
+fn test_glob_match_combined() {
+    assert!(crate::entrypoints::glob_match("my*.ke?", "myapp.key"));
+    assert!(!crate::entrypoints::glob_match("my*.ke?", "myapp.keys"));
+    assert!(crate::entrypoints::glob_match("*.*", "a.b"));
+    assert!(!crate::entrypoints::glob_match("*.*", "nodot"));
+}
+
+#[test]
+fn test_glob_match_empty() {
+    assert!(crate::entrypoints::glob_match("", ""));
+    assert!(!crate::entrypoints::glob_match("", "notempty"));
+    assert!(crate::entrypoints::glob_match("*", ""));
+}
+
+#[test]
+fn test_glob_match_multiple_stars() {
+    assert!(crate::entrypoints::glob_match("a*b*c", "abc"));
+    assert!(crate::entrypoints::glob_match("a*b*c", "aXXbYYc"));
+    assert!(!crate::entrypoints::glob_match("a*b*c", "aXXcYYb"));
+}

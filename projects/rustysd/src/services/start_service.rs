@@ -245,6 +245,7 @@ fn start_service_with_filedescriptors(
         ignore_sigpipe: conf.exec_config.ignore_sigpipe,
         utmp_identifier: conf.exec_config.utmp_identifier.clone(),
         utmp_mode: conf.exec_config.utmp_mode,
+        import_credentials: conf.exec_config.import_credentials.clone(),
         stdout_is_inherit: matches!(
             conf.exec_config.stdout_path,
             None | Some(StdIoOption::Inherit)
