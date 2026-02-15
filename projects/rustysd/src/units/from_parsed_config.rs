@@ -223,6 +223,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             read_write_paths: parsed.read_write_paths,
             memory_deny_write_execute: parsed.memory_deny_write_execute,
             lock_personality: parsed.lock_personality,
+            protect_proc: parsed.protect_proc,
             private_tmp: parsed.private_tmp,
         })
     }
