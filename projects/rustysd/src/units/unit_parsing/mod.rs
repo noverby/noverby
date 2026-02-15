@@ -937,6 +937,20 @@ pub struct ParsedServiceSection {
     /// enforcement yet. See systemd.service(5).
     pub file_descriptor_store_max: u64,
 
+    /// MemoryMin= — minimum memory guarantee for the unit's cgroup. The
+    /// memory controller will try to protect at least this much memory from
+    /// reclaim. Accepts a byte value with optional K/M/G/T/P/E suffix
+    /// (base 1024), a percentage, or "infinity". Parsed and stored; no
+    /// runtime cgroup enforcement yet. See systemd.resource-control(5).
+    pub memory_min: Option<MemoryLimit>,
+
+    /// MemoryLow= — low memory boundary for the unit's cgroup. Below this
+    /// threshold the kernel memory reclaimer will avoid reclaiming memory
+    /// from the unit. Accepts a byte value with optional K/M/G/T/P/E suffix
+    /// (base 1024), a percentage, or "infinity". Parsed and stored; no
+    /// runtime cgroup enforcement yet. See systemd.resource-control(5).
+    pub memory_low: Option<MemoryLimit>,
+
     pub exec_section: ParsedExecSection,
 }
 
@@ -1464,6 +1478,61 @@ pub enum TasksMax {
     Percent(u64),
     /// No limit
     Infinity,
+}
+
+/// A memory resource limit value used by MemoryMin=, MemoryLow=, MemoryHigh=,
+/// MemoryMax=, MemorySwapMax=, etc. Accepts an absolute byte value (with
+/// optional K, M, G, T, P, E suffixes using base 1024), a percentage of
+/// physical memory, or "infinity". See systemd.resource-control(5).
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub enum MemoryLimit {
+    /// Absolute byte value
+    Bytes(u64),
+    /// Percentage of physical memory (0–100)
+    Percent(u64),
+    /// No limit
+    Infinity,
+}
+
+/// Parse a systemd byte value with optional K, M, G, T, P, E suffix (base 1024).
+/// Also accepts percentage values (e.g. "30%") and "infinity".
+/// Returns `None` for empty or unrecognised strings.
+pub fn parse_memory_limit(val: &str) -> Result<Option<MemoryLimit>, String> {
+    let val = val.trim();
+    if val.is_empty() {
+        return Ok(None);
+    }
+    if val.eq_ignore_ascii_case("infinity") {
+        return Ok(Some(MemoryLimit::Infinity));
+    }
+    if let Some(pct) = val.strip_suffix('%') {
+        let pct_val = pct
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| format!("memory limit percentage is not a valid number: {val}"))?;
+        return Ok(Some(MemoryLimit::Percent(pct_val)));
+    }
+    // Try to parse with optional suffix
+    let (num_str, multiplier): (&str, u64) = if let Some(n) = val.strip_suffix('K') {
+        (n, 1024)
+    } else if let Some(n) = val.strip_suffix('M') {
+        (n, 1024 * 1024)
+    } else if let Some(n) = val.strip_suffix('G') {
+        (n, 1024 * 1024 * 1024)
+    } else if let Some(n) = val.strip_suffix('T') {
+        (n, 1024 * 1024 * 1024 * 1024)
+    } else if let Some(n) = val.strip_suffix('P') {
+        (n, 1024 * 1024 * 1024 * 1024 * 1024)
+    } else if let Some(n) = val.strip_suffix('E') {
+        (n, 1024 * 1024 * 1024 * 1024 * 1024 * 1024)
+    } else {
+        (val, 1)
+    };
+    let num = num_str
+        .trim()
+        .parse::<u64>()
+        .map_err(|_| format!("memory limit is not a valid byte value: {val}"))?;
+    Ok(Some(MemoryLimit::Bytes(num.saturating_mul(multiplier))))
 }
 
 /// A single rlimit value: either a numeric value or infinity

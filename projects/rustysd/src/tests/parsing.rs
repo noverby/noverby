@@ -31533,3 +31533,865 @@ fn test_condition_kernel_command_line_defaults_to_empty() {
         "No KernelCommandLine condition should be present by default"
     );
 }
+
+// ── MemoryMin= ──────────────────────────────────────────────────────
+
+#[test]
+fn test_memory_min_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min, None,
+        "MemoryMin should default to None when not specified"
+    );
+}
+
+#[test]
+fn test_memory_min_absolute_bytes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin = 1048576
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Bytes(1048576)),
+        "MemoryMin=1048576 should be Bytes(1048576)"
+    );
+}
+
+#[test]
+fn test_memory_min_with_k_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin = 512K
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Bytes(512 * 1024)),
+        "MemoryMin=512K should be Bytes(524288)"
+    );
+}
+
+#[test]
+fn test_memory_min_with_m_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin = 256M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Bytes(256 * 1024 * 1024)),
+        "MemoryMin=256M should be Bytes(268435456)"
+    );
+}
+
+#[test]
+fn test_memory_min_with_g_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin = 2G
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Bytes(2 * 1024 * 1024 * 1024)),
+        "MemoryMin=2G should be Bytes(2147483648)"
+    );
+}
+
+#[test]
+fn test_memory_min_with_t_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin = 1T
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Bytes(1024 * 1024 * 1024 * 1024)),
+        "MemoryMin=1T should be Bytes(1099511627776)"
+    );
+}
+
+#[test]
+fn test_memory_min_percentage() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin = 30%
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Percent(30)),
+        "MemoryMin=30% should be Percent(30)"
+    );
+}
+
+#[test]
+fn test_memory_min_infinity() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin = infinity
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Infinity),
+        "MemoryMin=infinity should be Infinity"
+    );
+}
+
+#[test]
+fn test_memory_min_infinity_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin = INFINITY
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Infinity),
+        "MemoryMin=INFINITY (case-insensitive) should be Infinity"
+    );
+}
+
+#[test]
+fn test_memory_min_zero() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Bytes(0)),
+        "MemoryMin=0 should be Bytes(0)"
+    );
+}
+
+#[test]
+fn test_memory_min_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    MemoryMin = 128M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "MemoryMin should not cause a parse error");
+    assert_eq!(
+        result.unwrap().srvc.memory_min,
+        Some(crate::units::MemoryLimit::Bytes(128 * 1024 * 1024))
+    );
+}
+
+#[test]
+fn test_memory_min_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Restart = always
+    MemoryMin = 64M
+    KillMode = process
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.restart, crate::units::ServiceRestart::Always);
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Bytes(64 * 1024 * 1024))
+    );
+    assert_eq!(service.srvc.kill_mode, crate::units::KillMode::Process);
+}
+
+#[test]
+fn test_memory_min_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin = 100M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed.try_into().unwrap();
+
+    if let crate::units::Specific::Service(ref s) = unit.specific {
+        assert_eq!(
+            s.conf.memory_min,
+            Some(crate::units::MemoryLimit::Bytes(100 * 1024 * 1024)),
+            "MemoryMin should be preserved after unit conversion"
+        );
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+#[test]
+fn test_memory_min_none_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed.try_into().unwrap();
+
+    if let crate::units::Specific::Service(ref s) = unit.specific {
+        assert_eq!(
+            s.conf.memory_min, None,
+            "MemoryMin=None should be preserved after unit conversion"
+        );
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+#[test]
+fn test_memory_min_hundred_percent() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin = 100%
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Percent(100)),
+        "MemoryMin=100% should be Percent(100)"
+    );
+}
+
+// ── MemoryLow= ──────────────────────────────────────────────────────
+
+#[test]
+fn test_memory_low_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_low, None,
+        "MemoryLow should default to None when not specified"
+    );
+}
+
+#[test]
+fn test_memory_low_absolute_bytes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryLow = 2097152
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_low,
+        Some(crate::units::MemoryLimit::Bytes(2097152)),
+        "MemoryLow=2097152 should be Bytes(2097152)"
+    );
+}
+
+#[test]
+fn test_memory_low_with_k_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryLow = 1024K
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_low,
+        Some(crate::units::MemoryLimit::Bytes(1024 * 1024)),
+        "MemoryLow=1024K should be Bytes(1048576)"
+    );
+}
+
+#[test]
+fn test_memory_low_with_m_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryLow = 512M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_low,
+        Some(crate::units::MemoryLimit::Bytes(512 * 1024 * 1024)),
+        "MemoryLow=512M should be Bytes(536870912)"
+    );
+}
+
+#[test]
+fn test_memory_low_with_g_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryLow = 4G
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_low,
+        Some(crate::units::MemoryLimit::Bytes(4 * 1024 * 1024 * 1024)),
+        "MemoryLow=4G should be Bytes(4294967296)"
+    );
+}
+
+#[test]
+fn test_memory_low_with_t_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryLow = 2T
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_low,
+        Some(crate::units::MemoryLimit::Bytes(
+            2 * 1024 * 1024 * 1024 * 1024
+        )),
+        "MemoryLow=2T should be Bytes(2199023255552)"
+    );
+}
+
+#[test]
+fn test_memory_low_percentage() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryLow = 50%
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_low,
+        Some(crate::units::MemoryLimit::Percent(50)),
+        "MemoryLow=50% should be Percent(50)"
+    );
+}
+
+#[test]
+fn test_memory_low_infinity() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryLow = infinity
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_low,
+        Some(crate::units::MemoryLimit::Infinity),
+        "MemoryLow=infinity should be Infinity"
+    );
+}
+
+#[test]
+fn test_memory_low_infinity_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryLow = Infinity
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_low,
+        Some(crate::units::MemoryLimit::Infinity),
+        "MemoryLow=Infinity (mixed case) should be Infinity"
+    );
+}
+
+#[test]
+fn test_memory_low_zero() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryLow = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_low,
+        Some(crate::units::MemoryLimit::Bytes(0)),
+        "MemoryLow=0 should be Bytes(0)"
+    );
+}
+
+#[test]
+fn test_memory_low_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    MemoryLow = 256M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "MemoryLow should not cause a parse error");
+    assert_eq!(
+        result.unwrap().srvc.memory_low,
+        Some(crate::units::MemoryLimit::Bytes(256 * 1024 * 1024))
+    );
+}
+
+#[test]
+fn test_memory_low_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Restart = on-failure
+    MemoryLow = 128M
+    TasksMax = 4096
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart,
+        crate::units::ServiceRestart::OnFailure
+    );
+    assert_eq!(
+        service.srvc.memory_low,
+        Some(crate::units::MemoryLimit::Bytes(128 * 1024 * 1024))
+    );
+    assert_eq!(
+        service.srvc.tasks_max,
+        Some(crate::units::TasksMax::Value(4096))
+    );
+}
+
+#[test]
+fn test_memory_low_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryLow = 200M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed.try_into().unwrap();
+
+    if let crate::units::Specific::Service(ref s) = unit.specific {
+        assert_eq!(
+            s.conf.memory_low,
+            Some(crate::units::MemoryLimit::Bytes(200 * 1024 * 1024)),
+            "MemoryLow should be preserved after unit conversion"
+        );
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+#[test]
+fn test_memory_low_none_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed.try_into().unwrap();
+
+    if let crate::units::Specific::Service(ref s) = unit.specific {
+        assert_eq!(
+            s.conf.memory_low, None,
+            "MemoryLow=None should be preserved after unit conversion"
+        );
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+#[test]
+fn test_memory_low_hundred_percent() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryLow = 100%
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_low,
+        Some(crate::units::MemoryLimit::Percent(100)),
+        "MemoryLow=100% should be Percent(100)"
+    );
+}
+
+// ── MemoryMin= and MemoryLow= together ─────────────────────────────
+
+#[test]
+fn test_memory_min_and_memory_low_together() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin = 64M
+    MemoryLow = 128M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Bytes(64 * 1024 * 1024)),
+        "MemoryMin=64M should be Bytes(67108864)"
+    );
+    assert_eq!(
+        service.srvc.memory_low,
+        Some(crate::units::MemoryLimit::Bytes(128 * 1024 * 1024)),
+        "MemoryLow=128M should be Bytes(134217728)"
+    );
+}
+
+#[test]
+fn test_memory_min_and_low_both_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin = 32M
+    MemoryLow = 64M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed.try_into().unwrap();
+
+    if let crate::units::Specific::Service(ref s) = unit.specific {
+        assert_eq!(
+            s.conf.memory_min,
+            Some(crate::units::MemoryLimit::Bytes(32 * 1024 * 1024)),
+            "MemoryMin should be preserved after unit conversion"
+        );
+        assert_eq!(
+            s.conf.memory_low,
+            Some(crate::units::MemoryLimit::Bytes(64 * 1024 * 1024)),
+            "MemoryLow should be preserved after unit conversion"
+        );
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+#[test]
+fn test_memory_min_and_low_defaults_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed.try_into().unwrap();
+
+    if let crate::units::Specific::Service(ref s) = unit.specific {
+        assert_eq!(s.conf.memory_min, None);
+        assert_eq!(s.conf.memory_low, None);
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+#[test]
+fn test_memory_min_with_memory_pressure_watch() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin = 128M
+    MemoryPressureWatch = on
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Bytes(128 * 1024 * 1024))
+    );
+    assert_eq!(
+        service.srvc.memory_pressure_watch,
+        crate::units::MemoryPressureWatch::On
+    );
+}
+
+#[test]
+fn test_memory_low_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryLow =   256M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_low,
+        Some(crate::units::MemoryLimit::Bytes(256 * 1024 * 1024)),
+        "MemoryLow with extra whitespace should still parse correctly"
+    );
+}
+
+#[test]
+fn test_memory_min_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    MemoryMin =   512M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Bytes(512 * 1024 * 1024)),
+        "MemoryMin with extra whitespace should still parse correctly"
+    );
+}

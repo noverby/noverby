@@ -5,11 +5,11 @@ use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
     acquire_locks, ActivationSource, Commandline, Delegate, DevicePolicy, EnvVars,
-    IOSchedulingClass, KeyringMode, KillMode, MemoryPressureWatch, NotifyKind, OnFailureJobMode,
-    ProcSubset, ProtectHome, ProtectProc, ProtectSystem, ResourceLimit, RestrictNamespaces,
-    RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput, StatusStarted,
-    StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition, UnitId, UnitIdKind,
-    UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode,
+    IOSchedulingClass, KeyringMode, KillMode, MemoryLimit, MemoryPressureWatch, NotifyKind,
+    OnFailureJobMode, ProcSubset, ProtectHome, ProtectProc, ProtectSystem, ResourceLimit,
+    RestrictNamespaces, RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput,
+    StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition,
+    UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode,
 };
 
 use std::sync::RwLock;
@@ -1384,6 +1384,20 @@ pub struct ServiceConfig {
     /// (file descriptor store disabled). Parsed and stored; no runtime
     /// enforcement yet. See systemd.service(5).
     pub file_descriptor_store_max: u64,
+
+    /// MemoryMin= — minimum memory guarantee for the unit's cgroup. The
+    /// memory controller will try to protect at least this much memory from
+    /// reclaim. Accepts a byte value with optional K/M/G/T/P/E suffix
+    /// (base 1024), a percentage, or "infinity". Parsed and stored; no
+    /// runtime cgroup enforcement yet. See systemd.resource-control(5).
+    pub memory_min: Option<MemoryLimit>,
+
+    /// MemoryLow= — low memory boundary for the unit's cgroup. Below this
+    /// threshold the kernel memory reclaimer will avoid reclaiming memory
+    /// from the unit. Accepts a byte value with optional K/M/G/T/P/E suffix
+    /// (base 1024), a percentage, or "infinity". Parsed and stored; no
+    /// runtime cgroup enforcement yet. See systemd.resource-control(5).
+    pub memory_low: Option<MemoryLimit>,
 }
 
 /// The immutable config of a socket unit

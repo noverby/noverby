@@ -97,6 +97,8 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 ip_address_allow: conf.srvc.ip_address_allow,
                 ip_address_deny: conf.srvc.ip_address_deny,
                 file_descriptor_store_max: conf.srvc.file_descriptor_store_max,
+                memory_min: conf.srvc.memory_min,
+                memory_low: conf.srvc.memory_low,
             },
             state: RwLock::new(ServiceState {
                 common: CommonState::default(),

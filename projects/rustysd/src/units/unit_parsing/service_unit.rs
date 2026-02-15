@@ -1,11 +1,11 @@
 use log::{trace, warn};
 
 use crate::units::{
-    map_tuples_to_second, parse_install_section, parse_unit_section, string_to_bool, Commandline,
-    CommandlinePrefix, Delegate, KeyringMode, KillMode, MemoryPressureWatch, NotifyKind,
-    ParsedCommonConfig, ParsedFile, ParsedSection, ParsedServiceConfig, ParsedServiceSection,
-    ParsingErrorReason, RLimitValue, ResourceLimit, ServiceRestart, ServiceType, SuccessExitStatus,
-    TasksMax, Timeout,
+    map_tuples_to_second, parse_install_section, parse_memory_limit, parse_unit_section,
+    string_to_bool, Commandline, CommandlinePrefix, Delegate, KeyringMode, KillMode,
+    MemoryPressureWatch, NotifyKind, ParsedCommonConfig, ParsedFile, ParsedSection,
+    ParsedServiceConfig, ParsedServiceSection, ParsingErrorReason, RLimitValue, ResourceLimit,
+    ServiceRestart, ServiceType, SuccessExitStatus, TasksMax, Timeout,
 };
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -262,6 +262,8 @@ fn parse_service_section(
     let ip_address_deny = section.remove("IPADDRESSDENY");
     let file_descriptor_store_max = section.remove("FILEDESCRIPTORSTOREMAX");
     let kill_signal = section.remove("KILLSIGNAL");
+    let memory_min = section.remove("MEMORYMIN");
+    let memory_low = section.remove("MEMORYLOW");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -954,6 +956,34 @@ fn parse_service_section(
                 }
             }
             None => 0,
+        },
+        memory_min: match memory_min {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    parse_memory_limit(&vec[0].1)
+                        .map_err(|e| ParsingErrorReason::Generic(format!("MemoryMin: {e}")))?
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "MemoryMin".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        memory_low: match memory_low {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    parse_memory_limit(&vec[0].1)
+                        .map_err(|e| ParsingErrorReason::Generic(format!("MemoryLow: {e}")))?
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "MemoryLow".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
         },
         exec_section: exec_config,
     })
