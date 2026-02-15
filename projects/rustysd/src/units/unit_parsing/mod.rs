@@ -115,12 +115,14 @@ pub struct ParsedInstallSection {
 pub struct ParsedExecSection {
     pub user: Option<String>,
     pub group: Option<String>,
+    pub stdin_option: StandardInput,
     pub stdout_path: Option<StdIoOption>,
     pub stderr_path: Option<StdIoOption>,
     pub supplementary_groups: Vec<String>,
     pub environment: Option<EnvVars>,
     pub working_directory: Option<PathBuf>,
     pub state_directory: Vec<String>,
+    pub tty_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]
@@ -215,8 +217,38 @@ pub enum Timeout {
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum StdIoOption {
+    /// StandardOutput/StandardError connected to /dev/null
+    Null,
+    /// Inherit from the service manager (or from stdin for stdout/stderr)
+    Inherit,
+    /// Log to the journal (not yet implemented, treated as inherit)
+    Journal,
+    /// Log to /dev/kmsg (not yet implemented, treated as inherit)
+    Kmsg,
+    /// Write to a specific file
     File(PathBuf),
+    /// Append to a specific file
     AppendFile(PathBuf),
+}
+
+/// How stdin should be set up for the service process.
+/// Matches systemd's StandardInput= setting.
+#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
+pub enum StandardInput {
+    /// stdin is connected to /dev/null (default)
+    Null,
+    /// stdin is connected to a TTY (from TTYPath=, default /dev/console)
+    Tty,
+    /// Like Tty, but force-acquire the TTY even if another process owns it
+    TtyForce,
+    /// Like Tty, but fail if the TTY cannot be opened exclusively
+    TtyFail,
+}
+
+impl Default for StandardInput {
+    fn default() -> Self {
+        Self::Null
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]

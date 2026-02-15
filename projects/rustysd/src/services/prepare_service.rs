@@ -26,6 +26,23 @@ fn open_stdio(setting: &Option<StdIoOption>) -> Result<StdIo, String> {
                 .map_err(|e| format!("Error opening file: {path:?}: {e}"))?;
             Ok(StdIo::File(file))
         }
+        Some(StdIoOption::Null) => {
+            // Open /dev/null for output
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .read(true)
+                .open("/dev/null")
+                .map_err(|e| format!("Error opening /dev/null: {e}"))?;
+            Ok(StdIo::File(file))
+        }
+        Some(StdIoOption::Inherit) | Some(StdIoOption::Journal) | Some(StdIoOption::Kmsg) => {
+            // For inherit/journal/kmsg: use a pipe so the service manager can
+            // capture and forward the output. The exec_helper will handle
+            // overriding stdout/stderr to the TTY when StandardInput=tty is set
+            // (which is the typical use case for inherit).
+            let (r, w) = nix::unistd::pipe().unwrap();
+            Ok(super::StdIo::Piped(r.into_raw_fd(), w.into_raw_fd()))
+        }
         None => {
             let (r, w) = nix::unistd::pipe().unwrap();
             Ok(super::StdIo::Piped(r.into_raw_fd(), w.into_raw_fd()))

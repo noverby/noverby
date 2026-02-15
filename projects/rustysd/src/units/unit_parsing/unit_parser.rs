@@ -132,16 +132,26 @@ pub fn parse_unit_section(
 }
 
 fn make_stdio_option(setting: &str) -> Result<StdIoOption, ParsingErrorReason> {
-    if setting.starts_with("file:") {
-        let p = setting.trim_start_matches("file:");
-        Ok(StdIoOption::File(p.into()))
-    } else if setting.starts_with("append:") {
-        let p = setting.trim_start_matches("append:");
-        Ok(StdIoOption::AppendFile(p.into()))
-    } else {
-        Err(ParsingErrorReason::UnsupportedSetting(format!(
-            "StandardOutput: {setting}"
-        )))
+    match setting.to_lowercase().as_str() {
+        "null" | "" => Ok(StdIoOption::Null),
+        "inherit" => Ok(StdIoOption::Inherit),
+        "journal" | "syslog" | "journal+console" | "syslog+console" => Ok(StdIoOption::Journal),
+        "kmsg" | "kmsg+console" => Ok(StdIoOption::Kmsg),
+        _ if setting.starts_with("file:") => {
+            let p = setting.trim_start_matches("file:");
+            Ok(StdIoOption::File(p.into()))
+        }
+        _ if setting.starts_with("append:") => {
+            let p = setting.trim_start_matches("append:");
+            Ok(StdIoOption::AppendFile(p.into()))
+        }
+        _ => {
+            warn!(
+                "Unsupported StandardOutput/StandardError={}, treating as inherit",
+                setting
+            );
+            Ok(StdIoOption::Inherit)
+        }
     }
 }
 
@@ -150,12 +160,14 @@ pub fn parse_exec_section(
 ) -> Result<ParsedExecSection, ParsingErrorReason> {
     let user = section.remove("USER");
     let group = section.remove("GROUP");
+    let stdin = section.remove("STANDARDINPUT");
     let stdout = section.remove("STANDARDOUTPUT");
     let stderr = section.remove("STANDARDERROR");
     let supplementary_groups = section.remove("SUPPLEMENTARYGROUPS");
     let environment = section.remove("ENVIRONMENT");
     let working_directory = section.remove("WORKINGDIRECTORY");
     let state_directory = section.remove("STATEDIRECTORY");
+    let tty_path = section.remove("TTYPATH");
 
     let user = match user {
         None => None,
@@ -188,6 +200,47 @@ pub fn parse_exec_section(
             }
         }
     };
+    let stdin_option = match stdin {
+        None => super::StandardInput::Null,
+        Some(mut vec) => {
+            if vec.len() == 1 {
+                match vec.remove(0).1.to_lowercase().as_str() {
+                    "null" | "" => super::StandardInput::Null,
+                    "tty" => super::StandardInput::Tty,
+                    "tty-force" => super::StandardInput::TtyForce,
+                    "tty-fail" => super::StandardInput::TtyFail,
+                    other => {
+                        warn!("Unsupported StandardInput={}, falling back to null", other);
+                        super::StandardInput::Null
+                    }
+                }
+            } else if vec.len() > 1 {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "StandardInput".into(),
+                    super::map_tuples_to_second(vec),
+                ));
+            } else {
+                super::StandardInput::Null
+            }
+        }
+    };
+
+    let tty_path = match tty_path {
+        None => None,
+        Some(mut vec) => {
+            if vec.len() == 1 {
+                Some(std::path::PathBuf::from(vec.remove(0).1))
+            } else if vec.len() > 1 {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "TTYPath".into(),
+                    super::map_tuples_to_second(vec),
+                ));
+            } else {
+                None
+            }
+        }
+    };
+
     let stdout_path = match stdout {
         None => None,
         Some(mut vec) => {
@@ -285,12 +338,14 @@ pub fn parse_exec_section(
     Ok(ParsedExecSection {
         user,
         group,
+        stdin_option,
         stdout_path,
         stderr_path,
         supplementary_groups,
         environment,
         working_directory,
         state_directory,
+        tty_path,
     })
 }
 

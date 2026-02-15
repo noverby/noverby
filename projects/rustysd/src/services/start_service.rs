@@ -6,7 +6,7 @@ use super::fork_child;
 use crate::fd_store::FDStore;
 use crate::services::RunCmdError;
 use crate::services::Service;
-use crate::units::{CommandlinePrefix, ServiceConfig};
+use crate::units::{CommandlinePrefix, ServiceConfig, StdIoOption};
 
 use std::path::Path;
 
@@ -113,6 +113,21 @@ fn start_service_with_filedescriptors(
         platform_specific: conf.platform_specific.clone(),
 
         limit_nofile: conf.limit_nofile,
+
+        stdin_option: conf.exec_config.stdin_option.clone(),
+        tty_path: conf.exec_config.tty_path.clone(),
+        stdout_is_inherit: matches!(
+            conf.exec_config.stdout_path,
+            None | Some(StdIoOption::Inherit)
+                | Some(StdIoOption::Journal)
+                | Some(StdIoOption::Kmsg)
+        ),
+        stderr_is_inherit: matches!(
+            conf.exec_config.stderr_path,
+            None | Some(StdIoOption::Inherit)
+                | Some(StdIoOption::Journal)
+                | Some(StdIoOption::Kmsg)
+        ),
     };
 
     let marshalled_config = serde_json::to_string(&exec_helper_conf).unwrap();

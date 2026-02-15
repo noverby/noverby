@@ -206,11 +206,13 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             user: uid,
             group: gid,
             supplementary_groups: supp_gids,
+            stdin_option: parsed.stdin_option,
             stderr_path: parsed.stderr_path,
             stdout_path: parsed.stdout_path,
             environment: parsed.environment,
             working_directory: parsed.working_directory,
             state_directory: parsed.state_directory,
+            tty_path: parsed.tty_path,
         })
     }
 }
