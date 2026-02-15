@@ -18,8 +18,6 @@ deployment.zip
 
 .pre-commit-config.yaml
 
-presentations/*.pdf
-presentations/*.html
 
 flamegraph.svg
 
