@@ -488,31 +488,11 @@ pub fn run_exec_helper() {
         std::process::exit(1);
     }
 
-    if nix::unistd::getuid().is_root() {
-        let supp_gids: Vec<nix::unistd::Gid> = config
-            .supplementary_groups
-            .iter()
-            .map(|gid| nix::unistd::Gid::from_raw(*gid))
-            .collect();
-        match crate::platform::drop_privileges(
-            nix::unistd::Gid::from_raw(config.group),
-            &supp_gids,
-            nix::unistd::Uid::from_raw(config.user),
-        ) {
-            Ok(()) => { /* Happy */ }
-            Err(e) => {
-                eprintln!(
-                    "[EXEC_HELPER {}] could not drop privileges because: {}",
-                    config.name, e
-                );
-                std::process::exit(1);
-            }
-        }
-    }
-
-    let (cmd, args) = prepare_exec_args(&config.cmd, &config.args, config.use_first_arg_as_argv0);
-
-    // create state directories under /var/lib/ and set STATE_DIRECTORY env var
+    // Create state directories under /var/lib/ and set STATE_DIRECTORY env var.
+    // This must happen BEFORE dropping privileges, because /var/lib/ is
+    // typically only writable by root. systemd does the same: it creates
+    // and chowns state directories while still running as root, then drops
+    // privileges before exec'ing the service binary.
     if !config.state_directory.is_empty() {
         let base = Path::new("/var/lib");
         let mut full_paths = Vec::new();
@@ -539,6 +519,30 @@ pub fn run_exec_helper() {
         }
         std::env::set_var("STATE_DIRECTORY", full_paths.join(":"));
     }
+
+    if nix::unistd::getuid().is_root() {
+        let supp_gids: Vec<nix::unistd::Gid> = config
+            .supplementary_groups
+            .iter()
+            .map(|gid| nix::unistd::Gid::from_raw(*gid))
+            .collect();
+        match crate::platform::drop_privileges(
+            nix::unistd::Gid::from_raw(config.group),
+            &supp_gids,
+            nix::unistd::Uid::from_raw(config.user),
+        ) {
+            Ok(()) => { /* Happy */ }
+            Err(e) => {
+                eprintln!(
+                    "[EXEC_HELPER {}] could not drop privileges because: {}",
+                    config.name, e
+                );
+                std::process::exit(1);
+            }
+        }
+    }
+
+    let (cmd, args) = prepare_exec_args(&config.cmd, &config.args, config.use_first_arg_as_argv0);
 
     // change working directory if configured
     if let Some(ref dir) = config.working_directory {
