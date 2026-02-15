@@ -828,6 +828,15 @@ pub struct Dependencies {
     /// Reverse of `part_of`: units that declared `PartOf=` pointing to this unit.
     /// When this unit is stopped or restarted, all `part_of_by` units are too.
     pub part_of_by: Vec<UnitId>,
+
+    /// Units this unit "binds to". Similar to `Requires=`, but additionally
+    /// causes this unit to stop when the listed units stop (even cleanly).
+    /// Matches systemd's `BindsTo=` setting.
+    /// Parsed and stored; stop-propagation not yet enforced at runtime.
+    pub binds_to: Vec<UnitId>,
+    /// Reverse of `binds_to`: units that declared `BindsTo=` pointing to this unit.
+    /// When this unit stops, all `bound_by` units should also stop.
+    pub bound_by: Vec<UnitId>,
 }
 
 impl Dependencies {
@@ -842,6 +851,8 @@ impl Dependencies {
         self.requires.sort();
         self.part_of.sort();
         self.part_of_by.sort();
+        self.binds_to.sort();
+        self.bound_by.sort();
         // dedup after sorting
         self.wants.dedup();
         self.requires.dedup();
@@ -853,6 +864,8 @@ impl Dependencies {
         self.after.dedup();
         self.part_of.dedup();
         self.part_of_by.dedup();
+        self.binds_to.dedup();
+        self.bound_by.dedup();
     }
 
     #[must_use]
@@ -861,6 +874,8 @@ impl Dependencies {
         ids.extend(self.required_by.iter().cloned());
         // Units that declared PartOf= this unit should also stop when this unit stops
         ids.extend(self.part_of_by.iter().cloned());
+        // Units that declared BindsTo= this unit should also stop when this unit stops
+        ids.extend(self.bound_by.iter().cloned());
         ids
     }
     #[must_use]
@@ -874,6 +889,8 @@ impl Dependencies {
         let mut ids = Vec::new();
         ids.extend(self.wants.iter().cloned());
         ids.extend(self.requires.iter().cloned());
+        // BindsTo= implies the same start dependency as Requires=
+        ids.extend(self.binds_to.iter().cloned());
 
         ids.into_iter()
             .filter(|id| !self.after.contains(id))
@@ -898,6 +915,8 @@ impl Dependencies {
         Self::remove_from_vec(&mut self.after, id);
         Self::remove_from_vec(&mut self.part_of, id);
         Self::remove_from_vec(&mut self.part_of_by, id);
+        Self::remove_from_vec(&mut self.binds_to, id);
+        Self::remove_from_vec(&mut self.bound_by, id);
     }
 
     #[must_use]

@@ -1743,8 +1743,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#BindsTo=">BindsTo=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored as a dependency list (like Requires=). BindsTo= units are started alongside this unit and treated as required dependencies. Stop propagation is implemented: when a BindsTo= target stops, units bound to it are also stopped. Reverse relationship (BoundBy) is tracked.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#PartOf=">PartOf=</a></td>
