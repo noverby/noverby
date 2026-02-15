@@ -1146,7 +1146,7 @@ This document is meant as a simple way of checking whether all features you need
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#Type=">Type=</a></td>
   <td>❓</td>
-  <td>Types are partly supported. Simple, dbus, notify, notify-reload, oneshot are supported. Forking, idle are not.</td>
+  <td>Types are partly supported. Simple, dbus, notify, notify-reload, oneshot, forking are supported. Idle is not.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#RemainAfterExit=">RemainAfterExit=</a></td>
@@ -1160,7 +1160,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#PIDFile=">PIDFile=</a></td>
-  <td>❌</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
