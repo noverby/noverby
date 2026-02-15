@@ -79,6 +79,14 @@ pub enum UnitCondition {
     /// Checks whether the specified path exists, is a directory, and contains
     /// at least one entry (besides "." and ".."). See systemd.unit(5).
     DirectoryNotEmpty { path: String, negate: bool },
+    /// ConditionControlGroupController=controller (true if the cgroup controller is available)
+    /// ConditionControlGroupController=!controller (true if the cgroup controller is NOT available)
+    /// Checks whether a given cgroup controller (e.g. `cpu`, `memory`, `io`,
+    /// `pids`) is available for use in the system's cgroup hierarchy.
+    /// On cgroupv2 this reads /sys/fs/cgroup/cgroup.controllers; on cgroupv1
+    /// it reads /proc/cgroups. The special value `v2` checks whether the
+    /// unified (cgroupv2) hierarchy is in use. See systemd.unit(5).
+    ControlGroupController { controller: String, negate: bool },
 }
 
 /// The kind of virtualization detected (VM or container).
@@ -529,6 +537,47 @@ impl UnitCondition {
                                 .split_once('=')
                                 .map_or(false, |(key, _)| key == argument)
                     })
+                };
+                if *negate {
+                    !result
+                } else {
+                    result
+                }
+            }
+            UnitCondition::ControlGroupController { controller, negate } => {
+                let result = if controller == "v2" {
+                    // Special value: check whether the unified (cgroupv2) hierarchy is in use.
+                    // cgroupv2 mounts a "cgroup2" filesystem at /sys/fs/cgroup.
+                    std::path::Path::new("/sys/fs/cgroup/cgroup.controllers").exists()
+                } else {
+                    // First try cgroupv2: read /sys/fs/cgroup/cgroup.controllers
+                    let v2_available = std::fs::read_to_string("/sys/fs/cgroup/cgroup.controllers")
+                        .map(|contents| {
+                            contents
+                                .split_whitespace()
+                                .any(|c| c == controller.as_str())
+                        })
+                        .unwrap_or(false);
+                    if v2_available {
+                        true
+                    } else {
+                        // Fallback to cgroupv1: read /proc/cgroups
+                        // Format: "controller\thierarchy\tnum_cgroups\tenabled"
+                        std::fs::read_to_string("/proc/cgroups")
+                            .map(|contents| {
+                                contents.lines().any(|line| {
+                                    if line.starts_with('#') {
+                                        return false;
+                                    }
+                                    let mut fields = line.split_whitespace();
+                                    let name = fields.next().unwrap_or("");
+                                    // The 4th field is "enabled" (1 = yes)
+                                    let enabled = fields.nth(2).unwrap_or("0");
+                                    name == controller.as_str() && enabled == "1"
+                                })
+                            })
+                            .unwrap_or(false)
+                    }
                 };
                 if *negate {
                     !result

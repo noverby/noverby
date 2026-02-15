@@ -31534,6 +31534,452 @@ fn test_condition_kernel_command_line_defaults_to_empty() {
     );
 }
 
+// ── ConditionControlGroupController= ────────────────────────────────
+
+#[test]
+fn test_condition_control_group_controller_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionControlGroupController = memory
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "ConditionControlGroupController= should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_condition_control_group_controller_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionControlGroupController = memory
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::ControlGroupController { controller, negate } => {
+            assert_eq!(controller, "memory");
+            assert!(!negate, "Should not be negated");
+        }
+        other => panic!("Expected ControlGroupController condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_control_group_controller_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionControlGroupController = !cpu
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::ControlGroupController { controller, negate } => {
+            assert_eq!(controller, "cpu");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected ControlGroupController condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_control_group_controller_v2_special_value() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionControlGroupController = v2
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::ControlGroupController { controller, negate } => {
+            assert_eq!(controller, "v2");
+            assert!(!negate, "Should not be negated");
+        }
+        other => panic!("Expected ControlGroupController condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_control_group_controller_negated_v2() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionControlGroupController = !v2
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::ControlGroupController { controller, negate } => {
+            assert_eq!(controller, "v2");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected ControlGroupController condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_control_group_controller_multiple() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionControlGroupController = memory
+    ConditionControlGroupController = cpu
+    ConditionControlGroupController = !io
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 3);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::ControlGroupController { controller, negate } => {
+            assert_eq!(controller, "memory");
+            assert!(!negate);
+        }
+        other => panic!("Expected ControlGroupController condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::ControlGroupController { controller, negate } => {
+            assert_eq!(controller, "cpu");
+            assert!(!negate);
+        }
+        other => panic!("Expected ControlGroupController condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[2] {
+        crate::units::UnitCondition::ControlGroupController { controller, negate } => {
+            assert_eq!(controller, "io");
+            assert!(negate);
+        }
+        other => panic!("Expected ControlGroupController condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_control_group_controller_empty_ignored() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionControlGroupController =
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let has_cgc = service.common.unit.conditions.iter().any(|c| {
+        matches!(
+            c,
+            crate::units::UnitCondition::ControlGroupController { .. }
+        )
+    });
+    assert!(
+        !has_cgc,
+        "Empty ConditionControlGroupController= should be ignored"
+    );
+}
+
+#[test]
+fn test_condition_control_group_controller_with_other_conditions() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathExists = /etc/myconfig
+    ConditionControlGroupController = memory
+    ConditionVirtualization = !container
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 3);
+
+    let has_path_exists = service
+        .common
+        .unit
+        .conditions
+        .iter()
+        .any(|c| matches!(c, crate::units::UnitCondition::PathExists { .. }));
+    assert!(has_path_exists, "Should have PathExists condition");
+
+    let has_cgc = service.common.unit.conditions.iter().any(|c| {
+        matches!(
+            c,
+            crate::units::UnitCondition::ControlGroupController { .. }
+        )
+    });
+    assert!(has_cgc, "Should have ControlGroupController condition");
+
+    let has_virt = service
+        .common
+        .unit
+        .conditions
+        .iter()
+        .any(|c| matches!(c, crate::units::UnitCondition::Virtualization { .. }));
+    assert!(has_virt, "Should have Virtualization condition");
+}
+
+#[test]
+fn test_condition_control_group_controller_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    ConditionControlGroupController = pids
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+
+    assert_eq!(unit.common.unit.conditions.len(), 1);
+    match &unit.common.unit.conditions[0] {
+        crate::units::UnitCondition::ControlGroupController { controller, negate } => {
+            assert_eq!(controller, "pids");
+            assert!(!negate);
+        }
+        other => panic!("Expected ControlGroupController condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_control_group_controller_in_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    ConditionControlGroupController = memory
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.common.unit.conditions.len(), 1);
+    match &socket.common.unit.conditions[0] {
+        crate::units::UnitCondition::ControlGroupController { controller, negate } => {
+            assert_eq!(controller, "memory");
+            assert!(!negate);
+        }
+        other => panic!("Expected ControlGroupController condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_control_group_controller_in_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    ConditionControlGroupController = !cpu
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(target.common.unit.conditions.len(), 1);
+    match &target.common.unit.conditions[0] {
+        crate::units::UnitCondition::ControlGroupController { controller, negate } => {
+            assert_eq!(controller, "cpu");
+            assert!(negate);
+        }
+        other => panic!("Expected ControlGroupController condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_control_group_controller_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let has_cgc = service.common.unit.conditions.iter().any(|c| {
+        matches!(
+            c,
+            crate::units::UnitCondition::ControlGroupController { .. }
+        )
+    });
+    assert!(
+        !has_cgc,
+        "No ControlGroupController condition should be present by default"
+    );
+}
+
+#[test]
+fn test_condition_control_group_controller_pids() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionControlGroupController = pids
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::ControlGroupController { controller, negate } => {
+            assert_eq!(controller, "pids");
+            assert!(!negate);
+        }
+        other => panic!("Expected ControlGroupController condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_control_group_controller_io() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionControlGroupController = io
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::ControlGroupController { controller, negate } => {
+            assert_eq!(controller, "io");
+            assert!(!negate);
+        }
+        other => panic!("Expected ControlGroupController condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_control_group_controller_mixed_negation() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionControlGroupController = memory
+    ConditionControlGroupController = !blkio
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 2);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::ControlGroupController { controller, negate } => {
+            assert_eq!(controller, "memory");
+            assert!(!negate, "First should not be negated");
+        }
+        other => panic!("Expected ControlGroupController condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::ControlGroupController { controller, negate } => {
+            assert_eq!(controller, "blkio");
+            assert!(negate, "Second should be negated");
+        }
+        other => panic!("Expected ControlGroupController condition, got {:?}", other),
+    }
+}
+
 // ── MemoryMin= ──────────────────────────────────────────────────────
 
 #[test]
