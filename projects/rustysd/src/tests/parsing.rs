@@ -22581,3 +22581,416 @@ fn test_condition_virtualization_systemd_nspawn() {
         other => panic!("Expected Virtualization condition, got {:?}", other),
     }
 }
+
+// ============================================================
+// ConditionCapability= parsing tests
+// ============================================================
+
+#[test]
+fn test_condition_capability_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionCapability = CAP_NET_ADMIN
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "ConditionCapability should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_condition_capability_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionCapability = CAP_NET_ADMIN
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conditions.len(),
+        1,
+        "Should have one condition"
+    );
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Capability { capability, negate } => {
+            assert_eq!(capability, "CAP_NET_ADMIN");
+            assert!(!negate);
+        }
+        other => panic!("Expected Capability condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_capability_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionCapability = !CAP_SYS_ADMIN
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Capability { capability, negate } => {
+            assert_eq!(capability, "CAP_SYS_ADMIN");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected Capability condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_capability_sys_ptrace() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionCapability = CAP_SYS_PTRACE
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Capability { capability, negate } => {
+            assert_eq!(capability, "CAP_SYS_PTRACE");
+            assert!(!negate);
+        }
+        other => panic!("Expected Capability condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_capability_empty_ignored() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionCapability =
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conditions.len(),
+        0,
+        "Empty ConditionCapability should not add a condition"
+    );
+}
+
+#[test]
+fn test_condition_capability_with_other_conditions() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathExists = /etc/myconfig
+    ConditionCapability = CAP_NET_RAW
+    ConditionVirtualization = !container
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conditions.len(),
+        3,
+        "Should have three conditions"
+    );
+
+    // First: PathExists
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathExists { path, negate } => {
+            assert_eq!(path, "/etc/myconfig");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathExists condition, got {:?}", other),
+    }
+
+    // Second: Capability (parsed after PathIsDirectory and Virtualization)
+    // Order depends on the parsing order in parse_unit_section
+    let has_capability = service.common.unit.conditions.iter().any(|c| {
+        matches!(
+            c,
+            crate::units::UnitCondition::Capability {
+                capability,
+                negate
+            } if capability == "CAP_NET_RAW" && !negate
+        )
+    });
+    assert!(
+        has_capability,
+        "Should have CAP_NET_RAW capability condition"
+    );
+
+    let has_virt = service.common.unit.conditions.iter().any(|c| {
+        matches!(
+            c,
+            crate::units::UnitCondition::Virtualization {
+                value,
+                negate
+            } if value == "container" && *negate
+        )
+    });
+    assert!(
+        has_virt,
+        "Should have negated container virtualization condition"
+    );
+}
+
+#[test]
+fn test_condition_capability_multiple() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionCapability = CAP_NET_ADMIN
+    ConditionCapability = CAP_SYS_ADMIN
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conditions.len(),
+        2,
+        "Multiple ConditionCapability directives should accumulate"
+    );
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Capability { capability, negate } => {
+            assert_eq!(capability, "CAP_NET_ADMIN");
+            assert!(!negate);
+        }
+        other => panic!("Expected Capability condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::Capability { capability, negate } => {
+            assert_eq!(capability, "CAP_SYS_ADMIN");
+            assert!(!negate);
+        }
+        other => panic!("Expected Capability condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_capability_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    ConditionCapability = !CAP_SYS_MODULE
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(
+        unit.common.unit.conditions.len(),
+        1,
+        "Condition should be preserved after unit conversion"
+    );
+    match &unit.common.unit.conditions[0] {
+        crate::units::UnitCondition::Capability { capability, negate } => {
+            assert_eq!(capability, "CAP_SYS_MODULE");
+            assert!(negate);
+        }
+        other => panic!("Expected Capability condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_capability_in_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    ConditionCapability = CAP_NET_BIND_SERVICE
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.common.unit.conditions.len(),
+        1,
+        "ConditionCapability should work in socket units"
+    );
+    match &socket.common.unit.conditions[0] {
+        crate::units::UnitCondition::Capability { capability, negate } => {
+            assert_eq!(capability, "CAP_NET_BIND_SERVICE");
+            assert!(!negate);
+        }
+        other => panic!("Expected Capability condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_capability_in_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    ConditionCapability = CAP_SYS_ADMIN
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        target.common.unit.conditions.len(),
+        1,
+        "ConditionCapability should work in target units"
+    );
+    match &target.common.unit.conditions[0] {
+        crate::units::UnitCondition::Capability { capability, negate } => {
+            assert_eq!(capability, "CAP_SYS_ADMIN");
+            assert!(!negate);
+        }
+        other => panic!("Expected Capability condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_capability_preserves_case() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionCapability = cap_net_admin
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Capability { capability, negate } => {
+            // The raw value is stored as-is; the check() method handles
+            // case-insensitive matching via capability_name_to_bit().
+            assert_eq!(capability, "cap_net_admin");
+            assert!(!negate);
+        }
+        other => panic!("Expected Capability condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_capability_various_caps() {
+    // Test several different capability names to ensure they all parse correctly
+    let caps = [
+        "CAP_CHOWN",
+        "CAP_KILL",
+        "CAP_SETUID",
+        "CAP_SETGID",
+        "CAP_NET_RAW",
+        "CAP_SYS_CHROOT",
+        "CAP_MKNOD",
+        "CAP_AUDIT_WRITE",
+        "CAP_SETFCAP",
+        "CAP_SYSLOG",
+        "CAP_BPF",
+    ];
+
+    for cap in &caps {
+        let test_service_str = format!(
+            r#"
+            [Unit]
+            ConditionCapability = {}
+
+            [Service]
+            ExecStart = /bin/myservice
+            "#,
+            cap
+        );
+
+        let parsed_file = crate::units::parse_file(&test_service_str).unwrap();
+        let service = crate::units::parse_service(
+            parsed_file,
+            &std::path::PathBuf::from("/path/to/unitfile.service"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            service.common.unit.conditions.len(),
+            1,
+            "Should have one condition for {}",
+            cap
+        );
+        match &service.common.unit.conditions[0] {
+            crate::units::UnitCondition::Capability { capability, negate } => {
+                assert_eq!(capability, *cap);
+                assert!(!negate);
+            }
+            other => panic!("Expected Capability condition for {}, got {:?}", cap, other),
+        }
+    }
+}

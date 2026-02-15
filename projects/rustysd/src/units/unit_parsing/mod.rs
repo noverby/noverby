@@ -8,6 +8,7 @@ pub use socket_unit::*;
 pub use target_unit::*;
 pub use unit_parser::*;
 
+use log::warn;
 use std::path::PathBuf;
 
 pub struct ParsedCommonConfig {
@@ -42,6 +43,11 @@ pub enum UnitCondition {
     /// Checks whether the system runs in a virtualized environment.
     /// See systemd.unit(5).
     Virtualization { value: String, negate: bool },
+    /// ConditionCapability=CAP_NET_ADMIN (true if capability is in bounding set)
+    /// ConditionCapability=!CAP_SYS_ADMIN (true if capability is NOT in bounding set)
+    /// Checks whether a given capability exists in the capability bounding set
+    /// of the service manager (PID 1). See systemd.unit(5).
+    Capability { capability: String, negate: bool },
 }
 
 /// The kind of virtualization detected (VM or container).
@@ -56,6 +62,74 @@ pub enum VirtKind {
 pub struct DetectedVirt {
     pub name: String,
     pub kind: VirtKind,
+}
+
+/// Map a Linux capability name (e.g. "CAP_NET_ADMIN") to its bit number.
+/// Returns `None` if the name is not recognized.
+fn capability_name_to_bit(name: &str) -> Option<u64> {
+    match name.to_uppercase().as_str() {
+        "CAP_CHOWN" => Some(0),
+        "CAP_DAC_OVERRIDE" => Some(1),
+        "CAP_DAC_READ_SEARCH" => Some(2),
+        "CAP_FOWNER" => Some(3),
+        "CAP_FSETID" => Some(4),
+        "CAP_KILL" => Some(5),
+        "CAP_SETGID" => Some(6),
+        "CAP_SETUID" => Some(7),
+        "CAP_SETPCAP" => Some(8),
+        "CAP_LINUX_IMMUTABLE" => Some(9),
+        "CAP_NET_BIND_SERVICE" => Some(10),
+        "CAP_NET_BROADCAST" => Some(11),
+        "CAP_NET_ADMIN" => Some(12),
+        "CAP_NET_RAW" => Some(13),
+        "CAP_IPC_LOCK" => Some(14),
+        "CAP_IPC_OWNER" => Some(15),
+        "CAP_SYS_MODULE" => Some(16),
+        "CAP_SYS_RAWIO" => Some(17),
+        "CAP_SYS_CHROOT" => Some(18),
+        "CAP_SYS_PTRACE" => Some(19),
+        "CAP_SYS_PACCT" => Some(20),
+        "CAP_SYS_ADMIN" => Some(21),
+        "CAP_SYS_BOOT" => Some(22),
+        "CAP_SYS_NICE" => Some(23),
+        "CAP_SYS_RESOURCE" => Some(24),
+        "CAP_SYS_TIME" => Some(25),
+        "CAP_SYS_TTY_CONFIG" => Some(26),
+        "CAP_MKNOD" => Some(27),
+        "CAP_LEASE" => Some(28),
+        "CAP_AUDIT_WRITE" => Some(29),
+        "CAP_AUDIT_CONTROL" => Some(30),
+        "CAP_SETFCAP" => Some(31),
+        "CAP_MAC_OVERRIDE" => Some(32),
+        "CAP_MAC_ADMIN" => Some(33),
+        "CAP_SYSLOG" => Some(34),
+        "CAP_WAKE_ALARM" => Some(35),
+        "CAP_BLOCK_SUSPEND" => Some(36),
+        "CAP_AUDIT_READ" => Some(37),
+        "CAP_PERFMON" => Some(38),
+        "CAP_BPF" => Some(39),
+        "CAP_CHECKPOINT_RESTORE" => Some(40),
+        _ => None,
+    }
+}
+
+/// Check whether a capability (by bit number) is present in the capability
+/// bounding set of the service manager. Reads `/proc/self/status` and parses
+/// the `CapBnd:` hex field.
+fn capability_in_bounding_set(bit: u64) -> bool {
+    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+        for line in status.lines() {
+            if let Some(hex) = line.strip_prefix("CapBnd:") {
+                let hex = hex.trim().trim_start_matches("0x");
+                if let Ok(mask) = u64::from_str_radix(hex, 16) {
+                    return (mask & (1u64 << bit)) != 0;
+                }
+            }
+        }
+    }
+    // If we can't read the status, conservatively assume the capability is present
+    // (matches systemd behavior for privileged service managers).
+    true
 }
 
 /// Detect whether the system is running inside a virtualized environment.
@@ -304,6 +378,24 @@ impl UnitCondition {
                         .map_or(false, |d| d.kind == VirtKind::Container),
                     // Specific technology name
                     tech => detected.as_ref().map_or(false, |d| d.name == tech),
+                };
+                if *negate {
+                    !result
+                } else {
+                    result
+                }
+            }
+            UnitCondition::Capability { capability, negate } => {
+                let result = match capability_name_to_bit(capability) {
+                    Some(bit) => capability_in_bounding_set(bit),
+                    None => {
+                        // Unknown capability name — treat as not present
+                        warn!(
+                            "Unknown capability name in ConditionCapability: {}",
+                            capability
+                        );
+                        false
+                    }
                 };
                 if *negate {
                     !result

@@ -1917,8 +1917,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionCapability=">ConditionCapability=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and evaluated at activation time. Checks whether a Linux capability (e.g. CAP_NET_ADMIN) is in the service manager's bounding set. Supports ! negation.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionACPower=">ConditionACPower=</a></td>
