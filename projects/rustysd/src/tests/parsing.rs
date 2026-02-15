@@ -25758,6 +25758,340 @@ fn test_proc_subset_socket_unit() {
 }
 
 // ============================================================
+// Nice= parsing tests
+// ============================================================
+
+#[test]
+fn test_nice_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    Nice = 5
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "Nice= should not cause errors");
+}
+
+#[test]
+fn test_nice_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.nice.is_none(),
+        "Nice should default to None"
+    );
+}
+
+#[test]
+fn test_nice_zero() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    Nice = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.nice,
+        Some(0),
+        "Nice=0 should be Some(0)"
+    );
+}
+
+#[test]
+fn test_nice_positive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    Nice = 10
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.nice,
+        Some(10),
+        "Nice=10 should be Some(10)"
+    );
+}
+
+#[test]
+fn test_nice_max_positive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    Nice = 19
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.nice,
+        Some(19),
+        "Nice=19 should be Some(19)"
+    );
+}
+
+#[test]
+fn test_nice_negative() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    Nice = -5
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.nice,
+        Some(-5),
+        "Nice=-5 should be Some(-5)"
+    );
+}
+
+#[test]
+fn test_nice_max_negative() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    Nice = -20
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.nice,
+        Some(-20),
+        "Nice=-20 should be Some(-20)"
+    );
+}
+
+#[test]
+fn test_nice_out_of_range_positive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    Nice = 20
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "Nice=20 should be an error (valid range is -20 to 19)"
+    );
+}
+
+#[test]
+fn test_nice_out_of_range_negative() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    Nice = -21
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "Nice=-21 should be an error (valid range is -20 to 19)"
+    );
+}
+
+#[test]
+fn test_nice_invalid_string() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    Nice = high
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "Nice=high should be an error (must be integer)"
+    );
+}
+
+#[test]
+fn test_nice_empty_resets_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    Nice =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.nice.is_none(),
+        "Nice= (empty) should reset to None"
+    );
+}
+
+#[test]
+fn test_nice_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    Nice =  7
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.nice,
+        Some(7),
+        "Nice should handle surrounding whitespace"
+    );
+}
+
+#[test]
+fn test_nice_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    Nice = -10
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.nice,
+            Some(-10),
+            "Nice=-10 should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_nice_none_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.nice.is_none(),
+            "Nice default (None) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_nice_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with nice level
+    [Socket]
+    ListenStream = /run/test.sock
+    Nice = 15
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.nice,
+        Some(15),
+        "Nice should work in socket units"
+    );
+}
+
+// ============================================================
 // LockPersonality= parsing tests
 // ============================================================
 

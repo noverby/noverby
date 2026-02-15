@@ -1099,6 +1099,11 @@ pub struct ParsedExecSection {
     /// process-specific subdirectories). Parsed and stored; no runtime
     /// mount-namespace enforcement yet. See systemd.exec(5).
     pub proc_subset: ProcSubset,
+    /// Nice= — sets the default nice level (scheduling priority) for
+    /// executed processes. Takes an integer between -20 (highest priority)
+    /// and 19 (lowest priority). Parsed and stored; no runtime enforcement
+    /// yet. See systemd.exec(5).
+    pub nice: Option<i32>,
 }
 
 /// The type of utmp/wtmp record to create for a service.
