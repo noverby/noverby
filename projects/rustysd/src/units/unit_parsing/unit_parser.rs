@@ -409,6 +409,7 @@ pub fn parse_exec_section(
     let protect_system = section.remove("PROTECTSYSTEM");
     let restrict_namespaces = section.remove("RESTRICTNAMESPACES");
     let restrict_realtime = section.remove("RESTRICTREALTIME");
+    let restrict_address_families = section.remove("RESTRICTADDRESSFAMILIES");
 
     let user = match user {
         None => None,
@@ -905,6 +906,61 @@ pub fn parse_exec_section(
             None => super::RestrictNamespaces::default(),
         },
         restrict_realtime,
+        restrict_address_families: match restrict_address_families {
+            Some(vec) => {
+                // Each directive is a space-separated list of address family
+                // names (e.g. AF_UNIX, AF_INET, AF_INET6). A leading ~ on
+                // the whole value means deny-list mode. Multiple directives
+                // accumulate. An empty assignment resets the list.
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        // Empty string resets the list
+                        entries.clear();
+                        continue;
+                    }
+                    // Split on whitespace, respecting double-quoted tokens
+                    let mut chars = trimmed.chars().peekable();
+                    while chars.peek().is_some() {
+                        // skip whitespace
+                        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+                            chars.next();
+                        }
+                        if chars.peek().is_none() {
+                            break;
+                        }
+                        let mut token = String::new();
+                        if chars.peek() == Some(&'"') {
+                            // quoted token — consume until closing quote
+                            chars.next(); // skip opening quote
+                            while let Some(&c) = chars.peek() {
+                                if c == '"' {
+                                    chars.next();
+                                    break;
+                                }
+                                token.push(c);
+                                chars.next();
+                            }
+                        } else {
+                            // unquoted token — consume until whitespace
+                            while let Some(&c) = chars.peek() {
+                                if c.is_whitespace() {
+                                    break;
+                                }
+                                token.push(c);
+                                chars.next();
+                            }
+                        }
+                        if !token.is_empty() {
+                            entries.push(token);
+                        }
+                    }
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
         system_call_filter: match system_call_filter {
             Some(vec) => {
                 // Each directive is a space-separated list of syscall names
