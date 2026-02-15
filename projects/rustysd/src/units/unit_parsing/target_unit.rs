@@ -1,4 +1,4 @@
-use log::warn;
+use log::{trace, warn};
 
 use crate::units::{
     parse_install_section, parse_unit_section, ParsedCommonConfig, ParsedFile, ParsedTargetConfig,
@@ -20,6 +20,11 @@ pub fn parse_target(
             }
             "[Install]" => {
                 install_config = Some(parse_install_section(section)?);
+            }
+            _ if name.starts_with("[X-") || name.starts_with("[x-") => {
+                trace!(
+                    "Silently ignoring vendor extension section in target unit {path:?}: {name}"
+                );
             }
             _ => {
                 warn!("Ignoring unknown section in target unit {path:?}: {name}");

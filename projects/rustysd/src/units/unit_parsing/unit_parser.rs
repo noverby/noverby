@@ -1,7 +1,7 @@
 //! Parse all supported unit types / options for these and do needed operations like matching services <-> sockets and adding implicit dependencies like
 //! all sockets to socket.target
 
-use log::{debug, warn};
+use log::{debug, trace, warn};
 
 use crate::units::{
     EnvVars, ParsedExecSection, ParsedInstallSection, ParsedUnitSection, ParsingErrorReason,
@@ -211,6 +211,10 @@ pub fn parse_unit_section(
     let refuse_manual_stop = section.remove("REFUSEMANUALSTOP");
 
     for key in section.keys() {
+        if key.starts_with("X-") {
+            trace!("Silently ignoring vendor extension in [Unit] section: {key}");
+            continue;
+        }
         warn!("Ignoring unsupported setting in [Unit] section: {key}");
     }
 
@@ -1509,6 +1513,10 @@ pub fn parse_install_section(
     let default_instance = section.remove("DEFAULTINSTANCE");
 
     for key in section.keys() {
+        if key.starts_with("X-") {
+            trace!("Silently ignoring vendor extension in [Install] section: {key}");
+            continue;
+        }
         warn!("Ignoring unsupported setting in [Install] section: {key}");
     }
 

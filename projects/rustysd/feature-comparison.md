@@ -2146,3 +2146,28 @@ This document is meant as a simple way of checking whether all features you need
   <td>Parsed and stored; no template instantiation enforcement</td>
 </tr>
 </table>
+
+## Vendor Extensions (X- prefixed)
+
+Settings and sections prefixed with `X-` are vendor extensions as defined by the
+[systemd documentation](https://www.freedesktop.org/software/systemd/man/systemd.syntax.html).
+systemd itself silently ignores these — they are intended for use by external tools
+(e.g. NixOS uses `X-ReloadIfChanged=`, `X-StopIfChanged=`, etc.).
+
+<table>
+<tr>
+  <th>Feature</th>
+  <th>supported</th>
+  <th>Notes</th>
+</tr>
+<tr>
+  <td>X-* settings in any section</td>
+  <td>✔️</td>
+  <td>Silently ignored (trace-level log only). No "unsupported setting" warning is emitted.</td>
+</tr>
+<tr>
+  <td>[X-*] sections</td>
+  <td>✔️</td>
+  <td>Silently ignored (trace-level log only). No "unknown section" warning is emitted.</td>
+</tr>
+</table>

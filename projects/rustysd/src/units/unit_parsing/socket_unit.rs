@@ -1,4 +1,4 @@
-use log::warn;
+use log::{trace, warn};
 
 use crate::sockets::{
     FifoConfig, SocketKind, SpecializedSocketConfig, TcpSocketConfig, UdpSocketConfig,
@@ -33,6 +33,11 @@ pub fn parse_socket(
                 install_config = Some(parse_install_section(section)?);
             }
 
+            _ if name.starts_with("[X-") || name.starts_with("[x-") => {
+                trace!(
+                    "Silently ignoring vendor extension section in socket unit {path:?}: {name}"
+                );
+            }
             _ => {
                 warn!("Ignoring unknown section in socket unit {path:?}: {name}");
             }
@@ -84,6 +89,10 @@ fn parse_socket_section(
     let exec_config = super::parse_exec_section(&mut section)?;
 
     for key in section.keys() {
+        if key.starts_with("X-") {
+            trace!("Silently ignoring vendor extension in [Socket] section: {key}");
+            continue;
+        }
         warn!("Ignoring unsupported setting in [Socket] section: {key}");
     }
     let fdname = match fdname {

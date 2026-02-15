@@ -94,6 +94,11 @@ pub fn parse_service(
                 install_config = Some(parse_install_section(section)?);
             }
 
+            _ if name.starts_with("[X-") || name.starts_with("[x-") => {
+                trace!(
+                    "Silently ignoring vendor extension section in service unit {path:?}: {name}"
+                );
+            }
             _ => {
                 warn!("Ignoring unknown section in service unit {path:?}: {name}");
             }
@@ -260,6 +265,10 @@ fn parse_service_section(
     let exec_config = super::parse_exec_section(&mut section)?;
 
     for key in section.keys() {
+        if key.starts_with("X-") {
+            trace!("Silently ignoring vendor extension in [Service] section: {key}");
+            continue;
+        }
         warn!("Ignoring unsupported setting in [Service] section: {key}");
     }
 
