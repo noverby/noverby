@@ -7648,6 +7648,285 @@ fn test_ignore_on_isolate_no_unsupported_warning() {
     assert!(service.unwrap().common.unit.ignore_on_isolate);
 }
 
+// ── StopWhenUnneeded= ─────────────────────────────────────────────────
+
+#[test]
+fn test_stop_when_unneeded_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.common.unit.stop_when_unneeded,
+        "StopWhenUnneeded should default to false when not specified"
+    );
+}
+
+#[test]
+fn test_stop_when_unneeded_set_yes() {
+    let test_service_str = r#"
+    [Unit]
+    StopWhenUnneeded = yes
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.stop_when_unneeded,
+        "StopWhenUnneeded=yes should be true"
+    );
+}
+
+#[test]
+fn test_stop_when_unneeded_set_true() {
+    let test_service_str = r#"
+    [Unit]
+    StopWhenUnneeded = true
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.stop_when_unneeded,
+        "StopWhenUnneeded=true should be true"
+    );
+}
+
+#[test]
+fn test_stop_when_unneeded_set_no() {
+    let test_service_str = r#"
+    [Unit]
+    StopWhenUnneeded = no
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.common.unit.stop_when_unneeded,
+        "StopWhenUnneeded=no should be false"
+    );
+}
+
+#[test]
+fn test_stop_when_unneeded_set_false() {
+    let test_service_str = r#"
+    [Unit]
+    StopWhenUnneeded = false
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.common.unit.stop_when_unneeded,
+        "StopWhenUnneeded=false should be false"
+    );
+}
+
+#[test]
+fn test_stop_when_unneeded_set_1() {
+    let test_service_str = r#"
+    [Unit]
+    StopWhenUnneeded = 1
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.stop_when_unneeded,
+        "StopWhenUnneeded=1 should be true"
+    );
+}
+
+#[test]
+fn test_stop_when_unneeded_set_0() {
+    let test_service_str = r#"
+    [Unit]
+    StopWhenUnneeded = 0
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.common.unit.stop_when_unneeded,
+        "StopWhenUnneeded=0 should be false"
+    );
+}
+
+#[test]
+fn test_stop_when_unneeded_case_insensitive() {
+    let test_service_str = r#"
+    [Unit]
+    StopWhenUnneeded = YES
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.stop_when_unneeded,
+        "StopWhenUnneeded=YES (case-insensitive) should be true"
+    );
+}
+
+#[test]
+fn test_stop_when_unneeded_with_other_unit_settings() {
+    let test_service_str = r#"
+    [Unit]
+    Description = Test service with StopWhenUnneeded
+    StopWhenUnneeded = yes
+    DefaultDependencies = no
+    IgnoreOnIsolate = yes
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.common.unit.stop_when_unneeded);
+    assert!(!service.common.unit.default_dependencies);
+    assert!(service.common.unit.ignore_on_isolate);
+    assert_eq!(
+        service.common.unit.description,
+        "Test service with StopWhenUnneeded"
+    );
+}
+
+#[test]
+fn test_stop_when_unneeded_no_unsupported_warning() {
+    // StopWhenUnneeded= should be parsed without generating an "unsupported setting" warning
+    let test_service_str = r#"
+    [Unit]
+    StopWhenUnneeded = yes
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    );
+
+    assert!(
+        service.is_ok(),
+        "Parsing StopWhenUnneeded= should not produce an error"
+    );
+    assert!(service.unwrap().common.unit.stop_when_unneeded);
+}
+
+#[test]
+fn test_stop_when_unneeded_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    StopWhenUnneeded = yes
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.common.unit.stop_when_unneeded,
+        "StopWhenUnneeded=yes should be true for socket units"
+    );
+}
+
+#[test]
+fn test_stop_when_unneeded_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    StopWhenUnneeded = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert!(
+        target.common.unit.stop_when_unneeded,
+        "StopWhenUnneeded=yes should be true for target units"
+    );
+}
+
 // ── RequiresMountsFor= ────────────────────────────────────────────────
 
 #[test]
