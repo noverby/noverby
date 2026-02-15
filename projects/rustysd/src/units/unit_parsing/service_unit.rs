@@ -242,6 +242,7 @@ fn parse_service_section(
     let slice = section.remove("SLICE");
     let remain_after_exit = section.remove("REMAINAFTEREXIT");
     let success_exit_status = section.remove("SUCCESSEXITSTATUS");
+    let send_sighup = section.remove("SENDSIGHUP");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -617,6 +618,20 @@ fn parse_service_section(
         }
     };
 
+    let send_sighup = match send_sighup {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "SendSIGHUP".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
     Ok(ParsedServiceSection {
         srcv_type,
         notifyaccess,
@@ -637,6 +652,7 @@ fn parse_service_section(
         starttimeout,
         stoptimeout,
         generaltimeout,
+        send_sighup,
         sockets: map_tuples_to_second(super::split_list_values(sockets.unwrap_or_default())),
         slice: slice.and_then(|vec| {
             if vec.len() == 1 {
