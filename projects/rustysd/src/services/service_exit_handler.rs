@@ -1,9 +1,10 @@
-use log::{error, trace};
+use log::{error, info, trace};
 
 use crate::runtime_info::{ArcMutRuntimeInfo, PidEntry, RuntimeInfo};
 use crate::signal_handler::ChildTermination;
 use crate::units::{
-    ServiceRestart, ServiceType, Specific, Timeout, UnitOperationErrorReason, UnitStatus,
+    ServiceRestart, ServiceType, Specific, Timeout, UnitAction, UnitOperationErrorReason,
+    UnitStatus,
 };
 
 /// Determine whether a service should be restarted given its `Restart=`
@@ -158,6 +159,27 @@ pub fn service_exit_handler(
                 return Ok(());
             }
         }
+    }
+
+    // Determine SuccessAction / FailureAction for this unit and whether
+    // the exit counts as success or failure.
+    let success_action = &unit.common.unit.success_action;
+    let failure_action = &unit.common.unit.failure_action;
+
+    if code.success() {
+        if *success_action != UnitAction::None {
+            info!(
+                "Service {} exited successfully, triggering SuccessAction={:?}",
+                unit.id.name, success_action
+            );
+            crate::units::execute_unit_action(success_action, &unit.id.name);
+        }
+    } else if *failure_action != UnitAction::None {
+        info!(
+            "Service {} failed ({:?}), triggering FailureAction={:?}",
+            unit.id.name, code, failure_action
+        );
+        crate::units::execute_unit_action(failure_action, &unit.id.name);
     }
 
     trace!("Check if we want to restart the unit");

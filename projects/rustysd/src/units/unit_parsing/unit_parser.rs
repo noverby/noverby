@@ -5,7 +5,7 @@ use log::{debug, warn};
 
 use crate::units::{
     EnvVars, ParsedExecSection, ParsedInstallSection, ParsedUnitSection, ParsingErrorReason,
-    StdIoOption,
+    StdIoOption, UnitAction,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -118,6 +118,30 @@ fn parse_environment(raw_line: &str) -> Result<EnvVars, ParsingErrorReason> {
     Ok(EnvVars { vars })
 }
 
+fn parse_unit_action(value: &str) -> Result<UnitAction, ParsingErrorReason> {
+    match value.to_lowercase().replace('-', "").as_str() {
+        "none" => Ok(UnitAction::None),
+        "exit" => Ok(UnitAction::Exit),
+        "exitforce" => Ok(UnitAction::ExitForce),
+        "reboot" => Ok(UnitAction::Reboot),
+        "rebootforce" => Ok(UnitAction::RebootForce),
+        "rebootimmediate" => Ok(UnitAction::RebootImmediate),
+        "poweroff" => Ok(UnitAction::Poweroff),
+        "poweroffforce" => Ok(UnitAction::PoweroffForce),
+        "poweroffimmediate" => Ok(UnitAction::PoweroffImmediate),
+        "halt" => Ok(UnitAction::Halt),
+        "haltforce" => Ok(UnitAction::HaltForce),
+        "haltimmediate" => Ok(UnitAction::HaltImmediate),
+        "kexec" => Ok(UnitAction::Kexec),
+        "kexecforce" => Ok(UnitAction::KexecForce),
+        "kexecimmediate" => Ok(UnitAction::KexecImmediate),
+        other => Err(ParsingErrorReason::UnknownSetting(
+            "SuccessAction/FailureAction".to_owned(),
+            other.to_owned(),
+        )),
+    }
+}
+
 pub fn parse_unit_section(
     mut section: ParsedSection,
 ) -> Result<ParsedUnitSection, ParsingErrorReason> {
@@ -131,6 +155,8 @@ pub fn parse_unit_section(
     let default_dependencies = section.remove("DEFAULTDEPENDENCIES");
     let condition_path_exists = section.remove("CONDITIONPATHEXISTS");
     let condition_path_is_directory = section.remove("CONDITIONPATHISDIRECTORY");
+    let success_action = section.remove("SUCCESSACTION");
+    let failure_action = section.remove("FAILUREACTION");
 
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Unit] section: {key}");
@@ -158,6 +184,34 @@ pub fn parse_unit_section(
         conditions.push(super::UnitCondition::PathIsDirectory { path, negate });
     }
 
+    let success_action = match success_action {
+        Some(vec) => {
+            if vec.len() == 1 {
+                parse_unit_action(&vec[0].1)?
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "SuccessAction".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => UnitAction::default(),
+    };
+
+    let failure_action = match failure_action {
+        Some(vec) => {
+            if vec.len() == 1 {
+                parse_unit_action(&vec[0].1)?
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "FailureAction".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => UnitAction::default(),
+    };
+
     Ok(ParsedUnitSection {
         description: description.map(|x| (x[0]).1.clone()).unwrap_or_default(),
         documentation: map_tuples_to_second(split_list_values(documentation.unwrap_or_default())),
@@ -168,6 +222,8 @@ pub fn parse_unit_section(
         before: map_tuples_to_second(split_list_values(before.unwrap_or_default())),
         default_dependencies,
         conditions,
+        success_action,
+        failure_action,
     })
 }
 

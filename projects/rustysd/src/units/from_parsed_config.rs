@@ -236,6 +236,8 @@ fn make_common_from_parsed(
             refs_by_name,
             default_dependencies: unit.default_dependencies,
             conditions: unit.conditions,
+            success_action: unit.success_action,
+            failure_action: unit.failure_action,
         },
         dependencies: Dependencies {
             wants,
