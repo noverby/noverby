@@ -107,10 +107,10 @@ fn parse_environment(raw_line: &str) -> Result<EnvVars, ParsingErrorReason> {
     let mut vars: Vec<(String, String)> = Vec::new();
 
     for pair in split {
-        let p: Vec<&str> = pair.split('=').collect();
+        let p: Vec<&str> = pair.splitn(2, '=').collect();
         let key = p[0].to_owned();
-        let val = p[1].to_owned();
-        vars.push((key, val));
+        let val = if p.len() > 1 { p[1] } else { "" };
+        vars.push((key, val.to_owned()));
     }
 
     Ok(EnvVars { vars })
@@ -205,6 +205,7 @@ pub fn parse_exec_section(
     let stderr = section.remove("STANDARDERROR");
     let supplementary_groups = section.remove("SUPPLEMENTARYGROUPS");
     let environment = section.remove("ENVIRONMENT");
+    let environment_file = section.remove("ENVIRONMENTFILE");
     let working_directory = section.remove("WORKINGDIRECTORY");
     let state_directory = section.remove("STATEDIRECTORY");
     let tty_path = section.remove("TTYPATH");
@@ -334,9 +335,32 @@ pub fn parse_exec_section(
     let environment = match environment {
         Some(vec) => {
             debug!("Env vec: {vec:?}");
-            Some(parse_environment(&vec[0].1)?)
+            let mut all_vars = Vec::new();
+            for (_idx, line) in &vec {
+                let parsed = parse_environment(line)?;
+                all_vars.extend(parsed.vars);
+            }
+            Some(EnvVars { vars: all_vars })
         }
         None => None,
+    };
+
+    // Parse EnvironmentFile= directives. A leading '-' on the path means the
+    // file is optional (no error if it doesn't exist). Multiple directives are
+    // allowed and each can list one file.
+    let environment_files: Vec<(PathBuf, bool)> = match environment_file {
+        Some(vec) => vec
+            .into_iter()
+            .map(|(_, val)| {
+                let val = val.trim().to_string();
+                if let Some(stripped) = val.strip_prefix('-') {
+                    (PathBuf::from(stripped), true)
+                } else {
+                    (PathBuf::from(val), false)
+                }
+            })
+            .collect(),
+        None => Vec::new(),
     };
 
     let working_directory = match working_directory {
@@ -383,6 +407,7 @@ pub fn parse_exec_section(
         stderr_path,
         supplementary_groups,
         environment,
+        environment_files,
         working_directory,
         state_directory,
         tty_path,

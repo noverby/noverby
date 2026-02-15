@@ -2318,3 +2318,411 @@ fn test_at_prefix_execstartpost() {
         }]
     );
 }
+
+#[test]
+fn test_environment_file_empty_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.environment_files.is_empty());
+}
+
+#[test]
+fn test_environment_file_single() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    EnvironmentFile = /etc/default/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.environment_files,
+        vec![(std::path::PathBuf::from("/etc/default/myservice"), false)]
+    );
+}
+
+#[test]
+fn test_environment_file_optional_dash_prefix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    EnvironmentFile = -/etc/default/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.environment_files,
+        vec![(std::path::PathBuf::from("/etc/default/myservice"), true)]
+    );
+}
+
+#[test]
+fn test_environment_file_multiple() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    EnvironmentFile = /etc/default/myservice
+    EnvironmentFile = -/etc/sysconfig/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.environment_files,
+        vec![
+            (std::path::PathBuf::from("/etc/default/myservice"), false),
+            (std::path::PathBuf::from("/etc/sysconfig/myservice"), true),
+        ]
+    );
+}
+
+#[test]
+fn test_environment_file_with_environment() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Environment = FOO=bar
+    EnvironmentFile = /etc/default/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    // Both Environment= and EnvironmentFile= should be present
+    assert!(service.srvc.exec_section.environment.is_some());
+    let env = service.srvc.exec_section.environment.as_ref().unwrap();
+    assert_eq!(env.vars, vec![("FOO".to_owned(), "bar".to_owned())]);
+
+    assert_eq!(
+        service.srvc.exec_section.environment_files,
+        vec![(std::path::PathBuf::from("/etc/default/myservice"), false)]
+    );
+}
+
+#[test]
+fn test_environment_file_nix_store_path() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    EnvironmentFile = -/nix/store/abc123-env/lib/env
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.environment_files,
+        vec![(
+            std::path::PathBuf::from("/nix/store/abc123-env/lib/env"),
+            true
+        )]
+    );
+}
+
+#[test]
+fn test_environment_file_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    EnvironmentFile = /etc/default/mysocket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.environment_files,
+        vec![(std::path::PathBuf::from("/etc/default/mysocket"), false)]
+    );
+}
+
+#[test]
+fn test_environment_path_with_equals_in_value() {
+    // PATH values contain colons AND the split on '=' must only split on the
+    // first '=', otherwise everything after the second '=' is dropped.
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Environment = PATH=/nix/store/abc-iptables/bin:/nix/store/def-ip6tables/bin:/usr/bin
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let env = service.srvc.exec_section.environment.as_ref().unwrap();
+    assert_eq!(
+        env.vars,
+        vec![(
+            "PATH".to_owned(),
+            "/nix/store/abc-iptables/bin:/nix/store/def-ip6tables/bin:/usr/bin".to_owned()
+        )]
+    );
+}
+
+#[test]
+fn test_environment_value_with_embedded_equals() {
+    // Values like JAVA_OPTS="-Dfoo=bar -Dbaz=qux" contain '=' in the value
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Environment = "JAVA_OPTS=-Dfoo=bar -Dbaz=qux"
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let env = service.srvc.exec_section.environment.as_ref().unwrap();
+    assert_eq!(
+        env.vars,
+        vec![("JAVA_OPTS".to_owned(), "-Dfoo=bar -Dbaz=qux".to_owned())]
+    );
+}
+
+#[test]
+fn test_environment_multiple_vars_with_equals() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Environment = "FOO=a=b" "BAR=c=d=e"
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let env = service.srvc.exec_section.environment.as_ref().unwrap();
+    assert_eq!(
+        env.vars,
+        vec![
+            ("FOO".to_owned(), "a=b".to_owned()),
+            ("BAR".to_owned(), "c=d=e".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn test_environment_empty_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Environment = "EMPTY="
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let env = service.srvc.exec_section.environment.as_ref().unwrap();
+    assert_eq!(env.vars, vec![("EMPTY".to_owned(), "".to_owned())]);
+}
+
+#[test]
+fn test_environment_multiple_lines() {
+    // NixOS generates one Environment= line per variable.
+    // All lines must be parsed, not just the first one.
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Environment = "LOCALE_ARCHIVE=/nix/store/abc-glibc-locales/lib/locale/locale-archive"
+    Environment = "PATH=/nix/store/def-iptables/bin:/nix/store/ghi-coreutils/bin"
+    Environment = "TZDIR=/nix/store/jkl-tzdata/share/zoneinfo"
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let env = service.srvc.exec_section.environment.as_ref().unwrap();
+    assert_eq!(
+        env.vars,
+        vec![
+            (
+                "LOCALE_ARCHIVE".to_owned(),
+                "/nix/store/abc-glibc-locales/lib/locale/locale-archive".to_owned()
+            ),
+            (
+                "PATH".to_owned(),
+                "/nix/store/def-iptables/bin:/nix/store/ghi-coreutils/bin".to_owned()
+            ),
+            (
+                "TZDIR".to_owned(),
+                "/nix/store/jkl-tzdata/share/zoneinfo".to_owned()
+            ),
+        ]
+    );
+}
+
+#[test]
+fn test_environment_nixos_firewall_pattern() {
+    // Matches the exact pattern NixOS generates for firewall.service:
+    // multiple Environment= lines with quoted values, ExecStart with @ prefix,
+    // and a PATH containing multiple nix store paths separated by colons.
+    let test_service_str = r#"
+    [Unit]
+    After=systemd-modules-load.service
+    Before=network-pre.target shutdown.target
+    Description=Firewall
+
+    [Service]
+    Environment="LOCALE_ARCHIVE=/nix/store/abc-glibc-locales/lib/locale/locale-archive"
+    Environment="PATH=/nix/store/def-iptables-1.8.11/bin:/nix/store/ghi-coreutils-9.8/bin:/nix/store/jkl-findutils/bin:/nix/store/def-iptables-1.8.11/sbin:/nix/store/ghi-coreutils-9.8/sbin"
+    Environment="TZDIR=/nix/store/mno-tzdata/share/zoneinfo"
+    ExecStart=@/nix/store/pqr-firewall-start/bin/firewall-start firewall-start
+    Type=oneshot
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/firewall.service"),
+    )
+    .unwrap();
+
+    // All three Environment= lines must be parsed
+    let env = service.srvc.exec_section.environment.as_ref().unwrap();
+    assert_eq!(env.vars.len(), 3);
+
+    // PATH must contain the full value with all colon-separated store paths
+    let path_val = env
+        .vars
+        .iter()
+        .find(|(k, _)| k == "PATH")
+        .map(|(_, v)| v.as_str())
+        .unwrap();
+    assert!(
+        path_val.contains("/nix/store/def-iptables-1.8.11/bin"),
+        "PATH must contain iptables bin dir"
+    );
+    assert!(
+        path_val.contains("/nix/store/def-iptables-1.8.11/sbin"),
+        "PATH must contain iptables sbin dir (ip6tables lives here too)"
+    );
+    assert!(
+        path_val.contains("/nix/store/ghi-coreutils-9.8/bin"),
+        "PATH must contain coreutils bin dir"
+    );
+
+    // ExecStart must parse the @ prefix correctly
+    assert_eq!(
+        service.srvc.exec.prefixes,
+        vec![crate::units::CommandlinePrefix::AtSign]
+    );
+    assert_eq!(
+        service.srvc.exec.cmd,
+        "/nix/store/pqr-firewall-start/bin/firewall-start"
+    );
+    assert_eq!(service.srvc.exec.args, vec!["firewall-start".to_owned()]);
+}
+
+#[test]
+fn test_environment_multiple_lines_same_key_last_wins() {
+    // If the same key appears in separate Environment= lines, the last value wins
+    // (systemd behavior: later assignments override earlier ones for the same key).
+    // Note: our parser currently collects all entries; the dedup happens at
+    // start_service time. Here we verify all entries are collected.
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Environment = "FOO=first"
+    Environment = "FOO=second"
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let env = service.srvc.exec_section.environment.as_ref().unwrap();
+    // Both entries should be collected; start_service applies last-wins semantics
+    assert_eq!(
+        env.vars,
+        vec![
+            ("FOO".to_owned(), "first".to_owned()),
+            ("FOO".to_owned(), "second".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn test_environment_single_line_multiple_vars() {
+    // systemd also supports multiple KEY=VALUE pairs on a single Environment= line
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Environment = "FOO=bar" "BAZ=qux"
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let env = service.srvc.exec_section.environment.as_ref().unwrap();
+    assert_eq!(
+        env.vars,
+        vec![
+            ("FOO".to_owned(), "bar".to_owned()),
+            ("BAZ".to_owned(), "qux".to_owned()),
+        ]
+    );
+}

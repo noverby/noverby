@@ -869,6 +869,9 @@ pub struct ExecConfig {
     pub stdout_path: Option<StdIoOption>,
     pub stderr_path: Option<StdIoOption>,
     pub environment: Option<EnvVars>,
+    /// Paths from EnvironmentFile= directives. Each entry is (path, optional)
+    /// where optional=true means a leading '-' was present (file may not exist).
+    pub environment_files: Vec<(std::path::PathBuf, bool)>,
     pub working_directory: Option<std::path::PathBuf>,
     pub state_directory: Vec<String>,
     pub tty_path: Option<std::path::PathBuf>,
