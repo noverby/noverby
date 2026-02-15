@@ -1910,7 +1910,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionPathExists=">ConditionPathExists=</a></td>
-  <td>❌</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
@@ -1920,7 +1920,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionPathIsDirectory=">ConditionPathIsDirectory=</a></td>
-  <td>❌</td>
+  <td></td>
   <td></td>
 </tr>
 <tr>
