@@ -22222,6 +22222,272 @@ fn test_private_tmp_socket_unit() {
 }
 
 // ============================================================
+// PrivateDevices= parsing tests
+// ============================================================
+
+#[test]
+fn test_private_devices_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.private_devices,
+        "PrivateDevices should default to false"
+    );
+}
+
+#[test]
+fn test_private_devices_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateDevices = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.private_devices,
+        "PrivateDevices=yes should be true"
+    );
+}
+
+#[test]
+fn test_private_devices_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateDevices = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.private_devices,
+        "PrivateDevices=no should be false"
+    );
+}
+
+#[test]
+fn test_private_devices_true_variant() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateDevices = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.private_devices,
+        "PrivateDevices=true should be true"
+    );
+}
+
+#[test]
+fn test_private_devices_one_is_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateDevices = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.private_devices,
+        "PrivateDevices=1 should be true"
+    );
+}
+
+#[test]
+fn test_private_devices_zero_is_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateDevices = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.private_devices,
+        "PrivateDevices=0 should be false"
+    );
+}
+
+#[test]
+fn test_private_devices_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateDevices = Yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.private_devices,
+        "PrivateDevices=Yes should be true (case insensitive)"
+    );
+}
+
+#[test]
+fn test_private_devices_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateDevices = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "PrivateDevices= should not cause errors");
+}
+
+#[test]
+fn test_private_devices_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateDevices = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.private_devices,
+            "PrivateDevices=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_private_devices_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            !srvc.conf.exec_config.private_devices,
+            "Default false PrivateDevices should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_private_devices_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with private devices
+    [Socket]
+    ListenStream = /run/test.sock
+    PrivateDevices = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.exec_section.private_devices,
+        "PrivateDevices should work in socket units"
+    );
+}
+
+#[test]
+fn test_private_devices_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateDevices = yes
+    PrivateTmp = yes
+    ProtectSystem = strict
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.private_devices);
+    assert!(service.srvc.exec_section.private_tmp);
+}
+
+// ============================================================
 // LockPersonality= parsing tests
 // ============================================================
 
