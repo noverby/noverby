@@ -220,6 +220,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             protect_hostname: parsed.protect_hostname,
             system_call_architectures: parsed.system_call_architectures,
             read_write_paths: parsed.read_write_paths,
+            memory_deny_write_execute: parsed.memory_deny_write_execute,
         })
     }
 }

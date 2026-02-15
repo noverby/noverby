@@ -1089,6 +1089,11 @@ pub struct ExecConfig {
     /// the list. Parsed and stored; no runtime mount-namespace enforcement
     /// yet. See systemd.exec(5).
     pub read_write_paths: Vec<String>,
+    /// MemoryDenyWriteExecute= — if true, attempts to create memory mappings
+    /// that are both writable and executable, or to change existing writable
+    /// mappings to executable, are prohibited. Defaults to false. Parsed and
+    /// stored; no runtime seccomp enforcement yet. See systemd.exec(5).
+    pub memory_deny_write_execute: bool,
 }
 
 #[cfg(target_os = "linux")]

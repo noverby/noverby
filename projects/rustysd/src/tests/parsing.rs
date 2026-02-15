@@ -21070,3 +21070,273 @@ fn test_ip_address_allow_and_deny_preserved_together_after_unit_conversion() {
         panic!("Expected service unit");
     }
 }
+
+// ============================================================
+// MemoryDenyWriteExecute= parsing tests
+// ============================================================
+
+#[test]
+fn test_memory_deny_write_execute_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.memory_deny_write_execute,
+        "MemoryDenyWriteExecute should default to false"
+    );
+}
+
+#[test]
+fn test_memory_deny_write_execute_set_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    MemoryDenyWriteExecute = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.memory_deny_write_execute);
+}
+
+#[test]
+fn test_memory_deny_write_execute_set_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    MemoryDenyWriteExecute = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.memory_deny_write_execute);
+}
+
+#[test]
+fn test_memory_deny_write_execute_set_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    MemoryDenyWriteExecute = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.memory_deny_write_execute);
+}
+
+#[test]
+fn test_memory_deny_write_execute_set_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    MemoryDenyWriteExecute = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(!service.srvc.exec_section.memory_deny_write_execute);
+}
+
+#[test]
+fn test_memory_deny_write_execute_set_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    MemoryDenyWriteExecute = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(!service.srvc.exec_section.memory_deny_write_execute);
+}
+
+#[test]
+fn test_memory_deny_write_execute_set_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    MemoryDenyWriteExecute = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(!service.srvc.exec_section.memory_deny_write_execute);
+}
+
+#[test]
+fn test_memory_deny_write_execute_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    MemoryDenyWriteExecute = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.memory_deny_write_execute);
+}
+
+#[test]
+fn test_memory_deny_write_execute_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    MemoryDenyWriteExecute = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "MemoryDenyWriteExecute should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_memory_deny_write_execute_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    MemoryDenyWriteExecute = yes
+    NoNewPrivileges = yes
+    RestrictRealtime = yes
+    ProtectSystem = strict
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.memory_deny_write_execute);
+    assert!(service.srvc.exec_section.no_new_privileges);
+    assert!(service.srvc.exec_section.restrict_realtime);
+}
+
+#[test]
+fn test_memory_deny_write_execute_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    MemoryDenyWriteExecute = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.memory_deny_write_execute,
+            "MemoryDenyWriteExecute=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_memory_deny_write_execute_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    MemoryDenyWriteExecute = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            !srvc.conf.exec_config.memory_deny_write_execute,
+            "MemoryDenyWriteExecute=no should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_memory_deny_write_execute_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    MemoryDenyWriteExecute = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.exec_section.memory_deny_write_execute,
+        "MemoryDenyWriteExecute should work in socket units"
+    );
+}
