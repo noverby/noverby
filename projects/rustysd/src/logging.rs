@@ -17,7 +17,7 @@ pub fn setup_logging(conf: &crate::config::LoggingConfig) -> Result<(), String> 
                 message
             ));
         })
-        .level(log::LevelFilter::Trace);
+        .level(log::LevelFilter::Info);
 
     if conf.log_to_stdout {
         logger = logger.chain(std::io::stdout());
