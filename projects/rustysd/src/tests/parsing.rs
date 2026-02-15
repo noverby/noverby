@@ -2114,3 +2114,207 @@ fn test_limit_nofile_both_infinity() {
         })
     );
 }
+
+#[test]
+fn test_at_prefix_execstart() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = @/usr/bin/foo bar arg1 arg2
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec,
+        crate::units::Commandline {
+            cmd: "/usr/bin/foo".into(),
+            args: vec!["bar".into(), "arg1".into(), "arg2".into()],
+            prefixes: vec![crate::units::CommandlinePrefix::AtSign],
+        }
+    );
+}
+
+#[test]
+fn test_at_prefix_execstartpre() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ExecStartPre = @/usr/bin/setup mysetup --init
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.startpre,
+        vec![crate::units::Commandline {
+            cmd: "/usr/bin/setup".into(),
+            args: vec!["mysetup".into(), "--init".into()],
+            prefixes: vec![crate::units::CommandlinePrefix::AtSign],
+        }]
+    );
+}
+
+#[test]
+fn test_at_prefix_combined_with_minus() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = -@/usr/bin/foo bar arg1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec,
+        crate::units::Commandline {
+            cmd: "/usr/bin/foo".into(),
+            args: vec!["bar".into(), "arg1".into()],
+            prefixes: vec![
+                crate::units::CommandlinePrefix::Minus,
+                crate::units::CommandlinePrefix::AtSign,
+            ],
+        }
+    );
+}
+
+#[test]
+fn test_at_prefix_combined_minus_at() {
+    // '@' before '-' should also work since prefixes can be in any order
+    let test_service_str = r#"
+    [Service]
+    ExecStart = @-/usr/bin/foo bar arg1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec,
+        crate::units::Commandline {
+            cmd: "/usr/bin/foo".into(),
+            args: vec!["bar".into(), "arg1".into()],
+            prefixes: vec![
+                crate::units::CommandlinePrefix::AtSign,
+                crate::units::CommandlinePrefix::Minus,
+            ],
+        }
+    );
+}
+
+#[test]
+fn test_at_prefix_no_extra_args() {
+    // With '@' prefix but only one arg (which becomes argv[0])
+    let test_service_str = r#"
+    [Service]
+    ExecStart = @/usr/bin/foo bar
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec,
+        crate::units::Commandline {
+            cmd: "/usr/bin/foo".into(),
+            args: vec!["bar".into()],
+            prefixes: vec![crate::units::CommandlinePrefix::AtSign],
+        }
+    );
+}
+
+#[test]
+fn test_at_prefix_execstop() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ExecStop = @/usr/bin/stopper mystop --graceful
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.stop,
+        vec![crate::units::Commandline {
+            cmd: "/usr/bin/stopper".into(),
+            args: vec!["mystop".into(), "--graceful".into()],
+            prefixes: vec![crate::units::CommandlinePrefix::AtSign],
+        }]
+    );
+}
+
+#[test]
+fn test_at_prefix_execstoppost() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ExecStopPost = @/usr/bin/cleanup mycleanup
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.stoppost,
+        vec![crate::units::Commandline {
+            cmd: "/usr/bin/cleanup".into(),
+            args: vec!["mycleanup".into()],
+            prefixes: vec![crate::units::CommandlinePrefix::AtSign],
+        }]
+    );
+}
+
+#[test]
+fn test_at_prefix_execstartpost() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    ExecStartPost = @/usr/bin/notify mynotify --ready
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.startpost,
+        vec![crate::units::Commandline {
+            cmd: "/usr/bin/notify".into(),
+            args: vec!["mynotify".into(), "--ready".into()],
+            prefixes: vec![crate::units::CommandlinePrefix::AtSign],
+        }]
+    );
+}
