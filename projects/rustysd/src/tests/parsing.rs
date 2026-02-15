@@ -678,6 +678,314 @@ fn test_socket_parsing() {
 }
 
 #[test]
+fn test_documentation_empty_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.documentation.is_empty(),
+        "Documentation should be empty when not specified"
+    );
+}
+
+#[test]
+fn test_documentation_single_entry() {
+    let test_service_str = r#"
+    [Unit]
+    Documentation = https://example.com/docs
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.documentation,
+        vec!["https://example.com/docs".to_owned()]
+    );
+}
+
+#[test]
+fn test_documentation_multiple_entries() {
+    let test_service_str = r#"
+    [Unit]
+    Documentation = https://example.com/docs1
+    Documentation = https://example.com/docs2
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.documentation,
+        vec![
+            "https://example.com/docs1".to_owned(),
+            "https://example.com/docs2".to_owned()
+        ]
+    );
+}
+
+#[test]
+fn test_documentation_comma_separated() {
+    let test_service_str = r#"
+    [Unit]
+    Documentation = https://example.com/a,https://example.com/b
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.documentation,
+        vec![
+            "https://example.com/a".to_owned(),
+            "https://example.com/b".to_owned()
+        ]
+    );
+}
+
+#[test]
+fn test_documentation_various_uri_schemes() {
+    let test_service_str = r#"
+    [Unit]
+    Documentation = man:myapp(1)
+    Documentation = https://example.com/docs
+    Documentation = file:/usr/share/doc/myapp/README
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.documentation,
+        vec![
+            "man:myapp(1)".to_owned(),
+            "https://example.com/docs".to_owned(),
+            "file:/usr/share/doc/myapp/README".to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn test_documentation_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    Description = Test target
+    Documentation = https://example.com/target-docs
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        target.common.unit.documentation,
+        vec!["https://example.com/target-docs".to_owned()]
+    );
+}
+
+#[test]
+fn test_documentation_target_unit_empty_by_default() {
+    let test_target_str = r#"
+    [Unit]
+    Description = Test target
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert!(
+        target.common.unit.documentation.is_empty(),
+        "Target Documentation should be empty when not specified"
+    );
+}
+
+#[test]
+fn test_documentation_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Documentation = man:mysocket(5)
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.common.unit.documentation,
+        vec!["man:mysocket(5)".to_owned()]
+    );
+}
+
+#[test]
+fn test_documentation_socket_unit_empty_by_default() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.common.unit.documentation.is_empty(),
+        "Socket Documentation should be empty when not specified"
+    );
+}
+
+#[test]
+fn test_documentation_preserved_after_unit_conversion_service() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    Documentation = https://example.com/service-docs
+    Documentation = man:myservice(8)
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/myservice.service"),
+    )
+    .unwrap();
+    let unit: Unit = service.try_into().unwrap();
+
+    assert_eq!(
+        unit.common.unit.documentation,
+        vec![
+            "https://example.com/service-docs".to_owned(),
+            "man:myservice(8)".to_owned(),
+        ],
+        "Documentation should be preserved through TryInto<Unit> conversion"
+    );
+}
+
+#[test]
+fn test_documentation_preserved_after_unit_conversion_target() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_target_str = r#"
+    [Unit]
+    Description = My target
+    Documentation = https://example.com/target
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target =
+        crate::units::parse_target(parsed_file, &std::path::PathBuf::from("/path/to/my.target"))
+            .unwrap();
+    let unit: Unit = target.try_into().unwrap();
+
+    assert_eq!(
+        unit.common.unit.documentation,
+        vec!["https://example.com/target".to_owned()],
+        "Documentation should be preserved through TryInto<Unit> conversion for targets"
+    );
+}
+
+#[test]
+fn test_documentation_preserved_after_unit_conversion_socket() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Unit]
+    Documentation = man:mysock(7)
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket =
+        crate::units::parse_socket(parsed_file, &std::path::PathBuf::from("/path/to/my.socket"))
+            .unwrap();
+    let unit: Unit = socket.try_into().unwrap();
+
+    assert_eq!(
+        unit.common.unit.documentation,
+        vec!["man:mysock(7)".to_owned()],
+        "Documentation should be preserved through TryInto<Unit> conversion for sockets"
+    );
+}
+
+#[test]
+fn test_documentation_empty_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/myservice.service"),
+    )
+    .unwrap();
+    let unit: Unit = service.try_into().unwrap();
+
+    assert!(
+        unit.common.unit.documentation.is_empty(),
+        "Empty Documentation should remain empty through TryInto<Unit> conversion"
+    );
+}
+
+#[test]
 fn test_conflicts_parsing_empty_by_default() {
     let test_service_str = r#"
     [Service]
