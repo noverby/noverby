@@ -982,13 +982,13 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#MemoryMin=">MemoryMin=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored (bytes/percentage/infinity); no runtime cgroup enforcement yet</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#MemoryLow=">MemoryLow=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored (bytes/percentage/infinity); no runtime cgroup enforcement yet</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#MemoryHigh=">MemoryHigh=</a></td>
