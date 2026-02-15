@@ -930,6 +930,10 @@ pub struct ExecConfig {
     pub tty_vhangup: bool,
     /// TTYVTDisallocate= — deallocate or clear the VT before use.
     pub tty_vt_disallocate: bool,
+    /// IgnoreSIGPIPE= — if true (the default), SIGPIPE is set to SIG_IGN before
+    /// exec'ing the service binary. When false, the default SIGPIPE disposition
+    /// (terminate) is left in place. Matches systemd.exec(5).
+    pub ignore_sigpipe: bool,
 }
 
 #[cfg(target_os = "linux")]
