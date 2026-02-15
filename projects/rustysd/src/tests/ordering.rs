@@ -2501,3 +2501,319 @@ fn test_cycle_detection_many_nodes_one_cycle() {
         "Graph should be a DAG after breaking cycles in the 10-node graph"
     );
 }
+
+// ============================================================
+// PartOf= dependency resolution tests
+// ============================================================
+
+#[test]
+fn test_part_of_fills_part_of_by() {
+    // When unit A has PartOf=B, then B should get part_of_by=[A]
+    let target = make_target(
+        "network.target",
+        r#"
+        [Unit]
+        Description = Network
+        DefaultDependencies = no
+        "#,
+    );
+
+    let service = make_service(
+        "helper.service",
+        r#"
+        [Unit]
+        Description = Helper
+        PartOf = network.target
+        DefaultDependencies = no
+        "#,
+    );
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target.id.clone(), target);
+    unit_table.insert(service.id.clone(), service);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+
+    let target_id = crate::units::UnitId {
+        name: "network.target".to_owned(),
+        kind: crate::units::UnitIdKind::Target,
+    };
+    let service_id = crate::units::UnitId {
+        name: "helper.service".to_owned(),
+        kind: crate::units::UnitIdKind::Service,
+    };
+
+    // The target should have part_of_by pointing to the service
+    let target_unit = unit_table.get(&target_id).unwrap();
+    assert!(
+        target_unit
+            .common
+            .dependencies
+            .part_of_by
+            .contains(&service_id),
+        "network.target should have helper.service in part_of_by"
+    );
+
+    // The service should have part_of pointing to the target
+    let service_unit = unit_table.get(&service_id).unwrap();
+    assert!(
+        service_unit
+            .common
+            .dependencies
+            .part_of
+            .contains(&target_id),
+        "helper.service should have network.target in part_of"
+    );
+}
+
+#[test]
+fn test_part_of_multiple_fills_part_of_by() {
+    // When units A and B both have PartOf=C, then C should get part_of_by=[A, B]
+    let target = make_target(
+        "app.target",
+        r#"
+        [Unit]
+        Description = App
+        DefaultDependencies = no
+        "#,
+    );
+
+    let svc_a = make_service(
+        "worker-a.service",
+        r#"
+        [Unit]
+        PartOf = app.target
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let svc_b = make_service(
+        "worker-b.service",
+        r#"
+        [Unit]
+        PartOf = app.target
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target.id.clone(), target);
+    unit_table.insert(svc_a.id.clone(), svc_a);
+    unit_table.insert(svc_b.id.clone(), svc_b);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+
+    let target_id = crate::units::UnitId {
+        name: "app.target".to_owned(),
+        kind: crate::units::UnitIdKind::Target,
+    };
+    let svc_a_id = crate::units::UnitId {
+        name: "worker-a.service".to_owned(),
+        kind: crate::units::UnitIdKind::Service,
+    };
+    let svc_b_id = crate::units::UnitId {
+        name: "worker-b.service".to_owned(),
+        kind: crate::units::UnitIdKind::Service,
+    };
+
+    let target_unit = unit_table.get(&target_id).unwrap();
+    assert!(
+        target_unit
+            .common
+            .dependencies
+            .part_of_by
+            .contains(&svc_a_id),
+        "app.target should have worker-a.service in part_of_by"
+    );
+    assert!(
+        target_unit
+            .common
+            .dependencies
+            .part_of_by
+            .contains(&svc_b_id),
+        "app.target should have worker-b.service in part_of_by"
+    );
+}
+
+#[test]
+fn test_part_of_kill_before_this_includes_part_of_by() {
+    // kill_before_this() should include part_of_by units so they are stopped
+    // when the target unit is stopped
+    let target = make_target(
+        "network.target",
+        r#"
+        [Unit]
+        Description = Network
+        DefaultDependencies = no
+        "#,
+    );
+
+    let service = make_service(
+        "net-helper.service",
+        r#"
+        [Unit]
+        PartOf = network.target
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target.id.clone(), target);
+    unit_table.insert(service.id.clone(), service);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+
+    let target_id = crate::units::UnitId {
+        name: "network.target".to_owned(),
+        kind: crate::units::UnitIdKind::Target,
+    };
+    let service_id = crate::units::UnitId {
+        name: "net-helper.service".to_owned(),
+        kind: crate::units::UnitIdKind::Service,
+    };
+
+    let target_unit = unit_table.get(&target_id).unwrap();
+    let kill_list = target_unit.common.dependencies.kill_before_this();
+    assert!(
+        kill_list.contains(&service_id),
+        "kill_before_this() should include PartOf dependents: {:?}",
+        kill_list
+    );
+}
+
+#[test]
+fn test_part_of_refs_by_name_includes_part_of() {
+    // PartOf targets should be included in refs_by_name so pruning works correctly
+    let service = make_service(
+        "helper.service",
+        r#"
+        [Unit]
+        PartOf = network.target
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let target_id = crate::units::UnitId {
+        name: "network.target".to_owned(),
+        kind: crate::units::UnitIdKind::Target,
+    };
+
+    assert!(
+        service.common.unit.refs_by_name.contains(&target_id),
+        "refs_by_name should include PartOf unit IDs"
+    );
+}
+
+#[test]
+fn test_part_of_no_part_of_by_when_not_specified() {
+    // Units without PartOf= should have empty part_of_by after fill_dependencies
+    let target = make_target(
+        "basic.target",
+        r#"
+        [Unit]
+        Description = Basic
+        DefaultDependencies = no
+        "#,
+    );
+
+    let service = make_service(
+        "simple.service",
+        r#"
+        [Unit]
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target.id.clone(), target);
+    unit_table.insert(service.id.clone(), service);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+
+    let target_id = crate::units::UnitId {
+        name: "basic.target".to_owned(),
+        kind: crate::units::UnitIdKind::Target,
+    };
+
+    let target_unit = unit_table.get(&target_id).unwrap();
+    assert!(
+        target_unit.common.dependencies.part_of_by.is_empty(),
+        "part_of_by should be empty when no unit declares PartOf= this unit"
+    );
+}
+
+#[test]
+fn test_part_of_combined_with_requires() {
+    // PartOf= and Requires= can both point to the same unit.
+    // Both relationships should be tracked independently.
+    let target = make_target(
+        "app.target",
+        r#"
+        [Unit]
+        Description = App
+        DefaultDependencies = no
+        "#,
+    );
+
+    let service = make_service(
+        "component.service",
+        r#"
+        [Unit]
+        PartOf = app.target
+        Requires = app.target
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(target.id.clone(), target);
+    unit_table.insert(service.id.clone(), service);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+
+    let target_id = crate::units::UnitId {
+        name: "app.target".to_owned(),
+        kind: crate::units::UnitIdKind::Target,
+    };
+    let service_id = crate::units::UnitId {
+        name: "component.service".to_owned(),
+        kind: crate::units::UnitIdKind::Service,
+    };
+
+    let target_unit = unit_table.get(&target_id).unwrap();
+    assert!(
+        target_unit
+            .common
+            .dependencies
+            .part_of_by
+            .contains(&service_id),
+        "app.target should have component.service in part_of_by"
+    );
+    assert!(
+        target_unit
+            .common
+            .dependencies
+            .required_by
+            .contains(&service_id),
+        "app.target should have component.service in required_by"
+    );
+
+    // kill_before_this should include the service from both relationships
+    let kill_list = target_unit.common.dependencies.kill_before_this();
+    assert!(
+        kill_list.contains(&service_id),
+        "kill_before_this() should include the service"
+    );
+}

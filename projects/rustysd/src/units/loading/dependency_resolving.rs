@@ -151,6 +151,7 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
     let mut before = Vec::new();
     let mut after = Vec::new();
     let mut conflicts = Vec::new();
+    let mut part_of_by: Vec<(UnitId, UnitId)> = Vec::new();
 
     for unit in (*units).values_mut() {
         trace!("Fill deps for unit: {:?}", unit.id);
@@ -178,6 +179,11 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
         }
         for id in &conf.required_by {
             required_by.push((unit.id.clone(), id.clone()));
+        }
+        // PartOf=B on unit A means: when B stops, A stops too.
+        // Collect (target, dependent) pairs so we can fill part_of_by on the target.
+        for id in &conf.part_of {
+            part_of_by.push((id.clone(), unit.id.clone()));
         }
     }
 
@@ -233,6 +239,15 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
             unit.common.dependencies.conflicted_by.push(conflicting);
         } else {
             warn!("Dependency {conflicted:?} conflicted by {conflicting:?}, but {conflicted:?} not found");
+        }
+    }
+
+    // PartOf= : unit A has PartOf=B, so B gets part_of_by=A
+    for (target, dependent) in part_of_by {
+        if let Some(unit) = units.get_mut(&target) {
+            unit.common.dependencies.part_of_by.push(dependent);
+        } else {
+            warn!("Dependency {dependent:?} is PartOf {target:?}, but {target:?} not found");
         }
     }
 

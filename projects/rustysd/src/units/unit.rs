@@ -745,6 +745,14 @@ pub struct Dependencies {
     pub conflicted_by: Vec<UnitId>,
     pub before: Vec<UnitId>,
     pub after: Vec<UnitId>,
+
+    /// Units this unit is "part of". When the listed units are stopped or
+    /// restarted, this unit is also stopped or restarted.
+    /// Matches systemd's `PartOf=` setting.
+    pub part_of: Vec<UnitId>,
+    /// Reverse of `part_of`: units that declared `PartOf=` pointing to this unit.
+    /// When this unit is stopped or restarted, all `part_of_by` units are too.
+    pub part_of_by: Vec<UnitId>,
 }
 
 impl Dependencies {
@@ -757,6 +765,8 @@ impl Dependencies {
         self.before.sort();
         self.after.sort();
         self.requires.sort();
+        self.part_of.sort();
+        self.part_of_by.sort();
         // dedup after sorting
         self.wants.dedup();
         self.requires.dedup();
@@ -766,12 +776,16 @@ impl Dependencies {
         self.conflicted_by.dedup();
         self.before.dedup();
         self.after.dedup();
+        self.part_of.dedup();
+        self.part_of_by.dedup();
     }
 
     #[must_use]
     pub fn kill_before_this(&self) -> Vec<UnitId> {
         let mut ids = Vec::new();
         ids.extend(self.required_by.iter().cloned());
+        // Units that declared PartOf= this unit should also stop when this unit stops
+        ids.extend(self.part_of_by.iter().cloned());
         ids
     }
     #[must_use]
@@ -807,6 +821,8 @@ impl Dependencies {
         Self::remove_from_vec(&mut self.conflicted_by, id);
         Self::remove_from_vec(&mut self.before, id);
         Self::remove_from_vec(&mut self.after, id);
+        Self::remove_from_vec(&mut self.part_of, id);
+        Self::remove_from_vec(&mut self.part_of_by, id);
     }
 
     #[must_use]

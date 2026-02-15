@@ -157,6 +157,7 @@ pub fn parse_unit_section(
     let condition_path_is_directory = section.remove("CONDITIONPATHISDIRECTORY");
     let success_action = section.remove("SUCCESSACTION");
     let failure_action = section.remove("FAILUREACTION");
+    let part_of = section.remove("PARTOF");
 
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Unit] section: {key}");
@@ -220,6 +221,7 @@ pub fn parse_unit_section(
         conflicts: map_tuples_to_second(split_list_values(conflicts.unwrap_or_default())),
         after: map_tuples_to_second(split_list_values(after.unwrap_or_default())),
         before: map_tuples_to_second(split_list_values(before.unwrap_or_default())),
+        part_of: map_tuples_to_second(split_list_values(part_of.unwrap_or_default())),
         default_dependencies,
         conditions,
         success_action,
