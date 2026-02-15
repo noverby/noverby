@@ -203,6 +203,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             restrict_namespaces: parsed.restrict_namespaces,
             restrict_realtime: parsed.restrict_realtime,
             restrict_address_families: parsed.restrict_address_families,
+            system_call_error_number: parsed.system_call_error_number,
         })
     }
 }
