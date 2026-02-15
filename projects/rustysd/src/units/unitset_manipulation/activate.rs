@@ -109,7 +109,16 @@ pub fn unstarted_deps(id: &UnitId, run_info: &RuntimeInfo) -> Vec<UnitId> {
                 );
                 return acc;
             };
-            let status_locked = elem_unit.common.status.read().unwrap();
+            let status_locked = match elem_unit.common.status.read() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!(
+                        "Status lock poisoned for unit {:?} (dependency of {:?}). Treating as ready.",
+                        elem, id
+                    );
+                    poisoned.into_inner()
+                }
+            };
             let ready = if required {
                 status_locked.is_started()
             } else {
@@ -175,7 +184,16 @@ pub fn activate_unit(
         .collect();
     for conflict_id in &conflicting_ids {
         if let Some(conflict_unit) = run_info.unit_table.get(conflict_id) {
-            let status = conflict_unit.common.status.read().unwrap();
+            let status = match conflict_unit.common.status.read() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!(
+                        "Status lock poisoned for conflicting unit {:?}. Skipping conflict check.",
+                        conflict_id
+                    );
+                    poisoned.into_inner()
+                }
+            };
             if status.is_started() {
                 drop(status);
                 trace!(
