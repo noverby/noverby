@@ -2,7 +2,9 @@ use log::{error, trace};
 
 use crate::runtime_info::{ArcMutRuntimeInfo, PidEntry, RuntimeInfo};
 use crate::signal_handler::ChildTermination;
-use crate::units::{ServiceRestart, ServiceType, Specific, UnitOperationErrorReason, UnitStatus};
+use crate::units::{
+    ServiceRestart, ServiceType, Specific, Timeout, UnitOperationErrorReason, UnitStatus,
+};
 
 pub fn service_exit_handler_new_thread(
     pid: nix::unistd::Pid,
@@ -92,7 +94,7 @@ pub fn service_exit_handler(
 
     trace!("Check if we want to restart the unit");
     let name = &unit.id.name;
-    let restart_unit = {
+    let (restart_unit, restart_sec) = {
         if let Specific::Service(srvc) = &unit.specific {
             trace!(
                 "Service with id: {:?}, name: {} pid: {} exited with: {:?}",
@@ -102,9 +104,12 @@ pub fn service_exit_handler(
                 code
             );
 
-            srvc.conf.restart == ServiceRestart::Always
+            (
+                srvc.conf.restart == ServiceRestart::Always,
+                srvc.conf.restart_sec.clone(),
+            )
         } else {
-            false
+            (false, None)
         }
     };
 
@@ -118,6 +123,21 @@ pub fn service_exit_handler(
     }
 
     if restart_unit {
+        if let Some(ref timeout) = restart_sec {
+            match timeout {
+                Timeout::Duration(dur) => {
+                    trace!(
+                        "Waiting {:?} (RestartSec) before restarting service {name}",
+                        dur
+                    );
+                    std::thread::sleep(*dur);
+                }
+                Timeout::Infinity => {
+                    trace!("RestartSec=infinity for service {name}, not restarting");
+                    return Ok(());
+                }
+            }
+        }
         trace!("Restart service {name} after it died");
         crate::units::reactivate_unit(srvc_id, run_info).map_err(|e| format!("{e}"))?;
     } else {

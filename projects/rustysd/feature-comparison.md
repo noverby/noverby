@@ -1205,8 +1205,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#RestartSec=">RestartSec=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✅</td>
+  <td>Configures the time to sleep before restarting a service. Supports seconds, compound durations (e.g. "1min 30s"), and infinity.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#TimeoutStartSec=">TimeoutStartSec=</a></td>

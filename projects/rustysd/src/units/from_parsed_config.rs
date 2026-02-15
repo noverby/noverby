@@ -63,6 +63,7 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 accept: conf.srvc.accept,
                 dbus_name: conf.srvc.dbus_name,
                 restart: conf.srvc.restart,
+                restart_sec: conf.srvc.restart_sec,
                 notifyaccess: conf.srvc.notifyaccess,
                 exec: conf.srvc.exec,
                 startpre: conf.srvc.startpre,
