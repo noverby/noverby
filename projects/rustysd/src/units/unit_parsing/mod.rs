@@ -58,6 +58,11 @@ pub enum UnitCondition {
     /// Checks whether the specified path exists as a regular file and has
     /// at least one execute bit set. See systemd.unit(5).
     FileIsExecutable { path: String, negate: bool },
+    /// ConditionFileNotEmpty=/some/path (true if path exists as a regular file with size > 0)
+    /// ConditionFileNotEmpty=!/some/path (true if path does NOT exist or is empty)
+    /// Checks whether the specified path exists as a regular file and has
+    /// a non-zero size. See systemd.unit(5).
+    FileNotEmpty { path: String, negate: bool },
 }
 
 /// The kind of virtualization detected (VM or container).
@@ -444,6 +449,20 @@ impl UnitCondition {
                     !is_executable
                 } else {
                     is_executable
+                }
+            }
+            UnitCondition::FileNotEmpty { path, negate } => {
+                let is_non_empty = match std::fs::metadata(path) {
+                    Ok(meta) => {
+                        // Must be a regular file with size > 0
+                        meta.is_file() && meta.len() > 0
+                    }
+                    Err(_) => false,
+                };
+                if *negate {
+                    !is_non_empty
+                } else {
+                    is_non_empty
                 }
             }
         }

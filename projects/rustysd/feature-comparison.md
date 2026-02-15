@@ -1977,8 +1977,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionFileNotEmpty=">ConditionFileNotEmpty=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed, stored, and evaluated at runtime. Checks the path exists as a regular file with non-zero size. Supports negation with '!' prefix.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionFileIsExecutable=">ConditionFileIsExecutable=</a></td>
