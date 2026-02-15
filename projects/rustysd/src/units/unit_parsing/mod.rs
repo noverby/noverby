@@ -68,6 +68,11 @@ pub enum UnitCondition {
     /// Checks whether the specified kernel module is currently loaded.
     /// On Linux this is determined by reading /proc/modules. See systemd.unit(5).
     KernelModuleLoaded { module: String, negate: bool },
+    /// ConditionDirectoryNotEmpty=/some/path (true if path exists as a directory and is not empty)
+    /// ConditionDirectoryNotEmpty=!/some/path (true if path does NOT exist, is not a directory, or is empty)
+    /// Checks whether the specified path exists, is a directory, and contains
+    /// at least one entry (besides "." and ".."). See systemd.unit(5).
+    DirectoryNotEmpty { path: String, negate: bool },
 }
 
 /// The kind of virtualization detected (VM or container).
@@ -487,6 +492,20 @@ impl UnitCondition {
                     !is_loaded
                 } else {
                     is_loaded
+                }
+            }
+            UnitCondition::DirectoryNotEmpty { path, negate } => {
+                let is_non_empty = match std::fs::read_dir(path) {
+                    Ok(mut entries) => {
+                        // A directory is "not empty" if it contains at least one entry
+                        entries.next().is_some()
+                    }
+                    Err(_) => false, // doesn't exist or isn't a directory
+                };
+                if *negate {
+                    !is_non_empty
+                } else {
+                    is_non_empty
                 }
             }
         }
