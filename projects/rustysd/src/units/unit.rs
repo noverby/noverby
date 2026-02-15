@@ -880,6 +880,7 @@ pub struct PlatformSpecificServiceFields {}
 /// The immutable config of a service unit
 pub struct ServiceConfig {
     pub restart: ServiceRestart,
+    pub restart_sec: Option<Timeout>,
     pub accept: bool,
     pub notifyaccess: NotifyKind,
     pub exec: Commandline,

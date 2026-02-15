@@ -82,6 +82,7 @@ pub struct ParsedSocketSection {
 }
 pub struct ParsedServiceSection {
     pub restart: ServiceRestart,
+    pub restart_sec: Option<Timeout>,
     pub accept: bool,
     pub notifyaccess: NotifyKind,
     pub exec: Commandline,
