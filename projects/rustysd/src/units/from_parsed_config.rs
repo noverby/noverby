@@ -240,6 +240,7 @@ fn make_common_from_parsed(
             documentation: unit.documentation,
             refs_by_name,
             default_dependencies: unit.default_dependencies,
+            ignore_on_isolate: unit.ignore_on_isolate,
             conditions: unit.conditions,
             success_action: unit.success_action,
             failure_action: unit.failure_action,

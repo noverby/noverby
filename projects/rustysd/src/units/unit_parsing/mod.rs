@@ -126,6 +126,10 @@ pub struct ParsedUnitSection {
     /// Defaults to true, matching systemd behavior.
     pub default_dependencies: bool,
 
+    /// If true, this unit will not be stopped when isolating to another target.
+    /// Defaults to false, matching systemd's `IgnoreOnIsolate=` setting.
+    pub ignore_on_isolate: bool,
+
     /// Conditions that must all be true for the unit to start.
     /// If any condition fails, the unit is skipped (not an error).
     /// Matches systemd's ConditionPathExists=, ConditionPathIsDirectory=, etc.
@@ -152,6 +156,7 @@ impl Default for ParsedUnitSection {
             after: Vec::new(),
             part_of: Vec::new(),
             default_dependencies: true,
+            ignore_on_isolate: false,
             conditions: Vec::new(),
             success_action: UnitAction::default(),
             failure_action: UnitAction::default(),

@@ -7289,6 +7289,196 @@ fn test_success_exit_status_no_unsupported_warning() {
     );
 }
 
+// ── IgnoreOnIsolate= parsing tests ────────────────────────────────────
+
+#[test]
+fn test_ignore_on_isolate_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(!service.common.unit.ignore_on_isolate);
+}
+
+#[test]
+fn test_ignore_on_isolate_set_true() {
+    let test_service_str = r#"
+    [Unit]
+    IgnoreOnIsolate = yes
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.common.unit.ignore_on_isolate);
+}
+
+#[test]
+fn test_ignore_on_isolate_set_true_alt() {
+    let test_service_str = r#"
+    [Unit]
+    IgnoreOnIsolate = true
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.common.unit.ignore_on_isolate);
+}
+
+#[test]
+fn test_ignore_on_isolate_set_false() {
+    let test_service_str = r#"
+    [Unit]
+    IgnoreOnIsolate = no
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(!service.common.unit.ignore_on_isolate);
+}
+
+#[test]
+fn test_ignore_on_isolate_set_false_alt() {
+    let test_service_str = r#"
+    [Unit]
+    IgnoreOnIsolate = false
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(!service.common.unit.ignore_on_isolate);
+}
+
+#[test]
+fn test_ignore_on_isolate_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    IgnoreOnIsolate = yes
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert!(unit.common.unit.ignore_on_isolate);
+}
+
+#[test]
+fn test_ignore_on_isolate_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert!(!unit.common.unit.ignore_on_isolate);
+}
+
+#[test]
+fn test_ignore_on_isolate_with_other_unit_settings() {
+    let test_service_str = r#"
+    [Unit]
+    Description = Test service with IgnoreOnIsolate
+    IgnoreOnIsolate = yes
+    DefaultDependencies = no
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.common.unit.ignore_on_isolate);
+    assert!(!service.common.unit.default_dependencies);
+    assert_eq!(
+        service.common.unit.description,
+        "Test service with IgnoreOnIsolate"
+    );
+}
+
+#[test]
+fn test_ignore_on_isolate_no_unsupported_warning() {
+    // IgnoreOnIsolate= should be parsed without generating an "unsupported setting" warning
+    let test_service_str = r#"
+    [Unit]
+    IgnoreOnIsolate = yes
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    );
+
+    assert!(service.is_ok());
+    assert!(service.unwrap().common.unit.ignore_on_isolate);
+}
+
 // ── .mount in dependency lists ─────────────────────────────────────────
 
 #[test]
