@@ -396,6 +396,11 @@ pub enum StdIoOption {
     Journal,
     /// Log to /dev/kmsg (not yet implemented, treated as inherit)
     Kmsg,
+    /// Connect to the TTY device (from TTYPath=, default /dev/console).
+    /// When StandardInput is also tty, stdout/stderr share the same TTY fd.
+    /// When StandardInput is NOT tty, the TTY is opened independently for output.
+    /// Matches systemd's `StandardOutput=tty` / `StandardError=tty`.
+    Tty,
     /// Write to a specific file
     File(PathBuf),
     /// Append to a specific file

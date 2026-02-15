@@ -247,13 +247,17 @@ fn start_service_with_filedescriptors(
             None | Some(StdIoOption::Inherit)
                 | Some(StdIoOption::Journal)
                 | Some(StdIoOption::Kmsg)
+                | Some(StdIoOption::Tty)
         ),
         stderr_is_inherit: matches!(
             conf.exec_config.stderr_path,
             None | Some(StdIoOption::Inherit)
                 | Some(StdIoOption::Journal)
                 | Some(StdIoOption::Kmsg)
+                | Some(StdIoOption::Tty)
         ),
+        stdout_is_tty: matches!(conf.exec_config.stdout_path, Some(StdIoOption::Tty)),
+        stderr_is_tty: matches!(conf.exec_config.stderr_path, Some(StdIoOption::Tty)),
     };
 
     let marshalled_config = serde_json::to_string(&exec_helper_conf).unwrap();

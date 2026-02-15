@@ -45,14 +45,22 @@ pub struct ExecHelperConfig {
     #[serde(default)]
     pub tty_vt_disallocate: bool,
 
-    /// Whether StandardOutput is set to inherit (or journal/kmsg/unset).
+    /// Whether StandardOutput is set to inherit (or journal/kmsg/tty/unset).
     /// When true AND stdin is a TTY, stdout will be dup'd from the TTY fd.
     #[serde(default = "default_true")]
     pub stdout_is_inherit: bool,
-    /// Whether StandardError is set to inherit (or journal/kmsg/unset).
+    /// Whether StandardError is set to inherit (or journal/kmsg/tty/unset).
     /// When true AND stdin is a TTY, stderr will be dup'd from the TTY fd.
     #[serde(default = "default_true")]
     pub stderr_is_inherit: bool,
+    /// Whether StandardOutput is explicitly set to tty.
+    /// When true AND stdin is NOT a TTY, the TTY is opened independently for stdout.
+    #[serde(default)]
+    pub stdout_is_tty: bool,
+    /// Whether StandardError is explicitly set to tty.
+    /// When true AND stdin is NOT a TTY, the TTY is opened independently for stderr.
+    #[serde(default)]
+    pub stderr_is_tty: bool,
 }
 
 fn default_true() -> bool {
@@ -269,6 +277,63 @@ fn tty_reset_destructive(config: &ExecHelperConfig) {
 
 /// Set up stdin for the service based on the StandardInput= setting.
 /// Called after reading the exec_helper config (which consumed the original stdin).
+/// When StandardOutput=tty or StandardError=tty is set but StandardInput is NOT a TTY,
+/// we need to independently open the TTY for output. This matches systemd's behavior
+/// where `StandardOutput=tty` always connects stdout to the TTY regardless of stdin.
+fn setup_tty_output(config: &ExecHelperConfig) {
+    if !config.stdout_is_tty && !config.stderr_is_tty {
+        return;
+    }
+    // Only needed when stdin is NOT a TTY (when stdin IS a TTY, setup_stdin
+    // already dup2'd the TTY fd onto stdout/stderr via stdout_is_inherit).
+    match config.stdin_option {
+        StandardInput::Tty | StandardInput::TtyForce | StandardInput::TtyFail => return,
+        StandardInput::Null => {}
+    }
+
+    let tty_path = config
+        .tty_path
+        .as_deref()
+        .unwrap_or(Path::new("/dev/console"));
+    let tty_path_cstr = match std::ffi::CString::new(tty_path.to_string_lossy().as_bytes()) {
+        Ok(c) => c,
+        Err(_) => {
+            eprintln!(
+                "[EXEC_HELPER {}] Invalid TTYPath for output: {:?}",
+                config.name, tty_path
+            );
+            return;
+        }
+    };
+
+    let tty_fd = open_terminal(&tty_path_cstr, libc::O_WRONLY | libc::O_NOCTTY);
+    if tty_fd < 0 {
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to open TTY {:?} for output: {}",
+            config.name,
+            tty_path,
+            std::io::Error::last_os_error()
+        );
+        return;
+    }
+
+    if config.stdout_is_tty {
+        unsafe {
+            libc::dup2(tty_fd, libc::STDOUT_FILENO);
+        }
+    }
+    if config.stderr_is_tty {
+        unsafe {
+            libc::dup2(tty_fd, libc::STDERR_FILENO);
+        }
+    }
+    if tty_fd != libc::STDOUT_FILENO && tty_fd != libc::STDERR_FILENO {
+        unsafe {
+            libc::close(tty_fd);
+        }
+    }
+}
+
 fn setup_stdin(config: &ExecHelperConfig) {
     match config.stdin_option {
         StandardInput::Null => {
@@ -453,6 +518,10 @@ pub fn run_exec_helper() {
 
     // Set up stdin for the actual service process
     setup_stdin(&config);
+
+    // If StandardOutput=tty or StandardError=tty but stdin is NOT a TTY,
+    // open the TTY independently for output.
+    setup_tty_output(&config);
 
     // Apply LimitNOFILE resource limit before anything else
     if let Some(ref limit) = config.limit_nofile {
