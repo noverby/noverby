@@ -221,6 +221,23 @@ fn start_service_with_filedescriptors(
             env.push(("LISTEN_FDS".to_owned(), format!("{}", names.len())));
             env.push(("LISTEN_FDNAMES".to_owned(), names.join(":")));
             env.push(("NOTIFY_SOCKET".to_owned(), notifications_path));
+
+            // UnsetEnvironment= is applied as the final step (see systemd.exec(5)).
+            // It can undo assignments from any source, including Environment=,
+            // EnvironmentFile=, PassEnvironment=, and even internal variables.
+            // If an entry contains '=' it is a VAR=VALUE match (only exact match
+            // is removed). Otherwise it is a plain variable name and any
+            // assignment with that name is removed regardless of value.
+            for entry in &conf.exec_config.unset_environment {
+                if let Some((key, value)) = entry.split_once('=') {
+                    // Remove only the exact VAR=VALUE match
+                    env.retain(|(ek, ev)| !(ek == key && ev == value));
+                } else {
+                    // Remove any assignment with this variable name
+                    env.retain(|(ek, _)| ek != entry);
+                }
+            }
+
             env
         },
         group: resolve_gid(&conf.exec_config.group)

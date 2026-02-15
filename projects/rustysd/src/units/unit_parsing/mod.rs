@@ -284,6 +284,13 @@ pub struct ParsedExecSection {
     /// Multiple patterns may be specified (the setting accumulates).
     /// See systemd.exec(5).
     pub import_credentials: Vec<String>,
+    /// UnsetEnvironment= — a list of environment variable names or variable
+    /// assignments (VAR=VALUE) to remove from the final environment passed to
+    /// executed processes. If a plain name is given, any assignment with that
+    /// name is removed regardless of value. If a VAR=VALUE assignment is given,
+    /// only an exact match is removed. Applied as the final step when
+    /// compiling the environment block. See systemd.exec(5).
+    pub unset_environment: Vec<String>,
 }
 
 /// The type of utmp/wtmp record to create for a service.

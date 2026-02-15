@@ -281,6 +281,7 @@ pub fn parse_exec_section(
     let utmp_identifier = section.remove("UTMPIDENTIFIER");
     let utmp_mode = section.remove("UTMPMODE");
     let import_credential = section.remove("IMPORTCREDENTIAL");
+    let unset_environment = section.remove("UNSETENVIRONMENT");
 
     let user = match user {
         None => None,
@@ -591,6 +592,62 @@ pub fn parse_exec_section(
                         .collect::<Vec<_>>()
                 })
                 .collect(),
+            None => Vec::new(),
+        },
+        unset_environment: match unset_environment {
+            Some(vec) => {
+                // Each directive is a space-separated list of variable names
+                // or VAR=VALUE assignments. Multiple directives accumulate.
+                // Tokens may be optionally quoted with double quotes (same
+                // rules as Environment=). If an empty string is assigned,
+                // the list is reset.
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        // Empty string resets the list
+                        entries.clear();
+                        continue;
+                    }
+                    // Split on whitespace, respecting double-quoted tokens
+                    let mut chars = trimmed.chars().peekable();
+                    while chars.peek().is_some() {
+                        // skip whitespace
+                        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+                            chars.next();
+                        }
+                        if chars.peek().is_none() {
+                            break;
+                        }
+                        let mut token = String::new();
+                        if chars.peek() == Some(&'"') {
+                            // quoted token — consume until closing quote
+                            chars.next(); // skip opening quote
+                            while let Some(&c) = chars.peek() {
+                                if c == '"' {
+                                    chars.next();
+                                    break;
+                                }
+                                token.push(c);
+                                chars.next();
+                            }
+                        } else {
+                            // unquoted token — consume until whitespace
+                            while let Some(&c) = chars.peek() {
+                                if c.is_whitespace() {
+                                    break;
+                                }
+                                token.push(c);
+                                chars.next();
+                            }
+                        }
+                        if !token.is_empty() {
+                            entries.push(token);
+                        }
+                    }
+                }
+                entries
+            }
             None => Vec::new(),
         },
     })
