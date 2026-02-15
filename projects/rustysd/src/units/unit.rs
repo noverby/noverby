@@ -742,6 +742,11 @@ pub struct UnitConfig {
     /// Matches systemd's `DefaultInstance=` setting in the `[Install]` section.
     pub default_instance: Option<String>,
 
+    /// If true, this unit may be used with `systemctl isolate`.
+    /// Defaults to false, matching systemd's `AllowIsolate=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub allow_isolate: bool,
+
     /// Action to take when a job for this unit times out.
     /// Matches systemd's `JobTimeoutAction=` setting.
     /// Uses the same action values as `SuccessAction=`/`FailureAction=`.

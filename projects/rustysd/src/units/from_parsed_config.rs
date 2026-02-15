@@ -257,6 +257,7 @@ fn make_common_from_parsed(
             success_action: unit.success_action,
             failure_action: unit.failure_action,
             job_timeout_action: unit.job_timeout_action,
+            allow_isolate: unit.allow_isolate,
             aliases: install.alias,
             default_instance: install.default_instance,
         },
