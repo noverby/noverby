@@ -908,6 +908,18 @@ pub struct ParsedSocketSection {
     /// See systemd.socket(5).
     pub max_connections_per_source: u64,
 
+    /// SocketMode= — the file system access mode for the socket node
+    /// (AF_UNIX sockets and FIFOs). Takes an octal access mode, e.g. 0666.
+    /// Defaults to 0666. Parsed and stored; no runtime enforcement yet.
+    /// See systemd.socket(5).
+    pub socket_mode: Option<u32>,
+
+    /// DirectoryMode= — the file system access mode for directories created
+    /// for the socket (if needed). Takes an octal access mode, e.g. 0755.
+    /// Defaults to 0755. Parsed and stored; no runtime enforcement yet.
+    /// See systemd.socket(5).
+    pub directory_mode: Option<u32>,
+
     pub exec_section: ParsedExecSection,
 }
 pub struct ParsedServiceSection {

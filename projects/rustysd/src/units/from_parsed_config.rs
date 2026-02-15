@@ -146,6 +146,8 @@ pub fn unit_from_parsed_socket(conf: ParsedSocketConfig) -> Result<Unit, String>
                 sockets: conf.sock.sockets.into_iter().map(Into::into).collect(),
                 max_connections: conf.sock.max_connections,
                 max_connections_per_source: conf.sock.max_connections_per_source,
+                socket_mode: conf.sock.socket_mode,
+                directory_mode: conf.sock.directory_mode,
             },
             state: RwLock::new(SocketState {
                 common: CommonState::default(),

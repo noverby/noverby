@@ -34597,3 +34597,592 @@ fn test_max_connections_large_value() {
         "MaxConnectionsPerSource should default to the large MaxConnections value"
     );
 }
+
+// ===============================================================
+// SocketMode= and DirectoryMode= socket setting tests
+// ===============================================================
+
+#[test]
+fn test_socket_mode_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.socket_mode.is_none(),
+        "SocketMode should default to None"
+    );
+}
+
+#[test]
+fn test_socket_mode_0666() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketMode = 0666
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.socket_mode,
+        Some(0o0666),
+        "SocketMode=0666 should be Some(0o0666)"
+    );
+}
+
+#[test]
+fn test_socket_mode_0660() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketMode = 0660
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.socket_mode,
+        Some(0o0660),
+        "SocketMode=0660 should be Some(0o0660)"
+    );
+}
+
+#[test]
+fn test_socket_mode_0600() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketMode = 0600
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.socket_mode,
+        Some(0o0600),
+        "SocketMode=0600 should be Some(0o0600)"
+    );
+}
+
+#[test]
+fn test_socket_mode_0000() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketMode = 0000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.socket_mode,
+        Some(0o0000),
+        "SocketMode=0000 should be Some(0)"
+    );
+}
+
+#[test]
+fn test_socket_mode_without_leading_zero() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketMode = 666
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.socket_mode,
+        Some(0o666),
+        "SocketMode=666 should be parsed as octal 0666"
+    );
+}
+
+#[test]
+fn test_socket_mode_empty_resets_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketMode =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.socket_mode.is_none(),
+        "Empty SocketMode= should reset to None"
+    );
+}
+
+#[test]
+fn test_socket_mode_invalid_non_octal_digit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketMode = 0689
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(
+        result.is_err(),
+        "SocketMode=0689 should be an error (8 and 9 are not valid octal digits)"
+    );
+}
+
+#[test]
+fn test_socket_mode_invalid_string() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketMode = permissive
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_err(), "SocketMode=permissive should be an error");
+}
+
+#[test]
+fn test_socket_mode_out_of_range() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketMode = 17777
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(
+        result.is_err(),
+        "SocketMode=17777 should be an error (exceeds max 7777)"
+    );
+}
+
+#[test]
+fn test_socket_mode_with_whitespace() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketMode =   0660
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.socket_mode,
+        Some(0o0660),
+        "SocketMode with whitespace should still parse correctly"
+    );
+}
+
+#[test]
+fn test_socket_mode_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketMode = 0660
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert_eq!(
+            sock.conf.socket_mode,
+            Some(0o0660),
+            "SocketMode should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_socket_mode_default_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert!(
+            sock.conf.socket_mode.is_none(),
+            "Default SocketMode (None) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_socket_mode_no_unsupported_warning() {
+    // Ensure that SocketMode= no longer triggers
+    // "Ignoring unsupported setting in [Socket] section" warnings.
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketMode = 0666
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    // If parsing succeeds and the value is correct, no warning was emitted
+    assert_eq!(socket.sock.socket_mode, Some(0o0666));
+}
+
+// ---------------------------------------------------------------
+// DirectoryMode= tests
+// ---------------------------------------------------------------
+
+#[test]
+fn test_directory_mode_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.directory_mode.is_none(),
+        "DirectoryMode should default to None"
+    );
+}
+
+#[test]
+fn test_directory_mode_0755() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DirectoryMode = 0755
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.directory_mode,
+        Some(0o0755),
+        "DirectoryMode=0755 should be Some(0o0755)"
+    );
+}
+
+#[test]
+fn test_directory_mode_0700() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DirectoryMode = 0700
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.directory_mode,
+        Some(0o0700),
+        "DirectoryMode=0700 should be Some(0o0700)"
+    );
+}
+
+#[test]
+fn test_directory_mode_empty_resets_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DirectoryMode =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.directory_mode.is_none(),
+        "Empty DirectoryMode= should reset to None"
+    );
+}
+
+#[test]
+fn test_directory_mode_without_leading_zero() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DirectoryMode = 755
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.directory_mode,
+        Some(0o755),
+        "DirectoryMode=755 should be parsed as octal 0755"
+    );
+}
+
+#[test]
+fn test_directory_mode_invalid_non_octal_digit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DirectoryMode = 0789
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(
+        result.is_err(),
+        "DirectoryMode=0789 should be an error (8 and 9 are not valid octal digits)"
+    );
+}
+
+#[test]
+fn test_directory_mode_invalid_string() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DirectoryMode = world
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_err(), "DirectoryMode=world should be an error");
+}
+
+#[test]
+fn test_directory_mode_out_of_range() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DirectoryMode = 17777
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(
+        result.is_err(),
+        "DirectoryMode=17777 should be an error (exceeds max 7777)"
+    );
+}
+
+#[test]
+fn test_directory_mode_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DirectoryMode = 0755
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert_eq!(
+            sock.conf.directory_mode,
+            Some(0o0755),
+            "DirectoryMode should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_directory_mode_no_unsupported_warning() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DirectoryMode = 0755
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.directory_mode, Some(0o0755));
+}
+
+// ---------------------------------------------------------------
+// SocketMode= and DirectoryMode= combined tests
+// ---------------------------------------------------------------
+
+#[test]
+fn test_socket_mode_and_directory_mode_together() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketMode = 0660
+    DirectoryMode = 0755
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.socket_mode, Some(0o0660));
+    assert_eq!(socket.sock.directory_mode, Some(0o0755));
+}
+
+#[test]
+fn test_socket_mode_and_directory_mode_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SocketMode = 0600
+    DirectoryMode = 0700
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert_eq!(
+            sock.conf.socket_mode,
+            Some(0o0600),
+            "SocketMode should survive unit conversion"
+        );
+        assert_eq!(
+            sock.conf.directory_mode,
+            Some(0o0700),
+            "DirectoryMode should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
