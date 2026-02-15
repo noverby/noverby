@@ -676,3 +676,159 @@ fn test_socket_parsing() {
         panic!("Not enough sockets parsed");
     }
 }
+
+#[test]
+fn test_conflicts_parsing_empty_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.conflicts.is_empty(),
+        "Conflicts should be empty when not specified"
+    );
+}
+
+#[test]
+fn test_conflicts_parsing_single() {
+    let test_service_str = r#"
+    [Unit]
+    Conflicts = other.service
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conflicts,
+        vec!["other.service".to_owned()]
+    );
+}
+
+#[test]
+fn test_conflicts_parsing_multiple_entries() {
+    let test_service_str = r#"
+    [Unit]
+    Conflicts = first.service
+    Conflicts = second.service
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conflicts,
+        vec!["first.service".to_owned(), "second.service".to_owned()]
+    );
+}
+
+#[test]
+fn test_conflicts_parsing_comma_separated() {
+    let test_service_str = r#"
+    [Unit]
+    Conflicts = first.service,second.service
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conflicts,
+        vec!["first.service".to_owned(), "second.service".to_owned()]
+    );
+}
+
+#[test]
+fn test_conflicts_parsing_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    Description = Test target
+    Conflicts = other.target
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        target.common.unit.conflicts,
+        vec!["other.target".to_owned()]
+    );
+}
+
+#[test]
+fn test_conflicts_parsing_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Conflicts = other.service
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.common.unit.conflicts,
+        vec!["other.service".to_owned()]
+    );
+}
+
+#[test]
+fn test_conflicts_parsing_mixed_unit_types() {
+    let test_service_str = r#"
+    [Unit]
+    Conflicts = other.service,some.target,another.socket
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conflicts,
+        vec![
+            "other.service".to_owned(),
+            "some.target".to_owned(),
+            "another.socket".to_owned()
+        ]
+    );
+}
