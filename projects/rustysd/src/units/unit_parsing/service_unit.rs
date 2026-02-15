@@ -6,6 +6,7 @@ use crate::units::{
     ParsedSection, ParsedServiceConfig, ParsedServiceSection, ParsingErrorReason, RLimitValue,
     ResourceLimit, ServiceRestart, ServiceType, TasksMax, Timeout,
 };
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 pub fn parse_service(
@@ -34,8 +35,16 @@ pub fn parse_service(
         }
     }
 
-    let Some(service_config) = service_config else {
-        return Err(ParsingErrorReason::SectionNotFound("Service".to_owned()));
+    // systemd allows .service files without a [Service] section (e.g.
+    // systemd-reboot.service which only has a [Unit] with SuccessAction=).
+    // Treat them as oneshot services with no ExecStart.
+    let service_config = match service_config {
+        Some(c) => c,
+        None => {
+            warn!("Service unit {path:?} has no [Service] section, treating as oneshot with no ExecStart");
+            let empty_section: ParsedSection = HashMap::new();
+            parse_service_section(empty_section)?
+        }
     };
 
     Ok(ParsedServiceConfig {
@@ -366,7 +375,7 @@ fn parse_service_section(
     let exec = match exec {
         Some(mut vec) => {
             if vec.len() == 1 {
-                parse_cmdline(&vec.remove(0).1)?
+                Some(parse_cmdline(&vec.remove(0).1)?)
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "ExecStart".to_owned(),
@@ -374,7 +383,7 @@ fn parse_service_section(
                 ));
             }
         }
-        None => return Err(ParsingErrorReason::MissingSetting("ExecStart".to_owned())),
+        None => None,
     };
 
     let srcv_type = match srcv_type {
@@ -409,7 +418,16 @@ fn parse_service_section(
                 ));
             }
         }
-        None => ServiceType::Simple,
+        // When no Type= is specified and there is no ExecStart=, default to
+        // oneshot (matches systemd behavior for exec-less service units like
+        // systemd-reboot.service).
+        None => {
+            if exec.is_none() {
+                ServiceType::OneShot
+            } else {
+                ServiceType::Simple
+            }
+        }
     };
 
     let notifyaccess = match notify_access {

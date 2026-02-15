@@ -199,32 +199,44 @@ impl Service {
                         ),
                     }
                 })?;
-            {
-                let mut pid_table_locked = run_info.pid_table.lock().unwrap();
-                // This mainly just forks the process. The waiting (if necessary) is done below
-                // Doing it under the lock of the pid_table prevents races between processes exiting very
-                // fast and inserting the new pid into the pid table
-                start_service(
-                    &run_info.config.self_path,
-                    self,
-                    conf,
-                    name,
-                    &run_info.fd_store.read().unwrap(),
-                )
-                .map_err(ServiceErrorReason::StartFailed)?;
-                if let Some(new_pid) = self.pid {
-                    pid_table_locked.insert(new_pid, PidEntry::Service(id.clone(), conf.srcv_type));
+
+            if conf.exec.is_some() {
+                // Service has an ExecStart command — fork and wait for it.
+                {
+                    let mut pid_table_locked = run_info.pid_table.lock().unwrap();
+                    // This mainly just forks the process. The waiting (if necessary) is done below
+                    // Doing it under the lock of the pid_table prevents races between processes exiting very
+                    // fast and inserting the new pid into the pid table
+                    start_service(
+                        &run_info.config.self_path,
+                        self,
+                        conf,
+                        name,
+                        &run_info.fd_store.read().unwrap(),
+                    )
+                    .map_err(ServiceErrorReason::StartFailed)?;
+                    if let Some(new_pid) = self.pid {
+                        pid_table_locked
+                            .insert(new_pid, PidEntry::Service(id.clone(), conf.srcv_type));
+                    }
                 }
+
+                super::fork_parent::wait_for_service(self, conf, name, run_info).map_err(
+                    |start_err| match self.run_poststop(conf, id.clone(), name, run_info) {
+                        Ok(()) => ServiceErrorReason::StartFailed(start_err),
+                        Err(poststop_err) => {
+                            ServiceErrorReason::StartAndPoststopFailed(start_err, poststop_err)
+                        }
+                    },
+                )?;
+            } else {
+                // Exec-less oneshot service (e.g. systemd-reboot.service).
+                // No main process to fork — the service succeeds immediately.
+                trace!(
+                    "Service {name} has no ExecStart, treating as immediately successful oneshot"
+                );
             }
 
-            super::fork_parent::wait_for_service(self, conf, name, run_info).map_err(
-                |start_err| match self.run_poststop(conf, id.clone(), name, run_info) {
-                    Ok(()) => ServiceErrorReason::StartFailed(start_err),
-                    Err(poststop_err) => {
-                        ServiceErrorReason::StartAndPoststopFailed(start_err, poststop_err)
-                    }
-                },
-            )?;
             self.run_poststart(conf, id.clone(), name, run_info)
                 .map_err(|poststart_err| {
                     match self.run_poststop(conf, id.clone(), name, run_info) {

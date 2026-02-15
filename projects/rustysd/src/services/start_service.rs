@@ -18,8 +18,15 @@ fn start_service_with_filedescriptors(
     name: &str,
     fd_store: &FDStore,
 ) -> Result<(), RunCmdError> {
+    let exec = conf.exec.as_ref().ok_or_else(|| {
+        RunCmdError::SpawnError(
+            name.to_owned(),
+            "Service has no ExecStart command".to_string(),
+        )
+    })?;
+
     // check if executable even exists
-    let cmd = which(&conf.exec.cmd).map_err(|err| {
+    let cmd = which(&exec.cmd).map_err(|err| {
         RunCmdError::SpawnError(
             name.to_owned(),
             format!("Could not resolve command to an executable file: {err:?}"),
@@ -28,10 +35,10 @@ fn start_service_with_filedescriptors(
     if !cmd.exists() {
         error!(
             "The service {} specified an executable that does not exist: {:?}",
-            name, &conf.exec.cmd
+            name, &exec.cmd
         );
         return Err(RunCmdError::SpawnError(
-            conf.exec.cmd.clone(),
+            exec.cmd.clone(),
             "Executable does not exist".to_string(),
         ));
     }
@@ -41,7 +48,7 @@ fn start_service_with_filedescriptors(
             name, &cmd
         );
         return Err(RunCmdError::SpawnError(
-            conf.exec.cmd.clone(),
+            exec.cmd.clone(),
             "Executable does not exist (is a directory)".to_string(),
         ));
     }
@@ -92,8 +99,8 @@ fn start_service_with_filedescriptors(
     let exec_helper_conf = crate::entrypoints::ExecHelperConfig {
         name: name.to_owned(),
         cmd,
-        args: conf.exec.args.clone(),
-        use_first_arg_as_argv0: conf.exec.prefixes.contains(&CommandlinePrefix::AtSign),
+        args: exec.args.clone(),
+        use_first_arg_as_argv0: exec.prefixes.contains(&CommandlinePrefix::AtSign),
         env: {
             let default_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
             let mut env = vec![

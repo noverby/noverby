@@ -131,7 +131,7 @@ pub struct ParsedServiceSection {
     pub limit_nofile: Option<ResourceLimit>,
     pub accept: bool,
     pub notifyaccess: NotifyKind,
-    pub exec: Commandline,
+    pub exec: Option<Commandline>,
     pub stop: Vec<Commandline>,
     pub stoppost: Vec<Commandline>,
     pub startpre: Vec<Commandline>,
