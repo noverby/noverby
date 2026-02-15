@@ -412,6 +412,7 @@ pub fn parse_exec_section(
     let restrict_address_families = section.remove("RESTRICTADDRESSFAMILIES");
     let system_call_error_number = section.remove("SYSTEMCALLERRORNUMBER");
     let no_new_privileges = section.remove("NONEWPRIVILEGES");
+    let protect_control_groups = section.remove("PROTECTCONTROLGROUPS");
 
     let user = match user {
         None => None,
@@ -579,6 +580,21 @@ pub fn parse_exec_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "NoNewPrivileges".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        // systemd default: false
+        None => false,
+    };
+
+    let protect_control_groups = match protect_control_groups {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "ProtectControlGroups".to_owned(),
                     super::map_tuples_to_second(vec),
                 ));
             }
@@ -979,6 +995,7 @@ pub fn parse_exec_section(
             None => Vec::new(),
         },
         no_new_privileges,
+        protect_control_groups,
         system_call_error_number: match system_call_error_number {
             None => None,
             Some(mut vec) => {

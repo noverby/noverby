@@ -205,6 +205,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             restrict_address_families: parsed.restrict_address_families,
             system_call_error_number: parsed.system_call_error_number,
             no_new_privileges: parsed.no_new_privileges,
+            protect_control_groups: parsed.protect_control_groups,
         })
     }
 }

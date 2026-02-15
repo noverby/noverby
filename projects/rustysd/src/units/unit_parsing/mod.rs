@@ -403,6 +403,12 @@ pub struct ParsedExecSection {
     /// via setuid/setgid bits or file capabilities). Defaults to false.
     /// Parsed and stored; no runtime enforcement yet. See systemd.exec(5).
     pub no_new_privileges: bool,
+    /// ProtectControlGroups= — if true, the Linux Control Groups (cgroups)
+    /// hierarchies accessible through /sys/fs/cgroup/ will be made read-only
+    /// to all processes of the unit. Defaults to false. Parsed and stored;
+    /// no runtime enforcement yet (requires mount namespace support).
+    /// See systemd.exec(5).
+    pub protect_control_groups: bool,
 }
 
 /// The type of utmp/wtmp record to create for a service.
