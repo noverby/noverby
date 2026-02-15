@@ -2,9 +2,10 @@ use log::{trace, warn};
 
 use crate::units::{
     map_tuples_to_second, parse_install_section, parse_unit_section, string_to_bool, Commandline,
-    CommandlinePrefix, Delegate, KillMode, MemoryPressureWatch, NotifyKind, ParsedCommonConfig,
-    ParsedFile, ParsedSection, ParsedServiceConfig, ParsedServiceSection, ParsingErrorReason,
-    RLimitValue, ResourceLimit, ServiceRestart, ServiceType, SuccessExitStatus, TasksMax, Timeout,
+    CommandlinePrefix, Delegate, KeyringMode, KillMode, MemoryPressureWatch, NotifyKind,
+    ParsedCommonConfig, ParsedFile, ParsedSection, ParsedServiceConfig, ParsedServiceSection,
+    ParsingErrorReason, RLimitValue, ResourceLimit, ServiceRestart, ServiceType, SuccessExitStatus,
+    TasksMax, Timeout,
 };
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -247,6 +248,7 @@ fn parse_service_section(
     let memory_pressure_watch = section.remove("MEMORYPRESSUREWATCH");
     let reload_signal = section.remove("RELOADSIGNAL");
     let delegate_subgroup = section.remove("DELEGATESUBGROUP");
+    let keyring_mode = section.remove("KEYRINGMODE");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -754,6 +756,29 @@ fn parse_service_section(
                 }
             }
             None => None,
+        },
+        keyring_mode: match keyring_mode {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.trim().to_lowercase().as_str() {
+                        "inherit" => KeyringMode::Inherit,
+                        "private" => KeyringMode::Private,
+                        "shared" => KeyringMode::Shared,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "KeyringMode".to_owned(),
+                                other.to_owned(),
+                            ))
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "KeyringMode".to_owned(),
+                        map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => KeyringMode::default(),
         },
         exec_section: exec_config,
     })
