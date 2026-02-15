@@ -85,6 +85,7 @@ pub struct ParsedServiceSection {
     pub restart_sec: Option<Timeout>,
     pub kill_mode: KillMode,
     pub delegate: Delegate,
+    pub tasks_max: Option<TasksMax>,
     pub accept: bool,
     pub notifyaccess: NotifyKind,
     pub exec: Commandline,
@@ -170,6 +171,17 @@ impl Default for Delegate {
     fn default() -> Self {
         Self::No
     }
+}
+
+/// Limit on the number of tasks (processes/threads) in the service's cgroup
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub enum TasksMax {
+    /// Absolute limit on number of tasks
+    Value(u64),
+    /// Percentage of the system's overall task limit
+    Percent(u64),
+    /// No limit
+    Infinity,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]

@@ -4,7 +4,7 @@ use crate::units::{
     map_tuples_to_second, parse_install_section, parse_unit_section, string_to_bool, Commandline,
     CommandlinePrefix, Delegate, KillMode, NotifyKind, ParsedCommonConfig, ParsedFile,
     ParsedSection, ParsedServiceConfig, ParsedServiceSection, ParsingErrorReason, ServiceRestart,
-    ServiceType, Timeout,
+    ServiceType, TasksMax, Timeout,
 };
 use std::path::PathBuf;
 
@@ -162,6 +162,7 @@ fn parse_service_section(
     let restart_sec = section.remove("RESTARTSEC");
     let kill_mode = section.remove("KILLMODE");
     let delegate = section.remove("DELEGATE");
+    let tasks_max = section.remove("TASKSMAX");
     let sockets = section.remove("SOCKETS");
     let notify_access = section.remove("NOTIFYACCESS");
     let srcv_type = section.remove("TYPE");
@@ -173,6 +174,35 @@ fn parse_service_section(
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Service] section: {key}");
     }
+
+    let tasks_max = match tasks_max {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.to_uppercase() == "INFINITY" {
+                    Some(TasksMax::Infinity)
+                } else if let Some(pct) = val.strip_suffix('%') {
+                    let pct_val = pct.trim().parse::<u64>().map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "TasksMax percentage is not a valid number: {val}"
+                        ))
+                    })?;
+                    Some(TasksMax::Percent(pct_val))
+                } else {
+                    let num = val.parse::<u64>().map_err(|_| {
+                        ParsingErrorReason::Generic(format!("TasksMax is not a valid value: {val}"))
+                    })?;
+                    Some(TasksMax::Value(num))
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "TasksMax".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
 
     let delegate = match delegate {
         Some(vec) => {
@@ -437,6 +467,7 @@ fn parse_service_section(
         restart_sec,
         kill_mode,
         delegate,
+        tasks_max,
         accept,
         dbus_name,
         exec,

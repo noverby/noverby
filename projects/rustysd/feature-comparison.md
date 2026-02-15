@@ -990,8 +990,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#TasksMax=">TasksMax=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✅</td>
+  <td>Supports absolute values, percentages (e.g. "80%") of the system pid limit, and infinity. When cgroups are enabled, applies the limit via pids.max.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#IOAccounting=">IOAccounting=</a></td>

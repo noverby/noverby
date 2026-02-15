@@ -1725,3 +1725,150 @@ fn test_delegate_single_controller() {
         crate::units::Delegate::Controllers(vec!["cpu".to_owned()])
     );
 }
+
+#[test]
+fn test_tasks_max_not_set() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.tasks_max, None);
+}
+
+#[test]
+fn test_tasks_max_absolute_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TasksMax = 4096
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.tasks_max,
+        Some(crate::units::TasksMax::Value(4096))
+    );
+}
+
+#[test]
+fn test_tasks_max_percentage() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TasksMax = 80%
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.tasks_max,
+        Some(crate::units::TasksMax::Percent(80))
+    );
+}
+
+#[test]
+fn test_tasks_max_infinity() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TasksMax = infinity
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.tasks_max,
+        Some(crate::units::TasksMax::Infinity)
+    );
+}
+
+#[test]
+fn test_tasks_max_one() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TasksMax = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.tasks_max,
+        Some(crate::units::TasksMax::Value(1))
+    );
+}
+
+#[test]
+fn test_tasks_max_hundred_percent() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    TasksMax = 100%
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.tasks_max,
+        Some(crate::units::TasksMax::Percent(100))
+    );
+}
+
+#[test]
+fn test_tasks_max_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Restart = always
+    TasksMax = 512
+    KillMode = process
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.restart, crate::units::ServiceRestart::Always);
+    assert_eq!(
+        service.srvc.tasks_max,
+        Some(crate::units::TasksMax::Value(512))
+    );
+    assert_eq!(service.srvc.kill_mode, crate::units::KillMode::Process);
+}
