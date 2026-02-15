@@ -198,6 +198,7 @@ pub fn parse_unit_section(
     let condition_path_is_directory = section.remove("CONDITIONPATHISDIRECTORY");
     let condition_virtualization = section.remove("CONDITIONVIRTUALIZATION");
     let condition_capability = section.remove("CONDITIONCAPABILITY");
+    let condition_first_boot = section.remove("CONDITIONFIRSTBOOT");
     let success_action = section.remove("SUCCESSACTION");
     let failure_action = section.remove("FAILUREACTION");
     let part_of = section.remove("PARTOF");
@@ -297,6 +298,16 @@ pub fn parse_unit_section(
         if !capability.is_empty() {
             conditions.push(super::UnitCondition::Capability { capability, negate });
         }
+    }
+    for (_, raw) in condition_first_boot.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (value_str, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim(), true)
+        } else {
+            (trimmed, false)
+        };
+        let value = string_to_bool(value_str);
+        conditions.push(super::UnitCondition::FirstBoot { value, negate });
     }
 
     let success_action = match success_action {

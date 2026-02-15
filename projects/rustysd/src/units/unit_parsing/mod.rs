@@ -48,6 +48,11 @@ pub enum UnitCondition {
     /// Checks whether a given capability exists in the capability bounding set
     /// of the service manager (PID 1). See systemd.unit(5).
     Capability { capability: String, negate: bool },
+    /// ConditionFirstBoot=yes (true if this is the first boot of the system)
+    /// ConditionFirstBoot=!yes (true if this is NOT the first boot)
+    /// Checks whether the system is booting for the first time (i.e.
+    /// /etc/machine-id does not yet exist). See systemd.unit(5).
+    FirstBoot { value: bool, negate: bool },
 }
 
 /// The kind of virtualization detected (VM or container).
@@ -396,6 +401,24 @@ impl UnitCondition {
                         );
                         false
                     }
+                };
+                if *negate {
+                    !result
+                } else {
+                    result
+                }
+            }
+            UnitCondition::FirstBoot { value, negate } => {
+                // systemd considers it "first boot" when /etc/machine-id
+                // does not exist or is empty (uninitialized).
+                let is_first_boot = match std::fs::metadata("/etc/machine-id") {
+                    Ok(meta) => meta.len() == 0,
+                    Err(_) => true, // file doesn't exist → first boot
+                };
+                let result = if *value {
+                    is_first_boot
+                } else {
+                    !is_first_boot
                 };
                 if *negate {
                     !result

@@ -1937,8 +1937,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionFirstBoot=">ConditionFirstBoot=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and evaluated at activation time. Checks whether the system is booting for the first time (i.e. /etc/machine-id does not yet exist or is empty). Supports ! negation and boolean values (yes/no/true/false/1/0).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionPathExists=">ConditionPathExists=</a></td>

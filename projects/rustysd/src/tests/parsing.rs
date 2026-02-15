@@ -24827,6 +24827,439 @@ fn test_condition_capability_various_caps() {
 }
 
 // ============================================================
+// ConditionFirstBoot= parsing tests
+// ============================================================
+
+#[test]
+fn test_condition_first_boot_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirstBoot = yes
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "ConditionFirstBoot= should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_condition_first_boot_yes_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirstBoot = yes
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FirstBoot { value, negate } => {
+            assert!(*value, "ConditionFirstBoot=yes should have value true");
+            assert!(!negate, "Should not be negated");
+        }
+        other => panic!("Expected FirstBoot condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_first_boot_no_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirstBoot = no
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FirstBoot { value, negate } => {
+            assert!(!*value, "ConditionFirstBoot=no should have value false");
+            assert!(!negate, "Should not be negated");
+        }
+        other => panic!("Expected FirstBoot condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_first_boot_true_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirstBoot = true
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FirstBoot { value, negate } => {
+            assert!(*value, "ConditionFirstBoot=true should have value true");
+            assert!(!negate);
+        }
+        other => panic!("Expected FirstBoot condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_first_boot_false_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirstBoot = false
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FirstBoot { value, negate } => {
+            assert!(!*value, "ConditionFirstBoot=false should have value false");
+            assert!(!negate);
+        }
+        other => panic!("Expected FirstBoot condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_first_boot_one_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirstBoot = 1
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FirstBoot { value, negate } => {
+            assert!(*value, "ConditionFirstBoot=1 should have value true");
+            assert!(!negate);
+        }
+        other => panic!("Expected FirstBoot condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_first_boot_zero_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirstBoot = 0
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FirstBoot { value, negate } => {
+            assert!(!*value, "ConditionFirstBoot=0 should have value false");
+            assert!(!negate);
+        }
+        other => panic!("Expected FirstBoot condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_first_boot_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirstBoot = !yes
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FirstBoot { value, negate } => {
+            assert!(*value, "Value should be true (yes)");
+            assert!(negate, "Should be negated due to ! prefix");
+        }
+        other => panic!("Expected FirstBoot condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_first_boot_negated_no() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirstBoot = !no
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FirstBoot { value, negate } => {
+            assert!(!*value, "Value should be false (no)");
+            assert!(negate, "Should be negated due to ! prefix");
+        }
+        other => panic!("Expected FirstBoot condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_first_boot_with_other_conditions() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathExists = /etc/myconfig
+    ConditionFirstBoot = yes
+    ConditionVirtualization = !container
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conditions.len(),
+        3,
+        "Should have three conditions"
+    );
+
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathExists { path, negate } => {
+            assert_eq!(path, "/etc/myconfig");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathExists condition, got {:?}", other),
+    }
+
+    // ConditionVirtualization is parsed before ConditionFirstBoot
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "container");
+            assert!(negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+
+    match &service.common.unit.conditions[2] {
+        crate::units::UnitCondition::FirstBoot { value, negate } => {
+            assert!(*value);
+            assert!(!negate);
+        }
+        other => panic!("Expected FirstBoot condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_first_boot_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirstBoot = !yes
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+
+    assert_eq!(unit.common.unit.conditions.len(), 1);
+    match &unit.common.unit.conditions[0] {
+        crate::units::UnitCondition::FirstBoot { value, negate } => {
+            assert!(*value);
+            assert!(negate, "Negation should survive unit conversion");
+        }
+        other => panic!("Expected FirstBoot condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_first_boot_in_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    ConditionFirstBoot = yes
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.common.unit.conditions.len(), 1);
+    match &socket.common.unit.conditions[0] {
+        crate::units::UnitCondition::FirstBoot { value, negate } => {
+            assert!(*value);
+            assert!(!negate);
+        }
+        other => panic!("Expected FirstBoot condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_first_boot_in_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    ConditionFirstBoot = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(target.common.unit.conditions.len(), 1);
+    match &target.common.unit.conditions[0] {
+        crate::units::UnitCondition::FirstBoot { value, negate } => {
+            assert!(!*value, "ConditionFirstBoot=no should be false");
+            assert!(!negate);
+        }
+        other => panic!("Expected FirstBoot condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_first_boot_case_insensitive() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirstBoot = Yes
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FirstBoot { value, negate } => {
+            assert!(
+                *value,
+                "ConditionFirstBoot=Yes should be true (case insensitive)"
+            );
+            assert!(!negate);
+        }
+        other => panic!("Expected FirstBoot condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_first_boot_defaults_to_empty() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A simple service
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let has_first_boot = service
+        .common
+        .unit
+        .conditions
+        .iter()
+        .any(|c| matches!(c, crate::units::UnitCondition::FirstBoot { .. }));
+    assert!(
+        !has_first_boot,
+        "No ConditionFirstBoot should be present by default"
+    );
+}
+
+// ============================================================
 // ProtectProc= parsing tests
 // ============================================================
 
