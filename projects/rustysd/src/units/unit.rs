@@ -732,6 +732,10 @@ pub struct UnitConfig {
     /// In systemd, these create symlinks when the unit is enabled.
     /// In rustysd, units can be looked up by any of their aliases.
     pub aliases: Vec<String>,
+
+    /// If true, this unit will not be stopped when isolating to another target.
+    /// Defaults to false, matching systemd's `IgnoreOnIsolate=` setting.
+    pub ignore_on_isolate: bool,
 }
 
 #[derive(Debug, Clone)]

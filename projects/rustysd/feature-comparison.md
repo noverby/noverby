@@ -1760,8 +1760,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#IgnoreOnIsolate=">IgnoreOnIsolate=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored; no isolation enforcement</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#StopWhenUnneeded=">StopWhenUnneeded=</a></td>
