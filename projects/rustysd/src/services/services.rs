@@ -391,8 +391,19 @@ impl Service {
         working_directory: Option<&std::path::PathBuf>,
     ) -> Result<(), RunCmdError> {
         let mut cmd = Command::new(&cmdline.cmd);
-        for part in &cmdline.args {
-            cmd.arg(part);
+        if cmdline.prefixes.contains(&CommandlinePrefix::AtSign) {
+            // With '@' prefix: first arg becomes argv[0], remaining args are normal arguments
+            use std::os::unix::process::CommandExt;
+            if let Some(argv0) = cmdline.args.first() {
+                cmd.arg0(argv0);
+            }
+            for part in cmdline.args.iter().skip(1) {
+                cmd.arg(part);
+            }
+        } else {
+            for part in &cmdline.args {
+                cmd.arg(part);
+            }
         }
         if let Some(dir) = working_directory {
             cmd.current_dir(dir);

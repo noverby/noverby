@@ -8,6 +8,10 @@ pub struct ExecHelperConfig {
 
     pub cmd: PathBuf,
     pub args: Vec<String>,
+    /// When true, args[0] is used as argv[0] instead of the filename of cmd.
+    /// This corresponds to the '@' prefix in systemd command lines.
+    #[serde(default)]
+    pub use_first_arg_as_argv0: bool,
 
     pub env: Vec<(String, String)>,
 
@@ -26,19 +30,29 @@ pub struct ExecHelperConfig {
 fn prepare_exec_args(
     cmd_str: &Path,
     args_str: &[String],
+    use_first_arg_as_argv0: bool,
 ) -> (std::ffi::CString, Vec<std::ffi::CString>) {
     let cmd = std::ffi::CString::new(cmd_str.to_string_lossy().as_bytes()).unwrap();
 
-    let exec_name = std::path::PathBuf::from(cmd_str);
-    let exec_name = exec_name.file_name().unwrap();
-    let exec_name: Vec<u8> = exec_name.to_str().unwrap().bytes().collect();
-    let exec_name = std::ffi::CString::new(exec_name).unwrap();
-
     let mut args = Vec::new();
-    args.push(exec_name);
 
-    for word in args_str {
-        args.push(std::ffi::CString::new(word.as_str()).unwrap());
+    if use_first_arg_as_argv0 {
+        // With '@' prefix: args[0] becomes argv[0], remaining args follow
+        for word in args_str {
+            args.push(std::ffi::CString::new(word.as_str()).unwrap());
+        }
+    } else {
+        // Normal case: filename of cmd becomes argv[0], then all args follow
+        let exec_name = std::path::PathBuf::from(cmd_str);
+        let exec_name = exec_name.file_name().unwrap();
+        let exec_name: Vec<u8> = exec_name.to_str().unwrap().bytes().collect();
+        let exec_name = std::ffi::CString::new(exec_name).unwrap();
+
+        args.push(exec_name);
+
+        for word in args_str {
+            args.push(std::ffi::CString::new(word.as_str()).unwrap());
+        }
     }
 
     (cmd, args)
@@ -107,7 +121,7 @@ pub fn run_exec_helper() {
         }
     }
 
-    let (cmd, args) = prepare_exec_args(&config.cmd, &config.args);
+    let (cmd, args) = prepare_exec_args(&config.cmd, &config.args, config.use_first_arg_as_argv0);
 
     // create state directories under /var/lib/ and set STATE_DIRECTORY env var
     if !config.state_directory.is_empty() {

@@ -106,11 +106,8 @@ fn parse_cmdline(raw_line: &str) -> Result<Commandline, ParsingErrorReason> {
                 //CommandlinePrefix::Plus
             }
             "@" => {
-                return Err(ParsingErrorReason::UnsupportedSetting(
-                    "The prefix '@' for cmdlines is currently not supported".into(),
-                ));
-                //cmd = cmd[1..].to_owned();
-                //CommandlinePrefix::AtSign
+                cmd = cmd[1..].to_owned();
+                CommandlinePrefix::AtSign
             }
             ":" => {
                 return Err(ParsingErrorReason::UnsupportedSetting(
