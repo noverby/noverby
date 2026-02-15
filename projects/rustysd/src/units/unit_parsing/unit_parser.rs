@@ -411,6 +411,7 @@ pub fn parse_exec_section(
     let restrict_realtime = section.remove("RESTRICTREALTIME");
     let restrict_address_families = section.remove("RESTRICTADDRESSFAMILIES");
     let system_call_error_number = section.remove("SYSTEMCALLERRORNUMBER");
+    let no_new_privileges = section.remove("NONEWPRIVILEGES");
 
     let user = match user {
         None => None,
@@ -563,6 +564,21 @@ pub fn parse_exec_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "RestrictRealtime".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        // systemd default: false
+        None => false,
+    };
+
+    let no_new_privileges = match no_new_privileges {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "NoNewPrivileges".to_owned(),
                     super::map_tuples_to_second(vec),
                 ));
             }
@@ -962,6 +978,7 @@ pub fn parse_exec_section(
             }
             None => Vec::new(),
         },
+        no_new_privileges,
         system_call_error_number: match system_call_error_number {
             None => None,
             Some(mut vec) => {

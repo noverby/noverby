@@ -398,6 +398,11 @@ pub struct ParsedExecSection {
     /// kill). Parsed and stored; no runtime seccomp enforcement yet.
     /// See systemd.exec(5).
     pub system_call_error_number: Option<String>,
+    /// NoNewPrivileges= — if true, ensures that the service process and all
+    /// its children can never gain new privileges through execve() (e.g.
+    /// via setuid/setgid bits or file capabilities). Defaults to false.
+    /// Parsed and stored; no runtime enforcement yet. See systemd.exec(5).
+    pub no_new_privileges: bool,
 }
 
 /// The type of utmp/wtmp record to create for a service.
