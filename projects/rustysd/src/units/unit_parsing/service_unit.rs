@@ -2,7 +2,7 @@ use log::warn;
 
 use crate::units::{
     map_tuples_to_second, parse_install_section, parse_unit_section, string_to_bool, Commandline,
-    CommandlinePrefix, NotifyKind, ParsedCommonConfig, ParsedFile, ParsedSection,
+    CommandlinePrefix, KillMode, NotifyKind, ParsedCommonConfig, ParsedFile, ParsedSection,
     ParsedServiceConfig, ParsedServiceSection, ParsingErrorReason, ServiceRestart, ServiceType,
     Timeout,
 };
@@ -160,6 +160,7 @@ fn parse_service_section(
 
     let restart = section.remove("RESTART");
     let restart_sec = section.remove("RESTARTSEC");
+    let kill_mode = section.remove("KILLMODE");
     let sockets = section.remove("SOCKETS");
     let notify_access = section.remove("NOTIFYACCESS");
     let srcv_type = section.remove("TYPE");
@@ -171,6 +172,31 @@ fn parse_service_section(
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Service] section: {key}");
     }
+
+    let kill_mode = match kill_mode {
+        Some(vec) => {
+            if vec.len() == 1 {
+                match vec[0].1.to_lowercase().replace('-', "").as_str() {
+                    "controlgroup" => KillMode::ControlGroup,
+                    "process" => KillMode::Process,
+                    "mixed" => KillMode::Mixed,
+                    "none" => KillMode::None,
+                    name => {
+                        return Err(ParsingErrorReason::UnknownSetting(
+                            "KillMode".to_owned(),
+                            name.to_owned(),
+                        ))
+                    }
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "KillMode".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => KillMode::default(),
+    };
 
     let restart_sec = match restart_sec {
         Some(vec) => {
@@ -376,6 +402,7 @@ fn parse_service_section(
         notifyaccess,
         restart,
         restart_sec,
+        kill_mode,
         accept,
         dbus_name,
         exec,

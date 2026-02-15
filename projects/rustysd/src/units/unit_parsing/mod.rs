@@ -83,6 +83,7 @@ pub struct ParsedSocketSection {
 pub struct ParsedServiceSection {
     pub restart: ServiceRestart,
     pub restart_sec: Option<Timeout>,
+    pub kill_mode: KillMode,
     pub accept: bool,
     pub notifyaccess: NotifyKind,
     pub exec: Commandline,
@@ -133,6 +134,24 @@ pub enum NotifyKind {
     Exec,
     All,
     None,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+pub enum KillMode {
+    /// Kill all processes in the control group (default)
+    ControlGroup,
+    /// Only kill the main process
+    Process,
+    /// Send SIGTERM to main process, SIGKILL to remaining processes in the control group
+    Mixed,
+    /// No processes are killed, only ExecStop commands are run
+    None,
+}
+
+impl Default for KillMode {
+    fn default() -> Self {
+        Self::ControlGroup
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
