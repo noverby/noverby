@@ -201,6 +201,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             system_call_filter: parsed.system_call_filter,
             protect_system: parsed.protect_system,
             restrict_namespaces: parsed.restrict_namespaces,
+            restrict_realtime: parsed.restrict_realtime,
         })
     }
 }
