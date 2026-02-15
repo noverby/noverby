@@ -27,6 +27,42 @@ pub struct ParsedTargetConfig {
     pub common: ParsedCommonConfig,
 }
 
+/// A parsed condition from the [Unit] section.
+/// Systemd supports many condition types; we implement the most common ones.
+#[derive(Clone, Debug)]
+pub enum UnitCondition {
+    /// ConditionPathExists=/some/path (true if path exists)
+    /// ConditionPathExists=!/some/path (true if path does NOT exist)
+    PathExists { path: String, negate: bool },
+    /// ConditionPathIsDirectory=/some/path
+    /// ConditionPathIsDirectory=!/some/path
+    PathIsDirectory { path: String, negate: bool },
+}
+
+impl UnitCondition {
+    /// Evaluate the condition. Returns true if the condition is met.
+    pub fn check(&self) -> bool {
+        match self {
+            UnitCondition::PathExists { path, negate } => {
+                let exists = std::path::Path::new(path).exists();
+                if *negate {
+                    !exists
+                } else {
+                    exists
+                }
+            }
+            UnitCondition::PathIsDirectory { path, negate } => {
+                let is_dir = std::path::Path::new(path).is_dir();
+                if *negate {
+                    !is_dir
+                } else {
+                    is_dir
+                }
+            }
+        }
+    }
+}
+
 pub struct ParsedUnitSection {
     pub description: String,
     pub documentation: Vec<String>,
@@ -40,6 +76,11 @@ pub struct ParsedUnitSection {
     /// Whether to add implicit default dependencies (e.g. on sysinit.target / shutdown.target).
     /// Defaults to true, matching systemd behavior.
     pub default_dependencies: bool,
+
+    /// Conditions that must all be true for the unit to start.
+    /// If any condition fails, the unit is skipped (not an error).
+    /// Matches systemd's ConditionPathExists=, ConditionPathIsDirectory=, etc.
+    pub conditions: Vec<UnitCondition>,
 }
 
 impl Default for ParsedUnitSection {
@@ -53,6 +94,7 @@ impl Default for ParsedUnitSection {
             before: Vec::new(),
             after: Vec::new(),
             default_dependencies: true,
+            conditions: Vec::new(),
         }
     }
 }
