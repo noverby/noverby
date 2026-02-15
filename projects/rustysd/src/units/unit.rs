@@ -1038,6 +1038,11 @@ pub struct ExecConfig {
     /// Defaults to false. Parsed and stored; no runtime enforcement yet
     /// (requires mount namespace and seccomp support). See systemd.exec(5).
     pub protect_kernel_modules: bool,
+    /// RestrictSUIDSGID= — if true, any attempts to set the set-user-ID
+    /// (SUID) or set-group-ID (SGID) bits on files or directories will be
+    /// denied. Defaults to false. Parsed and stored; no runtime enforcement
+    /// yet (requires seccomp support). See systemd.exec(5).
+    pub restrict_suid_sgid: bool,
 }
 
 #[cfg(target_os = "linux")]

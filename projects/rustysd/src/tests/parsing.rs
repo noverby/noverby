@@ -17118,3 +17118,269 @@ fn test_protect_kernel_modules_socket_unit() {
         "ProtectKernelModules=yes should work on socket units"
     );
 }
+
+// ============================================================
+// RestrictSUIDSGID= parsing tests
+// ============================================================
+
+#[test]
+fn test_restrict_suid_sgid_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_suid_sgid, false,
+        "RestrictSUIDSGID should default to false"
+    );
+}
+
+#[test]
+fn test_restrict_suid_sgid_set_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictSUIDSGID = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_suid_sgid, true,
+        "RestrictSUIDSGID=yes should be true"
+    );
+}
+
+#[test]
+fn test_restrict_suid_sgid_set_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictSUIDSGID = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_suid_sgid, true,
+        "RestrictSUIDSGID=true should be true"
+    );
+}
+
+#[test]
+fn test_restrict_suid_sgid_set_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictSUIDSGID = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_suid_sgid, false,
+        "RestrictSUIDSGID=no should be false"
+    );
+}
+
+#[test]
+fn test_restrict_suid_sgid_set_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictSUIDSGID = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_suid_sgid, false,
+        "RestrictSUIDSGID=false should be false"
+    );
+}
+
+#[test]
+fn test_restrict_suid_sgid_set_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictSUIDSGID = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_suid_sgid, true,
+        "RestrictSUIDSGID=1 should be true"
+    );
+}
+
+#[test]
+fn test_restrict_suid_sgid_set_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictSUIDSGID = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_suid_sgid, false,
+        "RestrictSUIDSGID=0 should be false"
+    );
+}
+
+#[test]
+fn test_restrict_suid_sgid_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictSUIDSGID = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_suid_sgid, true,
+        "RestrictSUIDSGID=YES should be true (case insensitive)"
+    );
+}
+
+#[test]
+fn test_restrict_suid_sgid_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictSUIDSGID = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "RestrictSUIDSGID= should not cause errors");
+}
+
+#[test]
+fn test_restrict_suid_sgid_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictSUIDSGID = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.restrict_suid_sgid, true,
+            "RestrictSUIDSGID=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_restrict_suid_sgid_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.restrict_suid_sgid, false,
+            "Default RestrictSUIDSGID (false) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_restrict_suid_sgid_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with restrict suid sgid
+    [Socket]
+    ListenStream = /run/test.sock
+    RestrictSUIDSGID = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.restrict_suid_sgid, true,
+        "RestrictSUIDSGID=yes should work on socket units"
+    );
+}
