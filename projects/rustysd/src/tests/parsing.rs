@@ -1463,3 +1463,130 @@ fn test_restart_sec_with_restart_always() {
         ))
     );
 }
+
+#[test]
+fn test_kill_mode_defaults_to_control_group() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.kill_mode, crate::units::KillMode::ControlGroup);
+}
+
+#[test]
+fn test_kill_mode_control_group() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillMode = control-group
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.kill_mode, crate::units::KillMode::ControlGroup);
+}
+
+#[test]
+fn test_kill_mode_process() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillMode = process
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.kill_mode, crate::units::KillMode::Process);
+}
+
+#[test]
+fn test_kill_mode_mixed() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillMode = mixed
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.kill_mode, crate::units::KillMode::Mixed);
+}
+
+#[test]
+fn test_kill_mode_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillMode = none
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.kill_mode, crate::units::KillMode::None);
+}
+
+#[test]
+fn test_kill_mode_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillMode = Process
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.kill_mode, crate::units::KillMode::Process);
+}
+
+#[test]
+fn test_kill_mode_with_restart() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Restart = always
+    KillMode = process
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.restart, crate::units::ServiceRestart::Always);
+    assert_eq!(service.srvc.kill_mode, crate::units::KillMode::Process);
+}
