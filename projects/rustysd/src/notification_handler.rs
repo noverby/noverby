@@ -147,6 +147,7 @@ pub fn handle_all_std_out(run_info: ArcMutRuntimeInfo) {
                     trace!("Reset eventfd value");
                 }
                 let mut buf = [0u8; 512];
+                let mut eof_ids = Vec::new();
                 for (fd, id) in &fd_to_srvc_id {
                     if fdset.contains(unsafe { borrow_fd(*fd) }) {
                         if let Some(srvc_unit) = unit_table.get(id) {
@@ -186,9 +187,30 @@ pub fn handle_all_std_out(run_info: ArcMutRuntimeInfo) {
                                 )
                                 .unwrap();
 
-                                mut_state.srvc.stdout_buffer.extend(&buf[..bytes]);
-                                mut_state.srvc.log_stdout_lines(&name, &status).unwrap();
+                                if bytes == 0 {
+                                    // EOF: the write end of the pipe was closed.
+                                    // This happens when a service redirects its
+                                    // stdout to a TTY or file (e.g. debug-shell).
+                                    // Mark for cleanup to avoid a busy select loop.
+                                    eof_ids.push((id.clone(), name));
+                                } else {
+                                    mut_state.srvc.stdout_buffer.extend(&buf[..bytes]);
+                                    mut_state.srvc.log_stdout_lines(&name, &status).unwrap();
+                                }
                             }
+                        }
+                    }
+                }
+                // Close pipes that hit EOF so they are no longer selected.
+                for (id, name) in eof_ids {
+                    if let Some(srvc_unit) = unit_table.get(&id) {
+                        if let Specific::Service(srvc) = &srvc_unit.specific {
+                            let mut_state = &mut *srvc.state.write().unwrap();
+                            if let Some(StdIo::Piped(r, _w)) = &mut_state.srvc.stdout {
+                                trace!("stdout pipe EOF for service {name}, closing read end");
+                                let _ = nix::unistd::close(*r);
+                            }
+                            mut_state.srvc.stdout = None;
                         }
                     }
                 }
@@ -227,6 +249,7 @@ pub fn handle_all_std_err(run_info: ArcMutRuntimeInfo) {
                     trace!("Reset eventfd value");
                 }
                 let mut buf = [0u8; 512];
+                let mut eof_ids = Vec::new();
                 for (fd, id) in &fd_to_srvc_id {
                     if fdset.contains(unsafe { borrow_fd(*fd) }) {
                         if let Some(srvc_unit) = unit_table.get(id) {
@@ -265,9 +288,30 @@ pub fn handle_all_std_err(run_info: ArcMutRuntimeInfo) {
                                 )
                                 .unwrap();
 
-                                mut_state.srvc.stderr_buffer.extend(&buf[..bytes]);
-                                mut_state.srvc.log_stderr_lines(&name, &status).unwrap();
+                                if bytes == 0 {
+                                    // EOF: the write end of the pipe was closed.
+                                    // This happens when a service redirects its
+                                    // stderr to a TTY or file (e.g. debug-shell).
+                                    // Mark for cleanup to avoid a busy select loop.
+                                    eof_ids.push((id.clone(), name));
+                                } else {
+                                    mut_state.srvc.stderr_buffer.extend(&buf[..bytes]);
+                                    mut_state.srvc.log_stderr_lines(&name, &status).unwrap();
+                                }
                             }
+                        }
+                    }
+                }
+                // Close pipes that hit EOF so they are no longer selected.
+                for (id, name) in eof_ids {
+                    if let Some(srvc_unit) = unit_table.get(&id) {
+                        if let Specific::Service(srvc) = &srvc_unit.specific {
+                            let mut_state = &mut *srvc.state.write().unwrap();
+                            if let Some(StdIo::Piped(r, _w)) = &mut_state.srvc.stderr {
+                                trace!("stderr pipe EOF for service {name}, closing read end");
+                                let _ = nix::unistd::close(*r);
+                            }
+                            mut_state.srvc.stderr = None;
                         }
                     }
                 }
