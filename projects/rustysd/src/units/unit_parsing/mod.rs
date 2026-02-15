@@ -385,6 +385,13 @@ pub struct ParsedExecSection {
     /// in a process of the unit are refused via seccomp. Defaults to false.
     /// Parsed and stored; no runtime seccomp enforcement yet. See systemd.exec(5).
     pub restrict_realtime: bool,
+    /// RestrictAddressFamilies= — a list of address family names (e.g.
+    /// AF_UNIX, AF_INET, AF_INET6) for seccomp-based socket address family
+    /// filtering. Entries prefixed with `~` form a deny-list; without the
+    /// prefix they form an allow-list. Multiple directives accumulate; an
+    /// empty assignment resets the list. Parsed and stored; no runtime seccomp
+    /// enforcement yet. See systemd.exec(5).
+    pub restrict_address_families: Vec<String>,
 }
 
 /// The type of utmp/wtmp record to create for a service.
