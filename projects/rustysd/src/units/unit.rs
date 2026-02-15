@@ -721,6 +721,11 @@ pub struct UnitConfig {
     /// Action to take when the unit fails.
     /// Matches systemd's `FailureAction=` setting.
     pub failure_action: UnitAction,
+
+    /// Alternative names for this unit from `Alias=` in the `[Install]` section.
+    /// In systemd, these create symlinks when the unit is enabled.
+    /// In rustysd, units can be looked up by any of their aliases.
+    pub aliases: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

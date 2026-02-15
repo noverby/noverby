@@ -278,6 +278,12 @@ fn find_units_with_name<'a>(unit_name: &str, unit_table: &'a UnitTable) -> Vec<&
         .filter(|unit| {
             let name = unit.id.name.clone();
             name.starts_with(unit_name)
+                || unit
+                    .common
+                    .unit
+                    .aliases
+                    .iter()
+                    .any(|alias| alias.starts_with(unit_name))
         })
         .collect()
 }
@@ -293,6 +299,12 @@ fn find_units_with_pattern<'a>(
         .filter(|unit| {
             let name = unit.id.name.clone();
             name.starts_with(name_pattern)
+                || unit
+                    .common
+                    .unit
+                    .aliases
+                    .iter()
+                    .any(|alias| alias.starts_with(name_pattern))
         })
         .collect();
     units
