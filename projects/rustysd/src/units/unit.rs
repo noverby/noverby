@@ -1094,6 +1094,11 @@ pub struct ExecConfig {
     /// mappings to executable, are prohibited. Defaults to false. Parsed and
     /// stored; no runtime seccomp enforcement yet. See systemd.exec(5).
     pub memory_deny_write_execute: bool,
+    /// LockPersonality= — if true, locks down the personality(2) system call
+    /// so that the kernel execution domain may not be changed from the default
+    /// or the personality selected with Personality=. Defaults to false.
+    /// Parsed and stored; no runtime seccomp enforcement yet. See systemd.exec(5).
+    pub lock_personality: bool,
     /// PrivateTmp= — if true, sets up a private /tmp and /var/tmp namespace
     /// for the executed processes. Files in these directories are not visible
     /// to other processes and vice versa. Defaults to false. Parsed and
