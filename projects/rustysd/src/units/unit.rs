@@ -5,10 +5,10 @@ use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
     acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KeyringMode, KillMode,
-    MemoryPressureWatch, NotifyKind, ProtectHome, ProtectSystem, ResourceLimit, RestrictNamespaces,
-    RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput, StatusStarted,
-    StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition, UnitId, UnitIdKind,
-    UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode,
+    MemoryPressureWatch, NotifyKind, ProtectHome, ProtectProc, ProtectSystem, ResourceLimit,
+    RestrictNamespaces, RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput,
+    StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition,
+    UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode,
 };
 
 use std::sync::RwLock;
@@ -1099,6 +1099,11 @@ pub struct ExecConfig {
     /// or the personality selected with Personality=. Defaults to false.
     /// Parsed and stored; no runtime seccomp enforcement yet. See systemd.exec(5).
     pub lock_personality: bool,
+    /// ProtectProc= — controls the `hidepid=` mount option of the procfs
+    /// instance for the unit. Takes one of "default", "noaccess", "invisible",
+    /// or "ptraceable". Defaults to "default". Parsed and stored; no runtime
+    /// mount-namespace enforcement yet. See systemd.exec(5).
+    pub protect_proc: ProtectProc,
     /// PrivateTmp= — if true, sets up a private /tmp and /var/tmp namespace
     /// for the executed processes. Files in these directories are not visible
     /// to other processes and vice versa. Defaults to false. Parsed and

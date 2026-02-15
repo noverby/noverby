@@ -449,6 +449,7 @@ pub fn parse_exec_section(
     let read_write_paths = section.remove("READWRITEPATHS");
     let memory_deny_write_execute = section.remove("MEMORYDENYWRITEEXECUTE");
     let lock_personality = section.remove("LOCKPERSONALITY");
+    let protect_proc = section.remove("PROTECTPROC");
     let private_tmp = section.remove("PRIVATETMP");
 
     let user = match user {
@@ -1374,6 +1375,30 @@ pub fn parse_exec_section(
         },
         memory_deny_write_execute,
         lock_personality,
+        protect_proc: match protect_proc {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.trim().to_lowercase().as_str() {
+                        "default" | "" => super::ProtectProc::Default,
+                        "noaccess" => super::ProtectProc::Noaccess,
+                        "invisible" => super::ProtectProc::Invisible,
+                        "ptraceable" => super::ProtectProc::Ptraceable,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "ProtectProc".to_owned(),
+                                other.to_owned(),
+                            ))
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "ProtectProc".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => super::ProtectProc::default(),
+        },
         private_tmp,
     })
 }

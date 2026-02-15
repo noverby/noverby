@@ -22994,3 +22994,296 @@ fn test_condition_capability_various_caps() {
         }
     }
 }
+
+// ============================================================
+// ProtectProc= parsing tests
+// ============================================================
+
+#[test]
+fn test_protect_proc_defaults_to_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_proc,
+        crate::units::ProtectProc::Default,
+        "ProtectProc should default to Default"
+    );
+}
+
+#[test]
+fn test_protect_proc_set_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectProc = default
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_proc,
+        crate::units::ProtectProc::Default,
+    );
+}
+
+#[test]
+fn test_protect_proc_set_noaccess() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectProc = noaccess
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_proc,
+        crate::units::ProtectProc::Noaccess,
+    );
+}
+
+#[test]
+fn test_protect_proc_set_invisible() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectProc = invisible
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_proc,
+        crate::units::ProtectProc::Invisible,
+    );
+}
+
+#[test]
+fn test_protect_proc_set_ptraceable() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectProc = ptraceable
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_proc,
+        crate::units::ProtectProc::Ptraceable,
+    );
+}
+
+#[test]
+fn test_protect_proc_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectProc = Invisible
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_proc,
+        crate::units::ProtectProc::Invisible,
+    );
+}
+
+#[test]
+fn test_protect_proc_case_insensitive_upper() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectProc = NOACCESS
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_proc,
+        crate::units::ProtectProc::Noaccess,
+    );
+}
+
+#[test]
+fn test_protect_proc_empty_resets_to_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectProc =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_proc,
+        crate::units::ProtectProc::Default,
+        "Empty ProtectProc should reset to Default"
+    );
+}
+
+#[test]
+fn test_protect_proc_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectProc = invisible
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "ProtectProc should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_protect_proc_invalid_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectProc = bogus
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "ProtectProc with an invalid value should produce an error"
+    );
+}
+
+#[test]
+fn test_protect_proc_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectProc = invisible
+    ProtectSystem = strict
+    NoNewPrivileges = yes
+    ProtectHome = read-only
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_proc,
+        crate::units::ProtectProc::Invisible,
+    );
+    assert!(service.srvc.exec_section.no_new_privileges);
+    assert_eq!(
+        service.srvc.exec_section.protect_home,
+        crate::units::ProtectHome::ReadOnly,
+    );
+}
+
+#[test]
+fn test_protect_proc_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectProc = noaccess
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.protect_proc,
+            crate::units::ProtectProc::Noaccess,
+            "ProtectProc should be preserved after unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_protect_proc_in_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    ProtectProc = ptraceable
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.protect_proc,
+        crate::units::ProtectProc::Ptraceable,
+        "ProtectProc should work in socket units"
+    );
+}

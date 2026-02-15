@@ -857,6 +857,11 @@ pub struct ParsedExecSection {
     /// or the personality selected with Personality=. Defaults to false.
     /// Parsed and stored; no runtime seccomp enforcement yet. See systemd.exec(5).
     pub lock_personality: bool,
+    /// ProtectProc= — controls the `hidepid=` mount option of the procfs
+    /// instance for the unit. Takes one of "default", "noaccess", "invisible",
+    /// or "ptraceable". Defaults to "default". Parsed and stored; no runtime
+    /// mount-namespace enforcement yet. See systemd.exec(5).
+    pub protect_proc: ProtectProc,
     /// PrivateTmp= — if true, sets up a private /tmp and /var/tmp namespace
     /// for the executed processes. Files in these directories are not visible
     /// to other processes and vice versa. Defaults to false. Parsed and
@@ -1033,6 +1038,27 @@ pub enum ProtectHome {
 impl Default for ProtectHome {
     fn default() -> Self {
         Self::No
+    }
+}
+
+/// ProtectProc= — controls the `hidepid=` mount option of the procfs instance
+/// for the unit. Controls which `/proc/PID` directories are visible and
+/// accessible. See systemd.exec(5).
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub enum ProtectProc {
+    /// No restrictions on /proc/ access or visibility (default).
+    Default,
+    /// Most of other users' process metadata in /proc/ is taken away.
+    Noaccess,
+    /// Processes owned by other users are hidden from /proc/.
+    Invisible,
+    /// All processes that cannot be ptrace()'d are hidden.
+    Ptraceable,
+}
+
+impl Default for ProtectProc {
+    fn default() -> Self {
+        Self::Default
     }
 }
 
