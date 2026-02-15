@@ -959,6 +959,9 @@ pub struct ServiceConfig {
     pub sockets: Vec<UnitId>,
     /// Slice= — the slice unit to place this service in for resource management
     pub slice: Option<String>,
+    /// RemainAfterExit= — whether the service is considered active even after
+    /// the main process exits. Defaults to false. Commonly used with Type=oneshot.
+    pub remain_after_exit: bool,
 }
 
 /// The immutable config of a socket unit

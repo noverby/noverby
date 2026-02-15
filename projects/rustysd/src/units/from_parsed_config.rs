@@ -82,6 +82,7 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 generaltimeout: conf.srvc.generaltimeout,
                 platform_specific,
                 slice: conf.srvc.slice,
+                remain_after_exit: conf.srvc.remain_after_exit,
             },
             state: RwLock::new(ServiceState {
                 common: CommonState::default(),
