@@ -1048,6 +1048,11 @@ pub struct ExecConfig {
     /// and stored; no runtime enforcement yet (requires mount namespace and
     /// seccomp support). See systemd.exec(5).
     pub protect_kernel_logs: bool,
+    /// ProtectClock= — if true, writes to the system and hardware clock are
+    /// denied. Defaults to false. Parsed and stored; no runtime enforcement
+    /// yet (requires seccomp and device access restrictions).
+    /// See systemd.exec(5).
+    pub protect_clock: bool,
     /// CapabilityBoundingSet= — a list of Linux capability names (e.g.
     /// CAP_NET_ADMIN, CAP_SYS_PTRACE) controlling the capability bounding
     /// set for executed processes. Entries prefixed with `~` form a deny-list;

@@ -17909,6 +17909,272 @@ fn test_capability_bounding_set_socket_unit() {
     );
 }
 
+// ============================================================
+// ProtectClock= parsing tests
+// ============================================================
+
+#[test]
+fn test_protect_clock_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_clock, false,
+        "ProtectClock should default to false"
+    );
+}
+
+#[test]
+fn test_protect_clock_set_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectClock = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_clock, true,
+        "ProtectClock=yes should be true"
+    );
+}
+
+#[test]
+fn test_protect_clock_set_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectClock = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_clock, true,
+        "ProtectClock=true should be true"
+    );
+}
+
+#[test]
+fn test_protect_clock_set_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectClock = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_clock, false,
+        "ProtectClock=no should be false"
+    );
+}
+
+#[test]
+fn test_protect_clock_set_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectClock = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_clock, false,
+        "ProtectClock=false should be false"
+    );
+}
+
+#[test]
+fn test_protect_clock_set_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectClock = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_clock, true,
+        "ProtectClock=1 should be true"
+    );
+}
+
+#[test]
+fn test_protect_clock_set_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectClock = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_clock, false,
+        "ProtectClock=0 should be false"
+    );
+}
+
+#[test]
+fn test_protect_clock_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectClock = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.protect_clock, true,
+        "ProtectClock=YES should be true (case insensitive)"
+    );
+}
+
+#[test]
+fn test_protect_clock_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectClock = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "ProtectClock= should not cause errors");
+}
+
+#[test]
+fn test_protect_clock_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectClock = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.protect_clock, true,
+            "ProtectClock=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_protect_clock_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.protect_clock, false,
+            "Default ProtectClock (false) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_protect_clock_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with protect clock
+    [Socket]
+    ListenStream = /run/test.sock
+    ProtectClock = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.protect_clock, true,
+        "ProtectClock=yes should work on socket units"
+    );
+}
+
 #[test]
 fn test_capability_bounding_set_empty_string_drops_all() {
     let test_service_str = r#"

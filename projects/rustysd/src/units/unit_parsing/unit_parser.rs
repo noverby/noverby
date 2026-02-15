@@ -417,6 +417,7 @@ pub fn parse_exec_section(
     let restrict_suid_sgid = section.remove("RESTRICTSUIDSGID");
     let protect_kernel_logs = section.remove("PROTECTKERNELLOGS");
     let capability_bounding_set = section.remove("CAPABILITYBOUNDINGSET");
+    let protect_clock = section.remove("PROTECTCLOCK");
 
     let user = match user {
         None => None,
@@ -629,6 +630,21 @@ pub fn parse_exec_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "ProtectKernelLogs".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        // systemd default: false
+        None => false,
+    };
+
+    let protect_clock = match protect_clock {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "ProtectClock".to_owned(),
                     super::map_tuples_to_second(vec),
                 ));
             }
@@ -1048,6 +1064,7 @@ pub fn parse_exec_section(
         protect_kernel_modules,
         restrict_suid_sgid,
         protect_kernel_logs,
+        protect_clock,
         capability_bounding_set: match capability_bounding_set {
             Some(vec) => {
                 // Each directive is a space-separated list of capability names
