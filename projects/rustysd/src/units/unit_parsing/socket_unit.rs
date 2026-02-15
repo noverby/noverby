@@ -87,6 +87,8 @@ fn parse_socket_section(
     let fifos = section.remove("LISTENFIFO");
     let max_connections = section.remove("MAXCONNECTIONS");
     let max_connections_per_source = section.remove("MAXCONNECTIONSPERSOURCE");
+    let socket_mode = section.remove("SOCKETMODE");
+    let directory_mode = section.remove("DIRECTORYMODE");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -248,12 +250,72 @@ fn parse_socket_section(
         None => max_connections,
     };
 
+    let socket_mode: Option<u32> = match socket_mode {
+        None => None,
+        Some(vec) => {
+            if vec.len() == 1 {
+                let trimmed = vec[0].1.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    let val = u32::from_str_radix(trimmed, 8).map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "SocketMode is not a valid octal mode: {trimmed}"
+                        ))
+                    })?;
+                    if val > 0o7777 {
+                        return Err(ParsingErrorReason::Generic(format!(
+                            "SocketMode value out of range (must be a valid octal mode, max 7777): {trimmed}"
+                        )));
+                    }
+                    Some(val)
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "SocketMode".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+    };
+
+    let directory_mode: Option<u32> = match directory_mode {
+        None => None,
+        Some(vec) => {
+            if vec.len() == 1 {
+                let trimmed = vec[0].1.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    let val = u32::from_str_radix(trimmed, 8).map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "DirectoryMode is not a valid octal mode: {trimmed}"
+                        ))
+                    })?;
+                    if val > 0o7777 {
+                        return Err(ParsingErrorReason::Generic(format!(
+                            "DirectoryMode value out of range (must be a valid octal mode, max 7777): {trimmed}"
+                        )));
+                    }
+                    Some(val)
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "DirectoryMode".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+    };
+
     Ok(ParsedSocketSection {
         filedesc_name: fdname,
         services,
         sockets: socket_configs,
         max_connections,
         max_connections_per_source,
+        socket_mode,
+        directory_mode,
         exec_section: exec_config,
     })
 }
