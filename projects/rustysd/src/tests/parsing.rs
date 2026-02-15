@@ -12061,3 +12061,454 @@ fn test_keyring_mode_inherit_preserved_after_unit_conversion() {
         panic!("Expected service unit");
     }
 }
+
+// ============================================================
+// JobTimeoutAction= parsing tests
+// ============================================================
+
+#[test]
+fn test_job_timeout_action_defaults_to_none() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A simple service
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.job_timeout_action,
+        crate::units::UnitAction::None,
+        "JobTimeoutAction should default to None"
+    );
+}
+
+#[test]
+fn test_job_timeout_action_none() {
+    let test_service_str = r#"
+    [Unit]
+    JobTimeoutAction = none
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.job_timeout_action,
+        crate::units::UnitAction::None,
+    );
+}
+
+#[test]
+fn test_job_timeout_action_reboot() {
+    let test_service_str = r#"
+    [Unit]
+    JobTimeoutAction = reboot
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.job_timeout_action,
+        crate::units::UnitAction::Reboot,
+    );
+}
+
+#[test]
+fn test_job_timeout_action_reboot_force() {
+    let test_service_str = r#"
+    [Unit]
+    JobTimeoutAction = reboot-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.job_timeout_action,
+        crate::units::UnitAction::RebootForce,
+    );
+}
+
+#[test]
+fn test_job_timeout_action_reboot_immediate() {
+    let test_service_str = r#"
+    [Unit]
+    JobTimeoutAction = reboot-immediate
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.job_timeout_action,
+        crate::units::UnitAction::RebootImmediate,
+    );
+}
+
+#[test]
+fn test_job_timeout_action_poweroff() {
+    let test_service_str = r#"
+    [Unit]
+    JobTimeoutAction = poweroff
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.job_timeout_action,
+        crate::units::UnitAction::Poweroff,
+    );
+}
+
+#[test]
+fn test_job_timeout_action_poweroff_force() {
+    let test_service_str = r#"
+    [Unit]
+    JobTimeoutAction = poweroff-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.job_timeout_action,
+        crate::units::UnitAction::PoweroffForce,
+    );
+}
+
+#[test]
+fn test_job_timeout_action_exit() {
+    let test_service_str = r#"
+    [Unit]
+    JobTimeoutAction = exit
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.job_timeout_action,
+        crate::units::UnitAction::Exit,
+    );
+}
+
+#[test]
+fn test_job_timeout_action_exit_force() {
+    let test_service_str = r#"
+    [Unit]
+    JobTimeoutAction = exit-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.job_timeout_action,
+        crate::units::UnitAction::ExitForce,
+    );
+}
+
+#[test]
+fn test_job_timeout_action_halt() {
+    let test_service_str = r#"
+    [Unit]
+    JobTimeoutAction = halt
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.job_timeout_action,
+        crate::units::UnitAction::Halt,
+    );
+}
+
+#[test]
+fn test_job_timeout_action_kexec() {
+    let test_service_str = r#"
+    [Unit]
+    JobTimeoutAction = kexec
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.job_timeout_action,
+        crate::units::UnitAction::Kexec,
+    );
+}
+
+#[test]
+fn test_job_timeout_action_case_insensitive() {
+    let cases = vec![
+        ("reboot-force", crate::units::UnitAction::RebootForce),
+        ("REBOOT-FORCE", crate::units::UnitAction::RebootForce),
+        ("Reboot-Force", crate::units::UnitAction::RebootForce),
+        ("POWEROFF", crate::units::UnitAction::Poweroff),
+        ("Poweroff", crate::units::UnitAction::Poweroff),
+        ("NONE", crate::units::UnitAction::None),
+        ("None", crate::units::UnitAction::None),
+    ];
+
+    for (input, expected) in &cases {
+        let test_service_str = format!(
+            r#"
+            [Unit]
+            JobTimeoutAction = {}
+            [Service]
+            ExecStart = /bin/myservice
+            "#,
+            input
+        );
+
+        let parsed_file = crate::units::parse_file(&test_service_str).unwrap();
+        let service = crate::units::parse_service(
+            parsed_file,
+            &std::path::PathBuf::from("/path/to/unitfile.service"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            &service.common.unit.job_timeout_action, expected,
+            "JobTimeoutAction={} should parse as {:?}",
+            input, expected
+        );
+    }
+}
+
+#[test]
+fn test_job_timeout_action_unknown_value_errors() {
+    let test_service_str = r#"
+    [Unit]
+    JobTimeoutAction = bogus
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "JobTimeoutAction=bogus should produce a parsing error"
+    );
+}
+
+#[test]
+fn test_job_timeout_action_with_other_unit_settings() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A service with job timeout action
+    FailureAction = reboot
+    JobTimeoutAction = poweroff
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.job_timeout_action,
+        crate::units::UnitAction::Poweroff,
+    );
+    assert_eq!(
+        service.common.unit.failure_action,
+        crate::units::UnitAction::Reboot,
+    );
+}
+
+#[test]
+fn test_job_timeout_action_no_unsupported_warning() {
+    // This test verifies that JobTimeoutAction= is recognized and does not
+    // trigger the "Ignoring unsupported setting" warning.
+    let test_service_str = r#"
+    [Unit]
+    JobTimeoutAction = none
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "JobTimeoutAction=none should parse without error"
+    );
+}
+
+#[test]
+fn test_job_timeout_action_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    JobTimeoutAction = reboot-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(
+        unit.common.unit.job_timeout_action,
+        crate::units::UnitAction::RebootForce,
+        "JobTimeoutAction=reboot-force should survive unit conversion"
+    );
+}
+
+#[test]
+fn test_job_timeout_action_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    Description = A target with job timeout
+    JobTimeoutAction = poweroff-force
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        target.common.unit.job_timeout_action,
+        crate::units::UnitAction::PoweroffForce,
+    );
+}
+
+#[test]
+fn test_job_timeout_action_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with job timeout
+    JobTimeoutAction = reboot
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.common.unit.job_timeout_action,
+        crate::units::UnitAction::Reboot,
+    );
+}
+
+#[test]
+fn test_job_timeout_action_default_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(
+        unit.common.unit.job_timeout_action,
+        crate::units::UnitAction::None,
+        "Default JobTimeoutAction (None) should survive unit conversion"
+    );
+}
