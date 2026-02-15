@@ -11453,3 +11453,276 @@ fn test_reload_signal_with_whitespace() {
         "ReloadSignal should handle surrounding whitespace"
     );
 }
+
+// ── DelegateSubgroup= tests ──────────────────────────────────────────
+
+#[test]
+fn test_delegate_subgroup_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.delegate_subgroup, None,
+        "DelegateSubgroup should default to None when not specified"
+    );
+}
+
+#[test]
+fn test_delegate_subgroup_simple_name() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Delegate = yes
+    DelegateSubgroup = supervised
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.delegate_subgroup,
+        Some("supervised".to_owned()),
+        "DelegateSubgroup=supervised should parse correctly"
+    );
+}
+
+#[test]
+fn test_delegate_subgroup_payload_name() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Delegate = yes
+    DelegateSubgroup = payload
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.delegate_subgroup,
+        Some("payload".to_owned()),
+        "DelegateSubgroup=payload should parse correctly"
+    );
+}
+
+#[test]
+fn test_delegate_subgroup_empty_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Delegate = yes
+    DelegateSubgroup =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.delegate_subgroup, None,
+        "DelegateSubgroup with empty value should be treated as None (disabled)"
+    );
+}
+
+#[test]
+fn test_delegate_subgroup_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Delegate = yes
+    DelegateSubgroup =   mysubgroup
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.delegate_subgroup,
+        Some("mysubgroup".to_owned()),
+        "DelegateSubgroup should handle surrounding whitespace"
+    );
+}
+
+#[test]
+fn test_delegate_subgroup_without_delegate() {
+    // DelegateSubgroup= can be parsed even without Delegate=yes; it just has
+    // no runtime effect.  The parser should accept it regardless.
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    DelegateSubgroup = supervised
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.delegate_subgroup,
+        Some("supervised".to_owned()),
+        "DelegateSubgroup should be parsed even without Delegate=yes"
+    );
+}
+
+#[test]
+fn test_delegate_subgroup_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    DelegateSubgroup = supervised
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "DelegateSubgroup should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_delegate_subgroup_with_delegate_and_controllers() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Delegate = cpu memory
+    DelegateSubgroup = supervised
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.delegate_subgroup,
+        Some("supervised".to_owned()),
+    );
+    if let crate::units::Delegate::Controllers(ref controllers) = service.srvc.delegate {
+        assert_eq!(controllers, &["cpu", "memory"]);
+    } else {
+        panic!("Expected Delegate::Controllers");
+    }
+}
+
+#[test]
+fn test_delegate_subgroup_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Delegate = yes
+    DelegateSubgroup = payload
+    KillMode = process
+    Restart = on-failure
+    Slice = system.slice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.delegate_subgroup,
+        Some("payload".to_owned()),
+        "DelegateSubgroup should work alongside other service settings"
+    );
+    assert_eq!(service.srvc.kill_mode, crate::units::KillMode::Process);
+    assert_eq!(
+        service.srvc.restart,
+        crate::units::ServiceRestart::OnFailure
+    );
+    assert_eq!(service.srvc.slice, Some("system.slice".to_owned()));
+}
+
+#[test]
+fn test_delegate_subgroup_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Delegate = yes
+    DelegateSubgroup = supervised
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.delegate_subgroup,
+            Some("supervised".to_owned()),
+            "DelegateSubgroup should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_delegate_subgroup_none_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.delegate_subgroup, None,
+            "DelegateSubgroup=None should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}

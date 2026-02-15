@@ -87,6 +87,7 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 success_exit_status: conf.srvc.success_exit_status,
                 memory_pressure_watch: conf.srvc.memory_pressure_watch,
                 reload_signal: conf.srvc.reload_signal,
+                delegate_subgroup: conf.srvc.delegate_subgroup,
             },
             state: RwLock::new(ServiceState {
                 common: CommonState::default(),

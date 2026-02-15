@@ -246,6 +246,7 @@ fn parse_service_section(
     let send_sighup = section.remove("SENDSIGHUP");
     let memory_pressure_watch = section.remove("MEMORYPRESSUREWATCH");
     let reload_signal = section.remove("RELOADSIGNAL");
+    let delegate_subgroup = section.remove("DELEGATESUBGROUP");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -730,6 +731,24 @@ fn parse_service_section(
                 } else {
                     return Err(ParsingErrorReason::SettingTooManyValues(
                         "ReloadSignal".to_owned(),
+                        map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        delegate_subgroup: match delegate_subgroup {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let raw = vec[0].1.trim();
+                    if raw.is_empty() {
+                        None
+                    } else {
+                        Some(raw.to_owned())
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "DelegateSubgroup".to_owned(),
                         map_tuples_to_second(vec),
                     ));
                 }
