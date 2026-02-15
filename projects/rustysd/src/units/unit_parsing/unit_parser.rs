@@ -154,6 +154,7 @@ pub fn parse_exec_section(
     let stderr = section.remove("STANDARDERROR");
     let supplementary_groups = section.remove("SUPPLEMENTARYGROUPS");
     let environment = section.remove("ENVIRONMENT");
+    let working_directory = section.remove("WORKINGDIRECTORY");
 
     let user = match user {
         None => None,
@@ -244,6 +245,30 @@ pub fn parse_exec_section(
         None => None,
     };
 
+    let working_directory = match working_directory {
+        None => None,
+        Some(mut vec) => {
+            if vec.len() == 1 {
+                let dir = vec.remove(0).1;
+                // Strip leading '-' prefix (makes it non-fatal if directory doesn't exist)
+                let dir = dir.strip_prefix('-').unwrap_or(&dir);
+                if dir == "~" {
+                    // Home directory of the user; resolved later when user is known
+                    Some(std::path::PathBuf::from("~"))
+                } else {
+                    Some(std::path::PathBuf::from(dir))
+                }
+            } else if vec.len() > 1 {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "WorkingDirectory".into(),
+                    super::map_tuples_to_second(vec),
+                ));
+            } else {
+                None
+            }
+        }
+    };
+
     Ok(ParsedExecSection {
         user,
         group,
@@ -251,6 +276,7 @@ pub fn parse_exec_section(
         stderr_path,
         supplementary_groups,
         environment,
+        working_directory,
     })
 }
 
