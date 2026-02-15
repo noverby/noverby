@@ -280,6 +280,7 @@ pub fn parse_exec_section(
     let ignore_sigpipe = section.remove("IGNORESIGPIPE");
     let utmp_identifier = section.remove("UTMPIDENTIFIER");
     let utmp_mode = section.remove("UTMPMODE");
+    let import_credential = section.remove("IMPORTCREDENTIAL");
 
     let user = match user {
         None => None,
@@ -580,6 +581,17 @@ pub fn parse_exec_section(
                 }
             }
             None => super::UtmpMode::default(),
+        },
+        import_credentials: match import_credential {
+            Some(vec) => vec
+                .into_iter()
+                .flat_map(|(_, val)| {
+                    val.split_whitespace()
+                        .map(|s| s.to_owned())
+                        .collect::<Vec<_>>()
+                })
+                .collect(),
+            None => Vec::new(),
         },
     })
 }

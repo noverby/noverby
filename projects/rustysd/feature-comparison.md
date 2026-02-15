@@ -664,6 +664,11 @@ This document is meant as a simple way of checking whether all features you need
   <td></td>
 </tr>
 <tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ImportCredential=">ImportCredential=</a></td>
+  <td>✔️</td>
+  <td>Imports credentials from system stores (/run/credentials/@system, /run/credstore, /etc/credstore) matching glob patterns into /run/credentials/&lt;unit&gt;/ and sets CREDENTIALS_DIRECTORY</td>
+</tr>
+<tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$PATH">$PATH</a></td>
   <td>❌</td>
   <td></td>
