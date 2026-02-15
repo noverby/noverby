@@ -184,6 +184,8 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             tty_vhangup: parsed.tty_vhangup,
             tty_vt_disallocate: parsed.tty_vt_disallocate,
             ignore_sigpipe: parsed.ignore_sigpipe,
+            utmp_identifier: parsed.utmp_identifier,
+            utmp_mode: parsed.utmp_mode,
         })
     }
 }

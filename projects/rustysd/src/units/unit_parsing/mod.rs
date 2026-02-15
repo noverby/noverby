@@ -266,6 +266,31 @@ pub struct ParsedExecSection {
     /// exec'ing the service binary. When false, the default SIGPIPE disposition
     /// (terminate) is left in place. Matches systemd.exec(5).
     pub ignore_sigpipe: bool,
+    /// UtmpIdentifier= — the 4-character identifier string to write to the utmp
+    /// and wtmp entries when the service runs on a TTY. Defaults to the TTY
+    /// basename when unset. See systemd.exec(5).
+    pub utmp_identifier: Option<String>,
+    /// UtmpMode= — the type of utmp/wtmp record to write. Defaults to `Init`.
+    /// See systemd.exec(5).
+    pub utmp_mode: UtmpMode,
+}
+
+/// The type of utmp/wtmp record to create for a service.
+/// Corresponds to systemd's `UtmpMode=` setting.
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub enum UtmpMode {
+    /// Write an INIT_PROCESS record (default).
+    Init,
+    /// Write a LOGIN_PROCESS record (for getty-like services).
+    Login,
+    /// Write a USER_PROCESS record.
+    User,
+}
+
+impl Default for UtmpMode {
+    fn default() -> Self {
+        UtmpMode::Init
+    }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]

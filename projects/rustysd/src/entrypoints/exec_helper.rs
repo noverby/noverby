@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use crate::units::{PlatformSpecificServiceFields, RLimitValue, ResourceLimit, StandardInput};
+use crate::units::{
+    PlatformSpecificServiceFields, RLimitValue, ResourceLimit, StandardInput, UtmpMode,
+};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct ExecHelperConfig {
@@ -50,6 +52,16 @@ pub struct ExecHelperConfig {
     /// (terminate) is left in place. Matches systemd.exec(5).
     #[serde(default = "default_true")]
     pub ignore_sigpipe: bool,
+
+    /// UtmpIdentifier= — the identifier string for utmp/wtmp records (up to 4
+    /// characters). When set together with a TTY, a utmp/wtmp login record is
+    /// written before exec and a dead record on service exit.
+    #[serde(default)]
+    pub utmp_identifier: Option<String>,
+
+    /// UtmpMode= — the type of utmp/wtmp record to create (init/login/user).
+    #[serde(default)]
+    pub utmp_mode: UtmpMode,
 
     /// Whether StandardOutput is set to inherit (or journal/kmsg/tty/unset).
     /// When true AND stdin is a TTY, stdout will be dup'd from the TTY fd.
@@ -670,5 +682,178 @@ pub fn run_exec_helper() {
         }
     }
 
+    // Write utmp/wtmp login record if UtmpIdentifier= is set.
+    if config.utmp_identifier.is_some() {
+        write_utmp_record(&config);
+    }
+
     nix::unistd::execv(&cmd, &args).unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// utmp / wtmp helpers
+// ---------------------------------------------------------------------------
+
+extern "C" {
+    fn updwtmpx(file: *const libc::c_char, ut: *const libc::utmpx);
+}
+
+/// Path to the wtmp file (standard glibc location).
+const WTMP_PATH: &[u8] = b"/var/log/wtmp\0";
+
+/// Derive the TTY line name from a TTY path (e.g. "/dev/tty1" → "tty1").
+/// Falls back to the full path if no `/dev/` prefix is found.
+fn tty_line(config: &ExecHelperConfig) -> String {
+    let path = config
+        .tty_path
+        .as_deref()
+        .unwrap_or_else(|| std::path::Path::new("/dev/console"));
+    let s = path.to_string_lossy();
+    s.strip_prefix("/dev/").unwrap_or(&s).to_string()
+}
+
+/// Copy a Rust string into a fixed-size `c_char` array, truncating and
+/// NUL-terminating as needed.
+fn fill_c_char_buf(buf: &mut [libc::c_char], src: &str) {
+    let bytes = src.as_bytes();
+    let len = bytes.len().min(buf.len() - 1);
+    for (i, &b) in bytes[..len].iter().enumerate() {
+        buf[i] = b as libc::c_char;
+    }
+    // Remaining bytes are already zero from `mem::zeroed()`.
+}
+
+/// Build a `libc::utmpx` record from the current exec-helper config.
+fn build_utmpx(config: &ExecHelperConfig, ut_type: libc::c_short) -> libc::utmpx {
+    let mut ut: libc::utmpx = unsafe { std::mem::zeroed() };
+    ut.ut_type = ut_type;
+    ut.ut_pid = nix::unistd::getpid().as_raw();
+
+    let line = tty_line(config);
+    fill_c_char_buf(&mut ut.ut_line, &line);
+
+    if let Some(ref id) = config.utmp_identifier {
+        fill_c_char_buf(&mut ut.ut_id, id);
+    } else {
+        // Derive from TTY line — use last 4 characters (matches systemd).
+        let id_str = if line.len() > 4 {
+            &line[line.len() - 4..]
+        } else {
+            &line
+        };
+        fill_c_char_buf(&mut ut.ut_id, id_str);
+    }
+
+    // For LOGIN_PROCESS the user field is conventionally "LOGIN".
+    // For INIT_PROCESS it is often empty or the service name.
+    // For USER_PROCESS it should be the login name.
+    match ut_type {
+        libc::LOGIN_PROCESS => fill_c_char_buf(&mut ut.ut_user, "LOGIN"),
+        libc::USER_PROCESS => {
+            // Resolve uid → username if possible.
+            if let Some(pw) = nix::unistd::User::from_uid(nix::unistd::Uid::from_raw(config.user))
+                .ok()
+                .flatten()
+            {
+                fill_c_char_buf(&mut ut.ut_user, &pw.name);
+            }
+        }
+        _ => { /* INIT_PROCESS / DEAD_PROCESS — user field stays empty */ }
+    }
+
+    // Timestamp
+    let now = unsafe {
+        let mut tv: libc::timeval = std::mem::zeroed();
+        libc::gettimeofday(&mut tv, std::ptr::null_mut());
+        tv
+    };
+    ut.ut_tv.tv_sec = now.tv_sec as _;
+    ut.ut_tv.tv_usec = now.tv_usec as _;
+
+    ut
+}
+
+/// Write the initial utmp + wtmp record before exec'ing the service binary.
+fn write_utmp_record(config: &ExecHelperConfig) {
+    let ut_type: libc::c_short = match config.utmp_mode {
+        UtmpMode::Init => libc::INIT_PROCESS as libc::c_short,
+        UtmpMode::Login => libc::LOGIN_PROCESS as libc::c_short,
+        UtmpMode::User => libc::USER_PROCESS as libc::c_short,
+    };
+
+    let ut = build_utmpx(config, ut_type);
+
+    unsafe {
+        libc::setutxent();
+        let result = libc::pututxline(&ut);
+        libc::endutxent();
+
+        if result.is_null() {
+            eprintln!(
+                "[EXEC_HELPER {}] Failed to write utmp record: {}",
+                config.name,
+                std::io::Error::last_os_error()
+            );
+        }
+
+        // Append to wtmp as well.
+        updwtmpx(WTMP_PATH.as_ptr() as *const libc::c_char, &ut);
+    }
+
+    eprintln!(
+        "[EXEC_HELPER {}] Wrote utmp record (id={:?}, line={}, mode={:?})",
+        config.name,
+        config.utmp_identifier,
+        tty_line(config),
+        config.utmp_mode,
+    );
+}
+
+/// Write a DEAD_PROCESS utmp + wtmp record.  Called from the service manager
+/// (parent process) when a service that had `UtmpIdentifier=` exits.
+///
+/// `identifier` is the `UtmpIdentifier=` value, `tty_path` the configured
+/// TTY, and `pid` the PID of the exited service process.
+pub fn write_utmp_dead_record(
+    identifier: &str,
+    tty_path: Option<&std::path::Path>,
+    pid: nix::unistd::Pid,
+) {
+    let mut ut: libc::utmpx = unsafe { std::mem::zeroed() };
+    ut.ut_type = libc::DEAD_PROCESS as libc::c_short;
+    ut.ut_pid = pid.as_raw();
+
+    let tty = tty_path.unwrap_or_else(|| std::path::Path::new("/dev/console"));
+    let line = tty
+        .to_string_lossy()
+        .strip_prefix("/dev/")
+        .unwrap_or(&tty.to_string_lossy())
+        .to_string();
+    fill_c_char_buf(&mut ut.ut_line, &line);
+    fill_c_char_buf(&mut ut.ut_id, identifier);
+
+    let now = unsafe {
+        let mut tv: libc::timeval = std::mem::zeroed();
+        libc::gettimeofday(&mut tv, std::ptr::null_mut());
+        tv
+    };
+    ut.ut_tv.tv_sec = now.tv_sec as _;
+    ut.ut_tv.tv_usec = now.tv_usec as _;
+
+    unsafe {
+        libc::setutxent();
+        let result = libc::pututxline(&ut);
+        libc::endutxent();
+
+        if result.is_null() {
+            // Non-fatal — the utmp file may not exist or be writable.
+            log::warn!(
+                "Failed to write DEAD_PROCESS utmp record for id={}: {}",
+                identifier,
+                std::io::Error::last_os_error()
+            );
+        }
+
+        updwtmpx(WTMP_PATH.as_ptr() as *const libc::c_char, &ut);
+    }
 }
