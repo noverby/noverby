@@ -930,6 +930,47 @@ pub struct PlatformSpecificServiceFields {
 #[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PlatformSpecificServiceFields {}
 
+/// Additional exit codes and signals that should be considered a successful
+/// termination, as configured by `SuccessExitStatus=` in the `[Service]` section.
+///
+/// By default only exit code 0 and the "clean" signals (SIGHUP, SIGINT,
+/// SIGTERM, SIGPIPE) count as success.  This struct extends that set on a
+/// per-service basis.
+#[derive(Clone, Eq, PartialEq, Debug, Default)]
+pub struct SuccessExitStatus {
+    pub exit_codes: Vec<i32>,
+    pub signals: Vec<nix::sys::signal::Signal>,
+}
+
+impl SuccessExitStatus {
+    /// Returns `true` when `termination` should be treated as a successful
+    /// exit, considering both the built-in rules (exit 0) and any extra
+    /// codes/signals configured via `SuccessExitStatus=`.
+    pub fn is_success(&self, termination: &crate::signal_handler::ChildTermination) -> bool {
+        match termination {
+            crate::signal_handler::ChildTermination::Exit(code) => {
+                *code == 0 || self.exit_codes.contains(code)
+            }
+            crate::signal_handler::ChildTermination::Signal(sig) => self.signals.contains(sig),
+        }
+    }
+
+    /// Like `is_clean_signal` but also considers extra signals from this
+    /// config as "clean".
+    pub fn is_clean_signal(&self, termination: &crate::signal_handler::ChildTermination) -> bool {
+        use nix::sys::signal::Signal;
+        match termination {
+            crate::signal_handler::ChildTermination::Signal(sig) => {
+                matches!(
+                    sig,
+                    Signal::SIGHUP | Signal::SIGINT | Signal::SIGTERM | Signal::SIGPIPE
+                ) || self.signals.contains(sig)
+            }
+            crate::signal_handler::ChildTermination::Exit(_) => false,
+        }
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Debug)]
 /// The immutable config of a service unit
 pub struct ServiceConfig {
@@ -962,6 +1003,9 @@ pub struct ServiceConfig {
     /// RemainAfterExit= — whether the service is considered active even after
     /// the main process exits. Defaults to false. Commonly used with Type=oneshot.
     pub remain_after_exit: bool,
+    /// SuccessExitStatus= — additional exit codes and signals that are
+    /// considered a successful (clean) service termination.
+    pub success_exit_status: SuccessExitStatus,
 }
 
 /// The immutable config of a socket unit

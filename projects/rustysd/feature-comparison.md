@@ -1245,8 +1245,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#SuccessExitStatus=">SuccessExitStatus=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Extra exit codes and signal names (with or without SIG prefix) treated as clean exit</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#RestartPreventExitStatus=">RestartPreventExitStatus=</a></td>
