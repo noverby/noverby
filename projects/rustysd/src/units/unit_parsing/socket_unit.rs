@@ -85,6 +85,7 @@ fn parse_socket_section(
     let datagrams = section.remove("LISTENDATAGRAM");
     let seqpacks = section.remove("LISTENSEQUENTIALPACKET");
     let fifos = section.remove("LISTENFIFO");
+    let accept = section.remove("ACCEPT");
     let max_connections = section.remove("MAXCONNECTIONS");
     let max_connections_per_source = section.remove("MAXCONNECTIONSPERSOURCE");
     let socket_mode = section.remove("SOCKETMODE");
@@ -250,6 +251,20 @@ fn parse_socket_section(
         None => max_connections,
     };
 
+    let accept = match accept {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "Accept".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
     let socket_mode: Option<u32> = match socket_mode {
         None => None,
         Some(vec) => {
@@ -311,6 +326,7 @@ fn parse_socket_section(
     Ok(ParsedSocketSection {
         filedesc_name: fdname,
         services,
+        accept,
         sockets: socket_configs,
         max_connections,
         max_connections_per_source,

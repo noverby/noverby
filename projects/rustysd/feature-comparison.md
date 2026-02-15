@@ -1443,8 +1443,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#Accept=">Accept=</a></td>
-  <td>❓</td>
-  <td>Only the setting 'no' is supported. Intend-style activation is not yet supported.</td>
+  <td>✔️</td>
+  <td>Parsed and stored (boolean) in both [Socket] and [Service] sections. Inetd-style activation (Accept=yes) is not yet supported at runtime.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#Writable=">Writable=</a></td>
