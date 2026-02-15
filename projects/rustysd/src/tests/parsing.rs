@@ -23966,6 +23966,275 @@ fn test_private_network_with_other_settings() {
 }
 
 // ============================================================
+// PrivateUsers= parsing tests
+// ============================================================
+
+#[test]
+fn test_private_users_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.private_users,
+        "PrivateUsers should default to false"
+    );
+}
+
+#[test]
+fn test_private_users_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateUsers = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.private_users,
+        "PrivateUsers=yes should be true"
+    );
+}
+
+#[test]
+fn test_private_users_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateUsers = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.private_users,
+        "PrivateUsers=no should be false"
+    );
+}
+
+#[test]
+fn test_private_users_true_variant() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateUsers = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.private_users,
+        "PrivateUsers=true should be true"
+    );
+}
+
+#[test]
+fn test_private_users_one_is_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateUsers = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.private_users,
+        "PrivateUsers=1 should be true"
+    );
+}
+
+#[test]
+fn test_private_users_zero_is_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateUsers = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.private_users,
+        "PrivateUsers=0 should be false"
+    );
+}
+
+#[test]
+fn test_private_users_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateUsers = Yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.private_users,
+        "PrivateUsers=Yes should be true (case insensitive)"
+    );
+}
+
+#[test]
+fn test_private_users_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateUsers = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "PrivateUsers= should not cause errors");
+}
+
+#[test]
+fn test_private_users_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateUsers = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.private_users,
+            "PrivateUsers=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_private_users_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            !srvc.conf.exec_config.private_users,
+            "PrivateUsers default (false) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_private_users_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with private users
+    [Socket]
+    ListenStream = /run/test.sock
+    PrivateUsers = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.exec_section.private_users,
+        "PrivateUsers should work in socket units"
+    );
+}
+
+#[test]
+fn test_private_users_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateUsers = yes
+    PrivateNetwork = yes
+    PrivateDevices = yes
+    PrivateTmp = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.private_users);
+    assert!(service.srvc.exec_section.private_network);
+    assert!(service.srvc.exec_section.private_devices);
+    assert!(service.srvc.exec_section.private_tmp);
+}
+
+// ============================================================
 // LockPersonality= parsing tests
 // ============================================================
 
