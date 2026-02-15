@@ -297,6 +297,8 @@ fn make_common_from_parsed(
             allow_isolate: unit.allow_isolate,
             refuse_manual_start: unit.refuse_manual_start,
             refuse_manual_stop: unit.refuse_manual_stop,
+            on_failure: unit.on_failure,
+            on_failure_job_mode: unit.on_failure_job_mode,
             aliases: install.alias,
             default_instance: install.default_instance,
         },

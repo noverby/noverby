@@ -53,16 +53,16 @@ pub enum UnitCondition {
     /// Checks whether the system is booting for the first time (i.e.
     /// /etc/machine-id does not yet exist). See systemd.unit(5).
     FirstBoot { value: bool, negate: bool },
-    /// ConditionFileIsExecutable=/some/path (true if path exists and is executable)
-    /// ConditionFileIsExecutable=!/some/path (true if path does NOT exist or is not executable)
-    /// Checks whether the specified path exists as a regular file and has
-    /// at least one execute bit set. See systemd.unit(5).
-    FileIsExecutable { path: String, negate: bool },
     /// ConditionFileNotEmpty=/some/path (true if path exists as a regular file with size > 0)
     /// ConditionFileNotEmpty=!/some/path (true if path does NOT exist or is empty)
     /// Checks whether the specified path exists as a regular file and has
     /// a non-zero size. See systemd.unit(5).
     FileNotEmpty { path: String, negate: bool },
+    /// ConditionFileIsExecutable=/some/path (true if path exists and is executable)
+    /// ConditionFileIsExecutable=!/some/path (true if path does NOT exist or is not executable)
+    /// Checks whether the specified path exists as a regular file and has
+    /// at least one execute bit set. See systemd.unit(5).
+    FileIsExecutable { path: String, negate: bool },
 }
 
 /// The kind of virtualization detected (VM or container).
@@ -513,6 +513,34 @@ impl Default for UnitAction {
     }
 }
 
+/// Job mode for OnFailure= units.
+/// Controls how the triggered failure units are enqueued.
+/// Matches systemd's `OnFailureJobMode=` setting.
+/// See <https://www.freedesktop.org/software/systemd/man/systemd.unit.html#OnFailureJobMode=>.
+#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
+pub enum OnFailureJobMode {
+    /// Replace existing conflicting jobs (default).
+    Replace,
+    /// Fail if there are conflicting jobs already queued.
+    Fail,
+    /// Like `Replace`, but also cancel jobs in units that conflict.
+    ReplaceIrreversibly,
+    /// Start the unit and stop all other units.
+    Isolate,
+    /// Cancel all queued jobs and enqueue the new one.
+    Flush,
+    /// Ignore all unit dependency requirements.
+    IgnoreDependencies,
+    /// Ignore only `Requires=` dependencies.
+    IgnoreRequirements,
+}
+
+impl Default for OnFailureJobMode {
+    fn default() -> Self {
+        Self::Replace
+    }
+}
+
 pub struct ParsedUnitSection {
     pub description: String,
     pub documentation: Vec<String>,
@@ -587,6 +615,17 @@ pub struct ParsedUnitSection {
     /// Defaults to false, matching systemd's `RefuseManualStop=` setting.
     /// Parsed and stored; no runtime enforcement yet.
     pub refuse_manual_stop: bool,
+
+    /// Units to activate when this unit enters the "failed" state.
+    /// Matches systemd's `OnFailure=` setting.
+    /// Parsed and stored; no runtime triggering enforcement yet.
+    pub on_failure: Vec<String>,
+
+    /// Job mode for enqueuing OnFailure= units.
+    /// Defaults to `Replace`, matching systemd's default.
+    /// Matches systemd's `OnFailureJobMode=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub on_failure_job_mode: OnFailureJobMode,
 }
 
 impl Default for ParsedUnitSection {
@@ -612,6 +651,8 @@ impl Default for ParsedUnitSection {
             job_timeout_action: UnitAction::default(),
             refuse_manual_start: false,
             refuse_manual_stop: false,
+            on_failure: Vec::new(),
+            on_failure_job_mode: OnFailureJobMode::default(),
         }
     }
 }

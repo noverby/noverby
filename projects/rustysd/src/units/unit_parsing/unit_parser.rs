@@ -212,6 +212,8 @@ pub fn parse_unit_section(
     let job_timeout_action = section.remove("JOBTIMEOUTACTION");
     let refuse_manual_start = section.remove("REFUSEMANUALSTART");
     let refuse_manual_stop = section.remove("REFUSEMANUALSTOP");
+    let on_failure = section.remove("ONFAILURE");
+    let on_failure_job_mode = section.remove("ONFAILUREJOBMODE");
 
     for key in section.keys() {
         if key.starts_with("X-") {
@@ -261,6 +263,36 @@ pub fn parse_unit_section(
     let refuse_manual_stop = refuse_manual_stop
         .map(|x| string_to_bool(&x[0].1))
         .unwrap_or(false);
+
+    let on_failure_list = map_tuples_to_second(split_list_values(on_failure.unwrap_or_default()));
+
+    let on_failure_job_mode = match on_failure_job_mode {
+        Some(vec) => {
+            if vec.len() == 1 {
+                match vec[0].1.trim().to_lowercase().as_str() {
+                    "replace" | "" => super::OnFailureJobMode::Replace,
+                    "fail" => super::OnFailureJobMode::Fail,
+                    "replace-irreversibly" => super::OnFailureJobMode::ReplaceIrreversibly,
+                    "isolate" => super::OnFailureJobMode::Isolate,
+                    "flush" => super::OnFailureJobMode::Flush,
+                    "ignore-dependencies" => super::OnFailureJobMode::IgnoreDependencies,
+                    "ignore-requirements" => super::OnFailureJobMode::IgnoreRequirements,
+                    other => {
+                        return Err(ParsingErrorReason::UnknownSetting(
+                            "OnFailureJobMode".to_owned(),
+                            other.to_owned(),
+                        ))
+                    }
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "OnFailureJobMode".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => super::OnFailureJobMode::default(),
+    };
 
     let mut conditions = Vec::new();
     for (_, value) in condition_path_exists.unwrap_or_default() {
@@ -420,6 +452,8 @@ pub fn parse_unit_section(
         job_timeout_action,
         refuse_manual_start,
         refuse_manual_stop,
+        on_failure: on_failure_list,
+        on_failure_job_mode,
     })
 }
 
