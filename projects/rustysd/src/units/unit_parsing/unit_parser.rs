@@ -201,6 +201,7 @@ pub fn parse_unit_section(
     let part_of = section.remove("PARTOF");
     let ignore_on_isolate = section.remove("IGNOREONISOLATE");
     let requires_mounts_for = section.remove("REQUIRESMOUNTSFOR");
+    let stop_when_unneeded = section.remove("STOPWHENUNNEEDED");
 
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Unit] section: {key}");
@@ -228,6 +229,10 @@ pub fn parse_unit_section(
         .unwrap_or(true);
 
     let ignore_on_isolate = ignore_on_isolate
+        .map(|x| string_to_bool(&x[0].1))
+        .unwrap_or(false);
+
+    let stop_when_unneeded = stop_when_unneeded
         .map(|x| string_to_bool(&x[0].1))
         .unwrap_or(false);
 
@@ -307,6 +312,7 @@ pub fn parse_unit_section(
         success_action,
         failure_action,
         requires_mounts_for: requires_mounts_for_paths,
+        stop_when_unneeded,
     })
 }
 
