@@ -2819,3 +2819,303 @@ fn test_service_implicit_oneshot_with_pre_post_commands() {
     assert_eq!(service.srvc.startpost.len(), 1);
     assert_eq!(service.srvc.startpost[0].cmd, "/usr/bin/echo");
 }
+
+/// User= and Group= resolution is deferred to exec time (matching systemd
+/// behavior). Parsing a service that references a user/group which does not
+/// exist on the current system must succeed — the raw string is stored and
+/// resolved later when the service is actually started.
+#[test]
+fn test_user_group_deferred_resolution_unknown_user() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /usr/bin/daemon
+    User = nonexistent_test_user_42
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/daemon.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.user,
+        Some("nonexistent_test_user_42".to_owned()),
+        "User= should be stored as a raw string, not resolved at parse time"
+    );
+}
+
+#[test]
+fn test_user_group_deferred_resolution_unknown_group() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /usr/bin/daemon
+    Group = nonexistent_test_group_42
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/daemon.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.group,
+        Some("nonexistent_test_group_42".to_owned()),
+        "Group= should be stored as a raw string, not resolved at parse time"
+    );
+}
+
+#[test]
+fn test_user_group_deferred_resolution_unknown_both() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /usr/bin/uuidd
+    User = uuidd
+    Group = uuidd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/uuidd.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.user, Some("uuidd".to_owned()),);
+    assert_eq!(service.srvc.exec_section.group, Some("uuidd".to_owned()),);
+}
+
+#[test]
+fn test_user_group_numeric_uid_gid() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /usr/bin/daemon
+    User = 1000
+    Group = 1000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/daemon.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.user,
+        Some("1000".to_owned()),
+        "Numeric UID should be stored as a raw string"
+    );
+    assert_eq!(
+        service.srvc.exec_section.group,
+        Some("1000".to_owned()),
+        "Numeric GID should be stored as a raw string"
+    );
+}
+
+#[test]
+fn test_user_group_not_set_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /usr/bin/daemon
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/daemon.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.user, None,
+        "User= not set should result in None"
+    );
+    assert_eq!(
+        service.srvc.exec_section.group, None,
+        "Group= not set should result in None"
+    );
+}
+
+#[test]
+fn test_supplementary_groups_deferred_resolution() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /usr/bin/daemon
+    SupplementaryGroups = audio video nonexistent_group_99
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/daemon.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.supplementary_groups,
+        vec![
+            "audio".to_owned(),
+            "video".to_owned(),
+            "nonexistent_group_99".to_owned(),
+        ],
+        "SupplementaryGroups= should be stored as raw strings, not resolved at parse time"
+    );
+}
+
+/// Converting a parsed service with an unknown user/group into a Unit must
+/// also succeed — the TryFrom<ParsedExecSection> no longer resolves names.
+#[test]
+fn test_user_group_deferred_through_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    Description=UUID daemon
+    [Service]
+    ExecStart = /usr/bin/uuidd
+    User = uuidd
+    Group = uuidd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/uuidd.service"),
+    )
+    .unwrap();
+
+    // This previously failed with "Couldnt get uid for username: uuidd"
+    let unit: Unit = service.try_into().expect(
+        "Unit conversion must succeed even when User=/Group= reference unknown users/groups",
+    );
+
+    if let crate::units::Specific::Service(ref srvc) = unit.specific {
+        assert_eq!(srvc.conf.exec_config.user, Some("uuidd".to_owned()));
+        assert_eq!(srvc.conf.exec_config.group, Some("uuidd".to_owned()));
+    } else {
+        panic!("Expected a Service unit");
+    }
+}
+
+#[test]
+fn test_numeric_uid_gid_through_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /usr/bin/daemon
+    User = 65534
+    Group = 65534
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/daemon.service"),
+    )
+    .unwrap();
+
+    let unit: Unit = service.try_into().unwrap();
+
+    if let crate::units::Specific::Service(ref srvc) = unit.specific {
+        assert_eq!(srvc.conf.exec_config.user, Some("65534".to_owned()));
+        assert_eq!(srvc.conf.exec_config.group, Some("65534".to_owned()));
+    } else {
+        panic!("Expected a Service unit");
+    }
+}
+
+/// Exec-less oneshot service (no [Service] section) should convert to a
+/// valid Unit with exec: None.
+#[test]
+fn test_no_service_section_through_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    Description=System Reboot
+    DefaultDependencies=no
+    Requires=shutdown.target
+    After=shutdown.target
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/systemd-reboot.service"),
+    )
+    .unwrap();
+
+    let unit: Unit = service.try_into().unwrap();
+
+    assert_eq!(unit.common.unit.description, "System Reboot");
+    if let crate::units::Specific::Service(ref srvc) = unit.specific {
+        assert_eq!(srvc.conf.exec, None);
+        assert_eq!(srvc.conf.srcv_type, crate::units::ServiceType::OneShot);
+        assert_eq!(srvc.conf.exec_config.user, None);
+        assert_eq!(srvc.conf.exec_config.group, None);
+    } else {
+        panic!("Expected a Service unit");
+    }
+}
+
+#[test]
+fn test_resolve_uid_numeric() {
+    let result = crate::services::start_service::resolve_uid(&Some("0".to_owned()));
+    assert_eq!(result.unwrap(), 0, "Numeric UID 0 (root) should resolve");
+}
+
+#[test]
+fn test_resolve_uid_none_returns_current() {
+    let result = crate::services::start_service::resolve_uid(&None);
+    assert!(result.is_ok(), "None user should fall back to current UID");
+    assert_eq!(
+        result.unwrap(),
+        nix::unistd::getuid().as_raw(),
+        "None user should resolve to current process UID"
+    );
+}
+
+#[test]
+fn test_resolve_uid_unknown_user_fails() {
+    let result =
+        crate::services::start_service::resolve_uid(&Some("nonexistent_user_xyz_42".to_owned()));
+    assert!(
+        result.is_err(),
+        "Unknown username should fail at resolve time"
+    );
+}
+
+#[test]
+fn test_resolve_gid_numeric() {
+    let result = crate::services::start_service::resolve_gid(&Some("0".to_owned()));
+    assert_eq!(result.unwrap(), 0, "Numeric GID 0 (root) should resolve");
+}
+
+#[test]
+fn test_resolve_gid_none_returns_current() {
+    let result = crate::services::start_service::resolve_gid(&None);
+    assert!(result.is_ok(), "None group should fall back to current GID");
+    assert_eq!(
+        result.unwrap(),
+        nix::unistd::getgid().as_raw(),
+        "None group should resolve to current process GID"
+    );
+}
+
+#[test]
+fn test_resolve_gid_unknown_group_fails() {
+    let result =
+        crate::services::start_service::resolve_gid(&Some("nonexistent_group_xyz_42".to_owned()));
+    assert!(
+        result.is_err(),
+        "Unknown group name should fail at resolve time"
+    );
+}
