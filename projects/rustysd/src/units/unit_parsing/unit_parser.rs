@@ -68,15 +68,17 @@ pub fn map_tuples_to_second<X, Y: Clone>(v: Vec<(X, Y)>) -> Vec<Y> {
     v.iter().map(|(_, scnd)| scnd.clone()).collect()
 }
 
-/// Split space-separated values in list-type fields into individual entries.
-/// In systemd, dependency fields like After=, Before=, Wants=, Requires=, Conflicts=
-/// accept both comma-separated and space-separated values. The generic parse_section
-/// already splits by commas, but not by spaces. This function handles the space splitting
-/// for list-type fields.
-fn split_space_separated_values(tuples: Vec<(u32, String)>) -> Vec<(u32, String)> {
+/// Split comma-separated and space-separated values in list-type fields into
+/// individual entries. In systemd, dependency fields like After=, Before=,
+/// Wants=, Requires=, Conflicts= accept both comma-separated and
+/// space-separated values. This function handles both kinds of splitting for
+/// list-type fields. It must NOT be used for command-line fields (ExecStart=,
+/// etc.) where commas can be part of arguments.
+pub(crate) fn split_list_values(tuples: Vec<(u32, String)>) -> Vec<(u32, String)> {
     let mut result = Vec::new();
     for (idx, value) in tuples {
-        for part in value.split_whitespace() {
+        for part in value.split(|c: char| c == ',' || c.is_whitespace()) {
+            let part = part.trim();
             if !part.is_empty() {
                 result.push((idx, part.to_string()));
             }
@@ -158,14 +160,12 @@ pub fn parse_unit_section(
 
     Ok(ParsedUnitSection {
         description: description.map(|x| (x[0]).1.clone()).unwrap_or_default(),
-        documentation: map_tuples_to_second(documentation.unwrap_or_default()),
-        wants: map_tuples_to_second(split_space_separated_values(wants.unwrap_or_default())),
-        requires: map_tuples_to_second(split_space_separated_values(requires.unwrap_or_default())),
-        conflicts: map_tuples_to_second(split_space_separated_values(
-            conflicts.unwrap_or_default(),
-        )),
-        after: map_tuples_to_second(split_space_separated_values(after.unwrap_or_default())),
-        before: map_tuples_to_second(split_space_separated_values(before.unwrap_or_default())),
+        documentation: map_tuples_to_second(split_list_values(documentation.unwrap_or_default())),
+        wants: map_tuples_to_second(split_list_values(wants.unwrap_or_default())),
+        requires: map_tuples_to_second(split_list_values(requires.unwrap_or_default())),
+        conflicts: map_tuples_to_second(split_list_values(conflicts.unwrap_or_default())),
+        after: map_tuples_to_second(split_list_values(after.unwrap_or_default())),
+        before: map_tuples_to_second(split_list_values(before.unwrap_or_default())),
         default_dependencies,
         conditions,
     })
@@ -426,11 +426,9 @@ pub fn parse_install_section(
     }
 
     Ok(ParsedInstallSection {
-        wanted_by: map_tuples_to_second(split_space_separated_values(wantedby.unwrap_or_default())),
-        required_by: map_tuples_to_second(split_space_separated_values(
-            requiredby.unwrap_or_default(),
-        )),
-        also: map_tuples_to_second(split_space_separated_values(also.unwrap_or_default())),
+        wanted_by: map_tuples_to_second(split_list_values(wantedby.unwrap_or_default())),
+        required_by: map_tuples_to_second(split_list_values(requiredby.unwrap_or_default())),
+        also: map_tuples_to_second(split_list_values(also.unwrap_or_default())),
     })
 }
 
@@ -476,13 +474,10 @@ pub fn parse_section(lines: &[&str]) -> ParsedSection {
         let value = value.trim_start_matches('=');
         let value = value.trim();
         let name = name.trim().to_uppercase();
-        let values: Vec<String> = value.split(',').map(std::convert::Into::into).collect();
 
         let vec = entries.entry(name).or_default();
-        for value in values {
-            vec.push((entry_number, value));
-            entry_number += 1;
-        }
+        vec.push((entry_number, value.to_string()));
+        entry_number += 1;
     }
 
     entries
