@@ -5,7 +5,7 @@ use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
     acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KeyringMode, KillMode,
-    MemoryPressureWatch, NotifyKind, ProtectSystem, ResourceLimit, RestrictNamespaces,
+    MemoryPressureWatch, NotifyKind, ProtectHome, ProtectSystem, ResourceLimit, RestrictNamespaces,
     ServiceRestart, ServiceType, StandardInput, StatusStarted, StatusStopped, StdIoOption,
     TasksMax, Timeout, UnitAction, UnitCondition, UnitId, UnitIdKind, UnitOperationError,
     UnitOperationErrorReason, UnitStatus, UtmpMode,
@@ -1060,6 +1060,11 @@ pub struct ExecConfig {
     /// accumulate; an empty assignment resets the list. Parsed and stored;
     /// no runtime enforcement yet. See systemd.exec(5).
     pub capability_bounding_set: Vec<String>,
+    /// ProtectHome= — controls whether /home, /root, and /run/user are
+    /// accessible to the service. Can be `no` (default), `yes` (inaccessible),
+    /// `read-only`, or `tmpfs`. Parsed and stored; no runtime enforcement yet
+    /// (requires mount namespace support). See systemd.exec(5).
+    pub protect_home: ProtectHome,
 }
 
 #[cfg(target_os = "linux")]

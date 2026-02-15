@@ -212,6 +212,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             protect_kernel_logs: parsed.protect_kernel_logs,
             protect_clock: parsed.protect_clock,
             capability_bounding_set: parsed.capability_bounding_set,
+            protect_home: parsed.protect_home,
         })
     }
 }
