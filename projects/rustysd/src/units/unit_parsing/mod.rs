@@ -162,6 +162,9 @@ pub struct ParsedExecSection {
     pub stderr_path: Option<StdIoOption>,
     pub supplementary_groups: Vec<String>,
     pub environment: Option<EnvVars>,
+    /// Paths from EnvironmentFile= directives. A leading '-' means the file
+    /// is optional (no error if it doesn't exist).
+    pub environment_files: Vec<(PathBuf, bool)>,
     pub working_directory: Option<PathBuf>,
     pub state_directory: Vec<String>,
     pub tty_path: Option<PathBuf>,

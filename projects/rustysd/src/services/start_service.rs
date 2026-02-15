@@ -1,5 +1,6 @@
 use log::error;
 use log::trace;
+use log::warn;
 use which::which;
 
 use super::fork_child;
@@ -93,11 +94,78 @@ fn start_service_with_filedescriptors(
         cmd,
         args: conf.exec.args.clone(),
         use_first_arg_as_argv0: conf.exec.prefixes.contains(&CommandlinePrefix::AtSign),
-        env: vec![
-            ("LISTEN_FDS".to_owned(), format!("{}", names.len())),
-            ("LISTEN_FDNAMES".to_owned(), names.join(":")),
-            ("NOTIFY_SOCKET".to_owned(), notifications_path),
-        ],
+        env: {
+            let default_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+            let mut env = vec![
+                // Use the inherited PATH if available (important for NixOS where
+                // executables live in /nix/store and are reachable via
+                // /run/current-system/sw/bin, /run/wrappers/bin, etc.).
+                // Fall back to the systemd default FHS PATH (see man systemd.exec).
+                (
+                    "PATH".to_owned(),
+                    std::env::var("PATH").unwrap_or_else(|_| default_path.to_owned()),
+                ),
+            ];
+            // Load EnvironmentFile= files first (lower priority than Environment=).
+            // Each file contains lines of KEY=VALUE pairs.
+            for (path, optional) in &conf.exec_config.environment_files {
+                match std::fs::read_to_string(path) {
+                    Ok(contents) => {
+                        for line in contents.lines() {
+                            let line = line.trim();
+                            // Skip comments and empty lines
+                            if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+                                continue;
+                            }
+                            if let Some((key, value)) = line.split_once('=') {
+                                let key = key.trim().to_owned();
+                                // Strip optional surrounding quotes from the value
+                                let value = value.trim();
+                                let value = if (value.starts_with('"') && value.ends_with('"'))
+                                    || (value.starts_with('\'') && value.ends_with('\''))
+                                {
+                                    value[1..value.len() - 1].to_owned()
+                                } else {
+                                    value.to_owned()
+                                };
+                                env.retain(|(ek, _)| *ek != key);
+                                env.push((key, value));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        if *optional {
+                            trace!(
+                                "Optional EnvironmentFile not found for {}: {:?}: {}",
+                                name,
+                                path,
+                                e
+                            );
+                        } else {
+                            warn!(
+                                "Failed to read EnvironmentFile for {}: {:?}: {}",
+                                name, path, e
+                            );
+                        }
+                    }
+                }
+            }
+            // Apply the service's Environment= settings (may override PATH
+            // and EnvironmentFile= values)
+            if let Some(ref vars) = conf.exec_config.environment {
+                for (k, v) in &vars.vars {
+                    // Remove any prior entry with the same key so the unit's
+                    // value takes precedence over the defaults above.
+                    env.retain(|(ek, _)| ek != k);
+                    env.push((k.clone(), v.clone()));
+                }
+            }
+            // Internal variables added last — these must not be overridden
+            env.push(("LISTEN_FDS".to_owned(), format!("{}", names.len())));
+            env.push(("LISTEN_FDNAMES".to_owned(), names.join(":")));
+            env.push(("NOTIFY_SOCKET".to_owned(), notifications_path));
+            env
+        },
         group: conf.exec_config.group.as_raw(),
         supplementary_groups: conf
             .exec_config
