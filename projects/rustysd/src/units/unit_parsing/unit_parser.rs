@@ -202,6 +202,7 @@ pub fn parse_unit_section(
     let ignore_on_isolate = section.remove("IGNOREONISOLATE");
     let requires_mounts_for = section.remove("REQUIRESMOUNTSFOR");
     let stop_when_unneeded = section.remove("STOPWHENUNNEEDED");
+    let allow_isolate = section.remove("ALLOWISOLATE");
     let job_timeout_action = section.remove("JOBTIMEOUTACTION");
 
     for key in section.keys() {
@@ -234,6 +235,10 @@ pub fn parse_unit_section(
         .unwrap_or(false);
 
     let stop_when_unneeded = stop_when_unneeded
+        .map(|x| string_to_bool(&x[0].1))
+        .unwrap_or(false);
+
+    let allow_isolate = allow_isolate
         .map(|x| string_to_bool(&x[0].1))
         .unwrap_or(false);
 
@@ -328,6 +333,7 @@ pub fn parse_unit_section(
         failure_action,
         requires_mounts_for: requires_mounts_for_paths,
         stop_when_unneeded,
+        allow_isolate,
         job_timeout_action,
     })
 }

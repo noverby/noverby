@@ -154,6 +154,11 @@ pub struct ParsedUnitSection {
     /// Parsed and stored; no runtime enforcement yet.
     pub stop_when_unneeded: bool,
 
+    /// If true, this unit may be used with `systemctl isolate`.
+    /// Defaults to false, matching systemd's `AllowIsolate=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub allow_isolate: bool,
+
     /// Action to take when a job for this unit times out.
     /// Matches systemd's `JobTimeoutAction=` setting.
     /// Uses the same action values as `SuccessAction=`/`FailureAction=`.
@@ -179,6 +184,7 @@ impl Default for ParsedUnitSection {
             failure_action: UnitAction::default(),
             requires_mounts_for: Vec::new(),
             stop_when_unneeded: false,
+            allow_isolate: false,
             job_timeout_action: UnitAction::default(),
         }
     }
