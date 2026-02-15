@@ -215,6 +215,9 @@ pub fn parse_unit_section(
     let refuse_manual_stop = section.remove("REFUSEMANUALSTOP");
     let on_failure = section.remove("ONFAILURE");
     let on_failure_job_mode = section.remove("ONFAILUREJOBMODE");
+    let start_limit_interval_sec = section.remove("STARTLIMITINTERVALSEC");
+    let start_limit_burst = section.remove("STARTLIMITBURST");
+    let start_limit_action = section.remove("STARTLIMITACTION");
 
     for key in section.keys() {
         if key.starts_with("X-") {
@@ -425,6 +428,56 @@ pub fn parse_unit_section(
         None => UnitAction::default(),
     };
 
+    let start_limit_interval_sec = match start_limit_interval_sec {
+        Some(vec) => {
+            if vec.len() == 1 {
+                Some(super::service_unit::parse_timeout(&vec[0].1))
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "StartLimitIntervalSec".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let start_limit_burst = match start_limit_burst {
+        Some(vec) => {
+            if vec.len() == 1 {
+                match vec[0].1.trim().parse::<u32>() {
+                    Ok(val) => Some(val),
+                    Err(_) => {
+                        return Err(ParsingErrorReason::UnknownSetting(
+                            "StartLimitBurst".to_owned(),
+                            vec[0].1.clone(),
+                        ))
+                    }
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "StartLimitBurst".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let start_limit_action = match start_limit_action {
+        Some(vec) => {
+            if vec.len() == 1 {
+                parse_unit_action(&vec[0].1)?
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "StartLimitAction".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => UnitAction::default(),
+    };
+
     // Merge explicit deps with implicit mount deps from RequiresMountsFor=
     let mut requires_list = map_tuples_to_second(split_list_values(requires.unwrap_or_default()));
     for name in mount_unit_requires {
@@ -463,6 +516,9 @@ pub fn parse_unit_section(
         refuse_manual_stop,
         on_failure: on_failure_list,
         on_failure_job_mode,
+        start_limit_interval_sec,
+        start_limit_burst,
+        start_limit_action,
     })
 }
 

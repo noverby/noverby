@@ -697,6 +697,25 @@ pub struct ParsedUnitSection {
     /// Matches systemd's `OnFailureJobMode=` setting.
     /// Parsed and stored; no runtime enforcement yet.
     pub on_failure_job_mode: OnFailureJobMode,
+
+    /// Time interval for rate limiting unit starts.
+    /// If the unit is started more than `start_limit_burst` times within this interval,
+    /// further starts are denied.
+    /// Matches systemd's `StartLimitIntervalSec=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub start_limit_interval_sec: Option<Timeout>,
+
+    /// Number of starts allowed within the `start_limit_interval_sec` interval.
+    /// Defaults to `None` (use manager default, typically 5).
+    /// Matches systemd's `StartLimitBurst=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub start_limit_burst: Option<u32>,
+
+    /// Action to take when the start rate limit is hit.
+    /// Matches systemd's `StartLimitAction=` setting.
+    /// Uses the same action values as `SuccessAction=`/`FailureAction=`.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub start_limit_action: UnitAction,
 }
 
 impl Default for ParsedUnitSection {
@@ -724,6 +743,9 @@ impl Default for ParsedUnitSection {
             refuse_manual_stop: false,
             on_failure: Vec::new(),
             on_failure_job_mode: OnFailureJobMode::default(),
+            start_limit_interval_sec: None,
+            start_limit_burst: None,
+            start_limit_action: UnitAction::default(),
         }
     }
 }
