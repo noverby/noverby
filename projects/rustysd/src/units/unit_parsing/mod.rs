@@ -142,6 +142,12 @@ pub struct ParsedUnitSection {
     /// Action to take when the unit fails.
     /// Matches systemd's `FailureAction=` setting.
     pub failure_action: UnitAction,
+
+    /// Absolute paths that this unit requires mount points for.
+    /// Automatically adds `Requires=` and `After=` dependencies on the
+    /// corresponding `.mount` units for each path prefix.
+    /// Matches systemd's `RequiresMountsFor=` setting.
+    pub requires_mounts_for: Vec<String>,
 }
 
 impl Default for ParsedUnitSection {
@@ -160,6 +166,7 @@ impl Default for ParsedUnitSection {
             conditions: Vec::new(),
             success_action: UnitAction::default(),
             failure_action: UnitAction::default(),
+            requires_mounts_for: Vec::new(),
         }
     }
 }
