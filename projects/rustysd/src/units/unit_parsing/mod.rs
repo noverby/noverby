@@ -455,6 +455,11 @@ pub struct ParsedExecSection {
     /// `read-only`, or `tmpfs`. Parsed and stored; no runtime enforcement yet
     /// (requires mount namespace support). See systemd.exec(5).
     pub protect_home: ProtectHome,
+    /// ProtectHostname= — if true, sets up a new UTS namespace for the
+    /// service and prevents it from changing the hostname or domainname.
+    /// Defaults to false. Parsed and stored; no runtime enforcement yet
+    /// (requires UTS namespace and seccomp support). See systemd.exec(5).
+    pub protect_hostname: bool,
 }
 
 /// The type of utmp/wtmp record to create for a service.
