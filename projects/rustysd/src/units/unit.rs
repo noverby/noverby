@@ -5,9 +5,10 @@ use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
     acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KeyringMode, KillMode,
-    MemoryPressureWatch, NotifyKind, ResourceLimit, ServiceRestart, ServiceType, StandardInput,
-    StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition,
-    UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode,
+    MemoryPressureWatch, NotifyKind, ProtectSystem, ResourceLimit, ServiceRestart, ServiceType,
+    StandardInput, StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction,
+    UnitCondition, UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus,
+    UtmpMode,
 };
 
 use std::sync::RwLock;
@@ -994,6 +995,10 @@ pub struct ExecConfig {
     /// directives accumulate; an empty assignment resets the list. Parsed and
     /// stored; no runtime enforcement yet. See systemd.exec(5).
     pub system_call_filter: Vec<String>,
+    /// ProtectSystem= — controls whether the service has read-only access to
+    /// the OS file system hierarchy. Parsed and stored; no runtime enforcement
+    /// yet (requires mount namespace support). See systemd.exec(5).
+    pub protect_system: ProtectSystem,
 }
 
 #[cfg(target_os = "linux")]
