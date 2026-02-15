@@ -600,8 +600,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LogExtraFields=">LogExtraFields=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored. Multiple directives accumulate. No runtime enforcement yet (journal field injection not implemented).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LogRateLimitIntervalSec=">LogRateLimitIntervalSec=</a></td>

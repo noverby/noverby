@@ -13459,3 +13459,239 @@ fn test_exec_reload_with_at_prefix() {
         "ExecReload with @ prefix should have AtSign prefix"
     );
 }
+
+// ============================================================
+// LogExtraFields= parsing tests
+// ============================================================
+
+#[test]
+fn test_log_extra_fields_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.log_extra_fields.is_empty(),
+        "LogExtraFields should default to empty"
+    );
+}
+
+#[test]
+fn test_log_extra_fields_single_entry() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    LogExtraFields = MYFIELD=myvalue
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.log_extra_fields.len(), 1);
+    assert_eq!(
+        service.srvc.exec_section.log_extra_fields[0],
+        "MYFIELD=myvalue"
+    );
+}
+
+#[test]
+fn test_log_extra_fields_multiple_directives() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    LogExtraFields = FIELD_A=value_a
+    LogExtraFields = FIELD_B=value_b
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.log_extra_fields.len(), 2);
+    assert_eq!(
+        service.srvc.exec_section.log_extra_fields[0],
+        "FIELD_A=value_a"
+    );
+    assert_eq!(
+        service.srvc.exec_section.log_extra_fields[1],
+        "FIELD_B=value_b"
+    );
+}
+
+#[test]
+fn test_log_extra_fields_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    LogExtraFields = MYFIELD=myvalue
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "LogExtraFields should parse without error or warning"
+    );
+}
+
+#[test]
+fn test_log_extra_fields_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    LogExtraFields = COMPONENT=webserver
+    Environment = FOO=bar
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.log_extra_fields.len(), 1);
+    assert_eq!(
+        service.srvc.exec_section.log_extra_fields[0],
+        "COMPONENT=webserver"
+    );
+}
+
+#[test]
+fn test_log_extra_fields_value_with_equals() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    LogExtraFields = MYFIELD=key=value
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.log_extra_fields.len(), 1);
+    assert_eq!(
+        service.srvc.exec_section.log_extra_fields[0],
+        "MYFIELD=key=value"
+    );
+}
+
+#[test]
+fn test_log_extra_fields_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    LogExtraFields = SUBSYSTEM=auth
+    LogExtraFields = COMPONENT=login
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(srvc.conf.exec_config.log_extra_fields.len(), 2);
+        assert_eq!(srvc.conf.exec_config.log_extra_fields[0], "SUBSYSTEM=auth");
+        assert_eq!(srvc.conf.exec_config.log_extra_fields[1], "COMPONENT=login");
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_log_extra_fields_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.log_extra_fields.is_empty(),
+            "Empty LogExtraFields should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_log_extra_fields_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with log fields
+    [Socket]
+    ListenStream = /run/test.sock
+    LogExtraFields = UNIT_TYPE=socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_section.log_extra_fields.len(), 1);
+    assert_eq!(
+        socket.sock.exec_section.log_extra_fields[0],
+        "UNIT_TYPE=socket"
+    );
+}
+
+#[test]
+fn test_log_extra_fields_empty_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    LogExtraFields = MYFIELD=
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.log_extra_fields.len(), 1);
+    assert_eq!(service.srvc.exec_section.log_extra_fields[0], "MYFIELD=");
+}
