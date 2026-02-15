@@ -243,6 +243,11 @@ pub struct ParsedServiceSection {
     /// Defaults to false. See systemd.kill(5).
     pub send_sighup: bool,
 
+    /// MemoryPressureWatch= — configures whether to watch for memory pressure
+    /// events via PSI. Parsed and stored; no runtime enforcement.
+    /// See systemd.resource-control(5).
+    pub memory_pressure_watch: MemoryPressureWatch,
+
     pub exec_section: ParsedExecSection,
 }
 
@@ -395,6 +400,28 @@ pub enum Delegate {
 impl Default for Delegate {
     fn default() -> Self {
         Self::No
+    }
+}
+
+/// MemoryPressureWatch= — configures whether to watch for memory pressure
+/// events via PSI (Pressure Stall Information). Parsed and stored; no runtime
+/// enforcement (requires cgroup + PSI support). See systemd.resource-control(5).
+#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
+pub enum MemoryPressureWatch {
+    /// Automatically enable if the service has a dedicated cgroup and PSI is
+    /// available (default).
+    Auto,
+    /// Always watch for memory pressure.
+    On,
+    /// Never watch for memory pressure.
+    Off,
+    /// Do not set the MEMORY_PRESSURE_WATCH environment variable at all.
+    Skip,
+}
+
+impl Default for MemoryPressureWatch {
+    fn default() -> Self {
+        Self::Auto
     }
 }
 
