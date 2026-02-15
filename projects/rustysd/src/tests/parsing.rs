@@ -17910,6 +17910,361 @@ fn test_capability_bounding_set_socket_unit() {
 }
 
 // ============================================================
+// AmbientCapabilities= parsing tests
+// ============================================================
+
+#[test]
+fn test_ambient_capabilities_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.ambient_capabilities.is_empty(),
+        "AmbientCapabilities should default to empty"
+    );
+}
+
+#[test]
+fn test_ambient_capabilities_single_cap() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    AmbientCapabilities = CAP_NET_BIND_SERVICE
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.ambient_capabilities,
+        vec!["CAP_NET_BIND_SERVICE"],
+    );
+}
+
+#[test]
+fn test_ambient_capabilities_multiple_caps() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    AmbientCapabilities = CAP_NET_BIND_SERVICE CAP_SYS_NICE CAP_DAC_READ_SEARCH
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.ambient_capabilities.len(), 3);
+    assert_eq!(
+        service.srvc.exec_section.ambient_capabilities[0],
+        "CAP_NET_BIND_SERVICE"
+    );
+    assert_eq!(
+        service.srvc.exec_section.ambient_capabilities[1],
+        "CAP_SYS_NICE"
+    );
+    assert_eq!(
+        service.srvc.exec_section.ambient_capabilities[2],
+        "CAP_DAC_READ_SEARCH"
+    );
+}
+
+#[test]
+fn test_ambient_capabilities_deny_list() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    AmbientCapabilities = ~CAP_SYS_ADMIN CAP_NET_RAW
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.ambient_capabilities.len(), 2);
+    assert_eq!(
+        service.srvc.exec_section.ambient_capabilities[0],
+        "~CAP_SYS_ADMIN"
+    );
+    assert_eq!(
+        service.srvc.exec_section.ambient_capabilities[1],
+        "CAP_NET_RAW"
+    );
+}
+
+#[test]
+fn test_ambient_capabilities_multiple_directives_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    AmbientCapabilities = CAP_NET_BIND_SERVICE
+    AmbientCapabilities = CAP_SYS_NICE
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.ambient_capabilities.len(), 2);
+    assert_eq!(
+        service.srvc.exec_section.ambient_capabilities[0],
+        "CAP_NET_BIND_SERVICE"
+    );
+    assert_eq!(
+        service.srvc.exec_section.ambient_capabilities[1],
+        "CAP_SYS_NICE"
+    );
+}
+
+#[test]
+fn test_ambient_capabilities_empty_resets() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    AmbientCapabilities = CAP_NET_BIND_SERVICE
+    AmbientCapabilities =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.ambient_capabilities.is_empty(),
+        "Empty AmbientCapabilities= should reset the list"
+    );
+}
+
+#[test]
+fn test_ambient_capabilities_empty_then_new_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    AmbientCapabilities = CAP_NET_BIND_SERVICE
+    AmbientCapabilities =
+    AmbientCapabilities = CAP_SYS_NICE
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.ambient_capabilities.len(), 1);
+    assert_eq!(
+        service.srvc.exec_section.ambient_capabilities[0],
+        "CAP_SYS_NICE"
+    );
+}
+
+#[test]
+fn test_ambient_capabilities_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    AmbientCapabilities = CAP_NET_BIND_SERVICE
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "AmbientCapabilities= should not cause errors"
+    );
+}
+
+#[test]
+fn test_ambient_capabilities_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    AmbientCapabilities = CAP_NET_BIND_SERVICE CAP_SYS_NICE
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.ambient_capabilities.len(),
+            2,
+            "AmbientCapabilities should survive unit conversion"
+        );
+        assert_eq!(
+            srvc.conf.exec_config.ambient_capabilities[0],
+            "CAP_NET_BIND_SERVICE"
+        );
+        assert_eq!(
+            srvc.conf.exec_config.ambient_capabilities[1],
+            "CAP_SYS_NICE"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_ambient_capabilities_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.ambient_capabilities.is_empty(),
+            "Default empty AmbientCapabilities should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_ambient_capabilities_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with ambient capabilities
+    [Socket]
+    ListenStream = /run/test.sock
+    AmbientCapabilities = CAP_NET_BIND_SERVICE
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.ambient_capabilities,
+        vec!["CAP_NET_BIND_SERVICE"],
+        "AmbientCapabilities should work on socket units"
+    );
+}
+
+#[test]
+fn test_ambient_capabilities_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    AmbientCapabilities =   CAP_NET_BIND_SERVICE   CAP_SYS_NICE
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.ambient_capabilities.len(), 2);
+    assert_eq!(
+        service.srvc.exec_section.ambient_capabilities[0],
+        "CAP_NET_BIND_SERVICE"
+    );
+    assert_eq!(
+        service.srvc.exec_section.ambient_capabilities[1],
+        "CAP_SYS_NICE"
+    );
+}
+
+#[test]
+fn test_ambient_capabilities_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    AmbientCapabilities = CAP_NET_BIND_SERVICE
+    CapabilityBoundingSet = CAP_NET_BIND_SERVICE CAP_SYS_NICE
+    NoNewPrivileges = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.ambient_capabilities,
+        vec!["CAP_NET_BIND_SERVICE"],
+    );
+    assert_eq!(service.srvc.exec_section.capability_bounding_set.len(), 2);
+    assert!(service.srvc.exec_section.no_new_privileges);
+}
+
+#[test]
+fn test_ambient_capabilities_tilde_deny_single() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    AmbientCapabilities = ~CAP_NET_RAW
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.ambient_capabilities.len(), 1);
+    assert_eq!(
+        service.srvc.exec_section.ambient_capabilities[0],
+        "~CAP_NET_RAW"
+    );
+}
+
+// ============================================================
 // ProtectClock= parsing tests
 // ============================================================
 

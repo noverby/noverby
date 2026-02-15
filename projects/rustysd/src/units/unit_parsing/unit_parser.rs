@@ -442,6 +442,7 @@ pub fn parse_exec_section(
     let restrict_suid_sgid = section.remove("RESTRICTSUIDSGID");
     let protect_kernel_logs = section.remove("PROTECTKERNELLOGS");
     let capability_bounding_set = section.remove("CAPABILITYBOUNDINGSET");
+    let ambient_capabilities = section.remove("AMBIENTCAPABILITIES");
     let protect_clock = section.remove("PROTECTCLOCK");
     let protect_home = section.remove("PROTECTHOME");
     let protect_hostname = section.remove("PROTECTHOSTNAME");
@@ -1219,6 +1220,55 @@ pub fn parse_exec_section(
                             }
                         } else {
                             // unquoted token — consume until whitespace
+                            while let Some(&c) = chars.peek() {
+                                if c.is_whitespace() {
+                                    break;
+                                }
+                                token.push(c);
+                                chars.next();
+                            }
+                        }
+                        if !token.is_empty() {
+                            entries.push(token);
+                        }
+                    }
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        ambient_capabilities: match ambient_capabilities {
+            Some(vec) => {
+                // Same semantics as CapabilityBoundingSet=: space-separated
+                // capability names, ~ prefix for deny-list, multiple
+                // directives accumulate, empty assignment resets.
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    let mut chars = trimmed.chars().peekable();
+                    while chars.peek().is_some() {
+                        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+                            chars.next();
+                        }
+                        if chars.peek().is_none() {
+                            break;
+                        }
+                        let mut token = String::new();
+                        if chars.peek() == Some(&'"') {
+                            chars.next();
+                            while let Some(&c) = chars.peek() {
+                                if c == '"' {
+                                    chars.next();
+                                    break;
+                                }
+                                token.push(c);
+                                chars.next();
+                            }
+                        } else {
                             while let Some(&c) = chars.peek() {
                                 if c.is_whitespace() {
                                     break;
