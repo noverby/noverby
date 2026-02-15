@@ -1430,6 +1430,12 @@ pub struct SocketConfig {
     pub filedesc_name: String,
     pub services: Vec<UnitId>,
 
+    /// Accept= — whether the socket uses Accept mode (inetd-style).
+    /// If true, for each incoming connection a new service instance is
+    /// spawned. Defaults to false. Parsed and stored; inetd-style
+    /// activation is not yet supported at runtime. See systemd.socket(5).
+    pub accept: bool,
+
     /// MaxConnections= — the maximum number of simultaneous connections for
     /// Accept=yes sockets. Defaults to 64. Parsed and stored; no runtime
     /// enforcement yet. See systemd.socket(5).
