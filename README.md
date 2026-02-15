@@ -133,7 +133,7 @@
 | [Wiki 🐒➡️🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/projects/wiki) | Platform for political conference & beyond |
 | [Mojo-Wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/mojo-wasm) | WebAssembly interop layer for Mojo |
 | [Oxidized NixOS 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/projects/oxidized-nixos) | NixOS with Rust user space |
-| [Rustysd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/rustysd.nix) | A Systemd replacement in Rust |
+| [Rustysd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/rustysd) | A Systemd replacement in Rust |
 
 </details>
 
