@@ -741,6 +741,12 @@ pub struct UnitConfig {
     /// When a template is enabled without an explicit instance, this value is used.
     /// Matches systemd's `DefaultInstance=` setting in the `[Install]` section.
     pub default_instance: Option<String>,
+
+    /// Action to take when a job for this unit times out.
+    /// Matches systemd's `JobTimeoutAction=` setting.
+    /// Uses the same action values as `SuccessAction=`/`FailureAction=`.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub job_timeout_action: UnitAction,
 }
 
 #[derive(Debug, Clone)]
