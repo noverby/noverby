@@ -19457,3 +19457,297 @@ fn test_protect_hostname_socket_unit() {
         "ProtectHostname=yes should work in socket units"
     );
 }
+
+// ============================================================
+// SystemCallArchitectures= parsing tests
+// ============================================================
+
+#[test]
+fn test_system_call_architectures_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service
+            .srvc
+            .exec_section
+            .system_call_architectures
+            .is_empty(),
+        "SystemCallArchitectures should default to empty"
+    );
+}
+
+#[test]
+fn test_system_call_architectures_native() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallArchitectures = native
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.system_call_architectures,
+        vec!["native".to_owned()]
+    );
+}
+
+#[test]
+fn test_system_call_architectures_multiple_space_separated() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallArchitectures = native x86 x86-64
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.system_call_architectures,
+        vec!["native".to_owned(), "x86".to_owned(), "x86-64".to_owned()]
+    );
+}
+
+#[test]
+fn test_system_call_architectures_multiple_directives_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallArchitectures = native
+    SystemCallArchitectures = x86
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.system_call_architectures,
+        vec!["native".to_owned(), "x86".to_owned()]
+    );
+}
+
+#[test]
+fn test_system_call_architectures_empty_resets() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallArchitectures = native x86
+    SystemCallArchitectures =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service
+            .srvc
+            .exec_section
+            .system_call_architectures
+            .is_empty(),
+        "Empty SystemCallArchitectures= should reset the list"
+    );
+}
+
+#[test]
+fn test_system_call_architectures_empty_then_new_entry() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallArchitectures = native x86
+    SystemCallArchitectures =
+    SystemCallArchitectures = x86-64
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.system_call_architectures,
+        vec!["x86-64".to_owned()]
+    );
+}
+
+#[test]
+fn test_system_call_architectures_various_archs() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallArchitectures = x86 x86-64 arm aarch64 mips ppc64-le s390x
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_architectures.len(), 7);
+    assert_eq!(
+        service.srvc.exec_section.system_call_architectures[0],
+        "x86"
+    );
+    assert_eq!(
+        service.srvc.exec_section.system_call_architectures[1],
+        "x86-64"
+    );
+    assert_eq!(
+        service.srvc.exec_section.system_call_architectures[6],
+        "s390x"
+    );
+}
+
+#[test]
+fn test_system_call_architectures_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallArchitectures = native
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "SystemCallArchitectures should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_system_call_architectures_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallArchitectures = native x86-64
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.system_call_architectures.len(),
+            2,
+            "SystemCallArchitectures should survive unit conversion"
+        );
+        assert_eq!(srvc.conf.exec_config.system_call_architectures[0], "native");
+        assert_eq!(srvc.conf.exec_config.system_call_architectures[1], "x86-64");
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_system_call_architectures_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.system_call_architectures.is_empty(),
+            "Default empty SystemCallArchitectures should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_system_call_architectures_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    SystemCallArchitectures = native
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.system_call_architectures,
+        vec!["native".to_owned()],
+        "SystemCallArchitectures=native should work in socket units"
+    );
+}
+
+#[test]
+fn test_system_call_architectures_with_system_call_filter() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallArchitectures = native
+    SystemCallFilter = @system-service
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.system_call_architectures,
+        vec!["native".to_owned()]
+    );
+    assert!(!service.srvc.exec_section.system_call_filter.is_empty());
+}
