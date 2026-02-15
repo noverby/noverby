@@ -183,6 +183,9 @@ pub struct ParsedExecSection {
 pub enum ServiceType {
     Simple,
     Notify,
+    /// Like Notify, but the service also supports reloading via SIGHUP.
+    /// At startup this behaves identically to Notify (waits for READY=1).
+    NotifyReload,
     Dbus,
     OneShot,
 }
