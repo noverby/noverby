@@ -105,6 +105,7 @@ pub struct ParsedServiceSection {
 pub struct ParsedInstallSection {
     pub wanted_by: Vec<String>,
     pub required_by: Vec<String>,
+    pub also: Vec<String>,
 }
 pub struct ParsedExecSection {
     pub user: Option<String>,

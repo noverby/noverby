@@ -299,6 +299,7 @@ pub fn parse_install_section(
 ) -> Result<ParsedInstallSection, ParsingErrorReason> {
     let wantedby = section.remove("WANTEDBY");
     let requiredby = section.remove("REQUIREDBY");
+    let also = section.remove("ALSO");
 
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Install] section: {key}");
@@ -307,6 +308,7 @@ pub fn parse_install_section(
     Ok(ParsedInstallSection {
         wanted_by: map_tuples_to_second(wantedby.unwrap_or_default()),
         required_by: map_tuples_to_second(requiredby.unwrap_or_default()),
+        also: map_tuples_to_second(also.unwrap_or_default()),
     })
 }
 
