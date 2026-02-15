@@ -360,8 +360,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#RuntimeDirectory=">RuntimeDirectory=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Creates directories under /run/, chowns to service user/group, sets RUNTIME_DIRECTORY env var</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#StateDirectory=">StateDirectory=</a></td>
