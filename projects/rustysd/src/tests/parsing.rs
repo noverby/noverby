@@ -22107,3 +22107,477 @@ fn test_lock_personality_in_socket_unit() {
         "LockPersonality should work in socket units"
     );
 }
+
+// ============================================================
+// ConditionVirtualization= parsing tests
+// ============================================================
+
+#[test]
+fn test_condition_virtualization_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionVirtualization = yes
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "ConditionVirtualization should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_condition_virtualization_yes_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionVirtualization = yes
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conditions.len(),
+        1,
+        "Should have one condition"
+    );
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "yes");
+            assert!(!negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_virtualization_no_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionVirtualization = no
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "no");
+            assert!(!negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_virtualization_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionVirtualization = !kvm
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "kvm");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_virtualization_vm_category() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionVirtualization = vm
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "vm");
+            assert!(!negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_virtualization_container_category() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionVirtualization = container
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "container");
+            assert!(!negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_virtualization_specific_tech() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionVirtualization = docker
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "docker");
+            assert!(!negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_virtualization_case_insensitive() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionVirtualization = KVM
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "kvm", "Value should be lowercased");
+            assert!(!negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_virtualization_negated_container() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionVirtualization = !container
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "container");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_virtualization_empty_ignored() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionVirtualization =
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conditions.len(),
+        0,
+        "Empty ConditionVirtualization should not add a condition"
+    );
+}
+
+#[test]
+fn test_condition_virtualization_with_other_conditions() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathExists = /etc/myconfig
+    ConditionVirtualization = !container
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conditions.len(),
+        2,
+        "Should have two conditions"
+    );
+
+    // First condition: PathExists
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathExists { path, negate } => {
+            assert_eq!(path, "/etc/myconfig");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathExists condition, got {:?}", other),
+    }
+
+    // Second condition: Virtualization
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "container");
+            assert!(negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_virtualization_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    ConditionVirtualization = !vm
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(
+        unit.common.unit.conditions.len(),
+        1,
+        "Condition should be preserved after unit conversion"
+    );
+    match &unit.common.unit.conditions[0] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "vm");
+            assert!(negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_virtualization_in_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    ConditionVirtualization = yes
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.common.unit.conditions.len(),
+        1,
+        "ConditionVirtualization should work in socket units"
+    );
+    match &socket.common.unit.conditions[0] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "yes");
+            assert!(!negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_virtualization_in_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    ConditionVirtualization = !container
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        target.common.unit.conditions.len(),
+        1,
+        "ConditionVirtualization should work in target units"
+    );
+    match &target.common.unit.conditions[0] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "container");
+            assert!(negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_virtualization_multiple_techs() {
+    // systemd only supports one ConditionVirtualization= per unit (last one wins),
+    // but our parser accumulates them as separate conditions — all must pass.
+    let test_service_str = r#"
+    [Unit]
+    ConditionVirtualization = !docker
+    ConditionVirtualization = !lxc
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conditions.len(),
+        2,
+        "Multiple ConditionVirtualization directives should accumulate"
+    );
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "docker");
+            assert!(negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "lxc");
+            assert!(negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_virtualization_systemd_nspawn() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionVirtualization = systemd-nspawn
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "systemd-nspawn");
+            assert!(!negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+}
