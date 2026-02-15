@@ -63,6 +63,12 @@ pub struct ExecHelperConfig {
     #[serde(default)]
     pub utmp_mode: UtmpMode,
 
+    /// ImportCredential= — glob patterns for credentials to import from the
+    /// system credential store into the service's credential directory.
+    /// The `CREDENTIALS_DIRECTORY` env var is set to the created directory.
+    #[serde(default)]
+    pub import_credentials: Vec<String>,
+
     /// Whether StandardOutput is set to inherit (or journal/kmsg/tty/unset).
     /// When true AND stdin is a TTY, stdout will be dup'd from the TTY fd.
     #[serde(default = "default_true")]
@@ -575,6 +581,16 @@ pub fn run_exec_helper() {
         std::process::exit(1);
     }
 
+    // Import credentials from the system credential store into a per-service
+    // credential directory. This must happen BEFORE dropping privileges,
+    // because /run/credentials/ is typically only writable by root.
+    // Matches systemd's ImportCredential= behaviour: glob patterns are matched
+    // against files in the system credential stores and copied into
+    // /run/credentials/<unit-name>/.
+    if !config.import_credentials.is_empty() {
+        setup_credentials(&config);
+    }
+
     // Create state directories under /var/lib/ and set STATE_DIRECTORY env var.
     // This must happen BEFORE dropping privileges, because /var/lib/ is
     // typically only writable by root. systemd does the same: it creates
@@ -688,6 +704,166 @@ pub fn run_exec_helper() {
     }
 
     nix::unistd::execv(&cmd, &args).unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// ImportCredential= helpers
+// ---------------------------------------------------------------------------
+
+/// System credential store directories searched in order (matching systemd).
+const CREDENTIAL_STORES: &[&str] = &[
+    "/run/credentials/@system",
+    "/run/credstore",
+    "/etc/credstore",
+];
+
+/// Set up the per-service credential directory and import matching credentials.
+fn setup_credentials(config: &ExecHelperConfig) {
+    let cred_dir = PathBuf::from(format!("/run/credentials/{}", config.name));
+
+    // Create the credential directory.
+    if let Err(e) = std::fs::create_dir_all(&cred_dir) {
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to create credentials directory {:?}: {}",
+            config.name, cred_dir, e
+        );
+        // Non-fatal — the service may still work without credentials.
+        return;
+    }
+
+    // Restrict permissions to owner-only (0o700), matching systemd.
+    let ret = unsafe {
+        libc::chmod(
+            std::ffi::CString::new(cred_dir.to_string_lossy().as_bytes())
+                .unwrap()
+                .as_ptr(),
+            0o700,
+        )
+    };
+    if ret != 0 {
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to chmod credentials directory {:?}: {}",
+            config.name,
+            cred_dir,
+            std::io::Error::last_os_error()
+        );
+    }
+
+    // Chown to the service user/group so the service can read them.
+    let uid = nix::unistd::Uid::from_raw(config.user);
+    let gid = nix::unistd::Gid::from_raw(config.group);
+    if let Err(e) = nix::unistd::chown(&cred_dir, Some(uid), Some(gid)) {
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to chown credentials directory {:?}: {}",
+            config.name, cred_dir, e
+        );
+    }
+
+    let mut imported = 0usize;
+
+    for pattern in &config.import_credentials {
+        for store_dir in CREDENTIAL_STORES {
+            let store = Path::new(store_dir);
+            if !store.is_dir() {
+                continue;
+            }
+
+            let entries = match std::fs::read_dir(store) {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+
+            for entry in entries.flatten() {
+                let file_name = entry.file_name();
+                let name_str = file_name.to_string_lossy();
+
+                if !glob_match(pattern, &name_str) {
+                    continue;
+                }
+
+                let src = entry.path();
+                if !src.is_file() {
+                    continue;
+                }
+
+                let dst = cred_dir.join(&file_name);
+
+                // Don't overwrite — first match wins (higher-priority store).
+                if dst.exists() {
+                    continue;
+                }
+
+                match std::fs::copy(&src, &dst) {
+                    Ok(_) => {
+                        // Make the credential file readable only by the service user (0o400).
+                        let _ = unsafe {
+                            libc::chmod(
+                                std::ffi::CString::new(dst.to_string_lossy().as_bytes())
+                                    .unwrap()
+                                    .as_ptr(),
+                                0o400,
+                            )
+                        };
+                        let _ = nix::unistd::chown(&dst, Some(uid), Some(gid));
+                        imported += 1;
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "[EXEC_HELPER {}] Failed to import credential {:?} -> {:?}: {}",
+                            config.name, src, dst, e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    if imported > 0 || !config.import_credentials.is_empty() {
+        // Always set the env var so the service knows where to look,
+        // even if no credentials were found (matches systemd behaviour).
+        std::env::set_var("CREDENTIALS_DIRECTORY", &cred_dir);
+        eprintln!(
+            "[EXEC_HELPER {}] Imported {} credential(s) into {:?}",
+            config.name, imported, cred_dir
+        );
+    }
+}
+
+/// Simple glob matcher supporting `*` (any chars) and `?` (single char).
+/// This is intentionally minimal — systemd only uses simple filename globs
+/// for ImportCredential=.
+pub fn glob_match(pattern: &str, text: &str) -> bool {
+    glob_match_inner(pattern.as_bytes(), text.as_bytes())
+}
+
+fn glob_match_inner(pattern: &[u8], text: &[u8]) -> bool {
+    let mut pi = 0;
+    let mut ti = 0;
+    let mut star_pi = usize::MAX;
+    let mut star_ti = 0;
+
+    while ti < text.len() {
+        if pi < pattern.len() && (pattern[pi] == b'?' || pattern[pi] == text[ti]) {
+            pi += 1;
+            ti += 1;
+        } else if pi < pattern.len() && pattern[pi] == b'*' {
+            star_pi = pi;
+            star_ti = ti;
+            pi += 1;
+        } else if star_pi != usize::MAX {
+            pi = star_pi + 1;
+            star_ti += 1;
+            ti = star_ti;
+        } else {
+            return false;
+        }
+    }
+
+    while pi < pattern.len() && pattern[pi] == b'*' {
+        pi += 1;
+    }
+
+    pi == pattern.len()
 }
 
 // ---------------------------------------------------------------------------
