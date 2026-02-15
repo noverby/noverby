@@ -12512,3 +12512,320 @@ fn test_job_timeout_action_default_preserved_after_unit_conversion() {
         "Default JobTimeoutAction (None) should survive unit conversion"
     );
 }
+
+// ============================================================
+// AllowIsolate= parsing tests
+// ============================================================
+
+#[test]
+fn test_allow_isolate_defaults_to_false() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A simple service
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.allow_isolate, false,
+        "AllowIsolate should default to false"
+    );
+}
+
+#[test]
+fn test_allow_isolate_set_yes() {
+    let test_service_str = r#"
+    [Unit]
+    AllowIsolate = yes
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.allow_isolate, true,
+        "AllowIsolate=yes should be true"
+    );
+}
+
+#[test]
+fn test_allow_isolate_set_true() {
+    let test_service_str = r#"
+    [Unit]
+    AllowIsolate = true
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.allow_isolate, true,
+        "AllowIsolate=true should be true"
+    );
+}
+
+#[test]
+fn test_allow_isolate_set_no() {
+    let test_service_str = r#"
+    [Unit]
+    AllowIsolate = no
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.allow_isolate, false,
+        "AllowIsolate=no should be false"
+    );
+}
+
+#[test]
+fn test_allow_isolate_set_false() {
+    let test_service_str = r#"
+    [Unit]
+    AllowIsolate = false
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.allow_isolate, false,
+        "AllowIsolate=false should be false"
+    );
+}
+
+#[test]
+fn test_allow_isolate_set_1() {
+    let test_service_str = r#"
+    [Unit]
+    AllowIsolate = 1
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.allow_isolate, true,
+        "AllowIsolate=1 should be true"
+    );
+}
+
+#[test]
+fn test_allow_isolate_set_0() {
+    let test_service_str = r#"
+    [Unit]
+    AllowIsolate = 0
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.allow_isolate, false,
+        "AllowIsolate=0 should be false"
+    );
+}
+
+#[test]
+fn test_allow_isolate_case_insensitive() {
+    let test_service_str = r#"
+    [Unit]
+    AllowIsolate = YES
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.allow_isolate, true,
+        "AllowIsolate=YES should be true (case-insensitive)"
+    );
+}
+
+#[test]
+fn test_allow_isolate_with_other_unit_settings() {
+    let test_service_str = r#"
+    [Unit]
+    Description = An isolatable service
+    AllowIsolate = yes
+    IgnoreOnIsolate = true
+    StopWhenUnneeded = no
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.allow_isolate, true);
+    assert_eq!(service.common.unit.ignore_on_isolate, true);
+    assert_eq!(service.common.unit.stop_when_unneeded, false);
+}
+
+#[test]
+fn test_allow_isolate_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    AllowIsolate = yes
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "AllowIsolate=yes should parse without error"
+    );
+}
+
+#[test]
+fn test_allow_isolate_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    Description = An isolatable target
+    AllowIsolate = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        target.common.unit.allow_isolate, true,
+        "AllowIsolate=yes should work on target units"
+    );
+}
+
+#[test]
+fn test_allow_isolate_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with allow isolate
+    AllowIsolate = yes
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.common.unit.allow_isolate, true,
+        "AllowIsolate=yes should work on socket units"
+    );
+}
+
+#[test]
+fn test_allow_isolate_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    AllowIsolate = yes
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(
+        unit.common.unit.allow_isolate, true,
+        "AllowIsolate=yes should survive unit conversion"
+    );
+}
+
+#[test]
+fn test_allow_isolate_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(
+        unit.common.unit.allow_isolate, false,
+        "Default AllowIsolate (false) should survive unit conversion"
+    );
+}
