@@ -86,6 +86,7 @@ pub struct ParsedServiceSection {
     pub kill_mode: KillMode,
     pub delegate: Delegate,
     pub tasks_max: Option<TasksMax>,
+    pub limit_nofile: Option<ResourceLimit>,
     pub accept: bool,
     pub notifyaccess: NotifyKind,
     pub exec: Commandline,
@@ -182,6 +183,22 @@ pub enum TasksMax {
     Percent(u64),
     /// No limit
     Infinity,
+}
+
+/// A single rlimit value: either a numeric value or infinity
+#[derive(Clone, Copy, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
+pub enum RLimitValue {
+    /// A specific numeric value
+    Value(u64),
+    /// RLIM_INFINITY — no limit
+    Infinity,
+}
+
+/// A resource limit with soft and hard values (as used by setrlimit)
+#[derive(Clone, Copy, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ResourceLimit {
+    pub soft: RLimitValue,
+    pub hard: RLimitValue,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]

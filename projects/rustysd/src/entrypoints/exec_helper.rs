@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::units::PlatformSpecificServiceFields;
+use crate::units::{PlatformSpecificServiceFields, RLimitValue, ResourceLimit};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct ExecHelperConfig {
@@ -19,6 +19,8 @@ pub struct ExecHelperConfig {
     pub state_directory: Vec<String>,
 
     pub platform_specific: PlatformSpecificServiceFields,
+
+    pub limit_nofile: Option<ResourceLimit>,
 }
 
 fn prepare_exec_args(
@@ -48,6 +50,33 @@ pub fn run_exec_helper() {
     println!("Apply config: {config:?}");
 
     nix::unistd::close(libc::STDIN_FILENO).expect("I want to be able to close this fd!");
+
+    // Apply LimitNOFILE resource limit before anything else
+    if let Some(ref limit) = config.limit_nofile {
+        let soft = match limit.soft {
+            RLimitValue::Value(v) => v as libc::rlim_t,
+            RLimitValue::Infinity => libc::RLIM_INFINITY,
+        };
+        let hard = match limit.hard {
+            RLimitValue::Value(v) => v as libc::rlim_t,
+            RLimitValue::Infinity => libc::RLIM_INFINITY,
+        };
+        let rlim = libc::rlimit {
+            rlim_cur: soft,
+            rlim_max: hard,
+        };
+        let ret = unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &rlim) };
+        if ret != 0 {
+            eprintln!(
+                "[EXEC_HELPER {}] Failed to set RLIMIT_NOFILE (soft={}, hard={}): {}",
+                config.name,
+                soft,
+                hard,
+                std::io::Error::last_os_error()
+            );
+            std::process::exit(1);
+        }
+    }
 
     if let Err(e) =
         crate::services::fork_os_specific::post_fork_os_specific(&config.platform_specific)

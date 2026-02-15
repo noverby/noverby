@@ -3,8 +3,8 @@ use log::warn;
 use crate::units::{
     map_tuples_to_second, parse_install_section, parse_unit_section, string_to_bool, Commandline,
     CommandlinePrefix, Delegate, KillMode, NotifyKind, ParsedCommonConfig, ParsedFile,
-    ParsedSection, ParsedServiceConfig, ParsedServiceSection, ParsingErrorReason, ServiceRestart,
-    ServiceType, TasksMax, Timeout,
+    ParsedSection, ParsedServiceConfig, ParsedServiceSection, ParsingErrorReason, RLimitValue,
+    ResourceLimit, ServiceRestart, ServiceType, TasksMax, Timeout,
 };
 use std::path::PathBuf;
 
@@ -163,6 +163,7 @@ fn parse_service_section(
     let kill_mode = section.remove("KILLMODE");
     let delegate = section.remove("DELEGATE");
     let tasks_max = section.remove("TASKSMAX");
+    let limit_nofile = section.remove("LIMITNOFILE");
     let sockets = section.remove("SOCKETS");
     let notify_access = section.remove("NOTIFYACCESS");
     let srcv_type = section.remove("TYPE");
@@ -174,6 +175,56 @@ fn parse_service_section(
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Service] section: {key}");
     }
+
+    let limit_nofile = match limit_nofile {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.to_uppercase() == "INFINITY" {
+                    Some(ResourceLimit {
+                        soft: RLimitValue::Infinity,
+                        hard: RLimitValue::Infinity,
+                    })
+                } else if let Some((soft_str, hard_str)) = val.split_once(':') {
+                    let soft = if soft_str.trim().to_uppercase() == "INFINITY" {
+                        RLimitValue::Infinity
+                    } else {
+                        RLimitValue::Value(soft_str.trim().parse::<u64>().map_err(|_| {
+                            ParsingErrorReason::Generic(format!(
+                                "LimitNOFILE soft value is not valid: {soft_str}"
+                            ))
+                        })?)
+                    };
+                    let hard = if hard_str.trim().to_uppercase() == "INFINITY" {
+                        RLimitValue::Infinity
+                    } else {
+                        RLimitValue::Value(hard_str.trim().parse::<u64>().map_err(|_| {
+                            ParsingErrorReason::Generic(format!(
+                                "LimitNOFILE hard value is not valid: {hard_str}"
+                            ))
+                        })?)
+                    };
+                    Some(ResourceLimit { soft, hard })
+                } else {
+                    let num = val.parse::<u64>().map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "LimitNOFILE is not a valid value: {val}"
+                        ))
+                    })?;
+                    Some(ResourceLimit {
+                        soft: RLimitValue::Value(num),
+                        hard: RLimitValue::Value(num),
+                    })
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "LimitNOFILE".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
 
     let tasks_max = match tasks_max {
         Some(vec) => {
@@ -468,6 +519,7 @@ fn parse_service_section(
         kill_mode,
         delegate,
         tasks_max,
+        limit_nofile,
         accept,
         dbus_name,
         exec,

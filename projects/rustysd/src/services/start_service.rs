@@ -110,6 +110,8 @@ fn start_service_with_filedescriptors(
         state_directory: conf.exec_config.state_directory.clone(),
 
         platform_specific: conf.platform_specific.clone(),
+
+        limit_nofile: conf.limit_nofile,
     };
 
     let marshalled_config = serde_json::to_string(&exec_helper_conf).unwrap();
