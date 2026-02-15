@@ -364,6 +364,7 @@ pub fn parse_exec_section(
     let utmp_mode = section.remove("UTMPMODE");
     let import_credential = section.remove("IMPORTCREDENTIAL");
     let unset_environment = section.remove("UNSETENVIRONMENT");
+    let oom_score_adjust = section.remove("OOMSCOREADJUST");
 
     let user = match user {
         None => None,
@@ -635,6 +636,27 @@ pub fn parse_exec_section(
         working_directory,
         state_directory,
         runtime_directory,
+        oom_score_adjust: match oom_score_adjust {
+            None => None,
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val: i32 = vec[0].1.trim().parse().map_err(|_| {
+                        ParsingErrorReason::UnknownSetting(
+                            "OOMScoreAdjust".to_owned(),
+                            vec[0].1.clone(),
+                        )
+                    })?;
+                    Some(val.clamp(-1000, 1000))
+                } else if vec.len() > 1 {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "OOMScoreAdjust".into(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                } else {
+                    None
+                }
+            }
+        },
         tty_path,
         tty_reset,
         tty_vhangup,

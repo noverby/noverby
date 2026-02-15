@@ -251,6 +251,8 @@ fn start_service_with_filedescriptors(
         state_directory: conf.exec_config.state_directory.clone(),
         runtime_directory: conf.exec_config.runtime_directory.clone(),
 
+        oom_score_adjust: conf.exec_config.oom_score_adjust,
+
         platform_specific: conf.platform_specific.clone(),
 
         limit_nofile: conf.limit_nofile,

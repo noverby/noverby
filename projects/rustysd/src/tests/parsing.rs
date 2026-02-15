@@ -10306,3 +10306,321 @@ fn test_unset_environment_socket_unit() {
         vec!["FOO".to_owned(), "BAR".to_owned()]
     );
 }
+
+// ── OOMScoreAdjust= ───────────────────────────────────────────────────
+
+#[test]
+fn test_oom_score_adjust_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.oom_score_adjust, None,
+        "OOMScoreAdjust should default to None when not specified"
+    );
+}
+
+#[test]
+fn test_oom_score_adjust_positive_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    OOMScoreAdjust = 500
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.oom_score_adjust,
+        Some(500),
+        "OOMScoreAdjust=500 should be stored"
+    );
+}
+
+#[test]
+fn test_oom_score_adjust_negative_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    OOMScoreAdjust = -500
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.oom_score_adjust,
+        Some(-500),
+        "OOMScoreAdjust=-500 should be stored"
+    );
+}
+
+#[test]
+fn test_oom_score_adjust_zero() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    OOMScoreAdjust = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.oom_score_adjust,
+        Some(0),
+        "OOMScoreAdjust=0 should be stored"
+    );
+}
+
+#[test]
+fn test_oom_score_adjust_max_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    OOMScoreAdjust = 1000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.oom_score_adjust,
+        Some(1000),
+        "OOMScoreAdjust=1000 should be stored"
+    );
+}
+
+#[test]
+fn test_oom_score_adjust_min_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    OOMScoreAdjust = -1000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.oom_score_adjust,
+        Some(-1000),
+        "OOMScoreAdjust=-1000 should be stored"
+    );
+}
+
+#[test]
+fn test_oom_score_adjust_clamped_above_max() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    OOMScoreAdjust = 2000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.oom_score_adjust,
+        Some(1000),
+        "OOMScoreAdjust=2000 should be clamped to 1000"
+    );
+}
+
+#[test]
+fn test_oom_score_adjust_clamped_below_min() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    OOMScoreAdjust = -2000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.oom_score_adjust,
+        Some(-1000),
+        "OOMScoreAdjust=-2000 should be clamped to -1000"
+    );
+}
+
+#[test]
+fn test_oom_score_adjust_invalid_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    OOMScoreAdjust = notanumber
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "OOMScoreAdjust=notanumber should produce a parsing error"
+    );
+}
+
+#[test]
+fn test_oom_score_adjust_no_unsupported_warning() {
+    // OOMScoreAdjust= should be parsed without generating an "unsupported setting" warning.
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    OOMScoreAdjust = 100
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "Parsing a service with OOMScoreAdjust should succeed without errors"
+    );
+    assert_eq!(
+        result.unwrap().srvc.exec_section.oom_score_adjust,
+        Some(100)
+    );
+}
+
+#[test]
+fn test_oom_score_adjust_combined_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    User = nobody
+    OOMScoreAdjust = -900
+    RuntimeDirectory = myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.oom_score_adjust, Some(-900));
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory,
+        vec!["myapp".to_owned()]
+    );
+}
+
+#[test]
+fn test_oom_score_adjust_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    OOMScoreAdjust = 200
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.oom_score_adjust,
+        Some(200),
+        "OOMScoreAdjust=200 should be stored for socket units"
+    );
+}
+
+#[test]
+fn test_oom_score_adjust_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    OOMScoreAdjust = -100
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.oom_score_adjust,
+            Some(-100),
+            "OOMScoreAdjust should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_oom_score_adjust_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    OOMScoreAdjust =   750
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.oom_score_adjust,
+        Some(750),
+        "OOMScoreAdjust should handle surrounding whitespace"
+    );
+}

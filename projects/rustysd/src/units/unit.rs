@@ -958,6 +958,11 @@ pub struct ExecConfig {
     /// only an exact match is removed. Applied as the final step when
     /// compiling the environment block. See systemd.exec(5).
     pub unset_environment: Vec<String>,
+    /// OOMScoreAdjust= — sets the OOM score adjustment for executed processes.
+    /// Takes an integer between -1000 (least likely to be killed) and 1000
+    /// (most likely to be killed). Written to /proc/self/oom_score_adj before
+    /// exec. See systemd.exec(5).
+    pub oom_score_adjust: Option<i32>,
 }
 
 #[cfg(target_os = "linux")]
