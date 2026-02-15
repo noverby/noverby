@@ -4397,3 +4397,420 @@ fn test_service_type_idle_is_distinct_from_all_others() {
         );
     }
 }
+
+// ============================================================
+// Restart= parsing tests (all systemd values)
+// ============================================================
+
+#[test]
+fn test_restart_no() {
+    let test_service_str = r#"
+    [Service]
+    Restart = no
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.restart, crate::units::ServiceRestart::No);
+}
+
+#[test]
+fn test_restart_always() {
+    let test_service_str = r#"
+    [Service]
+    Restart = always
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.restart, crate::units::ServiceRestart::Always);
+}
+
+#[test]
+fn test_restart_on_success() {
+    let test_service_str = r#"
+    [Service]
+    Restart = on-success
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart,
+        crate::units::ServiceRestart::OnSuccess,
+        "Restart=on-success should parse as OnSuccess"
+    );
+}
+
+#[test]
+fn test_restart_on_failure() {
+    let test_service_str = r#"
+    [Service]
+    Restart = on-failure
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart,
+        crate::units::ServiceRestart::OnFailure,
+        "Restart=on-failure should parse as OnFailure"
+    );
+}
+
+#[test]
+fn test_restart_on_abnormal() {
+    let test_service_str = r#"
+    [Service]
+    Restart = on-abnormal
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart,
+        crate::units::ServiceRestart::OnAbnormal,
+        "Restart=on-abnormal should parse as OnAbnormal"
+    );
+}
+
+#[test]
+fn test_restart_on_abort() {
+    let test_service_str = r#"
+    [Service]
+    Restart = on-abort
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart,
+        crate::units::ServiceRestart::OnAbort,
+        "Restart=on-abort should parse as OnAbort"
+    );
+}
+
+#[test]
+fn test_restart_on_watchdog() {
+    let test_service_str = r#"
+    [Service]
+    Restart = on-watchdog
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart,
+        crate::units::ServiceRestart::OnWatchdog,
+        "Restart=on-watchdog should parse as OnWatchdog"
+    );
+}
+
+#[test]
+fn test_restart_on_failure_case_insensitive() {
+    // This is the exact case from the bug report: ON-FAILURE (uppercase)
+    let cases = vec!["on-failure", "ON-FAILURE", "On-Failure", "oN-fAiLuRe"];
+
+    for case in cases {
+        let test_service_str = format!(
+            r#"
+            [Service]
+            Restart = {}
+            ExecStart = /bin/myservice
+            "#,
+            case
+        );
+
+        let parsed_file = crate::units::parse_file(&test_service_str).unwrap();
+        let service = crate::units::parse_service(
+            parsed_file,
+            &std::path::PathBuf::from("/path/to/unitfile.service"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            service.srvc.restart,
+            crate::units::ServiceRestart::OnFailure,
+            "Restart={} should parse as OnFailure",
+            case
+        );
+    }
+}
+
+#[test]
+fn test_restart_on_success_case_insensitive() {
+    let cases = vec!["on-success", "ON-SUCCESS", "On-Success"];
+
+    for case in cases {
+        let test_service_str = format!(
+            r#"
+            [Service]
+            Restart = {}
+            ExecStart = /bin/myservice
+            "#,
+            case
+        );
+
+        let parsed_file = crate::units::parse_file(&test_service_str).unwrap();
+        let service = crate::units::parse_service(
+            parsed_file,
+            &std::path::PathBuf::from("/path/to/unitfile.service"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            service.srvc.restart,
+            crate::units::ServiceRestart::OnSuccess,
+            "Restart={} should parse as OnSuccess",
+            case
+        );
+    }
+}
+
+#[test]
+fn test_restart_on_abnormal_case_insensitive() {
+    let cases = vec!["on-abnormal", "ON-ABNORMAL", "On-Abnormal"];
+
+    for case in cases {
+        let test_service_str = format!(
+            r#"
+            [Service]
+            Restart = {}
+            ExecStart = /bin/myservice
+            "#,
+            case
+        );
+
+        let parsed_file = crate::units::parse_file(&test_service_str).unwrap();
+        let service = crate::units::parse_service(
+            parsed_file,
+            &std::path::PathBuf::from("/path/to/unitfile.service"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            service.srvc.restart,
+            crate::units::ServiceRestart::OnAbnormal,
+            "Restart={} should parse as OnAbnormal",
+            case
+        );
+    }
+}
+
+#[test]
+fn test_restart_defaults_to_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart,
+        crate::units::ServiceRestart::No,
+        "Restart should default to No when not specified"
+    );
+}
+
+#[test]
+fn test_restart_unknown_value_errors() {
+    let test_service_str = r#"
+    [Service]
+    Restart = bogus
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "Restart=bogus should produce a parsing error"
+    );
+}
+
+#[test]
+fn test_restart_all_variants_are_distinct() {
+    let variants = vec![
+        ("no", crate::units::ServiceRestart::No),
+        ("always", crate::units::ServiceRestart::Always),
+        ("on-success", crate::units::ServiceRestart::OnSuccess),
+        ("on-failure", crate::units::ServiceRestart::OnFailure),
+        ("on-abnormal", crate::units::ServiceRestart::OnAbnormal),
+        ("on-abort", crate::units::ServiceRestart::OnAbort),
+        ("on-watchdog", crate::units::ServiceRestart::OnWatchdog),
+    ];
+
+    for (i, (str_a, variant_a)) in variants.iter().enumerate() {
+        let service_str = format!(
+            r#"
+            [Service]
+            Restart = {}
+            ExecStart = /bin/myservice
+            "#,
+            str_a
+        );
+
+        let parsed = crate::units::parse_file(&service_str).unwrap();
+        let service =
+            crate::units::parse_service(parsed, &std::path::PathBuf::from("/path/to/test.service"))
+                .unwrap();
+
+        assert_eq!(
+            &service.srvc.restart, variant_a,
+            "Restart={} should parse as {:?}",
+            str_a, variant_a
+        );
+
+        for (j, (_, variant_b)) in variants.iter().enumerate() {
+            if i != j {
+                assert_ne!(
+                    variant_a, variant_b,
+                    "Restart variants {:?} and {:?} should be distinct",
+                    variant_a, variant_b
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_restart_on_failure_with_other_settings() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A service with on-failure restart
+    [Service]
+    Type = notify
+    Restart = on-failure
+    RestartSec = 5s
+    ExecStart = /bin/myservice --flag
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart,
+        crate::units::ServiceRestart::OnFailure,
+    );
+    assert_eq!(
+        service.common.unit.description,
+        "A service with on-failure restart"
+    );
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::Notify);
+    assert_eq!(
+        service.srvc.restart_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(5)
+        ))
+    );
+}
+
+#[test]
+fn test_restart_on_failure_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    Description = On-failure restart test
+    [Service]
+    Restart = on-failure
+    ExecStart = /usr/bin/testcmd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+
+    if let crate::units::Specific::Service(ref srvc) = unit.specific {
+        assert_eq!(srvc.conf.restart, crate::units::ServiceRestart::OnFailure,);
+    } else {
+        panic!("Expected Specific::Service");
+    }
+}
+
+#[test]
+fn test_restart_on_success_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    Restart = on-success
+    ExecStart = /usr/bin/testcmd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+
+    if let crate::units::Specific::Service(ref srvc) = unit.specific {
+        assert_eq!(srvc.conf.restart, crate::units::ServiceRestart::OnSuccess,);
+    } else {
+        panic!("Expected Specific::Service");
+    }
+}

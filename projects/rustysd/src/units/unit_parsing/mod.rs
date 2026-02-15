@@ -275,8 +275,27 @@ pub struct ResourceLimit {
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum ServiceRestart {
-    Always,
+    /// Never restart the service automatically.
     No,
+    /// Always restart the service when it exits, regardless of exit status.
+    Always,
+    /// Restart only if the service exited cleanly (exit code 0 or one of the
+    /// "clean" signals: SIGHUP, SIGINT, SIGTERM, SIGPIPE).
+    OnSuccess,
+    /// Restart only if the service exited with a non-zero exit code, was
+    /// terminated by a signal (other than the "clean" ones), timed out, or
+    /// hit a watchdog timeout.
+    OnFailure,
+    /// Restart only if the service was terminated by a signal, timed out, or
+    /// hit a watchdog timeout (i.e. not on clean or unclean exit codes).
+    OnAbnormal,
+    /// Restart only if the service was terminated by an uncaught signal
+    /// (not SIGHUP, SIGINT, SIGTERM, SIGPIPE).
+    OnAbort,
+    /// Restart only if the watchdog timeout for the service expired.
+    /// (Currently treated as never restarting since rustysd does not yet
+    /// implement watchdog support.)
+    OnWatchdog,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]

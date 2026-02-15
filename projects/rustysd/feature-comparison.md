@@ -1240,8 +1240,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#Restart=">Restart=</a></td>
-  <td>❓</td>
-  <td>Restart is partially supported. The settings 'always' and 'no' are supported</td>
+  <td>✅</td>
+  <td>All restart settings are supported: no, always, on-success, on-failure, on-abnormal, on-abort, on-watchdog. Note: on-watchdog currently never triggers since rustysd does not yet implement watchdog support.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#SuccessExitStatus=">SuccessExitStatus=</a></td>
