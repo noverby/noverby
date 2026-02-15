@@ -202,6 +202,7 @@ pub fn parse_unit_section(
     let condition_file_is_executable = section.remove("CONDITIONFILEISEXECUTABLE");
     let condition_file_not_empty = section.remove("CONDITIONFILENOTEMPTY");
     let condition_kernel_module_loaded = section.remove("CONDITIONKERNELMODULELOADED");
+    let condition_directory_not_empty = section.remove("CONDITIONDIRECTORYNOTEMPTY");
     let success_action = section.remove("SUCCESSACTION");
     let failure_action = section.remove("FAILUREACTION");
     let part_of = section.remove("PARTOF");
@@ -370,6 +371,14 @@ pub fn parse_unit_section(
             (value, false)
         };
         conditions.push(super::UnitCondition::FileNotEmpty { path, negate });
+    }
+    for (_, value) in condition_directory_not_empty.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        conditions.push(super::UnitCondition::DirectoryNotEmpty { path, negate });
     }
 
     let success_action = match success_action {
