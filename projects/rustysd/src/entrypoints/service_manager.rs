@@ -208,26 +208,18 @@ fn pid1_specific_setup() {}
 fn prepare_runtimeinfo(conf: &config::Config, dry_run: bool) -> runtime_info::ArcMutRuntimeInfo {
     // initial loading of the units and matching of the various before/after settings
     // also opening all fildescriptors in the socket files
-    let unit_table =
+    let mut unit_table =
         units::load_all_units(&conf.unit_dirs, &conf.target_unit).expect("loading unit files");
     trace!("Finished loading units");
-    if let Err(e) = units::sanity_check_dependencies(&unit_table) {
-        match e {
-            units::SanityCheckError::CirclesFound(circles) => {
-                error!("Found {} cycle(s) in the dependencies", circles.len());
-                for circle in &circles {
-                    error!("-- Next circle --");
-                    for id in circle {
-                        error!("{id}");
-                    }
-                    error!("-- End circle --");
-                }
-            }
-            units::SanityCheckError::Generic(msg) => {
-                error!("Unit dependencies did not pass sanity checks: {msg}");
-            }
-        }
-        unrecoverable_error("Unit dependencies did not pass sanity check".into());
+
+    // Break dependency cycles instead of aborting, matching systemd behavior.
+    // systemd warns about cycles and removes ordering edges to break them.
+    let broken_cycles = units::break_dependency_cycles(&mut unit_table);
+    if !broken_cycles.is_empty() {
+        warn!(
+            "Broke {} dependency cycle(s). See warnings above for details.",
+            broken_cycles.len()
+        );
     }
     trace!("Unit dependencies passed sanity checks");
     let unit_table = unit_table;
