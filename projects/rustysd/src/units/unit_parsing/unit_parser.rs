@@ -405,6 +405,7 @@ pub fn parse_exec_section(
     let oom_score_adjust = section.remove("OOMSCOREADJUST");
     let log_extra_fields = section.remove("LOGEXTRAFIELDS");
     let dynamic_user = section.remove("DYNAMICUSER");
+    let system_call_filter = section.remove("SYSTEMCALLFILTER");
 
     let user = match user {
         None => None,
@@ -825,6 +826,61 @@ pub fn parse_exec_section(
         },
         log_extra_fields: match log_extra_fields {
             Some(vec) => vec.into_iter().map(|(_, val)| val).collect(),
+            None => Vec::new(),
+        },
+        system_call_filter: match system_call_filter {
+            Some(vec) => {
+                // Each directive is a space-separated list of syscall names
+                // or @group names. A leading ~ on the whole value means
+                // deny-list mode; without it, allow-list mode. Multiple
+                // directives accumulate. An empty assignment resets the list.
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        // Empty string resets the list
+                        entries.clear();
+                        continue;
+                    }
+                    // Split on whitespace, respecting double-quoted tokens
+                    let mut chars = trimmed.chars().peekable();
+                    while chars.peek().is_some() {
+                        // skip whitespace
+                        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+                            chars.next();
+                        }
+                        if chars.peek().is_none() {
+                            break;
+                        }
+                        let mut token = String::new();
+                        if chars.peek() == Some(&'"') {
+                            // quoted token — consume until closing quote
+                            chars.next(); // skip opening quote
+                            while let Some(&c) = chars.peek() {
+                                if c == '"' {
+                                    chars.next();
+                                    break;
+                                }
+                                token.push(c);
+                                chars.next();
+                            }
+                        } else {
+                            // unquoted token — consume until whitespace
+                            while let Some(&c) = chars.peek() {
+                                if c.is_whitespace() {
+                                    break;
+                                }
+                                token.push(c);
+                                chars.next();
+                            }
+                        }
+                        if !token.is_empty() {
+                            entries.push(token);
+                        }
+                    }
+                }
+                entries
+            }
             None => Vec::new(),
         },
     })
