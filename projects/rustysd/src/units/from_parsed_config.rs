@@ -237,6 +237,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             umask: parsed.umask,
             proc_subset: parsed.proc_subset,
             nice: parsed.nice,
+            remove_ipc: parsed.remove_ipc,
         })
     }
 }

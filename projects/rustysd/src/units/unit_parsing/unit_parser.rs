@@ -605,6 +605,7 @@ pub fn parse_exec_section(
     let umask = section.remove("UMASK");
     let proc_subset = section.remove("PROCSUBSET");
     let nice = section.remove("NICE");
+    let remove_ipc = section.remove("REMOVEIPC");
 
     let user = match user {
         None => None,
@@ -1770,6 +1771,20 @@ pub fn parse_exec_section(
                     None
                 }
             }
+        },
+        remove_ipc: match remove_ipc {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    string_to_bool(&vec[0].1)
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "RemoveIPC".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            // systemd default: false
+            None => false,
         },
         umask: match umask {
             None => None,
