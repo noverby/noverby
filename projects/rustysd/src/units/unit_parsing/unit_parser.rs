@@ -410,6 +410,7 @@ pub fn parse_exec_section(
     let restrict_namespaces = section.remove("RESTRICTNAMESPACES");
     let restrict_realtime = section.remove("RESTRICTREALTIME");
     let restrict_address_families = section.remove("RESTRICTADDRESSFAMILIES");
+    let system_call_error_number = section.remove("SYSTEMCALLERRORNUMBER");
 
     let user = match user {
         None => None,
@@ -960,6 +961,27 @@ pub fn parse_exec_section(
                 entries
             }
             None => Vec::new(),
+        },
+        system_call_error_number: match system_call_error_number {
+            None => None,
+            Some(mut vec) => {
+                if vec.len() == 1 {
+                    let val = vec.remove(0).1;
+                    let trimmed = val.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_owned())
+                    }
+                } else if vec.len() > 1 {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "SystemCallErrorNumber".into(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                } else {
+                    None
+                }
+            }
         },
         system_call_filter: match system_call_filter {
             Some(vec) => {
