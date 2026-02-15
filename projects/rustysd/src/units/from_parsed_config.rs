@@ -91,6 +91,7 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 delegate_subgroup: conf.srvc.delegate_subgroup,
                 keyring_mode: conf.srvc.keyring_mode,
                 device_allow: conf.srvc.device_allow,
+                watchdog_sec: conf.srvc.watchdog_sec,
             },
             state: RwLock::new(ServiceState {
                 common: CommonState::default(),

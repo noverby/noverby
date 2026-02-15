@@ -251,6 +251,7 @@ fn parse_service_section(
     let delegate_subgroup = section.remove("DELEGATESUBGROUP");
     let keyring_mode = section.remove("KEYRINGMODE");
     let device_allow = section.remove("DEVICEALLOW");
+    let watchdog_sec = section.remove("WATCHDOGSEC");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -401,6 +402,25 @@ fn parse_service_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "RestartSec".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let watchdog_sec = match watchdog_sec {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let t = parse_timeout(&vec[0].1);
+                match t {
+                    // A zero duration means "disabled" — store as None
+                    Timeout::Duration(d) if d.is_zero() => None,
+                    other => Some(other),
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "WatchdogSec".to_owned(),
                     super::map_tuples_to_second(vec),
                 ));
             }
@@ -807,6 +827,7 @@ fn parse_service_section(
             }
             None => Vec::new(),
         },
+        watchdog_sec,
         exec_section: exec_config,
     })
 }
