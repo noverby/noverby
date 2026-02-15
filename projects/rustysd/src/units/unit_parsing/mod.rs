@@ -371,6 +371,10 @@ pub struct ParsedExecSection {
     /// directives accumulate; an empty assignment resets the list. Parsed and
     /// stored; no runtime enforcement yet. See systemd.exec(5).
     pub system_call_filter: Vec<String>,
+    /// ProtectSystem= — controls whether the service has read-only access to
+    /// the OS file system hierarchy. Parsed and stored; no runtime enforcement
+    /// yet (requires mount namespace support). See systemd.exec(5).
+    pub protect_system: ProtectSystem,
 }
 
 /// The type of utmp/wtmp record to create for a service.
@@ -496,6 +500,28 @@ pub enum KeyringMode {
 impl Default for KeyringMode {
     fn default() -> Self {
         Self::Private
+    }
+}
+
+/// ProtectSystem= — controls whether the service has read-only access to the
+/// OS file system hierarchy. See systemd.exec(5).
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub enum ProtectSystem {
+    /// No file system protection (default).
+    No,
+    /// Mount /usr and the boot loader directories (/boot, /efi) read-only.
+    Yes,
+    /// Like `Yes`, but additionally mount /etc read-only.
+    Full,
+    /// Mount the entire file system hierarchy read-only, except for /dev,
+    /// /proc, /sys, and API mount points. Implies `ReadWritePaths=`,
+    /// `ReadOnlyPaths=`, `InaccessiblePaths=` are still honoured.
+    Strict,
+}
+
+impl Default for ProtectSystem {
+    fn default() -> Self {
+        Self::No
     }
 }
 

@@ -406,6 +406,7 @@ pub fn parse_exec_section(
     let log_extra_fields = section.remove("LOGEXTRAFIELDS");
     let dynamic_user = section.remove("DYNAMICUSER");
     let system_call_filter = section.remove("SYSTEMCALLFILTER");
+    let protect_system = section.remove("PROTECTSYSTEM");
 
     let user = match user {
         None => None,
@@ -827,6 +828,30 @@ pub fn parse_exec_section(
         log_extra_fields: match log_extra_fields {
             Some(vec) => vec.into_iter().map(|(_, val)| val).collect(),
             None => Vec::new(),
+        },
+        protect_system: match protect_system {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.trim().to_lowercase().as_str() {
+                        "no" | "false" | "0" => super::ProtectSystem::No,
+                        "yes" | "true" | "1" => super::ProtectSystem::Yes,
+                        "full" => super::ProtectSystem::Full,
+                        "strict" => super::ProtectSystem::Strict,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "ProtectSystem".to_owned(),
+                                other.to_owned(),
+                            ))
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "ProtectSystem".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => super::ProtectSystem::default(),
         },
         system_call_filter: match system_call_filter {
             Some(vec) => {
