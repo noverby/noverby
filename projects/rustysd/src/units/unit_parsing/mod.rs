@@ -63,6 +63,11 @@ pub enum UnitCondition {
     /// Checks whether the specified path exists as a regular file and has
     /// at least one execute bit set. See systemd.unit(5).
     FileIsExecutable { path: String, negate: bool },
+    /// ConditionKernelModuleLoaded=module_name (true if the kernel module is loaded)
+    /// ConditionKernelModuleLoaded=!module_name (true if the kernel module is NOT loaded)
+    /// Checks whether the specified kernel module is currently loaded.
+    /// On Linux this is determined by reading /proc/modules. See systemd.unit(5).
+    KernelModuleLoaded { module: String, negate: bool },
 }
 
 /// The kind of virtualization detected (VM or container).
@@ -463,6 +468,25 @@ impl UnitCondition {
                     !is_non_empty
                 } else {
                     is_non_empty
+                }
+            }
+            UnitCondition::KernelModuleLoaded { module, negate } => {
+                let is_loaded = match std::fs::read_to_string("/proc/modules") {
+                    Ok(contents) => {
+                        // Each line in /proc/modules starts with the module name
+                        // followed by a space. We check for an exact module name match.
+                        contents.lines().any(|line| {
+                            line.split_whitespace()
+                                .next()
+                                .map_or(false, |name| name == module.as_str())
+                        })
+                    }
+                    Err(_) => false,
+                };
+                if *negate {
+                    !is_loaded
+                } else {
+                    is_loaded
                 }
             }
         }
