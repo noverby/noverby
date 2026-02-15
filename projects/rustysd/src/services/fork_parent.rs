@@ -109,7 +109,7 @@ pub fn wait_for_service(
                 stream.set_read_timeout(None).unwrap();
             }
         }
-        ServiceType::Simple => {
+        ServiceType::Simple | ServiceType::Idle => {
             trace!("[FORK_PARENT] service {name} doesnt notify");
         }
         ServiceType::OneShot => {

@@ -1145,8 +1145,8 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#Type=">Type=</a></td>
-  <td>❓</td>
-  <td>Types are partly supported. Simple, dbus, notify, notify-reload, oneshot, forking are supported. Idle is not.</td>
+  <td>✅</td>
+  <td>Simple, dbus, notify, notify-reload, oneshot, forking, and idle are supported. Idle is treated identically to simple (no job dispatch delay).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#RemainAfterExit=">RemainAfterExit=</a></td>
