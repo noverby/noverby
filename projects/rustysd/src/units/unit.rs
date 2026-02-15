@@ -1094,6 +1094,11 @@ pub struct ExecConfig {
     /// mappings to executable, are prohibited. Defaults to false. Parsed and
     /// stored; no runtime seccomp enforcement yet. See systemd.exec(5).
     pub memory_deny_write_execute: bool,
+    /// PrivateTmp= — if true, sets up a private /tmp and /var/tmp namespace
+    /// for the executed processes. Files in these directories are not visible
+    /// to other processes and vice versa. Defaults to false. Parsed and
+    /// stored; no runtime mount-namespace enforcement yet. See systemd.exec(5).
+    pub private_tmp: bool,
 }
 
 #[cfg(target_os = "linux")]
