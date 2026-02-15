@@ -1872,18 +1872,18 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#StartLimitIntervalSec=">StartLimitIntervalSec=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored. Accepts time spans (e.g. <code>30</code>, <code>5min</code>, <code>2min 30s</code>, <code>infinity</code>). Set to <code>0</code> to disable rate limiting. No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#StartLimitBurst=">StartLimitBurst=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored as an unsigned integer. No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#StartLimitAction=">StartLimitAction=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored. Accepts the same action values as <code>FailureAction=</code>/<code>SuccessAction=</code>. Defaults to <code>none</code>. No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#RebootArgument=">RebootArgument=</a></td>
