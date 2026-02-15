@@ -403,6 +403,7 @@ pub fn parse_exec_section(
     let import_credential = section.remove("IMPORTCREDENTIAL");
     let unset_environment = section.remove("UNSETENVIRONMENT");
     let oom_score_adjust = section.remove("OOMSCOREADJUST");
+    let log_extra_fields = section.remove("LOGEXTRAFIELDS");
 
     let user = match user {
         None => None,
@@ -803,6 +804,10 @@ pub fn parse_exec_section(
                 }
                 entries
             }
+            None => Vec::new(),
+        },
+        log_extra_fields: match log_extra_fields {
+            Some(vec) => vec.into_iter().map(|(_, val)| val).collect(),
             None => Vec::new(),
         },
     })

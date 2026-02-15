@@ -356,6 +356,10 @@ pub struct ParsedExecSection {
     /// (most likely to be killed). Written to /proc/self/oom_score_adj before
     /// exec. See systemd.exec(5).
     pub oom_score_adjust: Option<i32>,
+    /// LogExtraFields= — additional journal fields to include in log entries
+    /// for this unit. Each entry is a KEY=VALUE string. Multiple directives
+    /// accumulate. Parsed and stored; not yet used at runtime. See systemd.exec(5).
+    pub log_extra_fields: Vec<String>,
 }
 
 /// The type of utmp/wtmp record to create for a service.
