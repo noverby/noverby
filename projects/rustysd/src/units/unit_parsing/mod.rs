@@ -113,6 +113,7 @@ pub struct ParsedExecSection {
     pub stderr_path: Option<StdIoOption>,
     pub supplementary_groups: Vec<String>,
     pub environment: Option<EnvVars>,
+    pub working_directory: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]

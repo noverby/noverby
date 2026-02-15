@@ -338,10 +338,14 @@ impl Service {
         name: &str,
         timeout: Option<std::time::Duration>,
         run_info: &RuntimeInfo,
+        working_directory: Option<&std::path::PathBuf>,
     ) -> Result<(), RunCmdError> {
         let mut cmd = Command::new(&cmdline.cmd);
         for part in &cmdline.args {
             cmd.arg(part);
+        }
+        if let Some(dir) = working_directory {
+            cmd.current_dir(dir);
         }
         use std::os::unix::io::FromRawFd;
         let stdout = if let Some(stdio) = &self.stdout {
@@ -446,9 +450,10 @@ impl Service {
         name: &str,
         timeout: Option<std::time::Duration>,
         run_info: &RuntimeInfo,
+        working_directory: Option<&std::path::PathBuf>,
     ) -> Result<(), RunCmdError> {
         for cmd in cmds {
-            self.run_cmd(cmd, id.clone(), name, timeout, run_info)?;
+            self.run_cmd(cmd, id.clone(), name, timeout, run_info, working_directory)?;
         }
         Ok(())
     }
@@ -465,7 +470,14 @@ impl Service {
         }
         let timeout = self.get_stop_timeout(conf);
         let cmds = conf.stop.clone();
-        self.run_all_cmds(&cmds, id, name, timeout, run_info)
+        self.run_all_cmds(
+            &cmds,
+            id,
+            name,
+            timeout,
+            run_info,
+            conf.exec_config.working_directory.as_ref(),
+        )
     }
     fn run_prestart(
         &mut self,
@@ -479,7 +491,14 @@ impl Service {
         }
         let timeout = self.get_start_timeout(conf);
         let cmds = conf.startpre.clone();
-        self.run_all_cmds(&cmds, id, name, timeout, run_info)
+        self.run_all_cmds(
+            &cmds,
+            id,
+            name,
+            timeout,
+            run_info,
+            conf.exec_config.working_directory.as_ref(),
+        )
     }
     fn run_poststart(
         &mut self,
@@ -493,7 +512,14 @@ impl Service {
         }
         let timeout = self.get_start_timeout(conf);
         let cmds = conf.startpost.clone();
-        self.run_all_cmds(&cmds, id, name, timeout, run_info)
+        self.run_all_cmds(
+            &cmds,
+            id,
+            name,
+            timeout,
+            run_info,
+            conf.exec_config.working_directory.as_ref(),
+        )
     }
     fn run_poststop(
         &mut self,
@@ -505,7 +531,14 @@ impl Service {
         trace!("Run poststop for {name}");
         let timeout = self.get_stop_timeout(conf);
         let cmds = conf.stoppost.clone();
-        let res = self.run_all_cmds(&cmds, id, name, timeout, run_info);
+        let res = self.run_all_cmds(
+            &cmds,
+            id,
+            name,
+            timeout,
+            run_info,
+            conf.exec_config.working_directory.as_ref(),
+        );
 
         if conf.srcv_type != ServiceType::OneShot {
             // already happened when the oneshot process exited in the exit handler

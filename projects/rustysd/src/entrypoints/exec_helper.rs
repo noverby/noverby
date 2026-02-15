@@ -15,6 +15,8 @@ pub struct ExecHelperConfig {
     pub supplementary_groups: Vec<libc::gid_t>,
     pub user: libc::uid_t,
 
+    pub working_directory: Option<PathBuf>,
+
     pub platform_specific: PlatformSpecificServiceFields,
 }
 
@@ -76,6 +78,32 @@ pub fn run_exec_helper() {
     }
 
     let (cmd, args) = prepare_exec_args(&config.cmd, &config.args);
+
+    // change working directory if configured
+    if let Some(ref dir) = config.working_directory {
+        let dir = if dir == Path::new("~") {
+            // Resolve ~ to the home directory of the current user
+            match std::env::var("HOME") {
+                Ok(home) => PathBuf::from(home),
+                Err(_) => {
+                    eprintln!(
+                        "[EXEC_HELPER {}] WorkingDirectory=~ but $HOME is not set",
+                        config.name
+                    );
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            dir.clone()
+        };
+        if let Err(e) = std::env::set_current_dir(&dir) {
+            eprintln!(
+                "[EXEC_HELPER {}] Failed to set working directory to {:?}: {}",
+                config.name, dir, e
+            );
+            std::process::exit(1);
+        }
+    }
 
     // setup environment vars
     for (k, v) in &config.env {

@@ -23,11 +23,11 @@ fn test_service_parsing() {
     Before = {}
     After = {}
     After = {}
-    
+
     [Install]
     RequiredBy = {}
     WantedBy = {}
-    
+
     [Service]
     ExecStart = {}
     ExecStartPre = {}
@@ -121,6 +121,151 @@ fn test_service_parsing() {
         service.srvc.sockets,
         vec!["socket_name1".to_owned(), "socket_name2".to_owned()]
     );
+
+    // WorkingDirectory should be None when not specified
+    assert_eq!(service.srvc.exec_section.working_directory, None);
+}
+
+#[test]
+fn test_service_working_directory_absolute_path() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    WorkingDirectory = /var/lib/myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.working_directory,
+        Some(std::path::PathBuf::from("/var/lib/myapp"))
+    );
+}
+
+#[test]
+fn test_service_working_directory_tilde() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    WorkingDirectory = ~
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.working_directory,
+        Some(std::path::PathBuf::from("~"))
+    );
+}
+
+#[test]
+fn test_service_working_directory_dash_prefix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    WorkingDirectory = -/var/lib/myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    // The '-' prefix should be stripped; path is stored without it
+    assert_eq!(
+        service.srvc.exec_section.working_directory,
+        Some(std::path::PathBuf::from("/var/lib/myapp"))
+    );
+}
+
+#[test]
+fn test_service_working_directory_dash_tilde() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    WorkingDirectory = -~
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    // The '-' prefix should be stripped; ~ is preserved for later resolution
+    assert_eq!(
+        service.srvc.exec_section.working_directory,
+        Some(std::path::PathBuf::from("~"))
+    );
+}
+
+#[test]
+fn test_service_working_directory_too_many_values() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    WorkingDirectory = /var/lib/first
+    WorkingDirectory = /var/lib/second
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_socket_working_directory() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    WorkingDirectory = /var/lib/socketapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket_unit = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket_unit.sock.exec_section.working_directory,
+        Some(std::path::PathBuf::from("/var/lib/socketapp"))
+    );
+}
+
+#[test]
+fn test_socket_working_directory_not_set() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket_unit = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket_unit.sock.exec_section.working_directory, None);
 }
 
 #[test]
@@ -148,11 +293,11 @@ fn test_socket_parsing() {
     Before = {}
     After = {}
     After = {}
-    
+
     [Install]
     RequiredBy = {}
     WantedBy = {}
-    
+
     [Socket]
     ListenStream = {}
     ListenStream = {}
