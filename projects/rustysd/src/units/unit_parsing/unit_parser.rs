@@ -408,6 +408,7 @@ pub fn parse_exec_section(
     let system_call_filter = section.remove("SYSTEMCALLFILTER");
     let protect_system = section.remove("PROTECTSYSTEM");
     let restrict_namespaces = section.remove("RESTRICTNAMESPACES");
+    let restrict_realtime = section.remove("RESTRICTREALTIME");
 
     let user = match user {
         None => None,
@@ -545,6 +546,21 @@ pub fn parse_exec_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "DynamicUser".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        // systemd default: false
+        None => false,
+    };
+
+    let restrict_realtime = match restrict_realtime {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "RestrictRealtime".to_owned(),
                     super::map_tuples_to_second(vec),
                 ));
             }
@@ -888,6 +904,7 @@ pub fn parse_exec_section(
             }
             None => super::RestrictNamespaces::default(),
         },
+        restrict_realtime,
         system_call_filter: match system_call_filter {
             Some(vec) => {
                 // Each directive is a space-separated list of syscall names
