@@ -392,6 +392,7 @@ fn parse_service_section(
                 match vec[0].1.as_str() {
                     "simple" => ServiceType::Simple,
                     "notify" => ServiceType::Notify,
+                    "notify-reload" => ServiceType::NotifyReload,
                     "oneshot" => ServiceType::OneShot,
                     "dbus" => {
                         if cfg!(feature = "dbus_support") {

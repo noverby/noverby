@@ -24,7 +24,7 @@ pub fn wait_for_service(
     let start_time = std::time::Instant::now();
     let duration_timeout = srvc.get_start_timeout(conf);
     match conf.srcv_type {
-        ServiceType::Notify => {
+        ServiceType::Notify | ServiceType::NotifyReload => {
             trace!("[FORK_PARENT] Waiting for a notification for service {name}");
 
             //let duration_timeout = Some(std::time::Duration::from_nanos(1_000_000_000_000));

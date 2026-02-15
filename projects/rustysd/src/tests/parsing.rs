@@ -3853,3 +3853,141 @@ fn test_tty_vt_disallocate_case_insensitive() {
         "TTYVTDisallocate=YES (uppercase) should be true"
     );
 }
+
+// ============================================================
+// Type=notify-reload parsing tests
+// ============================================================
+
+#[test]
+fn test_service_type_notify_reload() {
+    let test_service_str = r#"
+    [Service]
+    Type = notify-reload
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.srcv_type,
+        crate::units::ServiceType::NotifyReload,
+        "Type=notify-reload should parse as NotifyReload"
+    );
+}
+
+#[test]
+fn test_service_type_notify_reload_is_distinct_from_notify() {
+    let notify_str = r#"
+    [Service]
+    Type = notify
+    ExecStart = /bin/myservice
+    "#;
+
+    let notify_reload_str = r#"
+    [Service]
+    Type = notify-reload
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_notify = crate::units::parse_file(notify_str).unwrap();
+    let service_notify = crate::units::parse_service(
+        parsed_notify,
+        &std::path::PathBuf::from("/path/to/notify.service"),
+    )
+    .unwrap();
+
+    let parsed_reload = crate::units::parse_file(notify_reload_str).unwrap();
+    let service_reload = crate::units::parse_service(
+        parsed_reload,
+        &std::path::PathBuf::from("/path/to/reload.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service_notify.srvc.srcv_type,
+        crate::units::ServiceType::Notify
+    );
+    assert_eq!(
+        service_reload.srvc.srcv_type,
+        crate::units::ServiceType::NotifyReload
+    );
+    assert_ne!(
+        service_notify.srvc.srcv_type, service_reload.srvc.srcv_type,
+        "Notify and NotifyReload should be distinct variants"
+    );
+}
+
+#[test]
+fn test_service_type_notify_still_works() {
+    let test_service_str = r#"
+    [Service]
+    Type = notify
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.srcv_type,
+        crate::units::ServiceType::Notify,
+        "Type=notify should still parse as Notify"
+    );
+}
+
+#[test]
+fn test_service_type_notify_reload_with_other_settings() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A notify-reload service
+    [Service]
+    Type = notify-reload
+    ExecStart = /bin/myservice --flag
+    Restart = always
+    NotifyAccess = main
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.srcv_type,
+        crate::units::ServiceType::NotifyReload,
+        "Type=notify-reload should parse correctly alongside other settings"
+    );
+    assert_eq!(service.common.unit.description, "A notify-reload service");
+    assert_eq!(service.srvc.restart, crate::units::ServiceRestart::Always);
+}
+
+#[test]
+fn test_service_type_unknown_still_errors() {
+    let test_service_str = r#"
+    [Service]
+    Type = bogus
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "Type=bogus should still produce a parsing error"
+    );
+}
