@@ -5,10 +5,10 @@ use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
     acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KeyringMode, KillMode,
-    MemoryPressureWatch, NotifyKind, ProtectSystem, ResourceLimit, ServiceRestart, ServiceType,
-    StandardInput, StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction,
-    UnitCondition, UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus,
-    UtmpMode,
+    MemoryPressureWatch, NotifyKind, ProtectSystem, ResourceLimit, RestrictNamespaces,
+    ServiceRestart, ServiceType, StandardInput, StatusStarted, StatusStopped, StdIoOption,
+    TasksMax, Timeout, UnitAction, UnitCondition, UnitId, UnitIdKind, UnitOperationError,
+    UnitOperationErrorReason, UnitStatus, UtmpMode,
 };
 
 use std::sync::RwLock;
@@ -999,6 +999,12 @@ pub struct ExecConfig {
     /// the OS file system hierarchy. Parsed and stored; no runtime enforcement
     /// yet (requires mount namespace support). See systemd.exec(5).
     pub protect_system: ProtectSystem,
+    /// RestrictNamespaces= — restricts access to Linux namespace types for the
+    /// service. Can be a boolean (`yes` restricts all, `no` allows all) or a
+    /// space-separated list of namespace type identifiers (cgroup, ipc, net,
+    /// mnt, pid, user, uts). A `~` prefix inverts the list. Parsed and stored;
+    /// no runtime seccomp enforcement yet. See systemd.exec(5).
+    pub restrict_namespaces: RestrictNamespaces,
 }
 
 #[cfg(target_os = "linux")]

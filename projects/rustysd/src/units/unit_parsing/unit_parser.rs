@@ -407,6 +407,7 @@ pub fn parse_exec_section(
     let dynamic_user = section.remove("DYNAMICUSER");
     let system_call_filter = section.remove("SYSTEMCALLFILTER");
     let protect_system = section.remove("PROTECTSYSTEM");
+    let restrict_namespaces = section.remove("RESTRICTNAMESPACES");
 
     let user = match user {
         None => None,
@@ -852,6 +853,40 @@ pub fn parse_exec_section(
                 }
             }
             None => super::ProtectSystem::default(),
+        },
+        restrict_namespaces: match restrict_namespaces {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let raw = vec[0].1.trim();
+                    match raw.to_lowercase().as_str() {
+                        "yes" | "true" | "1" => super::RestrictNamespaces::Yes,
+                        "no" | "false" | "0" | "" => super::RestrictNamespaces::No,
+                        _ => {
+                            // Space-separated list of namespace types, optionally
+                            // prefixed with ~ for deny-list mode.
+                            let trimmed = raw;
+                            let (deny, rest) = if let Some(stripped) = trimmed.strip_prefix('~') {
+                                (true, stripped.trim_start())
+                            } else {
+                                (false, trimmed)
+                            };
+                            let names: Vec<String> =
+                                rest.split_whitespace().map(|s| s.to_lowercase()).collect();
+                            if deny {
+                                super::RestrictNamespaces::Deny(names)
+                            } else {
+                                super::RestrictNamespaces::Allow(names)
+                            }
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "RestrictNamespaces".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => super::RestrictNamespaces::default(),
         },
         system_call_filter: match system_call_filter {
             Some(vec) => {
