@@ -1118,6 +1118,12 @@ pub struct ExecConfig {
     /// to other processes and vice versa. Defaults to false. Parsed and
     /// stored; no runtime mount-namespace enforcement yet. See systemd.exec(5).
     pub private_tmp: bool,
+    /// PrivateDevices= — if true, sets up a private /dev/ namespace for the
+    /// executed processes with only pseudo-devices such as /dev/null,
+    /// /dev/zero, /dev/random available. Physical devices are not accessible.
+    /// Defaults to false. Parsed and stored; no runtime mount-namespace
+    /// enforcement yet. See systemd.exec(5).
+    pub private_devices: bool,
 }
 
 #[cfg(target_os = "linux")]
