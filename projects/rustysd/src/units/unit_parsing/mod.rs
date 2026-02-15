@@ -824,6 +824,15 @@ pub struct ParsedExecSection {
     /// accumulate; an empty assignment resets the list. Parsed and stored;
     /// no runtime enforcement yet. See systemd.exec(5).
     pub capability_bounding_set: Vec<String>,
+    /// AmbientCapabilities= — a list of Linux capability names (e.g.
+    /// CAP_NET_BIND_SERVICE, CAP_SYS_NICE) controlling the ambient
+    /// capability set for executed processes. Ambient capabilities are
+    /// inherited across execve() even without file capabilities. Entries
+    /// prefixed with `~` form a deny-list; without the prefix they form an
+    /// allow-list. Multiple directives accumulate; an empty assignment resets
+    /// the list. Parsed and stored; no runtime enforcement yet.
+    /// See systemd.exec(5).
+    pub ambient_capabilities: Vec<String>,
     /// ProtectHome= — controls whether /home, /root, and /run/user are
     /// accessible to the service. Can be `no` (default), `yes` (inaccessible),
     /// `read-only`, or `tmpfs`. Parsed and stored; no runtime enforcement yet
