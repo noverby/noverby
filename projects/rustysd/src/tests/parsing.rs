@@ -6287,3 +6287,307 @@ fn test_part_of_with_requires_and_after() {
         vec!["main-app.service".to_owned()]
     );
 }
+
+// ── Slice= parsing tests ──────────────────────────────────────────────
+
+#[test]
+fn test_slice_not_set_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.slice, None);
+}
+
+#[test]
+fn test_slice_single_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Slice = user.slice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.slice, Some("user.slice".to_owned()));
+}
+
+#[test]
+fn test_slice_system_slice() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Slice = system.slice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.slice, Some("system.slice".to_owned()));
+}
+
+#[test]
+fn test_slice_custom_slice() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Slice = my-custom.slice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.slice, Some("my-custom.slice".to_owned()));
+}
+
+#[test]
+fn test_slice_nested_slice() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Slice = user-1000.slice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.slice, Some("user-1000.slice".to_owned()));
+}
+
+#[test]
+fn test_slice_with_other_settings() {
+    let test_service_str = r#"
+    [Unit]
+    Description = Test service with slice
+
+    [Service]
+    ExecStart = /bin/true
+    Restart = always
+    Slice = system.slice
+    Type = simple
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.slice, Some("system.slice".to_owned()));
+    assert_eq!(
+        service.common.unit.description,
+        "Test service with slice".to_owned()
+    );
+}
+
+#[test]
+fn test_slice_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Slice = user.slice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(srvc.conf.slice, Some("user.slice".to_owned()));
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+#[test]
+fn test_slice_none_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(srvc.conf.slice, None);
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+#[test]
+fn test_slice_no_unsupported_warning() {
+    // Slice= should be parsed without generating an "unsupported setting" warning
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Slice = user.slice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    );
+
+    // Parsing should succeed (if Slice= were unsupported, it would warn but still parse)
+    assert!(service.is_ok());
+    assert_eq!(service.unwrap().srvc.slice, Some("user.slice".to_owned()));
+}
+
+// ── .slice in dependency lists ─────────────────────────────────────────
+
+#[test]
+fn test_slice_unit_id_conversion() {
+    use std::convert::TryInto;
+
+    let id: Result<crate::units::UnitId, _> =
+        <&str as TryInto<crate::units::UnitId>>::try_into("user.slice");
+    assert!(id.is_ok());
+    let id = id.unwrap();
+    assert_eq!(id.name, "user.slice");
+    assert_eq!(id.kind, crate::units::UnitIdKind::Slice);
+}
+
+#[test]
+fn test_slice_unit_id_system_slice() {
+    use std::convert::TryInto;
+
+    let id: crate::units::UnitId = "system.slice".try_into().unwrap();
+    assert_eq!(id.name, "system.slice");
+    assert_eq!(id.kind, crate::units::UnitIdKind::Slice);
+}
+
+#[test]
+fn test_slice_in_after_dependency() {
+    let test_service_str = r#"
+    [Unit]
+    After = user.slice
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.after, vec!["user.slice".to_owned()]);
+}
+
+#[test]
+fn test_slice_in_wants_dependency() {
+    let test_service_str = r#"
+    [Unit]
+    Wants = user.slice
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.wants, vec!["user.slice".to_owned()]);
+}
+
+#[test]
+fn test_slice_in_after_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    After = user.slice
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    let slice_id = crate::units::UnitId {
+        name: "user.slice".to_owned(),
+        kind: crate::units::UnitIdKind::Slice,
+    };
+    assert!(unit.common.dependencies.after.contains(&slice_id));
+}
+
+#[test]
+fn test_slice_mixed_with_other_deps() {
+    let test_service_str = r#"
+    [Unit]
+    After = user.slice network.target
+    Wants = user.slice
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.common.unit.after.contains(&"user.slice".to_owned()));
+    assert!(service
+        .common
+        .unit
+        .after
+        .contains(&"network.target".to_owned()));
+    assert!(service.common.unit.wants.contains(&"user.slice".to_owned()));
+}

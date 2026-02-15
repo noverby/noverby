@@ -5,6 +5,7 @@ pub enum UnitIdKind {
     Target,
     Socket,
     Service,
+    Slice,
 }
 
 #[derive(Clone, Eq, PartialEq, Hash)]

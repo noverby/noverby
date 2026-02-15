@@ -176,6 +176,7 @@ fn parse_service_section(
     let accept = section.remove("ACCEPT");
     let dbus_name = section.remove("BUSNAME");
     let pid_file = section.remove("PIDFILE");
+    let slice = section.remove("SLICE");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -572,6 +573,13 @@ fn parse_service_section(
         stoptimeout,
         generaltimeout,
         sockets: map_tuples_to_second(super::split_list_values(sockets.unwrap_or_default())),
+        slice: slice.and_then(|vec| {
+            if vec.len() == 1 {
+                Some(vec[0].1.clone())
+            } else {
+                None
+            }
+        }),
         exec_section: exec_config,
     })
 }
