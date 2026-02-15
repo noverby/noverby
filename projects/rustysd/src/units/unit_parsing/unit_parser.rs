@@ -539,6 +539,7 @@ pub fn parse_exec_section(
     let io_scheduling_priority = section.remove("IOSCHEDULINGPRIORITY");
     let umask = section.remove("UMASK");
     let proc_subset = section.remove("PROCSUBSET");
+    let nice = section.remove("NICE");
 
     let user = match user {
         None => None,
@@ -1675,6 +1676,35 @@ pub fn parse_exec_section(
                 }
             }
             None => super::ProcSubset::default(),
+        },
+        nice: match nice {
+            None => None,
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let trimmed = vec[0].1.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        let val: i32 = trimmed.parse().map_err(|_| {
+                            ParsingErrorReason::UnknownSetting("Nice".to_owned(), vec[0].1.clone())
+                        })?;
+                        if !(-20..=19).contains(&val) {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "Nice".to_owned(),
+                                format!("{val} (must be -20 to 19)"),
+                            ));
+                        }
+                        Some(val)
+                    }
+                } else if vec.len() > 1 {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "Nice".into(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                } else {
+                    None
+                }
+            }
         },
         umask: match umask {
             None => None,
