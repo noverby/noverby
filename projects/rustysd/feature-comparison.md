@@ -1080,8 +1080,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#Delegate=">Delegate=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✅</td>
+  <td>Supports boolean (yes/no) and controller list forms. When enabled with cgroups, chowns the cgroup directory to the service user for sub-hierarchy management.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#DisableControllers=">DisableControllers=</a></td>

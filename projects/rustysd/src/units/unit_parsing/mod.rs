@@ -84,6 +84,7 @@ pub struct ParsedServiceSection {
     pub restart: ServiceRestart,
     pub restart_sec: Option<Timeout>,
     pub kill_mode: KillMode,
+    pub delegate: Delegate,
     pub accept: bool,
     pub notifyaccess: NotifyKind,
     pub exec: Commandline,
@@ -151,6 +152,23 @@ pub enum KillMode {
 impl Default for KillMode {
     fn default() -> Self {
         Self::ControlGroup
+    }
+}
+
+/// Whether to delegate cgroup control to the service process
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub enum Delegate {
+    /// No delegation (default)
+    No,
+    /// Delegate all supported controllers
+    Yes,
+    /// Delegate specific controllers
+    Controllers(Vec<String>),
+}
+
+impl Default for Delegate {
+    fn default() -> Self {
+        Self::No
     }
 }
 

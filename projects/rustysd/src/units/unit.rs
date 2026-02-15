@@ -4,9 +4,9 @@ use crate::runtime_info::RuntimeInfo;
 use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
-    acquire_locks, ActivationSource, Commandline, EnvVars, KillMode, NotifyKind, ServiceRestart,
-    ServiceType, StatusStarted, StatusStopped, StdIoOption, Timeout, UnitId, UnitIdKind,
-    UnitOperationError, UnitOperationErrorReason, UnitStatus,
+    acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KillMode, NotifyKind,
+    ServiceRestart, ServiceType, StatusStarted, StatusStopped, StdIoOption, Timeout, UnitId,
+    UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus,
 };
 
 use std::sync::RwLock;
@@ -882,6 +882,7 @@ pub struct ServiceConfig {
     pub restart: ServiceRestart,
     pub restart_sec: Option<Timeout>,
     pub kill_mode: KillMode,
+    pub delegate: Delegate,
     pub accept: bool,
     pub notifyaccess: NotifyKind,
     pub exec: Commandline,

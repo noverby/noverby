@@ -65,6 +65,7 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 restart: conf.srvc.restart,
                 restart_sec: conf.srvc.restart_sec,
                 kill_mode: conf.srvc.kill_mode,
+                delegate: conf.srvc.delegate,
                 notifyaccess: conf.srvc.notifyaccess,
                 exec: conf.srvc.exec,
                 startpre: conf.srvc.startpre,
