@@ -3,9 +3,9 @@ use crate::sockets::Socket;
 use crate::units::{
     Common, CommonState, Dependencies, ExecConfig, ParsedExecSection, ParsedInstallSection,
     ParsedServiceConfig, ParsedSingleSocketConfig, ParsedSocketConfig, ParsedTargetConfig,
-    ParsedUnitSection, ParsingErrorReason, PlatformSpecificServiceFields, ServiceConfig,
-    ServiceSpecific, ServiceState, SingleSocketConfig, SocketConfig, SocketSpecific, SocketState,
-    Specific, TargetSpecific, TargetState, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus,
+    ParsedUnitSection, PlatformSpecificServiceFields, ServiceConfig, ServiceSpecific, ServiceState,
+    SingleSocketConfig, SocketConfig, SocketSpecific, SocketState, Specific, TargetSpecific,
+    TargetState, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus,
 };
 
 #[cfg(feature = "cgroups")]
@@ -160,53 +160,14 @@ impl From<ParsedSingleSocketConfig> for SingleSocketConfig {
 impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
     type Error = String;
     fn try_from(parsed: ParsedExecSection) -> Result<Self, String> {
-        let uid = if let Some(user) = &parsed.user {
-            if let Ok(uid) = user.parse::<u32>() {
-                Some(nix::unistd::Uid::from_raw(uid))
-            } else if let Ok(pwentry) =
-                crate::platform::pwnam::getpwnam_r(user).map_err(ParsingErrorReason::Generic)
-            {
-                Some(pwentry.uid)
-            } else {
-                return Err(format!("Couldnt get uid for username: {user}"));
-            }
-        } else {
-            None
-        };
-        let uid = uid.unwrap_or_else(nix::unistd::getuid);
-
-        let gid = if let Some(group) = &parsed.group {
-            if let Ok(gid) = group.parse::<u32>() {
-                Some(nix::unistd::Gid::from_raw(gid))
-            } else if let Ok(groupentry) =
-                crate::platform::grnam::getgrnam_r(group).map_err(ParsingErrorReason::Generic)
-            {
-                Some(groupentry.gid)
-            } else {
-                return Err(format!("Couldnt get gid for groupname: {group}"));
-            }
-        } else {
-            None
-        };
-        let gid = gid.unwrap_or_else(nix::unistd::getgid);
-
-        let mut supp_gids = Vec::new();
-        for group in &parsed.supplementary_groups {
-            let gid = if let Ok(gid) = group.parse::<u32>() {
-                nix::unistd::Gid::from_raw(gid)
-            } else if let Ok(groupentry) =
-                crate::platform::grnam::getgrnam_r(group).map_err(ParsingErrorReason::Generic)
-            {
-                groupentry.gid
-            } else {
-                return Err(format!("Couldnt get gid for groupname: {group}"));
-            };
-            supp_gids.push(gid);
-        }
+        // Store raw user/group strings and defer resolution to exec time.
+        // This matches systemd's behavior: users/groups that don't exist yet
+        // at unit-load time (e.g. created by systemd-sysusers) are resolved
+        // just before the service process is spawned.
         Ok(Self {
-            user: uid,
-            group: gid,
-            supplementary_groups: supp_gids,
+            user: parsed.user,
+            group: parsed.group,
+            supplementary_groups: parsed.supplementary_groups,
             stdin_option: parsed.stdin_option,
             stderr_path: parsed.stderr_path,
             stdout_path: parsed.stdout_path,
