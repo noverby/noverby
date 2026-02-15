@@ -424,6 +424,7 @@ pub fn parse_exec_section(
     let system_call_architectures = section.remove("SYSTEMCALLARCHITECTURES");
     let read_write_paths = section.remove("READWRITEPATHS");
     let memory_deny_write_execute = section.remove("MEMORYDENYWRITEEXECUTE");
+    let lock_personality = section.remove("LOCKPERSONALITY");
     let private_tmp = section.remove("PRIVATETMP");
 
     let user = match user {
@@ -682,6 +683,21 @@ pub fn parse_exec_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "MemoryDenyWriteExecute".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        // systemd default: false
+        None => false,
+    };
+
+    let lock_personality = match lock_personality {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "LockPersonality".to_owned(),
                     super::map_tuples_to_second(vec),
                 ));
             }
@@ -1333,6 +1349,7 @@ pub fn parse_exec_section(
             None => Vec::new(),
         },
         memory_deny_write_execute,
+        lock_personality,
         private_tmp,
     })
 }
