@@ -24,8 +24,12 @@ pub fn pre_fork_os_specific(srvc: &ServiceConfig) -> Result<(), String> {
         // When Delegate is enabled, chown the cgroup directory to the service user
         // so the service process can manage its own sub-cgroup hierarchy.
         if srvc.delegate != Delegate::No {
-            let uid = srvc.exec_config.user;
-            let gid = srvc.exec_config.group;
+            let uid = super::start_service::resolve_uid(&srvc.exec_config.user)
+                .map_err(|e| format!("Couldn't resolve user for cgroup delegation: {e}"))?;
+            let uid = nix::unistd::Uid::from_raw(uid);
+            let gid = super::start_service::resolve_gid(&srvc.exec_config.group)
+                .map_err(|e| format!("Couldn't resolve group for cgroup delegation: {e}"))?;
+            let gid = nix::unistd::Gid::from_raw(gid);
             trace!(
                 "Delegating cgroup {:?} to uid={} gid={}",
                 &srvc.platform_specific.cgroup_path,

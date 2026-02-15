@@ -11,6 +11,6 @@ mod prepare_service;
 mod service_exit_handler;
 #[allow(clippy::module_inception)]
 mod services;
-mod start_service;
+pub mod start_service;
 pub use service_exit_handler::*;
 pub use services::*;

@@ -135,13 +135,13 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#User=">User=</a></td>
-  <td>❓</td>
-  <td>The user id can be set for starting services. Currently only done for the main executable</td>
+  <td>✅</td>
+  <td>The user id can be set for starting services. Both numeric UIDs and usernames are supported. Resolution is deferred to exec time (matching systemd behavior), so users created during boot (e.g. by systemd-sysusers) are resolved correctly.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#Group=">Group=</a></td>
-  <td>❓</td>
-  <td>The group id can be set for starting services. Currently only done for the main executable</td>
+  <td>✅</td>
+  <td>The group id can be set for starting services. Both numeric GIDs and group names are supported. Resolution is deferred to exec time (matching systemd behavior), so groups created during boot are resolved correctly.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#DynamicUser=">DynamicUser=</a></td>
@@ -150,8 +150,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#SupplementaryGroups=">SupplementaryGroups=</a></td>
-  <td>❓</td>
-  <td>The supplementary group ids can be set for starting services. Currently only done for the main executable</td>
+  <td>✅</td>
+  <td>Supplementary group ids can be set for starting services. Both numeric GIDs and group names are supported. Resolution is deferred to exec time (matching systemd behavior).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#PAMName=">PAMName=</a></td>
@@ -1171,7 +1171,7 @@ This document is meant as a simple way of checking whether all features you need
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ExecStart=">ExecStart=</a></td>
   <td>✅</td>
-  <td>Exec'ing the command given is supported. The return value is checked for oneshot services. The '-' prefix (ignore errors) and '@' prefix (override argv[0]) are supported, other prefixes are not.</td>
+  <td>Exec'ing the command given is supported. The return value is checked for oneshot services. The '-' prefix (ignore errors) and '@' prefix (override argv[0]) are supported, other prefixes are not. ExecStart= is optional for oneshot services (the service succeeds immediately), and .service files without a [Service] section are treated as exec-less oneshots (matching systemd behavior for units like systemd-reboot.service).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ExecStartPre=">ExecStartPre=</a></td>

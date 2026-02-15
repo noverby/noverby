@@ -11,6 +11,56 @@ use crate::units::{CommandlinePrefix, ServiceConfig, StdIoOption};
 
 use std::path::Path;
 
+/// Resolve a User= value (name or numeric UID) to a raw `uid_t`.
+/// Falls back to the current process UID if `user` is `None`.
+pub fn resolve_uid(user: &Option<String>) -> Result<libc::uid_t, String> {
+    match user {
+        Some(user_str) => {
+            if let Ok(uid) = user_str.parse::<u32>() {
+                Ok(uid)
+            } else {
+                let pwentry = crate::platform::pwnam::getpwnam_r(user_str)
+                    .map_err(|_| format!("Couldn't resolve uid for username: {user_str}"))?;
+                Ok(pwentry.uid.as_raw())
+            }
+        }
+        None => Ok(nix::unistd::getuid().as_raw()),
+    }
+}
+
+/// Resolve a Group= value (name or numeric GID) to a raw `gid_t`.
+/// Falls back to the current process GID if `group` is `None`.
+pub fn resolve_gid(group: &Option<String>) -> Result<libc::gid_t, String> {
+    match group {
+        Some(group_str) => {
+            if let Ok(gid) = group_str.parse::<u32>() {
+                Ok(gid)
+            } else {
+                let grentry = crate::platform::grnam::getgrnam_r(group_str)
+                    .map_err(|_| format!("Couldn't resolve gid for groupname: {group_str}"))?;
+                Ok(grentry.gid.as_raw())
+            }
+        }
+        None => Ok(nix::unistd::getgid().as_raw()),
+    }
+}
+
+/// Resolve a list of SupplementaryGroups= values to raw `gid_t` values.
+fn resolve_supplementary_gids(groups: &[String]) -> Result<Vec<libc::gid_t>, String> {
+    groups
+        .iter()
+        .map(|g| {
+            if let Ok(gid) = g.parse::<u32>() {
+                Ok(gid)
+            } else {
+                let grentry = crate::platform::grnam::getgrnam_r(g)
+                    .map_err(|_| format!("Couldn't resolve gid for supplementary group: {g}"))?;
+                Ok(grentry.gid.as_raw())
+            }
+        })
+        .collect()
+}
+
 fn start_service_with_filedescriptors(
     self_path: &Path,
     srvc: &mut Service,
@@ -173,14 +223,12 @@ fn start_service_with_filedescriptors(
             env.push(("NOTIFY_SOCKET".to_owned(), notifications_path));
             env
         },
-        group: conf.exec_config.group.as_raw(),
-        supplementary_groups: conf
-            .exec_config
-            .supplementary_groups
-            .iter()
-            .map(|gid| gid.as_raw())
-            .collect(),
-        user: conf.exec_config.user.as_raw(),
+        group: resolve_gid(&conf.exec_config.group)
+            .map_err(|e| RunCmdError::SpawnError(name.to_owned(), e))?,
+        supplementary_groups: resolve_supplementary_gids(&conf.exec_config.supplementary_groups)
+            .map_err(|e| RunCmdError::SpawnError(name.to_owned(), e))?,
+        user: resolve_uid(&conf.exec_config.user)
+            .map_err(|e| RunCmdError::SpawnError(name.to_owned(), e))?,
 
         working_directory: conf.exec_config.working_directory.clone(),
         state_directory: conf.exec_config.state_directory.clone(),

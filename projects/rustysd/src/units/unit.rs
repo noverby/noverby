@@ -862,9 +862,12 @@ pub struct SingleSocketConfig {
 /// All settings from the Exec section of a unit
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct ExecConfig {
-    pub user: nix::unistd::Uid,
-    pub group: nix::unistd::Gid,
-    pub supplementary_groups: Vec<nix::unistd::Gid>,
+    /// Raw user name or numeric UID from User= directive. Resolved at exec time.
+    pub user: Option<String>,
+    /// Raw group name or numeric GID from Group= directive. Resolved at exec time.
+    pub group: Option<String>,
+    /// Raw supplementary group names or numeric GIDs. Resolved at exec time.
+    pub supplementary_groups: Vec<String>,
     pub stdin_option: StandardInput,
     pub stdout_path: Option<StdIoOption>,
     pub stderr_path: Option<StdIoOption>,
