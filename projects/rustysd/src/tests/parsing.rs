@@ -24442,6 +24442,258 @@ fn test_private_users_with_other_settings() {
 }
 
 // ============================================================
+// IOSchedulingPriority= parsing tests
+// ============================================================
+
+#[test]
+fn test_io_scheduling_priority_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingPriority = 4
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "IOSchedulingPriority= should not cause errors"
+    );
+}
+
+#[test]
+fn test_io_scheduling_priority_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.io_scheduling_priority.is_none(),
+        "IOSchedulingPriority should default to None"
+    );
+}
+
+#[test]
+fn test_io_scheduling_priority_zero() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingPriority = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_priority,
+        Some(0),
+        "IOSchedulingPriority=0 should be Some(0)"
+    );
+}
+
+#[test]
+fn test_io_scheduling_priority_four() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingPriority = 4
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_priority,
+        Some(4),
+        "IOSchedulingPriority=4 should be Some(4)"
+    );
+}
+
+#[test]
+fn test_io_scheduling_priority_seven() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingPriority = 7
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_priority,
+        Some(7),
+        "IOSchedulingPriority=7 should be Some(7)"
+    );
+}
+
+#[test]
+fn test_io_scheduling_priority_out_of_range() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingPriority = 8
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "IOSchedulingPriority=8 should be an error (valid range is 0-7)"
+    );
+}
+
+#[test]
+fn test_io_scheduling_priority_invalid_string() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingPriority = high
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "IOSchedulingPriority=high should be an error (must be integer)"
+    );
+}
+
+#[test]
+fn test_io_scheduling_priority_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingPriority = 2
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.io_scheduling_priority,
+            Some(2),
+            "IOSchedulingPriority=2 should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_io_scheduling_priority_none_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.io_scheduling_priority.is_none(),
+            "IOSchedulingPriority default (None) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_io_scheduling_priority_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with IO priority
+    [Socket]
+    ListenStream = /run/test.sock
+    IOSchedulingPriority = 3
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.io_scheduling_priority,
+        Some(3),
+        "IOSchedulingPriority should work in socket units"
+    );
+}
+
+#[test]
+fn test_io_scheduling_priority_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    IOSchedulingPriority =  5
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.io_scheduling_priority,
+        Some(5),
+        "IOSchedulingPriority should handle surrounding whitespace"
+    );
+}
+
+// ============================================================
 // LockPersonality= parsing tests
 // ============================================================
 
