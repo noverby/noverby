@@ -26,6 +26,29 @@ pub enum UnitOperationErrorReason {
     DependencyError(Vec<UnitId>),
 }
 
+impl std::fmt::Display for UnitOperationErrorReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::GenericStartError(msg) => write!(f, "start error: {msg}"),
+            Self::GenericStopError(msg) => write!(f, "stop error: {msg}"),
+            Self::SocketOpenError(msg) => write!(f, "socket open error: {msg}"),
+            Self::SocketCloseError(msg) => write!(f, "socket close error: {msg}"),
+            Self::ServiceStartError(e) => write!(f, "{e}"),
+            Self::ServiceStopError(e) => write!(f, "{e}"),
+            Self::DependencyError(ids) => {
+                write!(f, "dependency error: ")?;
+                for (i, id) in ids.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", id.name)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 impl std::fmt::Display for UnitOperationError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match &self.reason {
