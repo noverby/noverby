@@ -280,8 +280,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#KeyringMode=">KeyringMode=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored; accepts <code>inherit</code>, <code>private</code>, <code>shared</code> (case-insensitive). Defaults to <code>private</code>. Not yet enforced at runtime (no keyring setup).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#OOMScoreAdjust=">OOMScoreAdjust=</a></td>
