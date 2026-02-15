@@ -78,18 +78,18 @@ pub enum RunCmdError {
 impl std::fmt::Display for RunCmdError {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         let msg = match self {
-            Self::BadExitCode(cmd, exit) => format!("{cmd} exited with: {exit:?}"),
+            Self::BadExitCode(cmd, exit) => format!("{cmd} exited with {exit}"),
             Self::ExitBeforeNotify(cmd, exit) => {
-                format!("{cmd} exited before sendeinf READY=1 with: {exit:?}")
+                format!("{cmd} exited before sending READY=1 with {exit}")
             }
-            Self::SpawnError(cmd, err) => format!("{cmd} failed to spawn with: {err:?}"),
+            Self::SpawnError(cmd, err) => format!("{cmd} failed to spawn: {err}"),
             Self::WaitError(cmd, err) => {
-                format!("{cmd} could not be waited on because: {err:?}")
+                format!("{cmd} could not be waited on: {err}")
             }
-            Self::CreatingShmemFailed(cmd, err) => format!(
-                "{cmd} could not create shared memory for passing the chainloading config: {err:?}"
-            ),
-            Self::Timeout(cmd, err) => format!("{cmd} reached its timeout: {err:?}"),
+            Self::CreatingShmemFailed(cmd, err) => {
+                format!("{cmd} could not create shared memory for chainloading config: {err:?}")
+            }
+            Self::Timeout(cmd, err) => format!("{cmd} reached its timeout: {err}"),
             Self::Generic(err) => format!("Generic error: {err}"),
         };
         fmt.write_str(msg.as_str())
@@ -615,7 +615,7 @@ impl Service {
         prefix.push('[');
         prefix.push_str(name);
         prefix.push(']');
-        let _ = write!(prefix, "[{status:?}]");
+        let _ = write!(prefix, "[{status}]");
         prefix.push(' ');
         let mut outbuf: Vec<u8> = Vec::new();
         while self.stdout_buffer.contains(&b'\n') {
@@ -641,7 +641,7 @@ impl Service {
         prefix.push('[');
         prefix.push_str(name);
         prefix.push(']');
-        let _ = write!(prefix, "[{status:?}]");
+        let _ = write!(prefix, "[{status}]");
         prefix.push_str("[STDERR]");
         prefix.push(' ');
 

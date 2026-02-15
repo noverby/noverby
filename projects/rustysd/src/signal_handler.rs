@@ -48,6 +48,15 @@ pub enum ChildTermination {
     Exit(i32),
 }
 
+impl std::fmt::Display for ChildTermination {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Signal(sig) => write!(f, "signal {sig}"),
+            Self::Exit(code) => write!(f, "exit code {code}"),
+        }
+    }
+}
+
 impl ChildTermination {
     #[must_use]
     pub const fn success(&self) -> bool {
