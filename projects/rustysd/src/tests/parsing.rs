@@ -14780,3 +14780,555 @@ fn test_protect_system_with_other_settings() {
     assert_eq!(service.srvc.exec_section.dynamic_user, true);
     assert_eq!(service.srvc.exec_section.system_call_filter.len(), 1);
 }
+
+// ============================================================
+// RestrictNamespaces= parsing tests
+// ============================================================
+
+#[test]
+fn test_restrict_namespaces_defaults_to_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::No,
+        "RestrictNamespaces should default to No when not specified"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::Yes,
+        "RestrictNamespaces=yes should parse correctly"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::Yes,
+        "RestrictNamespaces=true should map to Yes"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_numeric_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::Yes,
+        "RestrictNamespaces=1 should map to Yes"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::No,
+        "RestrictNamespaces=no should parse correctly"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::No,
+        "RestrictNamespaces=false should map to No"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_numeric_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::No,
+        "RestrictNamespaces=0 should map to No"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_allow_single() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = net
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::Allow(vec!["net".to_owned()]),
+        "RestrictNamespaces=net should produce Allow([net])"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_allow_multiple() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = cgroup ipc net mnt
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::Allow(vec![
+            "cgroup".to_owned(),
+            "ipc".to_owned(),
+            "net".to_owned(),
+            "mnt".to_owned(),
+        ]),
+        "Space-separated namespace types should produce an Allow list"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_deny_single() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = ~user
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::Deny(vec!["user".to_owned()]),
+        "RestrictNamespaces=~user should produce Deny([user])"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_deny_multiple() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = ~mnt pid user
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::Deny(vec![
+            "mnt".to_owned(),
+            "pid".to_owned(),
+            "user".to_owned(),
+        ]),
+        "~mnt pid user should produce a Deny list"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_case_insensitive_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::Yes,
+        "RestrictNamespaces should be case-insensitive (YES)"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_case_insensitive_list() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = NET IPC
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::Allow(vec!["net".to_owned(), "ipc".to_owned(),]),
+        "Namespace type names should be lowercased"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces =   net   ipc
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::Allow(vec!["net".to_owned(), "ipc".to_owned(),]),
+        "RestrictNamespaces should handle extra whitespace"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_deny_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = ~  mnt   pid
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::Deny(vec!["mnt".to_owned(), "pid".to_owned(),]),
+        "RestrictNamespaces deny with whitespace should parse correctly"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_empty_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::No,
+        "Empty RestrictNamespaces= should map to No"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_all_namespace_types() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = cgroup ipc net mnt pid user uts
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::Allow(vec![
+            "cgroup".to_owned(),
+            "ipc".to_owned(),
+            "net".to_owned(),
+            "mnt".to_owned(),
+            "pid".to_owned(),
+            "user".to_owned(),
+            "uts".to_owned(),
+        ]),
+        "All seven namespace types should be parsed"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "RestrictNamespaces should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = ~mnt pid
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.restrict_namespaces,
+            crate::units::RestrictNamespaces::Deny(vec!["mnt".to_owned(), "pid".to_owned(),]),
+            "RestrictNamespaces should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_restrict_namespaces_yes_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.restrict_namespaces,
+            crate::units::RestrictNamespaces::Yes,
+            "RestrictNamespaces=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_restrict_namespaces_default_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.restrict_namespaces,
+            crate::units::RestrictNamespaces::No,
+            "Default RestrictNamespaces (No) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_restrict_namespaces_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with namespace restriction
+    [Socket]
+    ListenStream = /run/test.sock
+    RestrictNamespaces = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::Yes,
+        "RestrictNamespaces=yes should work on socket units"
+    );
+}
+
+#[test]
+fn test_restrict_namespaces_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RestrictNamespaces = ~mnt
+    ProtectSystem = strict
+    SystemCallFilter = @basic-io
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.restrict_namespaces,
+        crate::units::RestrictNamespaces::Deny(vec!["mnt".to_owned()]),
+    );
+    assert_eq!(
+        service.srvc.exec_section.protect_system,
+        crate::units::ProtectSystem::Strict,
+    );
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 1);
+}

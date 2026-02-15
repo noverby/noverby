@@ -200,6 +200,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             dynamic_user: parsed.dynamic_user,
             system_call_filter: parsed.system_call_filter,
             protect_system: parsed.protect_system,
+            restrict_namespaces: parsed.restrict_namespaces,
         })
     }
 }

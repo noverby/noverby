@@ -375,6 +375,12 @@ pub struct ParsedExecSection {
     /// the OS file system hierarchy. Parsed and stored; no runtime enforcement
     /// yet (requires mount namespace support). See systemd.exec(5).
     pub protect_system: ProtectSystem,
+    /// RestrictNamespaces= — restricts access to Linux namespace types for the
+    /// service. Can be a boolean (`yes` restricts all, `no` allows all) or a
+    /// space-separated list of namespace type identifiers (cgroup, ipc, net,
+    /// mnt, pid, user, uts). A `~` prefix inverts the list. Parsed and stored;
+    /// no runtime seccomp enforcement yet. See systemd.exec(5).
+    pub restrict_namespaces: RestrictNamespaces,
 }
 
 /// The type of utmp/wtmp record to create for a service.
@@ -520,6 +526,26 @@ pub enum ProtectSystem {
 }
 
 impl Default for ProtectSystem {
+    fn default() -> Self {
+        Self::No
+    }
+}
+
+/// RestrictNamespaces= — restricts access to Linux namespace types for the
+/// service. See systemd.exec(5).
+#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
+pub enum RestrictNamespaces {
+    /// No namespace restrictions (default).
+    No,
+    /// Restrict all namespace creation and joining.
+    Yes,
+    /// Restrict to only the listed namespace types (allow-list).
+    Allow(Vec<String>),
+    /// Allow all namespace types except the listed ones (deny-list, ~ prefix).
+    Deny(Vec<String>),
+}
+
+impl Default for RestrictNamespaces {
     fn default() -> Self {
         Self::No
     }
