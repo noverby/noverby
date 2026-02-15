@@ -23,6 +23,7 @@ pub struct ExecHelperConfig {
 
     pub working_directory: Option<PathBuf>,
     pub state_directory: Vec<String>,
+    pub runtime_directory: Vec<String>,
 
     pub platform_specific: PlatformSpecificServiceFields,
 
@@ -621,6 +622,36 @@ pub fn run_exec_helper() {
             full_paths.push(full_path.to_string_lossy().into_owned());
         }
         std::env::set_var("STATE_DIRECTORY", full_paths.join(":"));
+    }
+
+    // Create runtime directories under /run/ and set RUNTIME_DIRECTORY env var.
+    // Same privilege requirements as state directories: must happen before
+    // dropping privileges because /run/ is typically only writable by root.
+    if !config.runtime_directory.is_empty() {
+        let base = Path::new("/run");
+        let mut full_paths = Vec::new();
+        for dir_name in &config.runtime_directory {
+            let full_path = base.join(dir_name);
+            if let Err(e) = std::fs::create_dir_all(&full_path) {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to create runtime directory {:?}: {}",
+                    config.name, full_path, e
+                );
+                std::process::exit(1);
+            }
+            // Set ownership to the service user/group
+            let uid = nix::unistd::Uid::from_raw(config.user);
+            let gid = nix::unistd::Gid::from_raw(config.group);
+            if let Err(e) = nix::unistd::chown(&full_path, Some(uid), Some(gid)) {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to chown runtime directory {:?}: {}",
+                    config.name, full_path, e
+                );
+                std::process::exit(1);
+            }
+            full_paths.push(full_path.to_string_lossy().into_owned());
+        }
+        std::env::set_var("RUNTIME_DIRECTORY", full_paths.join(":"));
     }
 
     if nix::unistd::getuid().is_root() {

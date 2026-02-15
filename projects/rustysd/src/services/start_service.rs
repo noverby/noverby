@@ -249,6 +249,7 @@ fn start_service_with_filedescriptors(
 
         working_directory: conf.exec_config.working_directory.clone(),
         state_directory: conf.exec_config.state_directory.clone(),
+        runtime_directory: conf.exec_config.runtime_directory.clone(),
 
         platform_specific: conf.platform_specific.clone(),
 

@@ -271,6 +271,11 @@ pub struct ParsedExecSection {
     pub environment_files: Vec<(PathBuf, bool)>,
     pub working_directory: Option<PathBuf>,
     pub state_directory: Vec<String>,
+    /// RuntimeDirectory= — directories to create under /run/ before the
+    /// service starts. Ownership is set to the service user/group and the
+    /// RUNTIME_DIRECTORY environment variable is set to a colon-separated
+    /// list of the absolute paths. Matches systemd.exec(5).
+    pub runtime_directory: Vec<String>,
     pub tty_path: Option<PathBuf>,
     /// TTYReset= — reset the TTY to sane defaults before use (default: false).
     /// Matches systemd behavior: resets termios, keyboard mode, switches to text mode.
