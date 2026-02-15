@@ -107,6 +107,7 @@ fn start_service_with_filedescriptors(
         user: conf.exec_config.user.as_raw(),
 
         working_directory: conf.exec_config.working_directory.clone(),
+        state_directory: conf.exec_config.state_directory.clone(),
 
         platform_specific: conf.platform_specific.clone(),
     };

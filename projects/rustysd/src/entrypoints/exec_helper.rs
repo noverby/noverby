@@ -16,6 +16,7 @@ pub struct ExecHelperConfig {
     pub user: libc::uid_t,
 
     pub working_directory: Option<PathBuf>,
+    pub state_directory: Vec<String>,
 
     pub platform_specific: PlatformSpecificServiceFields,
 }
@@ -78,6 +79,34 @@ pub fn run_exec_helper() {
     }
 
     let (cmd, args) = prepare_exec_args(&config.cmd, &config.args);
+
+    // create state directories under /var/lib/ and set STATE_DIRECTORY env var
+    if !config.state_directory.is_empty() {
+        let base = Path::new("/var/lib");
+        let mut full_paths = Vec::new();
+        for dir_name in &config.state_directory {
+            let full_path = base.join(dir_name);
+            if let Err(e) = std::fs::create_dir_all(&full_path) {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to create state directory {:?}: {}",
+                    config.name, full_path, e
+                );
+                std::process::exit(1);
+            }
+            // Set ownership to the service user/group
+            let uid = nix::unistd::Uid::from_raw(config.user);
+            let gid = nix::unistd::Gid::from_raw(config.group);
+            if let Err(e) = nix::unistd::chown(&full_path, Some(uid), Some(gid)) {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to chown state directory {:?}: {}",
+                    config.name, full_path, e
+                );
+                std::process::exit(1);
+            }
+            full_paths.push(full_path.to_string_lossy().into_owned());
+        }
+        std::env::set_var("STATE_DIRECTORY", full_paths.join(":"));
+    }
 
     // change working directory if configured
     if let Some(ref dir) = config.working_directory {

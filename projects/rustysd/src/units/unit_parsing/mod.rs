@@ -114,6 +114,7 @@ pub struct ParsedExecSection {
     pub supplementary_groups: Vec<String>,
     pub environment: Option<EnvVars>,
     pub working_directory: Option<PathBuf>,
+    pub state_directory: Vec<String>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]

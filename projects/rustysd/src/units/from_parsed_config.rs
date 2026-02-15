@@ -205,6 +205,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             stdout_path: parsed.stdout_path,
             environment: parsed.environment,
             working_directory: parsed.working_directory,
+            state_directory: parsed.state_directory,
         })
     }
 }
