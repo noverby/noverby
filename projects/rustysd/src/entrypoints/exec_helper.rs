@@ -25,6 +25,10 @@ pub struct ExecHelperConfig {
     pub state_directory: Vec<String>,
     pub runtime_directory: Vec<String>,
 
+    /// OOMScoreAdjust= — sets the OOM score adjustment for executed processes.
+    /// Written to /proc/self/oom_score_adj before exec. Range: -1000 to 1000.
+    pub oom_score_adjust: Option<i32>,
+
     pub platform_specific: PlatformSpecificServiceFields,
 
     pub limit_nofile: Option<ResourceLimit>,
@@ -652,6 +656,21 @@ pub fn run_exec_helper() {
             full_paths.push(full_path.to_string_lossy().into_owned());
         }
         std::env::set_var("RUNTIME_DIRECTORY", full_paths.join(":"));
+    }
+
+    // Apply OOMScoreAdjust= setting. Write the value to /proc/self/oom_score_adj
+    // before dropping privileges, because negative values (making the process
+    // less likely to be OOM-killed) require root or CAP_SYS_RESOURCE.
+    if let Some(adj) = config.oom_score_adjust {
+        let path = Path::new("/proc/self/oom_score_adj");
+        if let Err(e) = std::fs::write(path, format!("{adj}")) {
+            eprintln!(
+                "[EXEC_HELPER {}] Failed to set OOMScoreAdjust to {} ({:?}): {}",
+                config.name, adj, path, e
+            );
+            // Non-fatal: log and continue, matching systemd's lenient behavior
+            // when the kernel rejects the value or the file is unavailable.
+        }
     }
 
     if nix::unistd::getuid().is_root() {
