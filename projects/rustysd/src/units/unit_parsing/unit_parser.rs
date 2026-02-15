@@ -423,6 +423,7 @@ pub fn parse_exec_section(
     let protect_hostname = section.remove("PROTECTHOSTNAME");
     let system_call_architectures = section.remove("SYSTEMCALLARCHITECTURES");
     let read_write_paths = section.remove("READWRITEPATHS");
+    let memory_deny_write_execute = section.remove("MEMORYDENYWRITEEXECUTE");
 
     let user = match user {
         None => None,
@@ -665,6 +666,21 @@ pub fn parse_exec_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "ProtectHostname".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        // systemd default: false
+        None => false,
+    };
+
+    let memory_deny_write_execute = match memory_deny_write_execute {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "MemoryDenyWriteExecute".to_owned(),
                     super::map_tuples_to_second(vec),
                 ));
             }
@@ -1300,6 +1316,7 @@ pub fn parse_exec_section(
             }
             None => Vec::new(),
         },
+        memory_deny_write_execute,
     })
 }
 
