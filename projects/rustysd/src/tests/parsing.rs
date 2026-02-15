@@ -1354,3 +1354,112 @@ fn test_also_socket_unit() {
 
     assert_eq!(socket.common.install.also, vec!["test.service".to_owned()]);
 }
+
+#[test]
+fn test_restart_sec_not_set() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.restart_sec, None);
+}
+
+#[test]
+fn test_restart_sec_seconds() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartSec = 5
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(5)
+        ))
+    );
+}
+
+#[test]
+fn test_restart_sec_infinity() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartSec = infinity
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart_sec,
+        Some(crate::units::Timeout::Infinity)
+    );
+}
+
+#[test]
+fn test_restart_sec_compound_duration() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartSec = 1min 30s
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(90)
+        ))
+    );
+}
+
+#[test]
+fn test_restart_sec_with_restart_always() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Restart = always
+    RestartSec = 10
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.restart, crate::units::ServiceRestart::Always);
+    assert_eq!(
+        service.srvc.restart_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(10)
+        ))
+    );
+}

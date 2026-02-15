@@ -159,6 +159,7 @@ fn parse_service_section(
     let generaltimeout = section.remove("TIMEOUTSEC");
 
     let restart = section.remove("RESTART");
+    let restart_sec = section.remove("RESTARTSEC");
     let sockets = section.remove("SOCKETS");
     let notify_access = section.remove("NOTIFYACCESS");
     let srcv_type = section.remove("TYPE");
@@ -170,6 +171,20 @@ fn parse_service_section(
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Service] section: {key}");
     }
+
+    let restart_sec = match restart_sec {
+        Some(vec) => {
+            if vec.len() == 1 {
+                Some(parse_timeout(&vec[0].1))
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "RestartSec".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
 
     let starttimeout = match starttimeout {
         Some(vec) => {
@@ -360,6 +375,7 @@ fn parse_service_section(
         srcv_type,
         notifyaccess,
         restart,
+        restart_sec,
         accept,
         dbus_name,
         exec,
