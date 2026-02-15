@@ -26069,6 +26069,278 @@ fn test_condition_file_is_executable_defaults_to_empty() {
 }
 
 // ============================================================
+// ConditionFileNotEmpty= parsing tests
+// ============================================================
+
+#[test]
+fn test_condition_file_not_empty_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFileNotEmpty = /etc/hostname
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "ConditionFileNotEmpty= should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_condition_file_not_empty_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFileNotEmpty = /etc/hostname
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FileNotEmpty { path, negate } => {
+            assert_eq!(path, "/etc/hostname");
+            assert!(!negate, "Should not be negated");
+        }
+        other => panic!("Expected FileNotEmpty condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_file_not_empty_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFileNotEmpty = !/etc/hostname
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FileNotEmpty { path, negate } => {
+            assert_eq!(path, "/etc/hostname");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected FileNotEmpty condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_file_not_empty_multiple() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFileNotEmpty = /etc/hostname
+    ConditionFileNotEmpty = /etc/machine-id
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 2);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FileNotEmpty { path, negate } => {
+            assert_eq!(path, "/etc/hostname");
+            assert!(!negate);
+        }
+        other => panic!("Expected FileNotEmpty condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::FileNotEmpty { path, negate } => {
+            assert_eq!(path, "/etc/machine-id");
+            assert!(!negate);
+        }
+        other => panic!("Expected FileNotEmpty condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_file_not_empty_with_other_conditions() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathExists = /etc/myconfig
+    ConditionFileNotEmpty = /etc/hostname
+    ConditionFileIsExecutable = /usr/bin/test
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 3);
+
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathExists { path, negate } => {
+            assert_eq!(path, "/etc/myconfig");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathExists condition, got {:?}", other),
+    }
+
+    // FileIsExecutable is parsed before FileNotEmpty
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::FileIsExecutable { path, negate } => {
+            assert_eq!(path, "/usr/bin/test");
+            assert!(!negate);
+        }
+        other => panic!("Expected FileIsExecutable condition, got {:?}", other),
+    }
+
+    match &service.common.unit.conditions[2] {
+        crate::units::UnitCondition::FileNotEmpty { path, negate } => {
+            assert_eq!(path, "/etc/hostname");
+            assert!(!negate);
+        }
+        other => panic!("Expected FileNotEmpty condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_file_not_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    ConditionFileNotEmpty = !/var/lib/myapp/state
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(unit.common.unit.conditions.len(), 1);
+    match &unit.common.unit.conditions[0] {
+        crate::units::UnitCondition::FileNotEmpty { path, negate } => {
+            assert_eq!(path, "/var/lib/myapp/state");
+            assert!(negate, "Negation should survive unit conversion");
+        }
+        other => panic!("Expected FileNotEmpty condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_file_not_empty_in_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    ConditionFileNotEmpty = /etc/myapp.conf
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.common.unit.conditions.len(), 1);
+    match &socket.common.unit.conditions[0] {
+        crate::units::UnitCondition::FileNotEmpty { path, negate } => {
+            assert_eq!(path, "/etc/myapp.conf");
+            assert!(!negate);
+        }
+        other => panic!("Expected FileNotEmpty condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_file_not_empty_in_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    ConditionFileNotEmpty = !/etc/disabled
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(target.common.unit.conditions.len(), 1);
+    match &target.common.unit.conditions[0] {
+        crate::units::UnitCondition::FileNotEmpty { path, negate } => {
+            assert_eq!(path, "/etc/disabled");
+            assert!(negate);
+        }
+        other => panic!("Expected FileNotEmpty condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_file_not_empty_defaults_to_empty() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A simple service
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let has_file_not_empty = service
+        .common
+        .unit
+        .conditions
+        .iter()
+        .any(|c| matches!(c, crate::units::UnitCondition::FileNotEmpty { .. }));
+    assert!(
+        !has_file_not_empty,
+        "No ConditionFileNotEmpty should be present by default"
+    );
+}
+
+// ============================================================
 // ProtectProc= parsing tests
 // ============================================================
 
