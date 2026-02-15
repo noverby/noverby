@@ -122,7 +122,7 @@ pub fn parse_service(
     })
 }
 
-fn parse_timeout(descr: &str) -> Timeout {
+pub(super) fn parse_timeout(descr: &str) -> Timeout {
     if descr.to_uppercase() == "INFINITY" {
         Timeout::Infinity
     } else if let Ok(secs) = descr.parse::<u64>() {

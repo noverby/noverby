@@ -203,6 +203,7 @@ pub fn parse_unit_section(
     let requires_mounts_for = section.remove("REQUIRESMOUNTSFOR");
     let stop_when_unneeded = section.remove("STOPWHENUNNEEDED");
     let allow_isolate = section.remove("ALLOWISOLATE");
+    let job_timeout_sec = section.remove("JOBTIMEOUTSEC");
     let job_timeout_action = section.remove("JOBTIMEOUTACTION");
 
     for key in section.keys() {
@@ -288,6 +289,20 @@ pub fn parse_unit_section(
         None => UnitAction::default(),
     };
 
+    let job_timeout_sec = match job_timeout_sec {
+        Some(vec) => {
+            if vec.len() == 1 {
+                Some(super::service_unit::parse_timeout(&vec[0].1))
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "JobTimeoutSec".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
     let job_timeout_action = match job_timeout_action {
         Some(vec) => {
             if vec.len() == 1 {
@@ -334,6 +349,7 @@ pub fn parse_unit_section(
         requires_mounts_for: requires_mounts_for_paths,
         stop_when_unneeded,
         allow_isolate,
+        job_timeout_sec,
         job_timeout_action,
     })
 }

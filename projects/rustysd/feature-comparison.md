@@ -1835,8 +1835,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#JobTimeoutSec=">JobTimeoutSec=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored. Supports bare seconds, suffixed durations (s/min/hrs), compound durations, and infinity. No runtime enforcement yet (requires job timeout infrastructure).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#JobRunningTimeoutSec=">JobRunningTimeoutSec=</a></td>
