@@ -10,6 +10,7 @@ use crate::units::{
 
 #[cfg(feature = "cgroups")]
 use log::trace;
+use log::warn;
 
 use std::convert::TryInto;
 use std::path::PathBuf;
@@ -217,42 +218,40 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
     }
 }
 
+/// Convert a list of unit name strings into UnitIds, skipping any with
+/// unsupported suffixes (e.g. .mount, .slice, .device, .path, .timer).
+/// This matches systemd's behavior of silently ignoring unit types it
+/// doesn't manage in dependency lists, rather than rejecting the
+/// entire unit file.
+fn collect_supported_unit_ids(names: Vec<String>) -> Vec<UnitId> {
+    let mut ids = Vec::new();
+    for name in names {
+        match <&str as TryInto<UnitId>>::try_into(name.as_str()) {
+            Ok(id) => ids.push(id),
+            Err(_) => {
+                warn!(
+                    "Skipping unsupported unit type in dependency list: {}",
+                    name
+                );
+            }
+        }
+    }
+    ids
+}
+
 fn make_common_from_parsed(
     unit: ParsedUnitSection,
     install: ParsedInstallSection,
 ) -> Result<Common, String> {
-    let mut wants = Vec::new();
-    for name in unit.wants {
-        wants.push(name.as_str().try_into()?);
-    }
+    let mut wants = collect_supported_unit_ids(unit.wants);
     // Also= in [Install] is treated as a soft (wants) dependency
-    for name in install.also {
-        wants.push(name.as_str().try_into()?);
-    }
-    let mut requires = Vec::new();
-    for name in unit.requires {
-        requires.push(name.as_str().try_into()?);
-    }
-    let mut conflicts = Vec::new();
-    for name in unit.conflicts {
-        conflicts.push(name.as_str().try_into()?);
-    }
-    let mut wanted_by = Vec::new();
-    for name in install.wanted_by {
-        wanted_by.push(name.as_str().try_into()?);
-    }
-    let mut required_by = Vec::new();
-    for name in install.required_by {
-        required_by.push(name.as_str().try_into()?);
-    }
-    let mut after = Vec::new();
-    for name in unit.after {
-        after.push(name.as_str().try_into()?);
-    }
-    let mut before = Vec::new();
-    for name in unit.before {
-        before.push(name.as_str().try_into()?);
-    }
+    wants.extend(collect_supported_unit_ids(install.also));
+    let requires = collect_supported_unit_ids(unit.requires);
+    let conflicts = collect_supported_unit_ids(unit.conflicts);
+    let wanted_by = collect_supported_unit_ids(install.wanted_by);
+    let required_by = collect_supported_unit_ids(install.required_by);
+    let after = collect_supported_unit_ids(unit.after);
+    let before = collect_supported_unit_ids(unit.before);
 
     let mut refs_by_name = Vec::new();
     refs_by_name.extend(wants.iter().cloned());

@@ -68,6 +68,23 @@ pub fn map_tuples_to_second<X, Y: Clone>(v: Vec<(X, Y)>) -> Vec<Y> {
     v.iter().map(|(_, scnd)| scnd.clone()).collect()
 }
 
+/// Split space-separated values in list-type fields into individual entries.
+/// In systemd, dependency fields like After=, Before=, Wants=, Requires=, Conflicts=
+/// accept both comma-separated and space-separated values. The generic parse_section
+/// already splits by commas, but not by spaces. This function handles the space splitting
+/// for list-type fields.
+fn split_space_separated_values(tuples: Vec<(u32, String)>) -> Vec<(u32, String)> {
+    let mut result = Vec::new();
+    for (idx, value) in tuples {
+        for part in value.split_whitespace() {
+            if !part.is_empty() {
+                result.push((idx, part.to_string()));
+            }
+        }
+    }
+    result
+}
+
 #[must_use]
 pub fn string_to_bool(s: &str) -> bool {
     if s.is_empty() {
@@ -142,11 +159,13 @@ pub fn parse_unit_section(
     Ok(ParsedUnitSection {
         description: description.map(|x| (x[0]).1.clone()).unwrap_or_default(),
         documentation: map_tuples_to_second(documentation.unwrap_or_default()),
-        wants: map_tuples_to_second(wants.unwrap_or_default()),
-        requires: map_tuples_to_second(requires.unwrap_or_default()),
-        conflicts: map_tuples_to_second(conflicts.unwrap_or_default()),
-        after: map_tuples_to_second(after.unwrap_or_default()),
-        before: map_tuples_to_second(before.unwrap_or_default()),
+        wants: map_tuples_to_second(split_space_separated_values(wants.unwrap_or_default())),
+        requires: map_tuples_to_second(split_space_separated_values(requires.unwrap_or_default())),
+        conflicts: map_tuples_to_second(split_space_separated_values(
+            conflicts.unwrap_or_default(),
+        )),
+        after: map_tuples_to_second(split_space_separated_values(after.unwrap_or_default())),
+        before: map_tuples_to_second(split_space_separated_values(before.unwrap_or_default())),
         default_dependencies,
         conditions,
     })
@@ -382,9 +401,11 @@ pub fn parse_install_section(
     }
 
     Ok(ParsedInstallSection {
-        wanted_by: map_tuples_to_second(wantedby.unwrap_or_default()),
-        required_by: map_tuples_to_second(requiredby.unwrap_or_default()),
-        also: map_tuples_to_second(also.unwrap_or_default()),
+        wanted_by: map_tuples_to_second(split_space_separated_values(wantedby.unwrap_or_default())),
+        required_by: map_tuples_to_second(split_space_separated_values(
+            requiredby.unwrap_or_default(),
+        )),
+        also: map_tuples_to_second(split_space_separated_values(also.unwrap_or_default())),
     })
 }
 
