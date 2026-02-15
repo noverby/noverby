@@ -1,3 +1,5 @@
+use std::ffi::CString;
+
 pub struct PwEntry {
     pub name: String,
     pub pw: Option<Vec<u8>>,
@@ -36,10 +38,10 @@ fn make_user_from_libc(username: &str, user: &libc::passwd) -> Result<PwEntry, S
 #[allow(dead_code)]
 // keep around for a PR to the nix crate
 fn getpwnam(username: &str) -> Result<PwEntry, String> {
-    let username_i8 = username.bytes().map(|x| x as i8).collect::<Vec<_>>();
-    let pointer: *const i8 = username_i8.as_ptr();
+    let c_username =
+        CString::new(username).map_err(|e| format!("Invalid username '{username}': {e}"))?;
     // TODO check errno
-    let res = unsafe { libc::getpwnam(pointer) };
+    let res = unsafe { libc::getpwnam(c_username.as_ptr()) };
     if res.is_null() {
         return Err(format!("No entry found for username: {username}"));
     }
@@ -80,34 +82,41 @@ fn make_new_pw() -> libc::passwd {
 
 #[cfg(any(target_os = "freebsd", target_os = "linux"))]
 pub fn getpwnam_r(username: &str) -> Result<PwEntry, String> {
-    let username_i8 = username.bytes().map(|x| x as i8).collect::<Vec<_>>();
-    let pointer: *const i8 = username_i8.as_ptr();
+    let c_username =
+        CString::new(username).map_err(|e| format!("Invalid username '{username}': {e}"))?;
     let mut buf_size = 32;
     let mut user = make_new_pw();
-    let user_ptr = &mut user;
-    let user_ptr_ptr = &mut std::ptr::from_mut::<libc::passwd>(user_ptr);
     loop {
-        let mut buf = vec![0; buf_size];
+        let mut buf = vec![0i8; buf_size];
+        let mut result: *mut libc::passwd = std::ptr::null_mut();
 
-        let errno = unsafe {
-            libc::getpwnam_r(pointer, user_ptr, buf.as_mut_ptr(), buf_size, user_ptr_ptr)
+        let rc = unsafe {
+            libc::getpwnam_r(
+                c_username.as_ptr(),
+                &mut user,
+                buf.as_mut_ptr(),
+                buf_size,
+                &mut result,
+            )
         };
 
-        if user_ptr_ptr.is_null() {
-            // error case
-            if errno == libc::ERANGE {
-                // need more bytes in buf
-                buf_size *= 2;
-            } else {
-                return Err(format!("Error calling getgrnam_r: {errno}"));
-            }
-        } else {
-            // just for safety check this, but this is the happy result
-            if std::ptr::from_mut::<libc::passwd>(user_ptr).eq(&*user_ptr_ptr) {
-                return make_user_from_libc(username, &*user_ptr);
-            }
-            return Err(format!("The **user ({user_ptr_ptr:?}) should have pointed to the same location as the *user ({user_ptr:?})"));
+        if rc == libc::ERANGE {
+            // Buffer too small, retry with a larger one
+            buf_size *= 2;
+            continue;
         }
+
+        if rc != 0 {
+            return Err(format!(
+                "Error calling getpwnam_r for username '{username}': errno {rc}"
+            ));
+        }
+
+        if result.is_null() {
+            return Err(format!("No entry found for username: {username}"));
+        }
+
+        return make_user_from_libc(username, &user);
     }
 }
 
