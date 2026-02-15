@@ -25485,6 +25485,279 @@ fn test_umask_socket_unit() {
 }
 
 // ============================================================
+// ProcSubset= parsing tests
+// ============================================================
+
+#[test]
+fn test_proc_subset_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProcSubset = all
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "ProcSubset= should not cause errors");
+}
+
+#[test]
+fn test_proc_subset_defaults_to_all() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.proc_subset,
+        crate::units::ProcSubset::All,
+        "ProcSubset should default to All"
+    );
+}
+
+#[test]
+fn test_proc_subset_all() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProcSubset = all
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.proc_subset,
+        crate::units::ProcSubset::All,
+    );
+}
+
+#[test]
+fn test_proc_subset_pid() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProcSubset = pid
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.proc_subset,
+        crate::units::ProcSubset::Pid,
+    );
+}
+
+#[test]
+fn test_proc_subset_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProcSubset = PID
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.proc_subset,
+        crate::units::ProcSubset::Pid,
+        "ProcSubset should be case insensitive"
+    );
+}
+
+#[test]
+fn test_proc_subset_case_insensitive_all() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProcSubset = All
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.proc_subset,
+        crate::units::ProcSubset::All,
+        "ProcSubset=All should be case insensitive"
+    );
+}
+
+#[test]
+fn test_proc_subset_invalid_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProcSubset = none
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "ProcSubset=none should be an error (valid values are all, pid)"
+    );
+}
+
+#[test]
+fn test_proc_subset_empty_resets_to_all() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProcSubset =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.proc_subset,
+        crate::units::ProcSubset::All,
+        "ProcSubset= (empty) should reset to All"
+    );
+}
+
+#[test]
+fn test_proc_subset_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProcSubset =  pid
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.proc_subset,
+        crate::units::ProcSubset::Pid,
+        "ProcSubset should handle surrounding whitespace"
+    );
+}
+
+#[test]
+fn test_proc_subset_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProcSubset = pid
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.proc_subset,
+            crate::units::ProcSubset::Pid,
+            "ProcSubset=pid should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_proc_subset_default_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.proc_subset,
+            crate::units::ProcSubset::All,
+            "ProcSubset default (All) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_proc_subset_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with ProcSubset
+    [Socket]
+    ListenStream = /run/test.sock
+    ProcSubset = pid
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.proc_subset,
+        crate::units::ProcSubset::Pid,
+        "ProcSubset should work in socket units"
+    );
+}
+
+// ============================================================
 // LockPersonality= parsing tests
 // ============================================================
 

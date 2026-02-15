@@ -1094,6 +1094,11 @@ pub struct ParsedExecSection {
     /// processes. Takes an octal value (e.g. 0022, 0077). Defaults to 0022.
     /// Parsed and stored; no runtime enforcement yet. See systemd.exec(5).
     pub umask: Option<u32>,
+    /// ProcSubset= — controls which subset of /proc/ is mounted for the
+    /// unit. Takes one of "all" (full /proc, default) or "pid" (only
+    /// process-specific subdirectories). Parsed and stored; no runtime
+    /// mount-namespace enforcement yet. See systemd.exec(5).
+    pub proc_subset: ProcSubset,
 }
 
 /// The type of utmp/wtmp record to create for a service.
@@ -1286,6 +1291,25 @@ pub enum ProtectProc {
 impl Default for ProtectProc {
     fn default() -> Self {
         Self::Default
+    }
+}
+
+/// ProcSubset= — controls which subset of /proc/ is mounted for the unit.
+/// Matches systemd's `ProcSubset=` exec setting.
+/// See <https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProcSubset=>.
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub enum ProcSubset {
+    /// The full /proc/ file system is mounted (default).
+    All,
+    /// Only the /proc/$PID process-specific subdirectories are accessible;
+    /// system-wide directories such as /proc/sys/, /proc/sysvipc/, etc.
+    /// are not available.
+    Pid,
+}
+
+impl Default for ProcSubset {
+    fn default() -> Self {
+        Self::All
     }
 }
 
