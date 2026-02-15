@@ -17652,6 +17652,276 @@ fn test_protect_kernel_logs_socket_unit() {
 }
 
 // ============================================================
+// ProtectKernelTunables= parsing tests
+// ============================================================
+
+#[test]
+fn test_protect_kernel_tunables_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.protect_kernel_tunables,
+        "ProtectKernelTunables should default to false"
+    );
+}
+
+#[test]
+fn test_protect_kernel_tunables_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectKernelTunables = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.protect_kernel_tunables,
+        "ProtectKernelTunables=yes should be true"
+    );
+}
+
+#[test]
+fn test_protect_kernel_tunables_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectKernelTunables = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.protect_kernel_tunables,
+        "ProtectKernelTunables=no should be false"
+    );
+}
+
+#[test]
+fn test_protect_kernel_tunables_true_variant() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectKernelTunables = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.protect_kernel_tunables,
+        "ProtectKernelTunables=true should be true"
+    );
+}
+
+#[test]
+fn test_protect_kernel_tunables_one_is_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectKernelTunables = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.protect_kernel_tunables,
+        "ProtectKernelTunables=1 should be true"
+    );
+}
+
+#[test]
+fn test_protect_kernel_tunables_zero_is_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectKernelTunables = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.protect_kernel_tunables,
+        "ProtectKernelTunables=0 should be false"
+    );
+}
+
+#[test]
+fn test_protect_kernel_tunables_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectKernelTunables = Yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.protect_kernel_tunables,
+        "ProtectKernelTunables=Yes should be true (case insensitive)"
+    );
+}
+
+#[test]
+fn test_protect_kernel_tunables_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectKernelTunables = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "ProtectKernelTunables= should not cause errors"
+    );
+}
+
+#[test]
+fn test_protect_kernel_tunables_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectKernelTunables = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.protect_kernel_tunables,
+            "ProtectKernelTunables=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_protect_kernel_tunables_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            !srvc.conf.exec_config.protect_kernel_tunables,
+            "Default false ProtectKernelTunables should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_protect_kernel_tunables_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with kernel tunables protection
+    [Socket]
+    ListenStream = /run/test.sock
+    ProtectKernelTunables = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.exec_section.protect_kernel_tunables,
+        "ProtectKernelTunables should work in socket units"
+    );
+}
+
+#[test]
+fn test_protect_kernel_tunables_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    ProtectKernelTunables = yes
+    ProtectKernelModules = yes
+    ProtectKernelLogs = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.protect_kernel_tunables);
+    assert!(service.srvc.exec_section.protect_kernel_modules);
+    assert!(service.srvc.exec_section.protect_kernel_logs);
+}
+
+// ============================================================
 // CapabilityBoundingSet= parsing tests
 // ============================================================
 

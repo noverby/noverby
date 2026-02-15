@@ -441,6 +441,7 @@ pub fn parse_exec_section(
     let protect_kernel_modules = section.remove("PROTECTKERNELMODULES");
     let restrict_suid_sgid = section.remove("RESTRICTSUIDSGID");
     let protect_kernel_logs = section.remove("PROTECTKERNELLOGS");
+    let protect_kernel_tunables = section.remove("PROTECTKERNELTUNABLES");
     let capability_bounding_set = section.remove("CAPABILITYBOUNDINGSET");
     let ambient_capabilities = section.remove("AMBIENTCAPABILITIES");
     let protect_clock = section.remove("PROTECTCLOCK");
@@ -665,6 +666,21 @@ pub fn parse_exec_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "ProtectKernelLogs".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        // systemd default: false
+        None => false,
+    };
+
+    let protect_kernel_tunables = match protect_kernel_tunables {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "ProtectKernelTunables".to_owned(),
                     super::map_tuples_to_second(vec),
                 ));
             }
@@ -1197,6 +1213,7 @@ pub fn parse_exec_section(
         protect_kernel_modules,
         restrict_suid_sgid,
         protect_kernel_logs,
+        protect_kernel_tunables,
         protect_clock,
         capability_bounding_set: match capability_bounding_set {
             Some(vec) => {

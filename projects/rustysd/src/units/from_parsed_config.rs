@@ -215,6 +215,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             protect_kernel_modules: parsed.protect_kernel_modules,
             restrict_suid_sgid: parsed.restrict_suid_sgid,
             protect_kernel_logs: parsed.protect_kernel_logs,
+            protect_kernel_tunables: parsed.protect_kernel_tunables,
             protect_clock: parsed.protect_clock,
             capability_bounding_set: parsed.capability_bounding_set,
             ambient_capabilities: parsed.ambient_capabilities,
