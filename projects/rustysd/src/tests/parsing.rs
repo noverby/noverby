@@ -7289,6 +7289,175 @@ fn test_success_exit_status_no_unsupported_warning() {
     );
 }
 
+// ── DefaultInstance= parsing tests ─────────────────────────────────────
+
+#[test]
+fn test_default_instance_not_set_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.install.default_instance, None);
+}
+
+#[test]
+fn test_default_instance_single_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+
+    [Install]
+    WantedBy = multi-user.target
+    DefaultInstance = default
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test@.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.install.default_instance,
+        Some("default".to_owned())
+    );
+}
+
+#[test]
+fn test_default_instance_custom_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+
+    [Install]
+    DefaultInstance = myinstance
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test@.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.install.default_instance,
+        Some("myinstance".to_owned())
+    );
+}
+
+#[test]
+fn test_default_instance_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+
+    [Install]
+    DefaultInstance = primary
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test@.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(
+        unit.common.unit.default_instance,
+        Some("primary".to_owned())
+    );
+}
+
+#[test]
+fn test_default_instance_none_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(unit.common.unit.default_instance, None);
+}
+
+#[test]
+fn test_default_instance_with_other_install_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+
+    [Install]
+    WantedBy = multi-user.target
+    Alias = foo@.service
+    DefaultInstance = bar
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test@.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.install.default_instance,
+        Some("bar".to_owned())
+    );
+    assert_eq!(
+        service.common.install.wanted_by,
+        vec!["multi-user.target".to_owned()]
+    );
+    assert_eq!(
+        service.common.install.alias,
+        vec!["foo@.service".to_owned()]
+    );
+}
+
+#[test]
+fn test_default_instance_no_unsupported_warning() {
+    // DefaultInstance= should be parsed without generating an "unsupported setting" warning
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+
+    [Install]
+    DefaultInstance = test
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test@.service"),
+    );
+
+    assert!(service.is_ok());
+    assert_eq!(
+        service.unwrap().common.install.default_instance,
+        Some("test".to_owned())
+    );
+}
+
 // ── IgnoreOnIsolate= parsing tests ────────────────────────────────────
 
 #[test]
