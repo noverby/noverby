@@ -245,7 +245,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
 }
 
 /// Convert a list of unit name strings into UnitIds, skipping any with
-/// unsupported suffixes (e.g. .device, .path, .timer, .swap, .scope).
+/// unsupported suffixes (e.g. .path, .timer, .swap, .scope).
 /// This matches systemd's behavior of silently ignoring unit types it
 /// doesn't manage in dependency lists, rather than rejecting the
 /// entire unit file.
@@ -360,6 +360,11 @@ impl std::convert::TryInto<UnitId> for &str {
             Ok(UnitId {
                 name: self.to_owned(),
                 kind: UnitIdKind::Mount,
+            })
+        } else if self.ends_with(".device") {
+            Ok(UnitId {
+                name: self.to_owned(),
+                kind: UnitIdKind::Device,
             })
         } else {
             Err(format!(

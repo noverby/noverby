@@ -95,6 +95,21 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 </table>
 
+## systemd.device
+
+<table>
+  <tr>
+    <th>Term</th>
+    <th>Supported</th>
+    <th>Notes</th>
+  </tr>
+<tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.device.html">systemd.device</a></td>
+  <td>❓</td>
+  <td>Device units are recognized as a valid unit type in dependency lists (After=, Requires=, BindsTo=, Wants=, etc.). No runtime device management or udev integration; devices are not automatically created from udev events.</td>
+</tr>
+</table>
+
 ## systemd.exec
 
 <table>
