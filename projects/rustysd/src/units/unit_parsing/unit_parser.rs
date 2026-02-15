@@ -421,6 +421,7 @@ pub fn parse_exec_section(
     let protect_clock = section.remove("PROTECTCLOCK");
     let protect_home = section.remove("PROTECTHOME");
     let protect_hostname = section.remove("PROTECTHOSTNAME");
+    let system_call_architectures = section.remove("SYSTEMCALLARCHITECTURES");
 
     let user = match user {
         None => None,
@@ -1262,6 +1263,24 @@ pub fn parse_exec_section(
             None => super::ProtectHome::default(),
         },
         protect_hostname,
+        system_call_architectures: match system_call_architectures {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        // Empty string resets the list
+                        entries.clear();
+                        continue;
+                    }
+                    for token in trimmed.split_whitespace() {
+                        entries.push(token.to_owned());
+                    }
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
     })
 }
 

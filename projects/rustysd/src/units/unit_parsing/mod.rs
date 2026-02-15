@@ -460,6 +460,12 @@ pub struct ParsedExecSection {
     /// Defaults to false. Parsed and stored; no runtime enforcement yet
     /// (requires UTS namespace and seccomp support). See systemd.exec(5).
     pub protect_hostname: bool,
+    /// SystemCallArchitectures= — a space-separated list of architecture
+    /// identifiers (e.g. `native`, `x86`, `x86-64`) restricting which
+    /// architectures system calls may be invoked from. Multiple directives
+    /// accumulate; an empty assignment resets the list. Parsed and stored;
+    /// no runtime seccomp enforcement yet. See systemd.exec(5).
+    pub system_call_architectures: Vec<String>,
 }
 
 /// The type of utmp/wtmp record to create for a service.
