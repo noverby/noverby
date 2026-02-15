@@ -254,6 +254,7 @@ fn parse_service_section(
     let watchdog_sec = section.remove("WATCHDOGSEC");
     let ip_address_allow = section.remove("IPADDRESSALLOW");
     let ip_address_deny = section.remove("IPADDRESSDENY");
+    let file_descriptor_store_max = section.remove("FILEDESCRIPTORSTOREMAX");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -867,6 +868,28 @@ fn parse_service_section(
                 entries
             }
             None => Vec::new(),
+        },
+        file_descriptor_store_max: match file_descriptor_store_max {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val = vec[0].1.trim();
+                    if val.is_empty() {
+                        0
+                    } else {
+                        val.parse::<u64>().map_err(|_| {
+                            ParsingErrorReason::Generic(format!(
+                                "FileDescriptorStoreMax is not a valid non-negative integer: {val}"
+                            ))
+                        })?
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "FileDescriptorStoreMax".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => 0,
         },
         exec_section: exec_config,
     })

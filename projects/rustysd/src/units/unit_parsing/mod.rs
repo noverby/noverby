@@ -316,6 +316,13 @@ pub struct ParsedServiceSection {
     /// See systemd.resource-control(5).
     pub ip_address_deny: Vec<String>,
 
+    /// FileDescriptorStoreMax= — the maximum number of file descriptors that
+    /// may be stored in the service manager for this service using
+    /// sd_pid_notify_with_fds()'s FDSTORE=1 messages. Defaults to 0
+    /// (file descriptor store disabled). Parsed and stored; no runtime
+    /// enforcement yet. See systemd.service(5).
+    pub file_descriptor_store_max: u64,
+
     pub exec_section: ParsedExecSection,
 }
 
