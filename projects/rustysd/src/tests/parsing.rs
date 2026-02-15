@@ -16314,3 +16314,269 @@ fn test_system_call_error_number_with_other_settings() {
     );
     assert_eq!(service.srvc.exec_section.restrict_address_families.len(), 2);
 }
+
+// ============================================================
+// NoNewPrivileges= parsing tests
+// ============================================================
+
+#[test]
+fn test_no_new_privileges_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.no_new_privileges, false,
+        "NoNewPrivileges should default to false"
+    );
+}
+
+#[test]
+fn test_no_new_privileges_set_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    NoNewPrivileges = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.no_new_privileges, true,
+        "NoNewPrivileges=yes should be true"
+    );
+}
+
+#[test]
+fn test_no_new_privileges_set_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    NoNewPrivileges = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.no_new_privileges, true,
+        "NoNewPrivileges=true should be true"
+    );
+}
+
+#[test]
+fn test_no_new_privileges_set_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    NoNewPrivileges = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.no_new_privileges, false,
+        "NoNewPrivileges=no should be false"
+    );
+}
+
+#[test]
+fn test_no_new_privileges_set_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    NoNewPrivileges = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.no_new_privileges, false,
+        "NoNewPrivileges=false should be false"
+    );
+}
+
+#[test]
+fn test_no_new_privileges_set_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    NoNewPrivileges = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.no_new_privileges, true,
+        "NoNewPrivileges=1 should be true"
+    );
+}
+
+#[test]
+fn test_no_new_privileges_set_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    NoNewPrivileges = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.no_new_privileges, false,
+        "NoNewPrivileges=0 should be false"
+    );
+}
+
+#[test]
+fn test_no_new_privileges_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    NoNewPrivileges = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.no_new_privileges, true,
+        "NoNewPrivileges=YES should be true (case insensitive)"
+    );
+}
+
+#[test]
+fn test_no_new_privileges_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    NoNewPrivileges = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "NoNewPrivileges= should not cause errors");
+}
+
+#[test]
+fn test_no_new_privileges_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    NoNewPrivileges = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.no_new_privileges, true,
+            "NoNewPrivileges=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_no_new_privileges_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.no_new_privileges, false,
+            "Default NoNewPrivileges (false) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_no_new_privileges_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with no new privileges
+    [Socket]
+    ListenStream = /run/test.sock
+    NoNewPrivileges = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.no_new_privileges, true,
+        "NoNewPrivileges=yes should work on socket units"
+    );
+}
