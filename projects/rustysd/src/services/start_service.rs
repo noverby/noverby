@@ -6,7 +6,7 @@ use super::fork_child;
 use crate::fd_store::FDStore;
 use crate::services::RunCmdError;
 use crate::services::Service;
-use crate::units::ServiceConfig;
+use crate::units::{CommandlinePrefix, ServiceConfig};
 
 use std::path::Path;
 
@@ -92,6 +92,7 @@ fn start_service_with_filedescriptors(
         name: name.to_owned(),
         cmd,
         args: conf.exec.args.clone(),
+        use_first_arg_as_argv0: conf.exec.prefixes.contains(&CommandlinePrefix::AtSign),
         env: vec![
             ("LISTEN_FDS".to_owned(), format!("{}", names.len())),
             ("LISTEN_FDNAMES".to_owned(), names.join(":")),
