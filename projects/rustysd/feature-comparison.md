@@ -434,7 +434,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#StateDirectory=">StateDirectory=</a></td>
-  <td>❌</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27StateDirectory%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td></td>
 </tr>
