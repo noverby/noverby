@@ -148,6 +148,11 @@ pub struct ParsedUnitSection {
     /// corresponding `.mount` units for each path prefix.
     /// Matches systemd's `RequiresMountsFor=` setting.
     pub requires_mounts_for: Vec<String>,
+
+    /// If true, this unit is stopped when no other active unit requires or wants it.
+    /// Defaults to false, matching systemd's `StopWhenUnneeded=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub stop_when_unneeded: bool,
 }
 
 impl Default for ParsedUnitSection {
@@ -167,6 +172,7 @@ impl Default for ParsedUnitSection {
             success_action: UnitAction::default(),
             failure_action: UnitAction::default(),
             requires_mounts_for: Vec::new(),
+            stop_when_unneeded: false,
         }
     }
 }
