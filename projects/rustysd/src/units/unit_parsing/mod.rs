@@ -229,6 +229,7 @@ pub struct ParsedServiceSection {
     pub accept: bool,
     pub notifyaccess: NotifyKind,
     pub exec: Option<Commandline>,
+    pub reload: Vec<Commandline>,
     pub stop: Vec<Commandline>,
     pub stoppost: Vec<Commandline>,
     pub startpre: Vec<Commandline>,

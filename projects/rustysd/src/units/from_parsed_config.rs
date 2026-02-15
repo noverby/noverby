@@ -73,6 +73,7 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 limit_nofile: conf.srvc.limit_nofile,
                 notifyaccess: conf.srvc.notifyaccess,
                 exec: conf.srvc.exec,
+                reload: conf.srvc.reload,
                 startpre: conf.srvc.startpre,
                 startpost: conf.srvc.startpost,
                 stop: conf.srvc.stop,
