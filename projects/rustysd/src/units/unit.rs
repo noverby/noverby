@@ -6,7 +6,7 @@ use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
     acquire_locks, ActivationSource, Commandline, Delegate, DevicePolicy, EnvVars,
     IOSchedulingClass, KeyringMode, KillMode, MemoryPressureWatch, NotifyKind, OnFailureJobMode,
-    ProtectHome, ProtectProc, ProtectSystem, ResourceLimit, RestrictNamespaces,
+    ProcSubset, ProtectHome, ProtectProc, ProtectSystem, ResourceLimit, RestrictNamespaces,
     RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput, StatusStarted,
     StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition, UnitId, UnitIdKind,
     UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode,
@@ -1183,6 +1183,11 @@ pub struct ExecConfig {
     /// processes. Takes an octal value (e.g. 0022, 0077). Defaults to 0022.
     /// Parsed and stored; no runtime enforcement yet. See systemd.exec(5).
     pub umask: Option<u32>,
+    /// ProcSubset= — controls which subset of /proc/ is mounted for the
+    /// unit. Takes one of "all" (full /proc, default) or "pid" (only
+    /// process-specific subdirectories). Parsed and stored; no runtime
+    /// mount-namespace enforcement yet. See systemd.exec(5).
+    pub proc_subset: ProcSubset,
 }
 
 #[cfg(target_os = "linux")]

@@ -538,6 +538,7 @@ pub fn parse_exec_section(
     let io_scheduling_class = section.remove("IOSCHEDULINGCLASS");
     let io_scheduling_priority = section.remove("IOSCHEDULINGPRIORITY");
     let umask = section.remove("UMASK");
+    let proc_subset = section.remove("PROCSUBSET");
 
     let user = match user {
         None => None,
@@ -1652,6 +1653,28 @@ pub fn parse_exec_section(
                     None
                 }
             }
+        },
+        proc_subset: match proc_subset {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.trim().to_lowercase().as_str() {
+                        "all" | "" => super::ProcSubset::All,
+                        "pid" => super::ProcSubset::Pid,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "ProcSubset".to_owned(),
+                                other.to_owned(),
+                            ))
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "ProcSubset".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => super::ProcSubset::default(),
         },
         umask: match umask {
             None => None,
