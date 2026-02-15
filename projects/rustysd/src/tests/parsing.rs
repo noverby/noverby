@@ -3991,3 +3991,248 @@ fn test_service_type_unknown_still_errors() {
         "Type=bogus should still produce a parsing error"
     );
 }
+
+// ============================================================
+// Type=forking and PIDFile= parsing tests
+// ============================================================
+
+#[test]
+fn test_service_type_forking() {
+    let test_service_str = r#"
+    [Service]
+    Type = forking
+    ExecStart = /usr/sbin/mydaemon
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.srcv_type,
+        crate::units::ServiceType::Forking,
+        "Type=forking should parse as Forking"
+    );
+}
+
+#[test]
+fn test_service_type_forking_with_pidfile() {
+    let test_service_str = r#"
+    [Service]
+    Type = forking
+    PIDFile = /run/mydaemon.pid
+    ExecStart = /usr/sbin/mydaemon
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::Forking,);
+    assert_eq!(
+        service.srvc.pid_file,
+        Some(std::path::PathBuf::from("/run/mydaemon.pid")),
+        "PIDFile should be parsed to the correct path"
+    );
+}
+
+#[test]
+fn test_service_pidfile_not_set_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.pid_file, None,
+        "PIDFile should be None when not specified"
+    );
+}
+
+#[test]
+fn test_service_type_forking_is_distinct_from_others() {
+    let forking_str = r#"
+    [Service]
+    Type = forking
+    ExecStart = /usr/sbin/mydaemon
+    "#;
+
+    let simple_str = r#"
+    [Service]
+    Type = simple
+    ExecStart = /usr/sbin/mydaemon
+    "#;
+
+    let parsed_forking = crate::units::parse_file(forking_str).unwrap();
+    let service_forking = crate::units::parse_service(
+        parsed_forking,
+        &std::path::PathBuf::from("/path/to/forking.service"),
+    )
+    .unwrap();
+
+    let parsed_simple = crate::units::parse_file(simple_str).unwrap();
+    let service_simple = crate::units::parse_service(
+        parsed_simple,
+        &std::path::PathBuf::from("/path/to/simple.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service_forking.srvc.srcv_type,
+        crate::units::ServiceType::Forking,
+    );
+    assert_eq!(
+        service_simple.srvc.srcv_type,
+        crate::units::ServiceType::Simple,
+    );
+    assert_ne!(
+        service_forking.srvc.srcv_type, service_simple.srvc.srcv_type,
+        "Forking and Simple should be distinct variants"
+    );
+}
+
+#[test]
+fn test_service_type_forking_with_all_settings() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A forking daemon
+    [Service]
+    Type = forking
+    PIDFile = /run/mydaemon/mydaemon.pid
+    ExecStart = /usr/sbin/mydaemon --daemonize
+    ExecStop = /usr/sbin/mydaemon --stop
+    Restart = always
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::Forking,);
+    assert_eq!(
+        service.srvc.pid_file,
+        Some(std::path::PathBuf::from("/run/mydaemon/mydaemon.pid")),
+    );
+    assert_eq!(service.common.unit.description, "A forking daemon");
+    assert_eq!(service.srvc.restart, crate::units::ServiceRestart::Always);
+    assert!(service.srvc.exec.is_some());
+    assert_eq!(service.srvc.stop.len(), 1);
+}
+
+#[test]
+fn test_service_type_forking_without_pidfile() {
+    let test_service_str = r#"
+    [Service]
+    Type = forking
+    ExecStart = /usr/sbin/mydaemon
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::Forking,);
+    assert_eq!(
+        service.srvc.pid_file, None,
+        "PIDFile should be None when not specified even for Type=forking"
+    );
+}
+
+#[test]
+fn test_service_pidfile_with_simple_type() {
+    // PIDFile= can technically be specified with any type, it's just
+    // most useful with forking. Parsing should accept it regardless.
+    let test_service_str = r#"
+    [Service]
+    Type = simple
+    PIDFile = /run/myapp.pid
+    ExecStart = /usr/bin/myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::Simple,);
+    assert_eq!(
+        service.srvc.pid_file,
+        Some(std::path::PathBuf::from("/run/myapp.pid")),
+    );
+}
+
+#[test]
+fn test_service_forking_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    Description = Forking daemon test
+    [Service]
+    Type = forking
+    PIDFile = /run/test.pid
+    ExecStart = /usr/sbin/testd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+
+    if let crate::units::Specific::Service(ref srvc) = unit.specific {
+        assert_eq!(srvc.conf.srcv_type, crate::units::ServiceType::Forking);
+        assert_eq!(
+            srvc.conf.pid_file,
+            Some(std::path::PathBuf::from("/run/test.pid")),
+        );
+    } else {
+        panic!("Expected Specific::Service");
+    }
+}
+
+#[test]
+fn test_service_pidfile_absolute_path() {
+    let test_service_str = r#"
+    [Service]
+    Type = forking
+    PIDFile = /var/run/sshd.pid
+    ExecStart = /usr/sbin/sshd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/sshd.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.pid_file,
+        Some(std::path::PathBuf::from("/var/run/sshd.pid")),
+    );
+}

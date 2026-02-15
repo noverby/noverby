@@ -142,6 +142,9 @@ pub struct ParsedServiceSection {
     pub generaltimeout: Option<Timeout>,
 
     pub dbus_name: Option<String>,
+    /// PIDFile= — path to a file that contains the PID of the main daemon
+    /// process after a Type=forking service has started.
+    pub pid_file: Option<PathBuf>,
 
     pub sockets: Vec<String>,
 
@@ -188,6 +191,11 @@ pub enum ServiceType {
     NotifyReload,
     Dbus,
     OneShot,
+    /// The started process is expected to fork and exit. The parent's exit
+    /// signals successful startup. If `PIDFile=` is set the daemon PID is
+    /// read from that file; otherwise the service is tracked without a
+    /// main PID.
+    Forking,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
