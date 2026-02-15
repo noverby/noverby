@@ -4,12 +4,12 @@ use crate::runtime_info::RuntimeInfo;
 use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
-    acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KeyringMode, KillMode,
-    MemoryPressureWatch, NotifyKind, OnFailureJobMode, ProtectHome, ProtectProc, ProtectSystem,
-    ResourceLimit, RestrictNamespaces, RuntimeDirectoryPreserve, ServiceRestart, ServiceType,
-    StandardInput, StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction,
-    UnitCondition, UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus,
-    UtmpMode,
+    acquire_locks, ActivationSource, Commandline, Delegate, DevicePolicy, EnvVars, KeyringMode,
+    KillMode, MemoryPressureWatch, NotifyKind, OnFailureJobMode, ProtectHome, ProtectProc,
+    ProtectSystem, ResourceLimit, RestrictNamespaces, RuntimeDirectoryPreserve, ServiceRestart,
+    ServiceType, StandardInput, StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout,
+    UnitAction, UnitCondition, UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason,
+    UnitStatus, UtmpMode,
 };
 
 use std::sync::RwLock;
@@ -1297,6 +1297,13 @@ pub struct ServiceConfig {
     /// Parsed and stored; no runtime enforcement yet (requires cgroup device
     /// controller). See systemd.resource-control(5).
     pub device_allow: Vec<String>,
+
+    /// DevicePolicy= — controls the policy for device access for the unit.
+    /// Takes "auto" (default, no restrictions), "closed" (only standard
+    /// pseudo devices plus DeviceAllow= entries), or "strict" (only
+    /// DeviceAllow= entries). Parsed and stored; no runtime enforcement
+    /// yet (requires cgroup device controller). See systemd.resource-control(5).
+    pub device_policy: DevicePolicy,
 
     /// WatchdogSec= — configures the watchdog timeout for the service. The
     /// service must send a "WATCHDOG=1" notification via sd_notify() at least
