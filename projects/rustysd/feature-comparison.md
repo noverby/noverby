@@ -1921,6 +1921,11 @@ This document is meant as a simple way of checking whether all features you need
   <td></td>
 </tr>
 <tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionKernelModuleLoaded=">ConditionKernelModuleLoaded=</a></td>
+  <td>✔️</td>
+  <td>Parsed, stored, and evaluated at runtime. Checks whether a kernel module is loaded by reading /proc/modules. Supports negation with '!' prefix.</td>
+</tr>
+<tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionSecurity=">ConditionSecurity=</a></td>
   <td>❌</td>
   <td></td>
