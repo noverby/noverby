@@ -21,7 +21,7 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/sd_notify.html#READY=1">READY=1</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27READY%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Waiting for ready notification for service-type notify is supported</td>
 </tr>
@@ -39,7 +39,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/sd_notify.html#STATUS=…">STATUS=…</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27STATUS%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Sending free-text status updates to be displayed for the user is supported</td>
 </tr>
@@ -105,7 +105,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/sd_notify.html#$NOTIFY_SOCKET">$NOTIFY_SOCKET</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27NOTIFY_SOCKET%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Listening to a notification socket is supported (see section fd_notify for details on which messages are understood). NotifyAccess= is not fully supported though.</td>
 </tr>
@@ -884,25 +884,25 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$LISTEN_FDS">$LISTEN_FDS</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27LISTEN_FDS%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Providing number of filedescriptors is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$LISTEN_PID">$LISTEN_PID</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27LISTEN_PID%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Provifing the listen_pid to the child is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$LISTEN_FDNAMES">$LISTEN_FDNAMES</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27LISTEN_FDNAMES%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Providing names for filedescriptors is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$NOTIFY_SOCKET">$NOTIFY_SOCKET</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27NOTIFY_SOCKET%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Listening to a notification socket is supported (see section fd_notify for details on which messages are understood). NotifyAccess= is not fully supported though.</td>
 </tr>
@@ -1390,13 +1390,13 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#BusName=">BusName=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27BusName%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Setting a bus name to wait for services of type dbus is supported.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ExecStart=">ExecStart=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27ExecStart%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Exec'ing the command given is supported. The return value is checked for oneshot services. Ignoring the return value with the '-' prefix is supported, other prefixes are not.</td>
 </tr>
@@ -1444,13 +1444,13 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#TimeoutStartSec=">TimeoutStartSec=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27TimeoutStartSec%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>The time a services needs to start can be limited</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#TimeoutStopSec=">TimeoutStopSec=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27TimeoutStopSec%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>The time a services needs to stop can be limited</td>
 </tr>
@@ -1462,7 +1462,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#TimeoutSec=">TimeoutSec=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27TimeoutSec%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>The time a services needs to start/stop can be limited</td>
 </tr>
@@ -1563,25 +1563,25 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenStream=">ListenStream=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27ListenStream%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Opening streaming sockets is supported. The whole IPv4 and IPv6 stuff needs some attention though</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenDatagram=">ListenDatagram=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27ListenDatagram%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Opening datagram sockets is supported. The whole IPv4 and IPv6 stuff needs some attention though</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenSequentialPacket=">ListenSequentialPacket=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27ListenSequentialPacket%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Opening sequential packet sockets is supported.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenFIFO=">ListenFIFO=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27ListenFIFO%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Opening FIFOs is supported. Filemode setting is not supported as of yet though.</td>
 </tr>
@@ -1857,13 +1857,13 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#TimeoutSec=">TimeoutSec=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27TimeoutSec%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>The time a services needs to start/stop can be limited</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#Service=">Service=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27Service%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Adding a socket explicitly to a service is supported.</td>
 </tr>
@@ -1881,7 +1881,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#FileDescriptorName=">FileDescriptorName=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27FileDescriptorName%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Naming the sockets for passing in $LISTEN_FDNAMES is supported</td>
 </tr>
@@ -2005,25 +2005,25 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Description=">Description=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27Description%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Descriptions are read and will be displayed by the control interface</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Documentation=">Documentation=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27Documentation%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Wants=">Wants=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27Wants%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Specifying which units to pull in is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Requires=">Requires=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27Requires%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Specifying which units to pull in is supported</td>
 </tr>
@@ -2047,19 +2047,19 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Conflicts=">Conflicts=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27Conflicts%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Before=">Before=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27Before%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Ordering of units according to before/after relation is supported fully</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#After=">After=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27After%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Ordering of units according to before/after relation is supported fully</td>
 </tr>
@@ -2131,7 +2131,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#DefaultDependencies=">DefaultDependencies=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27DefaultDependencies%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td></td>
 </tr>
@@ -2503,13 +2503,13 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#WantedBy=">WantedBy=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27WantedBy%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Specifying which units pull this unit in is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#RequiredBy=">RequiredBy=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td><a href="https://github.com/search?q=%27RequiredBy%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td>Specifying which units pull this unit in is supported</td>
 </tr>
