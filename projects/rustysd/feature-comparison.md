@@ -1762,8 +1762,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#OnFailure=">OnFailure=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored (space-separated list of unit names). No runtime triggering enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#PropagatesReloadTo=">PropagatesReloadTo=</a></td>
@@ -1787,8 +1787,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#OnFailureJobMode=">OnFailureJobMode=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored. Supports all job modes: replace, fail, replace-irreversibly, isolate, flush, ignore-dependencies, ignore-requirements. Defaults to "replace". No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#IgnoreOnIsolate=">IgnoreOnIsolate=</a></td>

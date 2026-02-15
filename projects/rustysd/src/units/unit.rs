@@ -5,10 +5,11 @@ use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
     acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KeyringMode, KillMode,
-    MemoryPressureWatch, NotifyKind, ProtectHome, ProtectProc, ProtectSystem, ResourceLimit,
-    RestrictNamespaces, RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput,
-    StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition,
-    UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode,
+    MemoryPressureWatch, NotifyKind, OnFailureJobMode, ProtectHome, ProtectProc, ProtectSystem,
+    ResourceLimit, RestrictNamespaces, RuntimeDirectoryPreserve, ServiceRestart, ServiceType,
+    StandardInput, StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction,
+    UnitCondition, UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus,
+    UtmpMode,
 };
 
 use std::sync::RwLock;
@@ -770,6 +771,17 @@ pub struct UnitConfig {
     /// Defaults to false, matching systemd's `RefuseManualStop=` setting.
     /// Parsed and stored; no runtime enforcement yet.
     pub refuse_manual_stop: bool,
+
+    /// Units to activate when this unit enters the "failed" state.
+    /// Matches systemd's `OnFailure=` setting.
+    /// Parsed and stored; no runtime triggering enforcement yet.
+    pub on_failure: Vec<String>,
+
+    /// Job mode for enqueuing OnFailure= units.
+    /// Defaults to `Replace`, matching systemd's default.
+    /// Matches systemd's `OnFailureJobMode=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub on_failure_job_mode: OnFailureJobMode,
 }
 
 #[derive(Debug, Clone)]
