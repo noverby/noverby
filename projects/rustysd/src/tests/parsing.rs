@@ -18791,3 +18791,381 @@ fn test_protect_home_default_preserved_after_unit_conversion() {
         panic!("Expected service unit");
     }
 }
+
+// ============================================================
+// RuntimeDirectoryPreserve= parsing tests
+// ============================================================
+
+#[test]
+fn test_runtime_directory_preserve_defaults_to_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory_preserve,
+        crate::units::RuntimeDirectoryPreserve::No,
+        "RuntimeDirectoryPreserve should default to No when not specified"
+    );
+}
+
+#[test]
+fn test_runtime_directory_preserve_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeDirectoryPreserve = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory_preserve,
+        crate::units::RuntimeDirectoryPreserve::Yes,
+        "RuntimeDirectoryPreserve=yes should parse correctly"
+    );
+}
+
+#[test]
+fn test_runtime_directory_preserve_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeDirectoryPreserve = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory_preserve,
+        crate::units::RuntimeDirectoryPreserve::Yes,
+        "RuntimeDirectoryPreserve=true should map to Yes"
+    );
+}
+
+#[test]
+fn test_runtime_directory_preserve_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeDirectoryPreserve = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory_preserve,
+        crate::units::RuntimeDirectoryPreserve::No,
+        "RuntimeDirectoryPreserve=no should parse correctly"
+    );
+}
+
+#[test]
+fn test_runtime_directory_preserve_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeDirectoryPreserve = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory_preserve,
+        crate::units::RuntimeDirectoryPreserve::No,
+        "RuntimeDirectoryPreserve=false should map to No"
+    );
+}
+
+#[test]
+fn test_runtime_directory_preserve_restart() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeDirectoryPreserve = restart
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory_preserve,
+        crate::units::RuntimeDirectoryPreserve::Restart,
+        "RuntimeDirectoryPreserve=restart should parse correctly"
+    );
+}
+
+#[test]
+fn test_runtime_directory_preserve_numeric_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeDirectoryPreserve = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory_preserve,
+        crate::units::RuntimeDirectoryPreserve::Yes,
+        "RuntimeDirectoryPreserve=1 should map to Yes"
+    );
+}
+
+#[test]
+fn test_runtime_directory_preserve_numeric_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeDirectoryPreserve = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory_preserve,
+        crate::units::RuntimeDirectoryPreserve::No,
+        "RuntimeDirectoryPreserve=0 should map to No"
+    );
+}
+
+#[test]
+fn test_runtime_directory_preserve_case_insensitive_upper() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeDirectoryPreserve = RESTART
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory_preserve,
+        crate::units::RuntimeDirectoryPreserve::Restart,
+        "RuntimeDirectoryPreserve should be case-insensitive (RESTART)"
+    );
+}
+
+#[test]
+fn test_runtime_directory_preserve_case_insensitive_mixed() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeDirectoryPreserve = Restart
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory_preserve,
+        crate::units::RuntimeDirectoryPreserve::Restart,
+        "RuntimeDirectoryPreserve should be case-insensitive (Restart)"
+    );
+}
+
+#[test]
+fn test_runtime_directory_preserve_case_insensitive_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeDirectoryPreserve = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory_preserve,
+        crate::units::RuntimeDirectoryPreserve::Yes,
+        "RuntimeDirectoryPreserve should be case-insensitive (YES)"
+    );
+}
+
+#[test]
+fn test_runtime_directory_preserve_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeDirectoryPreserve = restart
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "RuntimeDirectoryPreserve should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_runtime_directory_preserve_with_runtime_directory() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeDirectory = myapp
+    RuntimeDirectoryPreserve = restart
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory,
+        vec!["myapp".to_owned()]
+    );
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory_preserve,
+        crate::units::RuntimeDirectoryPreserve::Restart,
+        "RuntimeDirectoryPreserve should work alongside RuntimeDirectory"
+    );
+}
+
+#[test]
+fn test_runtime_directory_preserve_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeDirectoryPreserve = restart
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.runtime_directory_preserve,
+            crate::units::RuntimeDirectoryPreserve::Restart,
+            "RuntimeDirectoryPreserve=restart should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_runtime_directory_preserve_yes_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeDirectoryPreserve = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.runtime_directory_preserve,
+            crate::units::RuntimeDirectoryPreserve::Yes,
+            "RuntimeDirectoryPreserve=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_runtime_directory_preserve_default_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.runtime_directory_preserve,
+            crate::units::RuntimeDirectoryPreserve::No,
+            "Default RuntimeDirectoryPreserve=No should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}

@@ -326,6 +326,12 @@ pub struct ParsedExecSection {
     /// RUNTIME_DIRECTORY environment variable is set to a colon-separated
     /// list of the absolute paths. Matches systemd.exec(5).
     pub runtime_directory: Vec<String>,
+    /// RuntimeDirectoryPreserve= — controls whether runtime directories
+    /// (created by `RuntimeDirectory=`) are removed when the service stops.
+    /// Can be `no` (default, always remove), `yes` (always preserve), or
+    /// `restart` (preserve across restarts, remove on full stop). Parsed and
+    /// stored; no runtime enforcement yet. See systemd.exec(5).
+    pub runtime_directory_preserve: RuntimeDirectoryPreserve,
     pub tty_path: Option<PathBuf>,
     /// TTYReset= — reset the TTY to sane defaults before use (default: false).
     /// Matches systemd behavior: resets termios, keyboard mode, switches to text mode.
@@ -618,6 +624,25 @@ pub enum ProtectHome {
 }
 
 impl Default for ProtectHome {
+    fn default() -> Self {
+        Self::No
+    }
+}
+
+/// RuntimeDirectoryPreserve= — controls whether runtime directories created
+/// by `RuntimeDirectory=` are removed when the service stops. See systemd.exec(5).
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub enum RuntimeDirectoryPreserve {
+    /// Always remove runtime directories when the service is stopped (default).
+    No,
+    /// Always preserve runtime directories when the service is stopped.
+    Yes,
+    /// Preserve runtime directories across service restarts, but remove them
+    /// when the service is fully stopped.
+    Restart,
+}
+
+impl Default for RuntimeDirectoryPreserve {
     fn default() -> Self {
         Self::No
     }

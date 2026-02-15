@@ -393,6 +393,7 @@ pub fn parse_exec_section(
     let working_directory = section.remove("WORKINGDIRECTORY");
     let state_directory = section.remove("STATEDIRECTORY");
     let runtime_directory = section.remove("RUNTIMEDIRECTORY");
+    let runtime_directory_preserve = section.remove("RUNTIMEDIRECTORYPRESERVE");
     let tty_path = section.remove("TTYPATH");
     let tty_reset = section.remove("TTYRESET");
     let tty_vhangup = section.remove("TTYVHANGUP");
@@ -810,6 +811,29 @@ pub fn parse_exec_section(
         working_directory,
         state_directory,
         runtime_directory,
+        runtime_directory_preserve: match runtime_directory_preserve {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.trim().to_lowercase().as_str() {
+                        "no" | "false" | "0" => super::RuntimeDirectoryPreserve::No,
+                        "yes" | "true" | "1" => super::RuntimeDirectoryPreserve::Yes,
+                        "restart" => super::RuntimeDirectoryPreserve::Restart,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "RuntimeDirectoryPreserve".to_owned(),
+                                other.to_owned(),
+                            ))
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "RuntimeDirectoryPreserve".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => super::RuntimeDirectoryPreserve::default(),
+        },
         oom_score_adjust: match oom_score_adjust {
             None => None,
             Some(vec) => {
