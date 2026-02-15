@@ -1237,6 +1237,12 @@ pub struct ServiceConfig {
     /// used at runtime. See systemd.service(5).
     pub reload_signal: Option<nix::sys::signal::Signal>,
 
+    /// KillSignal= — specifies which signal to use when stopping the service.
+    /// Defaults to SIGTERM. Takes a signal name such as SIGTERM, SIGINT, or
+    /// SIGKILL, or a numeric signal number. Parsed and stored; not yet used
+    /// at runtime. See systemd.kill(5).
+    pub kill_signal: Option<nix::sys::signal::Signal>,
+
     /// DelegateSubgroup= — place unit processes in the specified subgroup of
     /// the unit's control group. Only effective when Delegate= is enabled.
     /// Parsed and stored; not yet used at runtime. See systemd.resource-control(5).
