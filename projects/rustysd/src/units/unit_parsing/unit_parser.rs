@@ -416,6 +416,7 @@ pub fn parse_exec_section(
     let protect_kernel_modules = section.remove("PROTECTKERNELMODULES");
     let restrict_suid_sgid = section.remove("RESTRICTSUIDSGID");
     let protect_kernel_logs = section.remove("PROTECTKERNELLOGS");
+    let capability_bounding_set = section.remove("CAPABILITYBOUNDINGSET");
 
     let user = match user {
         None => None,
@@ -1047,6 +1048,61 @@ pub fn parse_exec_section(
         protect_kernel_modules,
         restrict_suid_sgid,
         protect_kernel_logs,
+        capability_bounding_set: match capability_bounding_set {
+            Some(vec) => {
+                // Each directive is a space-separated list of capability names
+                // (e.g. CAP_NET_ADMIN, CAP_SYS_PTRACE). A leading ~ on the
+                // whole value means deny-list mode. Multiple directives
+                // accumulate. An empty assignment resets the list.
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        // Empty string resets the list
+                        entries.clear();
+                        continue;
+                    }
+                    // Split on whitespace, respecting double-quoted tokens
+                    let mut chars = trimmed.chars().peekable();
+                    while chars.peek().is_some() {
+                        // skip whitespace
+                        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+                            chars.next();
+                        }
+                        if chars.peek().is_none() {
+                            break;
+                        }
+                        let mut token = String::new();
+                        if chars.peek() == Some(&'"') {
+                            // quoted token — consume until closing quote
+                            chars.next(); // skip opening quote
+                            while let Some(&c) = chars.peek() {
+                                if c == '"' {
+                                    chars.next();
+                                    break;
+                                }
+                                token.push(c);
+                                chars.next();
+                            }
+                        } else {
+                            // unquoted token — consume until whitespace
+                            while let Some(&c) = chars.peek() {
+                                if c.is_whitespace() {
+                                    break;
+                                }
+                                token.push(c);
+                                chars.next();
+                            }
+                        }
+                        if !token.is_empty() {
+                            entries.push(token);
+                        }
+                    }
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
         system_call_error_number: match system_call_error_number {
             None => None,
             Some(mut vec) => {

@@ -424,6 +424,13 @@ pub struct ParsedExecSection {
     /// and stored; no runtime enforcement yet (requires mount namespace and
     /// seccomp support). See systemd.exec(5).
     pub protect_kernel_logs: bool,
+    /// CapabilityBoundingSet= — a list of Linux capability names (e.g.
+    /// CAP_NET_ADMIN, CAP_SYS_PTRACE) controlling the capability bounding
+    /// set for executed processes. Entries prefixed with `~` form a deny-list;
+    /// without the prefix they form an allow-list. Multiple directives
+    /// accumulate; an empty assignment resets the list. Parsed and stored;
+    /// no runtime enforcement yet. See systemd.exec(5).
+    pub capability_bounding_set: Vec<String>,
 }
 
 /// The type of utmp/wtmp record to create for a service.
