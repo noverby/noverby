@@ -196,6 +196,7 @@ pub fn parse_unit_section(
     let default_dependencies = section.remove("DEFAULTDEPENDENCIES");
     let condition_path_exists = section.remove("CONDITIONPATHEXISTS");
     let condition_path_is_directory = section.remove("CONDITIONPATHISDIRECTORY");
+    let condition_virtualization = section.remove("CONDITIONVIRTUALIZATION");
     let success_action = section.remove("SUCCESSACTION");
     let failure_action = section.remove("FAILUREACTION");
     let part_of = section.remove("PARTOF");
@@ -259,6 +260,17 @@ pub fn parse_unit_section(
             (value, false)
         };
         conditions.push(super::UnitCondition::PathIsDirectory { path, negate });
+    }
+    for (_, raw) in condition_virtualization.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (value, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.to_lowercase(), true)
+        } else {
+            (trimmed.to_lowercase(), false)
+        };
+        if !value.is_empty() {
+            conditions.push(super::UnitCondition::Virtualization { value, negate });
+        }
     }
 
     let success_action = match success_action {

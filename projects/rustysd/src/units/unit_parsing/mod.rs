@@ -37,6 +37,238 @@ pub enum UnitCondition {
     /// ConditionPathIsDirectory=/some/path
     /// ConditionPathIsDirectory=!/some/path
     PathIsDirectory { path: String, negate: bool },
+    /// ConditionVirtualization=yes|no|vm|container|<tech-name>
+    /// ConditionVirtualization=!<value> (negated)
+    /// Checks whether the system runs in a virtualized environment.
+    /// See systemd.unit(5).
+    Virtualization { value: String, negate: bool },
+}
+
+/// The kind of virtualization detected (VM or container).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum VirtKind {
+    Vm,
+    Container,
+}
+
+/// Detected virtualization: the technology name and its kind.
+#[derive(Clone, Debug)]
+pub struct DetectedVirt {
+    pub name: String,
+    pub kind: VirtKind,
+}
+
+/// Detect whether the system is running inside a virtualized environment.
+///
+/// Returns `Some(DetectedVirt)` with the technology name and kind, or `None`
+/// if running on bare metal. The detection mirrors a subset of the logic from
+/// `systemd-detect-virt(1)`.
+fn detect_virtualization() -> Option<DetectedVirt> {
+    // --- Container detection (higher priority) ---
+
+    // Check /.dockerenv
+    if std::path::Path::new("/.dockerenv").exists() {
+        return Some(DetectedVirt {
+            name: "docker".to_owned(),
+            kind: VirtKind::Container,
+        });
+    }
+
+    // Check /run/.containerenv (podman / buildah)
+    if std::path::Path::new("/run/.containerenv").exists() {
+        return Some(DetectedVirt {
+            name: "podman".to_owned(),
+            kind: VirtKind::Container,
+        });
+    }
+
+    // Check the "container" environment variable of PID 1
+    if let Ok(environ) = std::fs::read("/proc/1/environ") {
+        // environ is NUL-separated KEY=VALUE pairs
+        for entry in environ.split(|&b| b == 0) {
+            if let Ok(s) = std::str::from_utf8(entry) {
+                if let Some(val) = s.strip_prefix("container=") {
+                    let name = match val {
+                        "systemd-nspawn" => "systemd-nspawn",
+                        "lxc" => "lxc",
+                        "lxc-libvirt" => "lxc-libvirt",
+                        "docker" => "docker",
+                        "podman" => "podman",
+                        "rkt" => "rkt",
+                        "wsl" => "wsl",
+                        "proot" => "proot",
+                        "pouch" => "pouch",
+                        "oci" => "docker", // generic OCI → docker
+                        other => other,
+                    };
+                    return Some(DetectedVirt {
+                        name: name.to_owned(),
+                        kind: VirtKind::Container,
+                    });
+                }
+            }
+        }
+    }
+
+    // Check cgroup for container hints
+    if let Ok(cgroup) = std::fs::read_to_string("/proc/1/cgroup") {
+        let lower = cgroup.to_lowercase();
+        if lower.contains("/docker/") || lower.contains("/docker-") {
+            return Some(DetectedVirt {
+                name: "docker".to_owned(),
+                kind: VirtKind::Container,
+            });
+        }
+        if lower.contains("/lxc/") || lower.contains("/lxc.payload") {
+            return Some(DetectedVirt {
+                name: "lxc".to_owned(),
+                kind: VirtKind::Container,
+            });
+        }
+    }
+
+    // --- VM detection ---
+
+    // Check /proc/xen for Xen guest
+    if std::path::Path::new("/proc/xen").exists() {
+        // If capabilities file contains "control_d" we are dom0 (host), not guest
+        if let Ok(caps) = std::fs::read_to_string("/proc/xen/capabilities") {
+            if !caps.contains("control_d") {
+                return Some(DetectedVirt {
+                    name: "xen".to_owned(),
+                    kind: VirtKind::Vm,
+                });
+            }
+        } else {
+            return Some(DetectedVirt {
+                name: "xen".to_owned(),
+                kind: VirtKind::Vm,
+            });
+        }
+    }
+
+    // Check /sys/hypervisor/type
+    if let Ok(htype) = std::fs::read_to_string("/sys/hypervisor/type") {
+        let htype = htype.trim().to_lowercase();
+        if htype == "xen" {
+            return Some(DetectedVirt {
+                name: "xen".to_owned(),
+                kind: VirtKind::Vm,
+            });
+        }
+    }
+
+    // DMI-based detection: sys_vendor, product_name, board_vendor
+    let dmi_files = [
+        "/sys/class/dmi/id/sys_vendor",
+        "/sys/class/dmi/id/product_name",
+        "/sys/class/dmi/id/board_vendor",
+    ];
+    for path in &dmi_files {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            let lower = content.trim().to_lowercase();
+            if lower.contains("qemu") || lower.contains("kvm") {
+                return Some(DetectedVirt {
+                    name: "kvm".to_owned(),
+                    kind: VirtKind::Vm,
+                });
+            }
+            if lower.contains("vmware") {
+                return Some(DetectedVirt {
+                    name: "vmware".to_owned(),
+                    kind: VirtKind::Vm,
+                });
+            }
+            if lower.contains("microsoft") || lower.contains("hyper-v") {
+                return Some(DetectedVirt {
+                    name: "microsoft".to_owned(),
+                    kind: VirtKind::Vm,
+                });
+            }
+            if lower.contains("virtualbox") || lower.contains("oracle") {
+                return Some(DetectedVirt {
+                    name: "oracle".to_owned(),
+                    kind: VirtKind::Vm,
+                });
+            }
+            if lower.contains("parallels") {
+                return Some(DetectedVirt {
+                    name: "parallels".to_owned(),
+                    kind: VirtKind::Vm,
+                });
+            }
+            if lower.contains("bhyve") {
+                return Some(DetectedVirt {
+                    name: "bhyve".to_owned(),
+                    kind: VirtKind::Vm,
+                });
+            }
+            if lower.contains("bochs") {
+                return Some(DetectedVirt {
+                    name: "bochs".to_owned(),
+                    kind: VirtKind::Vm,
+                });
+            }
+            if lower.contains("apple virtualization") {
+                return Some(DetectedVirt {
+                    name: "apple".to_owned(),
+                    kind: VirtKind::Vm,
+                });
+            }
+            if lower.contains("google") {
+                return Some(DetectedVirt {
+                    name: "google".to_owned(),
+                    kind: VirtKind::Vm,
+                });
+            }
+            if lower.contains("acrn") {
+                return Some(DetectedVirt {
+                    name: "acrn".to_owned(),
+                    kind: VirtKind::Vm,
+                });
+            }
+        }
+    }
+
+    // Check /proc/cpuinfo for hypervisor flag
+    if let Ok(cpuinfo) = std::fs::read_to_string("/proc/cpuinfo") {
+        for line in cpuinfo.lines() {
+            if line.starts_with("flags") || line.starts_with("Features") {
+                if line.contains(" hypervisor") || line.contains("\thypervisor") {
+                    // Generic VM detected via CPUID hypervisor bit
+                    return Some(DetectedVirt {
+                        name: "vm-other".to_owned(),
+                        kind: VirtKind::Vm,
+                    });
+                }
+            }
+        }
+    }
+
+    // Check for UML (User-Mode Linux)
+    if let Ok(cpuinfo) = std::fs::read_to_string("/proc/cpuinfo") {
+        for line in cpuinfo.lines() {
+            if line.starts_with("vendor_id") && line.contains("User Mode Linux") {
+                return Some(DetectedVirt {
+                    name: "uml".to_owned(),
+                    kind: VirtKind::Vm,
+                });
+            }
+        }
+    }
+
+    // Check for WSL (Windows Subsystem for Linux) via /proc/version
+    if let Ok(version) = std::fs::read_to_string("/proc/version") {
+        let lower = version.to_lowercase();
+        if lower.contains("microsoft") || lower.contains("wsl") {
+            return Some(DetectedVirt {
+                name: "wsl".to_owned(),
+                kind: VirtKind::Container,
+            });
+        }
+    }
+
+    None
 }
 
 impl UnitCondition {
@@ -57,6 +289,26 @@ impl UnitCondition {
                     !is_dir
                 } else {
                     is_dir
+                }
+            }
+            UnitCondition::Virtualization { value, negate } => {
+                let detected = detect_virtualization();
+                let result = match value.as_str() {
+                    // Boolean: any virtualization at all?
+                    "yes" | "true" | "1" => detected.is_some(),
+                    "no" | "false" | "0" => detected.is_none(),
+                    // Category checks
+                    "vm" => detected.as_ref().map_or(false, |d| d.kind == VirtKind::Vm),
+                    "container" => detected
+                        .as_ref()
+                        .map_or(false, |d| d.kind == VirtKind::Container),
+                    // Specific technology name
+                    tech => detected.as_ref().map_or(false, |d| d.name == tech),
+                };
+                if *negate {
+                    !result
+                } else {
+                    result
                 }
             }
         }
