@@ -8312,3 +8312,327 @@ fn test_ignore_sigpipe_no_warning_when_set() {
         "Parsing a service with IgnoreSIGPIPE should succeed without errors"
     );
 }
+
+#[test]
+fn test_utmp_identifier_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.utmp_identifier, None,
+        "UtmpIdentifier should default to None when not specified"
+    );
+}
+
+#[test]
+fn test_utmp_identifier_explicit_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UtmpIdentifier = tty1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.utmp_identifier,
+        Some("tty1".to_owned()),
+        "UtmpIdentifier=tty1 should be stored"
+    );
+}
+
+#[test]
+fn test_utmp_identifier_custom_string() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UtmpIdentifier = cons
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.utmp_identifier,
+        Some("cons".to_owned()),
+        "UtmpIdentifier=cons should be stored"
+    );
+}
+
+#[test]
+fn test_utmp_identifier_no_warning_when_set() {
+    // Verify that setting UtmpIdentifier does not produce an "unsupported setting" warning.
+    // If parsing succeeds without error, the setting was consumed (not left in the section
+    // to trigger a warning).
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UtmpIdentifier = tty1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "Parsing a service with UtmpIdentifier should succeed without errors"
+    );
+}
+
+#[test]
+fn test_utmp_mode_defaults_to_init() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.utmp_mode,
+        crate::units::UtmpMode::Init,
+        "UtmpMode should default to Init when not specified"
+    );
+}
+
+#[test]
+fn test_utmp_mode_explicit_init() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UtmpMode = init
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.utmp_mode,
+        crate::units::UtmpMode::Init,
+        "UtmpMode=init should be Init"
+    );
+}
+
+#[test]
+fn test_utmp_mode_login() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UtmpMode = login
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.utmp_mode,
+        crate::units::UtmpMode::Login,
+        "UtmpMode=login should be Login"
+    );
+}
+
+#[test]
+fn test_utmp_mode_user() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UtmpMode = user
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.utmp_mode,
+        crate::units::UtmpMode::User,
+        "UtmpMode=user should be User"
+    );
+}
+
+#[test]
+fn test_utmp_mode_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UtmpMode = Login
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.utmp_mode,
+        crate::units::UtmpMode::Login,
+        "UtmpMode=Login (mixed case) should be Login"
+    );
+}
+
+#[test]
+fn test_utmp_mode_invalid_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UtmpMode = invalid
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "UtmpMode=invalid should produce a parsing error"
+    );
+}
+
+#[test]
+fn test_utmp_mode_no_warning_when_set() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UtmpMode = login
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "Parsing a service with UtmpMode should succeed without errors"
+    );
+}
+
+#[test]
+fn test_utmp_identifier_and_mode_combined() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /sbin/agetty --noclear tty1 linux
+    StandardInput = tty
+    TTYPath = /dev/tty1
+    UtmpIdentifier = tty1
+    UtmpMode = login
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/getty@tty1.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.utmp_identifier,
+        Some("tty1".to_owned()),
+        "UtmpIdentifier should be tty1"
+    );
+    assert_eq!(
+        service.srvc.exec_section.utmp_mode,
+        crate::units::UtmpMode::Login,
+        "UtmpMode should be Login"
+    );
+    assert_eq!(
+        service.srvc.exec_section.tty_path,
+        Some(std::path::PathBuf::from("/dev/tty1")),
+        "TTYPath should be /dev/tty1"
+    );
+}
+
+#[test]
+fn test_utmp_identifier_without_mode_defaults_to_init() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UtmpIdentifier = cons
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.utmp_identifier,
+        Some("cons".to_owned()),
+        "UtmpIdentifier should be cons"
+    );
+    assert_eq!(
+        service.srvc.exec_section.utmp_mode,
+        crate::units::UtmpMode::Init,
+        "UtmpMode should default to Init when only UtmpIdentifier is set"
+    );
+}
+
+#[test]
+fn test_utmp_mode_without_identifier() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    UtmpMode = user
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.utmp_identifier, None,
+        "UtmpIdentifier should be None when not specified"
+    );
+    assert_eq!(
+        service.srvc.exec_section.utmp_mode,
+        crate::units::UtmpMode::User,
+        "UtmpMode=user should be stored even without UtmpIdentifier"
+    );
+}

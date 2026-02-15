@@ -278,6 +278,8 @@ pub fn parse_exec_section(
     let tty_vhangup = section.remove("TTYVHANGUP");
     let tty_vt_disallocate = section.remove("TTYVTDISALLOCATE");
     let ignore_sigpipe = section.remove("IGNORESIGPIPE");
+    let utmp_identifier = section.remove("UTMPIDENTIFIER");
+    let utmp_mode = section.remove("UTMPMODE");
 
     let user = match user {
         None => None,
@@ -541,6 +543,44 @@ pub fn parse_exec_section(
         tty_vhangup,
         tty_vt_disallocate,
         ignore_sigpipe,
+        utmp_identifier: match utmp_identifier {
+            None => None,
+            Some(mut vec) => {
+                if vec.len() == 1 {
+                    Some(vec.remove(0).1)
+                } else if vec.len() > 1 {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "UtmpIdentifier".into(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                } else {
+                    None
+                }
+            }
+        },
+        utmp_mode: match utmp_mode {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.to_lowercase().as_str() {
+                        "init" => super::UtmpMode::Init,
+                        "login" => super::UtmpMode::Login,
+                        "user" => super::UtmpMode::User,
+                        name => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "UtmpMode".to_owned(),
+                                name.to_owned(),
+                            ))
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "UtmpMode".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => super::UtmpMode::default(),
+        },
     })
 }
 

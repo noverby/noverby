@@ -178,6 +178,17 @@ pub fn service_exit_handler(
         panic!("Tried to run a unit that has been removed from the map");
     };
 
+    // Write DEAD_PROCESS utmp/wtmp record if the service had UtmpIdentifier= set.
+    if let Specific::Service(srvc) = &unit.specific {
+        if let Some(ref utmp_id) = srvc.conf.exec_config.utmp_identifier {
+            crate::entrypoints::write_utmp_dead_record(
+                utmp_id,
+                srvc.conf.exec_config.tty_path.as_deref(),
+                pid,
+            );
+        }
+    }
+
     let success_exit_status = get_success_exit_status(unit);
 
     // kill oneshot service processes. There should be none but just in case...

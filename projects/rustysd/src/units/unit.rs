@@ -7,7 +7,7 @@ use crate::units::{
     acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KillMode, NotifyKind,
     ResourceLimit, ServiceRestart, ServiceType, StandardInput, StatusStarted, StatusStopped,
     StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition, UnitId, UnitIdKind,
-    UnitOperationError, UnitOperationErrorReason, UnitStatus,
+    UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode,
 };
 
 use std::sync::RwLock;
@@ -934,6 +934,13 @@ pub struct ExecConfig {
     /// exec'ing the service binary. When false, the default SIGPIPE disposition
     /// (terminate) is left in place. Matches systemd.exec(5).
     pub ignore_sigpipe: bool,
+    /// UtmpIdentifier= — the 4-character identifier string to write to the utmp
+    /// and wtmp entries when the service runs on a TTY. Defaults to the TTY
+    /// basename when unset. See systemd.exec(5).
+    pub utmp_identifier: Option<String>,
+    /// UtmpMode= — the type of utmp/wtmp record to write. Defaults to `Init`.
+    /// See systemd.exec(5).
+    pub utmp_mode: UtmpMode,
 }
 
 #[cfg(target_os = "linux")]
