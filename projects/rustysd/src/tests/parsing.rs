@@ -84,11 +84,11 @@ fn test_service_parsing() {
 
     assert_eq!(
         service.srvc.exec,
-        crate::units::Commandline {
+        Some(crate::units::Commandline {
             cmd: "/path/to/startbin".into(),
             args: vec!["arg1".into(), "arg2".into(), "arg3".into()],
             prefixes: vec![],
-        }
+        })
     );
     assert_eq!(
         service.srvc.startpre,
@@ -2131,11 +2131,11 @@ fn test_at_prefix_execstart() {
 
     assert_eq!(
         service.srvc.exec,
-        crate::units::Commandline {
+        Some(crate::units::Commandline {
             cmd: "/usr/bin/foo".into(),
             args: vec!["bar".into(), "arg1".into(), "arg2".into()],
             prefixes: vec![crate::units::CommandlinePrefix::AtSign],
-        }
+        })
     );
 }
 
@@ -2180,14 +2180,14 @@ fn test_at_prefix_combined_with_minus() {
 
     assert_eq!(
         service.srvc.exec,
-        crate::units::Commandline {
+        Some(crate::units::Commandline {
             cmd: "/usr/bin/foo".into(),
             args: vec!["bar".into(), "arg1".into()],
             prefixes: vec![
                 crate::units::CommandlinePrefix::Minus,
                 crate::units::CommandlinePrefix::AtSign,
             ],
-        }
+        })
     );
 }
 
@@ -2208,14 +2208,14 @@ fn test_at_prefix_combined_minus_at() {
 
     assert_eq!(
         service.srvc.exec,
-        crate::units::Commandline {
+        Some(crate::units::Commandline {
             cmd: "/usr/bin/foo".into(),
             args: vec!["bar".into(), "arg1".into()],
             prefixes: vec![
                 crate::units::CommandlinePrefix::AtSign,
                 crate::units::CommandlinePrefix::Minus,
             ],
-        }
+        })
     );
 }
 
@@ -2236,11 +2236,11 @@ fn test_at_prefix_no_extra_args() {
 
     assert_eq!(
         service.srvc.exec,
-        crate::units::Commandline {
+        Some(crate::units::Commandline {
             cmd: "/usr/bin/foo".into(),
             args: vec!["bar".into()],
             prefixes: vec![crate::units::CommandlinePrefix::AtSign],
-        }
+        })
     );
 }
 
@@ -2659,15 +2659,10 @@ fn test_environment_nixos_firewall_pattern() {
     );
 
     // ExecStart must parse the @ prefix correctly
-    assert_eq!(
-        service.srvc.exec.prefixes,
-        vec![crate::units::CommandlinePrefix::AtSign]
-    );
-    assert_eq!(
-        service.srvc.exec.cmd,
-        "/nix/store/pqr-firewall-start/bin/firewall-start"
-    );
-    assert_eq!(service.srvc.exec.args, vec!["firewall-start".to_owned()]);
+    let exec = service.srvc.exec.as_ref().expect("ExecStart should be set");
+    assert_eq!(exec.prefixes, vec![crate::units::CommandlinePrefix::AtSign]);
+    assert_eq!(exec.cmd, "/nix/store/pqr-firewall-start/bin/firewall-start");
+    assert_eq!(exec.args, vec!["firewall-start".to_owned()]);
 }
 
 #[test]
@@ -2725,4 +2720,102 @@ fn test_environment_single_line_multiple_vars() {
             ("BAZ".to_owned(), "qux".to_owned()),
         ]
     );
+}
+
+#[test]
+fn test_service_no_service_section() {
+    // systemd allows .service files without a [Service] section (e.g.
+    // systemd-reboot.service which only has a [Unit] with SuccessAction=).
+    // rustysd should treat these as oneshot services with no ExecStart.
+    let test_service_str = r#"
+    [Unit]
+    Description=System Reboot
+    DefaultDependencies=no
+    Requires=shutdown.target
+    After=shutdown.target
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/systemd-reboot.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec, None);
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::OneShot);
+    assert_eq!(service.common.unit.description, "System Reboot".to_owned());
+    assert!(!service.common.unit.default_dependencies);
+}
+
+#[test]
+fn test_service_oneshot_no_execstart() {
+    // A [Service] section with Type=oneshot but no ExecStart= is valid in
+    // systemd. The service succeeds immediately upon activation.
+    let test_service_str = r#"
+    [Unit]
+    Description=Test Oneshot No Exec
+
+    [Service]
+    Type=oneshot
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test-oneshot.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec, None);
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::OneShot);
+}
+
+#[test]
+fn test_service_no_service_section_defaults_to_oneshot() {
+    // When there is no [Service] section and no Type= is given, the service
+    // type should default to oneshot (since there is no ExecStart).
+    let test_service_str = r#"
+    [Unit]
+    Description=Minimal unit-only service
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/minimal.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec, None);
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::OneShot);
+    assert_eq!(service.srvc.restart, crate::units::ServiceRestart::No);
+}
+
+#[test]
+fn test_service_implicit_oneshot_with_pre_post_commands() {
+    // A service without ExecStart but with ExecStartPre/ExecStartPost should
+    // still parse successfully as a oneshot with no main exec.
+    let test_service_str = r#"
+    [Unit]
+    Description=Service with hooks only
+
+    [Service]
+    ExecStartPre=/usr/bin/echo pre
+    ExecStartPost=/usr/bin/echo post
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/hooks-only.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec, None);
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::OneShot);
+    assert_eq!(service.srvc.startpre.len(), 1);
+    assert_eq!(service.srvc.startpre[0].cmd, "/usr/bin/echo");
+    assert_eq!(service.srvc.startpost.len(), 1);
+    assert_eq!(service.srvc.startpost[0].cmd, "/usr/bin/echo");
 }
