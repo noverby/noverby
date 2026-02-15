@@ -1590,3 +1590,138 @@ fn test_kill_mode_with_restart() {
     assert_eq!(service.srvc.restart, crate::units::ServiceRestart::Always);
     assert_eq!(service.srvc.kill_mode, crate::units::KillMode::Process);
 }
+
+#[test]
+fn test_delegate_defaults_to_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.delegate, crate::units::Delegate::No);
+}
+
+#[test]
+fn test_delegate_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Delegate = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.delegate, crate::units::Delegate::Yes);
+}
+
+#[test]
+fn test_delegate_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Delegate = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.delegate, crate::units::Delegate::Yes);
+}
+
+#[test]
+fn test_delegate_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Delegate = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.delegate, crate::units::Delegate::No);
+}
+
+#[test]
+fn test_delegate_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Delegate = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.delegate, crate::units::Delegate::No);
+}
+
+#[test]
+fn test_delegate_controller_list() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Delegate = cpu memory io
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.delegate,
+        crate::units::Delegate::Controllers(vec![
+            "cpu".to_owned(),
+            "memory".to_owned(),
+            "io".to_owned(),
+        ])
+    );
+}
+
+#[test]
+fn test_delegate_single_controller() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Delegate = cpu
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.delegate,
+        crate::units::Delegate::Controllers(vec!["cpu".to_owned()])
+    );
+}

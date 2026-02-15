@@ -2,9 +2,9 @@ use log::warn;
 
 use crate::units::{
     map_tuples_to_second, parse_install_section, parse_unit_section, string_to_bool, Commandline,
-    CommandlinePrefix, KillMode, NotifyKind, ParsedCommonConfig, ParsedFile, ParsedSection,
-    ParsedServiceConfig, ParsedServiceSection, ParsingErrorReason, ServiceRestart, ServiceType,
-    Timeout,
+    CommandlinePrefix, Delegate, KillMode, NotifyKind, ParsedCommonConfig, ParsedFile,
+    ParsedSection, ParsedServiceConfig, ParsedServiceSection, ParsingErrorReason, ServiceRestart,
+    ServiceType, Timeout,
 };
 use std::path::PathBuf;
 
@@ -161,6 +161,7 @@ fn parse_service_section(
     let restart = section.remove("RESTART");
     let restart_sec = section.remove("RESTARTSEC");
     let kill_mode = section.remove("KILLMODE");
+    let delegate = section.remove("DELEGATE");
     let sockets = section.remove("SOCKETS");
     let notify_access = section.remove("NOTIFYACCESS");
     let srcv_type = section.remove("TYPE");
@@ -172,6 +173,38 @@ fn parse_service_section(
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Service] section: {key}");
     }
+
+    let delegate = match delegate {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = &vec[0].1;
+                if string_to_bool(val) {
+                    Delegate::Yes
+                } else if val.to_uppercase() == "NO"
+                    || val.to_uppercase() == "FALSE"
+                    || val == "0"
+                    || val.is_empty()
+                {
+                    Delegate::No
+                } else {
+                    // Treat as a space-separated list of controller names
+                    let controllers: Vec<String> =
+                        val.split_whitespace().map(|s| s.to_owned()).collect();
+                    if controllers.is_empty() {
+                        Delegate::No
+                    } else {
+                        Delegate::Controllers(controllers)
+                    }
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "Delegate".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => Delegate::default(),
+    };
 
     let kill_mode = match kill_mode {
         Some(vec) => {
@@ -403,6 +436,7 @@ fn parse_service_section(
         restart,
         restart_sec,
         kill_mode,
+        delegate,
         accept,
         dbus_name,
         exec,
