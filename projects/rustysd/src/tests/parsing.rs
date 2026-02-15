@@ -13989,3 +13989,381 @@ fn test_dynamic_user_socket_unit() {
         "DynamicUser=yes should work on socket units"
     );
 }
+
+// ============================================================
+// SystemCallFilter= parsing tests
+// ============================================================
+
+#[test]
+fn test_system_call_filter_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.system_call_filter.is_empty(),
+        "SystemCallFilter should default to empty"
+    );
+}
+
+#[test]
+fn test_system_call_filter_single_syscall() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = write
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 1);
+    assert_eq!(service.srvc.exec_section.system_call_filter[0], "write");
+}
+
+#[test]
+fn test_system_call_filter_multiple_syscalls_space_separated() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = write read open close
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 4);
+    assert_eq!(service.srvc.exec_section.system_call_filter[0], "write");
+    assert_eq!(service.srvc.exec_section.system_call_filter[1], "read");
+    assert_eq!(service.srvc.exec_section.system_call_filter[2], "open");
+    assert_eq!(service.srvc.exec_section.system_call_filter[3], "close");
+}
+
+#[test]
+fn test_system_call_filter_group_name() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = @basic-io
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 1);
+    assert_eq!(service.srvc.exec_section.system_call_filter[0], "@basic-io");
+}
+
+#[test]
+fn test_system_call_filter_deny_list_with_tilde() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = ~@mount @clock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 2);
+    assert_eq!(service.srvc.exec_section.system_call_filter[0], "~@mount");
+    assert_eq!(service.srvc.exec_section.system_call_filter[1], "@clock");
+}
+
+#[test]
+fn test_system_call_filter_multiple_directives_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = @basic-io
+    SystemCallFilter = @file-system
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 2);
+    assert_eq!(service.srvc.exec_section.system_call_filter[0], "@basic-io");
+    assert_eq!(
+        service.srvc.exec_section.system_call_filter[1],
+        "@file-system"
+    );
+}
+
+#[test]
+fn test_system_call_filter_empty_resets_list() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = @basic-io
+    SystemCallFilter =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.system_call_filter.is_empty(),
+        "Empty SystemCallFilter= should reset the list"
+    );
+}
+
+#[test]
+fn test_system_call_filter_empty_then_new_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = @basic-io
+    SystemCallFilter =
+    SystemCallFilter = @network-io
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 1);
+    assert_eq!(
+        service.srvc.exec_section.system_call_filter[0],
+        "@network-io"
+    );
+}
+
+#[test]
+fn test_system_call_filter_mixed_syscalls_and_groups() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = @basic-io write @network-io sendto
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 4);
+    assert_eq!(service.srvc.exec_section.system_call_filter[0], "@basic-io");
+    assert_eq!(service.srvc.exec_section.system_call_filter[1], "write");
+    assert_eq!(
+        service.srvc.exec_section.system_call_filter[2],
+        "@network-io"
+    );
+    assert_eq!(service.srvc.exec_section.system_call_filter[3], "sendto");
+}
+
+#[test]
+fn test_system_call_filter_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = @basic-io
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "SystemCallFilter should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_system_call_filter_with_whitespace() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter =   @basic-io   write
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 2);
+    assert_eq!(service.srvc.exec_section.system_call_filter[0], "@basic-io");
+    assert_eq!(service.srvc.exec_section.system_call_filter[1], "write");
+}
+
+#[test]
+fn test_system_call_filter_tilde_deny_single() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = ~@raw-io
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 1);
+    assert_eq!(service.srvc.exec_section.system_call_filter[0], "~@raw-io");
+}
+
+#[test]
+fn test_system_call_filter_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = @basic-io
+    SystemCallFilter = @network-io
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(srvc.conf.exec_config.system_call_filter.len(), 2);
+        assert_eq!(srvc.conf.exec_config.system_call_filter[0], "@basic-io");
+        assert_eq!(srvc.conf.exec_config.system_call_filter[1], "@network-io");
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_system_call_filter_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.system_call_filter.is_empty(),
+            "Empty SystemCallFilter should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_system_call_filter_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with syscall filter
+    [Socket]
+    ListenStream = /run/test.sock
+    SystemCallFilter = @basic-io
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_section.system_call_filter.len(), 1);
+    assert_eq!(socket.sock.exec_section.system_call_filter[0], "@basic-io");
+}
+
+#[test]
+fn test_system_call_filter_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = @basic-io
+    DynamicUser = yes
+    Environment = FOO=bar
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 1);
+    assert_eq!(service.srvc.exec_section.system_call_filter[0], "@basic-io");
+    assert_eq!(service.srvc.exec_section.dynamic_user, true);
+}
+
+#[test]
+fn test_system_call_filter_complex_deny_list() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    SystemCallFilter = @default @basic-io @file-system @io-event @ipc @network-io @process @signal @timer
+    SystemCallFilter = ~@clock @debug @module @mount @obsolete @raw-io @reboot @swap
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    // 9 from first directive + 8 from second directive
+    assert_eq!(service.srvc.exec_section.system_call_filter.len(), 17);
+    assert_eq!(service.srvc.exec_section.system_call_filter[0], "@default");
+    assert_eq!(service.srvc.exec_section.system_call_filter[9], "~@clock");
+}
