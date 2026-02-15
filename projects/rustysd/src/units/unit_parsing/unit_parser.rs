@@ -535,6 +535,7 @@ pub fn parse_exec_section(
     let private_devices = section.remove("PRIVATEDEVICES");
     let private_network = section.remove("PRIVATENETWORK");
     let private_users = section.remove("PRIVATEUSERS");
+    let io_scheduling_priority = section.remove("IOSCHEDULINGPRIORITY");
 
     let user = match user {
         None => None,
@@ -1597,6 +1598,33 @@ pub fn parse_exec_section(
         private_devices,
         private_network,
         private_users,
+        io_scheduling_priority: match io_scheduling_priority {
+            None => None,
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val: u8 = vec[0].1.trim().parse().map_err(|_| {
+                        ParsingErrorReason::UnknownSetting(
+                            "IOSchedulingPriority".to_owned(),
+                            vec[0].1.clone(),
+                        )
+                    })?;
+                    if val > 7 {
+                        return Err(ParsingErrorReason::UnknownSetting(
+                            "IOSchedulingPriority".to_owned(),
+                            format!("{val} (must be 0-7)"),
+                        ));
+                    }
+                    Some(val)
+                } else if vec.len() > 1 {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "IOSchedulingPriority".into(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                } else {
+                    None
+                }
+            }
+        },
     })
 }
 

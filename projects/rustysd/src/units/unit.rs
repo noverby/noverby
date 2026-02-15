@@ -1167,6 +1167,12 @@ pub struct ExecConfig {
     /// user/group. Defaults to false. Parsed and stored; no runtime
     /// user-namespace enforcement yet. See systemd.exec(5).
     pub private_users: bool,
+    /// IOSchedulingPriority= — sets the I/O scheduling priority for executed
+    /// processes. Takes an integer between 0 (highest priority) and 7
+    /// (lowest priority). The default priority for the best-effort scheduling
+    /// class is 4. Parsed and stored; no runtime enforcement yet.
+    /// See systemd.exec(5).
+    pub io_scheduling_priority: Option<u8>,
 }
 
 #[cfg(target_os = "linux")]
