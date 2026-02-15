@@ -1,3 +1,6 @@
+use crate::units::Unit;
+use std::convert::TryInto;
+
 #[test]
 fn test_unit_ordering() {
     let target1_str = format!(
@@ -5,7 +8,7 @@ fn test_unit_ordering() {
     [Unit]
     Description = {}
     Before = {}
-    
+
     [Install]
     RequiredBy = {}
     ",
@@ -40,7 +43,7 @@ fn test_unit_ordering() {
     Description = {}
     After = {}
     After = {}
-    
+
     ",
         "Target", "1.target", "2.target"
     );
@@ -52,8 +55,6 @@ fn test_unit_ordering() {
 
     let mut unit_table = std::collections::HashMap::new();
 
-    use crate::units::Unit;
-    use std::convert::TryInto;
     let target1_unit: Unit = target1_unit.try_into().unwrap();
     let target2_unit: Unit = target2_unit.try_into().unwrap();
     let target3_unit: Unit = target3_unit.try_into().unwrap();
@@ -183,7 +184,7 @@ fn test_unit_ordering() {
         "
     [Unit]
     Description = {}
-    
+
     ",
         "Target"
     );
@@ -264,8 +265,6 @@ fn test_circle() {
         crate::units::parse_target(parsed_file, &std::path::PathBuf::from("/path/to/3.target"))
             .unwrap();
 
-    use crate::units::Unit;
-    use std::convert::TryInto;
     let mut unit_table = std::collections::HashMap::new();
     let target1_unit: Unit = target1_unit.try_into().unwrap();
     let target2_unit: Unit = target2_unit.try_into().unwrap();
@@ -297,4 +296,650 @@ fn test_circle() {
     } else {
         panic!("No circle found but there is one");
     }
+}
+
+/// Helper to create a minimal target unit string
+fn target_unit_str(description: &str) -> String {
+    format!(
+        r#"
+    [Unit]
+    Description = {}
+    "#,
+        description
+    )
+}
+
+/// Helper to create a target unit string with DefaultDependencies setting
+fn target_unit_str_with_default_deps(description: &str, default_deps: &str) -> String {
+    format!(
+        r#"
+    [Unit]
+    Description = {}
+    DefaultDependencies = {}
+    "#,
+        description, default_deps
+    )
+}
+
+/// Helper to parse and convert a target unit
+fn make_target(name: &str, content: &str) -> Unit {
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from(format!("/path/to/{}", name)),
+    )
+    .unwrap();
+    target.try_into().unwrap()
+}
+
+/// Helper to parse and convert a service unit
+fn make_service(name: &str, content: &str) -> Unit {
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from(format!("/path/to/{}", name)),
+    )
+    .unwrap();
+    service.try_into().unwrap()
+}
+
+/// Helper to parse and convert a socket unit
+fn make_socket(name: &str, content: &str) -> Unit {
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from(format!("/path/to/{}", name)),
+    )
+    .unwrap();
+    socket.try_into().unwrap()
+}
+
+#[test]
+fn test_default_deps_service_gets_shutdown_conflict_and_before() {
+    let shutdown = make_target("shutdown.target", &target_unit_str("Shutdown"));
+    let service = make_service(
+        "myapp.service",
+        r#"
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let shutdown_id = shutdown.id.clone();
+    let service_id = service.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(shutdown.id.clone(), shutdown);
+    unit_table.insert(service.id.clone(), service);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let service = unit_table.get(&service_id).unwrap();
+    assert!(
+        service.common.dependencies.conflicts.contains(&shutdown_id),
+        "Service should have Conflicts=shutdown.target"
+    );
+    assert!(
+        service.common.dependencies.before.contains(&shutdown_id),
+        "Service should have Before=shutdown.target"
+    );
+}
+
+#[test]
+fn test_default_deps_service_gets_sysinit_requires_and_after() {
+    let sysinit = make_target("sysinit.target", &target_unit_str("System Initialization"));
+    let service = make_service(
+        "myapp.service",
+        r#"
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let sysinit_id = sysinit.id.clone();
+    let service_id = service.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(sysinit.id.clone(), sysinit);
+    unit_table.insert(service.id.clone(), service);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let service = unit_table.get(&service_id).unwrap();
+    assert!(
+        service.common.dependencies.requires.contains(&sysinit_id),
+        "Service should have Requires=sysinit.target"
+    );
+    assert!(
+        service.common.dependencies.after.contains(&sysinit_id),
+        "Service should have After=sysinit.target"
+    );
+}
+
+#[test]
+fn test_default_deps_service_gets_after_basic_target() {
+    let basic = make_target("basic.target", &target_unit_str("Basic System"));
+    let service = make_service(
+        "myapp.service",
+        r#"
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let basic_id = basic.id.clone();
+    let service_id = service.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(basic.id.clone(), basic);
+    unit_table.insert(service.id.clone(), service);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let service = unit_table.get(&service_id).unwrap();
+    assert!(
+        service.common.dependencies.after.contains(&basic_id),
+        "Service should have After=basic.target"
+    );
+}
+
+#[test]
+fn test_default_deps_disabled_no_implicit_deps() {
+    let shutdown = make_target("shutdown.target", &target_unit_str("Shutdown"));
+    let sysinit = make_target("sysinit.target", &target_unit_str("System Initialization"));
+    let basic = make_target("basic.target", &target_unit_str("Basic System"));
+    let service = make_service(
+        "myapp.service",
+        r#"
+        [Unit]
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let shutdown_id = shutdown.id.clone();
+    let sysinit_id = sysinit.id.clone();
+    let basic_id = basic.id.clone();
+    let service_id = service.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(shutdown.id.clone(), shutdown);
+    unit_table.insert(sysinit.id.clone(), sysinit);
+    unit_table.insert(basic.id.clone(), basic);
+    unit_table.insert(service.id.clone(), service);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let service = unit_table.get(&service_id).unwrap();
+    assert!(
+        !service.common.dependencies.conflicts.contains(&shutdown_id),
+        "Service with DefaultDependencies=no should NOT have Conflicts=shutdown.target"
+    );
+    assert!(
+        !service.common.dependencies.before.contains(&shutdown_id),
+        "Service with DefaultDependencies=no should NOT have Before=shutdown.target"
+    );
+    assert!(
+        !service.common.dependencies.requires.contains(&sysinit_id),
+        "Service with DefaultDependencies=no should NOT have Requires=sysinit.target"
+    );
+    assert!(
+        !service.common.dependencies.after.contains(&sysinit_id),
+        "Service with DefaultDependencies=no should NOT have After=sysinit.target"
+    );
+    assert!(
+        !service.common.dependencies.after.contains(&basic_id),
+        "Service with DefaultDependencies=no should NOT have After=basic.target"
+    );
+}
+
+#[test]
+fn test_default_deps_target_only_gets_shutdown_not_sysinit() {
+    let shutdown = make_target("shutdown.target", &target_unit_str("Shutdown"));
+    let sysinit = make_target("sysinit.target", &target_unit_str("System Initialization"));
+    let basic = make_target("basic.target", &target_unit_str("Basic System"));
+    let custom_target = make_target("custom.target", &target_unit_str("Custom Target"));
+
+    let shutdown_id = shutdown.id.clone();
+    let sysinit_id = sysinit.id.clone();
+    let basic_id = basic.id.clone();
+    let custom_id = custom_target.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(shutdown.id.clone(), shutdown);
+    unit_table.insert(sysinit.id.clone(), sysinit);
+    unit_table.insert(basic.id.clone(), basic);
+    unit_table.insert(custom_target.id.clone(), custom_target);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let custom = unit_table.get(&custom_id).unwrap();
+    // Targets get Conflicts and Before on shutdown.target
+    assert!(
+        custom.common.dependencies.conflicts.contains(&shutdown_id),
+        "Target should have Conflicts=shutdown.target"
+    );
+    assert!(
+        custom.common.dependencies.before.contains(&shutdown_id),
+        "Target should have Before=shutdown.target"
+    );
+    // Targets should NOT get Requires/After on sysinit.target or After on basic.target
+    assert!(
+        !custom.common.dependencies.requires.contains(&sysinit_id),
+        "Target should NOT have Requires=sysinit.target"
+    );
+    assert!(
+        !custom.common.dependencies.after.contains(&sysinit_id),
+        "Target should NOT have After=sysinit.target"
+    );
+    assert!(
+        !custom.common.dependencies.after.contains(&basic_id),
+        "Target should NOT have After=basic.target"
+    );
+}
+
+#[test]
+fn test_default_deps_shutdown_target_excluded() {
+    let shutdown = make_target("shutdown.target", &target_unit_str("Shutdown"));
+    let sysinit = make_target("sysinit.target", &target_unit_str("System Initialization"));
+
+    let shutdown_id = shutdown.id.clone();
+    let sysinit_id = sysinit.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(shutdown.id.clone(), shutdown);
+    unit_table.insert(sysinit.id.clone(), sysinit);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let shutdown = unit_table.get(&shutdown_id).unwrap();
+    // shutdown.target should NOT have Conflicts/Before on itself
+    assert!(
+        !shutdown
+            .common
+            .dependencies
+            .conflicts
+            .contains(&shutdown_id),
+        "shutdown.target should NOT conflict with itself"
+    );
+    assert!(
+        !shutdown.common.dependencies.before.contains(&shutdown_id),
+        "shutdown.target should NOT be Before itself"
+    );
+    // shutdown.target should NOT get Requires on sysinit (it's a target, not service)
+    // but also it's excluded from default deps entirely
+    assert!(
+        !shutdown.common.dependencies.requires.contains(&sysinit_id),
+        "shutdown.target should NOT have Requires=sysinit.target"
+    );
+}
+
+#[test]
+fn test_default_deps_reverse_relations_on_shutdown() {
+    let shutdown = make_target("shutdown.target", &target_unit_str("Shutdown"));
+    let service = make_service(
+        "myapp.service",
+        r#"
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let shutdown_id = shutdown.id.clone();
+    let service_id = service.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(shutdown.id.clone(), shutdown);
+    unit_table.insert(service.id.clone(), service);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let shutdown = unit_table.get(&shutdown_id).unwrap();
+    assert!(
+        shutdown
+            .common
+            .dependencies
+            .conflicted_by
+            .contains(&service_id),
+        "shutdown.target should have ConflictedBy=myapp.service (reverse of service's Conflicts)"
+    );
+    assert!(
+        shutdown.common.dependencies.after.contains(&service_id),
+        "shutdown.target should have After=myapp.service (reverse of service's Before)"
+    );
+}
+
+#[test]
+fn test_default_deps_reverse_relations_on_sysinit() {
+    let sysinit = make_target("sysinit.target", &target_unit_str("System Initialization"));
+    let service = make_service(
+        "myapp.service",
+        r#"
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let sysinit_id = sysinit.id.clone();
+    let service_id = service.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(sysinit.id.clone(), sysinit);
+    unit_table.insert(service.id.clone(), service);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let sysinit = unit_table.get(&sysinit_id).unwrap();
+    assert!(
+        sysinit
+            .common
+            .dependencies
+            .required_by
+            .contains(&service_id),
+        "sysinit.target should have RequiredBy=myapp.service (reverse of service's Requires)"
+    );
+    assert!(
+        sysinit.common.dependencies.before.contains(&service_id),
+        "sysinit.target should have Before=myapp.service (reverse of service's After)"
+    );
+}
+
+#[test]
+fn test_default_deps_reverse_relations_on_basic() {
+    let basic = make_target("basic.target", &target_unit_str("Basic System"));
+    let service = make_service(
+        "myapp.service",
+        r#"
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let basic_id = basic.id.clone();
+    let service_id = service.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(basic.id.clone(), basic);
+    unit_table.insert(service.id.clone(), service);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let basic = unit_table.get(&basic_id).unwrap();
+    assert!(
+        basic.common.dependencies.before.contains(&service_id),
+        "basic.target should have Before=myapp.service (reverse of service's After)"
+    );
+}
+
+#[test]
+fn test_default_deps_socket_gets_shutdown_and_sysinit_but_not_basic() {
+    let shutdown = make_target("shutdown.target", &target_unit_str("Shutdown"));
+    let sysinit = make_target("sysinit.target", &target_unit_str("System Initialization"));
+    let basic = make_target("basic.target", &target_unit_str("Basic System"));
+    let socket = make_socket(
+        "myapp.socket",
+        r#"
+        [Socket]
+        ListenStream = /run/myapp.sock
+        "#,
+    );
+
+    let shutdown_id = shutdown.id.clone();
+    let sysinit_id = sysinit.id.clone();
+    let basic_id = basic.id.clone();
+    let socket_id = socket.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(shutdown.id.clone(), shutdown);
+    unit_table.insert(sysinit.id.clone(), sysinit);
+    unit_table.insert(basic.id.clone(), basic);
+    unit_table.insert(socket.id.clone(), socket);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let socket = unit_table.get(&socket_id).unwrap();
+    // Sockets get shutdown conflict/before
+    assert!(
+        socket.common.dependencies.conflicts.contains(&shutdown_id),
+        "Socket should have Conflicts=shutdown.target"
+    );
+    assert!(
+        socket.common.dependencies.before.contains(&shutdown_id),
+        "Socket should have Before=shutdown.target"
+    );
+    // Sockets get sysinit requires/after
+    assert!(
+        socket.common.dependencies.requires.contains(&sysinit_id),
+        "Socket should have Requires=sysinit.target"
+    );
+    assert!(
+        socket.common.dependencies.after.contains(&sysinit_id),
+        "Socket should have After=sysinit.target"
+    );
+    // Sockets should NOT get basic.target (only services do)
+    assert!(
+        !socket.common.dependencies.after.contains(&basic_id),
+        "Socket should NOT have After=basic.target"
+    );
+}
+
+#[test]
+fn test_default_deps_no_targets_present_is_noop() {
+    // When none of shutdown/sysinit/basic targets exist, no implicit deps are added
+    let service = make_service(
+        "myapp.service",
+        r#"
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let service_id = service.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(service.id.clone(), service);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let service = unit_table.get(&service_id).unwrap();
+    assert!(
+        service.common.dependencies.conflicts.is_empty(),
+        "Service should have no conflicts when no targets are present"
+    );
+    assert!(
+        service.common.dependencies.requires.is_empty(),
+        "Service should have no requires when no targets are present"
+    );
+    assert!(
+        service.common.dependencies.before.is_empty(),
+        "Service should have no before when no targets are present"
+    );
+    assert!(
+        service.common.dependencies.after.is_empty(),
+        "Service should have no after when no targets are present"
+    );
+}
+
+#[test]
+fn test_default_deps_mixed_enabled_and_disabled() {
+    // One service with default deps, one without; only the one with should get implicit deps
+    let shutdown = make_target("shutdown.target", &target_unit_str("Shutdown"));
+    let service_with = make_service(
+        "with.service",
+        r#"
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+    let service_without = make_service(
+        "without.service",
+        r#"
+        [Unit]
+        DefaultDependencies = no
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let shutdown_id = shutdown.id.clone();
+    let with_id = service_with.id.clone();
+    let without_id = service_without.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(shutdown.id.clone(), shutdown);
+    unit_table.insert(service_with.id.clone(), service_with);
+    unit_table.insert(service_without.id.clone(), service_without);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    // Service with default deps should have shutdown conflict
+    let with = unit_table.get(&with_id).unwrap();
+    assert!(
+        with.common.dependencies.conflicts.contains(&shutdown_id),
+        "Service with DefaultDependencies=yes should have Conflicts=shutdown.target"
+    );
+    assert!(
+        with.common.dependencies.before.contains(&shutdown_id),
+        "Service with DefaultDependencies=yes should have Before=shutdown.target"
+    );
+
+    // Service without default deps should NOT have shutdown conflict
+    let without = unit_table.get(&without_id).unwrap();
+    assert!(
+        !without.common.dependencies.conflicts.contains(&shutdown_id),
+        "Service with DefaultDependencies=no should NOT have Conflicts=shutdown.target"
+    );
+    assert!(
+        !without.common.dependencies.before.contains(&shutdown_id),
+        "Service with DefaultDependencies=no should NOT have Before=shutdown.target"
+    );
+
+    // shutdown.target reverse relations should only reference the service with default deps
+    let shutdown = unit_table.get(&shutdown_id).unwrap();
+    assert!(
+        shutdown
+            .common
+            .dependencies
+            .conflicted_by
+            .contains(&with_id),
+        "shutdown.target should have ConflictedBy for service with default deps"
+    );
+    assert!(
+        !shutdown
+            .common
+            .dependencies
+            .conflicted_by
+            .contains(&without_id),
+        "shutdown.target should NOT have ConflictedBy for service without default deps"
+    );
+}
+
+#[test]
+fn test_default_deps_full_service_with_all_targets() {
+    // Integration test: service with all three special targets present
+    let shutdown = make_target(
+        "shutdown.target",
+        &target_unit_str_with_default_deps("Shutdown", "no"),
+    );
+    let sysinit = make_target(
+        "sysinit.target",
+        &target_unit_str_with_default_deps("System Initialization", "no"),
+    );
+    let basic = make_target(
+        "basic.target",
+        &target_unit_str_with_default_deps("Basic System", "no"),
+    );
+    let service = make_service(
+        "myapp.service",
+        r#"
+        [Service]
+        ExecStart = /bin/true
+        "#,
+    );
+
+    let shutdown_id = shutdown.id.clone();
+    let sysinit_id = sysinit.id.clone();
+    let basic_id = basic.id.clone();
+    let service_id = service.id.clone();
+
+    let mut unit_table = std::collections::HashMap::new();
+    unit_table.insert(shutdown.id.clone(), shutdown);
+    unit_table.insert(sysinit.id.clone(), sysinit);
+    unit_table.insert(basic.id.clone(), basic);
+    unit_table.insert(service.id.clone(), service);
+
+    crate::units::fill_dependencies(&mut unit_table).unwrap();
+    unit_table
+        .values_mut()
+        .for_each(|unit| unit.dedup_dependencies());
+
+    let service = unit_table.get(&service_id).unwrap();
+
+    // shutdown.target relations
+    assert!(service.common.dependencies.conflicts.contains(&shutdown_id));
+    assert!(service.common.dependencies.before.contains(&shutdown_id));
+
+    // sysinit.target relations
+    assert!(service.common.dependencies.requires.contains(&sysinit_id));
+    assert!(service.common.dependencies.after.contains(&sysinit_id));
+
+    // basic.target relations
+    assert!(service.common.dependencies.after.contains(&basic_id));
+
+    // Verify reverse relations
+    let shutdown = unit_table.get(&shutdown_id).unwrap();
+    assert!(shutdown
+        .common
+        .dependencies
+        .conflicted_by
+        .contains(&service_id));
+    assert!(shutdown.common.dependencies.after.contains(&service_id));
+
+    let sysinit = unit_table.get(&sysinit_id).unwrap();
+    assert!(sysinit
+        .common
+        .dependencies
+        .required_by
+        .contains(&service_id));
+    assert!(sysinit.common.dependencies.before.contains(&service_id));
+
+    let basic = unit_table.get(&basic_id).unwrap();
+    assert!(basic.common.dependencies.before.contains(&service_id));
 }
