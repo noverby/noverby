@@ -1055,13 +1055,13 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#IPAddressAllow=">IPAddressAllow=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored (CIDR prefixes and special keywords). No runtime eBPF/cgroup enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#IPAddressDeny=">IPAddressDeny=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored (CIDR prefixes and special keywords). No runtime eBPF/cgroup enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#IPIngressFilterPath=">IPIngressFilterPath=</a></td>

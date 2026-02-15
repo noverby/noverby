@@ -252,6 +252,8 @@ fn parse_service_section(
     let keyring_mode = section.remove("KEYRINGMODE");
     let device_allow = section.remove("DEVICEALLOW");
     let watchdog_sec = section.remove("WATCHDOGSEC");
+    let ip_address_allow = section.remove("IPADDRESSALLOW");
+    let ip_address_deny = section.remove("IPADDRESSDENY");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -828,6 +830,44 @@ fn parse_service_section(
             None => Vec::new(),
         },
         watchdog_sec,
+        ip_address_allow: match ip_address_allow {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        // Empty string resets the list
+                        entries.clear();
+                        continue;
+                    }
+                    // Each directive may contain space-separated addresses
+                    for addr in trimmed.split_whitespace() {
+                        entries.push(addr.to_owned());
+                    }
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        ip_address_deny: match ip_address_deny {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        // Empty string resets the list
+                        entries.clear();
+                        continue;
+                    }
+                    // Each directive may contain space-separated addresses
+                    for addr in trimmed.split_whitespace() {
+                        entries.push(addr.to_owned());
+                    }
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
         exec_section: exec_config,
     })
 }

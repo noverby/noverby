@@ -300,6 +300,22 @@ pub struct ParsedServiceSection {
     /// enforcement yet. See systemd.service(5).
     pub watchdog_sec: Option<Timeout>,
 
+    /// IPAddressAllow= — a list of IP address prefixes (CIDR notation) or
+    /// special keywords (`any`, `localhost`, `link-local`, `multicast`) that
+    /// are allowed for IP communication by this unit. Multiple directives
+    /// accumulate; an empty assignment resets the list. Parsed and stored;
+    /// no runtime enforcement yet (requires eBPF/cgroup support).
+    /// See systemd.resource-control(5).
+    pub ip_address_allow: Vec<String>,
+
+    /// IPAddressDeny= — a list of IP address prefixes (CIDR notation) or
+    /// special keywords (`any`, `localhost`, `link-local`, `multicast`) that
+    /// are denied for IP communication by this unit. Multiple directives
+    /// accumulate; an empty assignment resets the list. Parsed and stored;
+    /// no runtime enforcement yet (requires eBPF/cgroup support).
+    /// See systemd.resource-control(5).
+    pub ip_address_deny: Vec<String>,
+
     pub exec_section: ParsedExecSection,
 }
 
