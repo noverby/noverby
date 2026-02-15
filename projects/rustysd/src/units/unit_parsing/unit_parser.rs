@@ -155,6 +155,7 @@ pub fn parse_exec_section(
     let supplementary_groups = section.remove("SUPPLEMENTARYGROUPS");
     let environment = section.remove("ENVIRONMENT");
     let working_directory = section.remove("WORKINGDIRECTORY");
+    let state_directory = section.remove("STATEDIRECTORY");
 
     let user = match user {
         None => None,
@@ -269,6 +270,18 @@ pub fn parse_exec_section(
         }
     };
 
+    let state_directory = match state_directory {
+        None => Vec::new(),
+        Some(vec) => vec
+            .into_iter()
+            .flat_map(|(_, val)| {
+                val.split_whitespace()
+                    .map(|s| s.to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .collect(),
+    };
+
     Ok(ParsedExecSection {
         user,
         group,
@@ -277,6 +290,7 @@ pub fn parse_exec_section(
         supplementary_groups,
         environment,
         working_directory,
+        state_directory,
     })
 }
 

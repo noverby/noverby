@@ -863,6 +863,7 @@ pub struct ExecConfig {
     pub stderr_path: Option<StdIoOption>,
     pub environment: Option<EnvVars>,
     pub working_directory: Option<std::path::PathBuf>,
+    pub state_directory: Vec<String>,
 }
 
 #[cfg(target_os = "linux")]

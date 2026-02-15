@@ -124,6 +124,9 @@ fn test_service_parsing() {
 
     // WorkingDirectory should be None when not specified
     assert_eq!(service.srvc.exec_section.working_directory, None);
+
+    // StateDirectory should be empty when not specified
+    assert!(service.srvc.exec_section.state_directory.is_empty());
 }
 
 #[test]
@@ -1139,4 +1142,85 @@ fn test_conflicts_parsing_mixed_unit_types() {
             "another.socket".to_owned()
         ]
     );
+}
+
+#[test]
+fn test_state_directory_single() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    StateDirectory = myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.state_directory,
+        vec!["myapp".to_owned()]
+    );
+}
+
+#[test]
+fn test_state_directory_multiple_space_separated() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    StateDirectory = myapp myapp-extra
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.state_directory,
+        vec!["myapp".to_owned(), "myapp-extra".to_owned()]
+    );
+}
+
+#[test]
+fn test_state_directory_multiple_entries() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    StateDirectory = myapp
+    StateDirectory = other
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.state_directory,
+        vec!["myapp".to_owned(), "other".to_owned()]
+    );
+}
+
+#[test]
+fn test_state_directory_empty_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.state_directory.is_empty());
 }
