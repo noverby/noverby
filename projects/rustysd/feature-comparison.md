@@ -20,7 +20,7 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/sd_notify.html#READY=1">READY=1</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Waiting for ready notification for service-type notify is supported</td>
 </tr>
 <tr>
@@ -35,7 +35,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/sd_notify.html#STATUS=…">STATUS=…</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Sending free-text status updates to be displayed for the user is supported</td>
 </tr>
 <tr>
@@ -90,7 +90,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/sd_notify.html#$NOTIFY_SOCKET">$NOTIFY_SOCKET</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Listening to a notification socket is supported (see section fd_notify for details on which messages are understood). NotifyAccess= is not fully supported though.</td>
 </tr>
 </table>
@@ -105,7 +105,7 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#WorkingDirectory=">WorkingDirectory=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
@@ -135,12 +135,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#User=">User=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>The user id can be set for starting services. Both numeric UIDs and usernames are supported. Resolution is deferred to exec time (matching systemd behavior), so users created during boot (e.g. by systemd-sysusers) are resolved correctly.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#Group=">Group=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>The group id can be set for starting services. Both numeric GIDs and group names are supported. Resolution is deferred to exec time (matching systemd behavior), so groups created during boot are resolved correctly.</td>
 </tr>
 <tr>
@@ -150,7 +150,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#SupplementaryGroups=">SupplementaryGroups=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Supplementary group ids can be set for starting services. Both numeric GIDs and group names are supported. Resolution is deferred to exec time (matching systemd behavior).</td>
 </tr>
 <tr>
@@ -225,7 +225,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LimitNOFILE=">LimitNOFILE=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Supports single value (sets both soft and hard), soft:hard notation, and infinity</td>
 </tr>
 <tr>
@@ -365,7 +365,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#StateDirectory=">StateDirectory=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
@@ -550,12 +550,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#Environment=">Environment=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#EnvironmentFile=">EnvironmentFile=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
@@ -570,7 +570,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#StandardInput=">StandardInput=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
@@ -635,22 +635,22 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#TTYPath=">TTYPath=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#TTYReset=">TTYReset=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#TTYVHangup=">TTYVHangup=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#TTYVTDisallocate=">TTYVTDisallocate=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
@@ -740,22 +740,22 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$LISTEN_FDS">$LISTEN_FDS</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Providing number of filedescriptors is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$LISTEN_PID">$LISTEN_PID</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Provifing the listen_pid to the child is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$LISTEN_FDNAMES">$LISTEN_FDNAMES</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Providing names for filedescriptors is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$NOTIFY_SOCKET">$NOTIFY_SOCKET</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Listening to a notification socket is supported (see section fd_notify for details on which messages are understood). NotifyAccess= is not fully supported though.</td>
 </tr>
 <tr>
@@ -810,7 +810,7 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.kill.html#KillMode=">KillMode=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Supports control-group (default), process, mixed, and none modes to control which processes are killed when stopping a service.</td>
 </tr>
 <tr>
@@ -990,7 +990,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#TasksMax=">TasksMax=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Supports absolute values, percentages (e.g. "80%") of the system pid limit, and infinity. When cgroups are enabled, applies the limit via pids.max.</td>
 </tr>
 <tr>
@@ -1080,7 +1080,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#Delegate=">Delegate=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Supports boolean (yes/no) and controller list forms. When enabled with cgroups, chowns the cgroup directory to the service user for sub-hierarchy management.</td>
 </tr>
 <tr>
@@ -1145,7 +1145,7 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#Type=">Type=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Simple, dbus, notify, notify-reload, oneshot, forking, and idle are supported. Idle is treated identically to simple (no job dispatch delay).</td>
 </tr>
 <tr>
@@ -1160,17 +1160,17 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#PIDFile=">PIDFile=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#BusName=">BusName=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Setting a bus name to wait for services of type dbus is supported.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ExecStart=">ExecStart=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Exec'ing the command given is supported. The return value is checked for oneshot services. The '-' prefix (ignore errors) and '@' prefix (override argv[0]) are supported, other prefixes are not. ExecStart= is optional for oneshot services (the service succeeds immediately), and .service files without a [Service] section are treated as exec-less oneshots (matching systemd behavior for units like systemd-reboot.service).</td>
 </tr>
 <tr>
@@ -1205,17 +1205,17 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#RestartSec=">RestartSec=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Configures the time to sleep before restarting a service. Supports seconds, compound durations (e.g. "1min 30s"), and infinity.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#TimeoutStartSec=">TimeoutStartSec=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>The time a services needs to start can be limited</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#TimeoutStopSec=">TimeoutStopSec=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>The time a services needs to stop can be limited</td>
 </tr>
 <tr>
@@ -1225,7 +1225,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#TimeoutSec=">TimeoutSec=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>The time a services needs to start/stop can be limited</td>
 </tr>
 <tr>
@@ -1240,7 +1240,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#Restart=">Restart=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>All restart settings are supported: no, always, on-success, on-failure, on-abnormal, on-abort, on-watchdog. Note: on-watchdog currently never triggers since rustysd does not yet implement watchdog support.</td>
 </tr>
 <tr>
@@ -1310,22 +1310,22 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenStream=">ListenStream=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Opening streaming sockets is supported. The whole IPv4 and IPv6 stuff needs some attention though</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenDatagram=">ListenDatagram=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Opening datagram sockets is supported. The whole IPv4 and IPv6 stuff needs some attention though</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenSequentialPacket=">ListenSequentialPacket=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Opening sequential packet sockets is supported.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenFIFO=">ListenFIFO=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Opening FIFOs is supported. Filemode setting is not supported as of yet though.</td>
 </tr>
 <tr>
@@ -1555,12 +1555,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#TimeoutSec=">TimeoutSec=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>The time a services needs to start/stop can be limited</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#Service=">Service=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Adding a socket explicitly to a service is supported.</td>
 </tr>
 <tr>
@@ -1575,7 +1575,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#FileDescriptorName=">FileDescriptorName=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Naming the sockets for passing in $LISTEN_FDNAMES is supported</td>
 </tr>
 <tr>
@@ -1680,22 +1680,22 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Description=">Description=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Descriptions are read and will be displayed by the control interface</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Documentation=">Documentation=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Wants=">Wants=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Specifying which units to pull in is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Requires=">Requires=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Specifying which units to pull in is supported</td>
 </tr>
 <tr>
@@ -1715,17 +1715,17 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Conflicts=">Conflicts=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Before=">Before=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Ordering of units according to before/after relation is supported fully</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#After=">After=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Ordering of units according to before/after relation is supported fully</td>
 </tr>
 <tr>
@@ -1785,7 +1785,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#DefaultDependencies=">DefaultDependencies=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
@@ -1795,12 +1795,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#FailureAction=">FailureAction=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>All action values supported (none, exit, reboot, poweroff, halt, kexec and their -force/-immediate variants). The -immediate variants call the reboot(2) syscall directly on Linux.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#SuccessAction=">SuccessAction=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>All action values supported (none, exit, reboot, poweroff, halt, kexec and their -force/-immediate variants). The -immediate variants call the reboot(2) syscall directly on Linux.</td>
 </tr>
 <tr>
@@ -1910,7 +1910,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionPathExists=">ConditionPathExists=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td></td>
 </tr>
 <tr>
@@ -2095,17 +2095,17 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#WantedBy=">WantedBy=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Specifying which units pull this unit in is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#RequiredBy=">RequiredBy=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Specifying which units pull this unit in is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Also=">Also=</a></td>
-  <td>✅</td>
+  <td>✔️</td>
   <td>Also= units are treated as Wants= dependencies</td>
 </tr>
 <tr>
