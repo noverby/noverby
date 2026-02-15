@@ -92,6 +92,8 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 keyring_mode: conf.srvc.keyring_mode,
                 device_allow: conf.srvc.device_allow,
                 watchdog_sec: conf.srvc.watchdog_sec,
+                ip_address_allow: conf.srvc.ip_address_allow,
+                ip_address_deny: conf.srvc.ip_address_deny,
             },
             state: RwLock::new(ServiceState {
                 common: CommonState::default(),
