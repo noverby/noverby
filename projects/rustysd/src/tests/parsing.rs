@@ -6523,6 +6523,344 @@ fn test_part_of_with_requires_and_after() {
     );
 }
 
+// ── BindsTo= parsing tests ───────────────────────────────────────────
+
+#[test]
+fn test_binds_to_empty_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.binds_to.is_empty(),
+        "BindsTo should be empty by default"
+    );
+}
+
+#[test]
+fn test_binds_to_single() {
+    let test_service_str = r#"
+    [Unit]
+    BindsTo = network.target
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.binds_to,
+        vec!["network.target".to_owned()]
+    );
+}
+
+#[test]
+fn test_binds_to_multiple_entries() {
+    let test_service_str = r#"
+    [Unit]
+    BindsTo = network.target
+    BindsTo = graphical.target
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.binds_to,
+        vec!["network.target".to_owned(), "graphical.target".to_owned(),]
+    );
+}
+
+#[test]
+fn test_binds_to_space_separated() {
+    let test_service_str = r#"
+    [Unit]
+    BindsTo = network.target graphical.target
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.binds_to,
+        vec!["network.target".to_owned(), "graphical.target".to_owned(),]
+    );
+}
+
+#[test]
+fn test_binds_to_comma_separated() {
+    let test_service_str = r#"
+    [Unit]
+    BindsTo = network.target,graphical.target
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.binds_to,
+        vec!["network.target".to_owned(), "graphical.target".to_owned(),]
+    );
+}
+
+#[test]
+fn test_binds_to_with_other_dependencies() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A bound helper
+    BindsTo = main-app.service
+    After = main-app.service
+    Wants = some.service
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/helper.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.binds_to,
+        vec!["main-app.service".to_owned()]
+    );
+    assert_eq!(
+        service.common.unit.after,
+        vec!["main-app.service".to_owned()]
+    );
+    assert_eq!(service.common.unit.wants, vec!["some.service".to_owned()]);
+}
+
+#[test]
+fn test_binds_to_with_requires_and_part_of() {
+    // Common systemd pattern: BindsTo= combined with After= and PartOf=
+    let test_service_str = r#"
+    [Unit]
+    Description = Helper for main app
+    BindsTo = main-app.service
+    PartOf = main-app.service
+    After = main-app.service
+
+    [Service]
+    ExecStart = /usr/bin/helper
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/helper.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.binds_to,
+        vec!["main-app.service".to_owned()]
+    );
+    assert_eq!(
+        service.common.unit.part_of,
+        vec!["main-app.service".to_owned()]
+    );
+    assert_eq!(
+        service.common.unit.after,
+        vec!["main-app.service".to_owned()]
+    );
+}
+
+#[test]
+fn test_binds_to_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    Description = A sub-target
+    BindsTo = graphical.target
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        target.common.unit.binds_to,
+        vec!["graphical.target".to_owned()]
+    );
+}
+
+#[test]
+fn test_binds_to_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    BindsTo = myapp.service
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.common.unit.binds_to,
+        vec!["myapp.service".to_owned()]
+    );
+}
+
+#[test]
+fn test_binds_to_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    Description = Network helper
+    BindsTo = network.target
+
+    [Service]
+    ExecStart = /usr/bin/testcmd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+
+    assert_eq!(
+        unit.common.dependencies.binds_to,
+        vec![crate::units::UnitId {
+            name: "network.target".to_owned(),
+            kind: crate::units::UnitIdKind::Target,
+        }]
+    );
+}
+
+#[test]
+fn test_binds_to_empty_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /usr/bin/testcmd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+
+    assert!(
+        unit.common.dependencies.binds_to.is_empty(),
+        "BindsTo should be empty when not specified"
+    );
+    assert!(
+        unit.common.dependencies.bound_by.is_empty(),
+        "BoundBy should be empty initially"
+    );
+}
+
+#[test]
+fn test_binds_to_included_in_refs_by_name() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    BindsTo = network.target
+    DefaultDependencies = no
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+
+    let target_id = crate::units::UnitId {
+        name: "network.target".to_owned(),
+        kind: crate::units::UnitIdKind::Target,
+    };
+    assert!(
+        unit.common.unit.refs_by_name.contains(&target_id),
+        "refs_by_name should include BindsTo unit IDs"
+    );
+}
+
+#[test]
+fn test_binds_to_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    BindsTo = network.target
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "BindsTo= should be recognised and not produce a parsing error"
+    );
+}
+
 // ── Slice= parsing tests ──────────────────────────────────────────────
 
 #[test]

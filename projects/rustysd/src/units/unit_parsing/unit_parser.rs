@@ -209,6 +209,7 @@ pub fn parse_unit_section(
     let success_action = section.remove("SUCCESSACTION");
     let failure_action = section.remove("FAILUREACTION");
     let part_of = section.remove("PARTOF");
+    let binds_to = section.remove("BINDSTO");
     let ignore_on_isolate = section.remove("IGNOREONISOLATE");
     let requires_mounts_for = section.remove("REQUIRESMOUNTSFOR");
     let stop_when_unneeded = section.remove("STOPWHENUNNEEDED");
@@ -544,6 +545,7 @@ pub fn parse_unit_section(
         after: after_list,
         before: map_tuples_to_second(split_list_values(before.unwrap_or_default())),
         part_of: map_tuples_to_second(split_list_values(part_of.unwrap_or_default())),
+        binds_to: map_tuples_to_second(split_list_values(binds_to.unwrap_or_default())),
         default_dependencies,
         ignore_on_isolate,
         conditions,

@@ -746,6 +746,12 @@ pub struct ParsedUnitSection {
     /// Matches systemd's `PartOf=` setting.
     pub part_of: Vec<String>,
 
+    /// Units this unit "binds to". Similar to `Requires=`, but additionally
+    /// causes this unit to stop when the listed units stop (even cleanly).
+    /// Matches systemd's `BindsTo=` setting.
+    /// Parsed and stored; stop-propagation not yet enforced at runtime.
+    pub binds_to: Vec<String>,
+
     /// Whether to add implicit default dependencies (e.g. on sysinit.target / shutdown.target).
     /// Defaults to true, matching systemd behavior.
     pub default_dependencies: bool,
@@ -848,6 +854,7 @@ impl Default for ParsedUnitSection {
             before: Vec::new(),
             after: Vec::new(),
             part_of: Vec::new(),
+            binds_to: Vec::new(),
             default_dependencies: true,
             ignore_on_isolate: false,
             conditions: Vec::new(),
