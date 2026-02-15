@@ -482,6 +482,7 @@ pub fn parse_exec_section(
     let private_tmp = section.remove("PRIVATETMP");
     let private_devices = section.remove("PRIVATEDEVICES");
     let private_network = section.remove("PRIVATENETWORK");
+    let private_users = section.remove("PRIVATEUSERS");
 
     let user = match user {
         None => None,
@@ -814,6 +815,21 @@ pub fn parse_exec_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "PrivateNetwork".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        // systemd default: false
+        None => false,
+    };
+
+    let private_users = match private_users {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "PrivateUsers".to_owned(),
                     super::map_tuples_to_second(vec),
                 ));
             }
@@ -1528,6 +1544,7 @@ pub fn parse_exec_section(
         private_tmp,
         private_devices,
         private_network,
+        private_users,
     })
 }
 

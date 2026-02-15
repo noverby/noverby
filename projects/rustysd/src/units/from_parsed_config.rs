@@ -230,6 +230,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             private_tmp: parsed.private_tmp,
             private_devices: parsed.private_devices,
             private_network: parsed.private_network,
+            private_users: parsed.private_users,
         })
     }
 }

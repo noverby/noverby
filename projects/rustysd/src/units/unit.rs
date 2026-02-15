@@ -1148,6 +1148,13 @@ pub struct ExecConfig {
     /// external network connectivity). Defaults to false. Parsed and stored;
     /// no runtime namespace enforcement yet. See systemd.exec(5).
     pub private_network: bool,
+    /// PrivateUsers= — if true, sets up a new user namespace for the
+    /// executed processes and configures a minimal user/group mapping:
+    /// the root user/group as well as the unit's own user/group are
+    /// mapped to themselves, everything else is mapped to the "nobody"
+    /// user/group. Defaults to false. Parsed and stored; no runtime
+    /// user-namespace enforcement yet. See systemd.exec(5).
+    pub private_users: bool,
 }
 
 #[cfg(target_os = "linux")]
