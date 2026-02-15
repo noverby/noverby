@@ -4814,3 +4814,858 @@ fn test_restart_on_success_preserved_after_unit_conversion() {
         panic!("Expected Specific::Service");
     }
 }
+
+// ============================================================
+// SuccessAction= and FailureAction= parsing tests
+// ============================================================
+
+#[test]
+fn test_success_action_defaults_to_none() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A simple service
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::None,
+        "SuccessAction should default to None"
+    );
+}
+
+#[test]
+fn test_failure_action_defaults_to_none() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A simple service
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.failure_action,
+        crate::units::UnitAction::None,
+        "FailureAction should default to None"
+    );
+}
+
+#[test]
+fn test_success_action_none() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = none
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::None,
+    );
+}
+
+#[test]
+fn test_success_action_exit() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = exit
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::Exit,
+    );
+}
+
+#[test]
+fn test_success_action_exit_force() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = exit-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::ExitForce,
+    );
+}
+
+#[test]
+fn test_success_action_reboot() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = reboot
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::Reboot,
+    );
+}
+
+#[test]
+fn test_success_action_reboot_force() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = reboot-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::RebootForce,
+    );
+}
+
+#[test]
+fn test_success_action_reboot_immediate() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = reboot-immediate
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::RebootImmediate,
+    );
+}
+
+#[test]
+fn test_success_action_poweroff() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = poweroff
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::Poweroff,
+    );
+}
+
+#[test]
+fn test_success_action_poweroff_force() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = poweroff-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::PoweroffForce,
+    );
+}
+
+#[test]
+fn test_success_action_poweroff_immediate() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = poweroff-immediate
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::PoweroffImmediate,
+    );
+}
+
+#[test]
+fn test_success_action_halt() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = halt
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::Halt,
+    );
+}
+
+#[test]
+fn test_success_action_halt_force() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = halt-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::HaltForce,
+    );
+}
+
+#[test]
+fn test_success_action_halt_immediate() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = halt-immediate
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::HaltImmediate,
+    );
+}
+
+#[test]
+fn test_success_action_kexec() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = kexec
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::Kexec,
+    );
+}
+
+#[test]
+fn test_success_action_kexec_force() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = kexec-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::KexecForce,
+    );
+}
+
+#[test]
+fn test_success_action_kexec_immediate() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = kexec-immediate
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::KexecImmediate,
+    );
+}
+
+#[test]
+fn test_failure_action_reboot() {
+    let test_service_str = r#"
+    [Unit]
+    FailureAction = reboot
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.failure_action,
+        crate::units::UnitAction::Reboot,
+    );
+}
+
+#[test]
+fn test_failure_action_reboot_force() {
+    let test_service_str = r#"
+    [Unit]
+    FailureAction = reboot-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.failure_action,
+        crate::units::UnitAction::RebootForce,
+    );
+}
+
+#[test]
+fn test_failure_action_poweroff() {
+    let test_service_str = r#"
+    [Unit]
+    FailureAction = poweroff
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.failure_action,
+        crate::units::UnitAction::Poweroff,
+    );
+}
+
+#[test]
+fn test_failure_action_exit_force() {
+    let test_service_str = r#"
+    [Unit]
+    FailureAction = exit-force
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.failure_action,
+        crate::units::UnitAction::ExitForce,
+    );
+}
+
+#[test]
+fn test_success_action_case_insensitive() {
+    let cases = vec![
+        ("reboot", crate::units::UnitAction::Reboot),
+        ("REBOOT", crate::units::UnitAction::Reboot),
+        ("Reboot", crate::units::UnitAction::Reboot),
+        ("reboot-force", crate::units::UnitAction::RebootForce),
+        ("REBOOT-FORCE", crate::units::UnitAction::RebootForce),
+        ("Reboot-Force", crate::units::UnitAction::RebootForce),
+        (
+            "reboot-immediate",
+            crate::units::UnitAction::RebootImmediate,
+        ),
+        (
+            "REBOOT-IMMEDIATE",
+            crate::units::UnitAction::RebootImmediate,
+        ),
+        ("poweroff", crate::units::UnitAction::Poweroff),
+        ("POWEROFF", crate::units::UnitAction::Poweroff),
+        ("poweroff-force", crate::units::UnitAction::PoweroffForce),
+        ("POWEROFF-FORCE", crate::units::UnitAction::PoweroffForce),
+    ];
+
+    for (input, expected) in &cases {
+        let test_service_str = format!(
+            r#"
+            [Unit]
+            SuccessAction = {}
+            [Service]
+            ExecStart = /bin/myservice
+            "#,
+            input
+        );
+
+        let parsed_file = crate::units::parse_file(&test_service_str).unwrap();
+        let service = crate::units::parse_service(
+            parsed_file,
+            &std::path::PathBuf::from("/path/to/unitfile.service"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            &service.common.unit.success_action, expected,
+            "SuccessAction={} should parse as {:?}",
+            input, expected
+        );
+    }
+}
+
+#[test]
+fn test_failure_action_case_insensitive() {
+    let cases = vec![
+        ("reboot-force", crate::units::UnitAction::RebootForce),
+        ("REBOOT-FORCE", crate::units::UnitAction::RebootForce),
+        ("Reboot-Force", crate::units::UnitAction::RebootForce),
+    ];
+
+    for (input, expected) in &cases {
+        let test_service_str = format!(
+            r#"
+            [Unit]
+            FailureAction = {}
+            [Service]
+            ExecStart = /bin/myservice
+            "#,
+            input
+        );
+
+        let parsed_file = crate::units::parse_file(&test_service_str).unwrap();
+        let service = crate::units::parse_service(
+            parsed_file,
+            &std::path::PathBuf::from("/path/to/unitfile.service"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            &service.common.unit.failure_action, expected,
+            "FailureAction={} should parse as {:?}",
+            input, expected
+        );
+    }
+}
+
+#[test]
+fn test_success_action_unknown_value_errors() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessAction = bogus
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "SuccessAction=bogus should produce a parsing error"
+    );
+}
+
+#[test]
+fn test_failure_action_unknown_value_errors() {
+    let test_service_str = r#"
+    [Unit]
+    FailureAction = bogus
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "FailureAction=bogus should produce a parsing error"
+    );
+}
+
+#[test]
+fn test_success_and_failure_action_both_set() {
+    let test_service_str = r#"
+    [Unit]
+    Description = Reboot service
+    SuccessAction = reboot
+    FailureAction = reboot-force
+    [Service]
+    Type = oneshot
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::Reboot,
+    );
+    assert_eq!(
+        service.common.unit.failure_action,
+        crate::units::UnitAction::RebootForce,
+    );
+    assert_eq!(service.common.unit.description, "Reboot service");
+}
+
+#[test]
+fn test_no_service_section_with_success_action() {
+    // This is the systemd-reboot.service pattern: no [Service] section,
+    // SuccessAction= in [Unit] triggers the system action when the
+    // exec-less oneshot "succeeds" immediately.
+    let test_service_str = r#"
+    [Unit]
+    Description=System Reboot
+    DefaultDependencies=no
+    Requires=shutdown.target
+    After=shutdown.target
+    SuccessAction=reboot
+    FailureAction=reboot-force
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/systemd-reboot.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.description, "System Reboot");
+    assert!(!service.common.unit.default_dependencies);
+    assert_eq!(service.srvc.exec, None);
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::OneShot);
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::Reboot,
+    );
+    assert_eq!(
+        service.common.unit.failure_action,
+        crate::units::UnitAction::RebootForce,
+    );
+}
+
+#[test]
+fn test_success_action_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    Description = Action test
+    SuccessAction = poweroff
+    FailureAction = reboot-immediate
+    [Service]
+    ExecStart = /usr/bin/testcmd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+
+    assert_eq!(
+        unit.common.unit.success_action,
+        crate::units::UnitAction::Poweroff,
+    );
+    assert_eq!(
+        unit.common.unit.failure_action,
+        crate::units::UnitAction::RebootImmediate,
+    );
+}
+
+#[test]
+fn test_all_action_variants_parse() {
+    let variants = vec![
+        ("none", crate::units::UnitAction::None),
+        ("exit", crate::units::UnitAction::Exit),
+        ("exit-force", crate::units::UnitAction::ExitForce),
+        ("reboot", crate::units::UnitAction::Reboot),
+        ("reboot-force", crate::units::UnitAction::RebootForce),
+        (
+            "reboot-immediate",
+            crate::units::UnitAction::RebootImmediate,
+        ),
+        ("poweroff", crate::units::UnitAction::Poweroff),
+        ("poweroff-force", crate::units::UnitAction::PoweroffForce),
+        (
+            "poweroff-immediate",
+            crate::units::UnitAction::PoweroffImmediate,
+        ),
+        ("halt", crate::units::UnitAction::Halt),
+        ("halt-force", crate::units::UnitAction::HaltForce),
+        ("halt-immediate", crate::units::UnitAction::HaltImmediate),
+        ("kexec", crate::units::UnitAction::Kexec),
+        ("kexec-force", crate::units::UnitAction::KexecForce),
+        ("kexec-immediate", crate::units::UnitAction::KexecImmediate),
+    ];
+
+    for (input, expected) in &variants {
+        let test_service_str = format!(
+            r#"
+            [Unit]
+            SuccessAction = {}
+            [Service]
+            ExecStart = /bin/myservice
+            "#,
+            input
+        );
+
+        let parsed_file = crate::units::parse_file(&test_service_str).unwrap();
+        let service = crate::units::parse_service(
+            parsed_file,
+            &std::path::PathBuf::from("/path/to/test.service"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            &service.common.unit.success_action, expected,
+            "SuccessAction={} should parse as {:?}",
+            input, expected
+        );
+    }
+}
+
+#[test]
+fn test_all_action_variants_are_distinct() {
+    let variants: Vec<crate::units::UnitAction> = vec![
+        crate::units::UnitAction::None,
+        crate::units::UnitAction::Exit,
+        crate::units::UnitAction::ExitForce,
+        crate::units::UnitAction::Reboot,
+        crate::units::UnitAction::RebootForce,
+        crate::units::UnitAction::RebootImmediate,
+        crate::units::UnitAction::Poweroff,
+        crate::units::UnitAction::PoweroffForce,
+        crate::units::UnitAction::PoweroffImmediate,
+        crate::units::UnitAction::Halt,
+        crate::units::UnitAction::HaltForce,
+        crate::units::UnitAction::HaltImmediate,
+        crate::units::UnitAction::Kexec,
+        crate::units::UnitAction::KexecForce,
+        crate::units::UnitAction::KexecImmediate,
+    ];
+
+    for (i, a) in variants.iter().enumerate() {
+        for (j, b) in variants.iter().enumerate() {
+            if i != j {
+                assert_ne!(
+                    a, b,
+                    "UnitAction variants {:?} and {:?} should be distinct",
+                    a, b
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_success_action_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    Description = A target with success action
+    SuccessAction = exit
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        target.common.unit.success_action,
+        crate::units::UnitAction::Exit,
+    );
+    assert_eq!(
+        target.common.unit.failure_action,
+        crate::units::UnitAction::None,
+    );
+}
+
+#[test]
+fn test_success_action_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    Description = A socket with failure action
+    FailureAction = reboot
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.common.unit.failure_action,
+        crate::units::UnitAction::Reboot,
+    );
+    assert_eq!(
+        socket.common.unit.success_action,
+        crate::units::UnitAction::None,
+    );
+}
+
+#[test]
+fn test_no_service_section_defaults_actions_to_none() {
+    // Service units with no [Service] section should still parse and
+    // default both actions to None when not specified.
+    let test_service_str = r#"
+    [Unit]
+    Description = Minimal unit
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/minimal.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec, None);
+    assert_eq!(service.srvc.srcv_type, crate::units::ServiceType::OneShot);
+    assert_eq!(
+        service.common.unit.success_action,
+        crate::units::UnitAction::None,
+    );
+    assert_eq!(
+        service.common.unit.failure_action,
+        crate::units::UnitAction::None,
+    );
+}

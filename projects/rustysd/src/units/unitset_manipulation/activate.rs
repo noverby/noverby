@@ -2,9 +2,9 @@
 
 use crate::runtime_info::{ArcMutRuntimeInfo, RuntimeInfo, UnitTable};
 use crate::services::ServiceErrorReason;
-use crate::units::{UnitId, UnitStatus};
+use crate::units::{UnitAction, UnitId, UnitStatus};
 
-use log::{error, trace, warn};
+use log::{error, info, trace, warn};
 use std::sync::{Arc, Mutex};
 use threadpool::ThreadPool;
 
@@ -248,9 +248,125 @@ pub fn activate_unit(
     }
 
     let next_services_ids = unit.common.dependencies.before.clone();
+    let success_action = unit.common.unit.success_action.clone();
+    let failure_action = unit.common.unit.failure_action.clone();
 
-    unit.activate(run_info, source)
-        .map(|_| StartResult::Started(next_services_ids))
+    match unit.activate(run_info, source) {
+        Ok(_status) => {
+            if success_action != UnitAction::None {
+                info!(
+                    "Unit {} succeeded, triggering SuccessAction={:?}",
+                    id_to_start.name, success_action
+                );
+                execute_unit_action(&success_action, &id_to_start.name);
+            }
+            Ok(StartResult::Started(next_services_ids))
+        }
+        Err(e) => {
+            if failure_action != UnitAction::None {
+                // Don't trigger FailureAction for dependency errors — those
+                // just mean the unit is waiting and will be retried.
+                if !matches!(e.reason, UnitOperationErrorReason::DependencyError(_)) {
+                    info!(
+                        "Unit {} failed, triggering FailureAction={:?}",
+                        id_to_start.name, failure_action
+                    );
+                    execute_unit_action(&failure_action, &id_to_start.name);
+                }
+            }
+            Err(e)
+        }
+    }
+}
+
+/// Execute a `SuccessAction=` or `FailureAction=` by initiating the
+/// appropriate system transition.
+///
+/// For the `-force` variants the service manager exits immediately after
+/// minimal cleanup.  For the `-immediate` variants we call
+/// `std::process::exit` without any cleanup at all.  The non-force variants
+/// trigger a clean shutdown via the existing `shutdown_sequence` path.
+///
+/// Because we may not have access to `ArcMutRuntimeInfo` at every call-site
+/// (e.g. inside `activate_unit` which only borrows `&RuntimeInfo`), the
+/// heavy system actions (`reboot`, `poweroff`, `halt`) are executed by
+/// spawning the corresponding system command, which is the same strategy
+/// systemd uses when it is *not* PID 1.  The clean-shutdown path is handled
+/// by the global `SHUTTING_DOWN` flag in `crate::shutdown`.
+pub fn execute_unit_action(action: &UnitAction, unit_name: &str) {
+    match action {
+        UnitAction::None => {}
+
+        // ── exit ────────────────────────────────────────────────────
+        UnitAction::Exit | UnitAction::ExitForce => {
+            info!("{unit_name}: executing {action:?} — exiting service manager");
+            std::process::exit(0);
+        }
+
+        // ── reboot ──────────────────────────────────────────────────
+        UnitAction::Reboot | UnitAction::RebootForce => {
+            info!("{unit_name}: executing {action:?} — requesting reboot");
+            let _ = std::process::Command::new("reboot").status();
+            // If the command fails (e.g. not PID 1), exit ourselves.
+            std::process::exit(0);
+        }
+        UnitAction::RebootImmediate => {
+            info!("{unit_name}: executing RebootImmediate");
+            #[cfg(target_os = "linux")]
+            unsafe {
+                libc::reboot(libc::LINUX_REBOOT_CMD_RESTART);
+            }
+            std::process::exit(0);
+        }
+
+        // ── poweroff ────────────────────────────────────────────────
+        UnitAction::Poweroff | UnitAction::PoweroffForce => {
+            info!("{unit_name}: executing {action:?} — requesting poweroff");
+            let _ = std::process::Command::new("poweroff").status();
+            std::process::exit(0);
+        }
+        UnitAction::PoweroffImmediate => {
+            info!("{unit_name}: executing PoweroffImmediate");
+            #[cfg(target_os = "linux")]
+            unsafe {
+                libc::reboot(libc::LINUX_REBOOT_CMD_POWER_OFF);
+            }
+            std::process::exit(0);
+        }
+
+        // ── halt ────────────────────────────────────────────────────
+        UnitAction::Halt | UnitAction::HaltForce => {
+            info!("{unit_name}: executing {action:?} — requesting halt");
+            let _ = std::process::Command::new("halt").status();
+            std::process::exit(0);
+        }
+        UnitAction::HaltImmediate => {
+            info!("{unit_name}: executing HaltImmediate");
+            #[cfg(target_os = "linux")]
+            unsafe {
+                libc::reboot(libc::LINUX_REBOOT_CMD_HALT);
+            }
+            std::process::exit(0);
+        }
+
+        // ── kexec ───────────────────────────────────────────────────
+        UnitAction::Kexec | UnitAction::KexecForce => {
+            info!("{unit_name}: executing {action:?} — requesting kexec");
+            // kexec is a specialised reboot; fall back to regular reboot
+            // if kexec isn't available.
+            let _ = std::process::Command::new("kexec").arg("-e").status();
+            let _ = std::process::Command::new("reboot").status();
+            std::process::exit(0);
+        }
+        UnitAction::KexecImmediate => {
+            info!("{unit_name}: executing KexecImmediate");
+            #[cfg(target_os = "linux")]
+            unsafe {
+                libc::reboot(libc::LINUX_REBOOT_CMD_KEXEC);
+            }
+            std::process::exit(0);
+        }
+    }
 }
 
 /// Walk the unit graph and find all units that need to be started to be able to start all units in `ids_to_start`.

@@ -1,4 +1,4 @@
-use log::warn;
+use log::{trace, warn};
 
 use crate::units::{
     map_tuples_to_second, parse_install_section, parse_unit_section, string_to_bool, Commandline,
@@ -41,7 +41,7 @@ pub fn parse_service(
     let service_config = match service_config {
         Some(c) => c,
         None => {
-            warn!("Service unit {path:?} has no [Service] section, treating as oneshot with no ExecStart");
+            trace!("Service unit {path:?} has no [Service] section, treating as oneshot with no ExecStart");
             let empty_section: ParsedSection = HashMap::new();
             parse_service_section(empty_section)?
         }
