@@ -4,9 +4,9 @@ use crate::runtime_info::RuntimeInfo;
 use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
-    acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KillMode, NotifyKind,
-    ResourceLimit, ServiceRestart, ServiceType, StandardInput, StatusStarted, StatusStopped,
-    StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition, UnitId, UnitIdKind,
+    acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KillMode, MemoryPressureWatch,
+    NotifyKind, ResourceLimit, ServiceRestart, ServiceType, StandardInput, StatusStarted,
+    StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition, UnitId, UnitIdKind,
     UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode,
 };
 
@@ -1056,6 +1056,11 @@ pub struct ServiceConfig {
     /// services that need to be notified their connection has been severed.
     /// Defaults to false. See systemd.kill(5).
     pub send_sighup: bool,
+
+    /// MemoryPressureWatch= — configures whether to watch for memory pressure
+    /// events via PSI. Parsed and stored; no runtime enforcement.
+    /// See systemd.resource-control(5).
+    pub memory_pressure_watch: MemoryPressureWatch,
 }
 
 /// The immutable config of a socket unit

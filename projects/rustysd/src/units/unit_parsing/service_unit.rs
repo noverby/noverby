@@ -2,9 +2,9 @@ use log::{trace, warn};
 
 use crate::units::{
     map_tuples_to_second, parse_install_section, parse_unit_section, string_to_bool, Commandline,
-    CommandlinePrefix, Delegate, KillMode, NotifyKind, ParsedCommonConfig, ParsedFile,
-    ParsedSection, ParsedServiceConfig, ParsedServiceSection, ParsingErrorReason, RLimitValue,
-    ResourceLimit, ServiceRestart, ServiceType, SuccessExitStatus, TasksMax, Timeout,
+    CommandlinePrefix, Delegate, KillMode, MemoryPressureWatch, NotifyKind, ParsedCommonConfig,
+    ParsedFile, ParsedSection, ParsedServiceConfig, ParsedServiceSection, ParsingErrorReason,
+    RLimitValue, ResourceLimit, ServiceRestart, ServiceType, SuccessExitStatus, TasksMax, Timeout,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -243,6 +243,7 @@ fn parse_service_section(
     let remain_after_exit = section.remove("REMAINAFTEREXIT");
     let success_exit_status = section.remove("SUCCESSEXITSTATUS");
     let send_sighup = section.remove("SENDSIGHUP");
+    let memory_pressure_watch = section.remove("MEMORYPRESSUREWATCH");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -653,6 +654,30 @@ fn parse_service_section(
         stoptimeout,
         generaltimeout,
         send_sighup,
+        memory_pressure_watch: match memory_pressure_watch {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.to_lowercase().as_str() {
+                        "auto" | "" => MemoryPressureWatch::Auto,
+                        "on" | "yes" | "true" | "1" => MemoryPressureWatch::On,
+                        "off" | "no" | "false" | "0" => MemoryPressureWatch::Off,
+                        "skip" => MemoryPressureWatch::Skip,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "MemoryPressureWatch".to_owned(),
+                                other.to_owned(),
+                            ))
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "MemoryPressureWatch".to_owned(),
+                        map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => MemoryPressureWatch::default(),
+        },
         sockets: map_tuples_to_second(super::split_list_values(sockets.unwrap_or_default())),
         slice: slice.and_then(|vec| {
             if vec.len() == 1 {
