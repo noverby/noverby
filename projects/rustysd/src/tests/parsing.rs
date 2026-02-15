@@ -7288,3 +7288,258 @@ fn test_success_exit_status_no_unsupported_warning() {
         vec![42]
     );
 }
+
+// ── .mount in dependency lists ─────────────────────────────────────────
+
+#[test]
+fn test_mount_unit_id_conversion() {
+    use std::convert::TryInto;
+
+    let id: Result<crate::units::UnitId, _> =
+        <&str as TryInto<crate::units::UnitId>>::try_into("-.mount");
+    assert!(id.is_ok());
+    let id = id.unwrap();
+    assert_eq!(id.name, "-.mount");
+    assert_eq!(id.kind, crate::units::UnitIdKind::Mount);
+}
+
+#[test]
+fn test_mount_unit_id_named() {
+    use std::convert::TryInto;
+
+    let id: crate::units::UnitId = "home.mount".try_into().unwrap();
+    assert_eq!(id.name, "home.mount");
+    assert_eq!(id.kind, crate::units::UnitIdKind::Mount);
+}
+
+#[test]
+fn test_mount_unit_id_nested_path() {
+    use std::convert::TryInto;
+
+    let id: crate::units::UnitId = "var-log.mount".try_into().unwrap();
+    assert_eq!(id.name, "var-log.mount");
+    assert_eq!(id.kind, crate::units::UnitIdKind::Mount);
+}
+
+#[test]
+fn test_mount_in_after_dependency() {
+    let test_service_str = r#"
+    [Unit]
+    After = -.mount
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.after, vec!["-.mount".to_owned()]);
+}
+
+#[test]
+fn test_mount_in_requires_dependency() {
+    let test_service_str = r#"
+    [Unit]
+    Requires = home.mount
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.requires, vec!["home.mount".to_owned()]);
+}
+
+#[test]
+fn test_mount_in_wants_dependency() {
+    let test_service_str = r#"
+    [Unit]
+    Wants = var-log.mount
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.wants, vec!["var-log.mount".to_owned()]);
+}
+
+#[test]
+fn test_mount_in_after_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    After = -.mount
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    let mount_id = crate::units::UnitId {
+        name: "-.mount".to_owned(),
+        kind: crate::units::UnitIdKind::Mount,
+    };
+    assert!(unit.common.dependencies.after.contains(&mount_id));
+}
+
+#[test]
+fn test_mount_mixed_with_other_deps() {
+    let test_service_str = r#"
+    [Unit]
+    After = -.mount network.target
+    Wants = home.mount
+    Requires = var-log.mount basic.target
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.common.unit.after.contains(&"-.mount".to_owned()));
+    assert!(service
+        .common
+        .unit
+        .after
+        .contains(&"network.target".to_owned()));
+    assert!(service.common.unit.wants.contains(&"home.mount".to_owned()));
+    assert!(service
+        .common
+        .unit
+        .requires
+        .contains(&"var-log.mount".to_owned()));
+    assert!(service
+        .common
+        .unit
+        .requires
+        .contains(&"basic.target".to_owned()));
+}
+
+#[test]
+fn test_mount_in_refs_by_name_after_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    After = -.mount
+    Requires = home.mount
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    let root_mount_id = crate::units::UnitId {
+        name: "-.mount".to_owned(),
+        kind: crate::units::UnitIdKind::Mount,
+    };
+    let home_mount_id = crate::units::UnitId {
+        name: "home.mount".to_owned(),
+        kind: crate::units::UnitIdKind::Mount,
+    };
+    assert!(unit.common.unit.refs_by_name.contains(&root_mount_id));
+    assert!(unit.common.unit.refs_by_name.contains(&home_mount_id));
+}
+
+#[test]
+fn test_mount_mixed_with_slices_and_targets() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    After = -.mount user.slice
+    Requires = network.target home.mount
+
+    [Service]
+    ExecStart = /bin/true
+    Slice = system.slice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    let mount_id = crate::units::UnitId {
+        name: "-.mount".to_owned(),
+        kind: crate::units::UnitIdKind::Mount,
+    };
+    let slice_id = crate::units::UnitId {
+        name: "user.slice".to_owned(),
+        kind: crate::units::UnitIdKind::Slice,
+    };
+    let target_id = crate::units::UnitId {
+        name: "network.target".to_owned(),
+        kind: crate::units::UnitIdKind::Target,
+    };
+    let home_mount_id = crate::units::UnitId {
+        name: "home.mount".to_owned(),
+        kind: crate::units::UnitIdKind::Mount,
+    };
+    assert!(unit.common.dependencies.after.contains(&mount_id));
+    assert!(unit.common.dependencies.after.contains(&slice_id));
+    assert!(unit.common.dependencies.requires.contains(&target_id));
+    assert!(unit.common.dependencies.requires.contains(&home_mount_id));
+}
+
+#[test]
+fn test_mount_is_mount_method() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    // A .service unit should not be a mount
+    assert!(!unit.is_mount());
+}

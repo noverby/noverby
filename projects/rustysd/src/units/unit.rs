@@ -377,6 +377,9 @@ impl Unit {
     pub const fn is_slice(&self) -> bool {
         matches!(self.id.kind, UnitIdKind::Slice)
     }
+    pub const fn is_mount(&self) -> bool {
+        matches!(self.id.kind, UnitIdKind::Mount)
+    }
 
     pub fn name_without_suffix(&self) -> String {
         let split: Vec<_> = self.id.name.split('.').collect();
