@@ -245,6 +245,7 @@ fn make_common_from_parsed(
             success_action: unit.success_action,
             failure_action: unit.failure_action,
             aliases: install.alias,
+            default_instance: install.default_instance,
         },
         dependencies: Dependencies {
             wants,

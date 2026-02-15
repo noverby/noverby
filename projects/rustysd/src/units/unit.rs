@@ -736,6 +736,11 @@ pub struct UnitConfig {
     /// If true, this unit will not be stopped when isolating to another target.
     /// Defaults to false, matching systemd's `IgnoreOnIsolate=` setting.
     pub ignore_on_isolate: bool,
+
+    /// Default instance name for template units (e.g. `foo@.service`).
+    /// When a template is enabled without an explicit instance, this value is used.
+    /// Matches systemd's `DefaultInstance=` setting in the `[Install]` section.
+    pub default_instance: Option<String>,
 }
 
 #[derive(Debug, Clone)]
