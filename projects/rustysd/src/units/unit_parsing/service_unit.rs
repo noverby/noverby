@@ -221,6 +221,7 @@ fn parse_service_section(
     mut section: ParsedSection,
 ) -> Result<ParsedServiceSection, ParsingErrorReason> {
     let exec = section.remove("EXECSTART");
+    let reload = section.remove("EXECRELOAD");
     let stop = section.remove("EXECSTOP");
     let stoppost = section.remove("EXECSTOPPOST");
     let startpre = section.remove("EXECSTARTPRE");
@@ -532,6 +533,10 @@ fn parse_service_section(
         None => NotifyKind::Main,
     };
 
+    let reload = match reload {
+        Some(vec) => parse_cmdlines(&vec)?,
+        None => Vec::new(),
+    };
     let stop = match stop {
         Some(vec) => parse_cmdlines(&vec)?,
         None => Vec::new(),
@@ -651,6 +656,7 @@ fn parse_service_section(
         dbus_name,
         pid_file,
         exec,
+        reload,
         stop,
         stoppost,
         startpre,
