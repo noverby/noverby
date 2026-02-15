@@ -25797,6 +25797,278 @@ fn test_condition_first_boot_defaults_to_empty() {
 }
 
 // ============================================================
+// ConditionFileIsExecutable= parsing tests
+// ============================================================
+
+#[test]
+fn test_condition_file_is_executable_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFileIsExecutable = /usr/bin/test
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "ConditionFileIsExecutable= should be recognised and not produce a parsing error"
+    );
+}
+
+#[test]
+fn test_condition_file_is_executable_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFileIsExecutable = /usr/bin/test
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FileIsExecutable { path, negate } => {
+            assert_eq!(path, "/usr/bin/test");
+            assert!(!negate, "Should not be negated");
+        }
+        other => panic!("Expected FileIsExecutable condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_file_is_executable_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFileIsExecutable = !/usr/bin/test
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FileIsExecutable { path, negate } => {
+            assert_eq!(path, "/usr/bin/test");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected FileIsExecutable condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_file_is_executable_multiple() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFileIsExecutable = /usr/bin/foo
+    ConditionFileIsExecutable = /usr/bin/bar
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 2);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::FileIsExecutable { path, negate } => {
+            assert_eq!(path, "/usr/bin/foo");
+            assert!(!negate);
+        }
+        other => panic!("Expected FileIsExecutable condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::FileIsExecutable { path, negate } => {
+            assert_eq!(path, "/usr/bin/bar");
+            assert!(!negate);
+        }
+        other => panic!("Expected FileIsExecutable condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_file_is_executable_with_other_conditions() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathExists = /etc/myconfig
+    ConditionFileIsExecutable = /usr/bin/test
+    ConditionVirtualization = !container
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 3);
+
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathExists { path, negate } => {
+            assert_eq!(path, "/etc/myconfig");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathExists condition, got {:?}", other),
+    }
+
+    // ConditionVirtualization is parsed before ConditionFileIsExecutable
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::Virtualization { value, negate } => {
+            assert_eq!(value, "container");
+            assert!(negate);
+        }
+        other => panic!("Expected Virtualization condition, got {:?}", other),
+    }
+
+    match &service.common.unit.conditions[2] {
+        crate::units::UnitCondition::FileIsExecutable { path, negate } => {
+            assert_eq!(path, "/usr/bin/test");
+            assert!(!negate);
+        }
+        other => panic!("Expected FileIsExecutable condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_file_is_executable_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    ConditionFileIsExecutable = !/usr/sbin/nologin
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(unit.common.unit.conditions.len(), 1);
+    match &unit.common.unit.conditions[0] {
+        crate::units::UnitCondition::FileIsExecutable { path, negate } => {
+            assert_eq!(path, "/usr/sbin/nologin");
+            assert!(negate, "Negation should survive unit conversion");
+        }
+        other => panic!("Expected FileIsExecutable condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_file_is_executable_in_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    ConditionFileIsExecutable = /usr/bin/myapp
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.common.unit.conditions.len(), 1);
+    match &socket.common.unit.conditions[0] {
+        crate::units::UnitCondition::FileIsExecutable { path, negate } => {
+            assert_eq!(path, "/usr/bin/myapp");
+            assert!(!negate);
+        }
+        other => panic!("Expected FileIsExecutable condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_file_is_executable_in_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    ConditionFileIsExecutable = !/usr/bin/forbidden
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(target.common.unit.conditions.len(), 1);
+    match &target.common.unit.conditions[0] {
+        crate::units::UnitCondition::FileIsExecutable { path, negate } => {
+            assert_eq!(path, "/usr/bin/forbidden");
+            assert!(negate);
+        }
+        other => panic!("Expected FileIsExecutable condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_file_is_executable_defaults_to_empty() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A simple service
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let has_file_is_executable = service
+        .common
+        .unit
+        .conditions
+        .iter()
+        .any(|c| matches!(c, crate::units::UnitCondition::FileIsExecutable { .. }));
+    assert!(
+        !has_file_is_executable,
+        "No ConditionFileIsExecutable should be present by default"
+    );
+}
+
+// ============================================================
 // ProtectProc= parsing tests
 // ============================================================
 

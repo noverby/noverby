@@ -53,6 +53,11 @@ pub enum UnitCondition {
     /// Checks whether the system is booting for the first time (i.e.
     /// /etc/machine-id does not yet exist). See systemd.unit(5).
     FirstBoot { value: bool, negate: bool },
+    /// ConditionFileIsExecutable=/some/path (true if path exists and is executable)
+    /// ConditionFileIsExecutable=!/some/path (true if path does NOT exist or is not executable)
+    /// Checks whether the specified path exists as a regular file and has
+    /// at least one execute bit set. See systemd.unit(5).
+    FileIsExecutable { path: String, negate: bool },
 }
 
 /// The kind of virtualization detected (VM or container).
@@ -424,6 +429,21 @@ impl UnitCondition {
                     !result
                 } else {
                     result
+                }
+            }
+            UnitCondition::FileIsExecutable { path, negate } => {
+                use std::os::unix::fs::PermissionsExt;
+                let is_executable = match std::fs::metadata(path) {
+                    Ok(meta) => {
+                        // Must be a regular file with at least one execute bit
+                        meta.is_file() && (meta.permissions().mode() & 0o111 != 0)
+                    }
+                    Err(_) => false,
+                };
+                if *negate {
+                    !is_executable
+                } else {
+                    is_executable
                 }
             }
         }
