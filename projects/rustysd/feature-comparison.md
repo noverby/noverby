@@ -1710,8 +1710,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#PartOf=">PartOf=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>When the listed units are stopped or restarted, this unit is also stopped or restarted</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Conflicts=">Conflicts=</a></td>

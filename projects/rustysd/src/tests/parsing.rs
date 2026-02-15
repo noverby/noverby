@@ -5974,3 +5974,316 @@ fn test_alias_comma_separated() {
         vec!["foo.service".to_owned(), "bar.service".to_owned()]
     );
 }
+
+// ============================================================
+// PartOf= parsing tests
+// ============================================================
+
+#[test]
+fn test_part_of_empty_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.common.unit.part_of.is_empty(),
+        "PartOf should be empty when not specified"
+    );
+}
+
+#[test]
+fn test_part_of_single() {
+    let test_service_str = r#"
+    [Unit]
+    PartOf = network.target
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.part_of,
+        vec!["network.target".to_owned()]
+    );
+}
+
+#[test]
+fn test_part_of_multiple_entries() {
+    let test_service_str = r#"
+    [Unit]
+    PartOf = network.target
+    PartOf = graphical.target
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.part_of,
+        vec!["network.target".to_owned(), "graphical.target".to_owned(),]
+    );
+}
+
+#[test]
+fn test_part_of_space_separated() {
+    let test_service_str = r#"
+    [Unit]
+    PartOf = network.target graphical.target
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.part_of,
+        vec!["network.target".to_owned(), "graphical.target".to_owned(),]
+    );
+}
+
+#[test]
+fn test_part_of_with_other_dependencies() {
+    let test_service_str = r#"
+    [Unit]
+    Description = A network helper
+    PartOf = network.target
+    After = network.target
+    Wants = some.service
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.part_of,
+        vec!["network.target".to_owned()]
+    );
+    assert_eq!(service.common.unit.after, vec!["network.target".to_owned()]);
+    assert_eq!(service.common.unit.wants, vec!["some.service".to_owned()]);
+    assert_eq!(service.common.unit.description, "A network helper");
+}
+
+#[test]
+fn test_part_of_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    Description = A sub-target
+    PartOf = graphical.target
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        target.common.unit.part_of,
+        vec!["graphical.target".to_owned()]
+    );
+}
+
+#[test]
+fn test_part_of_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    PartOf = myapp.service
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.common.unit.part_of, vec!["myapp.service".to_owned()]);
+}
+
+#[test]
+fn test_part_of_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    Description = Network helper
+    PartOf = network.target
+
+    [Service]
+    ExecStart = /usr/bin/testcmd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+
+    assert_eq!(
+        unit.common.dependencies.part_of,
+        vec![crate::units::UnitId {
+            name: "network.target".to_owned(),
+            kind: crate::units::UnitIdKind::Target,
+        }]
+    );
+}
+
+#[test]
+fn test_part_of_empty_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /usr/bin/testcmd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+
+    assert!(
+        unit.common.dependencies.part_of.is_empty(),
+        "PartOf should be empty when not specified"
+    );
+    assert!(
+        unit.common.dependencies.part_of_by.is_empty(),
+        "PartOfBy should be empty initially"
+    );
+}
+
+#[test]
+fn test_part_of_included_in_refs_by_name() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    PartOf = network.target
+    DefaultDependencies = no
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+
+    let target_id = crate::units::UnitId {
+        name: "network.target".to_owned(),
+        kind: crate::units::UnitIdKind::Target,
+    };
+    assert!(
+        unit.common.unit.refs_by_name.contains(&target_id),
+        "refs_by_name should include PartOf unit IDs"
+    );
+}
+
+#[test]
+fn test_part_of_comma_separated() {
+    let test_service_str = r#"
+    [Unit]
+    PartOf = network.target,graphical.target
+
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.part_of,
+        vec!["network.target".to_owned(), "graphical.target".to_owned(),]
+    );
+}
+
+#[test]
+fn test_part_of_with_requires_and_after() {
+    // Common systemd pattern: PartOf= combined with After= and BindsTo=/Requires=
+    let test_service_str = r#"
+    [Unit]
+    Description = Helper for main app
+    PartOf = main-app.service
+    After = main-app.service
+    Requires = main-app.service
+
+    [Service]
+    ExecStart = /usr/bin/helper
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/helper.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.part_of,
+        vec!["main-app.service".to_owned()]
+    );
+    assert_eq!(
+        service.common.unit.after,
+        vec!["main-app.service".to_owned()]
+    );
+    assert_eq!(
+        service.common.unit.requires,
+        vec!["main-app.service".to_owned()]
+    );
+}

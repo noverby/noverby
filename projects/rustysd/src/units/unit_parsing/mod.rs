@@ -117,6 +117,11 @@ pub struct ParsedUnitSection {
     pub before: Vec<String>,
     pub after: Vec<String>,
 
+    /// Units this unit is "part of". When the listed units are stopped or
+    /// restarted, this unit is also stopped or restarted.
+    /// Matches systemd's `PartOf=` setting.
+    pub part_of: Vec<String>,
+
     /// Whether to add implicit default dependencies (e.g. on sysinit.target / shutdown.target).
     /// Defaults to true, matching systemd behavior.
     pub default_dependencies: bool,
@@ -145,6 +150,7 @@ impl Default for ParsedUnitSection {
             conflicts: Vec::new(),
             before: Vec::new(),
             after: Vec::new(),
+            part_of: Vec::new(),
             default_dependencies: true,
             conditions: Vec::new(),
             success_action: UnitAction::default(),

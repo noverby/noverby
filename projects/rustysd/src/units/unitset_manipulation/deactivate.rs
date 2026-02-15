@@ -20,6 +20,9 @@ pub fn deactivate_unit_recursive(
     };
 
     deactivate_units_recursive(&unit.common.dependencies.required_by, run_info)?;
+    // PartOf= stop propagation: units that declared PartOf= this unit
+    // should also be stopped when this unit is stopped.
+    deactivate_units_recursive(&unit.common.dependencies.part_of_by, run_info)?;
 
     deactivate_unit(id_to_kill, run_info)
 }
