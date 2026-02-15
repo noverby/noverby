@@ -396,6 +396,7 @@ fn parse_service_section(
                     "notify-reload" => ServiceType::NotifyReload,
                     "oneshot" => ServiceType::OneShot,
                     "forking" => ServiceType::Forking,
+                    "idle" => ServiceType::Idle,
                     "dbus" => {
                         if cfg!(feature = "dbus_support") {
                             ServiceType::Dbus
