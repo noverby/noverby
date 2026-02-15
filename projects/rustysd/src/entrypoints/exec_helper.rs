@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::units::{PlatformSpecificServiceFields, RLimitValue, ResourceLimit};
+use crate::units::{PlatformSpecificServiceFields, RLimitValue, ResourceLimit, StandardInput};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct ExecHelperConfig {
@@ -25,6 +25,26 @@ pub struct ExecHelperConfig {
     pub platform_specific: PlatformSpecificServiceFields,
 
     pub limit_nofile: Option<ResourceLimit>,
+
+    /// How stdin should be set up for the service process.
+    #[serde(default)]
+    pub stdin_option: StandardInput,
+    /// Path to the TTY device to use when StandardInput=tty/tty-force/tty-fail.
+    /// Defaults to /dev/console if not set.
+    pub tty_path: Option<PathBuf>,
+
+    /// Whether StandardOutput is set to inherit (or journal/kmsg/unset).
+    /// When true AND stdin is a TTY, stdout will be dup'd from the TTY fd.
+    #[serde(default = "default_true")]
+    pub stdout_is_inherit: bool,
+    /// Whether StandardError is set to inherit (or journal/kmsg/unset).
+    /// When true AND stdin is a TTY, stderr will be dup'd from the TTY fd.
+    #[serde(default = "default_true")]
+    pub stderr_is_inherit: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn prepare_exec_args(
@@ -58,12 +78,131 @@ fn prepare_exec_args(
     (cmd, args)
 }
 
+/// Set up stdin for the service based on the StandardInput= setting.
+/// Called after reading the exec_helper config (which consumed the original stdin).
+fn setup_stdin(config: &ExecHelperConfig) {
+    match config.stdin_option {
+        StandardInput::Null => {
+            // Open /dev/null as stdin
+            let null_fd = unsafe {
+                libc::open(
+                    b"/dev/null\0".as_ptr().cast(),
+                    libc::O_RDONLY | libc::O_CLOEXEC,
+                )
+            };
+            if null_fd < 0 {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to open /dev/null for stdin: {}",
+                    config.name,
+                    std::io::Error::last_os_error()
+                );
+                std::process::exit(1);
+            }
+            if null_fd != libc::STDIN_FILENO {
+                unsafe {
+                    libc::dup2(null_fd, libc::STDIN_FILENO);
+                    libc::close(null_fd);
+                }
+            }
+        }
+        StandardInput::Tty | StandardInput::TtyForce | StandardInput::TtyFail => {
+            let tty_path = config
+                .tty_path
+                .as_deref()
+                .unwrap_or(Path::new("/dev/console"));
+            let tty_path_cstr = match std::ffi::CString::new(tty_path.to_string_lossy().as_bytes())
+            {
+                Ok(c) => c,
+                Err(_) => {
+                    eprintln!(
+                        "[EXEC_HELPER {}] Invalid TTYPath: {:?}",
+                        config.name, tty_path
+                    );
+                    std::process::exit(1);
+                }
+            };
+
+            // For tty-force, steal the TTY from whatever process currently owns it
+            // by using TIOCNOTTY on the current controlling terminal first,
+            // then use vhangup after acquiring.
+            if config.stdin_option == StandardInput::TtyForce {
+                // Become session leader so we can acquire a controlling terminal
+                unsafe {
+                    libc::setsid();
+                }
+            }
+
+            let mut flags = libc::O_RDWR | libc::O_NOCTTY;
+            if config.stdin_option == StandardInput::TtyFail {
+                flags |= libc::O_EXCL;
+            }
+
+            let tty_fd = unsafe { libc::open(tty_path_cstr.as_ptr(), flags) };
+            if tty_fd < 0 {
+                let err = std::io::Error::last_os_error();
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to open TTY {:?} for stdin: {}",
+                    config.name, tty_path, err
+                );
+                if config.stdin_option == StandardInput::TtyFail {
+                    std::process::exit(1);
+                }
+                // For tty/tty-force, fall back to /dev/null
+                eprintln!(
+                    "[EXEC_HELPER {}] Falling back to /dev/null for stdin",
+                    config.name
+                );
+                let null_fd = unsafe { libc::open(b"/dev/null\0".as_ptr().cast(), libc::O_RDONLY) };
+                if null_fd >= 0 && null_fd != libc::STDIN_FILENO {
+                    unsafe {
+                        libc::dup2(null_fd, libc::STDIN_FILENO);
+                        libc::close(null_fd);
+                    }
+                }
+                return;
+            }
+
+            if config.stdin_option == StandardInput::TtyForce {
+                // Make this TTY our controlling terminal
+                unsafe {
+                    libc::ioctl(tty_fd, libc::TIOCSCTTY, 1);
+                }
+            }
+
+            // Dup the TTY fd onto stdin
+            if tty_fd != libc::STDIN_FILENO {
+                unsafe {
+                    libc::dup2(tty_fd, libc::STDIN_FILENO);
+                    libc::close(tty_fd);
+                }
+            }
+
+            // Set stdout/stderr to the TTY when configured as inherit.
+            // This is the typical configuration for debug-shell and similar
+            // interactive services (StandardOutput=inherit, StandardError=inherit).
+            if config.stdout_is_inherit {
+                unsafe {
+                    libc::dup2(libc::STDIN_FILENO, libc::STDOUT_FILENO);
+                }
+            }
+            if config.stderr_is_inherit {
+                unsafe {
+                    libc::dup2(libc::STDIN_FILENO, libc::STDERR_FILENO);
+                }
+            }
+        }
+    }
+}
+
 pub fn run_exec_helper() {
     println!("Exec helper trying to read config from stdin");
     let config: ExecHelperConfig = serde_json::from_reader(std::io::stdin()).unwrap();
     println!("Apply config: {config:?}");
 
     nix::unistd::close(libc::STDIN_FILENO).expect("I want to be able to close this fd!");
+
+    // Set up stdin for the actual service process
+    setup_stdin(&config);
 
     // Apply LimitNOFILE resource limit before anything else
     if let Some(ref limit) = config.limit_nofile {

@@ -5,9 +5,9 @@ use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
     acquire_locks, ActivationSource, Commandline, Delegate, EnvVars, KillMode, NotifyKind,
-    ResourceLimit, ServiceRestart, ServiceType, StatusStarted, StatusStopped, StdIoOption,
-    TasksMax, Timeout, UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason,
-    UnitStatus,
+    ResourceLimit, ServiceRestart, ServiceType, StandardInput, StatusStarted, StatusStopped,
+    StdIoOption, TasksMax, Timeout, UnitId, UnitIdKind, UnitOperationError,
+    UnitOperationErrorReason, UnitStatus,
 };
 
 use std::sync::RwLock;
@@ -860,11 +860,13 @@ pub struct ExecConfig {
     pub user: nix::unistd::Uid,
     pub group: nix::unistd::Gid,
     pub supplementary_groups: Vec<nix::unistd::Gid>,
+    pub stdin_option: StandardInput,
     pub stdout_path: Option<StdIoOption>,
     pub stderr_path: Option<StdIoOption>,
     pub environment: Option<EnvVars>,
     pub working_directory: Option<std::path::PathBuf>,
     pub state_directory: Vec<String>,
+    pub tty_path: Option<std::path::PathBuf>,
 }
 
 #[cfg(target_os = "linux")]
