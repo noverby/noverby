@@ -233,6 +233,11 @@ pub struct ParsedInstallSection {
     pub required_by: Vec<String>,
     pub also: Vec<String>,
     pub alias: Vec<String>,
+
+    /// Default instance name for template units (e.g. `foo@.service`).
+    /// When a template is enabled without an explicit instance, this value is used.
+    /// Matches systemd's `DefaultInstance=` setting in the `[Install]` section.
+    pub default_instance: Option<String>,
 }
 pub struct ParsedExecSection {
     pub user: Option<String>,
