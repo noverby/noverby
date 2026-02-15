@@ -92,6 +92,7 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 delegate_subgroup: conf.srvc.delegate_subgroup,
                 keyring_mode: conf.srvc.keyring_mode,
                 device_allow: conf.srvc.device_allow,
+                device_policy: conf.srvc.device_policy,
                 watchdog_sec: conf.srvc.watchdog_sec,
                 ip_address_allow: conf.srvc.ip_address_allow,
                 ip_address_deny: conf.srvc.ip_address_deny,

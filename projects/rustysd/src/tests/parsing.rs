@@ -19985,6 +19985,213 @@ fn test_device_allow_empty_preserved_after_unit_conversion() {
 }
 
 // ============================================================
+// DevicePolicy= parsing tests
+// ============================================================
+
+#[test]
+fn test_device_policy_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DevicePolicy = auto
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "DevicePolicy= should not cause errors");
+}
+
+#[test]
+fn test_device_policy_defaults_to_auto() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.device_policy,
+        crate::units::DevicePolicy::Auto,
+        "DevicePolicy should default to Auto"
+    );
+}
+
+#[test]
+fn test_device_policy_auto() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DevicePolicy = auto
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.device_policy, crate::units::DevicePolicy::Auto,);
+}
+
+#[test]
+fn test_device_policy_closed() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DevicePolicy = closed
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.device_policy,
+        crate::units::DevicePolicy::Closed,
+    );
+}
+
+#[test]
+fn test_device_policy_strict() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DevicePolicy = strict
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.device_policy,
+        crate::units::DevicePolicy::Strict,
+    );
+}
+
+#[test]
+fn test_device_policy_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DevicePolicy = Closed
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.device_policy,
+        crate::units::DevicePolicy::Closed,
+        "DevicePolicy should be case insensitive"
+    );
+}
+
+#[test]
+fn test_device_policy_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DevicePolicy = strict
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.device_policy,
+            crate::units::DevicePolicy::Strict,
+            "DevicePolicy=strict should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_device_policy_default_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.device_policy,
+            crate::units::DevicePolicy::Auto,
+            "DevicePolicy default (Auto) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Service unit");
+    }
+}
+
+#[test]
+fn test_device_policy_with_device_allow() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DevicePolicy = strict
+    DeviceAllow = /dev/null rw
+    DeviceAllow = /dev/zero r
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.device_policy,
+        crate::units::DevicePolicy::Strict,
+    );
+    assert_eq!(service.srvc.device_allow.len(), 2);
+    assert_eq!(service.srvc.device_allow[0], "/dev/null rw");
+    assert_eq!(service.srvc.device_allow[1], "/dev/zero r");
+}
+
+// ============================================================
 // ProtectHome= parsing tests
 // ============================================================
 
