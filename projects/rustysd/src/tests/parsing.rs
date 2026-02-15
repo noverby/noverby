@@ -18195,3 +18195,226 @@ fn test_capability_bounding_set_empty_string_drops_all() {
         "CapabilityBoundingSet= (empty) should result in empty list"
     );
 }
+
+// ============================================================
+// DeviceAllow= parsing tests
+// ============================================================
+
+#[test]
+fn test_device_allow_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.device_allow.is_empty(),
+        "DeviceAllow should default to empty"
+    );
+}
+
+#[test]
+fn test_device_allow_single_entry() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DeviceAllow = /dev/null rw
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.device_allow.len(), 1);
+    assert_eq!(service.srvc.device_allow[0], "/dev/null rw");
+}
+
+#[test]
+fn test_device_allow_multiple_directives_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DeviceAllow = /dev/null rw
+    DeviceAllow = /dev/zero r
+    DeviceAllow = /dev/urandom r
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.device_allow.len(), 3);
+    assert_eq!(service.srvc.device_allow[0], "/dev/null rw");
+    assert_eq!(service.srvc.device_allow[1], "/dev/zero r");
+    assert_eq!(service.srvc.device_allow[2], "/dev/urandom r");
+}
+
+#[test]
+fn test_device_allow_empty_resets() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DeviceAllow = /dev/null rw
+    DeviceAllow =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.device_allow.is_empty(),
+        "Empty DeviceAllow= should reset the list"
+    );
+}
+
+#[test]
+fn test_device_allow_empty_then_new_entry() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DeviceAllow = /dev/null rw
+    DeviceAllow =
+    DeviceAllow = /dev/zero r
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.device_allow.len(), 1);
+    assert_eq!(service.srvc.device_allow[0], "/dev/zero r");
+}
+
+#[test]
+fn test_device_allow_char_class() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DeviceAllow = char-* rwm
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.device_allow.len(), 1);
+    assert_eq!(service.srvc.device_allow[0], "char-* rwm");
+}
+
+#[test]
+fn test_device_allow_path_only_no_access() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DeviceAllow = /dev/sda
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.device_allow.len(), 1);
+    assert_eq!(service.srvc.device_allow[0], "/dev/sda");
+}
+
+#[test]
+fn test_device_allow_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DeviceAllow = /dev/null rw
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok(), "DeviceAllow= should not cause errors");
+}
+
+#[test]
+fn test_device_allow_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    DeviceAllow = /dev/null rw
+    DeviceAllow = /dev/zero r
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.device_allow.len(),
+            2,
+            "DeviceAllow should survive unit conversion"
+        );
+        assert_eq!(srvc.conf.device_allow[0], "/dev/null rw");
+        assert_eq!(srvc.conf.device_allow[1], "/dev/zero r");
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_device_allow_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.device_allow.is_empty(),
+            "Default empty DeviceAllow should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}

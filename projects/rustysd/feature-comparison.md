@@ -1075,8 +1075,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#DeviceAllow=">DeviceAllow=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored; no runtime enforcement yet (requires cgroup device controller)</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#DevicePolicy=auto|closed|strict">DevicePolicy=auto|closed|strict</a></td>

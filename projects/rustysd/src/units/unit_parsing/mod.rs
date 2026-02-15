@@ -285,6 +285,14 @@ pub struct ParsedServiceSection {
     /// enforced at runtime. See systemd.exec(5).
     pub keyring_mode: KeyringMode,
 
+    /// DeviceAllow= — controls access to specific device nodes for the unit.
+    /// Each entry is a device node path (or class like "char-*", "block-*")
+    /// optionally followed by access characters (r=read, w=write, m=mknod).
+    /// Multiple directives accumulate; an empty assignment resets the list.
+    /// Parsed and stored; no runtime enforcement yet (requires cgroup device
+    /// controller). See systemd.resource-control(5).
+    pub device_allow: Vec<String>,
+
     pub exec_section: ParsedExecSection,
 }
 

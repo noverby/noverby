@@ -250,6 +250,7 @@ fn parse_service_section(
     let reload_signal = section.remove("RELOADSIGNAL");
     let delegate_subgroup = section.remove("DELEGATESUBGROUP");
     let keyring_mode = section.remove("KEYRINGMODE");
+    let device_allow = section.remove("DEVICEALLOW");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -785,6 +786,26 @@ fn parse_service_section(
                 }
             }
             None => KeyringMode::default(),
+        },
+        device_allow: match device_allow {
+            Some(vec) => {
+                // Each directive is a device node path (or class like "char-*",
+                // "block-*") followed by optional access characters (r, w, m).
+                // Multiple directives accumulate. An empty assignment resets
+                // the list.
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        // Empty string resets the list
+                        entries.clear();
+                        continue;
+                    }
+                    entries.push(trimmed.to_owned());
+                }
+                entries
+            }
+            None => Vec::new(),
         },
         exec_section: exec_config,
     })
