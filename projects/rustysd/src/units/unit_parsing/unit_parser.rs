@@ -354,6 +354,7 @@ pub fn parse_exec_section(
     let environment_file = section.remove("ENVIRONMENTFILE");
     let working_directory = section.remove("WORKINGDIRECTORY");
     let state_directory = section.remove("STATEDIRECTORY");
+    let runtime_directory = section.remove("RUNTIMEDIRECTORY");
     let tty_path = section.remove("TTYPATH");
     let tty_reset = section.remove("TTYRESET");
     let tty_vhangup = section.remove("TTYVHANGUP");
@@ -610,6 +611,18 @@ pub fn parse_exec_section(
             .collect(),
     };
 
+    let runtime_directory = match runtime_directory {
+        None => Vec::new(),
+        Some(vec) => vec
+            .into_iter()
+            .flat_map(|(_, val)| {
+                val.split_whitespace()
+                    .map(|s| s.to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .collect(),
+    };
+
     Ok(ParsedExecSection {
         user,
         group,
@@ -621,6 +634,7 @@ pub fn parse_exec_section(
         environment_files,
         working_directory,
         state_directory,
+        runtime_directory,
         tty_path,
         tty_reset,
         tty_vhangup,

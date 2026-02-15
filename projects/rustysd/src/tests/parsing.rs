@@ -127,6 +127,9 @@ fn test_service_parsing() {
 
     // StateDirectory should be empty when not specified
     assert!(service.srvc.exec_section.state_directory.is_empty());
+
+    // RuntimeDirectory should be empty when not specified
+    assert!(service.srvc.exec_section.runtime_directory.is_empty());
 }
 
 #[test]
@@ -1223,6 +1226,238 @@ fn test_state_directory_empty_by_default() {
     .unwrap();
 
     assert!(service.srvc.exec_section.state_directory.is_empty());
+}
+
+// ── RuntimeDirectory= ─────────────────────────────────────────────────
+
+#[test]
+fn test_runtime_directory_single() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RuntimeDirectory = myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory,
+        vec!["myapp".to_owned()]
+    );
+}
+
+#[test]
+fn test_runtime_directory_multiple_space_separated() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RuntimeDirectory = myapp myapp-extra
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory,
+        vec!["myapp".to_owned(), "myapp-extra".to_owned()]
+    );
+}
+
+#[test]
+fn test_runtime_directory_multiple_directives() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RuntimeDirectory = myapp
+    RuntimeDirectory = other
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory,
+        vec!["myapp".to_owned(), "other".to_owned()]
+    );
+}
+
+#[test]
+fn test_runtime_directory_empty_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.runtime_directory.is_empty());
+}
+
+#[test]
+fn test_runtime_directory_no_unsupported_warning() {
+    // RuntimeDirectory= should be parsed without generating an "unsupported setting" warning.
+    // If the key were left in the section, the parser would emit a warning and the field
+    // would be empty.
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RuntimeDirectory = myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "Parsing a service with RuntimeDirectory should succeed without errors"
+    );
+    assert_eq!(
+        result.unwrap().srvc.exec_section.runtime_directory,
+        vec!["myapp".to_owned()]
+    );
+}
+
+#[test]
+fn test_runtime_directory_combined_with_state_directory() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    StateDirectory = myapp-state
+    RuntimeDirectory = myapp-run
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.state_directory,
+        vec!["myapp-state".to_owned()]
+    );
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory,
+        vec!["myapp-run".to_owned()]
+    );
+}
+
+#[test]
+fn test_runtime_directory_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    RuntimeDirectory = myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.runtime_directory,
+        vec!["myapp".to_owned()]
+    );
+}
+
+#[test]
+fn test_runtime_directory_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RuntimeDirectory = myapp extra
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.runtime_directory,
+            vec!["myapp".to_owned(), "extra".to_owned()]
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_runtime_directory_with_subdirectory() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RuntimeDirectory = myapp/subdir
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory,
+        vec!["myapp/subdir".to_owned()]
+    );
+}
+
+#[test]
+fn test_runtime_directory_combined_with_working_directory() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    WorkingDirectory = /var/lib/myapp
+    RuntimeDirectory = myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.working_directory,
+        Some(std::path::PathBuf::from("/var/lib/myapp"))
+    );
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory,
+        vec!["myapp".to_owned()]
+    );
 }
 
 #[test]
