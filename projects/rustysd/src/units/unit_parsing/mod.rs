@@ -381,6 +381,10 @@ pub struct ParsedExecSection {
     /// mnt, pid, user, uts). A `~` prefix inverts the list. Parsed and stored;
     /// no runtime seccomp enforcement yet. See systemd.exec(5).
     pub restrict_namespaces: RestrictNamespaces,
+    /// RestrictRealtime= — if true, any attempts to enable realtime scheduling
+    /// in a process of the unit are refused via seccomp. Defaults to false.
+    /// Parsed and stored; no runtime seccomp enforcement yet. See systemd.exec(5).
+    pub restrict_realtime: bool,
 }
 
 /// The type of utmp/wtmp record to create for a service.
