@@ -121,7 +121,8 @@ pub fn unstarted_deps(id: &UnitId, run_info: &RuntimeInfo) -> Vec<UnitId> {
         .after
         .iter()
         .fold(Vec::new(), |mut acc, elem| {
-            let required = unit.common.dependencies.requires.contains(elem);
+            let required = unit.common.dependencies.requires.contains(elem)
+                || unit.common.dependencies.binds_to.contains(elem);
             let Some(elem_unit) = run_info.unit_table.get(elem) else {
                 // Dependency not in unit table (e.g. optional unit that was
                 // never loaded, or removed during pruning/cycle-breaking).

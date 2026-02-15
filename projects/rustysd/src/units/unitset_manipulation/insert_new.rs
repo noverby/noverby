@@ -148,6 +148,12 @@ pub fn insert_new_units(new_units: UnitTable, run_info: &mut RuntimeInfo) -> Res
                 {
                     unit.common.dependencies.conflicts.push(new_id.clone());
                 }
+                if new_unit.common.dependencies.binds_to.contains(&unit.id) {
+                    unit.common.dependencies.bound_by.push(new_id.clone());
+                }
+                if new_unit.common.dependencies.bound_by.contains(&unit.id) {
+                    unit.common.dependencies.binds_to.push(new_id.clone());
+                }
             }
             unit_table.insert(new_id, new_unit);
         }
