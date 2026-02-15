@@ -524,6 +524,7 @@ pub fn parse_install_section(
     let wantedby = section.remove("WANTEDBY");
     let requiredby = section.remove("REQUIREDBY");
     let also = section.remove("ALSO");
+    let alias = section.remove("ALIAS");
 
     for key in section.keys() {
         warn!("Ignoring unsupported setting in [Install] section: {key}");
@@ -533,6 +534,7 @@ pub fn parse_install_section(
         wanted_by: map_tuples_to_second(split_list_values(wantedby.unwrap_or_default())),
         required_by: map_tuples_to_second(split_list_values(requiredby.unwrap_or_default())),
         also: map_tuples_to_second(split_list_values(also.unwrap_or_default())),
+        alias: map_tuples_to_second(split_list_values(alias.unwrap_or_default())),
     })
 }
 
