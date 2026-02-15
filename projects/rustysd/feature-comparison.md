@@ -2011,7 +2011,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Documentation=">Documentation=</a></td>
-  <td>❌</td>
+  <td>✔️</td>
   <td><a href="https://github.com/search?q=%27Documentation%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td></td>
 </tr>
@@ -2047,7 +2047,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Conflicts=">Conflicts=</a></td>
-  <td>❌</td>
+  <td>✔️</td>
   <td><a href="https://github.com/search?q=%27Conflicts%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td></td>
 </tr>
@@ -2131,7 +2131,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#DefaultDependencies=">DefaultDependencies=</a></td>
-  <td>❌</td>
+  <td>✔️</td>
   <td><a href="https://github.com/search?q=%27DefaultDependencies%27+repo%3AKillingSpark%2Frustysd+language%3ARust&type=Code">Search</a></td>
   <td></td>
 </tr>
