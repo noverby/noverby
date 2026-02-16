@@ -42,22 +42,13 @@
   packages.rustysd-systemd = {
     lib,
     runCommand,
-    writeText,
     makeBinaryWrapper,
     rustysd,
     kbd,
     kmod,
     util-linuxMinimal,
     systemd,
-  }: let
-    rustysdConfig = writeText "rustysd_config.toml" ''
-      unit_dirs = ["/etc/systemd/system", "/run/systemd/system"]
-      target_unit = "default.target"
-      notifications_dir = "/run/rustysd/notifications"
-      log_to_stdout = true
-      log_to_disk = false
-    '';
-  in
+  }:
     runCommand "rustysd-systemd-${rustysd.version}" {
       nativeBuildInputs = [makeBinaryWrapper];
 
@@ -100,9 +91,18 @@
       # Make copied files writable so we can overwrite them
       chmod -R u+w $out
 
-      # Install rustysd config for NixOS
+      # Install rustysd config for NixOS.
+      # Include the package's own example/systemd/system directory so that
+      # standard systemd targets (time-set.target, time-sync.target, etc.)
+      # shipped by the systemd package are found by rustysd.
       mkdir -p $out/etc/rustysd
-      cp ${rustysdConfig} $out/etc/rustysd/rustysd_config.toml
+      cat > $out/etc/rustysd/rustysd_config.toml <<EOF
+      unit_dirs = ["/etc/systemd/system", "/run/systemd/system", "$out/example/systemd/system"]
+      target_unit = "default.target"
+      notifications_dir = "/run/rustysd/notifications"
+      log_to_stdout = true
+      log_to_disk = false
+      EOF
 
       # Start with all systemd binaries
       mkdir -p $out/bin
