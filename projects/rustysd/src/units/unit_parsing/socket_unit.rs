@@ -133,6 +133,7 @@ fn parse_socket_section(
     let symlinks = section.remove("SYMLINKS");
     let timestamping = section.remove("TIMESTAMPING");
     let remove_on_stop = section.remove("REMOVEONSTOP");
+    let writable = section.remove("WRITABLE");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -454,6 +455,20 @@ fn parse_socket_section(
         None => false,
     };
 
+    let writable = match writable {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "Writable".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
     let receive_buffer: Option<u64> =
         match receive_buffer {
             Some(vec) => {
@@ -560,6 +575,7 @@ fn parse_socket_section(
         symlinks,
         timestamping,
         defer_trigger,
+        writable,
         exec_section: exec_config,
     })
 }
