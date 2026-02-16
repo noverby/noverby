@@ -414,6 +414,7 @@ fn parse_service_section(
     let slice = section.remove("SLICE");
     let remain_after_exit = section.remove("REMAINAFTEREXIT");
     let success_exit_status = section.remove("SUCCESSEXITSTATUS");
+    let restart_force_exit_status = section.remove("RESTARTFORCEEXITSTATUS");
     let send_sighup = section.remove("SENDSIGHUP");
     let memory_pressure_watch = section.remove("MEMORYPRESSUREWATCH");
     let reload_signal = section.remove("RELOADSIGNAL");
@@ -912,6 +913,14 @@ fn parse_service_section(
         success_exit_status: success_exit_status
             .map(|vec| {
                 // Merge all entries — systemd allows multiple SuccessExitStatus=
+                // lines and they accumulate.
+                let combined: Vec<String> = vec.into_iter().map(|(_, v)| v).collect();
+                parse_success_exit_status(&combined.join(" "))
+            })
+            .unwrap_or_default(),
+        restart_force_exit_status: restart_force_exit_status
+            .map(|vec| {
+                // Merge all entries — systemd allows multiple RestartForceExitStatus=
                 // lines and they accumulate.
                 let combined: Vec<String> = vec.into_iter().map(|(_, v)| v).collect();
                 parse_success_exit_status(&combined.join(" "))

@@ -1356,6 +1356,11 @@ pub struct ServiceConfig {
     /// SuccessExitStatus= — additional exit codes and signals that are
     /// considered a successful (clean) service termination.
     pub success_exit_status: SuccessExitStatus,
+    /// RestartForceExitStatus= — a list of exit status definitions (exit
+    /// codes and/or signal names) that will force automatic service restart
+    /// regardless of the configured Restart= setting. The format is the
+    /// same as SuccessExitStatus=. See systemd.service(5).
+    pub restart_force_exit_status: SuccessExitStatus,
     /// SendSIGHUP= — if true, send SIGHUP to remaining processes immediately
     /// after the stop signal (e.g. SIGTERM). This is useful for shell-like
     /// services that need to be notified their connection has been severed.

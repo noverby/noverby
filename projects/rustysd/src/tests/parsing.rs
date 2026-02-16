@@ -8513,6 +8513,322 @@ fn test_success_exit_status_no_unsupported_warning() {
     );
 }
 
+// ── RestartForceExitStatus= parsing tests ─────────────────────────────
+
+#[test]
+fn test_restart_force_exit_status_empty_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.restart_force_exit_status.exit_codes.is_empty());
+    assert!(service.srvc.restart_force_exit_status.signals.is_empty());
+}
+
+#[test]
+fn test_restart_force_exit_status_single_code() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartForceExitStatus = 42
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.restart_force_exit_status.exit_codes, vec![42]);
+    assert!(service.srvc.restart_force_exit_status.signals.is_empty());
+}
+
+#[test]
+fn test_restart_force_exit_status_multiple_codes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartForceExitStatus = 1 2 255
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart_force_exit_status.exit_codes,
+        vec![1, 2, 255]
+    );
+}
+
+#[test]
+fn test_restart_force_exit_status_single_signal_with_prefix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartForceExitStatus = SIGUSR1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.restart_force_exit_status.exit_codes.is_empty());
+    assert_eq!(
+        service.srvc.restart_force_exit_status.signals,
+        vec![nix::sys::signal::Signal::SIGUSR1]
+    );
+}
+
+#[test]
+fn test_restart_force_exit_status_single_signal_without_prefix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartForceExitStatus = USR2
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.restart_force_exit_status.exit_codes.is_empty());
+    assert_eq!(
+        service.srvc.restart_force_exit_status.signals,
+        vec![nix::sys::signal::Signal::SIGUSR2]
+    );
+}
+
+#[test]
+fn test_restart_force_exit_status_mixed_codes_and_signals() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartForceExitStatus = 42 SIGUSR1 75 HUP
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart_force_exit_status.exit_codes,
+        vec![42, 75]
+    );
+    assert_eq!(
+        service.srvc.restart_force_exit_status.signals,
+        vec![
+            nix::sys::signal::Signal::SIGUSR1,
+            nix::sys::signal::Signal::SIGHUP,
+        ]
+    );
+}
+
+#[test]
+fn test_restart_force_exit_status_multiple_entries_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartForceExitStatus = 42
+    RestartForceExitStatus = SIGUSR2
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.restart_force_exit_status.exit_codes, vec![42]);
+    assert_eq!(
+        service.srvc.restart_force_exit_status.signals,
+        vec![nix::sys::signal::Signal::SIGUSR2]
+    );
+}
+
+#[test]
+fn test_restart_force_exit_status_case_insensitive_signals() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartForceExitStatus = sigterm
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart_force_exit_status.signals,
+        vec![nix::sys::signal::Signal::SIGTERM]
+    );
+}
+
+#[test]
+fn test_restart_force_exit_status_named_exit_codes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartForceExitStatus = DATAERR TEMPFAIL
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart_force_exit_status.exit_codes,
+        vec![65, 75],
+        "DATAERR=65, TEMPFAIL=75"
+    );
+}
+
+#[test]
+fn test_restart_force_exit_status_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartForceExitStatus = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "RestartForceExitStatus=1 should parse without error"
+    );
+}
+
+#[test]
+fn test_restart_force_exit_status_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartForceExitStatus = 42 SIGUSR1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.restart_force_exit_status.exit_codes,
+            vec![42],
+            "RestartForceExitStatus exit codes should survive unit conversion"
+        );
+        assert_eq!(
+            srvc.conf.restart_force_exit_status.signals,
+            vec![nix::sys::signal::Signal::SIGUSR1],
+            "RestartForceExitStatus signals should survive unit conversion"
+        );
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+#[test]
+fn test_restart_force_exit_status_empty_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.restart_force_exit_status.exit_codes.is_empty(),
+            "Default RestartForceExitStatus should have no exit codes after conversion"
+        );
+        assert!(
+            srvc.conf.restart_force_exit_status.signals.is_empty(),
+            "Default RestartForceExitStatus should have no signals after conversion"
+        );
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+#[test]
+fn test_restart_force_exit_status_with_success_exit_status() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = 42
+    RestartForceExitStatus = 75 SIGUSR2
+    Restart = on-failure
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.success_exit_status.exit_codes,
+        vec![42],
+        "SuccessExitStatus should be independent"
+    );
+    assert_eq!(
+        service.srvc.restart_force_exit_status.exit_codes,
+        vec![75],
+        "RestartForceExitStatus should be independent"
+    );
+    assert_eq!(
+        service.srvc.restart_force_exit_status.signals,
+        vec![nix::sys::signal::Signal::SIGUSR2],
+    );
+}
+
 // ── DefaultInstance= parsing tests ─────────────────────────────────────
 
 #[test]
