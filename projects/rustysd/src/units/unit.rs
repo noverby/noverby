@@ -4,7 +4,7 @@ use crate::runtime_info::RuntimeInfo;
 use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
-    acquire_locks, ActivationSource, Commandline, Delegate, DevicePolicy, EnvVars,
+    acquire_locks, ActivationSource, Commandline, DeferTrigger, Delegate, DevicePolicy, EnvVars,
     IOSchedulingClass, KeyringMode, KillMode, MemoryLimit, MemoryPressureWatch, NotifyKind,
     OnFailureJobMode, ProcSubset, ProtectHome, ProtectProc, ProtectSystem, ResourceLimit,
     RestrictNamespaces, RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput,
@@ -1474,6 +1474,12 @@ pub struct SocketConfig {
     /// socket. Takes an integer value. Parsed and stored; no runtime
     /// enforcement yet. See systemd.socket(5).
     pub send_buffer: Option<u64>,
+
+    /// DeferTrigger= — controls whether to defer triggering the associated
+    /// service when a connection comes in. Takes a boolean or "patient".
+    /// Defaults to No. Parsed and stored; no runtime enforcement yet.
+    /// See systemd.socket(5).
+    pub defer_trigger: DeferTrigger,
 
     pub exec_config: ExecConfig,
 }

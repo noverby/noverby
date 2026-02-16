@@ -1641,6 +1641,16 @@ This document is meant as a simple way of checking whether all features you need
   <td>❌</td>
   <td></td>
 </tr>
+<tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#DeferTrigger=">DeferTrigger=</a></td>
+  <td>✔️</td>
+  <td>Parsed and stored. Accepts boolean values (yes/no/true/false/1/0) or "patient". Defaults to no. No runtime enforcement yet.</td>
+</tr>
+<tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#DeferTriggerMaxSec=">DeferTriggerMaxSec=</a></td>
+  <td>❌</td>
+  <td></td>
+</tr>
 </table>
 
 ## systemd.timer

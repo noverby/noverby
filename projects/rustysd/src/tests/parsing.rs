@@ -36891,3 +36891,384 @@ fn test_listen_netlink_negative_group_fails() {
 
     assert!(result.is_err(), "Should fail when group is negative");
 }
+
+// ==================== DeferTrigger= tests ====================
+
+#[test]
+fn test_defer_trigger_defaults_to_no() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.defer_trigger,
+        crate::units::DeferTrigger::No,
+        "DeferTrigger should default to No"
+    );
+}
+
+#[test]
+fn test_defer_trigger_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.defer_trigger, crate::units::DeferTrigger::Yes);
+}
+
+#[test]
+fn test_defer_trigger_true() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.defer_trigger, crate::units::DeferTrigger::Yes);
+}
+
+#[test]
+fn test_defer_trigger_1() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.defer_trigger, crate::units::DeferTrigger::Yes);
+}
+
+#[test]
+fn test_defer_trigger_no() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.defer_trigger, crate::units::DeferTrigger::No);
+}
+
+#[test]
+fn test_defer_trigger_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.defer_trigger, crate::units::DeferTrigger::No);
+}
+
+#[test]
+fn test_defer_trigger_0() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.defer_trigger, crate::units::DeferTrigger::No);
+}
+
+#[test]
+fn test_defer_trigger_patient() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = patient
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.defer_trigger,
+        crate::units::DeferTrigger::Patient
+    );
+}
+
+#[test]
+fn test_defer_trigger_patient_case_insensitive() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = Patient
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.defer_trigger,
+        crate::units::DeferTrigger::Patient
+    );
+}
+
+#[test]
+fn test_defer_trigger_patient_upper_case() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = PATIENT
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.defer_trigger,
+        crate::units::DeferTrigger::Patient
+    );
+}
+
+#[test]
+fn test_defer_trigger_yes_case_insensitive() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = Yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.defer_trigger, crate::units::DeferTrigger::Yes);
+}
+
+#[test]
+fn test_defer_trigger_all_variants_are_distinct() {
+    let no = crate::units::DeferTrigger::No;
+    let yes = crate::units::DeferTrigger::Yes;
+    let patient = crate::units::DeferTrigger::Patient;
+
+    assert_ne!(no, yes);
+    assert_ne!(no, patient);
+    assert_ne!(yes, patient);
+}
+
+#[test]
+fn test_defer_trigger_no_unsupported_warning() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "DeferTrigger should be a recognized setting, not produce unsupported warning"
+    );
+}
+
+#[test]
+fn test_defer_trigger_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(ref sock) = unit.specific {
+        assert_eq!(
+            sock.conf.defer_trigger,
+            crate::units::DeferTrigger::Yes,
+            "DeferTrigger=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_defer_trigger_patient_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = patient
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(ref sock) = unit.specific {
+        assert_eq!(
+            sock.conf.defer_trigger,
+            crate::units::DeferTrigger::Patient,
+            "DeferTrigger=patient should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_defer_trigger_default_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(ref sock) = unit.specific {
+        assert_eq!(
+            sock.conf.defer_trigger,
+            crate::units::DeferTrigger::No,
+            "DeferTrigger default (No) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_defer_trigger_with_other_socket_settings() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = patient
+    Accept = no
+    MaxConnections = 128
+    PassCredentials = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.defer_trigger,
+        crate::units::DeferTrigger::Patient
+    );
+    assert!(!socket.sock.accept);
+    assert_eq!(socket.sock.max_connections, 128);
+    assert!(socket.sock.pass_credentials);
+}
+
+#[test]
+fn test_defer_trigger_with_accept_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    DeferTrigger = yes
+    Accept = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    // Parsing should succeed; runtime enforcement of Accept=no requirement
+    // is not implemented yet.
+    assert_eq!(socket.sock.defer_trigger, crate::units::DeferTrigger::Yes);
+    assert!(socket.sock.accept);
+}
