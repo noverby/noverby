@@ -139,6 +139,41 @@ impl Fragment {
         }
     }
 
+    /// Render this fragment using MSVC syntax.
+    ///
+    /// Translates GCC-style flags to their MSVC equivalents:
+    /// - `-I<path>` → `/I<path>`
+    /// - `-L<path>` → `/LIBPATH:<path>`
+    /// - `-l<name>` → `<name>.lib`
+    /// - `-D<def>`  → `/D<def>`
+    /// - `-U<def>`  → `/U<def>`
+    /// - Everything else is passed through unchanged.
+    pub fn render_msvc(&self) -> String {
+        match self.frag_type {
+            'I' => format!("/I{}", self.data),
+            'L' => format!("/LIBPATH:{}", self.data),
+            'l' => format!("{}.lib", self.data),
+            'D' => format!("/D{}", self.data),
+            'U' => format!("/U{}", self.data),
+            '\0' => self.data.clone(),
+            _ => self.render(), // fall through for unknown types
+        }
+    }
+
+    /// Render this fragment using MSVC syntax with escaped spaces.
+    pub fn render_msvc_escaped(&self) -> String {
+        let escaped_data = escape_fragment_data(&self.data);
+        match self.frag_type {
+            'I' => format!("/I{}", escaped_data),
+            'L' => format!("/LIBPATH:{}", escaped_data),
+            'l' => format!("{}.lib", escaped_data),
+            'D' => format!("/D{}", escaped_data),
+            'U' => format!("/U{}", escaped_data),
+            '\0' => escaped_data,
+            _ => self.render_escaped(), // fall through for unknown types
+        }
+    }
+
     /// Check whether this fragment type should keep the *first* occurrence
     /// during deduplication.
     ///
@@ -456,7 +491,73 @@ impl FragmentList {
         FragmentList { fragments: result }
     }
 
-    /// Render the fragment list as a single flags string.
+    /// Apply a sysroot prefix to all `-I` and `-L` path fragments.
+    ///
+    /// For each fragment with type `I` (include path) or `L` (library path),
+    /// if the path is absolute and does not already start with the sysroot,
+    /// the sysroot is prepended.
+    ///
+    /// This implements the sysroot path rewriting that pkgconf performs
+    /// when `PKG_CONFIG_SYSROOT_DIR` is set or `--define-prefix` is used
+    /// with a cross-compilation sysroot.
+    ///
+    /// # Arguments
+    ///
+    /// * `sysroot` — The sysroot directory to prepend (e.g. `/usr/x86_64-linux-gnu`).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use libpkgconf::fragment::FragmentList;
+    ///
+    /// let mut list = FragmentList::parse("-I/usr/include -L/usr/lib -lz");
+    /// list.apply_sysroot("/cross");
+    /// assert_eq!(list.render(' '), "-I/cross/usr/include -L/cross/usr/lib -lz");
+    /// ```
+    pub fn apply_sysroot(&mut self, sysroot: &str) {
+        if sysroot.is_empty() {
+            return;
+        }
+        for frag in &mut self.fragments {
+            match frag.frag_type {
+                'I' | 'L' => {
+                    if frag.data.starts_with('/') && !frag.data.starts_with(sysroot) {
+                        frag.data = format!("{sysroot}{}", frag.data);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Apply FDO sysroot rules to `-I` and `-L` path fragments.
+    ///
+    /// Under FDO sysroot rules (`PKG_CONFIG_FDO_SYSROOT_RULES`), the sysroot
+    /// is prepended to all absolute paths in `-I` and `-L` fragments, similar
+    /// to [`apply_sysroot()`](FragmentList::apply_sysroot), but the sysroot
+    /// is always prepended even if the path already starts with the sysroot
+    /// prefix. This matches the freedesktop.org specification behavior.
+    ///
+    /// # Arguments
+    ///
+    /// * `sysroot` — The sysroot directory to prepend.
+    pub fn apply_sysroot_fdo(&mut self, sysroot: &str) {
+        if sysroot.is_empty() {
+            return;
+        }
+        for frag in &mut self.fragments {
+            match frag.frag_type {
+                'I' | 'L' => {
+                    if frag.data.starts_with('/') {
+                        frag.data = format!("{sysroot}{}", frag.data);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Render the fragment list as a single string.
     ///
     /// Fragments are joined by the given delimiter (typically `' '` or `'\n'`).
     pub fn render(&self, delimiter: char) -> String {
@@ -472,6 +573,30 @@ impl FragmentList {
         self.fragments
             .iter()
             .map(|f| f.render_escaped())
+            .collect::<Vec<_>>()
+            .join(&delimiter.to_string())
+    }
+
+    /// Render the fragment list using MSVC syntax.
+    ///
+    /// Translates GCC-style flags to MSVC equivalents:
+    /// - `-I` → `/I`
+    /// - `-L` → `/LIBPATH:`
+    /// - `-l` → `<name>.lib`
+    /// - `-D` → `/D`
+    pub fn render_msvc(&self, delimiter: char) -> String {
+        self.fragments
+            .iter()
+            .map(|f| f.render_msvc())
+            .collect::<Vec<_>>()
+            .join(&delimiter.to_string())
+    }
+
+    /// Render the fragment list using MSVC syntax with escaped spaces.
+    pub fn render_msvc_escaped(&self, delimiter: char) -> String {
+        self.fragments
+            .iter()
+            .map(|f| f.render_msvc_escaped())
             .collect::<Vec<_>>()
             .join(&delimiter.to_string())
     }
@@ -1221,6 +1346,148 @@ mod tests {
     // -------------------------------------------------------------------------
     // Real-world examples
     // -------------------------------------------------------------------------
+
+    // ── MSVC syntax rendering tests ──────────────────────────────────
+
+    #[test]
+    fn msvc_render_include() {
+        let f = Fragment::new('I', "/usr/include/glib-2.0");
+        assert_eq!(f.render_msvc(), "/I/usr/include/glib-2.0");
+    }
+
+    #[test]
+    fn msvc_render_libpath() {
+        let f = Fragment::new('L', "/usr/lib");
+        assert_eq!(f.render_msvc(), "/LIBPATH:/usr/lib");
+    }
+
+    #[test]
+    fn msvc_render_libname() {
+        let f = Fragment::new('l', "z");
+        assert_eq!(f.render_msvc(), "z.lib");
+    }
+
+    #[test]
+    fn msvc_render_define() {
+        let f = Fragment::new('D', "HAVE_CONFIG_H");
+        assert_eq!(f.render_msvc(), "/DHAVE_CONFIG_H");
+    }
+
+    #[test]
+    fn msvc_render_define_with_value() {
+        let f = Fragment::new('D', "VERSION=\"1.0\"");
+        assert_eq!(f.render_msvc(), "/DVERSION=\"1.0\"");
+    }
+
+    #[test]
+    fn msvc_render_undefine() {
+        let f = Fragment::new('U', "NDEBUG");
+        assert_eq!(f.render_msvc(), "/UNDEBUG");
+    }
+
+    #[test]
+    fn msvc_render_untyped_passthrough() {
+        let f = Fragment::untyped("-pthread");
+        assert_eq!(f.render_msvc(), "-pthread");
+    }
+
+    #[test]
+    fn msvc_render_unknown_type_passthrough() {
+        let f = Fragment::new('W', "all");
+        assert_eq!(f.render_msvc(), "-Wall");
+    }
+
+    #[test]
+    fn msvc_render_escaped_spaces() {
+        let f = Fragment::new('I', "/usr/include/my dir");
+        assert_eq!(f.render_msvc_escaped(), "/I/usr/include/my\\ dir");
+    }
+
+    #[test]
+    fn msvc_render_libname_escaped() {
+        let f = Fragment::new('l', "my lib");
+        assert_eq!(f.render_msvc_escaped(), "my\\ lib.lib");
+    }
+
+    #[test]
+    fn msvc_list_render() {
+        let list = FragmentList::parse("-I/usr/include -L/usr/lib -lz -DFOO");
+        assert_eq!(
+            list.render_msvc(' '),
+            "/I/usr/include /LIBPATH:/usr/lib z.lib /DFOO"
+        );
+    }
+
+    #[test]
+    fn msvc_list_render_escaped() {
+        let list = FragmentList::parse("-I/usr/include -lz");
+        assert_eq!(list.render_msvc_escaped(' '), "/I/usr/include z.lib");
+    }
+
+    #[test]
+    fn msvc_list_render_with_newline_delimiter() {
+        let list = FragmentList::parse("-I/usr/include -lz");
+        assert_eq!(list.render_msvc('\n'), "/I/usr/include\nz.lib");
+    }
+
+    // ── Sysroot tests ────────────────────────────────────────────────
+
+    #[test]
+    fn apply_sysroot_to_include_and_libpath() {
+        let mut list = FragmentList::parse("-I/usr/include -L/usr/lib -lz -DFOO");
+        list.apply_sysroot("/cross");
+        assert_eq!(
+            list.render(' '),
+            "-I/cross/usr/include -L/cross/usr/lib -lz -DFOO"
+        );
+    }
+
+    #[test]
+    fn apply_sysroot_skips_relative_paths() {
+        let mut list = FragmentList::parse("-Iinclude -Llib -lz");
+        list.apply_sysroot("/cross");
+        assert_eq!(list.render(' '), "-Iinclude -Llib -lz");
+    }
+
+    #[test]
+    fn apply_sysroot_skips_already_prefixed() {
+        let mut list = FragmentList::parse("-I/cross/usr/include -L/cross/usr/lib");
+        list.apply_sysroot("/cross");
+        assert_eq!(list.render(' '), "-I/cross/usr/include -L/cross/usr/lib");
+    }
+
+    #[test]
+    fn apply_sysroot_empty_is_noop() {
+        let mut list = FragmentList::parse("-I/usr/include -L/usr/lib");
+        list.apply_sysroot("");
+        assert_eq!(list.render(' '), "-I/usr/include -L/usr/lib");
+    }
+
+    #[test]
+    fn apply_sysroot_does_not_modify_libname_or_define() {
+        let mut list = FragmentList::parse("-lfoo -DBAR");
+        list.apply_sysroot("/cross");
+        assert_eq!(list.render(' '), "-lfoo -DBAR");
+    }
+
+    #[test]
+    fn apply_sysroot_fdo_always_prepends() {
+        let mut list = FragmentList::parse("-I/cross/usr/include -L/usr/lib");
+        list.apply_sysroot_fdo("/cross");
+        assert_eq!(
+            list.render(' '),
+            "-I/cross/cross/usr/include -L/cross/usr/lib"
+        );
+    }
+
+    #[test]
+    fn apply_sysroot_fdo_empty_is_noop() {
+        let mut list = FragmentList::parse("-I/usr/include");
+        list.apply_sysroot_fdo("");
+        assert_eq!(list.render(' '), "-I/usr/include");
+    }
+
+    // ── Real-world tests ─────────────────────────────────────────────
 
     #[test]
     fn real_world_glib() {
