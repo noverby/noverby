@@ -24,7 +24,9 @@ pub fn setup_logging(conf: &crate::config::LoggingConfig) -> Result<(), String> 
     }
 
     if conf.log_to_disk {
-        unimplemented!("Logging to disk is currently not supported. Pipe the stdout logs to your preferred logging solution");
+        unimplemented!(
+            "Logging to disk is currently not supported. Pipe the stdout logs to your preferred logging solution"
+        );
     }
 
     logger

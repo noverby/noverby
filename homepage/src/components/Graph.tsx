@@ -106,20 +106,20 @@ const nodes = [
 	{
 		id: "Atmosphere",
 		desc: "Atmosphere",
-    icon: "atmosphere.avif",
-    color: "#00ffff",
+		icon: "atmosphere.avif",
+		color: "#00ffff",
 		opacity: 0.1,
 		url: "https://atproto.com/",
 	},
 	{
 		id: "Bridgy",
 		desc: "Bridgy Fed",
-    icon: "bridgy.avif",
-    color: "#ffffff",
-    opacity: 0.1,
+		icon: "bridgy.avif",
+		color: "#ffffff",
+		opacity: 0.1,
 		url: "https://fed.brid.gy",
-  },
-  {
+	},
+	{
 		id: "GitHub",
 		desc: "GitHub\nProfile",
 		icon: "github.avif",

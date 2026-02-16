@@ -15,84 +15,91 @@ unsafe fn borrow_fd(fd: i32) -> BorrowedFd<'static> {
 }
 
 pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
-    std::thread::spawn(move || loop {
-        let wait_result = wait_for_socket(run_info.clone());
-        match wait_result {
-            Ok(ids) => {
-                let run_info = run_info.read().unwrap();
-                let unit_table = &run_info.unit_table;
-                for socket_id in ids {
-                    {
-                        // search the service this socket belongs to.
-                        // Note that this differs from systemd behaviour where one socket may belong to multiple services
-                        let mut srvc_unit = None;
-                        for unit in unit_table.values() {
-                            if let crate::units::Specific::Service(specific) = &unit.specific {
-                                if specific.has_socket(&socket_id.name) {
-                                    srvc_unit = Some(unit);
-                                    trace!("Start service {} by socket activation", unit.id.name);
-                                    break;
+    std::thread::spawn(move || {
+        loop {
+            let wait_result = wait_for_socket(run_info.clone());
+            match wait_result {
+                Ok(ids) => {
+                    let run_info = run_info.read().unwrap();
+                    let unit_table = &run_info.unit_table;
+                    for socket_id in ids {
+                        {
+                            // search the service this socket belongs to.
+                            // Note that this differs from systemd behaviour where one socket may belong to multiple services
+                            let mut srvc_unit = None;
+                            for unit in unit_table.values() {
+                                if let crate::units::Specific::Service(specific) = &unit.specific {
+                                    if specific.has_socket(&socket_id.name) {
+                                        srvc_unit = Some(unit);
+                                        trace!(
+                                            "Start service {} by socket activation",
+                                            unit.id.name
+                                        );
+                                        break;
+                                    }
                                 }
                             }
-                        }
 
-                        // mark socket as activated, removing it from the set of
-                        // fds systemd-rs is actively listening on
-                        let sock_unit = unit_table.get(&socket_id).unwrap();
-                        if let Specific::Socket(specific) = &sock_unit.specific {
-                            let mut_state = &mut *specific.state.write().unwrap();
-                            mut_state.sock.activated = true;
-                        }
-                        if srvc_unit.is_none() {
-                            error!(
-                                "Socket unit {socket_id:?} activated, but the service could not be found"
-                            );
-                        }
-                        if let Some(srvc_unit) = srvc_unit {
-                            let srvc_status = {
-                                let status_locked = &*srvc_unit.common.status.read().unwrap();
-                                status_locked.clone()
-                            };
+                            // mark socket as activated, removing it from the set of
+                            // fds systemd-rs is actively listening on
+                            let sock_unit = unit_table.get(&socket_id).unwrap();
+                            if let Specific::Socket(specific) = &sock_unit.specific {
+                                let mut_state = &mut *specific.state.write().unwrap();
+                                mut_state.sock.activated = true;
+                            }
+                            if srvc_unit.is_none() {
+                                error!(
+                                    "Socket unit {socket_id:?} activated, but the service could not be found"
+                                );
+                            }
+                            if let Some(srvc_unit) = srvc_unit {
+                                let srvc_status = {
+                                    let status_locked = &*srvc_unit.common.status.read().unwrap();
+                                    status_locked.clone()
+                                };
 
-                            if srvc_status == UnitStatus::Started(StatusStarted::WaitingForSocket) {
-                                // the service unit gets activated
-                                match crate::units::activate_unit(
-                                    srvc_unit.id.clone(),
-                                    &run_info,
-                                    ActivationSource::SocketActivation,
-                                ) {
-                                    Ok(_) => {
-                                        trace!(
-                                            "New status after socket activation: {:?}",
-                                            *unit_table
-                                                .get(&srvc_unit.id)
-                                                .unwrap()
-                                                .common
-                                                .status
-                                                .read()
-                                                .unwrap()
-                                        );
-                                    }
-                                    Err(e) => {
-                                        error!(
+                                if srvc_status
+                                    == UnitStatus::Started(StatusStarted::WaitingForSocket)
+                                {
+                                    // the service unit gets activated
+                                    match crate::units::activate_unit(
+                                        srvc_unit.id.clone(),
+                                        &run_info,
+                                        ActivationSource::SocketActivation,
+                                    ) {
+                                        Ok(_) => {
+                                            trace!(
+                                                "New status after socket activation: {:?}",
+                                                *unit_table
+                                                    .get(&srvc_unit.id)
+                                                    .unwrap()
+                                                    .common
+                                                    .status
+                                                    .read()
+                                                    .unwrap()
+                                            );
+                                        }
+                                        Err(e) => {
+                                            error!(
                                                 "Error while starting service from socket activation: {e}"
                                             );
+                                        }
                                     }
+                                } else {
+                                    // This should not happen too often because the sockets of a service
+                                    // should only be listened on if the service is currently waiting on socket activation
+                                    trace!(
+                                        "Ignore socket activation. Service has status: {srvc_status:?}"
+                                    );
                                 }
-                            } else {
-                                // This should not happen too often because the sockets of a service
-                                // should only be listened on if the service is currently waiting on socket activation
-                                trace!(
-                                    "Ignore socket activation. Service has status: {srvc_status:?}"
-                                );
                             }
                         }
                     }
                 }
-            }
-            Err(e) => {
-                error!("Error in socket activation loop: {e}");
-                break;
+                Err(e) => {
+                    error!("Error in socket activation loop: {e}");
+                    break;
+                }
             }
         }
     });

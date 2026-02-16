@@ -268,10 +268,14 @@ impl Service {
             if let Some(proc_group) = self.process_group {
                 match nix::sys::signal::kill(proc_group, nix::sys::signal::Signal::SIGHUP) {
                     Ok(()) => {
-                        trace!("SendSIGHUP: success sending SIGHUP to process group for service {name}")
+                        trace!(
+                            "SendSIGHUP: success sending SIGHUP to process group for service {name}"
+                        )
                     }
                     Err(e) => {
-                        trace!("SendSIGHUP: error sending SIGHUP to process group for service {name}: {e}")
+                        trace!(
+                            "SendSIGHUP: error sending SIGHUP to process group for service {name}: {e}"
+                        )
                     }
                 }
             }
@@ -285,7 +289,9 @@ impl Service {
                         Err(e) => error!("Error killing process group for service {name}: {e}"),
                     }
                 } else {
-                    trace!("Tried to kill service that didn't have a process-group. This might have resulted in orphan processes.");
+                    trace!(
+                        "Tried to kill service that didn't have a process-group. This might have resulted in orphan processes."
+                    );
                 }
                 match super::kill_os_specific::kill(conf, nix::sys::signal::Signal::SIGKILL) {
                     Ok(()) => trace!("Success killing process os specifically for service {name}"),
@@ -486,8 +492,8 @@ impl Service {
                             Ok(())
                         } else if cmdline.prefixes.contains(&CommandlinePrefix::Minus) {
                             trace!(
-                                    "Ignore error exit code: {exitstatus:?} while running {cmdline:?} for service: {name}"
-                                );
+                                "Ignore error exit code: {exitstatus:?} while running {cmdline:?} for service: {name}"
+                            );
                             Ok(())
                         } else {
                             trace!(
@@ -728,14 +734,14 @@ fn wait_for_helper_child(
                         PidEntry::ServiceExited(_) => {
                             // Should never happen
                             unreachable!(
-                            "Was waiting on helper process but pid got saved as PidEntry::OneshotExited"
-                        );
+                                "Was waiting on helper process but pid got saved as PidEntry::OneshotExited"
+                            );
                         }
                         PidEntry::Service(_, _) => {
                             // Should never happen
                             unreachable!(
-                            "Was waiting on helper process but pid got saved as PidEntry::Service"
-                        );
+                                "Was waiting on helper process but pid got saved as PidEntry::Service"
+                            );
                         }
                         PidEntry::Helper(_, _) => {
                             // Need to wait longer
