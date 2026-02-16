@@ -35490,3 +35490,305 @@ fn test_accept_socket_section_with_socket_mode() {
     assert_eq!(socket.sock.socket_mode, Some(0o0660));
     assert_eq!(socket.sock.directory_mode, Some(0o0755));
 }
+
+// ===============================================================
+// PassCredentials= in [Socket] section tests
+// ===============================================================
+
+#[test]
+fn test_pass_credentials_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket.sock.pass_credentials,
+        "PassCredentials should default to false"
+    );
+}
+
+#[test]
+fn test_pass_credentials_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassCredentials = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.pass_credentials,
+        "PassCredentials=yes should be true"
+    );
+}
+
+#[test]
+fn test_pass_credentials_no() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassCredentials = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket.sock.pass_credentials,
+        "PassCredentials=no should be false"
+    );
+}
+
+#[test]
+fn test_pass_credentials_true() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassCredentials = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.pass_credentials,
+        "PassCredentials=true should be true"
+    );
+}
+
+#[test]
+fn test_pass_credentials_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassCredentials = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket.sock.pass_credentials,
+        "PassCredentials=false should be false"
+    );
+}
+
+#[test]
+fn test_pass_credentials_1() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassCredentials = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.pass_credentials,
+        "PassCredentials=1 should be true"
+    );
+}
+
+#[test]
+fn test_pass_credentials_0() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassCredentials = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket.sock.pass_credentials,
+        "PassCredentials=0 should be false"
+    );
+}
+
+#[test]
+fn test_pass_credentials_case_insensitive() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassCredentials = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.pass_credentials,
+        "PassCredentials=YES should be true (case insensitive)"
+    );
+}
+
+#[test]
+fn test_pass_credentials_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassCredentials = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert!(
+            sock.conf.pass_credentials,
+            "PassCredentials=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_pass_credentials_false_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassCredentials = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert!(
+            !sock.conf.pass_credentials,
+            "PassCredentials=no should survive unit conversion as false"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_pass_credentials_default_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert!(
+            !sock.conf.pass_credentials,
+            "Default PassCredentials (false) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_pass_credentials_no_unsupported_warning() {
+    // Ensure that PassCredentials= no longer triggers
+    // "Ignoring unsupported setting in [Socket] section" warnings.
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassCredentials = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    // If parsing succeeds and the value is correct, no warning was emitted
+    assert!(socket.sock.pass_credentials);
+}
+
+#[test]
+fn test_pass_credentials_with_other_socket_settings() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Accept = yes
+    PassCredentials = yes
+    SocketMode = 0660
+    MaxConnections = 128
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.accept);
+    assert!(socket.sock.pass_credentials);
+    assert_eq!(socket.sock.socket_mode, Some(0o0660));
+    assert_eq!(socket.sock.max_connections, 128);
+}

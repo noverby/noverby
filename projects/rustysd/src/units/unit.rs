@@ -1459,5 +1459,11 @@ pub struct SocketConfig {
     /// See systemd.socket(5).
     pub directory_mode: Option<u32>,
 
+    /// PassCredentials= — whether to enable SO_PASSCRED on the socket, so
+    /// that the receiving process can obtain peer credentials via an
+    /// ancillary message. Defaults to false. Parsed and stored; no runtime
+    /// enforcement yet. See systemd.socket(5).
+    pub pass_credentials: bool,
+
     pub exec_config: ExecConfig,
 }
