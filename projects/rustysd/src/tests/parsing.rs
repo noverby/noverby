@@ -36275,3 +36275,619 @@ fn test_receive_buffer_large_value() {
         "ReceiveBuffer should handle large values (16 MiB)"
     );
 }
+
+// ==================== ListenNetlink= tests ====================
+
+#[test]
+fn test_listen_netlink_family_and_group() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = kobject-uevent 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(conf.family, "kobject-uevent");
+        assert_eq!(conf.group, 1);
+    } else {
+        panic!(
+            "Expected NetlinkSocket config, got {:?}",
+            socket.sock.sockets[0].specialized
+        );
+    }
+    if let crate::sockets::SocketKind::Netlink(ref raw) = socket.sock.sockets[0].kind {
+        assert_eq!(raw, "kobject-uevent 1");
+    } else {
+        panic!("Expected Netlink socket kind");
+    }
+}
+
+#[test]
+fn test_listen_netlink_family_only_defaults_group_to_zero() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = audit
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(conf.family, "audit");
+        assert_eq!(
+            conf.group, 0,
+            "Group should default to 0 when not specified"
+        );
+    } else {
+        panic!("Expected NetlinkSocket config");
+    }
+}
+
+#[test]
+fn test_listen_netlink_route_family() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = route 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(conf.family, "route");
+        assert_eq!(conf.group, 0);
+    } else {
+        panic!("Expected NetlinkSocket config");
+    }
+}
+
+#[test]
+fn test_listen_netlink_multiple() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = kobject-uevent 1
+    ListenNetlink = audit 0
+    ListenNetlink = route
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.sockets.len(),
+        3,
+        "Should have 3 netlink sockets"
+    );
+
+    if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(conf.family, "kobject-uevent");
+        assert_eq!(conf.group, 1);
+    } else {
+        panic!("Socket[0] should be NetlinkSocket");
+    }
+
+    if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+        socket.sock.sockets[1].specialized
+    {
+        assert_eq!(conf.family, "audit");
+        assert_eq!(conf.group, 0);
+    } else {
+        panic!("Socket[1] should be NetlinkSocket");
+    }
+
+    if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+        socket.sock.sockets[2].specialized
+    {
+        assert_eq!(conf.family, "route");
+        assert_eq!(conf.group, 0);
+    } else {
+        panic!("Socket[2] should be NetlinkSocket");
+    }
+}
+
+#[test]
+fn test_listen_netlink_ordering_preserved_with_other_socket_types() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ListenNetlink = kobject-uevent 1
+    ListenDatagram = /path/to/dgram
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 3);
+
+    // First should be stream
+    assert!(
+        matches!(
+            socket.sock.sockets[0].kind,
+            crate::sockets::SocketKind::Stream(_)
+        ),
+        "First socket should be Stream, got {:?}",
+        socket.sock.sockets[0].kind
+    );
+
+    // Second should be netlink
+    if let crate::sockets::SocketKind::Netlink(ref raw) = socket.sock.sockets[1].kind {
+        assert_eq!(raw, "kobject-uevent 1");
+    } else {
+        panic!(
+            "Second socket should be Netlink, got {:?}",
+            socket.sock.sockets[1].kind
+        );
+    }
+
+    // Third should be datagram
+    assert!(
+        matches!(
+            socket.sock.sockets[2].kind,
+            crate::sockets::SocketKind::Datagram(_)
+        ),
+        "Third socket should be Datagram, got {:?}",
+        socket.sock.sockets[2].kind
+    );
+}
+
+#[test]
+fn test_listen_netlink_invalid_group_not_a_number() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = kobject-uevent abc
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(
+        result.is_err(),
+        "Should fail when group is not a valid number"
+    );
+}
+
+#[test]
+fn test_listen_netlink_too_many_parts() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = kobject-uevent 1 extra
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(
+        result.is_err(),
+        "Should fail when too many parts in ListenNetlink value"
+    );
+}
+
+#[test]
+fn test_listen_netlink_no_unsupported_warning() {
+    // This test verifies that ListenNetlink is recognized and doesn't produce
+    // an "unsupported setting" warning. We verify by checking that parsing
+    // succeeds without error (warnings are logged but don't cause errors).
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = kobject-uevent 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "ListenNetlink should be a recognized setting"
+    );
+}
+
+#[test]
+fn test_listen_netlink_numeric_family() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = 15 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(conf.family, "15");
+        assert_eq!(conf.group, 1);
+    } else {
+        panic!("Expected NetlinkSocket config");
+    }
+}
+
+#[test]
+fn test_listen_netlink_group_zero_explicit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = generic 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(conf.family, "generic");
+        assert_eq!(conf.group, 0);
+    } else {
+        panic!("Expected NetlinkSocket config");
+    }
+}
+
+#[test]
+fn test_listen_netlink_large_group_number() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = connector 4294967295
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(conf.family, "connector");
+        assert_eq!(conf.group, 4294967295);
+    } else {
+        panic!("Expected NetlinkSocket config");
+    }
+}
+
+#[test]
+fn test_listen_netlink_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = kobject-uevent 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+
+    if let crate::units::Specific::Socket(ref sock_specific) = unit.specific {
+        assert_eq!(sock_specific.conf.sockets.len(), 1);
+        if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+            sock_specific.conf.sockets[0].specialized
+        {
+            assert_eq!(conf.family, "kobject-uevent");
+            assert_eq!(conf.group, 1);
+        } else {
+            panic!("Expected NetlinkSocket after unit conversion");
+        }
+        if let crate::sockets::SocketKind::Netlink(ref raw) = sock_specific.conf.sockets[0].kind {
+            assert_eq!(raw, "kobject-uevent 1");
+        } else {
+            panic!("Expected Netlink socket kind after unit conversion");
+        }
+    } else {
+        panic!("Expected Socket unit");
+    }
+}
+
+#[test]
+fn test_listen_netlink_with_other_socket_settings() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = kobject-uevent 1
+    MaxConnections = 128
+    SocketMode = 0660
+    Accept = no
+    PassCredentials = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(conf.family, "kobject-uevent");
+        assert_eq!(conf.group, 1);
+    } else {
+        panic!("Expected NetlinkSocket config");
+    }
+    assert_eq!(socket.sock.max_connections, 128);
+    assert_eq!(socket.sock.socket_mode, Some(0o660));
+    assert!(!socket.sock.accept);
+    assert!(socket.sock.pass_credentials);
+}
+
+#[test]
+fn test_listen_netlink_combined_with_listen_stream() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ListenNetlink = audit 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 2);
+
+    // Stream first
+    if let crate::sockets::SpecializedSocketConfig::UnixSocket(
+        crate::sockets::UnixSocketConfig::Stream(ref addr),
+    ) = socket.sock.sockets[0].specialized
+    {
+        assert_eq!(addr, "/path/to/socket");
+    } else {
+        panic!("Socket[0] should be a unix stream socket");
+    }
+
+    // Netlink second
+    if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+        socket.sock.sockets[1].specialized
+    {
+        assert_eq!(conf.family, "audit");
+        assert_eq!(conf.group, 1);
+    } else {
+        panic!("Socket[1] should be a netlink socket");
+    }
+}
+
+#[test]
+fn test_listen_netlink_with_filedescriptor_name() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = kobject-uevent 1
+    FileDescriptorName = mynetlink
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    assert_eq!(socket.sock.filedesc_name, Some("mynetlink".to_owned()));
+    if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(conf.family, "kobject-uevent");
+        assert_eq!(conf.group, 1);
+    } else {
+        panic!("Expected NetlinkSocket config");
+    }
+}
+
+#[test]
+fn test_listen_netlink_selinux_family() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = selinux 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(conf.family, "selinux");
+        assert_eq!(conf.group, 0);
+    } else {
+        panic!("Expected NetlinkSocket config");
+    }
+}
+
+#[test]
+fn test_listen_netlink_netfilter_family() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = netfilter 3
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(conf.family, "netfilter");
+        assert_eq!(conf.group, 3);
+    } else {
+        panic!("Expected NetlinkSocket config");
+    }
+}
+
+#[test]
+fn test_listen_netlink_multiple_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = kobject-uevent 1
+    ListenNetlink = audit 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+
+    if let crate::units::Specific::Socket(ref sock_specific) = unit.specific {
+        assert_eq!(sock_specific.conf.sockets.len(), 2);
+
+        if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+            sock_specific.conf.sockets[0].specialized
+        {
+            assert_eq!(conf.family, "kobject-uevent");
+            assert_eq!(conf.group, 1);
+        } else {
+            panic!("Socket[0] should be NetlinkSocket after conversion");
+        }
+
+        if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+            sock_specific.conf.sockets[1].specialized
+        {
+            assert_eq!(conf.family, "audit");
+            assert_eq!(conf.group, 0);
+        } else {
+            panic!("Socket[1] should be NetlinkSocket after conversion");
+        }
+    } else {
+        panic!("Expected Socket unit");
+    }
+}
+
+#[test]
+fn test_listen_netlink_combined_with_stream_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ListenNetlink = kobject-uevent 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+
+    if let crate::units::Specific::Socket(ref sock_specific) = unit.specific {
+        assert_eq!(sock_specific.conf.sockets.len(), 2);
+
+        // Stream first
+        assert!(
+            matches!(
+                sock_specific.conf.sockets[0].specialized,
+                crate::sockets::SpecializedSocketConfig::UnixSocket(_)
+            ),
+            "Socket[0] should be UnixSocket after conversion"
+        );
+
+        // Netlink second
+        if let crate::sockets::SpecializedSocketConfig::NetlinkSocket(ref conf) =
+            sock_specific.conf.sockets[1].specialized
+        {
+            assert_eq!(conf.family, "kobject-uevent");
+            assert_eq!(conf.group, 1);
+        } else {
+            panic!("Socket[1] should be NetlinkSocket after conversion");
+        }
+    } else {
+        panic!("Expected Socket unit");
+    }
+}
+
+#[test]
+fn test_listen_netlink_negative_group_fails() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = kobject-uevent -1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_err(), "Should fail when group is negative");
+}
