@@ -105,7 +105,7 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.device.html">systemd.device</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td>Device units are recognized as a valid unit type in dependency lists (After=, Requires=, BindsTo=, Wants=, etc.). No runtime device management or udev integration; devices are not automatically created from udev events.</td>
 </tr>
 </table>
@@ -607,12 +607,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#StandardOutput=">StandardOutput=</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td>Supported modes: inherit, null, tty, file:, append:, journal/syslog (treated as inherit), kmsg (treated as inherit). When set to tty, output is connected to the TTY device (from TTYPath=, default /dev/console).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#StandardError=">StandardError=</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td>Supported modes: inherit, null, tty, file:, append:, journal/syslog (treated as inherit), kmsg (treated as inherit). When set to tty, output is connected to the TTY device (from TTYPath=, default /dev/console).</td>
 </tr>
 <tr>
@@ -712,7 +712,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$USER">$USER</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td></td>
 </tr>
 <tr>
@@ -917,7 +917,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.path.html#Unit=">Unit=</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td></td>
 </tr>
 <tr>
@@ -1222,12 +1222,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ExecStartPre=">ExecStartPre=</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td>Allowing commands to be run is supported. The return value is checked. The '-' prefix (ignore errors) and '@' prefix (override argv[0]) are supported, other prefixes are not.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ExecStartPost=">ExecStartPost=</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td>Allowing commands to be run is supported. The return value is checked. The '-' prefix (ignore errors) and '@' prefix (override argv[0]) are supported, other prefixes are not.</td>
 </tr>
 <tr>
@@ -1242,12 +1242,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ExecStop=">ExecStop=</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td>Allowing commands to be run is supported. The return value is checked. The '-' prefix (ignore errors) and '@' prefix (override argv[0]) are supported, other prefixes are not.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ExecStopPost=">ExecStopPost=</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td>Allowing commands to be run is supported. The return value is checked. The '-' prefix (ignore errors) and '@' prefix (override argv[0]) are supported, other prefixes are not.</td>
 </tr>
 <tr>
@@ -1317,12 +1317,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#NotifyAccess=">NotifyAccess=</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td>Not fully supported. All settings are accepted but are not being enforced right now. Acts as if 'all' was set.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#Sockets=">Sockets=</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td>Adding more socket files to services is supported. But only so that one socket belongs to only one service (sytsemd allows for sockets to belong to multiple services).</td>
 </tr>
 <tr>
@@ -1608,12 +1608,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ExecStartPre=">ExecStartPre=</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td>Allowing commands to be run is supported. The return value is checked. The '-' prefix (ignore errors) and '@' prefix (override argv[0]) are supported, other prefixes are not.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ExecStartPost=">ExecStartPost=</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td>Allowing commands to be run is supported. The return value is checked. The '-' prefix (ignore errors) and '@' prefix (override argv[0]) are supported, other prefixes are not.</td>
 </tr>
 <tr>
@@ -1623,7 +1623,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ExecStopPost=">ExecStopPost=</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td>Allowing commands to be run is supported. The return value is checked. The '-' prefix (ignore errors) and '@' prefix (override argv[0]) are supported, other prefixes are not.</td>
 </tr>
 <tr>
@@ -1733,7 +1733,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.timer.html#Unit=">Unit=</a></td>
-  <td>❓</td>
+  <td>🚧</td>
   <td></td>
 </tr>
 <tr>

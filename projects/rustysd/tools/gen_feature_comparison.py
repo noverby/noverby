@@ -24,7 +24,7 @@ RELEVANT_PAGES = [
 
 ICON_TICK = "✅"
 ICON_CROSS = "❌"
-ICON_QMARK = "❓"
+ICON_QMARK = "🚧"
 
 # tracks which features have actually been inserted to find cases where names change / features get removed in the future.
 USED_FEATURES = {}
@@ -111,7 +111,7 @@ def main():
             term_noeq = term.split("=")[0].replace("$", "")
             present = 0 == subprocess.call(
                 ['git', 'grep', '-i', '-q', '"%s"' % term_noeq, 'src/*.rs'])
-            icon = '❓' if present else '❌'
+            icon = '🚧' if present else '❌'
             text = ""
 
             if term_noeq in SUPPORTED_FEATURES:
