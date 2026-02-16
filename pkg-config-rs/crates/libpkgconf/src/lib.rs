@@ -57,12 +57,12 @@ pub mod fragment;
 pub mod parser;
 pub mod path;
 pub mod pkg;
+pub mod queue;
 pub mod version;
 
 // Planned modules — currently stubs:
 // pub mod audit;
 // pub mod personality;
-// pub mod queue;
 
 /// The version of this library (mirrors pkgconf compatibility version).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
