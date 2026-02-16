@@ -425,6 +425,7 @@ fn parse_service_section(
     let ip_address_allow = section.remove("IPADDRESSALLOW");
     let ip_address_deny = section.remove("IPADDRESSDENY");
     let file_descriptor_store_max = section.remove("FILEDESCRIPTORSTOREMAX");
+    let file_descriptor_store_preserve = section.remove("FILEDESCRIPTORSTOREPRESERVE");
     let kill_signal = section.remove("KILLSIGNAL");
     let memory_min = section.remove("MEMORYMIN");
     let memory_low = section.remove("MEMORYLOW");
@@ -1111,6 +1112,29 @@ fn parse_service_section(
                 }
             }
             None => 0,
+        },
+        file_descriptor_store_preserve: match file_descriptor_store_preserve {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.trim().to_lowercase().as_str() {
+                        "no" | "false" | "0" => super::FileDescriptorStorePreserve::No,
+                        "yes" | "true" | "1" => super::FileDescriptorStorePreserve::Yes,
+                        "restart" => super::FileDescriptorStorePreserve::Restart,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "FileDescriptorStorePreserve".to_owned(),
+                                other.to_owned(),
+                            ))
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "FileDescriptorStorePreserve".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => super::FileDescriptorStorePreserve::default(),
         },
         memory_min: match memory_min {
             Some(vec) => {

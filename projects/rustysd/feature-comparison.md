@@ -1332,6 +1332,11 @@ This document is meant as a simple way of checking whether all features you need
   <td>Parsed and stored. No runtime enforcement yet.</td>
 </tr>
 <tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#FileDescriptorStorePreserve=">FileDescriptorStorePreserve=</a></td>
+  <td>✔️</td>
+  <td>Parsed and stored. Takes <code>no</code> (default), <code>yes</code>, or <code>restart</code>. Controls whether file descriptors stored via FDSTORE=1 are preserved across service restarts or stops. No runtime enforcement yet.</td>
+</tr>
+<tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#USBFunctionDescriptors=">USBFunctionDescriptors=</a></td>
   <td>❌</td>
   <td></td>

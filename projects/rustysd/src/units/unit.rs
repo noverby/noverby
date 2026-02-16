@@ -5,12 +5,12 @@ use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
     acquire_locks, ActivationSource, Commandline, DeferTrigger, Delegate, DevicePolicy, EnvVars,
-    IOSchedulingClass, KeyringMode, KillMode, MemoryLimit, MemoryPressureWatch, NotifyKind,
-    OnFailureJobMode, ProcSubset, ProtectHome, ProtectProc, ProtectSystem, ResourceLimit,
-    RestrictNamespaces, RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput,
-    StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout, Timestamping, UnitAction,
-    UnitCondition, UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus,
-    UtmpMode,
+    FileDescriptorStorePreserve, IOSchedulingClass, KeyringMode, KillMode, MemoryLimit,
+    MemoryPressureWatch, NotifyKind, OnFailureJobMode, ProcSubset, ProtectHome, ProtectProc,
+    ProtectSystem, ResourceLimit, RestrictNamespaces, RuntimeDirectoryPreserve, ServiceRestart,
+    ServiceType, StandardInput, StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout,
+    Timestamping, UnitAction, UnitCondition, UnitId, UnitIdKind, UnitOperationError,
+    UnitOperationErrorReason, UnitStatus, UtmpMode,
 };
 
 use std::sync::RwLock;
@@ -1417,6 +1417,14 @@ pub struct ServiceConfig {
     /// (file descriptor store disabled). Parsed and stored; no runtime
     /// enforcement yet. See systemd.service(5).
     pub file_descriptor_store_max: u64,
+
+    /// FileDescriptorStorePreserve= — controls whether file descriptors
+    /// stored in the service manager (via FDSTORE=1 sd_notify messages) are
+    /// preserved across service restarts or stops. Takes `no` (default,
+    /// discard on stop), `yes` (preserve as long as the unit exists), or
+    /// `restart` (preserve across restarts, discard on full stop). Parsed
+    /// and stored; no runtime enforcement yet. See systemd.service(5).
+    pub file_descriptor_store_preserve: FileDescriptorStorePreserve,
 
     /// MemoryMin= — minimum memory guarantee for the unit's cgroup. The
     /// memory controller will try to protect at least this much memory from

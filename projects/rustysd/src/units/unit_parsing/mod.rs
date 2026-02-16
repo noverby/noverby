@@ -1124,6 +1124,14 @@ pub struct ParsedServiceSection {
     /// enforcement yet. See systemd.service(5).
     pub file_descriptor_store_max: u64,
 
+    /// FileDescriptorStorePreserve= — controls whether file descriptors
+    /// stored in the service manager (via FDSTORE=1 sd_notify messages) are
+    /// preserved across service restarts or stops. Takes `no` (default,
+    /// discard on stop), `yes` (preserve as long as the unit exists), or
+    /// `restart` (preserve across restarts, discard on full stop). Parsed
+    /// and stored; no runtime enforcement yet. See systemd.service(5).
+    pub file_descriptor_store_preserve: FileDescriptorStorePreserve,
+
     /// MemoryMin= — minimum memory guarantee for the unit's cgroup. The
     /// memory controller will try to protect at least this much memory from
     /// reclaim. Accepts a byte value with optional K/M/G/T/P/E suffix
@@ -1667,6 +1675,27 @@ pub enum RuntimeDirectoryPreserve {
 }
 
 impl Default for RuntimeDirectoryPreserve {
+    fn default() -> Self {
+        Self::No
+    }
+}
+
+/// FileDescriptorStorePreserve= — controls whether file descriptors stored
+/// in the service manager (via FDSTORE=1 sd_notify messages) are preserved
+/// across service restarts or stops. See systemd.service(5).
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub enum FileDescriptorStorePreserve {
+    /// Discard stored file descriptors when the service is stopped (default).
+    No,
+    /// Preserve stored file descriptors as long as the unit exists in memory,
+    /// even if the service is stopped.
+    Yes,
+    /// Preserve stored file descriptors across service restarts, but discard
+    /// them when the service is fully stopped.
+    Restart,
+}
+
+impl Default for FileDescriptorStorePreserve {
     fn default() -> Self {
         Self::No
     }
