@@ -20,30 +20,9 @@ pub fn run_service_manager() {
         unreachable!();
     });
 
-    if let Some(path) = &cli_args.conf {
-        if !path.exists() {
-            unrecoverable_error("config path given that does not exist".to_string());
-        }
-        if !path.is_dir() {
-            unrecoverable_error("config path given that is not a directory".to_string());
-        }
-    }
-
-    let (log_conf, conf) = config::load_config(&cli_args.conf);
+    let (log_conf, conf) = config::load_config();
 
     logging::setup_logging(&log_conf).unwrap();
-    let conf = match conf {
-        Ok(conf) => conf,
-        Err(e) => {
-            error!("Error while loading the conf: {e}");
-            unrecoverable_error(format!(
-                "Reading conf did not work. See stdout or log at: {:?}",
-                log_conf.log_dir
-            ));
-            // unrecoverable_error always shutsdown rustysd
-            unreachable!("");
-        }
-    };
 
     #[cfg(feature = "cgroups")]
     {
@@ -272,8 +251,6 @@ use clap::Parser;
 
 #[derive(Parser, Debug)]
 struct CliArgs {
-    #[arg(short, long)]
-    conf: Option<std::path::PathBuf>,
     #[arg(short, long)]
     dry_run: bool,
 }
