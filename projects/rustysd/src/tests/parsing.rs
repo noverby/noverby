@@ -42215,3 +42215,455 @@ fn test_writable_with_fifo() {
 
     assert!(socket.sock.writable);
 }
+
+// ===============================================================
+// ListenSpecial= in [Socket] section tests
+// ===============================================================
+
+#[test]
+fn test_listen_special_basic() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenSpecial = /proc/sys/fs/inotify/max_user_instances
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    if let crate::sockets::SocketKind::Special(ref raw) = socket.sock.sockets[0].kind {
+        assert_eq!(raw, "/proc/sys/fs/inotify/max_user_instances");
+    } else {
+        panic!("Expected Special socket kind");
+    }
+    if let crate::sockets::SpecializedSocketConfig::SpecialFile(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(
+            conf.path,
+            std::path::PathBuf::from("/proc/sys/fs/inotify/max_user_instances")
+        );
+    } else {
+        panic!("Expected SpecialFile config");
+    }
+}
+
+#[test]
+fn test_listen_special_sys_path() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenSpecial = /sys/class/net/eth0/carrier
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    if let crate::sockets::SpecializedSocketConfig::SpecialFile(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(
+            conf.path,
+            std::path::PathBuf::from("/sys/class/net/eth0/carrier")
+        );
+    } else {
+        panic!("Expected SpecialFile config");
+    }
+}
+
+#[test]
+fn test_listen_special_dev_path() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenSpecial = /dev/input/event0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    if let crate::sockets::SpecializedSocketConfig::SpecialFile(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(conf.path, std::path::PathBuf::from("/dev/input/event0"));
+    } else {
+        panic!("Expected SpecialFile config");
+    }
+}
+
+#[test]
+fn test_listen_special_relative_path() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenSpecial = ./special_file
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    if let crate::sockets::SpecializedSocketConfig::SpecialFile(ref conf) =
+        socket.sock.sockets[0].specialized
+    {
+        assert_eq!(conf.path, std::path::PathBuf::from("./special_file"));
+    } else {
+        panic!("Expected SpecialFile config");
+    }
+}
+
+#[test]
+fn test_listen_special_invalid_path_rejected() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenSpecial = not_a_valid_path
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_listen_special_multiple() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenSpecial = /proc/sys/fs/inotify/max_user_instances
+    ListenSpecial = /dev/input/event0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 2);
+    if let crate::sockets::SocketKind::Special(ref raw) = socket.sock.sockets[0].kind {
+        assert_eq!(raw, "/proc/sys/fs/inotify/max_user_instances");
+    } else {
+        panic!("Expected Special socket kind for first entry");
+    }
+    if let crate::sockets::SocketKind::Special(ref raw) = socket.sock.sockets[1].kind {
+        assert_eq!(raw, "/dev/input/event0");
+    } else {
+        panic!("Expected Special socket kind for second entry");
+    }
+}
+
+#[test]
+fn test_listen_special_ordering_preserved_with_other_socket_types() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ListenSpecial = /proc/sys/fs/inotify/max_user_instances
+    ListenDatagram = /path/to/dgram
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 3);
+    assert!(matches!(
+        socket.sock.sockets[0].kind,
+        crate::sockets::SocketKind::Stream(_)
+    ));
+    assert!(matches!(
+        socket.sock.sockets[1].kind,
+        crate::sockets::SocketKind::Special(_)
+    ));
+    assert!(matches!(
+        socket.sock.sockets[2].kind,
+        crate::sockets::SocketKind::Datagram(_)
+    ));
+}
+
+#[test]
+fn test_listen_special_no_unsupported_warning() {
+    // Ensure that ListenSpecial= no longer triggers
+    // "Ignoring unsupported setting in [Socket] section" warnings.
+    let test_socket_str = r#"
+    [Socket]
+    ListenSpecial = /proc/sys/fs/inotify/max_user_instances
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    // If parsing succeeds, the setting was recognized (no warning)
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_listen_special_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenSpecial = /proc/sys/fs/inotify/max_user_instances
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+
+    if let crate::units::Specific::Socket(ref sock_specific) = unit.specific {
+        assert_eq!(sock_specific.conf.sockets.len(), 1);
+        if let crate::sockets::SpecializedSocketConfig::SpecialFile(ref conf) =
+            sock_specific.conf.sockets[0].specialized
+        {
+            assert_eq!(
+                conf.path,
+                std::path::PathBuf::from("/proc/sys/fs/inotify/max_user_instances")
+            );
+        } else {
+            panic!("Expected SpecialFile after unit conversion");
+        }
+        if let crate::sockets::SocketKind::Special(ref raw) = sock_specific.conf.sockets[0].kind {
+            assert_eq!(raw, "/proc/sys/fs/inotify/max_user_instances");
+        } else {
+            panic!("Expected Special socket kind after unit conversion");
+        }
+    } else {
+        panic!("Expected Socket unit");
+    }
+}
+
+#[test]
+fn test_listen_special_multiple_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenSpecial = /proc/sys/fs/inotify/max_user_instances
+    ListenSpecial = /dev/input/event0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+
+    if let crate::units::Specific::Socket(ref sock_specific) = unit.specific {
+        assert_eq!(sock_specific.conf.sockets.len(), 2);
+        if let crate::sockets::SpecializedSocketConfig::SpecialFile(ref conf) =
+            sock_specific.conf.sockets[0].specialized
+        {
+            assert_eq!(
+                conf.path,
+                std::path::PathBuf::from("/proc/sys/fs/inotify/max_user_instances")
+            );
+        } else {
+            panic!("Expected SpecialFile for first entry after conversion");
+        }
+        if let crate::sockets::SpecializedSocketConfig::SpecialFile(ref conf) =
+            sock_specific.conf.sockets[1].specialized
+        {
+            assert_eq!(conf.path, std::path::PathBuf::from("/dev/input/event0"));
+        } else {
+            panic!("Expected SpecialFile for second entry after conversion");
+        }
+    } else {
+        panic!("Expected Socket unit");
+    }
+}
+
+#[test]
+fn test_listen_special_combined_with_stream_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ListenSpecial = /proc/sys/fs/inotify/max_user_instances
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+
+    if let crate::units::Specific::Socket(ref sock_specific) = unit.specific {
+        assert_eq!(sock_specific.conf.sockets.len(), 2);
+        assert!(matches!(
+            sock_specific.conf.sockets[0].specialized,
+            crate::sockets::SpecializedSocketConfig::UnixSocket(_)
+        ));
+        assert!(matches!(
+            sock_specific.conf.sockets[1].specialized,
+            crate::sockets::SpecializedSocketConfig::SpecialFile(_)
+        ));
+    } else {
+        panic!("Expected Socket unit");
+    }
+}
+
+#[test]
+fn test_listen_special_with_other_socket_settings() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenSpecial = /proc/sys/fs/inotify/max_user_instances
+    MaxConnections = 128
+    SocketMode = 0660
+    Accept = no
+    PassCredentials = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    assert!(matches!(
+        socket.sock.sockets[0].specialized,
+        crate::sockets::SpecializedSocketConfig::SpecialFile(_)
+    ));
+    assert_eq!(socket.sock.max_connections, 128);
+    assert_eq!(socket.sock.socket_mode, Some(0o0660));
+    assert!(!socket.sock.accept);
+    assert!(socket.sock.pass_credentials);
+}
+
+#[test]
+fn test_listen_special_with_writable() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenSpecial = /dev/input/event0
+    Writable = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    assert!(matches!(
+        socket.sock.sockets[0].specialized,
+        crate::sockets::SpecializedSocketConfig::SpecialFile(_)
+    ));
+    assert!(socket.sock.writable);
+}
+
+#[test]
+fn test_listen_special_with_filedescriptor_name() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenSpecial = /proc/sys/fs/inotify/max_user_instances
+    FileDescriptorName = myspecial
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 1);
+    assert_eq!(socket.sock.filedesc_name, Some("myspecial".to_owned()));
+    assert!(matches!(
+        socket.sock.sockets[0].specialized,
+        crate::sockets::SpecializedSocketConfig::SpecialFile(_)
+    ));
+}
+
+#[test]
+fn test_listen_special_combined_with_fifo() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenFIFO = /path/to/fifo
+    ListenSpecial = /dev/input/event0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 2);
+    assert!(matches!(
+        socket.sock.sockets[0].kind,
+        crate::sockets::SocketKind::Fifo(_)
+    ));
+    assert!(matches!(
+        socket.sock.sockets[1].kind,
+        crate::sockets::SocketKind::Special(_)
+    ));
+}
+
+#[test]
+fn test_listen_special_combined_with_netlink() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenNetlink = kobject-uevent 1
+    ListenSpecial = /proc/sys/fs/inotify/max_user_instances
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.sockets.len(), 2);
+    assert!(matches!(
+        socket.sock.sockets[0].kind,
+        crate::sockets::SocketKind::Netlink(_)
+    ));
+    assert!(matches!(
+        socket.sock.sockets[1].kind,
+        crate::sockets::SocketKind::Special(_)
+    ));
+}

@@ -1393,8 +1393,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenSpecial=">ListenSpecial=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✅</td>
+  <td>Parsed, stored, and opened at runtime. Special files (e.g. in /proc, /sys, device nodes) are opened O_RDONLY|O_CLOEXEC|O_NOCTTY and the fd is passed to the service.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenNetlink=">ListenNetlink=</a></td>

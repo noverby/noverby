@@ -3,11 +3,13 @@
 mod fifo;
 mod netlink_sockets;
 mod network_sockets;
+mod special_file;
 mod unix_sockets;
 pub use fifo::*;
 use log::trace;
 pub use netlink_sockets::*;
 pub use network_sockets::*;
+pub use special_file::*;
 pub use unix_sockets::*;
 
 use std::os::unix::io::{AsRawFd, BorrowedFd, RawFd};
@@ -36,6 +38,7 @@ pub enum SocketKind {
     Datagram(String),
     Fifo(String),
     Netlink(String),
+    Special(String),
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -45,6 +48,7 @@ pub enum SpecializedSocketConfig {
     TcpSocket(TcpSocketConfig),
     UdpSocket(UdpSocketConfig),
     NetlinkSocket(NetlinkSocketConfig),
+    SpecialFile(SpecialFileConfig),
 }
 
 impl SpecializedSocketConfig {
@@ -55,6 +59,7 @@ impl SpecializedSocketConfig {
             Self::UdpSocket(conf) => conf.open(),
             Self::Fifo(conf) => conf.open(),
             Self::NetlinkSocket(conf) => conf.open(),
+            Self::SpecialFile(conf) => conf.open(),
         }
     }
     fn close(&self, rawfd: RawFd) -> Result<(), String> {
@@ -64,6 +69,7 @@ impl SpecializedSocketConfig {
             Self::UdpSocket(conf) => conf.close(rawfd),
             Self::Fifo(conf) => conf.close(rawfd),
             Self::NetlinkSocket(conf) => conf.close(rawfd),
+            Self::SpecialFile(conf) => conf.close(rawfd),
         }
     }
 }

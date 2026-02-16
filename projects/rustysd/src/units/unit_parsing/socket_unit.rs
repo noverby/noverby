@@ -1,8 +1,8 @@
 use log::{trace, warn};
 
 use crate::sockets::{
-    FifoConfig, NetlinkSocketConfig, SocketKind, SpecializedSocketConfig, TcpSocketConfig,
-    UdpSocketConfig, UnixSocketConfig,
+    FifoConfig, NetlinkSocketConfig, SocketKind, SpecialFileConfig, SpecializedSocketConfig,
+    TcpSocketConfig, UdpSocketConfig, UnixSocketConfig,
 };
 use crate::units::{
     parse_install_section, parse_unit_section, ParsedCommonConfig, ParsedFile, ParsedSection,
@@ -119,6 +119,7 @@ fn parse_socket_section(
     let seqpacks = section.remove("LISTENSEQUENTIALPACKET");
     let fifos = section.remove("LISTENFIFO");
     let netlinks = section.remove("LISTENNETLINK");
+    let specials = section.remove("LISTENSPECIAL");
     let defer_trigger = section.remove("DEFERTRIGGER");
     let accept = section.remove("ACCEPT");
     let max_connections = section.remove("MAXCONNECTIONS");
@@ -195,6 +196,12 @@ fn parse_socket_section(
             socket_kinds.push((entry_num, SocketKind::Netlink(value)));
         }
     }
+    if let Some(mut specials) = specials {
+        for _ in 0..specials.len() {
+            let (entry_num, value) = specials.remove(0);
+            socket_kinds.push((entry_num, SocketKind::Special(value)));
+        }
+    }
 
     // we need to preserve the original ordering
     socket_kinds.sort_by(|l, r| u32::cmp(&l.0, &r.0));
@@ -216,6 +223,15 @@ fn parse_socket_section(
             SocketKind::Netlink(value) => {
                 let (family, group) = parse_netlink_addr(value)?;
                 SpecializedSocketConfig::NetlinkSocket(NetlinkSocketConfig { family, group })
+            }
+            SocketKind::Special(addr) => {
+                if parse_unix_addr(addr).is_ok() {
+                    SpecializedSocketConfig::SpecialFile(SpecialFileConfig {
+                        path: std::path::PathBuf::from(addr),
+                    })
+                } else {
+                    return Err(ParsingErrorReason::UnknownSocketAddr(addr.to_owned()));
+                }
             }
             SocketKind::Sequential(addr) => {
                 if parse_unix_addr(addr).is_ok() {
