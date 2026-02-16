@@ -20,7 +20,7 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/sd_notify.html#READY=1">READY=1</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Waiting for ready notification for service-type notify is supported</td>
 </tr>
 <tr>
@@ -35,7 +35,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/sd_notify.html#STATUS=…">STATUS=…</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Sending free-text status updates to be displayed for the user is supported</td>
 </tr>
 <tr>
@@ -90,7 +90,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/sd_notify.html#$NOTIFY_SOCKET">$NOTIFY_SOCKET</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Listening to a notification socket is supported (see section fd_notify for details on which messages are understood). NotifyAccess= is not fully supported though.</td>
 </tr>
 </table>
@@ -120,7 +120,7 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#WorkingDirectory=">WorkingDirectory=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
@@ -150,22 +150,22 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#User=">User=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>The user id can be set for starting services. Both numeric UIDs and usernames are supported. Resolution is deferred to exec time (matching systemd behavior), so users created during boot (e.g. by systemd-sysusers) are resolved correctly.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#Group=">Group=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>The group id can be set for starting services. Both numeric GIDs and group names are supported. Resolution is deferred to exec time (matching systemd behavior), so groups created during boot are resolved correctly.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#DynamicUser=">DynamicUser=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. No runtime enforcement yet (dynamic user/group allocation not implemented).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#SupplementaryGroups=">SupplementaryGroups=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Supplementary group ids can be set for starting services. Both numeric GIDs and group names are supported. Resolution is deferred to exec time (matching systemd behavior).</td>
 </tr>
 <tr>
@@ -175,17 +175,17 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#CapabilityBoundingSet=">CapabilityBoundingSet=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored; no runtime enforcement yet (requires capability manipulation)</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#AmbientCapabilities=">AmbientCapabilities=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (capability names, ~deny prefixes). No runtime enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#NoNewPrivileges=">NoNewPrivileges=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored; no runtime enforcement yet (requires prctl(PR_SET_NO_NEW_PRIVS))</td>
 </tr>
 <tr>
@@ -240,7 +240,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LimitNOFILE=">LimitNOFILE=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Supports single value (sets both soft and hard), soft:hard notation, and infinity</td>
 </tr>
 <tr>
@@ -290,17 +290,17 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#UMask=">UMask=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (octal value, e.g. 0022, 0077). No runtime umask() enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#KeyringMode=">KeyringMode=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored; accepts <code>inherit</code>, <code>private</code>, <code>shared</code> (case-insensitive). Defaults to <code>private</code>. Not yet enforced at runtime (no keyring setup).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#OOMScoreAdjust=">OOMScoreAdjust=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and applied via /proc/self/oom_score_adj before exec; range -1000 to 1000</td>
 </tr>
 <tr>
@@ -315,12 +315,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#IgnoreSIGPIPE=">IgnoreSIGPIPE=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#Nice=">Nice=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (integer -20 to 19). No runtime setpriority() enforcement yet.</td>
 </tr>
 <tr>
@@ -355,32 +355,32 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#IOSchedulingClass=">IOSchedulingClass=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (none/0, realtime/1, best-effort/2, idle/3). No runtime ioprio_set() enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#IOSchedulingPriority=">IOSchedulingPriority=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (integer 0-7). No runtime ioprio_set() enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProtectSystem=">ProtectSystem=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (no/yes/full/strict). No runtime mount-namespace enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProtectHome=">ProtectHome=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (no/yes/read-only/tmpfs). No runtime mount-namespace enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#RuntimeDirectory=">RuntimeDirectory=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Creates directories under /run/, chowns to service user/group, sets RUNTIME_DIRECTORY env var</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#StateDirectory=">StateDirectory=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
@@ -390,7 +390,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LogsDirectory=">LogsDirectory=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Directories created under /var/log/, chowned to service user/group, LOGS_DIRECTORY env var set. Multiple space-separated values and multiple directives supported.</td>
 </tr>
 <tr>
@@ -415,7 +415,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LogsDirectoryMode=">LogsDirectoryMode=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Octal mode applied to logs directories at creation time. Defaults to 0755.</td>
 </tr>
 <tr>
@@ -425,7 +425,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#RuntimeDirectoryPreserve=">RuntimeDirectoryPreserve=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (no/yes/restart). No runtime enforcement.</td>
 </tr>
 <tr>
@@ -435,7 +435,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ReadWritePaths=">ReadWritePaths=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (space-separated path list). No runtime mount-namespace enforcement.</td>
 </tr>
 <tr>
@@ -455,17 +455,17 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#PrivateTmp=">PrivateTmp=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. No runtime mount-namespace enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#PrivateDevices=">PrivateDevices=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (boolean). No runtime mount-namespace enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#PrivateNetwork=">PrivateNetwork=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored; no runtime network namespace enforcement yet. See systemd.exec(5).</td>
 </tr>
 <tr>
@@ -475,83 +475,83 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#PrivateUsers=">PrivateUsers=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (boolean). No runtime user-namespace enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProtectHostname=">ProtectHostname=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (boolean). No runtime UTS namespace/seccomp enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProtectKernelTunables=">ProtectKernelTunables=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (boolean). No runtime mount-namespace enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProtectKernelModules=">ProtectKernelModules=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored; no runtime enforcement yet (requires mount namespace and seccomp support)</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProtectKernelLogs=">ProtectKernelLogs=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored; no runtime enforcement yet (requires mount namespace and seccomp support)</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProtectControlGroups=">ProtectControlGroups=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored; no runtime enforcement yet (requires mount namespace support)</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProtectClock=">ProtectClock=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored; no runtime enforcement yet (requires seccomp and device access restrictions)</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProtectProc=">ProtectProc=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (default/noaccess/invisible/ptraceable). No runtime mount-namespace enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProcSubset=">ProcSubset=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (all/pid). No runtime mount-namespace enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#RestrictAddressFamilies=">RestrictAddressFamilies=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (address family names, ~deny prefixes). No runtime seccomp enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#RestrictNamespaces=">RestrictNamespaces=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (yes/no/allow-list/~deny-list of namespace types). No runtime seccomp enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LockPersonality=">LockPersonality=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (boolean). No runtime seccomp enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#MemoryDenyWriteExecute=">MemoryDenyWriteExecute=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
   <td>Parsed and stored. No runtime seccomp enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#RestrictRealtime=">RestrictRealtime=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (boolean). No runtime seccomp enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#RestrictSUIDSGID=">RestrictSUIDSGID=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored; no runtime enforcement yet (requires seccomp support)</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#RemoveIPC=">RemoveIPC=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
   <td>Parsed and stored as a boolean. Defaults to false. No runtime enforcement yet.</td>
 </tr>
@@ -567,42 +567,42 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#SystemCallFilter=">SystemCallFilter=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (syscall names, @groups, ~deny prefixes). No runtime seccomp enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#SystemCallErrorNumber=">SystemCallErrorNumber=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (errno name, e.g. EPERM). No runtime seccomp enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#SystemCallArchitectures=">SystemCallArchitectures=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (space-separated list, e.g. native, x86, x86-64). No runtime seccomp enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#Environment=">Environment=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#EnvironmentFile=">EnvironmentFile=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#PassEnvironment=">PassEnvironment=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed, stored, and applied at runtime. Space-separated list of environment variable names to import from the system manager's (PID 1) environment. Multiple directives accumulate; an empty assignment resets the list. Variables not set in the manager's environment are silently ignored.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#UnsetEnvironment=">UnsetEnvironment=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#StandardInput=">StandardInput=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
@@ -632,7 +632,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LogExtraFields=">LogExtraFields=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Multiple directives accumulate. No runtime enforcement yet (journal field injection not implemented).</td>
 </tr>
 <tr>
@@ -667,37 +667,37 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#TTYPath=">TTYPath=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#TTYReset=">TTYReset=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#TTYVHangup=">TTYVHangup=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#TTYVTDisallocate=">TTYVTDisallocate=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#UtmpIdentifier=">UtmpIdentifier=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#UtmpMode=">UtmpMode=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ImportCredential=">ImportCredential=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Imports credentials from system stores (/run/credentials/@system, /run/credstore, /etc/credstore) matching glob patterns into /run/credentials/&lt;unit&gt;/ and sets CREDENTIALS_DIRECTORY</td>
 </tr>
 <tr>
@@ -777,22 +777,22 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$LISTEN_FDS">$LISTEN_FDS</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Providing number of filedescriptors is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$LISTEN_PID">$LISTEN_PID</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Provifing the listen_pid to the child is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$LISTEN_FDNAMES">$LISTEN_FDNAMES</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Providing names for filedescriptors is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$NOTIFY_SOCKET">$NOTIFY_SOCKET</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Listening to a notification socket is supported (see section fd_notify for details on which messages are understood). NotifyAccess= is not fully supported though.</td>
 </tr>
 <tr>
@@ -847,12 +847,12 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.kill.html#KillMode=">KillMode=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Supports control-group (default), process, mixed, and none modes to control which processes are killed when stopping a service.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.kill.html#KillSignal=">KillSignal=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored as raw signal number. Accepts signal names (with or without SIG prefix, case-insensitive), numeric values, and realtime signals (RTMIN, RTMIN+N, RTMAX, RTMAX-N). No runtime enforcement.</td>
 </tr>
 <tr>
@@ -862,7 +862,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.kill.html#SendSIGHUP=">SendSIGHUP=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
@@ -997,12 +997,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#MemoryMin=">MemoryMin=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (bytes/percentage/infinity); no runtime cgroup enforcement yet</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#MemoryLow=">MemoryLow=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (bytes/percentage/infinity); no runtime cgroup enforcement yet</td>
 </tr>
 <tr>
@@ -1027,7 +1027,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#TasksMax=">TasksMax=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Supports absolute values, percentages (e.g. "80%") of the system pid limit, and infinity. When cgroups are enabled, applies the limit via pids.max.</td>
 </tr>
 <tr>
@@ -1082,12 +1082,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#IPAddressAllow=">IPAddressAllow=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (CIDR prefixes and special keywords). No runtime eBPF/cgroup enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#IPAddressDeny=">IPAddressDeny=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (CIDR prefixes and special keywords). No runtime eBPF/cgroup enforcement yet.</td>
 </tr>
 <tr>
@@ -1102,27 +1102,27 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#DeviceAllow=">DeviceAllow=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored; no runtime enforcement yet (requires cgroup device controller)</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#DevicePolicy=auto|closed|strict">DevicePolicy=auto|closed|strict</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Supports auto (default), closed, and strict. No runtime cgroup device controller enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#Slice=">Slice=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored; no cgroup enforcement</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#Delegate=">Delegate=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Supports boolean (yes/no) and controller list forms. When enabled with cgroups, chowns the cgroup directory to the service user for sub-hierarchy management.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#DelegateSubgroup=">DelegateSubgroup=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Only effective when Delegate= is enabled. Not yet used at runtime.</td>
 </tr>
 <tr>
@@ -1177,7 +1177,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#MemoryPressureWatch=">MemoryPressureWatch=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (auto/on/off/skip); no runtime PSI enforcement</td>
 </tr>
 </table>
@@ -1192,12 +1192,12 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#Type=">Type=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Simple, dbus, notify, notify-reload, oneshot, forking, and idle are supported. Idle is treated identically to simple (no job dispatch delay).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#RemainAfterExit=">RemainAfterExit=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Service stays active after clean exit when enabled</td>
 </tr>
 <tr>
@@ -1207,17 +1207,17 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#PIDFile=">PIDFile=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#BusName=">BusName=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Setting a bus name to wait for services of type dbus is supported.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ExecStart=">ExecStart=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Exec'ing the command given is supported. The return value is checked for oneshot services. The '-' prefix (ignore errors) and '@' prefix (override argv[0]) are supported, other prefixes are not. ExecStart= is optional for oneshot services (the service succeeds immediately), and .service files without a [Service] section are treated as exec-less oneshots (matching systemd behavior for units like systemd-reboot.service).</td>
 </tr>
 <tr>
@@ -1237,7 +1237,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ExecReload=">ExecReload=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Supports multiple commands, prefix characters (-/@), and arguments. No runtime enforcement yet (reload command not implemented).</td>
 </tr>
 <tr>
@@ -1252,17 +1252,17 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#RestartSec=">RestartSec=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Configures the time to sleep before restarting a service. Supports seconds, compound durations (e.g. "1min 30s"), and infinity.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#TimeoutStartSec=">TimeoutStartSec=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>The time a services needs to start can be limited</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#TimeoutStopSec=">TimeoutStopSec=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>The time a services needs to stop can be limited</td>
 </tr>
 <tr>
@@ -1272,27 +1272,27 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#TimeoutSec=">TimeoutSec=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>The time a services needs to start/stop can be limited</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#RuntimeMaxSec=">RuntimeMaxSec=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. A value of 0 or infinity means no limit (stored as None). No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#WatchdogSec=">WatchdogSec=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (time span, e.g. 30s, 2min; 0 disables). No runtime watchdog enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#Restart=">Restart=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>All restart settings are supported: no, always, on-success, on-failure, on-abnormal, on-abort, on-watchdog. Note: on-watchdog currently never triggers since rustysd does not yet implement watchdog support.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#SuccessExitStatus=">SuccessExitStatus=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Extra exit codes and signal names (with or without SIG prefix) treated as clean exit. Also supports named exit statuses: BSD sysexits (e.g. DATAERR, TEMPFAIL, CONFIG), C library (SUCCESS, FAILURE), LSB (NOTRUNNING, etc.), and systemd-specific (CHDIR, EXEC, NAMESPACE, etc.). Names are case-insensitive and accept optional EX_ or EXIT_ prefixes.</td>
 </tr>
 <tr>
@@ -1302,7 +1302,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#RestartForceExitStatus=">RestartForceExitStatus=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Exit codes and signal names supported (same format as SuccessExitStatus=). Forces restart regardless of Restart= policy at runtime.</td>
 </tr>
 <tr>
@@ -1327,13 +1327,13 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#FileDescriptorStoreMax=">FileDescriptorStoreMax=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
   <td>Parsed and stored. No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#FileDescriptorStorePreserve=">FileDescriptorStorePreserve=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Takes <code>no</code> (default), <code>yes</code>, or <code>restart</code>. Controls whether file descriptors stored via FDSTORE=1 are preserved across service restarts or stops. No runtime enforcement yet.</td>
 </tr>
 <tr>
@@ -1353,12 +1353,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#ReloadSignal=">ReloadSignal=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored as raw signal number. Accepts signal names (with or without SIG prefix, case-insensitive), numeric values, and realtime signals (RTMIN, RTMIN+N, RTMAX, RTMAX-N). Only effective with Type=notify-reload. Defaults to SIGHUP. Not yet used at runtime.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#CoredumpReceive=">CoredumpReceive=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored as boolean (default: false). No runtime enforcement yet.</td>
 </tr>
 </table>
@@ -1373,22 +1373,22 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenStream=">ListenStream=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Opening streaming sockets is supported. The whole IPv4 and IPv6 stuff needs some attention though</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenDatagram=">ListenDatagram=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Opening datagram sockets is supported. The whole IPv4 and IPv6 stuff needs some attention though</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenSequentialPacket=">ListenSequentialPacket=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Opening sequential packet sockets is supported.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenFIFO=">ListenFIFO=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Opening FIFOs is supported. Filemode setting is not supported as of yet though.</td>
 </tr>
 <tr>
@@ -1398,7 +1398,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenNetlink=">ListenNetlink=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Supports named families (e.g. kobject-uevent, audit, route) and numeric protocol values, with optional multicast group (defaults to 0). Opens AF_NETLINK sockets at runtime.</td>
 </tr>
 <tr>
@@ -1443,32 +1443,32 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#SocketMode=">SocketMode=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (octal file mode, e.g. 0666). No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#DirectoryMode=">DirectoryMode=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (octal file mode, e.g. 0755). No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#Accept=">Accept=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (boolean) in both [Socket] and [Service] sections. Inetd-style activation (Accept=yes) is not yet supported at runtime.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#Writable=">Writable=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Controls whether FIFOs/special files are opened O_RDWR vs O_RDONLY. No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#MaxConnections=">MaxConnections=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (unsigned integer, default 64). No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#MaxConnectionsPerSource=">MaxConnectionsPerSource=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (unsigned integer, defaults to MaxConnections= value). No runtime enforcement yet.</td>
 </tr>
 <tr>
@@ -1508,12 +1508,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ReceiveBuffer=">ReceiveBuffer=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (unsigned integer, bytes). Supports size suffixes (K, M, G, T, P, E, base 1024). No runtime enforcement yet (requires SO_RCVBUF setsockopt).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#SendBuffer=">SendBuffer=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (unsigned integer, bytes). Supports size suffixes (K, M, G, T, P, E, base 1024). No runtime enforcement yet (requires SO_SNDBUF setsockopt).</td>
 </tr>
 <tr>
@@ -1583,12 +1583,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#PassCredentials=">PassCredentials=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (boolean, default false). No runtime enforcement yet (requires SO_PASSCRED setsockopt).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#PassSecurity=">PassSecurity=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (boolean, controls SO_PASSSEC). No runtime enforcement yet (requires SO_PASSSEC setsockopt).</td>
 </tr>
 <tr>
@@ -1598,7 +1598,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#Timestamping=">Timestamping=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored as tri-state (off, us/usec/μs, ns/nsec). Case-insensitive. No runtime enforcement yet (requires SO_TIMESTAMP/SO_TIMESTAMPNS setsockopt).</td>
 </tr>
 <tr>
@@ -1628,27 +1628,27 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#TimeoutSec=">TimeoutSec=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>The time a services needs to start/stop can be limited</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#Service=">Service=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Adding a socket explicitly to a service is supported.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#RemoveOnStop=">RemoveOnStop=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (boolean). No runtime enforcement yet (file node removal on stop not implemented).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#Symlinks=">Symlinks=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (list of file system paths, space-separated, multiple directives extend the list, empty value resets). No runtime enforcement yet (symlink creation/removal not implemented).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#FileDescriptorName=">FileDescriptorName=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Naming the sockets for passing in $LISTEN_FDNAMES is supported</td>
 </tr>
 <tr>
@@ -1663,7 +1663,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#DeferTrigger=">DeferTrigger=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Accepts boolean values (yes/no/true/false/1/0) or "patient". Defaults to no. No runtime enforcement yet.</td>
 </tr>
 <tr>
@@ -1763,22 +1763,22 @@ This document is meant as a simple way of checking whether all features you need
   </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Description=">Description=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Descriptions are read and will be displayed by the control interface</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Documentation=">Documentation=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Wants=">Wants=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Specifying which units to pull in is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Requires=">Requires=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Specifying which units to pull in is supported</td>
 </tr>
 <tr>
@@ -1788,32 +1788,32 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#BindsTo=">BindsTo=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored as a dependency list (like Requires=). BindsTo= units are started alongside this unit and treated as required dependencies. Stop propagation is implemented: when a BindsTo= target stops, units bound to it are also stopped. Reverse relationship (BoundBy) is tracked.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#PartOf=">PartOf=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>When the listed units are stopped or restarted, this unit is also stopped or restarted</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Conflicts=">Conflicts=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Before=">Before=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Ordering of units according to before/after relation is supported fully</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#After=">After=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Ordering of units according to before/after relation is supported fully</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#OnFailure=">OnFailure=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (space-separated list of unit names). No runtime triggering enforcement yet.</td>
 </tr>
 <tr>
@@ -1833,42 +1833,42 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#RequiresMountsFor=">RequiresMountsFor=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed; adds implicit Requires= and After= on .mount units for all path prefixes</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#OnFailureJobMode=">OnFailureJobMode=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Supports all job modes: replace, fail, replace-irreversibly, isolate, flush, ignore-dependencies, ignore-requirements. Defaults to "replace". No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#IgnoreOnIsolate=">IgnoreOnIsolate=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored; no isolation enforcement</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#StopWhenUnneeded=">StopWhenUnneeded=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored; no runtime enforcement</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#RefuseManualStart=">RefuseManualStart=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (boolean). No runtime enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#RefuseManualStop=">RefuseManualStop=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored (boolean). No runtime enforcement.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#AllowIsolate=">AllowIsolate=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. No runtime enforcement yet (isolate command not implemented).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#DefaultDependencies=">DefaultDependencies=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
@@ -1878,12 +1878,12 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#FailureAction=">FailureAction=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>All action values supported (none, exit, reboot, poweroff, halt, kexec and their -force/-immediate variants). The -immediate variants call the reboot(2) syscall directly on Linux.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#SuccessAction=">SuccessAction=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>All action values supported (none, exit, reboot, poweroff, halt, kexec and their -force/-immediate variants). The -immediate variants call the reboot(2) syscall directly on Linux.</td>
 </tr>
 <tr>
@@ -1898,7 +1898,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#JobTimeoutSec=">JobTimeoutSec=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Supports bare seconds, suffixed durations (s/min/hrs), compound durations, and infinity. No runtime enforcement yet (requires job timeout infrastructure).</td>
 </tr>
 <tr>
@@ -1908,7 +1908,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#JobTimeoutAction=">JobTimeoutAction=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Same action values as SuccessAction=/FailureAction=. No runtime enforcement yet (requires job timeout infrastructure).</td>
 </tr>
 <tr>
@@ -1918,17 +1918,17 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#StartLimitIntervalSec=">StartLimitIntervalSec=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Accepts time spans (e.g. <code>30</code>, <code>5min</code>, <code>2min 30s</code>, <code>infinity</code>). Set to <code>0</code> to disable rate limiting. No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#StartLimitBurst=">StartLimitBurst=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored as an unsigned integer. No runtime enforcement yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#StartLimitAction=">StartLimitAction=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Accepts the same action values as <code>FailureAction=</code>/<code>SuccessAction=</code>. Defaults to <code>none</code>. No runtime enforcement yet.</td>
 </tr>
 <tr>
@@ -1948,7 +1948,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionVirtualization=">ConditionVirtualization=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and evaluated at activation time. Supports boolean (yes/no), category (vm/container), specific technology names, and ! negation. Detection via DMI, /proc, cgroup, and container marker files.</td>
 </tr>
 <tr>
@@ -1958,7 +1958,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionKernelCommandLine=">ConditionKernelCommandLine=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed, stored, and evaluated at runtime. Supports negation (<code>!</code> prefix) and multiple directives (all must pass). Checks for a single word (as standalone or as key of a key=value pair) or an exact key=value assignment on the kernel command line (<code>/proc/cmdline</code>).</td>
 </tr>
 <tr>
@@ -1968,7 +1968,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionKernelModuleLoaded=">ConditionKernelModuleLoaded=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed, stored, and evaluated at runtime. Checks whether a kernel module is loaded by reading /proc/modules. Supports negation with '!' prefix.</td>
 </tr>
 <tr>
@@ -1978,7 +1978,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionCapability=">ConditionCapability=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and evaluated at activation time. Checks whether a Linux capability (e.g. CAP_NET_ADMIN) is in the service manager's bounding set. Supports ! negation.</td>
 </tr>
 <tr>
@@ -1988,17 +1988,17 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionNeedsUpdate=">ConditionNeedsUpdate=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored. Takes an absolute path; checks whether the directory needs updating because <code>/usr</code> has been modified more recently. Supports <code>!</code> prefix for negation.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionFirstBoot=">ConditionFirstBoot=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and evaluated at activation time. Checks whether the system is booting for the first time (i.e. /etc/machine-id does not yet exist or is empty). Supports ! negation and boolean values (yes/no/true/false/1/0).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionPathExists=">ConditionPathExists=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td></td>
 </tr>
 <tr>
@@ -2018,27 +2018,27 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionPathIsMountPoint=">ConditionPathIsMountPoint=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed, stored, and evaluated at runtime. Checks whether the specified path is a mount point by comparing <code>st_dev</code> of the path and its parent directory. Supports <code>!</code> prefix for negation.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionPathIsReadWrite=">ConditionPathIsReadWrite=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed, stored, and evaluated at runtime. Checks write access via access(2) W_OK. Supports negation.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionDirectoryNotEmpty=">ConditionDirectoryNotEmpty=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed, stored, and evaluated at runtime. Supports negation (<code>!</code> prefix) and multiple directives (all must pass). Checks whether the path exists, is a directory, and contains at least one entry.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionFileNotEmpty=">ConditionFileNotEmpty=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed, stored, and evaluated at runtime. Checks the path exists as a regular file with non-zero size. Supports negation with '!' prefix.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionFileIsExecutable=">ConditionFileIsExecutable=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed, stored, and evaluated at runtime. Checks the path exists as a regular file with at least one execute bit set. Supports negation with '!' prefix.</td>
 </tr>
 <tr>
@@ -2053,7 +2053,7 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionControlGroupController=">ConditionControlGroupController=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed, stored, and evaluated at runtime. Checks cgroupv2 controllers via /sys/fs/cgroup/cgroup.controllers with cgroupv1 /proc/cgroups fallback. Supports "v2" special value and negation.</td>
 </tr>
 <tr>
@@ -2178,27 +2178,27 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Alias=">Alias=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Alternative names for the unit; units can be looked up by any of their aliases</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#WantedBy=">WantedBy=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Specifying which units pull this unit in is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#RequiredBy=">RequiredBy=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Specifying which units pull this unit in is supported</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Also=">Also=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Also= units are treated as Wants= dependencies</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#DefaultInstance=">DefaultInstance=</a></td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Parsed and stored; no template instantiation enforcement</td>
 </tr>
 </table>
@@ -2218,12 +2218,12 @@ systemd itself silently ignores these — they are intended for use by external 
 </tr>
 <tr>
   <td>X-* settings in any section</td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Silently ignored (trace-level log only). No "unsupported setting" warning is emitted.</td>
 </tr>
 <tr>
   <td>[X-*] sections</td>
-  <td>✔️</td>
+  <td>✅</td>
   <td>Silently ignored (trace-level log only). No "unknown section" warning is emitted.</td>
 </tr>
 </table>
