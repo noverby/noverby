@@ -18,7 +18,7 @@
         ];
       };
 
-      cargoHash = "sha256-4G0hkqXX1ftfngsEmzkPUVZzgNmySWsvoDDElJb3LME=";
+      cargoHash = "sha256-DLrp2kfIr4xdyBQGOkiXAHXeN9b8brwCY/FwAI9D+tE=";
 
       nativeBuildInputs = [
         pkg-config
@@ -91,19 +91,6 @@
       # Make copied files writable so we can overwrite them
       chmod -R u+w $out
 
-      # Install rustysd config for NixOS.
-      # Include the package's own example/systemd/system directory so that
-      # standard systemd targets (time-set.target, time-sync.target, etc.)
-      # shipped by the systemd package are found by rustysd.
-      mkdir -p $out/etc/rustysd
-      cat > $out/etc/rustysd/rustysd_config.toml <<EOF
-      unit_dirs = ["/etc/systemd/system", "/run/systemd/system", "$out/example/systemd/system"]
-      target_unit = "default.target"
-      notifications_dir = "/run/rustysd/notifications"
-      log_to_stdout = true
-      log_to_disk = false
-      EOF
-
       # Start with all systemd binaries
       mkdir -p $out/bin
       for bin in ${systemd}/bin/*; do
@@ -129,8 +116,7 @@
       # ending with "rustysd", so we need a wrapper script.
       rm -f $out/lib/systemd/systemd
       makeBinaryWrapper ${rustysd}/bin/rustysd $out/lib/systemd/systemd \
-        --argv0 rustysd \
-        --add-flags "--conf $out/etc/rustysd"
+        --argv0 rustysd
 
       # Replace all references to the real systemd store path with
       # the rustysd-systemd output path so NixOS module substitutions work.

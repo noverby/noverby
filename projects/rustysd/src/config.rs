@@ -1,17 +1,17 @@
-//! Config can be loaded either from env vars, toml, or json.
+//! Configuration for rustysd.
 //!
-//! Currently configurable:
-//! ### Logging
-//! 1. Whether or not to log to disk (and the dir to put the logs in)
-//! 1. Whether or not to log to stdout
+//! As a drop-in replacement for systemd, rustysd uses the same well-known
+//! default paths that systemd uses.  There is no config file and no
+//! rustysd-specific environment variables — unit directories, the default
+//! target, and all other settings match systemd's compiled-in defaults.
 //!
-//! ### General config
-//! 1. Where to find the units (one or more directories)
-//! 1. notification-socket directory (where the unix-domain sockets are placed on which services can notify rustysd)
-//! 1. Which unit is the target that should be started
+//! In addition to the standard system-wide unit directories, rustysd
+//! discovers its own package's `lib/systemd/system/` directory by walking
+//! up from its executable path.  This mirrors what systemd does with its
+//! compile-time `rootlibdir` setting (e.g. on NixOS the systemd package
+//! searches its own store path for shipped unit files).
 
-use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
-use toml;
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct LoggingConfig {
@@ -28,252 +28,67 @@ pub struct Config {
     pub self_path: PathBuf,
 }
 
-#[derive(Debug)]
-enum SettingValue {
-    Str(String),
-    Array(Vec<SettingValue>),
-    Boolean(bool),
+/// Well-known systemd unit search directories (system instance), in priority
+/// order.  This matches the paths systemd itself searches.
+const SYSTEM_UNIT_DIRS: &[&str] = &[
+    "/etc/systemd/system",
+    "/run/systemd/system",
+    "/usr/local/lib/systemd/system",
+    "/usr/lib/systemd/system",
+    "/lib/systemd/system",
+];
+
+/// Try to find a `lib/systemd/system/` directory that belongs to the same
+/// package / prefix as the running executable.  This mirrors systemd's
+/// compile-time `rootlibdir` — on NixOS the systemd package includes its
+/// own store path as a unit search directory so that upstream-shipped targets
+/// (e.g. `time-set.target`, `time-sync.target`) are found.
+///
+/// We walk up from the executable's directory (at most 5 levels) and check
+/// whether `<ancestor>/lib/systemd/system` exists.  This handles both
+/// `$out/bin/rustysd` and `$out/lib/systemd/systemd` layouts.
+fn package_unit_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let mut dir = exe.parent()?;
+    for _ in 0..5 {
+        let candidate = dir.join("lib/systemd/system");
+        if candidate.is_dir() {
+            return Some(candidate);
+        }
+        dir = dir.parent()?;
+    }
+    None
 }
 
-fn load_toml(
-    config_path: &PathBuf,
-    settings: &mut HashMap<String, SettingValue>,
-) -> Result<(), String> {
-    let mut file =
-        File::open(config_path).map_err(|e| format!("Error while opening config file: {e}"))?;
-    let mut config = String::new();
-    file.read_to_string(&mut config).unwrap();
+pub fn load_config() -> (LoggingConfig, Config) {
+    // Collect unit directories: standard system paths + package-local dir.
+    // Only include directories that actually exist on this system.
+    let mut unit_dirs: Vec<PathBuf> = SYSTEM_UNIT_DIRS
+        .iter()
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+        .collect();
 
-    let toml_conf =
-        toml::from_str(&config).map_err(|e| format!("Error while decoding config toml: {e}"))?;
-
-    if let toml::Value::Table(map) = &toml_conf {
-        if let Some(toml::Value::Array(elems)) = map.get("unit_dirs") {
-            settings.insert(
-                "unit.dirs".to_owned(),
-                SettingValue::Array(
-                    elems
-                        .iter()
-                        .map(|e| {
-                            if let toml::Value::String(s) = e {
-                                SettingValue::Str(s.clone())
-                            } else {
-                                SettingValue::Str(String::new())
-                            }
-                        })
-                        .collect(),
-                ),
-            );
-        }
-
-        if let Some(toml::Value::String(val)) = map.get("logging_dir") {
-            settings.insert("logging.dir".to_owned(), SettingValue::Str(val.clone()));
-        }
-        if let Some(toml::Value::Boolean(val)) = map.get("log_to_disk") {
-            settings.insert("logging.to.disk".to_owned(), SettingValue::Boolean(*val));
-        }
-        if let Some(toml::Value::Boolean(val)) = map.get("log_to_stdout") {
-            settings.insert("logging.to.stdout".to_owned(), SettingValue::Boolean(*val));
-        }
-        if let Some(toml::Value::String(val)) = map.get("target_unit") {
-            settings.insert("target.unit".to_owned(), SettingValue::Str(val.clone()));
-        }
-        if let Some(toml::Value::String(val)) = map.get("selfpath") {
-            settings.insert("selfpath".to_owned(), SettingValue::Str(val.clone()));
-        }
-        if let Some(toml::Value::String(val)) = map.get("notifications_dir") {
-            settings.insert(
-                "notifications.dir".to_owned(),
-                SettingValue::Str(val.clone()),
-            );
+    if let Some(pkg_dir) = package_unit_dir() {
+        if !unit_dirs.contains(&pkg_dir) {
+            unit_dirs.push(pkg_dir);
         }
     }
-    Ok(())
-}
 
-fn load_json(
-    config_path: &PathBuf,
-    settings: &mut HashMap<String, SettingValue>,
-) -> Result<(), String> {
-    let mut file =
-        File::open(config_path).map_err(|e| format!("Error while decoding config json: {e}"))?;
-    let json_conf = serde_json::from_reader(&mut file)
-        .map_err(|e| format!("Error while decoding config json: {e}"))?;
-
-    if let serde_json::Value::Object(map) = &json_conf {
-        if let Some(serde_json::Value::Array(elems)) = map.get("unit_dirs") {
-            settings.insert(
-                "unit.dirs".to_owned(),
-                SettingValue::Array(
-                    elems
-                        .iter()
-                        .map(|e| {
-                            if let serde_json::Value::String(s) = e {
-                                SettingValue::Str(s.clone())
-                            } else {
-                                SettingValue::Str(String::new())
-                            }
-                        })
-                        .collect(),
-                ),
-            );
-        }
-
-        if let Some(serde_json::Value::String(val)) = map.get("logging_dir") {
-            settings.insert("logging.dir".to_owned(), SettingValue::Str(val.clone()));
-        }
-        if let Some(serde_json::Value::Bool(val)) = map.get("log_to_disk") {
-            settings.insert("logging.to_disk".to_owned(), SettingValue::Boolean(*val));
-        }
-        if let Some(serde_json::Value::Bool(val)) = map.get("log_to_stdout") {
-            settings.insert("logging.to_stdout".to_owned(), SettingValue::Boolean(*val));
-        }
-        if let Some(serde_json::Value::String(val)) = map.get("target_unit") {
-            settings.insert("target.unit".to_owned(), SettingValue::Str(val.clone()));
-        }
-        if let Some(serde_json::Value::String(val)) = map.get("selfpath") {
-            settings.insert("selfpath".to_owned(), SettingValue::Str(val.clone()));
-        }
-        if let Some(serde_json::Value::String(val)) = map.get("notifications_dir") {
-            settings.insert(
-                "notifications.dir".to_owned(),
-                SettingValue::Str(val.clone()),
-            );
-        }
-    }
-    Ok(())
-}
-
-pub fn load_config(config_path: &Option<PathBuf>) -> (LoggingConfig, Result<Config, String>) {
-    let mut settings: HashMap<String, SettingValue> = HashMap::new();
-
-    let default_config_path_json = PathBuf::from("./config/rustysd_config.json");
-    let default_config_path_toml = PathBuf::from("./config/rustysd_config.toml");
-
-    let config_path_json = if let Some(config_path) = config_path {
-        config_path.join("rustysd_config.json")
-    } else {
-        default_config_path_json
-    };
-
-    let config_path_toml = if let Some(config_path) = config_path {
-        config_path.join("rustysd_config.toml")
-    } else {
-        default_config_path_toml.clone()
-    };
-
-    let json_conf = if config_path_json.exists() {
-        Some(load_json(&config_path_json, &mut settings))
-    } else {
-        None
-    };
-
-    let toml_conf = if config_path_toml.exists() {
-        Some(load_toml(&config_path_toml, &mut settings))
-    } else {
-        None
-    };
-
-    std::env::vars().for_each(|(key, value)| {
-        let mut new_key: Vec<String> = key.split('_').map(str::to_lowercase).collect();
-        //drop prefix
-        if *new_key[0] == *"rustysd" {
-            new_key.remove(0);
-            let new_key = new_key.join(".");
-            settings.insert(new_key, SettingValue::Str(value));
-        }
-    });
-
-    let log_dir = settings.get("logging.dir").map(|dir| match dir {
-        SettingValue::Str(s) => Some(PathBuf::from(s)),
-        _ => None,
-    });
-
-    let log_to_stdout = settings.get("logging.to_stdout").map(|val| match val {
-        SettingValue::Boolean(b) => *b,
-        _ => false,
-    });
-    let log_to_disk = settings.get("logging.to_disk").map(|val| match val {
-        SettingValue::Boolean(b) => *b,
-        _ => false,
-    });
-
-    let notification_sockets_dir = settings.get("notifications.dir").and_then(|dir| match dir {
-        SettingValue::Str(s) => Some(PathBuf::from(s)),
-        _ => None,
-    });
-    let target_unit = settings.get("target.unit").and_then(|name| match name {
-        SettingValue::Str(s) => Some(s.clone()),
-        _ => None,
-    });
-    let self_path = settings.get("selfpath").and_then(|dir| match dir {
-        SettingValue::Str(s) => Some(PathBuf::from(s)),
-        _ => None,
-    });
-
-    let unit_dirs = settings.get("unit.dirs").map(|dir| match dir {
-        SettingValue::Str(s) => vec![PathBuf::from(s)],
-        SettingValue::Array(arr) => arr
-            .iter()
-            .map(|el| match el {
-                SettingValue::Str(s) => Some(PathBuf::from(s)),
-                _ => None,
-            })
-            .fold(Vec::new(), |mut acc, el| {
-                if let Some(path) = el {
-                    if path.exists() {
-                        acc.push(path);
-                    }
-                }
-                acc
-            }),
-        SettingValue::Boolean(_) => Vec::new(),
-    });
+    let self_path = std::env::current_exe().expect("Could not determine own executable path");
 
     let config = Config {
-        unit_dirs: unit_dirs.unwrap_or_else(|| vec![PathBuf::from("./unitfiles")]),
-        target_unit: target_unit.unwrap_or_else(|| "default.target".to_owned()),
-
-        notification_sockets_dir: notification_sockets_dir
-            .unwrap_or_else(|| PathBuf::from("./notifications")),
-
-        self_path: self_path.unwrap_or_else(|| {
-            std::env::current_exe()
-                .expect("Could not get own executable name and it was not configured explicitly")
-        }),
+        unit_dirs,
+        target_unit: "default.target".to_owned(),
+        notification_sockets_dir: PathBuf::from("/run/systemd/rustysd-notify"),
+        self_path,
     };
 
-    let conf = if let Some(json_conf) = json_conf {
-        if toml_conf.is_some() {
-            Err("Found both json and toml conf!".to_string())
-        } else {
-            match json_conf {
-                Err(e) => Err(e),
-                Ok(()) => Ok(config),
-            }
-        }
-    } else {
-        match toml_conf {
-            Some(Err(e)) => Err(e),
-            Some(Ok(())) => Ok(config),
-            None => {
-                if *config_path_toml == default_config_path_toml {
-                    Ok(config)
-                } else {
-                    Err("No config file was loaded".into())
-                }
-            }
-        }
+    let logging_config = LoggingConfig {
+        log_to_stdout: true,
+        log_to_disk: false,
+        log_dir: PathBuf::from("/var/log/rustysd"),
     };
 
-    (
-        LoggingConfig {
-            log_dir: log_dir
-                .unwrap_or_else(|| Some(PathBuf::from("./logs")))
-                .unwrap_or_else(|| PathBuf::from("./logs")),
-            log_to_disk: log_to_disk.unwrap_or(false),
-            log_to_stdout: log_to_stdout.unwrap_or(true),
-        },
-        conf,
-    )
+    (logging_config, config)
 }
