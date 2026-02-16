@@ -1356,6 +1356,11 @@ This document is meant as a simple way of checking whether all features you need
   <td>✔️</td>
   <td>Parsed and stored as raw signal number. Accepts signal names (with or without SIG prefix, case-insensitive), numeric values, and realtime signals (RTMIN, RTMIN+N, RTMAX, RTMAX-N). Only effective with Type=notify-reload. Defaults to SIGHUP. Not yet used at runtime.</td>
 </tr>
+<tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#CoredumpReceive=">CoredumpReceive=</a></td>
+  <td>✔️</td>
+  <td>Parsed and stored as boolean (default: false). No runtime enforcement yet.</td>
+</tr>
 </table>
 
 ## systemd.socket

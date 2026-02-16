@@ -1196,6 +1196,12 @@ pub struct ParsedServiceSection {
     /// See systemd.service(5).
     pub runtime_max_sec: Option<Timeout>,
 
+    /// CoredumpReceive= — boolean, defaults to false. When enabled, the
+    /// service manager sets up a coredump socket so the service can receive
+    /// coredumps from systemd-coredump. Parsed and stored; no runtime
+    /// enforcement yet. See systemd.service(5).
+    pub coredump_receive: bool,
+
     pub exec_section: ParsedExecSection,
 }
 
