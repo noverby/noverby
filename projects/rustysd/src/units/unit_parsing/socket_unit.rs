@@ -90,6 +90,7 @@ fn parse_socket_section(
     let max_connections_per_source = section.remove("MAXCONNECTIONSPERSOURCE");
     let socket_mode = section.remove("SOCKETMODE");
     let directory_mode = section.remove("DIRECTORYMODE");
+    let pass_credentials = section.remove("PASSCREDENTIALS");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -323,6 +324,20 @@ fn parse_socket_section(
         }
     };
 
+    let pass_credentials = match pass_credentials {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "PassCredentials".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
     Ok(ParsedSocketSection {
         filedesc_name: fdname,
         services,
@@ -332,6 +347,7 @@ fn parse_socket_section(
         max_connections_per_source,
         socket_mode,
         directory_mode,
+        pass_credentials,
         exec_section: exec_config,
     })
 }
