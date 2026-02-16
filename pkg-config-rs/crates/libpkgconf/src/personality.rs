@@ -79,15 +79,47 @@ impl CrossPersonality {
         for p in crate::DEFAULT_PKGCONFIG_PATH {
             dir_list.add(*p);
         }
+        #[cfg(windows)]
+        for p in crate::DEFAULT_PKGCONFIG_PATH {
+            dir_list.add(*p);
+        }
+
+        // On macOS, add Homebrew paths based on architecture or the
+        // HOMEBREW_PREFIX environment variable so that packages installed
+        // via `brew` are discovered automatically.
+        #[cfg(target_os = "macos")]
+        {
+            // Prefer the environment variable when available.
+            let homebrew_prefix = std::env::var("HOMEBREW_PREFIX").ok();
+            let prefix = homebrew_prefix.as_deref().unwrap_or_else(|| {
+                if cfg!(target_arch = "aarch64") {
+                    crate::HOMEBREW_PREFIX_ARM64
+                } else {
+                    crate::HOMEBREW_PREFIX_X86_64
+                }
+            });
+            let lib_path = format!("{prefix}/lib/pkgconfig");
+            let share_path = format!("{prefix}/share/pkgconfig");
+            dir_list.add(&lib_path);
+            dir_list.add(&share_path);
+        }
 
         let mut filter_libdirs = SearchPath::new();
         #[cfg(unix)]
         for p in crate::DEFAULT_SYSTEM_LIBDIRS {
             filter_libdirs.add(*p);
         }
+        #[cfg(windows)]
+        for p in crate::DEFAULT_SYSTEM_LIBDIRS {
+            filter_libdirs.add(*p);
+        }
 
         let mut filter_includedirs = SearchPath::new();
         #[cfg(unix)]
+        for p in crate::DEFAULT_SYSTEM_INCLUDEDIRS {
+            filter_includedirs.add(*p);
+        }
+        #[cfg(windows)]
         for p in crate::DEFAULT_SYSTEM_INCLUDEDIRS {
             filter_includedirs.add(*p);
         }
