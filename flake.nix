@@ -157,8 +157,9 @@
 
         ./projects/backend
         ./projects/homepage
-        ./projects/mojo-wasm
         ./projects/wiki
+
+        ./projects/wasm-mojo
 
         ./projects/nixos-rs
         ./projects/systemd-rs
