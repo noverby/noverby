@@ -1623,6 +1623,35 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 </table>
 
+## systemd.slice
+
+<table>
+  <tr>
+    <th>Term</th>
+    <th>Parsed/Stored</th>
+    <th>Runtime</th>
+    <th>Notes</th>
+  </tr>
+<tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.slice.html">systemd.slice</a></td>
+  <td>✅</td>
+  <td>🚧</td>
+  <td>Slice units are loaded, parsed ([Unit], [Install], [Slice] sections), and participate in the dependency graph. They activate/deactivate as passive units (like targets). No cgroup resource control enforcement; [Slice] section settings are recognized but ignored.</td>
+</tr>
+<tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.slice.html#ConcurrencyHardMax=">ConcurrencyHardMax=</a></td>
+  <td>❌</td>
+  <td>❌</td>
+  <td></td>
+</tr>
+<tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.slice.html#ConcurrencySoftMax=">ConcurrencySoftMax=</a></td>
+  <td>❌</td>
+  <td>❌</td>
+  <td></td>
+</tr>
+</table>
+
 ## systemd.socket
 
 <table>
