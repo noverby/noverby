@@ -623,6 +623,7 @@ pub fn parse_exec_section(
     let utmp_identifier = section.remove("UTMPIDENTIFIER");
     let utmp_mode = section.remove("UTMPMODE");
     let import_credential = section.remove("IMPORTCREDENTIAL");
+    let pass_environment = section.remove("PASSENVIRONMENT");
     let unset_environment = section.remove("UNSETENVIRONMENT");
     let oom_score_adjust = section.remove("OOMSCOREADJUST");
     let log_extra_fields = section.remove("LOGEXTRAFIELDS");
@@ -1267,6 +1268,29 @@ pub fn parse_exec_section(
                         .collect::<Vec<_>>()
                 })
                 .collect(),
+            None => Vec::new(),
+        },
+        pass_environment: match pass_environment {
+            Some(vec) => {
+                // Each directive is a space-separated list of variable names
+                // to pass from the system manager's environment. Multiple
+                // directives accumulate; an empty assignment resets the list.
+                let mut names = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        // Empty string resets the list
+                        names.clear();
+                        continue;
+                    }
+                    for name in trimmed.split_whitespace() {
+                        if !name.is_empty() {
+                            names.push(name.to_owned());
+                        }
+                    }
+                }
+                names
+            }
             None => Vec::new(),
         },
         unset_environment: match unset_environment {

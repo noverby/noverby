@@ -592,8 +592,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#PassEnvironment=">PassEnvironment=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed, stored, and applied at runtime. Space-separated list of environment variable names to import from the system manager's (PID 1) environment. Multiple directives accumulate; an empty assignment resets the list. Variables not set in the manager's environment are silently ignored.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#UnsetEnvironment=">UnsetEnvironment=</a></td>
