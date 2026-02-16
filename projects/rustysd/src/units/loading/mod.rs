@@ -4,8 +4,8 @@ use log::{trace, warn};
 
 use crate::runtime_info::UnitTable;
 use crate::units::{
-    get_file_list, parse_file, parse_service, parse_socket, parse_target, ParsingError,
-    ParsingErrorReason, Specific, Unit, UnitId,
+    get_file_list, parse_file, parse_service, parse_slice, parse_socket, parse_target,
+    ParsingError, ParsingErrorReason, Specific, Unit, UnitId,
 };
 
 use std::collections::HashMap;
@@ -54,11 +54,13 @@ pub fn load_all_units(
     let mut service_unit_table = HashMap::new();
     let mut socket_unit_table = HashMap::new();
     let mut target_unit_table = HashMap::new();
+    let mut slice_unit_table = HashMap::new();
     for path in paths {
         parse_all_units(
             &mut service_unit_table,
             &mut socket_unit_table,
             &mut target_unit_table,
+            &mut slice_unit_table,
             path,
         )?;
     }
@@ -67,6 +69,7 @@ pub fn load_all_units(
     unit_table.extend(service_unit_table);
     unit_table.extend(socket_unit_table);
     unit_table.extend(target_unit_table);
+    unit_table.extend(slice_unit_table);
 
     trace!("Units found: {}", unit_table.len());
 
@@ -117,12 +120,13 @@ fn parse_all_units(
     services: &mut std::collections::HashMap<UnitId, Unit>,
     sockets: &mut std::collections::HashMap<UnitId, Unit>,
     targets: &mut std::collections::HashMap<UnitId, Unit>,
+    slices: &mut std::collections::HashMap<UnitId, Unit>,
     path: &PathBuf,
 ) -> Result<(), ParsingError> {
     let files = get_file_list(path).map_err(|e| ParsingError::new(e, path.clone()))?;
     for entry in files {
         if entry.path().is_dir() {
-            parse_all_units(services, sockets, targets, &entry.path())?;
+            parse_all_units(services, sockets, targets, slices, &entry.path())?;
         } else {
             let raw = match std::fs::read_to_string(entry.path()) {
                 Ok(raw) => raw,
@@ -182,6 +186,18 @@ fn parse_all_units(
                     }
                     Err(e) => {
                         warn!("Skipping target {:?}: {:?}", entry.path(), e);
+                    }
+                }
+            } else if entry.path().to_str().unwrap().ends_with(".slice") {
+                trace!("Slice found: {:?}", entry.path());
+                match parse_slice(parsed_file, &entry.path()).and_then(|parsed| {
+                    TryInto::<Unit>::try_into(parsed).map_err(ParsingErrorReason::Generic)
+                }) {
+                    Ok(unit) => {
+                        slices.insert(unit.id.clone(), unit);
+                    }
+                    Err(e) => {
+                        warn!("Skipping slice {:?}: {:?}", entry.path(), e);
                     }
                 }
             }

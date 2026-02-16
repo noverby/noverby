@@ -55,6 +55,10 @@ pub fn load_new_unit(unit_dirs: &[PathBuf], find_name: &str) -> Result<units::Un
             units::parse_target(parsed, &unit_path)
                 .map_err(|e| format!("{}", units::ParsingError::new(e, unit_path)))?
                 .try_into()?
+        } else if find_name.ends_with(".slice") {
+            units::parse_slice(parsed, &unit_path)
+                .map_err(|e| format!("{}", units::ParsingError::new(e, unit_path)))?
+                .try_into()?
         } else {
             return Err(format!("File suffix not recognized for file {unit_path:?}"));
         };

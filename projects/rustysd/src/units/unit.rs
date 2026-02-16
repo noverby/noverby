@@ -35,6 +35,7 @@ pub enum Specific {
     Service(ServiceSpecific),
     Socket(SocketSpecific),
     Target(TargetSpecific),
+    Slice(SliceSpecific),
 }
 
 pub struct ServiceSpecific {
@@ -336,6 +337,10 @@ pub struct TargetSpecific {
     pub state: RwLock<TargetState>,
 }
 
+pub struct SliceSpecific {
+    pub state: RwLock<SliceState>,
+}
+
 #[derive(Default)]
 /// All units have some common mutable state
 pub struct CommonState {
@@ -354,6 +359,9 @@ pub struct SocketState {
 pub struct TargetState {
     pub common: CommonState,
 }
+pub struct SliceState {
+    pub common: CommonState,
+}
 
 enum LockedState<'a> {
     Service(
@@ -365,6 +373,7 @@ enum LockedState<'a> {
         &'a SocketConfig,
     ),
     Target(std::sync::RwLockWriteGuard<'a, TargetState>),
+    Slice(std::sync::RwLockWriteGuard<'a, SliceState>),
 }
 
 impl Unit {
@@ -516,6 +525,7 @@ impl Unit {
                 LockedState::Socket(specific.state.write().unwrap(), &specific.conf)
             }
             Specific::Target(specific) => LockedState::Target(specific.state.write().unwrap()),
+            Specific::Slice(specific) => LockedState::Slice(specific.state.write().unwrap()),
         };
 
         {
@@ -560,7 +570,7 @@ impl Unit {
         })?;
 
         match state {
-            LockedState::Target(_state) => {
+            LockedState::Target(_) | LockedState::Slice(_) => {
                 {
                     let mut status = self.common.status.write().unwrap();
                     if status.is_started() {
@@ -593,6 +603,7 @@ impl Unit {
                 LockedState::Socket(specific.state.write().unwrap(), &specific.conf)
             }
             Specific::Target(specific) => LockedState::Target(specific.state.write().unwrap()),
+            Specific::Slice(specific) => LockedState::Slice(specific.state.write().unwrap()),
         };
 
         {
@@ -618,7 +629,7 @@ impl Unit {
 
         trace!("Deactivate unit: {}", self.id.name);
         match state {
-            LockedState::Target(_) => {
+            LockedState::Target(_) | LockedState::Slice(_) => {
                 let mut status = self.common.status.write().unwrap();
                 *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
                 Ok(())
@@ -653,6 +664,7 @@ impl Unit {
                 LockedState::Socket(specific.state.write().unwrap(), &specific.conf)
             }
             Specific::Target(specific) => LockedState::Target(specific.state.write().unwrap()),
+            Specific::Slice(specific) => LockedState::Slice(specific.state.write().unwrap()),
         };
 
         let need_full_restart = self.state_transition_restarting(run_info).map_err(|bad_ids| {
@@ -670,7 +682,7 @@ impl Unit {
 
         if need_full_restart {
             match state {
-                LockedState::Target(_) => {
+                LockedState::Target(_) | LockedState::Slice(_) => {
                     let mut status = self.common.status.write().unwrap();
                     *status = UnitStatus::Started(StatusStarted::Running);
                     Ok(())
@@ -686,7 +698,7 @@ impl Unit {
             }
         } else {
             match state {
-                LockedState::Target(_) => {
+                LockedState::Target(_) | LockedState::Slice(_) => {
                     let mut status = self.common.status.write().unwrap();
                     *status = UnitStatus::Started(StatusStarted::Running);
                     Ok(())
