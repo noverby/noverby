@@ -1499,12 +1499,12 @@ This document is meant as a simple way of checking whether all features you need
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ReceiveBuffer=">ReceiveBuffer=</a></td>
   <td>✔️</td>
-  <td>Parsed and stored (unsigned integer, bytes). No runtime enforcement yet (requires SO_RCVBUF setsockopt).</td>
+  <td>Parsed and stored (unsigned integer, bytes). Supports size suffixes (K, M, G, T, P, E, base 1024). No runtime enforcement yet (requires SO_RCVBUF setsockopt).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#SendBuffer=">SendBuffer=</a></td>
   <td>✔️</td>
-  <td>Parsed and stored (unsigned integer, bytes). No runtime enforcement yet (requires SO_SNDBUF setsockopt).</td>
+  <td>Parsed and stored (unsigned integer, bytes). Supports size suffixes (K, M, G, T, P, E, base 1024). No runtime enforcement yet (requires SO_SNDBUF setsockopt).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#IPTOS=">IPTOS=</a></td>

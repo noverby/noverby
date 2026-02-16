@@ -406,28 +406,27 @@ fn parse_socket_section(
         None => false,
     };
 
-    let receive_buffer: Option<u64> = match receive_buffer {
-        Some(vec) => {
-            if vec.len() == 1 {
-                let val = vec[0].1.trim();
-                if val.is_empty() {
-                    None
+    let receive_buffer: Option<u64> =
+        match receive_buffer {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val = vec[0].1.trim();
+                    if val.is_empty() {
+                        None
+                    } else {
+                        Some(super::parse_byte_size(val).map_err(|e| {
+                            ParsingErrorReason::Generic(format!("ReceiveBuffer: {e}"))
+                        })?)
+                    }
                 } else {
-                    Some(val.parse::<u64>().map_err(|_| {
-                        ParsingErrorReason::Generic(format!(
-                            "ReceiveBuffer is not a valid non-negative integer: {val}"
-                        ))
-                    })?)
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "ReceiveBuffer".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
                 }
-            } else {
-                return Err(ParsingErrorReason::SettingTooManyValues(
-                    "ReceiveBuffer".to_owned(),
-                    super::map_tuples_to_second(vec),
-                ));
             }
-        }
-        None => None,
-    };
+            None => None,
+        };
 
     let send_buffer: Option<u64> = match send_buffer {
         Some(vec) => {
@@ -436,11 +435,10 @@ fn parse_socket_section(
                 if val.is_empty() {
                     None
                 } else {
-                    Some(val.parse::<u64>().map_err(|_| {
-                        ParsingErrorReason::Generic(format!(
-                            "SendBuffer is not a valid non-negative integer: {val}"
-                        ))
-                    })?)
+                    Some(
+                        super::parse_byte_size(val)
+                            .map_err(|e| ParsingErrorReason::Generic(format!("SendBuffer: {e}")))?,
+                    )
                 }
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(

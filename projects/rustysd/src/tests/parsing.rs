@@ -36276,6 +36276,308 @@ fn test_receive_buffer_large_value() {
     );
 }
 
+// ---------------------------------------------------------------
+// ReceiveBuffer= and SendBuffer= with size suffix tests
+// ---------------------------------------------------------------
+
+#[test]
+fn test_receive_buffer_suffix_k() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 128K
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.receive_buffer,
+        Some(128 * 1024),
+        "ReceiveBuffer=128K should be 131072 bytes"
+    );
+}
+
+#[test]
+fn test_receive_buffer_suffix_m() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 128M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.receive_buffer,
+        Some(128 * 1024 * 1024),
+        "ReceiveBuffer=128M should be 134217728 bytes"
+    );
+}
+
+#[test]
+fn test_receive_buffer_suffix_g() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 1G
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.receive_buffer,
+        Some(1024 * 1024 * 1024),
+        "ReceiveBuffer=1G should be 1073741824 bytes"
+    );
+}
+
+#[test]
+fn test_receive_buffer_suffix_lowercase_m() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 64m
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.receive_buffer,
+        Some(64 * 1024 * 1024),
+        "ReceiveBuffer=64m (lowercase) should be parsed correctly"
+    );
+}
+
+#[test]
+fn test_receive_buffer_suffix_t() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 2T
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.receive_buffer,
+        Some(2 * 1024 * 1024 * 1024 * 1024),
+        "ReceiveBuffer=2T should be 2 TiB in bytes"
+    );
+}
+
+#[test]
+fn test_send_buffer_suffix_k() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SendBuffer = 256K
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.send_buffer,
+        Some(256 * 1024),
+        "SendBuffer=256K should be 262144 bytes"
+    );
+}
+
+#[test]
+fn test_send_buffer_suffix_m() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SendBuffer = 64M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.send_buffer,
+        Some(64 * 1024 * 1024),
+        "SendBuffer=64M should be 67108864 bytes"
+    );
+}
+
+#[test]
+fn test_send_buffer_suffix_g() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SendBuffer = 2G
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.send_buffer,
+        Some(2 * 1024 * 1024 * 1024),
+        "SendBuffer=2G should be 2147483648 bytes"
+    );
+}
+
+#[test]
+fn test_receive_buffer_and_send_buffer_with_suffixes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 128M
+    SendBuffer = 64M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.receive_buffer, Some(128 * 1024 * 1024));
+    assert_eq!(socket.sock.send_buffer, Some(64 * 1024 * 1024));
+}
+
+#[test]
+fn test_receive_buffer_suffix_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 128M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert_eq!(
+            sock.conf.receive_buffer,
+            Some(128 * 1024 * 1024),
+            "ReceiveBuffer=128M should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_receive_buffer_plain_integer_still_works() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 8388608
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.receive_buffer,
+        Some(8_388_608),
+        "Plain integer ReceiveBuffer should still work"
+    );
+}
+
+#[test]
+fn test_send_buffer_plain_integer_still_works() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SendBuffer = 4194304
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.send_buffer,
+        Some(4_194_304),
+        "Plain integer SendBuffer should still work"
+    );
+}
+
+#[test]
+fn test_receive_buffer_with_suffix_and_other_settings() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Accept = yes
+    PassCredentials = yes
+    ReceiveBuffer = 128M
+    SendBuffer = 64K
+    SocketMode = 0660
+    MaxConnections = 128
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.accept);
+    assert!(socket.sock.pass_credentials);
+    assert_eq!(socket.sock.receive_buffer, Some(128 * 1024 * 1024));
+    assert_eq!(socket.sock.send_buffer, Some(64 * 1024));
+    assert_eq!(socket.sock.socket_mode, Some(0o0660));
+    assert_eq!(socket.sock.max_connections, 128);
+}
+
 // ==================== ListenNetlink= tests ====================
 
 #[test]
@@ -37271,4 +37573,128 @@ fn test_defer_trigger_with_accept_yes() {
     // is not implemented yet.
     assert_eq!(socket.sock.defer_trigger, crate::units::DeferTrigger::Yes);
     assert!(socket.sock.accept);
+}
+
+// ===============================================================
+// parse_byte_size() utility function tests
+// ===============================================================
+
+#[test]
+fn test_parse_byte_size_plain_integer() {
+    assert_eq!(crate::units::parse_byte_size("8388608").unwrap(), 8_388_608);
+}
+
+#[test]
+fn test_parse_byte_size_zero() {
+    assert_eq!(crate::units::parse_byte_size("0").unwrap(), 0);
+}
+
+#[test]
+fn test_parse_byte_size_suffix_k_upper() {
+    assert_eq!(crate::units::parse_byte_size("128K").unwrap(), 128 * 1024);
+}
+
+#[test]
+fn test_parse_byte_size_suffix_k_lower() {
+    assert_eq!(crate::units::parse_byte_size("128k").unwrap(), 128 * 1024);
+}
+
+#[test]
+fn test_parse_byte_size_suffix_m_upper() {
+    assert_eq!(
+        crate::units::parse_byte_size("128M").unwrap(),
+        128 * 1024 * 1024
+    );
+}
+
+#[test]
+fn test_parse_byte_size_suffix_m_lower() {
+    assert_eq!(
+        crate::units::parse_byte_size("128m").unwrap(),
+        128 * 1024 * 1024
+    );
+}
+
+#[test]
+fn test_parse_byte_size_suffix_g_upper() {
+    assert_eq!(
+        crate::units::parse_byte_size("1G").unwrap(),
+        1024 * 1024 * 1024
+    );
+}
+
+#[test]
+fn test_parse_byte_size_suffix_g_lower() {
+    assert_eq!(
+        crate::units::parse_byte_size("1g").unwrap(),
+        1024 * 1024 * 1024
+    );
+}
+
+#[test]
+fn test_parse_byte_size_suffix_t() {
+    assert_eq!(
+        crate::units::parse_byte_size("2T").unwrap(),
+        2 * 1024 * 1024 * 1024 * 1024
+    );
+}
+
+#[test]
+fn test_parse_byte_size_suffix_p() {
+    assert_eq!(
+        crate::units::parse_byte_size("1P").unwrap(),
+        1024 * 1024 * 1024 * 1024 * 1024
+    );
+}
+
+#[test]
+fn test_parse_byte_size_suffix_e() {
+    assert_eq!(
+        crate::units::parse_byte_size("1E").unwrap(),
+        1024 * 1024 * 1024 * 1024 * 1024 * 1024
+    );
+}
+
+#[test]
+fn test_parse_byte_size_whitespace_trimmed() {
+    assert_eq!(
+        crate::units::parse_byte_size("  64M  ").unwrap(),
+        64 * 1024 * 1024
+    );
+}
+
+#[test]
+fn test_parse_byte_size_empty_string() {
+    assert!(crate::units::parse_byte_size("").is_err());
+}
+
+#[test]
+fn test_parse_byte_size_only_whitespace() {
+    assert!(crate::units::parse_byte_size("   ").is_err());
+}
+
+#[test]
+fn test_parse_byte_size_invalid_string() {
+    assert!(crate::units::parse_byte_size("notanumber").is_err());
+}
+
+#[test]
+fn test_parse_byte_size_suffix_only() {
+    assert!(crate::units::parse_byte_size("M").is_err());
+}
+
+#[test]
+fn test_parse_byte_size_negative_value() {
+    assert!(crate::units::parse_byte_size("-1M").is_err());
+}
+
+#[test]
+fn test_parse_byte_size_one_k() {
+    assert_eq!(crate::units::parse_byte_size("1K").unwrap(), 1024);
+}
+
+#[test]
+fn test_parse_byte_size_fractional_rejected() {
+    // Systemd doesn't support fractional byte sizes; we reject them too
+    assert!(crate::units::parse_byte_size("1.5M").is_err());
 }
