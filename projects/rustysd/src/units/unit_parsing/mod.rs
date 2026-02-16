@@ -995,6 +995,13 @@ pub struct ParsedSocketSection {
     /// stored; no runtime enforcement yet. See systemd.socket(5).
     pub pass_security: bool,
 
+    /// AcceptFileDescriptors= — whether to enable SO_PASSRIGHTS on the
+    /// socket, which when disabled prohibits the peer from sending
+    /// SCM_RIGHTS ancillary messages (file descriptors) via AF_UNIX
+    /// sockets. Defaults to true. Parsed and stored; no runtime
+    /// enforcement yet. See systemd.socket(5).
+    pub accept_file_descriptors: bool,
+
     /// RemoveOnStop= — whether to remove file nodes (AF_UNIX sockets,
     /// FIFOs, message queues, and symlinks configured with Symlinks=)
     /// created by this socket unit when it is stopped. Defaults to false.

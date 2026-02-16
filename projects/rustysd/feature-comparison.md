@@ -1587,6 +1587,11 @@ This document is meant as a simple way of checking whether all features you need
   <td>Parsed and stored (boolean, controls SO_PASSSEC). No runtime enforcement yet (requires SO_PASSSEC setsockopt).</td>
 </tr>
 <tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#AcceptFileDescriptors=">AcceptFileDescriptors=</a></td>
+  <td>✅</td>
+  <td>Parsed and stored as a boolean. Defaults to true (controls SO_PASSRIGHTS, which when disabled prohibits SCM_RIGHTS on AF_UNIX sockets). No runtime enforcement yet.</td>
+</tr>
+<tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#Timestamping=">Timestamping=</a></td>
   <td>✔️</td>
   <td>Parsed and stored as tri-state (off, us/usec/μs, ns/nsec). Case-insensitive. No runtime enforcement yet (requires SO_TIMESTAMP/SO_TIMESTAMPNS setsockopt).</td>

@@ -38819,6 +38819,257 @@ fn test_pass_security_with_other_socket_settings() {
 }
 
 // ===============================================================
+// AcceptFileDescriptors= in [Socket] section tests
+// ===============================================================
+
+#[test]
+fn test_accept_file_descriptors_defaults_to_true() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.accept_file_descriptors,
+        "AcceptFileDescriptors should default to true"
+    );
+}
+
+#[test]
+fn test_accept_file_descriptors_set_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    AcceptFileDescriptors = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.accept_file_descriptors);
+}
+
+#[test]
+fn test_accept_file_descriptors_set_true() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    AcceptFileDescriptors = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.accept_file_descriptors);
+}
+
+#[test]
+fn test_accept_file_descriptors_set_1() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    AcceptFileDescriptors = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.accept_file_descriptors);
+}
+
+#[test]
+fn test_accept_file_descriptors_set_no() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    AcceptFileDescriptors = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket.sock.accept_file_descriptors,
+        "AcceptFileDescriptors=no should be false"
+    );
+}
+
+#[test]
+fn test_accept_file_descriptors_set_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    AcceptFileDescriptors = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.accept_file_descriptors);
+}
+
+#[test]
+fn test_accept_file_descriptors_set_0() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    AcceptFileDescriptors = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.accept_file_descriptors);
+}
+
+#[test]
+fn test_accept_file_descriptors_case_insensitive() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    AcceptFileDescriptors = NO
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.accept_file_descriptors);
+}
+
+#[test]
+fn test_accept_file_descriptors_no_unsupported_warning() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    AcceptFileDescriptors = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+    assert!(
+        result.is_ok(),
+        "AcceptFileDescriptors should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_accept_file_descriptors_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    AcceptFileDescriptors = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert!(
+            !sock.conf.accept_file_descriptors,
+            "AcceptFileDescriptors=no should survive unit conversion"
+        );
+    } else {
+        panic!("Expected socket unit");
+    }
+}
+
+#[test]
+fn test_accept_file_descriptors_default_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert!(
+            sock.conf.accept_file_descriptors,
+            "AcceptFileDescriptors default (true) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected socket unit");
+    }
+}
+
+#[test]
+fn test_accept_file_descriptors_with_other_socket_settings() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    AcceptFileDescriptors = no
+    PassCredentials = yes
+    PassSecurity = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.accept_file_descriptors);
+    assert!(socket.sock.pass_credentials);
+    assert!(socket.sock.pass_security);
+}
+
+// ===============================================================
 // Timestamping= in [Socket] section tests
 // ===============================================================
 

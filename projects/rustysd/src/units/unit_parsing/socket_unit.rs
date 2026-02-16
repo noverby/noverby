@@ -127,6 +127,7 @@ fn parse_socket_section(
     let directory_mode = section.remove("DIRECTORYMODE");
     let pass_credentials = section.remove("PASSCREDENTIALS");
     let pass_security = section.remove("PASSSECURITY");
+    let accept_file_descriptors = section.remove("ACCEPTFILEDESCRIPTORS");
     let receive_buffer = section.remove("RECEIVEBUFFER");
     let send_buffer = section.remove("SENDBUFFER");
     let symlinks = section.remove("SYMLINKS");
@@ -424,6 +425,21 @@ fn parse_socket_section(
         None => false,
     };
 
+    let accept_file_descriptors = match accept_file_descriptors {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "AcceptFileDescriptors".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        // systemd default: true
+        None => true,
+    };
+
     let remove_on_stop = match remove_on_stop {
         Some(vec) => {
             if vec.len() == 1 {
@@ -537,6 +553,7 @@ fn parse_socket_section(
         directory_mode,
         pass_credentials,
         pass_security,
+        accept_file_descriptors,
         remove_on_stop,
         receive_buffer,
         send_buffer,
