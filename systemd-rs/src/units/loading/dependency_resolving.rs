@@ -233,12 +233,16 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
         if let Some(unit) = units.get_mut(&conflicting) {
             unit.common.dependencies.conflicts.push(conflicted.clone());
         } else {
-            warn!("Dependency {conflicting:?} conflicts with {conflicted:?}, but {conflicting:?} not found");
+            warn!(
+                "Dependency {conflicting:?} conflicts with {conflicted:?}, but {conflicting:?} not found"
+            );
         }
         if let Some(unit) = units.get_mut(&conflicted) {
             unit.common.dependencies.conflicted_by.push(conflicting);
         } else {
-            warn!("Dependency {conflicted:?} conflicted by {conflicting:?}, but {conflicted:?} not found");
+            warn!(
+                "Dependency {conflicted:?} conflicted by {conflicting:?}, but {conflicted:?} not found"
+            );
         }
     }
 

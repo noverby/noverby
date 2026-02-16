@@ -44,9 +44,11 @@
 | **Miscellaneous** | 🇽➡️🇾 Migrating from 🇽 to 🇾, 🌀 [Atmosphere (AT Protocol)](https://atproto.com) , 👁️ [Sentientist](https://en.wikipedia.org/wiki/Sentientism) |
 
 ## 📁 Repository
+
 [⬆](#toc)
 
 ### 🚀 Projects
+
 [⬆](#toc)
 
 <details open>
@@ -62,11 +64,13 @@
 </details>
 
 ### 📦 Packages
+
 [⬆](#toc)
 
 <details open>
 
 #### Jupyter
+
 | Package | Description |
 |-|-|
 | [Deno-jupyter-kernel 🐒](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/deno-jupyter-kernel.nix) | Jupyter Notebook kernel for Deno |
@@ -77,6 +81,7 @@
 | [Xeus-lix ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/xeus-lix/default.nix) | Jupyter Notebook kernel for Nix |
 
 #### Development
+
 | Package | Description |
 |-|-|
 | [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo.nix) | Mojo development toolchain |
@@ -87,6 +92,7 @@
 | [Starship-jj 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/starship-jj.nix) | Starship plugin for jj |
 
 #### Media
+
 | Package | Description |
 |-|-|
 | [Cavif-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cavif-rs/default.nix) | AVIF image encoder CLI tool |
@@ -95,6 +101,7 @@
 | [Wondermagick 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/wondermagick/default.nix) | Memory-safe replacement for Imagemagick |
 
 #### System
+
 | Package | Description |
 |-|-|
 | [Busd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/busd.nix) | A D-Bus bus implementation in Rust |
@@ -102,6 +109,7 @@
 | [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/sunsetc.nix) | SSH in Rust |
 
 #### Security
+
 | Package | Description |
 |-|-|
 | [Age-plugin-fido2prf 🐹](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/age-plugin-fido2prf.nix) | FIDO2 PRF plugin for age |
@@ -111,6 +119,7 @@
 </details>
 
 ### 📋 Configurations
+
 [⬆](#toc)
 
 <details open>
@@ -124,6 +133,7 @@
 </details>
 
 ### 🧩 Modules
+
 [⬆](#toc)
 
 <details open>
@@ -138,6 +148,7 @@
 </details>
 
 ## 💻 Hardware
+
 [⬆](#toc)
 
 <details open>
@@ -158,9 +169,11 @@
 </details>
 
 ## 🌐 Services
+
 [⬆](#toc)
 
 ### 🔒 Personal
+
 [⬆](#toc)
 
 <details open>
@@ -187,17 +200,20 @@
 </details>
 
 ### 👥 Social Platforms
+
 [⬆](#toc)
 
 <details open>
 
 #### Communication Platforms
+
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Messaging | [Etke.cc Matrix 🇪🇺](https://etke.cc) | | [Matrix 🌐](https://matrix.org), [Matrix Bridges](https://matrix.org/ecosystem/bridges) | [Telegram 🔒🇦🇪](https://telegram.org), [Automattic Beeper 🔒🇺🇸](https://www.beeper.com), [Meta Messenger 🔒🇺🇸](https://messenger.com), [Meta WhatsApp 🔒🇺🇸](https://whatsapp.com) |
 | ✅ | Event Hosting | [Smoke Signal Events 🌐🌀](https://smokesignal.events), [Meetup 🔒🇪🇺](https://meetup.com) | | [AT Protocol 🌀](https://atproto.com) | [Meta Facebook Events 🔒🇺🇸](https://facebook.com) |
 
 #### Media Platforms
+
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Media Sharing | [Pixelfed 🇪🇺](https://pixelfed.social/niclasoverby) | [Flashes 🔒🇪🇺🌀](https://github.com/birdsongapps/Flashes) | [AT Protocol 🌀](https://atproto.com) | [Meta Instagram 🔒🇺🇸](https://instagram.com) |
@@ -206,12 +222,14 @@
 | 🚧 | Live Streaming | [Stream.place 🌀](https://stream.place/) | | [AT Protocol 🌀](https://atproto.com) | [Twitch 🔒🇺🇸](https://twitch.tv) |
 
 #### Discussion Platforms
+
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Discussion Forums | [Lemmy World 🌐🇪🇺](https://lemmy.world) | [Frontpage 🔒🇬🇧🌀](https://frontpage.fyi) | [AT Protocol 🌀](https://atproto.com) | [Reddit 🔒🇺🇸](https://reddit.com), [Lemmy.ml 🌐🇪🇺](https://lemmy.world) |
 | 🚧 | Microblogging | [Bluesky ⚖️🇺🇸🌀](https://bsky.app/profile/overby.me) | [Eurosky 🌐🇪🇺🌀](https://eurosky.social) | [AT Protocol 🌀](https://atproto.com), [X-Cancel](https://xcancel.com) | [Mastodon 🌐🇪🇺](https://mas.to/niclasoverby), [X-Twitter 🔒🇺🇸](https://x.com), [Meta Threads 🔒🇺🇸](https://www.threads.net) |
 
 #### Content Cataloging
+
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | [Book Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [Neodb 🐍](https://github.com/neodb-social/neodb) | [Popfeed 🌀](https://popfeed.social/profile/overby.me) | | [Amazon Goodreads 🔒🇺🇸](https://www.goodreads.com/niclasoverby) |
@@ -221,12 +239,14 @@
 | ✅ | [Food Cataloging](https://en.wikipedia.org/wiki/Social_cataloging_application) | [HappyCow 👁️🔒🇺🇸](https://www.happycow.net/members/profile/niclasoverby) | [OpenVegeMap](https://github.com/Rudloff/openvegemap) | 🆗 | |
 
 #### Collaboration & Knowledge
+
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Collaboration Tools | [AppFlowy 🦀](https://github.com/AppFlowy-IO/AppFlowy) | | [Import](https://docs.appflowy.io/docs/guides/import-from-notion) | [Notion 🔒🇺🇸](https://notion.so) |
 | ✅ | [Online Encyclopedia](https://en.wikipedia.org/wiki/Online_encyclopedia) | [Wikipedia 🌐](https://en.wikipedia.org/wiki/User:Niclas_Overby) | [Ibis 🦀](https://github.com/Nutomic/ibis) | 🆗 | |
 
 #### Social & Dating
+
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Dating | [Veggly 🔒👁️🇧🇷](https://veggly.app) | | 🆗 | [Tinder 🔒🇺🇸](https://tinder.com) |
@@ -234,6 +254,7 @@
 </details>
 
 ### ☁️ Cloud
+
 [⬆](#toc)
 
 <details open>
@@ -252,20 +273,24 @@
 </details>
 
 ## 📏 Standards
+
 [⬆](#toc)
 
 ### 🔌 Hardware
+
 [⬆](#toc)
 
 <details open>
 
 #### Architecture & Firmware
+
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | Architecture | [X86-64 🔒](https://en.wikipedia.org/wiki/X86-64) | [RISC-V 📖](https://en.wikipedia.org/wiki/RISC-V), [ARM 🔒](https://en.wikipedia.org/wiki/ARM_architecture_family) | |
 | 🚧 | Firmware | [Thinkpad UEFI 🔒](https://en.wikipedia.org/wiki/UEFI) | [Coreboot 💣](https://coreboot.org), [Oreboot 🦀](https://github.com/oreboot/oreboot) | |
 
 #### Connectivity & Interfaces
+
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
 | ✅ | Internet of Things Connectivity | [Matter 📖](https://en.wikipedia.org/wiki/Matter_(standard)), [Zigbee 📖](https://en.wikipedia.org/wiki/Zigbee) | | |
@@ -274,6 +299,7 @@
 | ✅ | Display Interface | [DisplayPort 📖](https://en.wikipedia.org/wiki/DisplayPort) | | [HDMI 2.1 🔒](https://en.wikipedia.org/wiki/HDMI) |
 
 #### Navigation & Positioning
+
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | Satellite Navigation | [Galileo 🇪🇺](https://www.euspa.europa.eu/eu-space-programme/galileo), [GPS 🏛️🇺🇸](https://www.gps.gov) | | |
@@ -282,11 +308,13 @@
 </details>
 
 ### 🔗 Software
+
 [⬆](#toc)
 
 <details open>
 
 #### System & Compute Interfaces
+
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | Application Binary Interface | [System V ABI 📖](https://wiki.osdev.org/System_V_ABI) | [CrABI 📖](https://github.com/rust-lang/rust/pull/105586) | |
@@ -300,11 +328,13 @@
 </details>
 
 ### 📝 Data
+
 [⬆](#toc)
 
 <details open>
 
 #### Text & Object Notation
+
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
 | ✅ | Text | [UTF-8 📖](https://en.wikipedia.org/wiki/UTF-8) | | [UTF-16 📖](https://en.wikipedia.org/wiki/UTF-16) |
@@ -312,6 +342,7 @@
 | ✅ | Binary Object Notation | [CBOR 📖](https://cbor.io) | | |
 
 #### Media Codecs
+
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
 | ✅ | Image Codec (Lossy) | [AVIF 📖](https://en.wikipedia.org/wiki/AVIF) | | [JPEG 📖](https://en.wikipedia.org/wiki/JPEG) |
@@ -322,11 +353,13 @@
 </details>
 
 ### 📡 Network
+
 [⬆](#toc)
 
 <details open>
 
 #### Network & Web Protocols
+
 | Status | Component | Current | Research & Development | Legacy |
 |:-:|-|-|-|-|
 | 🚧 | Network Transport | [TCP 📖](https://en.wikipedia.org/wiki/Transmission_Control_Protocol) | [QUIC 📖](https://www.chromium.org/quic/) | |
@@ -337,9 +370,11 @@
 </details>
 
 ## 🖥️ System
+
 [⬆](#toc)
 
 ### ⚙️ Core
+
 [⬆](#toc)
 
 <details open>
@@ -359,6 +394,7 @@
 </details>
 
 ### 📚 Libraries
+
 [⬆](#toc)
 
 <details open>
@@ -383,6 +419,7 @@
 </details>
 
 ### 🏗️ Infrastructure
+
 [⬆](#toc)
 
 <details open>
@@ -404,11 +441,13 @@
 </details>
 
 ## 🛠️ Development
+
 [⬆](#toc)
 
 <details open>
 
-#### Languages & Compilers
+### Languages & Compilers
+
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | 🚧 | Compiler Framework | [Mlir 💣](https://github.com/llvm/llvm-project/tree/main/mlir), [LLVM 💣](https://github.com/llvm/llvm-project) | [Cranelift 🦀](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift) | ⬅️ | |
@@ -417,6 +456,7 @@
 | ✅ | Scripting Language | [Mojo 🔒🔥](https://github.com/modularml/mojo) | | [RustPython 🦀](https://github.com/RustPython/RustPython), [WASI 📖](https://github.com/WebAssembly/WASI), [Interface Types 📖](https://github.com/WebAssembly/interface-types/tree/main/proposals/interface-types) | [TypeScript 🐒🐹](https://github.com/microsoft/TypeScript) |
 
 #### Tools & Utilities
+
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Build Script | [Just 🦀](https://github.com/casey/just) | | Rusty Make ([Rusty Bash 🦀](https://github.com/shellgei/rusty_bash)) | [GNU Make 💣](https://git.savannah.gnu.org/cgit/make.git) |
@@ -430,6 +470,7 @@
 | ✅ | TCP Tunnel | [Bore 🦀](https://github.com/ekzhang/bore) | | 🆗 | |
 
 #### Version Control
+
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | 🚧 | Version Control | [Jujutsu 🦀](https://github.com/jj-vcs/jj), [Git 💣](https://github.com/git/git) | [Gitoxide 🦀](https://github.com/Byron/gitoxide) | [Gix 🦀](https://github.com/GitoxideLabs/gitoxide/blob/main/crate-status.md#gix) | |
@@ -440,6 +481,7 @@
 </details>
 
 ### ❄️ Nix
+
 [⬆](#toc)
 
 <details open>
@@ -468,6 +510,7 @@
 </details>
 
 ### 🌐 Web
+
 [⬆](#toc)
 
 <details open>
@@ -482,6 +525,7 @@
 </details>
 
 ### 🐍 Python
+
 [⬆](#toc)
 
 <details open>
@@ -492,19 +536,22 @@
 | ✅ | Formatter | [Ruff 🦀](https://github.com/astral-sh/ruff) | | 🆗 | [Black 🐍](https://github.com/psf/black) |
 | ✅ | Linter | [Ruff 🦀](https://github.com/astral-sh/ruff) | | 🆗 | [Flake8 🐍](https://github.com/PyCQA/flake8) |
 | ✅ | Type Checker | [Ty 🦀](https://github.com/astral-sh/ty) | | 🆗 | [Mypy 🐍](https://github.com/python/mypy) |
-| ✅ | Profiler | [Py-spy 🦀](https://github.com/benfred/py-spy) | | 🆗 | [Yappi ](https://github.com/sumerc/yappi) |
+| ✅ | Profiler | [Py-spy 🦀](https://github.com/benfred/py-spy) | | 🆗 | [Yappi](https://github.com/sumerc/yappi) |
 
 </details>
 
 ## 📱 Applications
+
 [⬆](#toc)
 
 ### 💻 Command Line
+
 [⬆](#toc)
 
 <details open>
 
 #### Filesystem Operations
+
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Change Directory | [Zoxide 🦀](https://github.com/ajeetdsouza/zoxide) | [Lacy 🦀](https://github.com/timothebot/lacy) | ⬅️ | [Bash Cd 💣](https://git.savannah.gnu.org/cgit/bash.git) |
@@ -518,6 +565,7 @@
 | ✅ | Tree Viewer | [Tre 🦀](https://github.com/dduan/tre) | | 🆗 | [Tree 💣](https://oldmanprogrammer.net/source.php?dir=projects/tree) |
 
 #### Process Management
+
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | List Processes | [Procs 🦀](https://github.com/dalance/procs) | | 🆗 | [Ps 💣](https://gitlab.com/procps-ng/procps) |
@@ -526,6 +574,7 @@
 | ✅ | Terminal Workspace | [Zellij 🦀](https://github.com/zellij-org/zellij) | | 🆗 | [Tmux 💣](https://github.com/tmux/tmux) |
 
 #### Networking
+
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Network Client | [Xh 🦀](https://github.com/ducaale/xh) | | 🆗 | [Curl 💣](https://github.com/curl/curl) |
@@ -535,6 +584,7 @@
 | 🚧 | SSH | [OpenSSH 💣](https://github.com/openssh/openssh-portable) | [Sunset 🦀](https://github.com/mkj/sunset) | 🆗 | |
 
 #### System Utilities
+
 | Status | Component | Current | Research & Development | Compatibility | Legacy |
 |:-:|-|-|-|-|-|
 | ✅ | Shell | [Nushell 🦪🦀](https://github.com/nushell/nushell) | | [Brush 🦀](https://github.com/reubeno/brush), [Rusty Bash 🦀](https://github.com/shellgei/rusty_bash) | [Bash 💣](https://git.savannah.gnu.org/cgit/bash.git) |
@@ -550,6 +600,7 @@
 </details>
 
 ### 🖥️ Desktop Environment
+
 [⬆](#toc)
 
 <details open>
@@ -565,6 +616,7 @@
 </details>
 
 ### 🚀 Productivity
+
 [⬆](#toc)
 
 <details open>
@@ -582,6 +634,7 @@
 </details>
 
 ### 🎨 Media
+
 [⬆](#toc)
 
 <details open>
@@ -600,6 +653,7 @@
 </details>
 
 ### 🌐 Browser Extensions
+
 [⬆](#toc)
 
 <details open>
@@ -614,6 +668,7 @@
 </details>
 
 ### 📱 Mobile
+
 [⬆](#toc)
 
 <details open>

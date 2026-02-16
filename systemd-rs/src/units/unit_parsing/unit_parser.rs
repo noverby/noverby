@@ -293,7 +293,7 @@ pub fn parse_unit_section(
                         return Err(ParsingErrorReason::UnknownSetting(
                             "OnFailureJobMode".to_owned(),
                             other.to_owned(),
-                        ))
+                        ));
                     }
                 }
             } else {
@@ -524,7 +524,7 @@ pub fn parse_unit_section(
                         return Err(ParsingErrorReason::UnknownSetting(
                             "StartLimitBurst".to_owned(),
                             vec[0].1.clone(),
-                        ))
+                        ));
                     }
                 }
             } else {
@@ -1265,7 +1265,7 @@ pub fn parse_exec_section(
                             return Err(ParsingErrorReason::UnknownSetting(
                                 "RuntimeDirectoryPreserve".to_owned(),
                                 other.to_owned(),
-                            ))
+                            ));
                         }
                     }
                 } else {
@@ -1330,7 +1330,7 @@ pub fn parse_exec_section(
                             return Err(ParsingErrorReason::UnknownSetting(
                                 "UtmpMode".to_owned(),
                                 name.to_owned(),
-                            ))
+                            ));
                         }
                     }
                 } else {
@@ -1448,7 +1448,7 @@ pub fn parse_exec_section(
                             return Err(ParsingErrorReason::UnknownSetting(
                                 "ProtectSystem".to_owned(),
                                 other.to_owned(),
-                            ))
+                            ));
                         }
                     }
                 } else {
@@ -1749,7 +1749,7 @@ pub fn parse_exec_section(
                             return Err(ParsingErrorReason::UnknownSetting(
                                 "ProtectHome".to_owned(),
                                 other.to_owned(),
-                            ))
+                            ));
                         }
                     }
                 } else {
@@ -1812,7 +1812,7 @@ pub fn parse_exec_section(
                             return Err(ParsingErrorReason::UnknownSetting(
                                 "ProtectProc".to_owned(),
                                 other.to_owned(),
-                            ))
+                            ));
                         }
                     }
                 } else {
@@ -1841,7 +1841,7 @@ pub fn parse_exec_section(
                             return Err(ParsingErrorReason::UnknownSetting(
                                 "IOSchedulingClass".to_owned(),
                                 other.to_owned(),
-                            ))
+                            ));
                         }
                     }
                 } else if vec.len() > 1 {
@@ -1892,7 +1892,7 @@ pub fn parse_exec_section(
                             return Err(ParsingErrorReason::UnknownSetting(
                                 "ProcSubset".to_owned(),
                                 other.to_owned(),
-                            ))
+                            ));
                         }
                     }
                 } else {

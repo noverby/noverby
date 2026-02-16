@@ -275,7 +275,9 @@ pub fn parse_service(
     let service_config = match service_config {
         Some(c) => c,
         None => {
-            trace!("Service unit {path:?} has no [Service] section, treating as oneshot with no ExecStart");
+            trace!(
+                "Service unit {path:?} has no [Service] section, treating as oneshot with no ExecStart"
+            );
             let empty_section: ParsedSection = HashMap::new();
             parse_service_section(empty_section)?
         }
@@ -566,7 +568,7 @@ fn parse_service_section(
                         return Err(ParsingErrorReason::UnknownSetting(
                             "KillMode".to_owned(),
                             name.to_owned(),
-                        ))
+                        ));
                     }
                 }
             } else {
@@ -689,7 +691,7 @@ fn parse_service_section(
                         return Err(ParsingErrorReason::UnknownSetting(
                             "Type".to_owned(),
                             name.to_owned(),
-                        ))
+                        ));
                     }
                 }
             } else if vec.is_empty() {
@@ -725,7 +727,7 @@ fn parse_service_section(
                         return Err(ParsingErrorReason::UnknownSetting(
                             "NotifyAccess".to_owned(),
                             name.to_owned(),
-                        ))
+                        ));
                     }
                 }
             } else {
@@ -775,7 +777,7 @@ fn parse_service_section(
                         return Err(ParsingErrorReason::UnknownSetting(
                             "Restart".to_owned(),
                             name.to_owned(),
-                        ))
+                        ));
                     }
                 }
             } else {
@@ -882,7 +884,7 @@ fn parse_service_section(
                             return Err(ParsingErrorReason::UnknownSetting(
                                 "MemoryPressureWatch".to_owned(),
                                 other.to_owned(),
-                            ))
+                            ));
                         }
                     }
                 } else {
@@ -1008,7 +1010,7 @@ fn parse_service_section(
                             return Err(ParsingErrorReason::UnknownSetting(
                                 "KeyringMode".to_owned(),
                                 other.to_owned(),
-                            ))
+                            ));
                         }
                     }
                 } else {
@@ -1051,7 +1053,7 @@ fn parse_service_section(
                             return Err(ParsingErrorReason::UnknownSetting(
                                 "DevicePolicy".to_owned(),
                                 other.to_owned(),
-                            ))
+                            ));
                         }
                     }
                 } else {
@@ -1135,7 +1137,7 @@ fn parse_service_section(
                             return Err(ParsingErrorReason::UnknownSetting(
                                 "FileDescriptorStorePreserve".to_owned(),
                                 other.to_owned(),
-                            ))
+                            ));
                         }
                     }
                 } else {

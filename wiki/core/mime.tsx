@@ -51,7 +51,7 @@ const IconId = ({
 	name?: string;
 	avatar?: boolean;
 	child?: boolean;
-  }) => {
+}) => {
 	switch (mimeId) {
 		case "wiki/search":
 			return <Search />;

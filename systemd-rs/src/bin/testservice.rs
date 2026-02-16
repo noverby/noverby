@@ -57,7 +57,9 @@ fn handle_unix_datagram(fd: i32) {
         loop {
             match stream.recv(&mut data[..]) {
                 Ok(bytes) => {
-                    print!("Got new bytes on unix datagram socket! Now printing stuff from the stream: ");
+                    print!(
+                        "Got new bytes on unix datagram socket! Now printing stuff from the stream: "
+                    );
                     print!("{}", String::from_utf8(data[0..bytes].to_vec()).unwrap());
                 }
                 Err(e) => {

@@ -164,14 +164,14 @@ pub fn wait_for_service(
                                 PidEntry::Helper(_, _) => {
                                     // Should never happen
                                     unreachable!(
-                                            "Was waiting on oneshot process but pid got saved as PidEntry::Helper"
-                                        );
+                                        "Was waiting on oneshot process but pid got saved as PidEntry::Helper"
+                                    );
                                 }
                                 PidEntry::HelperExited(_) => {
                                     // Should never happen
                                     unreachable!(
-                                            "Was waiting on oneshot process but pid got saved as PidEntry::HelperExited"
-                                        );
+                                        "Was waiting on oneshot process but pid got saved as PidEntry::HelperExited"
+                                    );
                                 }
                             }
                         }

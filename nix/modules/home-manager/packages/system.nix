@@ -2,7 +2,7 @@
   home.packages = with pkgs.pkgsUnstable; [
     killall
     uutils-coreutils-noprefix
-    xorg.xkill
+    xkill
     lsof
     wl-clipboard
     skim

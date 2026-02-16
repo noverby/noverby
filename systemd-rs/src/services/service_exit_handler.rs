@@ -270,7 +270,10 @@ pub fn service_exit_handler(
     {
         let status_locked = &*unit.common.status.read().unwrap();
         if !(status_locked.is_started() || *status_locked == UnitStatus::Starting) {
-            trace!("Exit handler ignores exit of service {}. Its status is not 'Started'/'Starting', it is: {:?}", name, *status_locked);
+            trace!(
+                "Exit handler ignores exit of service {}. Its status is not 'Started'/'Starting', it is: {:?}",
+                name, *status_locked
+            );
             return Ok(());
         }
     }
