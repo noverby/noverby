@@ -942,6 +942,14 @@ pub struct ParsedSocketSection {
     /// enforcement yet. See systemd.socket(5).
     pub send_buffer: Option<u64>,
 
+    /// Symlinks= — a list of file system paths to create as symlinks to
+    /// the AF_UNIX socket path or FIFO path of this socket unit. Multiple
+    /// paths may be specified space-separated; the directive may appear
+    /// multiple times to extend the list. An empty value resets the list.
+    /// Defaults to an empty list. Parsed and stored; no runtime enforcement
+    /// yet. See systemd.socket(5).
+    pub symlinks: Vec<String>,
+
     /// DeferTrigger= — controls whether to defer triggering the associated
     /// service when a connection comes in. Takes a boolean or "patient".
     /// Defaults to No. Parsed and stored; no runtime enforcement yet.
