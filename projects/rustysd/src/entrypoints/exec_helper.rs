@@ -23,6 +23,8 @@ pub struct ExecHelperConfig {
 
     pub working_directory: Option<PathBuf>,
     pub state_directory: Vec<String>,
+    pub logs_directory: Vec<String>,
+    pub logs_directory_mode: Option<u32>,
     pub runtime_directory: Vec<String>,
 
     /// OOMScoreAdjust= — sets the OOM score adjustment for executed processes.
@@ -626,6 +628,47 @@ pub fn run_exec_helper() {
             full_paths.push(full_path.to_string_lossy().into_owned());
         }
         std::env::set_var("STATE_DIRECTORY", full_paths.join(":"));
+    }
+
+    // Create logs directories under /var/log/ and set LOGS_DIRECTORY env var.
+    // Same privilege requirements as state directories: must happen before
+    // dropping privileges because /var/log/ is typically only writable by root.
+    if !config.logs_directory.is_empty() {
+        let base = Path::new("/var/log");
+        let mode = config.logs_directory_mode.unwrap_or(0o755);
+        let mut full_paths = Vec::new();
+        for dir_name in &config.logs_directory {
+            let full_path = base.join(dir_name);
+            if let Err(e) = std::fs::create_dir_all(&full_path) {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to create logs directory {:?}: {}",
+                    config.name, full_path, e
+                );
+                std::process::exit(1);
+            }
+            // Apply LogsDirectoryMode=
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(mode);
+            if let Err(e) = std::fs::set_permissions(&full_path, perms) {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to set mode {:o} on logs directory {:?}: {}",
+                    config.name, mode, full_path, e
+                );
+                std::process::exit(1);
+            }
+            // Set ownership to the service user/group
+            let uid = nix::unistd::Uid::from_raw(config.user);
+            let gid = nix::unistd::Gid::from_raw(config.group);
+            if let Err(e) = nix::unistd::chown(&full_path, Some(uid), Some(gid)) {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to chown logs directory {:?}: {}",
+                    config.name, full_path, e
+                );
+                std::process::exit(1);
+            }
+            full_paths.push(full_path.to_string_lossy().into_owned());
+        }
+        std::env::set_var("LOGS_DIRECTORY", full_paths.join(":"));
     }
 
     // Create runtime directories under /run/ and set RUNTIME_DIRECTORY env var.
