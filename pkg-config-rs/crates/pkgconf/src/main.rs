@@ -9,7 +9,9 @@ use std::process::ExitCode;
 use anyhow::{Context, Result, bail};
 use clap::Parser;
 
+use libpkgconf::audit::AuditLog;
 use libpkgconf::client::{Client, ClientFlags};
+use libpkgconf::personality::CrossPersonality;
 use libpkgconf::version as ver;
 use libpkgconf::{PKGCONFIG_COMPAT_VERSION, VERSION};
 
@@ -318,8 +320,30 @@ fn main() -> ExitCode {
     }
 }
 
-/// Build a [`Client`] from CLI arguments and environment.
-fn build_client(cli: &Cli) -> Result<Client> {
+/// Resolve a personality: from --personality flag, argv[0] deduction, or default.
+fn resolve_personality(cli: &Cli) -> CrossPersonality {
+    // Explicit --personality flag takes priority
+    if let Some(ref triplet) = cli.personality {
+        if let Some(p) = CrossPersonality::find(triplet) {
+            return p;
+        }
+        // If no personality file found, create a minimal one with the given name
+        return CrossPersonality::new(triplet);
+    }
+
+    // Try deducing from argv[0]
+    if let Some(argv0) = std::env::args().next() {
+        if let Some(p) = CrossPersonality::from_argv0(&argv0) {
+            return p;
+        }
+    }
+
+    // Fall back to the default (native) personality
+    CrossPersonality::default_personality()
+}
+
+/// Build a [`Client`] from CLI arguments, personality, and environment.
+fn build_client(cli: &Cli, personality: &CrossPersonality) -> Result<Client> {
     let mut builder = Client::builder();
 
     // --with-path (highest priority search paths)
@@ -347,7 +371,7 @@ fn build_client(cli: &Cli) -> Result<Client> {
     }
 
     // --static
-    if cli.r#static {
+    if cli.r#static || personality.want_default_static {
         builder = builder.enable_static(true);
     }
 
@@ -357,7 +381,7 @@ fn build_client(cli: &Cli) -> Result<Client> {
     }
 
     // --pure
-    if cli.pure {
+    if cli.pure || personality.want_default_pure {
         builder = builder.pure(true);
     }
 
@@ -426,7 +450,110 @@ fn build_client(cli: &Cli) -> Result<Client> {
         builder = builder.debug(true);
     }
 
+    // Apply personality sysroot if set (can be overridden by env)
+    if let Some(ref sysroot) = personality.sysroot_dir {
+        builder = builder.sysroot_dir(sysroot);
+    }
+
+    // Apply personality filter dirs (the builder defaults are used unless
+    // the personality specifies them)
+    if !personality.filter_libdirs.is_empty() {
+        let dirs: Vec<String> = personality
+            .filter_libdirs
+            .dirs()
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        builder = builder.filter_libdirs(dirs);
+    }
+
+    if !personality.filter_includedirs.is_empty() {
+        let dirs: Vec<String> = personality
+            .filter_includedirs
+            .dirs()
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        builder = builder.filter_includedirs(dirs);
+    }
+
     Ok(builder.build())
+}
+
+/// Apply sysroot to a single path string for --relocate.
+fn relocate_path(path: &str, sysroot: Option<&str>) -> String {
+    match sysroot {
+        Some(sr) if !sr.is_empty() && path.starts_with('/') && !path.starts_with(sr) => {
+            format!("{sr}{path}")
+        }
+        _ => path.to_string(),
+    }
+}
+
+/// Load preloaded packages from `PKG_CONFIG_PRELOADED_FILES` environment variable.
+fn load_preloaded_packages(cache: &mut libpkgconf::cache::Cache, client: &Client) {
+    if let Ok(preloaded) = std::env::var(libpkgconf::ENV_PKG_CONFIG_PRELOADED_FILES) {
+        for path_str in preloaded.split(libpkgconf::path::PATH_SEPARATOR) {
+            let path_str = path_str.trim();
+            if path_str.is_empty() {
+                continue;
+            }
+            let path = std::path::Path::new(path_str);
+            if !path.is_file() {
+                continue;
+            }
+            if let Ok(pc) = libpkgconf::parser::PcFile::from_path(path) {
+                let id = path
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                if id.is_empty() {
+                    continue;
+                }
+                if let Ok(pkg) = libpkgconf::pkg::Package::from_pc_file(client, &pc, &id) {
+                    cache.add(pkg);
+                }
+            }
+        }
+    }
+}
+
+/// Render a fragment tree for visualization.
+fn render_fragment_tree(
+    label: &str,
+    frags: &libpkgconf::fragment::FragmentList,
+    msvc: bool,
+) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("{label}:\n"));
+
+    for (i, frag) in frags.iter().enumerate() {
+        let is_last = i + 1 == frags.len();
+        let prefix = if is_last { "└── " } else { "├── " };
+        let rendered = if msvc {
+            frag.render_msvc()
+        } else {
+            frag.render()
+        };
+
+        let type_label = match frag.frag_type() {
+            Some('I') => "include",
+            Some('L') => "libpath",
+            Some('l') => "libname",
+            Some('D') => "define",
+            Some('U') => "undef",
+            Some('W') => "warning",
+            Some(c) => {
+                out.push_str(&format!("{prefix}[flag({c})] {rendered}\n"));
+                continue;
+            }
+            None => "other",
+        };
+
+        out.push_str(&format!("{prefix}[{type_label}] {rendered}\n"));
+    }
+
+    out
 }
 
 fn run(cli: &Cli) -> Result<()> {
@@ -453,32 +580,63 @@ fn run(cli: &Cli) -> Result<()> {
         }
     }
 
-    // --relocate
+    // Resolve personality early (needed for sysroot in --relocate and build_client)
+    let personality = resolve_personality(cli);
+
+    // --relocate: apply sysroot relocation to a path and exit
     if let Some(ref path) = cli.relocate {
-        // TODO: Implement path relocation
-        println!("{path}");
+        // Get sysroot from env or personality
+        let sysroot_env = std::env::var(libpkgconf::ENV_PKG_CONFIG_SYSROOT_DIR)
+            .ok()
+            .filter(|s| !s.is_empty());
+        let effective_sysroot = sysroot_env
+            .as_deref()
+            .or(personality.sysroot_dir.as_deref())
+            .unwrap_or("");
+
+        let relocated = relocate_path(path, Some(effective_sysroot));
+        println!("{relocated}");
         return Ok(());
     }
 
-    // Build the client from CLI + environment
-    let client = build_client(cli)?;
+    // Build the client from CLI + personality + environment
+    let client = build_client(cli, &personality)?;
+
+    // Open audit log if configured
+    let audit = client.log_file().and_then(|p| AuditLog::open(p).ok());
 
     // --dump-personality
     if cli.dump_personality {
-        // TODO: Implement personality dumping
-        println!("Triplet: default");
-        println!(
-            "DefaultSearchPaths: {}",
-            client.dir_list().to_delimited(':')
-        );
-        println!(
-            "SystemIncludePaths: {}",
-            client.filter_includedirs().to_delimited(':')
-        );
-        println!(
-            "SystemLibraryPaths: {}",
-            client.filter_libdirs().to_delimited(':')
-        );
+        // Build an effective personality reflecting CLI overrides
+        let effective = CrossPersonality {
+            name: personality.name.clone(),
+            dir_list: {
+                // Use the client's resolved dir_list which includes env and CLI paths
+                let mut sp = libpkgconf::path::SearchPath::new();
+                for d in client.dir_list().dirs() {
+                    sp.add(d.clone());
+                }
+                sp
+            },
+            filter_libdirs: {
+                let mut sp = libpkgconf::path::SearchPath::new();
+                for d in client.filter_libdirs().dirs() {
+                    sp.add(d.clone());
+                }
+                sp
+            },
+            filter_includedirs: {
+                let mut sp = libpkgconf::path::SearchPath::new();
+                for d in client.filter_includedirs().dirs() {
+                    sp.add(d.clone());
+                }
+                sp
+            },
+            sysroot_dir: client.sysroot_dir().map(|s| s.to_string()),
+            want_default_static: client.is_static(),
+            want_default_pure: client.flags().contains(ClientFlags::PURE_DEPGRAPH),
+        };
+        print!("{}", effective.dump());
         return Ok(());
     }
 
@@ -557,19 +715,53 @@ fn run(cli: &Cli) -> Result<()> {
     // Initialize the cache with built-in virtual packages
     let mut cache = libpkgconf::cache::Cache::with_builtins(&client);
 
+    // Load preloaded packages from PKG_CONFIG_PRELOADED_FILES
+    load_preloaded_packages(&mut cache, &client);
+
+    // Log the solve start
+    if let Some(ref log) = audit {
+        log.log_solve_start(&cli.packages);
+    }
+
     // --validate: just check that the top-level packages parse and load OK
     if cli.validate {
-        queue
+        let result = queue
             .validate(&mut cache, &client)
-            .with_context(|| "Validation failed")?;
-        return Ok(());
+            .with_context(|| "Validation failed");
+
+        if let Some(ref log) = audit {
+            log.log_solve_end(result.is_ok());
+        }
+
+        return result;
     }
 
     // Solve the full dependency graph (recursive resolution, version checks,
-    // conflict detection). This replaces the old per-package loop.
-    let world = queue
-        .solve(&mut cache, &client)
-        .with_context(|| format!("Failed to resolve package(s): {}", cli.packages.join(", ")))?;
+    // conflict detection).
+    let world = match queue.solve(&mut cache, &client) {
+        Ok(w) => {
+            if let Some(ref log) = audit {
+                log.log_solve_end(true);
+            }
+            w
+        }
+        Err(e) => {
+            if let Some(ref log) = audit {
+                log.log_solve_end(false);
+            }
+            return Err(e).with_context(|| {
+                format!("Failed to resolve package(s): {}", cli.packages.join(", "))
+            });
+        }
+    };
+
+    // Log resolved packages
+    if let Some(ref log) = audit {
+        let sol = libpkgconf::queue::solution(&cache, &client, &world);
+        for (name, version) in &sol {
+            log.log_found(name, version, None);
+        }
+    }
 
     // --exists / --atleast-version / --exact-version / --max-version:
     // If only checking existence/version, the fact that solve() succeeded
@@ -705,11 +897,114 @@ fn run(cli: &Cli) -> Result<()> {
         return Ok(());
     }
 
+    // Determine whether to use MSVC syntax
+    let use_msvc = cli.msvc_syntax || client.flags().contains(ClientFlags::MSVC_SYNTAX);
+
     // System filter dirs from the client
     let system_libdirs = client.system_libdirs();
     let system_includedirs = client.system_includedirs();
 
+    // Sysroot for fragment-level application
+    let sysroot = client.sysroot_dir().map(|s| s.to_string());
+    let use_fdo_sysroot = client.flags().contains(ClientFlags::FDO_SYSROOT_RULES);
+
     let delim = if cli.newlines { '\n' } else { ' ' };
+
+    // --env output mode: collect flags and print as shell variables
+    if let Some(ref env_prefix) = cli.env {
+        let mut cflags = libpkgconf::queue::collect_cflags(&cache, &client, &world);
+        let mut libs = libpkgconf::queue::collect_libs(&cache, &client, &world);
+
+        // Apply sysroot to fragments if needed
+        if let Some(ref sr) = sysroot {
+            if use_fdo_sysroot {
+                cflags.apply_sysroot_fdo(sr);
+                libs.apply_sysroot_fdo(sr);
+            }
+            // Note: non-FDO sysroot is already applied at the variable level
+        }
+
+        // Filter system dirs
+        if !client.keep_system_cflags() {
+            cflags = cflags.filter_system_dirs(&system_libdirs, &system_includedirs);
+        }
+        if !client.keep_system_libs() {
+            libs = libs.filter_system_dirs(&system_libdirs, &system_includedirs);
+        }
+
+        // Deduplicate
+        let cflags = cflags.deduplicate();
+        let libs = libs.deduplicate();
+
+        // Render
+        let cflags_str = if use_msvc {
+            cflags.render_msvc_escaped(' ')
+        } else {
+            cflags.render_escaped(' ')
+        };
+        let libs_str = if use_msvc {
+            libs.render_msvc_escaped(' ')
+        } else {
+            libs.render_escaped(' ')
+        };
+
+        let prefix = env_prefix.to_uppercase().replace('-', "_");
+        println!("{prefix}_CFLAGS='{cflags_str}'");
+        println!("{prefix}_LIBS='{libs_str}'");
+
+        if let Some(ref log) = audit {
+            log.log_flags("CFLAGS", &cflags_str);
+            log.log_flags("LIBS", &libs_str);
+        }
+
+        return Ok(());
+    }
+
+    // --fragment-tree: visualize fragments as a tree
+    if cli.fragment_tree {
+        let want_cflags = cli.cflags
+            || cli.cflags_only_i
+            || cli.cflags_only_other
+            || (!cli.libs
+                && !cli.libs_only_l_upper
+                && !cli.libs_only_l_lower
+                && !cli.libs_only_other);
+        let want_libs = cli.libs
+            || cli.libs_only_l_upper
+            || cli.libs_only_l_lower
+            || cli.libs_only_other
+            || (!cli.cflags && !cli.cflags_only_i && !cli.cflags_only_other);
+
+        if want_cflags {
+            let mut cflags = libpkgconf::queue::collect_cflags(&cache, &client, &world);
+            if let Some(ref sr) = sysroot {
+                if use_fdo_sysroot {
+                    cflags.apply_sysroot_fdo(sr);
+                }
+            }
+            if !client.keep_system_cflags() {
+                cflags = cflags.filter_system_dirs(&system_libdirs, &system_includedirs);
+            }
+            let cflags = cflags.deduplicate();
+            print!("{}", render_fragment_tree("CFLAGS", &cflags, use_msvc));
+        }
+
+        if want_libs {
+            let mut libs = libpkgconf::queue::collect_libs(&cache, &client, &world);
+            if let Some(ref sr) = sysroot {
+                if use_fdo_sysroot {
+                    libs.apply_sysroot_fdo(sr);
+                }
+            }
+            if !client.keep_system_libs() {
+                libs = libs.filter_system_dirs(&system_libdirs, &system_includedirs);
+            }
+            let libs = libs.deduplicate();
+            print!("{}", render_fragment_tree("LIBS", &libs, use_msvc));
+        }
+
+        return Ok(());
+    }
 
     // Build output fragments
     let mut output_frags = libpkgconf::fragment::FragmentList::new();
@@ -717,6 +1012,13 @@ fn run(cli: &Cli) -> Result<()> {
     // Collect and process cflags from the full dependency graph
     if cli.cflags || cli.cflags_only_i || cli.cflags_only_other {
         let mut cflags = libpkgconf::queue::collect_cflags(&cache, &client, &world);
+
+        // Apply FDO sysroot rules to fragments
+        if let Some(ref sr) = sysroot {
+            if use_fdo_sysroot {
+                cflags.apply_sysroot_fdo(sr);
+            }
+        }
 
         // Filter system dirs unless --keep-system-cflags
         if !client.keep_system_cflags() {
@@ -741,6 +1043,13 @@ fn run(cli: &Cli) -> Result<()> {
     // Collect and process libs from the full dependency graph
     if cli.libs || cli.libs_only_l_upper || cli.libs_only_l_lower || cli.libs_only_other {
         let mut libs = libpkgconf::queue::collect_libs(&cache, &client, &world);
+
+        // Apply FDO sysroot rules to fragments
+        if let Some(ref sr) = sysroot {
+            if use_fdo_sysroot {
+                libs.apply_sysroot_fdo(sr);
+            }
+        }
 
         // Filter system dirs unless --keep-system-libs
         if !client.keep_system_libs() {
@@ -778,7 +1087,28 @@ fn run(cli: &Cli) -> Result<()> {
 
     // Render and print
     if !output_frags.is_empty() {
-        let rendered = output_frags.render_escaped(delim);
+        let rendered = if use_msvc {
+            output_frags.render_msvc_escaped(delim)
+        } else {
+            output_frags.render_escaped(delim)
+        };
+
+        // Log the output
+        if let Some(ref log) = audit {
+            let flag_type = if cli.cflags || cli.cflags_only_i || cli.cflags_only_other {
+                "CFLAGS"
+            } else if cli.libs
+                || cli.libs_only_l_upper
+                || cli.libs_only_l_lower
+                || cli.libs_only_other
+            {
+                "LIBS"
+            } else {
+                "OUTPUT"
+            };
+            log.log_flags(flag_type, &rendered);
+        }
+
         println!("{rendered}");
     }
 

@@ -17,9 +17,9 @@
 //! - [`client`] — Client state, search path management, and configuration
 //! - [`pkg`] — Package representation, loading, prefix redefinition, and provides resolution
 //! - [`cache`] — Package cache for avoiding redundant lookups and virtual package registration
-//! - [`personality`] — Cross-compilation personality support (TODO)
-//! - [`queue`] — Package queue and dependency solver (TODO)
-//! - [`audit`] — Audit logging (TODO)
+//! - [`personality`] — Cross-compilation personality support (triplet-based configuration)
+//! - [`queue`] — Package queue, dependency graph solver, and fragment collection
+//! - [`audit`] — Audit logging for dependency resolution events
 //!
 //! # Example
 //!
@@ -49,6 +49,7 @@
 //! assert!(version::compare("1.2.12", "1.2.11") > 0);
 //! ```
 
+pub mod audit;
 pub mod cache;
 pub mod client;
 pub mod dependency;
@@ -56,13 +57,10 @@ pub mod error;
 pub mod fragment;
 pub mod parser;
 pub mod path;
+pub mod personality;
 pub mod pkg;
 pub mod queue;
 pub mod version;
-
-// Planned modules — currently stubs:
-// pub mod audit;
-// pub mod personality;
 
 /// The version of this library (mirrors pkgconf compatibility version).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

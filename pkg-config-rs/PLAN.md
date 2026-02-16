@@ -199,11 +199,11 @@ This plan is organized into phases, each building on the previous one. Each phas
 
 ---
 
-## Phase 5: Advanced Features
+## Phase 5: Advanced Features ✅
 
 **Goal:** Cross-compilation personalities, MSVC syntax, sysroot handling, and remaining CLI features.
 
-- [ ] **5.1 Cross-compilation personalities** (`personality.rs`)
+- [x] **5.1 Cross-compilation personalities** (`personality.rs`)
   - `CrossPersonality` struct:
     - name (triplet)
     - dir_list (search paths for this personality)
@@ -216,14 +216,14 @@ This plan is organized into phases, each building on the previous one. Each phas
   - Personality deduction from `argv[0]` (e.g. `x86_64-linux-gnu-pkg-config`)
   - `--personality` and `--dump-personality` CLI support
 
-- [ ] **5.2 Sysroot handling**
+- [x] **5.2 Sysroot handling**
   - FDO sysroot rules (`PKG_CONFIG_FDO_SYSROOT_RULES`)
   - pkgconf1 sysroot rules (`PKG_CONFIG_PKGCONF1_SYSROOT_RULES`)
   - Sysroot prepending to `-I` and `-L` paths
   - DESTDIR interaction with sysroot
   - Buildroot directory support
 
-- [ ] **5.3 Path relocation**
+- [x] **5.3 Path relocation**
   - `--define-prefix` auto-detection of prefix from `.pc` file location
   - `--dont-define-prefix` to disable
   - `--prefix-variable` to customize which variable is overridden
@@ -231,7 +231,7 @@ This plan is organized into phases, each building on the previous one. Each phas
   - `--dont-relocate-paths` to disable relocation
   - Windows-style path relocation (drive letter handling)
 
-- [ ] **5.4 MSVC syntax renderer**
+- [x] **5.4 MSVC syntax renderer**
   - Fragment renderer that translates GCC-style flags to MSVC:
     - `-I` → `/I`
     - `-L` → `/LIBPATH:`
@@ -240,13 +240,13 @@ This plan is organized into phases, each building on the previous one. Each phas
   - `--msvc-syntax` CLI flag
   - `PKG_CONFIG_MSVC_SYNTAX` environment variable
 
-- [ ] **5.5 Audit logging** (`audit.rs`)
+- [x] **5.5 Audit logging** (`audit.rs`)
   - `--log-file` support
   - `PKG_CONFIG_LOG` environment variable
   - Log dependency resolution decisions
   - `audit_log_dependency()` for each resolved dep
 
-- [ ] **5.6 Remaining CLI features**
+- [x] **5.6 Remaining CLI features**
   - `--simulate` — print dependency graph without resolving flags
   - `--digraph` — output in graphviz dot format
   - `--print-digraph-query-nodes` — include query nodes in dot output
@@ -258,7 +258,7 @@ This plan is organized into phases, each building on the previous one. Each phas
   - `--uninstalled` / `--no-uninstalled` — uninstalled package handling
   - `--validate` — validate `.pc` files for correctness
 
-- [ ] **5.7 Preloaded packages**
+- [x] **5.7 Preloaded packages**
   - `PKG_CONFIG_PRELOADED_FILES` support
   - `Client::preload_path()` and `Client::preload_from_environ()`
 

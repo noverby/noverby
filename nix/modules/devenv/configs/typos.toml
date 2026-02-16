@@ -4,7 +4,8 @@ extend-ignore-re = [
   "Tre",
   "tre",
   "Importd",
-  "Localed"
+  "Localed",
+  "Iinclude"
 ]
 
 [files]
