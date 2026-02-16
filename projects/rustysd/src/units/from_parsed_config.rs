@@ -162,6 +162,7 @@ pub fn unit_from_parsed_socket(conf: ParsedSocketConfig) -> Result<Unit, String>
                 symlinks: conf.sock.symlinks,
                 timestamping: conf.sock.timestamping,
                 defer_trigger: conf.sock.defer_trigger,
+                writable: conf.sock.writable,
             },
             state: RwLock::new(SocketState {
                 common: CommonState::default(),

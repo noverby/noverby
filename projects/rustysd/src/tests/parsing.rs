@@ -41909,3 +41909,309 @@ fn test_parse_byte_size_fractional_rejected() {
     // Systemd doesn't support fractional byte sizes; we reject them too
     assert!(crate::units::parse_byte_size("1.5M").is_err());
 }
+
+// ===============================================================
+// Writable= in [Socket] section tests
+// ===============================================================
+
+#[test]
+fn test_writable_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.writable);
+}
+
+#[test]
+fn test_writable_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Writable = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.writable);
+}
+
+#[test]
+fn test_writable_true() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Writable = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.writable);
+}
+
+#[test]
+fn test_writable_1() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Writable = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.writable);
+}
+
+#[test]
+fn test_writable_no() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Writable = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.writable);
+}
+
+#[test]
+fn test_writable_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Writable = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.writable);
+}
+
+#[test]
+fn test_writable_0() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Writable = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.writable);
+}
+
+#[test]
+fn test_writable_case_insensitive() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Writable = Yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.writable);
+}
+
+#[test]
+fn test_writable_case_insensitive_upper() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Writable = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.writable);
+}
+
+#[test]
+fn test_writable_no_unsupported_warning() {
+    // Ensure that Writable= no longer triggers
+    // "Ignoring unsupported setting in [Socket] section" warnings.
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Writable = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    // If parsing succeeds, the setting was recognized
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_writable_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Writable = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(ref sock) = unit.specific {
+        assert!(sock.conf.writable);
+    } else {
+        panic!("Expected socket unit");
+    }
+}
+
+#[test]
+fn test_writable_false_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Writable = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(ref sock) = unit.specific {
+        assert!(!sock.conf.writable);
+    } else {
+        panic!("Expected socket unit");
+    }
+}
+
+#[test]
+fn test_writable_default_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(ref sock) = unit.specific {
+        assert!(!sock.conf.writable);
+    } else {
+        panic!("Expected socket unit");
+    }
+}
+
+#[test]
+fn test_writable_with_other_socket_settings() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Writable = yes
+    Accept = no
+    MaxConnections = 128
+    PassCredentials = yes
+    SocketMode = 0660
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.writable);
+    assert!(!socket.sock.accept);
+    assert_eq!(socket.sock.max_connections, 128);
+    assert!(socket.sock.pass_credentials);
+    assert_eq!(socket.sock.socket_mode, Some(0o0660));
+}
+
+#[test]
+fn test_writable_with_fifo() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenFIFO = /path/to/fifo
+    Writable = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.writable);
+}

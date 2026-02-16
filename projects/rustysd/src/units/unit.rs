@@ -1570,5 +1570,10 @@ pub struct SocketConfig {
     /// See systemd.socket(5).
     pub defer_trigger: DeferTrigger,
 
+    /// Writable= — whether to open the FIFO or special file for writing
+    /// as well (i.e. O_RDWR rather than O_RDONLY). Defaults to false.
+    /// Parsed and stored; no runtime enforcement yet. See systemd.socket(5).
+    pub writable: bool,
+
     pub exec_config: ExecConfig,
 }
