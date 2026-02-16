@@ -27,7 +27,7 @@
 
       meta = {
         description = "A service manager that is able to run \"traditional\" systemd services, written in rust";
-        homepage = "https://github.com/KillingSpark/rustysd";
+        homepage = "https://tangled.org/overby.me/overby.me/tree/main/systemd-rs";
         license = lib.licenses.mit;
         maintainers = with lib.maintainers; [noverby];
         mainProgram = "systemd-rs";

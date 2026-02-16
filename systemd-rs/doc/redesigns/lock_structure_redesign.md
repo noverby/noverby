@@ -1,6 +1,6 @@
 # Redesign
 
-This document tracks the new design before the rewrite [(tracking issue)](https://github.com/KillingSpark/systemd-rs/issues/35) starts.
+This document tracks the new design before the rewrite (tracking issue) starts.
 
 ## Why this is needed
 
