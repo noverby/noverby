@@ -938,6 +938,12 @@ pub struct ParsedSocketSection {
     /// stored; no runtime enforcement yet. See systemd.socket(5).
     pub pass_security: bool,
 
+    /// RemoveOnStop= — whether to remove file nodes (AF_UNIX sockets,
+    /// FIFOs, message queues, and symlinks configured with Symlinks=)
+    /// created by this socket unit when it is stopped. Defaults to false.
+    /// Parsed and stored; no runtime enforcement yet. See systemd.socket(5).
+    pub remove_on_stop: bool,
+
     /// ReceiveBuffer= — the receive buffer size (SO_RCVBUF) in bytes for the
     /// socket. Takes an integer value. Parsed and stored; no runtime
     /// enforcement yet. See systemd.socket(5).
