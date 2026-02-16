@@ -950,6 +950,13 @@ pub struct ParsedSocketSection {
     /// yet. See systemd.socket(5).
     pub symlinks: Vec<String>,
 
+    /// Timestamping= — controls the SO_TIMESTAMP or SO_TIMESTAMPNS socket
+    /// options, enabling timestamping metadata on ingress network traffic.
+    /// Takes one of "off", "us"/"usec"/"μs", or "ns"/"nsec".
+    /// Defaults to Off. Parsed and stored; no runtime enforcement yet.
+    /// See systemd.socket(5).
+    pub timestamping: Timestamping,
+
     /// DeferTrigger= — controls whether to defer triggering the associated
     /// service when a connection comes in. Takes a boolean or "patient".
     /// Defaults to No. Parsed and stored; no runtime enforcement yet.
@@ -1583,6 +1590,19 @@ pub enum DeferTrigger {
     /// Like Yes, but always wait until DeferTriggerMaxSec= elapses
     /// before giving up.
     Patient,
+}
+
+/// Timestamping= — controls the SO_TIMESTAMP or SO_TIMESTAMPNS socket
+/// options, enabling timestamping metadata on ingress network traffic.
+/// See systemd.socket(5).
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+pub enum Timestamping {
+    /// No timestamping (default).
+    Off,
+    /// Microsecond-precision timestamping (SO_TIMESTAMP).
+    Microseconds,
+    /// Nanosecond-precision timestamping (SO_TIMESTAMPNS).
+    Nanoseconds,
 }
 
 /// RuntimeDirectoryPreserve= — controls whether runtime directories created

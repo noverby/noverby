@@ -36873,6 +36873,363 @@ fn test_symlinks_with_fifo() {
     assert_eq!(socket.sock.symlinks, vec!["/run/myfifo-alias"]);
 }
 
+// ===============================================================
+// Timestamping= in [Socket] section tests
+// ===============================================================
+
+#[test]
+fn test_timestamping_defaults_to_off() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.timestamping,
+        crate::units::Timestamping::Off,
+        "Timestamping should default to Off"
+    );
+}
+
+#[test]
+fn test_timestamping_off() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Timestamping = off
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.timestamping, crate::units::Timestamping::Off);
+}
+
+#[test]
+fn test_timestamping_us() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Timestamping = us
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.timestamping,
+        crate::units::Timestamping::Microseconds,
+        "Timestamping=us should be Microseconds"
+    );
+}
+
+#[test]
+fn test_timestamping_usec() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Timestamping = usec
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.timestamping,
+        crate::units::Timestamping::Microseconds,
+        "Timestamping=usec should be Microseconds"
+    );
+}
+
+#[test]
+fn test_timestamping_unicode_us() {
+    let test_socket_str = "
+    [Socket]
+    ListenStream = /path/to/socket
+    Timestamping = \u{03bc}s
+    ";
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.timestamping,
+        crate::units::Timestamping::Microseconds,
+        "Timestamping=\u{03bc}s should be Microseconds"
+    );
+}
+
+#[test]
+fn test_timestamping_ns() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Timestamping = ns
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.timestamping,
+        crate::units::Timestamping::Nanoseconds,
+        "Timestamping=ns should be Nanoseconds"
+    );
+}
+
+#[test]
+fn test_timestamping_nsec() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Timestamping = nsec
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.timestamping,
+        crate::units::Timestamping::Nanoseconds,
+        "Timestamping=nsec should be Nanoseconds"
+    );
+}
+
+#[test]
+fn test_timestamping_case_insensitive() {
+    for (input, expected) in [
+        ("OFF", crate::units::Timestamping::Off),
+        ("Off", crate::units::Timestamping::Off),
+        ("US", crate::units::Timestamping::Microseconds),
+        ("Us", crate::units::Timestamping::Microseconds),
+        ("USEC", crate::units::Timestamping::Microseconds),
+        ("Usec", crate::units::Timestamping::Microseconds),
+        ("NS", crate::units::Timestamping::Nanoseconds),
+        ("Ns", crate::units::Timestamping::Nanoseconds),
+        ("NSEC", crate::units::Timestamping::Nanoseconds),
+        ("Nsec", crate::units::Timestamping::Nanoseconds),
+    ] {
+        let test_socket_str = format!(
+            r#"
+            [Socket]
+            ListenStream = /path/to/socket
+            Timestamping = {input}
+            "#
+        );
+
+        let parsed_file = crate::units::parse_file(&test_socket_str).unwrap();
+        let socket = crate::units::parse_socket(
+            parsed_file,
+            &std::path::PathBuf::from("/path/to/test.socket"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            socket.sock.timestamping, expected,
+            "Timestamping={input} should parse correctly (case-insensitive)"
+        );
+    }
+}
+
+#[test]
+fn test_timestamping_empty_resets_to_off() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Timestamping =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.timestamping,
+        crate::units::Timestamping::Off,
+        "Empty Timestamping= should reset to Off"
+    );
+}
+
+#[test]
+fn test_timestamping_invalid_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Timestamping = invalid
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_err(), "Invalid Timestamping value should error");
+}
+
+#[test]
+fn test_timestamping_whitespace_trimmed() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Timestamping =   ns
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.timestamping,
+        crate::units::Timestamping::Nanoseconds,
+        "Timestamping with leading whitespace should still parse"
+    );
+}
+
+#[test]
+fn test_timestamping_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Timestamping = us
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert_eq!(
+            sock.conf.timestamping,
+            crate::units::Timestamping::Microseconds,
+            "Timestamping=us should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_timestamping_default_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert_eq!(
+            sock.conf.timestamping,
+            crate::units::Timestamping::Off,
+            "Default Timestamping (Off) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_timestamping_no_unsupported_warning() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Timestamping = off
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    // If parsing succeeds, no unsupported-setting warning was emitted
+    assert_eq!(socket.sock.timestamping, crate::units::Timestamping::Off);
+}
+
+#[test]
+fn test_timestamping_with_other_socket_settings() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Accept = yes
+    PassCredentials = yes
+    Timestamping = ns
+    ReceiveBuffer = 64K
+    MaxConnections = 128
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.accept);
+    assert!(socket.sock.pass_credentials);
+    assert_eq!(
+        socket.sock.timestamping,
+        crate::units::Timestamping::Nanoseconds
+    );
+    assert_eq!(socket.sock.receive_buffer, Some(64 * 1024));
+    assert_eq!(socket.sock.max_connections, 128);
+}
+
 // ==================== ListenNetlink= tests ====================
 
 #[test]

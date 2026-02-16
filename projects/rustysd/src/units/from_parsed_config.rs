@@ -153,6 +153,7 @@ pub fn unit_from_parsed_socket(conf: ParsedSocketConfig) -> Result<Unit, String>
                 receive_buffer: conf.sock.receive_buffer,
                 send_buffer: conf.sock.send_buffer,
                 symlinks: conf.sock.symlinks,
+                timestamping: conf.sock.timestamping,
                 defer_trigger: conf.sock.defer_trigger,
             },
             state: RwLock::new(SocketState {

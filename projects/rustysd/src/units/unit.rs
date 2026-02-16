@@ -8,8 +8,9 @@ use crate::units::{
     IOSchedulingClass, KeyringMode, KillMode, MemoryLimit, MemoryPressureWatch, NotifyKind,
     OnFailureJobMode, ProcSubset, ProtectHome, ProtectProc, ProtectSystem, ResourceLimit,
     RestrictNamespaces, RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput,
-    StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout, UnitAction, UnitCondition,
-    UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode,
+    StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout, Timestamping, UnitAction,
+    UnitCondition, UnitId, UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus,
+    UtmpMode,
 };
 
 use std::sync::RwLock;
@@ -1482,6 +1483,13 @@ pub struct SocketConfig {
     /// Defaults to an empty list. Parsed and stored; no runtime enforcement
     /// yet. See systemd.socket(5).
     pub symlinks: Vec<String>,
+
+    /// Timestamping= — controls the SO_TIMESTAMP or SO_TIMESTAMPNS socket
+    /// options, enabling timestamping metadata on ingress network traffic.
+    /// Takes one of "off", "us"/"usec"/"μs", or "ns"/"nsec".
+    /// Defaults to Off. Parsed and stored; no runtime enforcement yet.
+    /// See systemd.socket(5).
+    pub timestamping: Timestamping,
 
     /// DeferTrigger= — controls whether to defer triggering the associated
     /// service when a connection comes in. Takes a boolean or "patient".

@@ -129,6 +129,7 @@ fn parse_socket_section(
     let receive_buffer = section.remove("RECEIVEBUFFER");
     let send_buffer = section.remove("SENDBUFFER");
     let symlinks = section.remove("SYMLINKS");
+    let timestamping = section.remove("TIMESTAMPING");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -451,6 +452,30 @@ fn parse_socket_section(
         None => None,
     };
 
+    let timestamping = match timestamping {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                match val.to_lowercase().as_str() {
+                    "off" | "" => crate::units::Timestamping::Off,
+                    "us" | "usec" | "μs" => crate::units::Timestamping::Microseconds,
+                    "ns" | "nsec" => crate::units::Timestamping::Nanoseconds,
+                    _ => {
+                        return Err(ParsingErrorReason::Generic(format!(
+                            "Timestamping: invalid value '{val}', expected one of: off, us, usec, μs, ns, nsec"
+                        )));
+                    }
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "Timestamping".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => crate::units::Timestamping::Off,
+    };
+
     // Symlinks= takes a space-separated list of file system paths per line.
     // Multiple lines extend the list. An empty value resets the list.
     let symlinks: Vec<String> = match symlinks {
@@ -484,6 +509,7 @@ fn parse_socket_section(
         receive_buffer,
         send_buffer,
         symlinks,
+        timestamping,
         defer_trigger,
         exec_section: exec_config,
     })

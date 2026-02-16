@@ -1582,6 +1582,11 @@ This document is meant as a simple way of checking whether all features you need
   <td></td>
 </tr>
 <tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#Timestamping=">Timestamping=</a></td>
+  <td>✔️</td>
+  <td>Parsed and stored as tri-state (off, us/usec/μs, ns/nsec). Case-insensitive. No runtime enforcement yet (requires SO_TIMESTAMP/SO_TIMESTAMPNS setsockopt).</td>
+</tr>
+<tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#TCPCongestion=">TCPCongestion=</a></td>
   <td>❌</td>
   <td></td>
