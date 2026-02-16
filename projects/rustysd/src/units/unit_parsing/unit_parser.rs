@@ -663,6 +663,7 @@ pub fn parse_exec_section(
     let private_devices = section.remove("PRIVATEDEVICES");
     let private_network = section.remove("PRIVATENETWORK");
     let private_users = section.remove("PRIVATEUSERS");
+    let private_mounts = section.remove("PRIVATEMOUNTS");
     let io_scheduling_class = section.remove("IOSCHEDULINGCLASS");
     let io_scheduling_priority = section.remove("IOSCHEDULINGPRIORITY");
     let umask = section.remove("UMASK");
@@ -1016,6 +1017,21 @@ pub fn parse_exec_section(
             } else {
                 return Err(ParsingErrorReason::SettingTooManyValues(
                     "PrivateUsers".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        // systemd default: false
+        None => false,
+    };
+
+    let private_mounts = match private_mounts {
+        Some(vec) => {
+            if vec.len() == 1 {
+                string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "PrivateMounts".to_owned(),
                     super::map_tuples_to_second(vec),
                 ));
             }
@@ -1754,6 +1770,7 @@ pub fn parse_exec_section(
         private_devices,
         private_network,
         private_users,
+        private_mounts,
         io_scheduling_class: match io_scheduling_class {
             Some(vec) => {
                 if vec.len() == 1 {

@@ -25026,6 +25026,274 @@ fn test_private_tmp_socket_unit() {
 }
 
 // ============================================================
+// PrivateMounts= parsing tests
+// ============================================================
+
+#[test]
+fn test_private_mounts_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.exec_section.private_mounts,
+        "PrivateMounts should default to false"
+    );
+}
+
+#[test]
+fn test_private_mounts_set_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateMounts = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.private_mounts);
+}
+
+#[test]
+fn test_private_mounts_set_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateMounts = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.private_mounts);
+}
+
+#[test]
+fn test_private_mounts_set_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateMounts = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.private_mounts);
+}
+
+#[test]
+fn test_private_mounts_set_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateMounts = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(!service.srvc.exec_section.private_mounts);
+}
+
+#[test]
+fn test_private_mounts_set_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateMounts = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(!service.srvc.exec_section.private_mounts);
+}
+
+#[test]
+fn test_private_mounts_set_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateMounts = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(!service.srvc.exec_section.private_mounts);
+}
+
+#[test]
+fn test_private_mounts_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateMounts = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.private_mounts);
+}
+
+#[test]
+fn test_private_mounts_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateMounts = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "PrivateMounts should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_private_mounts_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateMounts = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            srvc.conf.exec_config.private_mounts,
+            "PrivateMounts=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_private_mounts_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert!(
+            !srvc.conf.exec_config.private_mounts,
+            "PrivateMounts default (false) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_private_mounts_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    PrivateMounts = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.exec_section.private_mounts,
+        "PrivateMounts should work in socket units"
+    );
+}
+
+#[test]
+fn test_private_mounts_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    PrivateMounts = yes
+    PrivateTmp = yes
+    PrivateDevices = yes
+    ProtectSystem = strict
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.private_mounts);
+    assert!(service.srvc.exec_section.private_tmp);
+    assert!(service.srvc.exec_section.private_devices);
+}
+
+// ============================================================
 // PrivateDevices= parsing tests
 // ============================================================
 
