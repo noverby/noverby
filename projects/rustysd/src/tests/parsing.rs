@@ -11275,6 +11275,212 @@ fn test_unset_environment_socket_unit() {
     );
 }
 
+// ── PassEnvironment= ──────────────────────────────────────────────────
+
+#[test]
+fn test_pass_environment_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.pass_environment.is_empty(),
+        "PassEnvironment should default to empty when not specified"
+    );
+}
+
+#[test]
+fn test_pass_environment_single_variable() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    PassEnvironment = HOME
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.pass_environment,
+        vec!["HOME".to_owned()],
+    );
+}
+
+#[test]
+fn test_pass_environment_multiple_variables() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    PassEnvironment = HOME USER LANG
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.pass_environment,
+        vec!["HOME".to_owned(), "USER".to_owned(), "LANG".to_owned()],
+    );
+}
+
+#[test]
+fn test_pass_environment_multiple_directives_accumulate() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    PassEnvironment = HOME
+    PassEnvironment = USER LANG
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.pass_environment,
+        vec!["HOME".to_owned(), "USER".to_owned(), "LANG".to_owned()],
+    );
+}
+
+#[test]
+fn test_pass_environment_empty_resets() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    PassEnvironment = HOME USER
+    PassEnvironment =
+    PassEnvironment = LANG
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.pass_environment,
+        vec!["LANG".to_owned()],
+        "Empty assignment should reset the list, then LANG is added"
+    );
+}
+
+#[test]
+fn test_pass_environment_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    PassEnvironment = HOME
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "PassEnvironment should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_pass_environment_with_environment_and_unset() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    Environment = FOO=bar
+    PassEnvironment = HOME USER
+    UnsetEnvironment = LANG
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.pass_environment,
+        vec!["HOME".to_owned(), "USER".to_owned()],
+    );
+    assert_eq!(
+        service.srvc.exec_section.unset_environment,
+        vec!["LANG".to_owned()],
+    );
+    assert!(service.srvc.exec_section.environment.is_some());
+}
+
+#[test]
+fn test_pass_environment_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    PassEnvironment = HOME USER
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.pass_environment,
+            vec!["HOME".to_owned(), "USER".to_owned()],
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_pass_environment_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    PassEnvironment = HOME
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.pass_environment,
+        vec!["HOME".to_owned()],
+    );
+}
+
 // ── OOMScoreAdjust= ───────────────────────────────────────────────────
 
 #[test]

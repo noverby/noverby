@@ -217,6 +217,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             utmp_identifier: parsed.utmp_identifier,
             utmp_mode: parsed.utmp_mode,
             import_credentials: parsed.import_credentials,
+            pass_environment: parsed.pass_environment,
             unset_environment: parsed.unset_environment,
             oom_score_adjust: parsed.oom_score_adjust,
             log_extra_fields: parsed.log_extra_fields,

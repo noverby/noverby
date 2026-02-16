@@ -217,6 +217,17 @@ fn start_service_with_filedescriptors(
                     env.push((k.clone(), v.clone()));
                 }
             }
+            // PassEnvironment= — import listed variable names from the system
+            // manager's (PID 1) environment. Variables that are not set in the
+            // manager's environment are silently ignored. Applied after
+            // Environment= so they can override unit-level settings, but
+            // before internal variables and UnsetEnvironment=.
+            for var_name in &conf.exec_config.pass_environment {
+                if let Ok(value) = std::env::var(var_name) {
+                    env.retain(|(ek, _)| ek != var_name);
+                    env.push((var_name.clone(), value));
+                }
+            }
             // Internal variables added last — these must not be overridden
             env.push(("LISTEN_FDS".to_owned(), format!("{}", names.len())));
             env.push(("LISTEN_FDNAMES".to_owned(), names.join(":")));

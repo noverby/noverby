@@ -1203,6 +1203,14 @@ pub struct ParsedExecSection {
     /// Multiple patterns may be specified (the setting accumulates).
     /// See systemd.exec(5).
     pub import_credentials: Vec<String>,
+    /// PassEnvironment= — a list of environment variable names to import from
+    /// the system manager's (PID 1) environment into the service's execution
+    /// environment. Only variables that are actually set in the manager's
+    /// environment are passed; unset variables are silently ignored. Multiple
+    /// directives accumulate; an empty assignment resets the list. Applied
+    /// after Environment= but before internal variables and UnsetEnvironment=.
+    /// See systemd.exec(5).
+    pub pass_environment: Vec<String>,
     /// UnsetEnvironment= — a list of environment variable names or variable
     /// assignments (VAR=VALUE) to remove from the final environment passed to
     /// executed processes. If a plain name is given, any assignment with that
