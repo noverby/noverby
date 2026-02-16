@@ -10,7 +10,7 @@ extend-ignore-re = [
 [files]
 extend-exclude = [
    # Project is still in Danish
-  "projects/wiki/**",
+  "wiki/**",
   "secrets/*.age"
 ]
 ignore-hidden = false

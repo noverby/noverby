@@ -53,11 +53,11 @@
 
 | Project | Description |
 |-|-|
-| [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/homepage) | Personal website and portfolio |
-| [Wiki 🐒➡️🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/projects/wiki) | Platform for political conference & beyond |
-| [Wasm-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/wasm-mojo) | WebAssembly interop layer for Mojo |
-| [NixOS-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/projects/nixos-rs) | NixOS with Rust user space |
-| [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/systemd-rs) | A Systemd replacement in Rust |
+| [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/homepage) | Personal website and portfolio |
+| [Wiki 🐒➡️🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/wiki) | Platform for political conference & beyond |
+| [Wasm-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/wasm-mojo) | WebAssembly interop layer for Mojo |
+| [NixOS-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos-rs) | NixOS with Rust user space |
+| [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | A Systemd replacement in Rust |
 
 </details>
 
@@ -373,7 +373,7 @@
 | ✅ | Font Rendering | [Cosmic-text 🦀](https://github.com/pop-os/cosmic-text) | | 🆗 | [HarfBuzz 💣](https://github.com/harfbuzz/harfbuzz), [FreeType 💣](https://github.com/freetype/freetype) |
 | ✅ | Graphics Renderer | [Wgpu 🦀](https://github.com/gfx-rs/wgpu) | | 🆗 | [Skia 💣](https://github.com/google/skia), [Cairo 💣](https://www.cairographics.org) |
 | ✅ | Compositor Framework | [Smithay 🦀](https://github.com/Smithay/smithay) | | 🆗 | [Mutter 💣](https://gitlab.gnome.org/GNOME/mutter) |
-| 🚧 | UI Toolkit | [React 🐒](https://react.dev) | [WIP Toolkit 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/mojo-wasm), [Dixous 🦀](https://github.com/dioxusLabs/dioxus) | [Web Component 📖](https://www.webcomponents.org/) | |
+| 🚧 | UI Toolkit | [React 🐒](https://react.dev) | [WIP Toolkit 🔥](https://tangled.org/@overby.me/overby.me/tree/main/mojo-wasm), [Dixous 🦀](https://github.com/dioxusLabs/dioxus) | [Web Component 📖](https://www.webcomponents.org/) | |
 | 🚧 | UI Components | [MUI 🐒](https://mui.com) | [Dioxus Components 🦀](https://github.com/DioxusLabs/components) | 🆗 | |
 | 🚫 | XR Toolkit | [Stereokit 💣](https://github.com/StereoKit/StereoKit) | | 🆗 | |
 | 🚧 | Browser Engine | [Gecko 🦀💣](https://en.wikipedia.org/wiki/Gecko_(software)) | [Servo 🦀](https://github.com/servo/servo) | ⬅️ | |

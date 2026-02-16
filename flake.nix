@@ -155,14 +155,14 @@
         ./nix/modules/flakelight/devenvModules.nix
         ./nix/modules/flakelight/devenvConfigurations.nix
 
-        ./projects/backend
-        ./projects/homepage
-        ./projects/wiki
+        ./backend
+        ./homepage
+        ./wiki
 
-        ./projects/wasm-mojo
+        ./wasm-mojo
 
-        ./projects/nixos-rs
-        ./projects/systemd-rs
+        ./nixos-rs
+        ./systemd-rs
 
         ./slides
       ];
