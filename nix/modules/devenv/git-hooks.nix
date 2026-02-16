@@ -11,6 +11,10 @@
         enable = true;
         entry = "${pkgs.writeShellScript "rustfmt-multi-project" ''
           for manifest in $(${pkgs.findutils}/bin/find . -name Cargo.toml -not -path '*/target/*'); do
+            if ${pkgs.gnugrep}/bin/grep -q '^\[workspace\]' "$manifest" && ! ${pkgs.gnugrep}/bin/grep -q '^\[package\]' "$manifest"; then
+              echo "Skipping workspace-only $manifest"
+              continue
+            fi
             echo "Running cargo fmt for $manifest"
             ${pkgs.cargo}/bin/cargo fmt --manifest-path "$manifest"
           done
