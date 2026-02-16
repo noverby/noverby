@@ -154,11 +154,11 @@ This plan is organized into phases, each building on the previous one. Each phas
 
 ---
 
-## Phase 4: Dependency Graph Solver
+## Phase 4: Dependency Graph Solver ✅
 
 **Goal:** Full dependency graph resolution matching pkgconf's flattened directed graph algorithm.
 
-- [ ] **4.1 Queue module** (`queue.rs`)
+- [x] **4.1 Queue module** (`queue.rs`)
   - `Queue` struct — ordered list of package queries
   - `push()`, `push_dependency()`
   - `compile()` — parse queue entries into the world package's dependency list
@@ -174,23 +174,23 @@ This plan is organized into phases, each building on the previous one. Each phas
   - `apply()` — generic traversal with callback
   - Depth limiting (`maximum_traverse_depth`)
 
-- [ ] **4.2 Graph traversal** (in `pkg.rs`)
-  - `Package::traverse()` — walk the dependency graph depth-first
-  - Visited tracking via serial numbers (avoiding re-traversal)
+- [x] **4.2 Graph traversal** (in `queue.rs`)
+  - `apply()` / `apply_recursive()` — walk the dependency graph depth-first
+  - Visited tracking via `HashSet` (avoiding re-traversal)
   - Private dependency handling:
     - `PKGCONF_PKG_PKGF_SEARCH_PRIVATE` — include private deps in traversal
     - `PKGCONF_PKG_PKGF_MERGE_PRIVATE_FRAGMENTS` — merge private fragments
   - Skip flags: `SKIP_ROOT_VIRTUAL`, `SKIP_CONFLICTS`, `SKIP_PROVIDES`, `SKIP_ERRORS`
-  - Conflict detection: `walk_conflicts_list()`
+  - Conflict detection: `verify_graph()` / `verify_recursive()`
   - Graph verification: `verify_graph()`
 
-- [ ] **4.3 Fragment collection** (in `pkg.rs`)
-  - `Package::cflags()` — collect cflags from the dependency graph
-  - `Package::libs()` — collect libs from the dependency graph
+- [x] **4.3 Fragment collection** (in `queue.rs`)
+  - `collect_cflags()` — collect cflags from the dependency graph
+  - `collect_libs()` — collect libs from the dependency graph
   - Proper ordering: cflags are depth-first, libs respect link order
   - Fragment merging from private dependencies when `--static`
 
-- [ ] **4.4 Integrate solver into CLI**
+- [x] **4.4 Integrate solver into CLI**
   - Replace the per-package loading in `main.rs` with queue-based solving
   - Implement `--exists` using the solver
   - Handle multi-package queries correctly

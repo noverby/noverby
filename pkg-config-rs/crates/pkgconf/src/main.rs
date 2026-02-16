@@ -514,6 +514,9 @@ fn run(cli: &Cli) -> Result<()> {
         bail!("Please specify at least one package name on the command line");
     }
 
+    // Build a queue from positional args and apply version constraint overrides
+    let mut queue = libpkgconf::queue::Queue::new();
+
     // Build the combined query string from positional args
     let query = cli.packages.join(" ");
 
@@ -546,173 +549,52 @@ fn run(cli: &Cli) -> Result<()> {
         }
     }
 
-    // System filter dirs from the client
-    let system_libdirs = client.system_libdirs();
-    let system_includedirs = client.system_includedirs();
-
-    // Resolve each package
-    let mut all_cflags = libpkgconf::fragment::FragmentList::new();
-    let mut all_libs = libpkgconf::fragment::FragmentList::new();
-
+    // Push the (possibly modified) dependencies into the queue
     for dep in deps.iter() {
-        let pc = client
-            .find_package(&dep.package)
-            .with_context(|| format!("Failed to find package '{}'", dep.package))?;
-
-        // Check version constraint
-        if let Some(ref required_ver) = dep.version {
-            let actual_ver = pc.version().unwrap_or("0");
-            if !dep.compare.eval(actual_ver, required_ver) {
-                bail!(
-                    "Requested '{}' but version of {} is {}",
-                    dep,
-                    pc.name().unwrap_or(&dep.package),
-                    actual_ver
-                );
-            }
-        }
-
-        // Resolve variables using the client
-        let resolved_vars = client
-            .resolve_variables(&pc)
-            .with_context(|| format!("Failed to resolve variables for '{}'", dep.package))?;
-
-        // --exists / --atleast-version / --exact-version / --max-version:
-        // If only checking existence/version, just succeed (version already checked above).
-        if cli.exists
-            || cli.atleast_version.is_some()
-            || cli.exact_version.is_some()
-            || cli.max_version.is_some()
-        {
-            continue;
-        }
-
-        // --validate: just check that the file parsed OK (which it did if we got here)
-        if cli.validate {
-            continue;
-        }
-
-        // --modversion
-        if cli.modversion {
-            if let Some(ver) = pc.version() {
-                if cli.verbose {
-                    print!("{}: ", pc.name().unwrap_or(&dep.package));
-                }
-                println!("{ver}");
-            }
-            continue;
-        }
-
-        // --variable
-        if let Some(ref var_name) = cli.variable {
-            if let Some(val) = resolved_vars.get(var_name.as_str()) {
-                print!("{val}");
-            }
-            println!();
-            continue;
-        }
-
-        // --print-variables
-        if cli.print_variables {
-            for name in pc.variable_names() {
-                println!("{name}");
-            }
-            continue;
-        }
-
-        // --print-requires
-        if cli.print_requires {
-            if let Some(req) = pc.get_field(libpkgconf::parser::Keyword::Requires) {
-                let expanded = client.resolve_field(req, &resolved_vars)?;
-                let req_deps = libpkgconf::dependency::DependencyList::parse(&expanded);
-                for d in req_deps.iter() {
-                    println!("{d}");
-                }
-            }
-            continue;
-        }
-
-        // --print-requires-private
-        if cli.print_requires_private {
-            if let Some(req) = pc.get_field(libpkgconf::parser::Keyword::RequiresPrivate) {
-                let expanded = client.resolve_field(req, &resolved_vars)?;
-                let req_deps = libpkgconf::dependency::DependencyList::parse(&expanded);
-                for d in req_deps.iter() {
-                    println!("{d}");
-                }
-            }
-            continue;
-        }
-
-        // --print-provides
-        if cli.print_provides {
-            if let Some(prov) = pc.get_field(libpkgconf::parser::Keyword::Provides) {
-                let expanded = client.resolve_field(prov, &resolved_vars)?;
-                let prov_deps = libpkgconf::dependency::DependencyList::parse(&expanded);
-                for d in prov_deps.iter() {
-                    println!("{d}");
-                }
-            }
-            continue;
-        }
-
-        // --path
-        if cli.path {
-            if let Some(ref p) = pc.path {
-                println!("{}", p.display());
-            }
-            continue;
-        }
-
-        // --license
-        if cli.license {
-            let lic = pc.license().unwrap_or("NOASSERTION");
-            println!("{}: {lic}", pc.name().unwrap_or(&dep.package));
-            continue;
-        }
-
-        // --source
-        if cli.source {
-            let src = pc.source().unwrap_or("");
-            println!("{}: {src}", pc.name().unwrap_or(&dep.package));
-            continue;
-        }
-
-        // Collect cflags
-        if cli.cflags || cli.cflags_only_i || cli.cflags_only_other {
-            if let Some(raw) = pc.get_field(libpkgconf::parser::Keyword::Cflags) {
-                let expanded = client.resolve_field(raw, &resolved_vars)?;
-                let frags = libpkgconf::fragment::FragmentList::parse(&expanded);
-                all_cflags.append(&frags);
-            }
-        }
-
-        // Collect libs
-        if cli.libs || cli.libs_only_l_upper || cli.libs_only_l_lower || cli.libs_only_other {
-            if let Some(raw) = pc.get_field(libpkgconf::parser::Keyword::Libs) {
-                let expanded = client.resolve_field(raw, &resolved_vars)?;
-                let frags = libpkgconf::fragment::FragmentList::parse(&expanded);
-                all_libs.append(&frags);
-            }
-
-            // Also include Libs.private if --static
-            if client.is_static() {
-                if let Some(raw) = pc.get_field(libpkgconf::parser::Keyword::LibsPrivate) {
-                    let expanded = client.resolve_field(raw, &resolved_vars)?;
-                    let frags = libpkgconf::fragment::FragmentList::parse(&expanded);
-                    all_libs.append(&frags);
-                }
-            }
-        }
+        queue.push_dependency(dep);
     }
 
-    // If we were just doing existence/version checks, we're done
+    // Initialize the cache with built-in virtual packages
+    let mut cache = libpkgconf::cache::Cache::with_builtins(&client);
+
+    // --validate: just check that the top-level packages parse and load OK
+    if cli.validate {
+        queue
+            .validate(&mut cache, &client)
+            .with_context(|| "Validation failed")?;
+        return Ok(());
+    }
+
+    // Solve the full dependency graph (recursive resolution, version checks,
+    // conflict detection). This replaces the old per-package loop.
+    let world = queue
+        .solve(&mut cache, &client)
+        .with_context(|| format!("Failed to resolve package(s): {}", cli.packages.join(", ")))?;
+
+    // --exists / --atleast-version / --exact-version / --max-version:
+    // If only checking existence/version, the fact that solve() succeeded
+    // means all constraints are satisfied.
     if cli.exists
         || cli.atleast_version.is_some()
         || cli.exact_version.is_some()
         || cli.max_version.is_some()
-        || cli.validate
-        || cli.modversion
+    {
+        return Ok(());
+    }
+
+    // --uninstalled: check if any resolved package is uninstalled
+    if cli.uninstalled {
+        if libpkgconf::queue::has_uninstalled(&cache, &world) {
+            return Ok(());
+        } else {
+            bail!("None of the requested packages are uninstalled");
+        }
+    }
+
+    // Per-package metadata queries: these iterate over the top-level
+    // packages (not the full transitive graph) since the user asked
+    // about specific packages.
+    if cli.modversion
         || cli.variable.is_some()
         || cli.print_variables
         || cli.print_requires
@@ -722,17 +604,119 @@ fn run(cli: &Cli) -> Result<()> {
         || cli.license
         || cli.source
     {
+        for dep in world.requires.iter() {
+            let pkg = cache.lookup_unchecked(&dep.package);
+            // Try provider resolution if direct lookup fails
+            let pkg = pkg.or_else(|| cache.lookup_provider(&dep.package, &client));
+            let pkg = match pkg {
+                Some(p) => p,
+                None => continue,
+            };
+
+            // --modversion
+            if cli.modversion {
+                if cli.verbose {
+                    print!("{}: ", pkg.display_name());
+                }
+                println!("{}", pkg.version);
+                continue;
+            }
+
+            // --variable
+            if let Some(ref var_name) = cli.variable {
+                if let Some(val) = pkg.get_variable(var_name) {
+                    print!("{val}");
+                }
+                println!();
+                continue;
+            }
+
+            // --print-variables
+            if cli.print_variables {
+                for name in pkg.variable_names() {
+                    println!("{name}");
+                }
+                continue;
+            }
+
+            // --print-requires
+            if cli.print_requires {
+                for d in pkg.requires.iter() {
+                    println!("{d}");
+                }
+                continue;
+            }
+
+            // --print-requires-private
+            if cli.print_requires_private {
+                for d in pkg.requires_private.iter() {
+                    println!("{d}");
+                }
+                continue;
+            }
+
+            // --print-provides
+            if cli.print_provides {
+                for d in pkg.provides.iter() {
+                    println!("{d}");
+                }
+                continue;
+            }
+
+            // --path
+            if cli.path {
+                if let Some(ref p) = pkg.filename {
+                    println!("{}", p.display());
+                }
+                continue;
+            }
+
+            // --license
+            if cli.license {
+                let lic = pkg.license.as_deref().unwrap_or("NOASSERTION");
+                println!("{}: {lic}", pkg.display_name());
+                continue;
+            }
+
+            // --source
+            if cli.source {
+                let src = pkg.source.as_deref().unwrap_or("");
+                println!("{}: {src}", pkg.display_name());
+                continue;
+            }
+        }
         return Ok(());
     }
+
+    // --simulate / --solution: print the resolved dependency list
+    if cli.simulate || cli.solution {
+        let sol = libpkgconf::queue::solution(&cache, &client, &world);
+        for (name, version) in &sol {
+            println!("{name} {version}");
+        }
+        return Ok(());
+    }
+
+    // --digraph: output dependency graph in graphviz dot format
+    if cli.digraph {
+        let dot =
+            libpkgconf::queue::digraph(&cache, &client, &world, cli.print_digraph_query_nodes);
+        print!("{dot}");
+        return Ok(());
+    }
+
+    // System filter dirs from the client
+    let system_libdirs = client.system_libdirs();
+    let system_includedirs = client.system_includedirs();
 
     let delim = if cli.newlines { '\n' } else { ' ' };
 
     // Build output fragments
     let mut output_frags = libpkgconf::fragment::FragmentList::new();
 
-    // Process cflags
+    // Collect and process cflags from the full dependency graph
     if cli.cflags || cli.cflags_only_i || cli.cflags_only_other {
-        let mut cflags = all_cflags;
+        let mut cflags = libpkgconf::queue::collect_cflags(&cache, &client, &world);
 
         // Filter system dirs unless --keep-system-cflags
         if !client.keep_system_cflags() {
@@ -754,9 +738,9 @@ fn run(cli: &Cli) -> Result<()> {
         output_frags.append(&cflags);
     }
 
-    // Process libs
+    // Collect and process libs from the full dependency graph
     if cli.libs || cli.libs_only_l_upper || cli.libs_only_l_lower || cli.libs_only_other {
-        let mut libs = all_libs;
+        let mut libs = libpkgconf::queue::collect_libs(&cache, &client, &world);
 
         // Filter system dirs unless --keep-system-libs
         if !client.keep_system_libs() {
@@ -778,6 +762,15 @@ fn run(cli: &Cli) -> Result<()> {
         }
 
         output_frags.append(&libs);
+    }
+
+    // --exists-cflags: add -DHAVE_<MODULE> for each found module
+    if cli.exists_cflags {
+        for dep in world.requires.iter() {
+            let define_name = dep.package.to_uppercase().replace('-', "_");
+            let frag = libpkgconf::fragment::Fragment::new('D', format!("HAVE_{define_name}"));
+            output_frags.push(frag);
+        }
     }
 
     // Deduplicate
