@@ -33944,6 +33944,282 @@ fn test_condition_needs_update_defaults_to_empty() {
     );
 }
 
+// ── ConditionPathIsMountPoint= tests ────────────────────────────────
+
+#[test]
+fn test_condition_path_is_mount_point_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsMountPoint = /sys
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "ConditionPathIsMountPoint should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_condition_path_is_mount_point_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsMountPoint = /sys
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsMountPoint { path, negate } => {
+            assert_eq!(path, "/sys");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathIsMountPoint condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_mount_point_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsMountPoint = !/mnt/data
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsMountPoint { path, negate } => {
+            assert_eq!(path, "/mnt/data");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected PathIsMountPoint condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_mount_point_root() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsMountPoint = /
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsMountPoint { path, negate } => {
+            assert_eq!(path, "/");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathIsMountPoint condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_mount_point_with_other_conditions() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathExists = /etc/myconfig
+    ConditionPathIsMountPoint = /sys
+    ConditionVirtualization = !container
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.common.unit.conditions.len() >= 3);
+
+    let has_mount_point = service.common.unit.conditions.iter().any(|c| {
+        matches!(c, crate::units::UnitCondition::PathIsMountPoint { path, negate } if path == "/sys" && !negate)
+    });
+    assert!(
+        has_mount_point,
+        "Should contain PathIsMountPoint condition for /sys"
+    );
+}
+
+#[test]
+fn test_condition_path_is_mount_point_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsMountPoint = /proc
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    assert_eq!(unit.common.unit.conditions.len(), 1);
+    match &unit.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsMountPoint { path, negate } => {
+            assert_eq!(path, "/proc");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathIsMountPoint condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_mount_point_in_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    ConditionPathIsMountPoint = /sys
+
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.common.unit.conditions.len(), 1);
+    match &socket.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsMountPoint { path, negate } => {
+            assert_eq!(path, "/sys");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathIsMountPoint condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_mount_point_in_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    ConditionPathIsMountPoint = !/mnt/usb
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target = crate::units::parse_target(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.target"),
+    )
+    .unwrap();
+
+    assert_eq!(target.common.unit.conditions.len(), 1);
+    match &target.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsMountPoint { path, negate } => {
+            assert_eq!(path, "/mnt/usb");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected PathIsMountPoint condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_mount_point_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let has_mount_point = service
+        .common
+        .unit
+        .conditions
+        .iter()
+        .any(|c| matches!(c, crate::units::UnitCondition::PathIsMountPoint { .. }));
+    assert!(
+        !has_mount_point,
+        "Should have no PathIsMountPoint conditions by default"
+    );
+}
+
+#[test]
+fn test_condition_path_is_mount_point_multiple() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsMountPoint = /sys
+    ConditionPathIsMountPoint = !/mnt/data
+
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 2);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsMountPoint { path, negate } => {
+            assert_eq!(path, "/sys");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathIsMountPoint condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::PathIsMountPoint { path, negate } => {
+            assert_eq!(path, "/mnt/data");
+            assert!(negate, "Second should be negated");
+        }
+        other => panic!("Expected PathIsMountPoint condition, got {:?}", other),
+    }
+}
+
 // ── MemoryMin= ──────────────────────────────────────────────────────
 
 #[test]
