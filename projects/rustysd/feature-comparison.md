@@ -390,8 +390,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LogsDirectory=">LogsDirectory=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Directories created under /var/log/, chowned to service user/group, LOGS_DIRECTORY env var set. Multiple space-separated values and multiple directives supported.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ConfigurationDirectory=">ConfigurationDirectory=</a></td>
@@ -415,8 +415,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LogsDirectoryMode=">LogsDirectoryMode=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Octal mode applied to logs directories at creation time. Defaults to 0755.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ConfigurationDirectoryMode=">ConfigurationDirectoryMode=</a></td>

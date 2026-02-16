@@ -622,6 +622,8 @@ pub fn parse_exec_section(
     let environment_file = section.remove("ENVIRONMENTFILE");
     let working_directory = section.remove("WORKINGDIRECTORY");
     let state_directory = section.remove("STATEDIRECTORY");
+    let logs_directory = section.remove("LOGSDIRECTORY");
+    let logs_directory_mode = section.remove("LOGSDIRECTORYMODE");
     let runtime_directory = section.remove("RUNTIMEDIRECTORY");
     let runtime_directory_preserve = section.remove("RUNTIMEDIRECTORYPRESERVE");
     let tty_path = section.remove("TTYPATH");
@@ -1172,6 +1174,47 @@ pub fn parse_exec_section(
             .collect(),
     };
 
+    let logs_directory = match logs_directory {
+        None => Vec::new(),
+        Some(vec) => vec
+            .into_iter()
+            .flat_map(|(_, val)| {
+                val.split_whitespace()
+                    .map(|s| s.to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .collect(),
+    };
+
+    let logs_directory_mode: Option<u32> = match logs_directory_mode {
+        None => None,
+        Some(vec) => {
+            if vec.len() == 1 {
+                let trimmed = vec[0].1.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    let val = u32::from_str_radix(trimmed, 8).map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "LogsDirectoryMode is not a valid octal mode: {trimmed}"
+                        ))
+                    })?;
+                    if val > 0o7777 {
+                        return Err(ParsingErrorReason::Generic(format!(
+                            "LogsDirectoryMode value out of range (must be a valid octal mode, max 7777): {trimmed}"
+                        )));
+                    }
+                    Some(val)
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "LogsDirectoryMode".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+    };
+
     let runtime_directory = match runtime_directory {
         None => Vec::new(),
         Some(vec) => vec
@@ -1195,6 +1238,8 @@ pub fn parse_exec_section(
         environment_files,
         working_directory,
         state_directory,
+        logs_directory,
+        logs_directory_mode,
         runtime_directory,
         runtime_directory_preserve: match runtime_directory_preserve {
             Some(vec) => {

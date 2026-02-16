@@ -1460,6 +1460,418 @@ fn test_runtime_directory_combined_with_working_directory() {
     );
 }
 
+// ── LogsDirectory= ───────────────────────────────────────────────────
+
+#[test]
+fn test_logs_directory_empty_by_default() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.exec_section.logs_directory.is_empty());
+}
+
+#[test]
+fn test_logs_directory_single() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LogsDirectory = myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.logs_directory,
+        vec!["myapp".to_owned()]
+    );
+}
+
+#[test]
+fn test_logs_directory_multiple_space_separated() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LogsDirectory = myapp myapp-extra
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.logs_directory,
+        vec!["myapp".to_owned(), "myapp-extra".to_owned()]
+    );
+}
+
+#[test]
+fn test_logs_directory_multiple_directives() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LogsDirectory = myapp
+    LogsDirectory = other
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.logs_directory,
+        vec!["myapp".to_owned(), "other".to_owned()]
+    );
+}
+
+#[test]
+fn test_logs_directory_with_subdirectory() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LogsDirectory = myapp/subdir
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.logs_directory,
+        vec!["myapp/subdir".to_owned()]
+    );
+}
+
+#[test]
+fn test_logs_directory_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LogsDirectory = myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "LogsDirectory=myapp should parse without error"
+    );
+}
+
+#[test]
+fn test_logs_directory_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    LogsDirectory = myapp
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.logs_directory,
+        vec!["myapp".to_owned()]
+    );
+}
+
+#[test]
+fn test_logs_directory_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LogsDirectory = myapp extra
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.logs_directory,
+            vec!["myapp".to_owned(), "extra".to_owned()],
+            "LogsDirectory should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_logs_directory_combined_with_state_and_runtime() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    StateDirectory = myapp-state
+    LogsDirectory = myapp-logs
+    RuntimeDirectory = myapp-run
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.state_directory,
+        vec!["myapp-state".to_owned()]
+    );
+    assert_eq!(
+        service.srvc.exec_section.logs_directory,
+        vec!["myapp-logs".to_owned()]
+    );
+    assert_eq!(
+        service.srvc.exec_section.runtime_directory,
+        vec!["myapp-run".to_owned()]
+    );
+}
+
+// ── LogsDirectoryMode= ───────────────────────────────────────────────
+
+#[test]
+fn test_logs_directory_mode_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.logs_directory_mode, None,
+        "LogsDirectoryMode should default to None"
+    );
+}
+
+#[test]
+fn test_logs_directory_mode_0755() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LogsDirectoryMode = 0755
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.logs_directory_mode,
+        Some(0o755),
+        "LogsDirectoryMode=0755 should parse as octal 0755"
+    );
+}
+
+#[test]
+fn test_logs_directory_mode_0700() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LogsDirectoryMode = 0700
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.logs_directory_mode,
+        Some(0o700),
+        "LogsDirectoryMode=0700 should parse as octal 0700"
+    );
+}
+
+#[test]
+fn test_logs_directory_mode_0750() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LogsDirectoryMode = 0750
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.logs_directory_mode,
+        Some(0o750),
+        "LogsDirectoryMode=0750 should parse as octal 0750"
+    );
+}
+
+#[test]
+fn test_logs_directory_mode_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LogsDirectoryMode = 0755
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "LogsDirectoryMode=0755 should parse without error"
+    );
+}
+
+#[test]
+fn test_logs_directory_mode_empty_resets_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LogsDirectoryMode =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.logs_directory_mode, None,
+        "LogsDirectoryMode= (empty) should reset to None"
+    );
+}
+
+#[test]
+fn test_logs_directory_mode_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LogsDirectoryMode = 0750
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.exec_config.logs_directory_mode,
+            Some(0o750),
+            "LogsDirectoryMode=0750 should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_logs_directory_mode_with_logs_directory() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LogsDirectory = myapp
+    LogsDirectoryMode = 0700
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.logs_directory,
+        vec!["myapp".to_owned()]
+    );
+    assert_eq!(
+        service.srvc.exec_section.logs_directory_mode,
+        Some(0o700),
+        "LogsDirectoryMode=0700 should work alongside LogsDirectory="
+    );
+}
+
+#[test]
+fn test_logs_directory_mode_socket_unit() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/test.sock
+    LogsDirectoryMode = 0755
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.exec_section.logs_directory_mode,
+        Some(0o755),
+        "LogsDirectoryMode should be parsed in [Socket] section too"
+    );
+}
+
 #[test]
 fn test_also_empty_by_default() {
     let test_service_str = r#"

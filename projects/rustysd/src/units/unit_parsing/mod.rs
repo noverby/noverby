@@ -1218,6 +1218,17 @@ pub struct ParsedExecSection {
     pub environment_files: Vec<(PathBuf, bool)>,
     pub working_directory: Option<PathBuf>,
     pub state_directory: Vec<String>,
+    /// LogsDirectory= — directories to create under /var/log/ before the
+    /// service starts. Ownership is set to the service user/group and the
+    /// LOGS_DIRECTORY environment variable is set to a colon-separated
+    /// list of the absolute paths. Matches systemd.exec(5).
+    pub logs_directory: Vec<String>,
+    /// LogsDirectoryMode= — the file system access mode to use when creating
+    /// the logs directories specified with LogsDirectory=. Takes an access
+    /// mode in octal notation (e.g. 0755). Defaults to 0755.
+    /// Parsed and stored; runtime enforcement applies the mode at directory
+    /// creation time. See systemd.exec(5).
+    pub logs_directory_mode: Option<u32>,
     /// RuntimeDirectory= — directories to create under /run/ before the
     /// service starts. Ownership is set to the service user/group and the
     /// RUNTIME_DIRECTORY environment variable is set to a colon-separated
