@@ -18,9 +18,33 @@ run:
       --serial tty \
       --console off
 
+# Run automated boot test with serial output capture (120s timeout)
+test:
+    ./test-boot.sh --verbose
+
+# Run boot test with a custom timeout (in seconds)
+test-timeout seconds="30": build
+    ./test-boot.sh --verbose --timeout {{ seconds }}
+
+# Run boot test and save the boot log to a file
+test-log path="boot.log":
+    ./test-boot.sh --verbose --log {{ path }}
+
+# Run boot test quietly (no streaming output, just pass/fail)
+test-quiet:
+    ./test-boot.sh
+
+# Boot test then keep the VM running for interactive debugging
+test-keep:
+    ./test-boot.sh --verbose --keep
+
+# Rebuild disk image and re-run boot test
+test-rebuild: build
+    ./test-boot.sh --verbose
+
 clean:
-    rm result
-    rm oxidized-nixos.raw
+    rm -f result
+    rm -f oxidized-nixos.raw
 
 tree:
     nix-tree --derivation .#nixosConfigurations.oxidized-nixos.config.system.build.toplevel
