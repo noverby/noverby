@@ -36578,6 +36578,301 @@ fn test_receive_buffer_with_suffix_and_other_settings() {
     assert_eq!(socket.sock.max_connections, 128);
 }
 
+// ===============================================================
+// Symlinks= in [Socket] section tests
+// ===============================================================
+
+#[test]
+fn test_symlinks_defaults_to_empty() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.symlinks.is_empty(),
+        "Symlinks should default to empty vec"
+    );
+}
+
+#[test]
+fn test_symlinks_single_path() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/myservice.sock
+    Symlinks = /run/myservice-alias.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.symlinks, vec!["/run/myservice-alias.sock"]);
+}
+
+#[test]
+fn test_symlinks_multiple_paths_space_separated() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/myservice.sock
+    Symlinks = /run/alias1.sock /run/alias2.sock /run/alias3.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.symlinks,
+        vec!["/run/alias1.sock", "/run/alias2.sock", "/run/alias3.sock"]
+    );
+}
+
+#[test]
+fn test_symlinks_multiple_directives_extend_list() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/myservice.sock
+    Symlinks = /run/alias1.sock
+    Symlinks = /run/alias2.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.symlinks,
+        vec!["/run/alias1.sock", "/run/alias2.sock"]
+    );
+}
+
+#[test]
+fn test_symlinks_empty_resets_list() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/myservice.sock
+    Symlinks = /run/alias1.sock
+    Symlinks =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.symlinks.is_empty(),
+        "Empty Symlinks= should reset the list"
+    );
+}
+
+#[test]
+fn test_symlinks_empty_then_new_values() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/myservice.sock
+    Symlinks = /run/old-alias.sock
+    Symlinks =
+    Symlinks = /run/new-alias.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.symlinks,
+        vec!["/run/new-alias.sock"],
+        "After reset, only new values should remain"
+    );
+}
+
+#[test]
+fn test_symlinks_whitespace_trimmed() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/myservice.sock
+    Symlinks =   /run/alias.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.symlinks, vec!["/run/alias.sock"]);
+}
+
+#[test]
+fn test_symlinks_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/myservice.sock
+    Symlinks = /run/alias1.sock /run/alias2.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert_eq!(
+            sock.conf.symlinks,
+            vec!["/run/alias1.sock", "/run/alias2.sock"],
+            "Symlinks should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_symlinks_no_unsupported_warning() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/myservice.sock
+    Symlinks = /run/alias.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    // If parsing succeeds without warning, the setting is recognized
+    assert_eq!(socket.sock.symlinks, vec!["/run/alias.sock"]);
+}
+
+#[test]
+fn test_symlinks_with_other_socket_settings() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/myservice.sock
+    Accept = no
+    SocketMode = 0666
+    Symlinks = /run/alias1.sock /run/alias2.sock
+    ReceiveBuffer = 128M
+    PassCredentials = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.accept);
+    assert_eq!(socket.sock.socket_mode, Some(0o0666));
+    assert_eq!(
+        socket.sock.symlinks,
+        vec!["/run/alias1.sock", "/run/alias2.sock"]
+    );
+    assert_eq!(socket.sock.receive_buffer, Some(128 * 1024 * 1024));
+    assert!(socket.sock.pass_credentials);
+}
+
+#[test]
+fn test_symlinks_multiple_lines_with_multiple_paths() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/myservice.sock
+    Symlinks = /run/a.sock /run/b.sock
+    Symlinks = /run/c.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.symlinks,
+        vec!["/run/a.sock", "/run/b.sock", "/run/c.sock"]
+    );
+}
+
+#[test]
+fn test_symlinks_default_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/myservice.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert!(
+            sock.conf.symlinks.is_empty(),
+            "Default Symlinks (empty) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_symlinks_with_fifo() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenFIFO = /run/myfifo
+    Symlinks = /run/myfifo-alias
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.symlinks, vec!["/run/myfifo-alias"]);
+}
+
 // ==================== ListenNetlink= tests ====================
 
 #[test]

@@ -128,6 +128,7 @@ fn parse_socket_section(
     let pass_credentials = section.remove("PASSCREDENTIALS");
     let receive_buffer = section.remove("RECEIVEBUFFER");
     let send_buffer = section.remove("SENDBUFFER");
+    let symlinks = section.remove("SYMLINKS");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -450,6 +451,26 @@ fn parse_socket_section(
         None => None,
     };
 
+    // Symlinks= takes a space-separated list of file system paths per line.
+    // Multiple lines extend the list. An empty value resets the list.
+    let symlinks: Vec<String> = match symlinks {
+        Some(vec) => {
+            let mut paths: Vec<String> = Vec::new();
+            for (_line_num, value) in vec {
+                let val = value.trim();
+                if val.is_empty() {
+                    paths.clear();
+                } else {
+                    for path in val.split_whitespace() {
+                        paths.push(path.to_owned());
+                    }
+                }
+            }
+            paths
+        }
+        None => Vec::new(),
+    };
+
     Ok(ParsedSocketSection {
         filedesc_name: fdname,
         services,
@@ -462,6 +483,7 @@ fn parse_socket_section(
         pass_credentials,
         receive_buffer,
         send_buffer,
+        symlinks,
         defer_trigger,
         exec_section: exec_config,
     })
