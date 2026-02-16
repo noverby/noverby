@@ -1,7 +1,7 @@
 use crate::runtime_info::{ArcMutRuntimeInfo, UnitTable};
 use crate::units::{
-    insert_new_units, load_all_units, load_new_unit, ActivationSource, Specific, Unit, UnitIdKind,
-    UnitStatus,
+    ActivationSource, Specific, Unit, UnitIdKind, UnitStatus, insert_new_units, load_all_units,
+    load_new_unit,
 };
 
 use std::fmt::Write as _;
@@ -689,15 +689,19 @@ pub fn accept_control_connections_unix_socket(
     run_info: ArcMutRuntimeInfo,
     source: std::os::unix::net::UnixListener,
 ) {
-    std::thread::spawn(move || loop {
-        let stream = Box::new(source.accept().unwrap().0);
-        listen_on_commands(stream, run_info.clone());
+    std::thread::spawn(move || {
+        loop {
+            let stream = Box::new(source.accept().unwrap().0);
+            listen_on_commands(stream, run_info.clone());
+        }
     });
 }
 
 pub fn accept_control_connections_tcp(run_info: ArcMutRuntimeInfo, source: std::net::TcpListener) {
-    std::thread::spawn(move || loop {
-        let stream = Box::new(source.accept().unwrap().0);
-        listen_on_commands(stream, run_info.clone());
+    std::thread::spawn(move || {
+        loop {
+            let stream = Box::new(source.accept().unwrap().0);
+            listen_on_commands(stream, run_info.clone());
+        }
     });
 }

@@ -241,10 +241,7 @@ pub fn service_exit_handler(
         if let Specific::Service(srvc) = &unit.specific {
             trace!(
                 "Service with id: {:?}, name: {} pid: {} exited with: {:?}",
-                srvc_id,
-                unit.id.name,
-                pid,
-                code
+                srvc_id, unit.id.name, pid, code
             );
 
             // RestartForceExitStatus= overrides the Restart= policy: if the

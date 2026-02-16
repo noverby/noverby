@@ -1,7 +1,7 @@
-use nix::unistd::setresgid;
-use nix::unistd::setresuid;
 use nix::unistd::Gid;
 use nix::unistd::Uid;
+use nix::unistd::setresgid;
+use nix::unistd::setresuid;
 use std::io::Read;
 
 /// This sequence should drop all privileges the root process might have had. I think this is how systemd does it too.

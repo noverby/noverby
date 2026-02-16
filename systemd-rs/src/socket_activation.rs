@@ -11,7 +11,7 @@ use std::os::unix::io::BorrowedFd;
 /// # Safety
 /// The caller must ensure the fd is valid and will outlive the returned BorrowedFd.
 unsafe fn borrow_fd(fd: i32) -> BorrowedFd<'static> {
-    BorrowedFd::borrow_raw(fd)
+    unsafe { BorrowedFd::borrow_raw(fd) }
 }
 
 pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {

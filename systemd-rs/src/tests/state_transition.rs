@@ -164,12 +164,13 @@ fn failing_startexec(run_info: ArcMutRuntimeInfo) {
     let run_info_locked = run_info.read().unwrap();
     let unit = run_info_locked.unit_table.get(&unit_id).unwrap();
 
-    assert!(unit
-        .activate(
+    assert!(
+        unit.activate(
             &*run_info.read().unwrap(),
             crate::units::ActivationSource::Regular
         )
-        .is_err());
+        .is_err()
+    );
     let status = unit.common.status.read().unwrap();
 
     match &*status {

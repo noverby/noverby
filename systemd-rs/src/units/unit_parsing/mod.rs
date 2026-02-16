@@ -422,19 +422,11 @@ impl UnitCondition {
         match self {
             UnitCondition::PathExists { path, negate } => {
                 let exists = std::path::Path::new(path).exists();
-                if *negate {
-                    !exists
-                } else {
-                    exists
-                }
+                if *negate { !exists } else { exists }
             }
             UnitCondition::PathIsDirectory { path, negate } => {
                 let is_dir = std::path::Path::new(path).is_dir();
-                if *negate {
-                    !is_dir
-                } else {
-                    is_dir
-                }
+                if *negate { !is_dir } else { is_dir }
             }
             UnitCondition::Virtualization { value, negate } => {
                 let detected = detect_virtualization();
@@ -450,11 +442,7 @@ impl UnitCondition {
                     // Specific technology name
                     tech => detected.as_ref().map_or(false, |d| d.name == tech),
                 };
-                if *negate {
-                    !result
-                } else {
-                    result
-                }
+                if *negate { !result } else { result }
             }
             UnitCondition::Capability { capability, negate } => {
                 let result = match capability_name_to_bit(capability) {
@@ -468,11 +456,7 @@ impl UnitCondition {
                         false
                     }
                 };
-                if *negate {
-                    !result
-                } else {
-                    result
-                }
+                if *negate { !result } else { result }
             }
             UnitCondition::FirstBoot { value, negate } => {
                 // systemd considers it "first boot" when /etc/machine-id
@@ -486,11 +470,7 @@ impl UnitCondition {
                 } else {
                     !is_first_boot
                 };
-                if *negate {
-                    !result
-                } else {
-                    result
-                }
+                if *negate { !result } else { result }
             }
             UnitCondition::FileIsExecutable { path, negate } => {
                 use std::os::unix::fs::PermissionsExt;
@@ -515,11 +495,7 @@ impl UnitCondition {
                     }
                     Err(_) => false,
                 };
-                if *negate {
-                    !is_non_empty
-                } else {
-                    is_non_empty
-                }
+                if *negate { !is_non_empty } else { is_non_empty }
             }
             UnitCondition::KernelModuleLoaded { module, negate } => {
                 let is_loaded = match std::fs::read_to_string("/proc/modules") {
@@ -534,11 +510,7 @@ impl UnitCondition {
                     }
                     Err(_) => false,
                 };
-                if *negate {
-                    !is_loaded
-                } else {
-                    is_loaded
-                }
+                if *negate { !is_loaded } else { is_loaded }
             }
             UnitCondition::DirectoryNotEmpty { path, negate } => {
                 let is_non_empty = match std::fs::read_dir(path) {
@@ -548,11 +520,7 @@ impl UnitCondition {
                     }
                     Err(_) => false, // doesn't exist or isn't a directory
                 };
-                if *negate {
-                    !is_non_empty
-                } else {
-                    is_non_empty
-                }
+                if *negate { !is_non_empty } else { is_non_empty }
             }
             UnitCondition::KernelCommandLine { argument, negate } => {
                 let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
@@ -570,11 +538,7 @@ impl UnitCondition {
                                 .map_or(false, |(key, _)| key == argument)
                     })
                 };
-                if *negate {
-                    !result
-                } else {
-                    result
-                }
+                if *negate { !result } else { result }
             }
             UnitCondition::PathIsReadWrite { path, negate } => {
                 // Check whether the path is on a read-write filesystem.
@@ -587,11 +551,7 @@ impl UnitCondition {
                     Ok(()) => true,
                     Err(_) => false,
                 };
-                if *negate {
-                    !is_rw
-                } else {
-                    is_rw
-                }
+                if *negate { !is_rw } else { is_rw }
             }
             UnitCondition::ControlGroupController { controller, negate } => {
                 let result = if controller == "v2" {
@@ -628,11 +588,7 @@ impl UnitCondition {
                             .unwrap_or(false)
                     }
                 };
-                if *negate {
-                    !result
-                } else {
-                    result
-                }
+                if *negate { !result } else { result }
             }
             UnitCondition::NeedsUpdate { path, negate } => {
                 // ConditionNeedsUpdate= checks whether the specified directory
@@ -649,11 +605,7 @@ impl UnitCondition {
                     (Err(_), Ok(_)) => true,
                     _ => false,
                 };
-                if *negate {
-                    !needs_update
-                } else {
-                    needs_update
-                }
+                if *negate { !needs_update } else { needs_update }
             }
             UnitCondition::PathIsMountPoint { path, negate } => {
                 // ConditionPathIsMountPoint= checks whether the specified path
@@ -736,11 +688,7 @@ impl UnitCondition {
                         false
                     }
                 };
-                if *negate {
-                    !enabled
-                } else {
-                    enabled
-                }
+                if *negate { !enabled } else { enabled }
             }
         }
     }

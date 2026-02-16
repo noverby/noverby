@@ -194,9 +194,7 @@ fn start_service_with_filedescriptors(
                         if *optional {
                             trace!(
                                 "Optional EnvironmentFile not found for {}: {:?}: {}",
-                                name,
-                                path,
-                                e
+                                name, path, e
                             );
                         } else {
                             warn!(
@@ -331,8 +329,7 @@ fn start_service_with_filedescriptors(
 
     trace!(
         "Start main executable for service: {name}: {:?} {:?}",
-        exec_helper_conf.cmd,
-        exec_helper_conf.args
+        exec_helper_conf.cmd, exec_helper_conf.args
     );
     match unsafe { nix::unistd::fork() } {
         Ok(nix::unistd::ForkResult::Parent { child, .. }) => {

@@ -1,8 +1,8 @@
 use log::{trace, warn};
 
 use crate::units::{
-    parse_install_section, parse_unit_section, ParsedCommonConfig, ParsedFile, ParsedSliceConfig,
-    ParsingErrorReason,
+    ParsedCommonConfig, ParsedFile, ParsedSliceConfig, ParsingErrorReason, parse_install_section,
+    parse_unit_section,
 };
 use std::path::PathBuf;
 

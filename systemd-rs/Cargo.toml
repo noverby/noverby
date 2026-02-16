@@ -2,7 +2,7 @@
 name = "systemd-rs"
 version = "0.1.0"
 authors = ["Moritz Borcherding <moritz.borcherding@web.de>"]
-edition = "2018"
+edition = "2024"
 
 [dependencies]
 signal-hook = "0.4"

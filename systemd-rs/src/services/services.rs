@@ -257,8 +257,7 @@ impl Service {
     pub fn kill_all_remaining_processes(&mut self, conf: &ServiceConfig, name: &str) {
         trace!(
             "Kill all process for {name} (kill_mode: {:?}, send_sighup: {})",
-            conf.kill_mode,
-            conf.send_sighup
+            conf.kill_mode, conf.send_sighup
         );
 
         // SendSIGHUP= — send SIGHUP to remaining processes before SIGKILL.

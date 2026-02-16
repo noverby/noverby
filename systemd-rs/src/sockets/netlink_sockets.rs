@@ -86,9 +86,7 @@ impl NetlinkSocketConfig {
 
         trace!(
             "opening netlink socket: family={} (protocol={}), group={}",
-            self.family,
-            protocol,
-            self.group
+            self.family, protocol, self.group
         );
 
         // Create the AF_NETLINK socket

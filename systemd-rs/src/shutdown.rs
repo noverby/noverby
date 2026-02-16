@@ -35,8 +35,7 @@ fn get_next_service_to_shutdown(unit_table: &UnitTable) -> Option<UnitId> {
         }
         trace!(
             "Dont kill service {} yet. These Units depend on it: {:?}",
-            unit.id.name,
-            kill_before
+            unit.id.name, kill_before
         );
     }
     None

@@ -77,13 +77,15 @@ fn test_unit_ordering() {
         .for_each(|unit| println!("{} {:?}", unit.id, unit.common.dependencies));
 
     // before/after 1.target
-    assert!(unit_table
-        .get(&id1)
-        .unwrap()
-        .common
-        .dependencies
-        .after
-        .is_empty());
+    assert!(
+        unit_table
+            .get(&id1)
+            .unwrap()
+            .common
+            .dependencies
+            .after
+            .is_empty()
+    );
     assert!(
         unit_table
             .get(&id1)
@@ -94,20 +96,24 @@ fn test_unit_ordering() {
             .len()
             == 2
     );
-    assert!(unit_table
-        .get(&id1)
-        .unwrap()
-        .common
-        .dependencies
-        .before
-        .contains(&id2));
-    assert!(unit_table
-        .get(&id1)
-        .unwrap()
-        .common
-        .dependencies
-        .before
-        .contains(&id3));
+    assert!(
+        unit_table
+            .get(&id1)
+            .unwrap()
+            .common
+            .dependencies
+            .before
+            .contains(&id2)
+    );
+    assert!(
+        unit_table
+            .get(&id1)
+            .unwrap()
+            .common
+            .dependencies
+            .before
+            .contains(&id3)
+    );
 
     // before/after 2.target
     assert_eq!(
@@ -120,13 +126,15 @@ fn test_unit_ordering() {
             .len(),
         1
     );
-    assert!(unit_table
-        .get(&id2)
-        .unwrap()
-        .common
-        .dependencies
-        .before
-        .contains(&id3));
+    assert!(
+        unit_table
+            .get(&id2)
+            .unwrap()
+            .common
+            .dependencies
+            .before
+            .contains(&id3)
+    );
     assert_eq!(
         unit_table
             .get(&id2)
@@ -137,22 +145,26 @@ fn test_unit_ordering() {
             .len(),
         1
     );
-    assert!(unit_table
-        .get(&id2)
-        .unwrap()
-        .common
-        .dependencies
-        .after
-        .contains(&id1));
+    assert!(
+        unit_table
+            .get(&id2)
+            .unwrap()
+            .common
+            .dependencies
+            .after
+            .contains(&id1)
+    );
 
     // before/after 3.target
-    assert!(unit_table
-        .get(&id3)
-        .unwrap()
-        .common
-        .dependencies
-        .before
-        .is_empty());
+    assert!(
+        unit_table
+            .get(&id3)
+            .unwrap()
+            .common
+            .dependencies
+            .before
+            .is_empty()
+    );
     assert!(
         unit_table
             .get(&id3)
@@ -163,20 +175,24 @@ fn test_unit_ordering() {
             .len()
             == 2
     );
-    assert!(unit_table
-        .get(&id3)
-        .unwrap()
-        .common
-        .dependencies
-        .after
-        .contains(&id2));
-    assert!(unit_table
-        .get(&id3)
-        .unwrap()
-        .common
-        .dependencies
-        .after
-        .contains(&id1));
+    assert!(
+        unit_table
+            .get(&id3)
+            .unwrap()
+            .common
+            .dependencies
+            .after
+            .contains(&id2)
+    );
+    assert!(
+        unit_table
+            .get(&id3)
+            .unwrap()
+            .common
+            .dependencies
+            .after
+            .contains(&id1)
+    );
 
     // Test the collection of start subgraphs
     // add a new unrelated unit, that should never occur in any of these operations for {1,2,3}.target
@@ -925,19 +941,23 @@ fn test_default_deps_full_service_with_all_targets() {
 
     // Verify reverse relations
     let shutdown = unit_table.get(&shutdown_id).unwrap();
-    assert!(shutdown
-        .common
-        .dependencies
-        .conflicted_by
-        .contains(&service_id));
+    assert!(
+        shutdown
+            .common
+            .dependencies
+            .conflicted_by
+            .contains(&service_id)
+    );
     assert!(shutdown.common.dependencies.after.contains(&service_id));
 
     let sysinit = unit_table.get(&sysinit_id).unwrap();
-    assert!(sysinit
-        .common
-        .dependencies
-        .required_by
-        .contains(&service_id));
+    assert!(
+        sysinit
+            .common
+            .dependencies
+            .required_by
+            .contains(&service_id)
+    );
     assert!(sysinit.common.dependencies.before.contains(&service_id));
 
     let basic = unit_table.get(&basic_id).unwrap();
