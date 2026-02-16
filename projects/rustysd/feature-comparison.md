@@ -1388,8 +1388,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenNetlink=">ListenNetlink=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored. Supports named families (e.g. kobject-uevent, audit, route) and numeric protocol values, with optional multicast group (defaults to 0). Opens AF_NETLINK sockets at runtime.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ListenMessageQueue=">ListenMessageQueue=</a></td>

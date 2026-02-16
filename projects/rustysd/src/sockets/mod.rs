@@ -1,10 +1,12 @@
 //! Socket related code. Opening of all different kinds, match sockets to services etc
 
 mod fifo;
+mod netlink_sockets;
 mod network_sockets;
 mod unix_sockets;
 pub use fifo::*;
 use log::trace;
+pub use netlink_sockets::*;
 pub use network_sockets::*;
 pub use unix_sockets::*;
 
@@ -33,6 +35,7 @@ pub enum SocketKind {
     Sequential(String),
     Datagram(String),
     Fifo(String),
+    Netlink(String),
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -41,6 +44,7 @@ pub enum SpecializedSocketConfig {
     Fifo(FifoConfig),
     TcpSocket(TcpSocketConfig),
     UdpSocket(UdpSocketConfig),
+    NetlinkSocket(NetlinkSocketConfig),
 }
 
 impl SpecializedSocketConfig {
@@ -50,6 +54,7 @@ impl SpecializedSocketConfig {
             Self::TcpSocket(conf) => conf.open(),
             Self::UdpSocket(conf) => conf.open(),
             Self::Fifo(conf) => conf.open(),
+            Self::NetlinkSocket(conf) => conf.open(),
         }
     }
     fn close(&self, rawfd: RawFd) -> Result<(), String> {
@@ -58,6 +63,7 @@ impl SpecializedSocketConfig {
             Self::TcpSocket(conf) => conf.close(rawfd),
             Self::UdpSocket(conf) => conf.close(rawfd),
             Self::Fifo(conf) => conf.close(rawfd),
+            Self::NetlinkSocket(conf) => conf.close(rawfd),
         }
     }
 }

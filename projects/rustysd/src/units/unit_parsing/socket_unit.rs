@@ -1,8 +1,8 @@
 use log::{trace, warn};
 
 use crate::sockets::{
-    FifoConfig, SocketKind, SpecializedSocketConfig, TcpSocketConfig, UdpSocketConfig,
-    UnixSocketConfig,
+    FifoConfig, NetlinkSocketConfig, SocketKind, SpecializedSocketConfig, TcpSocketConfig,
+    UdpSocketConfig, UnixSocketConfig,
 };
 use crate::units::{
     parse_install_section, parse_unit_section, ParsedCommonConfig, ParsedFile, ParsedSection,
@@ -76,6 +76,39 @@ fn parse_unix_addr(addr: &str) -> Result<String, ()> {
     }
 }
 
+/// Parses a ListenNetlink= value into (family, group).
+///
+/// The format is: `family [group]`
+/// where `family` is a netlink family name (e.g. "kobject-uevent", "audit", "route")
+/// or a numeric protocol number, and `group` is an optional multicast group number
+/// (defaults to 0).
+///
+/// Examples:
+/// - "kobject-uevent 1" → ("kobject-uevent", 1)
+/// - "audit" → ("audit", 0)
+/// - "route 0" → ("route", 0)
+fn parse_netlink_addr(value: &str) -> Result<(String, u32), ParsingErrorReason> {
+    let parts: Vec<&str> = value.split_whitespace().collect();
+    match parts.len() {
+        0 => Err(ParsingErrorReason::Generic(
+            "ListenNetlink value is empty".to_owned(),
+        )),
+        1 => Ok((parts[0].to_owned(), 0)),
+        2 => {
+            let group = parts[1].parse::<u32>().map_err(|_| {
+                ParsingErrorReason::Generic(format!(
+                    "ListenNetlink multicast group is not a valid non-negative integer: {}",
+                    parts[1]
+                ))
+            })?;
+            Ok((parts[0].to_owned(), group))
+        }
+        _ => Err(ParsingErrorReason::Generic(format!(
+            "ListenNetlink value has too many parts (expected 'family [group]'): {value}"
+        ))),
+    }
+}
+
 fn parse_socket_section(
     mut section: ParsedSection,
 ) -> Result<ParsedSocketSection, ParsingErrorReason> {
@@ -85,6 +118,7 @@ fn parse_socket_section(
     let datagrams = section.remove("LISTENDATAGRAM");
     let seqpacks = section.remove("LISTENSEQUENTIALPACKET");
     let fifos = section.remove("LISTENFIFO");
+    let netlinks = section.remove("LISTENNETLINK");
     let accept = section.remove("ACCEPT");
     let max_connections = section.remove("MAXCONNECTIONS");
     let max_connections_per_source = section.remove("MAXCONNECTIONSPERSOURCE");
@@ -148,6 +182,12 @@ fn parse_socket_section(
             socket_kinds.push((entry_num, SocketKind::Fifo(value)));
         }
     }
+    if let Some(mut netlinks) = netlinks {
+        for _ in 0..netlinks.len() {
+            let (entry_num, value) = netlinks.remove(0);
+            socket_kinds.push((entry_num, SocketKind::Netlink(value)));
+        }
+    }
 
     // we need to preserve the original ordering
     socket_kinds.sort_by(|l, r| u32::cmp(&l.0, &r.0));
@@ -165,6 +205,10 @@ fn parse_socket_section(
                 } else {
                     return Err(ParsingErrorReason::UnknownSocketAddr(addr.to_owned()));
                 }
+            }
+            SocketKind::Netlink(value) => {
+                let (family, group) = parse_netlink_addr(value)?;
+                SpecializedSocketConfig::NetlinkSocket(NetlinkSocketConfig { family, group })
             }
             SocketKind::Sequential(addr) => {
                 if parse_unix_addr(addr).is_ok() {
