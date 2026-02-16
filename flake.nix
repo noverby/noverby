@@ -163,6 +163,7 @@
 
         ./nixos-rs
         ./systemd-rs
+        ./pkg-config-rs
 
         ./slides
       ];
