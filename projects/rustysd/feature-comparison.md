@@ -1302,8 +1302,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#RestartForceExitStatus=">RestartForceExitStatus=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored. Exit codes and signal names supported (same format as SuccessExitStatus=). Forces restart regardless of Restart= policy at runtime.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#RootDirectoryStartOnly=">RootDirectoryStartOnly=</a></td>

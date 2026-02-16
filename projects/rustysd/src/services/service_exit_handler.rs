@@ -247,8 +247,18 @@ pub fn service_exit_handler(
                 code
             );
 
+            // RestartForceExitStatus= overrides the Restart= policy: if the
+            // termination status matches any entry, force a restart.
+            let force_restart = {
+                let rfs = &srvc.conf.restart_force_exit_status;
+                match &code {
+                    ChildTermination::Exit(c) => rfs.exit_codes.contains(c),
+                    ChildTermination::Signal(s) => rfs.signals.contains(s),
+                }
+            };
+
             (
-                should_restart(&srvc.conf.restart, &code, &success_exit_status),
+                force_restart || should_restart(&srvc.conf.restart, &code, &success_exit_status),
                 srvc.conf.restart_sec.clone(),
             )
         } else {
