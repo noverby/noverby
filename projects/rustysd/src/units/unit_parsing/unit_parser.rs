@@ -208,6 +208,7 @@ pub fn parse_unit_section(
     let condition_path_is_read_write = section.remove("CONDITIONPATHISREADWRITE");
     let condition_needs_update = section.remove("CONDITIONNEEDSUPDATE");
     let condition_path_is_mount_point = section.remove("CONDITIONPATHISMOUNTPOINT");
+    let condition_security = section.remove("CONDITIONSECURITY");
     let success_action = section.remove("SUCCESSACTION");
     let failure_action = section.remove("FAILUREACTION");
     let part_of = section.remove("PARTOF");
@@ -431,6 +432,17 @@ pub fn parse_unit_section(
             (value, false)
         };
         conditions.push(super::UnitCondition::PathIsMountPoint { path, negate });
+    }
+    for (_, raw) in condition_security.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (technology, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim().to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !technology.is_empty() {
+            conditions.push(super::UnitCondition::Security { technology, negate });
+        }
     }
 
     let success_action = match success_action {

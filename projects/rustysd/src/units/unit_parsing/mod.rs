@@ -107,6 +107,13 @@ pub enum UnitCondition {
     /// On Linux this is determined by comparing st_dev of the path and its
     /// parent. See systemd.unit(5).
     PathIsMountPoint { path: String, negate: bool },
+    /// ConditionSecurity=selinux (true if SELinux is enabled)
+    /// ConditionSecurity=!apparmor (true if AppArmor is NOT enabled)
+    /// Checks whether a given security technology is enabled on the system.
+    /// Known values include: selinux, apparmor, tomoyo, smack, ima, audit,
+    /// uefi-secureboot, tpm2, cvm, measured-uki. Multiple directives
+    /// accumulate (all must be satisfied). See systemd.unit(5).
+    Security { technology: String, negate: bool },
 }
 
 /// The kind of virtualization detected (VM or container).
@@ -663,6 +670,71 @@ impl UnitCondition {
                     !is_mount_point
                 } else {
                     is_mount_point
+                }
+            }
+            UnitCondition::Security { technology, negate } => {
+                let enabled = match technology.as_str() {
+                    // SELinux: check if the SELinux filesystem is mounted
+                    "selinux" => std::path::Path::new("/sys/fs/selinux").exists(),
+                    // AppArmor: check if the kernel module is loaded
+                    "apparmor" => std::path::Path::new("/sys/module/apparmor").exists(),
+                    // TOMOYO: check if the TOMOYO security interface exists
+                    "tomoyo" => std::path::Path::new("/sys/kernel/security/tomoyo").exists(),
+                    // SMACK: check if the SMACK filesystem is mounted
+                    "smack" => std::path::Path::new("/sys/fs/smackfs").exists(),
+                    // IMA: check if the IMA security interface exists
+                    "ima" => std::path::Path::new("/sys/kernel/security/ima").exists(),
+                    // Audit: check if the kernel audit subsystem is available
+                    "audit" => {
+                        std::path::Path::new("/proc/sys/kernel/audit_arch").exists()
+                            || std::path::Path::new("/sys/kernel/security/audit").exists()
+                    }
+                    // UEFI Secure Boot: check if EFI is available and Secure Boot is on
+                    "uefi-secureboot" => {
+                        // Look for any SecureBoot EFI variable
+                        std::path::Path::new("/sys/firmware/efi").exists()
+                            && std::fs::read_dir("/sys/firmware/efi/efivars")
+                                .map(|entries| {
+                                    entries.filter_map(|e| e.ok()).any(|e| {
+                                        e.file_name().to_string_lossy().starts_with("SecureBoot-")
+                                    })
+                                })
+                                .unwrap_or(false)
+                    }
+                    // TPM2: check if a TPM 2.0 resource manager device exists
+                    "tpm2" => std::path::Path::new("/sys/class/tpmrm/tpmrm0").exists(),
+                    // CVM (Confidential Virtual Machine): check for AMD SEV or Intel TDX
+                    "cvm" => {
+                        std::path::Path::new("/sys/firmware/acpi/tables/CCEL").exists()
+                            || std::path::Path::new("/dev/sev").exists()
+                            || std::path::Path::new("/dev/tdx-guest").exists()
+                    }
+                    // measured-uki: check for UKI measurement markers
+                    "measured-uki" => {
+                        // Check for the presence of the StubPcrKernelImage EFI variable
+                        // which indicates a measured Unified Kernel Image boot
+                        std::fs::read_dir("/sys/firmware/efi/efivars")
+                            .map(|entries| {
+                                entries.filter_map(|e| e.ok()).any(|e| {
+                                    e.file_name()
+                                        .to_string_lossy()
+                                        .starts_with("StubPcrKernelImage-")
+                                })
+                            })
+                            .unwrap_or(false)
+                    }
+                    other => {
+                        warn!(
+                            "Unknown security technology in ConditionSecurity: {}",
+                            other
+                        );
+                        false
+                    }
+                };
+                if *negate {
+                    !enabled
+                } else {
+                    enabled
                 }
             }
         }
