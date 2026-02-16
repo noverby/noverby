@@ -263,6 +263,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             proc_subset: parsed.proc_subset,
             nice: parsed.nice,
             remove_ipc: parsed.remove_ipc,
+            pam_name: parsed.pam_name,
         })
     }
 }

@@ -672,6 +672,7 @@ pub fn parse_exec_section(
     let proc_subset = section.remove("PROCSUBSET");
     let nice = section.remove("NICE");
     let remove_ipc = section.remove("REMOVEIPC");
+    let pam_name = section.remove("PAMNAME");
 
     let user = match user {
         None => None,
@@ -1959,6 +1960,27 @@ pub fn parse_exec_section(
                 } else if vec.len() > 1 {
                     return Err(ParsingErrorReason::SettingTooManyValues(
                         "UMask".into(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                } else {
+                    None
+                }
+            }
+        },
+        pam_name: match pam_name {
+            None => None,
+            Some(mut vec) => {
+                if vec.len() == 1 {
+                    let val = vec.remove(0).1;
+                    let trimmed = val.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_owned())
+                    }
+                } else if vec.len() > 1 {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "PAMName".into(),
                         super::map_tuples_to_second(vec),
                     ));
                 } else {

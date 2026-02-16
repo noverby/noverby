@@ -42667,3 +42667,252 @@ fn test_listen_special_combined_with_netlink() {
         crate::sockets::SocketKind::Special(_)
     ));
 }
+
+// ===============================================================
+// PAMName= in exec section tests
+// ===============================================================
+
+#[test]
+fn test_pam_name_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.pam_name, None);
+}
+
+#[test]
+fn test_pam_name_explicit_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    PAMName = login
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.pam_name, Some("login".to_owned()));
+}
+
+#[test]
+fn test_pam_name_systemd_user() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    PAMName = systemd-user
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.pam_name,
+        Some("systemd-user".to_owned())
+    );
+}
+
+#[test]
+fn test_pam_name_sshd() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /usr/sbin/sshd -D
+    PAMName = sshd
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.pam_name, Some("sshd".to_owned()));
+}
+
+#[test]
+fn test_pam_name_empty_resets_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    PAMName =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.pam_name, None);
+}
+
+#[test]
+fn test_pam_name_whitespace_trimmed() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    PAMName =   login
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.pam_name, Some("login".to_owned()));
+}
+
+#[test]
+fn test_pam_name_no_unsupported_warning() {
+    // Verify that PAMName= does not produce an "unsupported setting" warning.
+    // If parsing succeeds without error, the setting was consumed (not left
+    // in the section to trigger a warning).
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    PAMName = login
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_pam_name_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    PAMName = login
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_service.try_into().unwrap();
+    if let crate::units::Specific::Service(ref srvc) = unit.specific {
+        assert_eq!(srvc.conf.exec_config.pam_name, Some("login".to_owned()));
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_pam_name_none_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_service.try_into().unwrap();
+    if let crate::units::Specific::Service(ref srvc) = unit.specific {
+        assert_eq!(srvc.conf.exec_config.pam_name, None);
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_pam_name_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /usr/sbin/sshd -D
+    PAMName = sshd
+    User = root
+    Group = root
+    Restart = on-failure
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.pam_name, Some("sshd".to_owned()));
+    assert_eq!(service.srvc.exec_section.user, Some("root".to_owned()));
+    assert_eq!(service.srvc.exec_section.group, Some("root".to_owned()));
+}
+
+#[test]
+fn test_pam_name_in_socket_exec_section() {
+    // PAMName= is a systemd.exec setting, so it should also work in [Socket] sections.
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PAMName = login
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_section.pam_name, Some("login".to_owned()));
+}
+
+#[test]
+fn test_pam_name_case_preserved() {
+    // PAMName values are case-sensitive PAM service names; case should be preserved.
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    PAMName = MyCustomPam
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.pam_name,
+        Some("MyCustomPam".to_owned())
+    );
+}
