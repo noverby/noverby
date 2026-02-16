@@ -429,6 +429,7 @@ fn parse_service_section(
     let kill_signal = section.remove("KILLSIGNAL");
     let memory_min = section.remove("MEMORYMIN");
     let memory_low = section.remove("MEMORYLOW");
+    let runtime_max_sec = section.remove("RUNTIMEMAXSEC");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -1158,6 +1159,26 @@ fn parse_service_section(
                 } else {
                     return Err(ParsingErrorReason::SettingTooManyValues(
                         "MemoryLow".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        runtime_max_sec: match runtime_max_sec {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let t = parse_timeout(&vec[0].1);
+                    match t {
+                        // A zero duration means "no limit" — store as None
+                        Timeout::Duration(d) if d.is_zero() => None,
+                        // Infinity means "no limit" — store as None
+                        Timeout::Infinity => None,
+                        other => Some(other),
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "RuntimeMaxSec".to_owned(),
                         super::map_tuples_to_second(vec),
                     ));
                 }

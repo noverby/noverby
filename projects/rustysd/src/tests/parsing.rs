@@ -22950,6 +22950,352 @@ fn test_watchdog_sec_zero_preserved_after_unit_conversion() {
 }
 
 // ============================================================
+// RuntimeMaxSec= parsing tests
+// ============================================================
+
+#[test]
+fn test_runtime_max_sec_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.runtime_max_sec, None,
+        "RuntimeMaxSec should default to None when not specified"
+    );
+}
+
+#[test]
+fn test_runtime_max_sec_seconds() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeMaxSec = 30
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.runtime_max_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(30)
+        )),
+        "RuntimeMaxSec=30 should parse as 30 seconds"
+    );
+}
+
+#[test]
+fn test_runtime_max_sec_with_s_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeMaxSec = 15s
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.runtime_max_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(15)
+        )),
+        "RuntimeMaxSec=15s should parse as 15 seconds"
+    );
+}
+
+#[test]
+fn test_runtime_max_sec_with_min_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeMaxSec = 5min
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.runtime_max_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(300)
+        )),
+        "RuntimeMaxSec=5min should parse as 300 seconds"
+    );
+}
+
+#[test]
+fn test_runtime_max_sec_compound_duration() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeMaxSec = 1min 30s
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.runtime_max_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(90)
+        )),
+        "RuntimeMaxSec=1min 30s should parse as 90 seconds"
+    );
+}
+
+#[test]
+fn test_runtime_max_sec_hours() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeMaxSec = 2hrs
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.runtime_max_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(7200)
+        )),
+        "RuntimeMaxSec=2hrs should parse as 7200 seconds"
+    );
+}
+
+#[test]
+fn test_runtime_max_sec_zero_means_no_limit() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeMaxSec = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.runtime_max_sec, None,
+        "RuntimeMaxSec=0 should mean no limit (None)"
+    );
+}
+
+#[test]
+fn test_runtime_max_sec_infinity_means_no_limit() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeMaxSec = infinity
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.runtime_max_sec, None,
+        "RuntimeMaxSec=infinity should mean no limit (None)"
+    );
+}
+
+#[test]
+fn test_runtime_max_sec_infinity_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeMaxSec = INFINITY
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.runtime_max_sec, None,
+        "RuntimeMaxSec=INFINITY should be case-insensitive and mean no limit"
+    );
+}
+
+#[test]
+fn test_runtime_max_sec_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeMaxSec = 60s
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "RuntimeMaxSec=60s should parse without error"
+    );
+}
+
+#[test]
+fn test_runtime_max_sec_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeMaxSec = 90
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.runtime_max_sec,
+            Some(crate::units::Timeout::Duration(
+                std::time::Duration::from_secs(90)
+            )),
+            "RuntimeMaxSec=90 should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_runtime_max_sec_none_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.runtime_max_sec, None,
+            "Default RuntimeMaxSec (None) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_runtime_max_sec_zero_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeMaxSec = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.runtime_max_sec, None,
+            "RuntimeMaxSec=0 (no limit) should survive unit conversion as None"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_runtime_max_sec_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    RuntimeMaxSec = 300
+    WatchdogSec = 30
+    Restart = on-failure
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.runtime_max_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(300)
+        )),
+        "RuntimeMaxSec=300 should parse correctly alongside other settings"
+    );
+    assert_eq!(
+        service.srvc.watchdog_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(30)
+        )),
+        "WatchdogSec=30 should also be parsed correctly"
+    );
+}
+
+// ============================================================
 // ReadWritePaths= parsing tests
 // ============================================================
 

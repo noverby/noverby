@@ -100,6 +100,7 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 file_descriptor_store_preserve: conf.srvc.file_descriptor_store_preserve,
                 memory_min: conf.srvc.memory_min,
                 memory_low: conf.srvc.memory_low,
+                runtime_max_sec: conf.srvc.runtime_max_sec,
             },
             state: RwLock::new(ServiceState {
                 common: CommonState::default(),
