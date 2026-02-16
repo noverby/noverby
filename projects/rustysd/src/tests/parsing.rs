@@ -36874,6 +36874,233 @@ fn test_symlinks_with_fifo() {
 }
 
 // ===============================================================
+// PassSecurity= in [Socket] section tests
+// ===============================================================
+
+#[test]
+fn test_pass_security_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket.sock.pass_security,
+        "PassSecurity should default to false"
+    );
+}
+
+#[test]
+fn test_pass_security_true() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassSecurity = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.pass_security, "PassSecurity=yes should be true");
+}
+
+#[test]
+fn test_pass_security_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassSecurity = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket.sock.pass_security,
+        "PassSecurity=no should be false"
+    );
+}
+
+#[test]
+fn test_pass_security_true_variant() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassSecurity = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.pass_security,
+        "PassSecurity=true should be true"
+    );
+}
+
+#[test]
+fn test_pass_security_one() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassSecurity = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.pass_security, "PassSecurity=1 should be true");
+}
+
+#[test]
+fn test_pass_security_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassSecurity = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert!(
+            sock.conf.pass_security,
+            "PassSecurity=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_pass_security_default_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert!(
+            !sock.conf.pass_security,
+            "Default PassSecurity (false) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_pass_security_no_unsupported_warning() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassSecurity = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    // If parsing succeeds, no unsupported-setting warning was emitted
+    assert!(!socket.sock.pass_security);
+}
+
+#[test]
+fn test_pass_security_with_pass_credentials() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassCredentials = yes
+    PassSecurity = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.pass_credentials);
+    assert!(socket.sock.pass_security);
+}
+
+#[test]
+fn test_pass_security_with_other_socket_settings() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Accept = yes
+    PassSecurity = yes
+    ReceiveBuffer = 64K
+    Timestamping = ns
+    MaxConnections = 128
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.accept);
+    assert!(socket.sock.pass_security);
+    assert_eq!(socket.sock.receive_buffer, Some(64 * 1024));
+    assert_eq!(
+        socket.sock.timestamping,
+        crate::units::Timestamping::Nanoseconds
+    );
+    assert_eq!(socket.sock.max_connections, 128);
+}
+
+// ===============================================================
 // Timestamping= in [Socket] section tests
 // ===============================================================
 

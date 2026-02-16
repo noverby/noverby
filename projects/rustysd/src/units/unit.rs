@@ -1466,6 +1466,12 @@ pub struct SocketConfig {
     /// enforcement yet. See systemd.socket(5).
     pub pass_credentials: bool,
 
+    /// PassSecurity= — whether to enable SO_PASSSEC on the socket, so
+    /// that AF_UNIX sockets receive the security context of the sending
+    /// process in an ancillary message. Defaults to false. Parsed and
+    /// stored; no runtime enforcement yet. See systemd.socket(5).
+    pub pass_security: bool,
+
     /// ReceiveBuffer= — the receive buffer size (SO_RCVBUF) in bytes for the
     /// socket. Takes an integer value. Parsed and stored; no runtime
     /// enforcement yet. See systemd.socket(5).

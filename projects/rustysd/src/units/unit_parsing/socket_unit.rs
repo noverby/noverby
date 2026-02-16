@@ -126,6 +126,7 @@ fn parse_socket_section(
     let socket_mode = section.remove("SOCKETMODE");
     let directory_mode = section.remove("DIRECTORYMODE");
     let pass_credentials = section.remove("PASSCREDENTIALS");
+    let pass_security = section.remove("PASSSECURITY");
     let receive_buffer = section.remove("RECEIVEBUFFER");
     let send_buffer = section.remove("SENDBUFFER");
     let symlinks = section.remove("SYMLINKS");
@@ -408,6 +409,20 @@ fn parse_socket_section(
         None => false,
     };
 
+    let pass_security = match pass_security {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "PassSecurity".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
     let receive_buffer: Option<u64> =
         match receive_buffer {
             Some(vec) => {
@@ -506,6 +521,7 @@ fn parse_socket_section(
         socket_mode,
         directory_mode,
         pass_credentials,
+        pass_security,
         receive_buffer,
         send_buffer,
         symlinks,
