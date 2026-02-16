@@ -1973,8 +1973,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionSecurity=">ConditionSecurity=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✅</td>
+  <td>Parsed and stored. Supports negation with <code>!</code> prefix. Known values: selinux, apparmor, tomoyo, smack, ima, audit, uefi-secureboot, tpm2, cvm, measured-uki. No runtime evaluation yet.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionCapability=">ConditionCapability=</a></td>

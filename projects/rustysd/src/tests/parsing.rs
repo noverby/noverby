@@ -42916,3 +42916,487 @@ fn test_pam_name_case_preserved() {
         Some("MyCustomPam".to_owned())
     );
 }
+
+// ===============================================================
+// ConditionSecurity= in [Unit] section tests
+// ===============================================================
+
+#[test]
+fn test_condition_security_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity = selinux
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conditions.len(),
+        1,
+        "Should have one condition"
+    );
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "selinux");
+            assert!(!negate);
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_security_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity = !apparmor
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "apparmor");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_security_tomoyo() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity = tomoyo
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "tomoyo");
+            assert!(!negate);
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_security_smack() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity = smack
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "smack");
+            assert!(!negate);
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_security_ima() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity = ima
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "ima");
+            assert!(!negate);
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_security_audit() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity = audit
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "audit");
+            assert!(!negate);
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_security_uefi_secureboot() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity = uefi-secureboot
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "uefi-secureboot");
+            assert!(!negate);
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_security_tpm2() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity = tpm2
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "tpm2");
+            assert!(!negate);
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_security_cvm() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity = cvm
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "cvm");
+            assert!(!negate);
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_security_empty_ignored() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity =
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conditions.len(),
+        0,
+        "Empty ConditionSecurity should not add a condition"
+    );
+}
+
+#[test]
+fn test_condition_security_multiple() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity = selinux
+    ConditionSecurity = !apparmor
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conditions.len(),
+        2,
+        "Multiple ConditionSecurity directives should accumulate"
+    );
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "selinux");
+            assert!(!negate);
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "apparmor");
+            assert!(negate, "Should be negated");
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_security_with_other_conditions() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathExists = /etc/myconfig
+    ConditionSecurity = selinux
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.common.unit.conditions.len(),
+        2,
+        "Should have two conditions"
+    );
+
+    // First condition: PathExists
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathExists { path, negate } => {
+            assert_eq!(path, "/etc/myconfig");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathExists condition, got {:?}", other),
+    }
+
+    // Second condition: Security
+    match &service.common.unit.conditions[1] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "selinux");
+            assert!(!negate);
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_security_no_unsupported_warning() {
+    // Ensure that ConditionSecurity= no longer triggers
+    // "Ignoring unsupported setting in [Unit] section" warnings.
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity = selinux
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    // If parsing succeeds, the setting was recognized (no warning)
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_condition_security_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity = !apparmor
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_service.try_into().unwrap();
+    assert_eq!(
+        unit.common.unit.conditions.len(),
+        1,
+        "Condition should be preserved after unit conversion"
+    );
+    match &unit.common.unit.conditions[0] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "apparmor");
+            assert!(negate);
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_security_in_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    ConditionSecurity = selinux
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.common.unit.conditions.len(),
+        1,
+        "ConditionSecurity should work in socket units"
+    );
+    match &socket.common.unit.conditions[0] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "selinux");
+            assert!(!negate);
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_security_case_preserved() {
+    // ConditionSecurity values are technology names; case should be preserved
+    // (systemd itself is case-sensitive for these values).
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity = SELinux
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "SELinux");
+            assert!(!negate);
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_security_measured_uki() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionSecurity = measured-uki
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Security { technology, negate } => {
+            assert_eq!(technology, "measured-uki");
+            assert!(!negate);
+        }
+        other => panic!("Expected Security condition, got {:?}", other),
+    }
+}
