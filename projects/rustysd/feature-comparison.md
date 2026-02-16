@@ -1973,8 +1973,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionNeedsUpdate=">ConditionNeedsUpdate=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored. Takes an absolute path; checks whether the directory needs updating because <code>/usr</code> has been modified more recently. Supports <code>!</code> prefix for negation.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionFirstBoot=">ConditionFirstBoot=</a></td>

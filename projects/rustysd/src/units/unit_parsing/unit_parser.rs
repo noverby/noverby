@@ -206,6 +206,7 @@ pub fn parse_unit_section(
     let condition_kernel_command_line = section.remove("CONDITIONKERNELCOMMANDLINE");
     let condition_control_group_controller = section.remove("CONDITIONCONTROLGROUPCONTROLLER");
     let condition_path_is_read_write = section.remove("CONDITIONPATHISREADWRITE");
+    let condition_needs_update = section.remove("CONDITIONNEEDSUPDATE");
     let success_action = section.remove("SUCCESSACTION");
     let failure_action = section.remove("FAILUREACTION");
     let part_of = section.remove("PARTOF");
@@ -413,6 +414,14 @@ pub fn parse_unit_section(
         if !controller.is_empty() {
             conditions.push(super::UnitCondition::ControlGroupController { controller, negate });
         }
+    }
+    for (_, value) in condition_needs_update.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        conditions.push(super::UnitCondition::NeedsUpdate { path, negate });
     }
 
     let success_action = match success_action {
