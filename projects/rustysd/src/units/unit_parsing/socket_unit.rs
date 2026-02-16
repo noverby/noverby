@@ -91,6 +91,8 @@ fn parse_socket_section(
     let socket_mode = section.remove("SOCKETMODE");
     let directory_mode = section.remove("DIRECTORYMODE");
     let pass_credentials = section.remove("PASSCREDENTIALS");
+    let receive_buffer = section.remove("RECEIVEBUFFER");
+    let send_buffer = section.remove("SENDBUFFER");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -338,6 +340,52 @@ fn parse_socket_section(
         None => false,
     };
 
+    let receive_buffer: Option<u64> = match receive_buffer {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(val.parse::<u64>().map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "ReceiveBuffer is not a valid non-negative integer: {val}"
+                        ))
+                    })?)
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "ReceiveBuffer".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let send_buffer: Option<u64> = match send_buffer {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(val.parse::<u64>().map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "SendBuffer is not a valid non-negative integer: {val}"
+                        ))
+                    })?)
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "SendBuffer".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
     Ok(ParsedSocketSection {
         filedesc_name: fdname,
         services,
@@ -348,6 +396,8 @@ fn parse_socket_section(
         socket_mode,
         directory_mode,
         pass_credentials,
+        receive_buffer,
+        send_buffer,
         exec_section: exec_config,
     })
 }

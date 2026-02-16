@@ -150,6 +150,8 @@ pub fn unit_from_parsed_socket(conf: ParsedSocketConfig) -> Result<Unit, String>
                 socket_mode: conf.sock.socket_mode,
                 directory_mode: conf.sock.directory_mode,
                 pass_credentials: conf.sock.pass_credentials,
+                receive_buffer: conf.sock.receive_buffer,
+                send_buffer: conf.sock.send_buffer,
             },
             state: RwLock::new(SocketState {
                 common: CommonState::default(),

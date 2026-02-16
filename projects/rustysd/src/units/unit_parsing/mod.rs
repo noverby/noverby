@@ -932,6 +932,16 @@ pub struct ParsedSocketSection {
     /// enforcement yet. See systemd.socket(5).
     pub pass_credentials: bool,
 
+    /// ReceiveBuffer= — the receive buffer size (SO_RCVBUF) in bytes for the
+    /// socket. Takes an integer value. Parsed and stored; no runtime
+    /// enforcement yet. See systemd.socket(5).
+    pub receive_buffer: Option<u64>,
+
+    /// SendBuffer= — the send buffer size (SO_SNDBUF) in bytes for the
+    /// socket. Takes an integer value. Parsed and stored; no runtime
+    /// enforcement yet. See systemd.socket(5).
+    pub send_buffer: Option<u64>,
+
     pub exec_section: ParsedExecSection,
 }
 pub struct ParsedServiceSection {

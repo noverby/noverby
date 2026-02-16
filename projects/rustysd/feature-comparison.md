@@ -1498,13 +1498,13 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#ReceiveBuffer=">ReceiveBuffer=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored (unsigned integer, bytes). No runtime enforcement yet (requires SO_RCVBUF setsockopt).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#SendBuffer=">SendBuffer=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed and stored (unsigned integer, bytes). No runtime enforcement yet (requires SO_SNDBUF setsockopt).</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.socket.html#IPTOS=">IPTOS=</a></td>

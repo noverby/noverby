@@ -35792,3 +35792,486 @@ fn test_pass_credentials_with_other_socket_settings() {
     assert_eq!(socket.sock.socket_mode, Some(0o0660));
     assert_eq!(socket.sock.max_connections, 128);
 }
+
+// ===============================================================
+// ReceiveBuffer= and SendBuffer= in [Socket] section tests
+// ===============================================================
+
+#[test]
+fn test_receive_buffer_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.receive_buffer.is_none(),
+        "ReceiveBuffer should default to None"
+    );
+}
+
+#[test]
+fn test_receive_buffer_explicit_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 8388608
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.receive_buffer,
+        Some(8_388_608),
+        "ReceiveBuffer=8388608 should be Some(8388608)"
+    );
+}
+
+#[test]
+fn test_receive_buffer_zero() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.receive_buffer, Some(0));
+}
+
+#[test]
+fn test_receive_buffer_empty_resets_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.receive_buffer.is_none(),
+        "Empty ReceiveBuffer= should reset to None"
+    );
+}
+
+#[test]
+fn test_receive_buffer_invalid_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = notanumber
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_err(), "Invalid ReceiveBuffer value should error");
+}
+
+#[test]
+fn test_receive_buffer_with_whitespace() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer =   65536
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.receive_buffer,
+        Some(65536),
+        "ReceiveBuffer with whitespace should still parse correctly"
+    );
+}
+
+#[test]
+fn test_receive_buffer_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 131072
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert_eq!(
+            sock.conf.receive_buffer,
+            Some(131072),
+            "ReceiveBuffer should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_receive_buffer_default_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert!(
+            sock.conf.receive_buffer.is_none(),
+            "Default ReceiveBuffer (None) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_receive_buffer_no_unsupported_warning() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 65536
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    // If parsing succeeds and the value is correct, no warning was emitted
+    assert_eq!(socket.sock.receive_buffer, Some(65536));
+}
+
+// ---------------------------------------------------------------
+// SendBuffer= tests
+// ---------------------------------------------------------------
+
+#[test]
+fn test_send_buffer_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.send_buffer.is_none(),
+        "SendBuffer should default to None"
+    );
+}
+
+#[test]
+fn test_send_buffer_explicit_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SendBuffer = 4194304
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.send_buffer,
+        Some(4_194_304),
+        "SendBuffer=4194304 should be Some(4194304)"
+    );
+}
+
+#[test]
+fn test_send_buffer_zero() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SendBuffer = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.send_buffer, Some(0));
+}
+
+#[test]
+fn test_send_buffer_empty_resets_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SendBuffer =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.send_buffer.is_none(),
+        "Empty SendBuffer= should reset to None"
+    );
+}
+
+#[test]
+fn test_send_buffer_invalid_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SendBuffer = notanumber
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let result = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    );
+
+    assert!(result.is_err(), "Invalid SendBuffer value should error");
+}
+
+#[test]
+fn test_send_buffer_with_whitespace() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SendBuffer =   32768
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.send_buffer,
+        Some(32768),
+        "SendBuffer with whitespace should still parse correctly"
+    );
+}
+
+#[test]
+fn test_send_buffer_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SendBuffer = 262144
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert_eq!(
+            sock.conf.send_buffer,
+            Some(262144),
+            "SendBuffer should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_send_buffer_no_unsupported_warning() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    SendBuffer = 32768
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.send_buffer, Some(32768));
+}
+
+// ---------------------------------------------------------------
+// ReceiveBuffer= and SendBuffer= combined tests
+// ---------------------------------------------------------------
+
+#[test]
+fn test_receive_buffer_and_send_buffer_together() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 131072
+    SendBuffer = 65536
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.receive_buffer, Some(131072));
+    assert_eq!(socket.sock.send_buffer, Some(65536));
+}
+
+#[test]
+fn test_receive_buffer_and_send_buffer_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 1048576
+    SendBuffer = 524288
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert_eq!(
+            sock.conf.receive_buffer,
+            Some(1_048_576),
+            "ReceiveBuffer should survive unit conversion"
+        );
+        assert_eq!(
+            sock.conf.send_buffer,
+            Some(524_288),
+            "SendBuffer should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_receive_buffer_with_other_socket_settings() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    Accept = yes
+    PassCredentials = yes
+    ReceiveBuffer = 65536
+    SendBuffer = 32768
+    SocketMode = 0660
+    MaxConnections = 128
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.accept);
+    assert!(socket.sock.pass_credentials);
+    assert_eq!(socket.sock.receive_buffer, Some(65536));
+    assert_eq!(socket.sock.send_buffer, Some(32768));
+    assert_eq!(socket.sock.socket_mode, Some(0o0660));
+    assert_eq!(socket.sock.max_connections, 128);
+}
+
+#[test]
+fn test_receive_buffer_large_value() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ReceiveBuffer = 16777216
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.receive_buffer,
+        Some(16_777_216),
+        "ReceiveBuffer should handle large values (16 MiB)"
+    );
+}
