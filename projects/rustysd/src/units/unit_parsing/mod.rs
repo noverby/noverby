@@ -942,6 +942,12 @@ pub struct ParsedSocketSection {
     /// enforcement yet. See systemd.socket(5).
     pub send_buffer: Option<u64>,
 
+    /// DeferTrigger= — controls whether to defer triggering the associated
+    /// service when a connection comes in. Takes a boolean or "patient".
+    /// Defaults to No. Parsed and stored; no runtime enforcement yet.
+    /// See systemd.socket(5).
+    pub defer_trigger: DeferTrigger,
+
     pub exec_section: ParsedExecSection,
 }
 pub struct ParsedServiceSection {
@@ -1554,6 +1560,21 @@ impl Default for ProcSubset {
     fn default() -> Self {
         Self::All
     }
+}
+
+/// DeferTrigger= — controls whether to defer triggering the associated service
+/// when a connection comes in. May only be used when Accept=no.
+/// See systemd.socket(5).
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub enum DeferTrigger {
+    /// Normal triggering behavior (default).
+    No,
+    /// Use lenient job mode; wait for job queue to complete; fail if
+    /// conflict remains after jobs finish or timeout.
+    Yes,
+    /// Like Yes, but always wait until DeferTriggerMaxSec= elapses
+    /// before giving up.
+    Patient,
 }
 
 /// RuntimeDirectoryPreserve= — controls whether runtime directories created

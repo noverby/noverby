@@ -119,6 +119,7 @@ fn parse_socket_section(
     let seqpacks = section.remove("LISTENSEQUENTIALPACKET");
     let fifos = section.remove("LISTENFIFO");
     let netlinks = section.remove("LISTENNETLINK");
+    let defer_trigger = section.remove("DEFERTRIGGER");
     let accept = section.remove("ACCEPT");
     let max_connections = section.remove("MAXCONNECTIONS");
     let max_connections_per_source = section.remove("MAXCONNECTIONSPERSOURCE");
@@ -370,6 +371,27 @@ fn parse_socket_section(
         }
     };
 
+    let defer_trigger = match defer_trigger {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.eq_ignore_ascii_case("patient") {
+                    crate::units::DeferTrigger::Patient
+                } else if super::string_to_bool(val) {
+                    crate::units::DeferTrigger::Yes
+                } else {
+                    crate::units::DeferTrigger::No
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "DeferTrigger".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => crate::units::DeferTrigger::No,
+    };
+
     let pass_credentials = match pass_credentials {
         Some(vec) => {
             if vec.len() == 1 {
@@ -442,6 +464,7 @@ fn parse_socket_section(
         pass_credentials,
         receive_buffer,
         send_buffer,
+        defer_trigger,
         exec_section: exec_config,
     })
 }
