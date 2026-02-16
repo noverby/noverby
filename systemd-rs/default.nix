@@ -2,7 +2,6 @@
   packages.systemd-rs = {
     lib,
     rustPlatform,
-    pkg-config,
     dbus,
   }:
     rustPlatform.buildRustPackage {
@@ -19,10 +18,6 @@
       };
 
       cargoHash = "sha256-piZYUTsoTa7KrEyao/B0cnA24MQWRYD+WzxrT+Y47zQ=";
-
-      nativeBuildInputs = [
-        pkg-config
-      ];
 
       buildInputs = [
         dbus
