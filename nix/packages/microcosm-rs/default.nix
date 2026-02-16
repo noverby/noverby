@@ -2,7 +2,7 @@
   lib,
   rustPlatform,
   fetchFromGitHub,
-  pkg-config,
+  pkg-config-rs,
   openssl,
   perl,
   zstd,
@@ -59,7 +59,7 @@ rustPlatform.buildRustPackage rec {
   cargoBuildFlags = ["-p" "constellation" "-p" "spacedust" "-p" "slingshot" "-p" "ufos" "-p" "pocket"];
 
   nativeBuildInputs = [
-    pkg-config
+    pkg-config-rs
     perl
   ];
 

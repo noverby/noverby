@@ -3,7 +3,7 @@
   buildGoModule,
   fetchFromGitHub,
   libfido2,
-  pkg-config,
+  pkg-config-rs,
 }:
 buildGoModule rec {
   pname = "age-plugin-fido2prf";
@@ -20,7 +20,7 @@ buildGoModule rec {
 
   subPackages = ["fido2prf/cmd/age-plugin-fido2prf"];
 
-  nativeBuildInputs = [pkg-config];
+  nativeBuildInputs = [pkg-config-rs];
   buildInputs = [libfido2];
 
   ldflags = ["-s" "-w"];
