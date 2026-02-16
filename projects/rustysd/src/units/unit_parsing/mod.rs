@@ -1499,6 +1499,12 @@ pub struct ParsedExecSection {
     /// unit is stopped. Defaults to false. Parsed and stored; no runtime
     /// enforcement yet. See systemd.exec(5).
     pub remove_ipc: bool,
+    /// PAMName= — sets the PAM service name to set up a session as.
+    /// If set, PAM authentication, account management, and session open/close
+    /// calls are performed for the executed processes. Takes a string such as
+    /// "login", "systemd-user", or "sshd". Defaults to None (no PAM session).
+    /// Parsed and stored; no runtime PAM enforcement yet. See systemd.exec(5).
+    pub pam_name: Option<String>,
 }
 
 /// The type of utmp/wtmp record to create for a service.
