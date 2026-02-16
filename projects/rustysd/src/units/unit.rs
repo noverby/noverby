@@ -1447,6 +1447,14 @@ pub struct ServiceConfig {
     /// (base 1024), a percentage, or "infinity". Parsed and stored; no
     /// runtime cgroup enforcement yet. See systemd.resource-control(5).
     pub memory_low: Option<MemoryLimit>,
+
+    /// RuntimeMaxSec= — configures a maximum time for the service to run.
+    /// If the service has been active for longer than the specified time it
+    /// is terminated and put into a failure state. When set to `infinity`
+    /// (the default) or not set, no time limit is configured. A value of 0
+    /// also means no limit. Parsed and stored; no runtime enforcement yet.
+    /// See systemd.service(5).
+    pub runtime_max_sec: Option<Timeout>,
 }
 
 /// The immutable config of a socket unit
