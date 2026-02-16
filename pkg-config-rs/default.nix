@@ -13,6 +13,7 @@
           ./Cargo.toml
           ./Cargo.lock
           ./crates
+          ./tests
         ];
       };
 
