@@ -510,8 +510,9 @@ where
             result.push('$');
             i += 2;
         } else {
-            result.push(value[i..].chars().next().unwrap());
-            i += 1;
+            let ch = value[i..].chars().next().unwrap();
+            result.push(ch);
+            i += ch.len_utf8();
         }
     }
 

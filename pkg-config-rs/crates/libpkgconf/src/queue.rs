@@ -413,17 +413,21 @@ fn load_package<'a>(
     // Phase 2: If it succeeded, return the cached reference. If it failed
     //          with PackageNotFound, try provider resolution.
 
-    let load_result: std::result::Result<(), Error> = match cache.find_or_load(&dep.package, client)
-    {
-        Ok(_) => Ok(()),
-        Err(e) => Err(e),
-    };
+    // When dep.package is a file path (e.g. "/usr/lib/pkgconfig/foo.pc"),
+    // find_or_load stores the package under its id (the file stem, e.g. "foo"),
+    // not the full path. We capture the actual id so we can look it up.
+    let load_result: std::result::Result<String, Error> =
+        match cache.find_or_load(&dep.package, client) {
+            Ok(pkg) => Ok(pkg.id.clone()),
+            Err(e) => Err(e),
+        };
 
     match load_result {
-        Ok(()) => {
+        Ok(pkg_id) => {
             // Package was loaded successfully — return the cached reference.
-            // This is a fresh immutable borrow of cache, which is fine.
-            Ok(cache.lookup_unchecked(&dep.package).unwrap())
+            // Use the actual package id (which may differ from dep.package
+            // when querying by file path).
+            Ok(cache.lookup_unchecked(&pkg_id).unwrap())
         }
         Err(Error::PackageNotFound { .. })
             if !client.flags().contains(ClientFlags::SKIP_PROVIDES) =>

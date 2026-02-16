@@ -186,10 +186,27 @@ impl Cache {
             return Ok(&self.packages[&provider_id]);
         }
 
-        // Load from the filesystem
+        // Load from the filesystem.
+        // The package's id (derived from the .pc filename stem) may differ
+        // from the query `name` (e.g. when `name` is a full path like
+        // "/usr/lib/pkgconfig/foo.pc" but the id is "foo"). We store the
+        // package under its canonical id, and if the query name differs,
+        // we also store an alias so future lookups by the original name
+        // will find it.
         let pkg = Package::find(client, name)?;
+        let id = pkg.id.clone();
         self.add(pkg);
-        Ok(&self.packages[name])
+
+        // If the query name differs from the package id (e.g. a full path
+        // was used), store an alias clone so the package can be found by
+        // either key.
+        if name != id {
+            if let Some(pkg) = self.packages.get(&id).cloned() {
+                self.packages.insert(name.to_string(), pkg);
+            }
+        }
+
+        Ok(&self.packages[&id])
     }
 }
 

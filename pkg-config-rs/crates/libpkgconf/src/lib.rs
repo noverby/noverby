@@ -85,9 +85,24 @@ pub const DEFAULT_MAX_TRAVERSAL_DEPTH: i32 = 2000;
 #[cfg(unix)]
 pub const DEFAULT_SYSTEM_LIBDIRS: &[&str] = &["/usr/lib", "/lib"];
 
+/// Default system library directories on Windows.
+///
+/// On Windows, there are no conventional system library directories that
+/// compilers search by default, so this list is empty. Users should rely
+/// on `PKG_CONFIG_SYSTEM_LIBRARY_PATH` or toolchain-specific configuration.
+#[cfg(windows)]
+pub const DEFAULT_SYSTEM_LIBDIRS: &[&str] = &[];
+
 /// Default system include directories that are filtered from `-I` output.
 #[cfg(unix)]
 pub const DEFAULT_SYSTEM_INCLUDEDIRS: &[&str] = &["/usr/include"];
+
+/// Default system include directories on Windows.
+///
+/// On Windows, there are no conventional system include directories that
+/// compilers search by default, so this list is empty.
+#[cfg(windows)]
+pub const DEFAULT_SYSTEM_INCLUDEDIRS: &[&str] = &[];
 
 /// Default `.pc` file search path.
 #[cfg(unix)]
@@ -96,6 +111,40 @@ pub const DEFAULT_PKGCONFIG_PATH: &[&str] = &[
     "/usr/local/share/pkgconfig",
     "/usr/lib/pkgconfig",
     "/usr/share/pkgconfig",
+];
+
+/// Default `.pc` file search path on Windows.
+///
+/// On Windows there is no standard system-wide location for `.pc` files.
+/// The search path is typically configured via `PKG_CONFIG_PATH` or
+/// `PKG_CONFIG_LIBDIR` environment variables. The MSYS2/MinGW paths
+/// are included as a convenience for the most common Windows pkg-config
+/// usage scenario.
+#[cfg(windows)]
+pub const DEFAULT_PKGCONFIG_PATH: &[&str] = &[
+    "C:/msys64/mingw64/lib/pkgconfig",
+    "C:/msys64/mingw64/share/pkgconfig",
+];
+
+/// Default Homebrew prefix on Apple Silicon macOS.
+#[cfg(target_os = "macos")]
+pub const HOMEBREW_PREFIX_ARM64: &str = "/opt/homebrew";
+
+/// Default Homebrew prefix on Intel macOS.
+#[cfg(target_os = "macos")]
+pub const HOMEBREW_PREFIX_X86_64: &str = "/usr/local";
+
+/// Additional macOS-specific `.pc` file search paths.
+///
+/// These paths cover both Homebrew on Apple Silicon (`/opt/homebrew`) and
+/// Intel (`/usr/local`), as well as the standard system locations. At
+/// runtime, the active Homebrew prefix should be detected via
+/// `brew --prefix` or the `HOMEBREW_PREFIX` environment variable, but
+/// these paths serve as reasonable defaults.
+#[cfg(target_os = "macos")]
+pub const MACOS_EXTRA_PKGCONFIG_PATHS: &[&str] = &[
+    "/opt/homebrew/lib/pkgconfig",
+    "/opt/homebrew/share/pkgconfig",
 ];
 
 /// The `PKG_CONFIG_PATH` environment variable name.
