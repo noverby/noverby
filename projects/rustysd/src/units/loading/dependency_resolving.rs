@@ -253,6 +253,31 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
 
     add_all_implicit_relations(units)?;
 
+    // Remove dependency references to unit IDs that don't exist in the unit table.
+    // This matches systemd behavior: if a Wants=, Requires=, After=, etc. references
+    // a unit that was never loaded (e.g. time-set.target), the reference is silently
+    // dropped rather than causing activation failures later.
+    let existing_ids: std::collections::HashSet<UnitId> = units.keys().cloned().collect();
+    for unit in units.values_mut() {
+        let deps = &mut unit.common.dependencies;
+        deps.wants.retain(|id| existing_ids.contains(id));
+        deps.wanted_by.retain(|id| existing_ids.contains(id));
+        deps.requires.retain(|id| existing_ids.contains(id));
+        deps.required_by.retain(|id| existing_ids.contains(id));
+        deps.before.retain(|id| existing_ids.contains(id));
+        deps.after.retain(|id| existing_ids.contains(id));
+        deps.conflicts.retain(|id| existing_ids.contains(id));
+        deps.conflicted_by.retain(|id| existing_ids.contains(id));
+        deps.part_of.retain(|id| existing_ids.contains(id));
+        deps.part_of_by.retain(|id| existing_ids.contains(id));
+        deps.binds_to.retain(|id| existing_ids.contains(id));
+        deps.bound_by.retain(|id| existing_ids.contains(id));
+        unit.common
+            .unit
+            .refs_by_name
+            .retain(|id| existing_ids.contains(id));
+    }
+
     for srvc in units.values_mut() {
         srvc.dedup_dependencies();
     }
