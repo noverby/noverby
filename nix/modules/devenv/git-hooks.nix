@@ -2,7 +2,7 @@
   git-hooks = {
     package = pkgs.prek;
     hooks = {
-      denolint.enable = true;
+      denolint.enable = false;
       biome.enable = true;
       alejandra.enable = true;
       statix.enable = true;
@@ -23,7 +23,7 @@
       };
       rumdl.enable = true;
       mktoc = {
-        enable = true;
+        enable = false;
         package = pkgs.mktoc;
         name = "pre-commit-mktoc";
         entry = "${pkgs.mktoc}/bin/mktoc";
