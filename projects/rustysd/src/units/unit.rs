@@ -1217,6 +1217,14 @@ pub struct ExecConfig {
     /// user/group. Defaults to false. Parsed and stored; no runtime
     /// user-namespace enforcement yet. See systemd.exec(5).
     pub private_users: bool,
+    /// PrivateMounts= — if true, the processes of this unit will be run in
+    /// their own private file system (mount) namespace with all mount
+    /// propagation from the processes towards the host's main file system
+    /// namespace turned off. File system mount points established or removed
+    /// on the host will still be propagated to the unit's processes.
+    /// Defaults to false. Parsed and stored; no runtime mount-namespace
+    /// enforcement yet. See systemd.exec(5).
+    pub private_mounts: bool,
     /// IOSchedulingClass= — sets the I/O scheduling class for executed
     /// processes. Takes one of "none" (or "0"), "realtime" (or "1"),
     /// "best-effort" (or "2"), or "idle" (or "3"). Defaults to None

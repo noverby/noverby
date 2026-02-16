@@ -249,6 +249,7 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
             private_devices: parsed.private_devices,
             private_network: parsed.private_network,
             private_users: parsed.private_users,
+            private_mounts: parsed.private_mounts,
             io_scheduling_class: parsed.io_scheduling_class,
             io_scheduling_priority: parsed.io_scheduling_priority,
             umask: parsed.umask,
