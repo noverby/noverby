@@ -24497,6 +24497,265 @@ fn test_file_descriptor_store_max_zero_preserved_after_unit_conversion() {
     }
 }
 
+// ── FileDescriptorStorePreserve= ─────────────────────────────────────
+
+#[test]
+fn test_file_descriptor_store_preserve_defaults_to_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.file_descriptor_store_preserve,
+        crate::units::FileDescriptorStorePreserve::No,
+        "FileDescriptorStorePreserve should default to No"
+    );
+}
+
+#[test]
+fn test_file_descriptor_store_preserve_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    FileDescriptorStorePreserve = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.file_descriptor_store_preserve,
+        crate::units::FileDescriptorStorePreserve::No,
+    );
+}
+
+#[test]
+fn test_file_descriptor_store_preserve_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    FileDescriptorStorePreserve = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.file_descriptor_store_preserve,
+        crate::units::FileDescriptorStorePreserve::Yes,
+    );
+}
+
+#[test]
+fn test_file_descriptor_store_preserve_restart() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    FileDescriptorStorePreserve = restart
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.file_descriptor_store_preserve,
+        crate::units::FileDescriptorStorePreserve::Restart,
+    );
+}
+
+#[test]
+fn test_file_descriptor_store_preserve_true_alias() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    FileDescriptorStorePreserve = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.file_descriptor_store_preserve,
+        crate::units::FileDescriptorStorePreserve::Yes,
+    );
+}
+
+#[test]
+fn test_file_descriptor_store_preserve_false_alias() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    FileDescriptorStorePreserve = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.file_descriptor_store_preserve,
+        crate::units::FileDescriptorStorePreserve::No,
+    );
+}
+
+#[test]
+fn test_file_descriptor_store_preserve_case_insensitive() {
+    for (input, expected) in [
+        ("Yes", crate::units::FileDescriptorStorePreserve::Yes),
+        ("YES", crate::units::FileDescriptorStorePreserve::Yes),
+        ("No", crate::units::FileDescriptorStorePreserve::No),
+        ("NO", crate::units::FileDescriptorStorePreserve::No),
+        (
+            "Restart",
+            crate::units::FileDescriptorStorePreserve::Restart,
+        ),
+        (
+            "RESTART",
+            crate::units::FileDescriptorStorePreserve::Restart,
+        ),
+    ] {
+        let test_service_str = format!(
+            r#"
+            [Service]
+            ExecStart = /bin/myservice
+            FileDescriptorStorePreserve = {}
+            "#,
+            input
+        );
+
+        let parsed_file = crate::units::parse_file(&test_service_str).unwrap();
+        let service = crate::units::parse_service(
+            parsed_file,
+            &std::path::PathBuf::from("/path/to/unitfile.service"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            service.srvc.file_descriptor_store_preserve, expected,
+            "FileDescriptorStorePreserve={} should parse correctly",
+            input
+        );
+    }
+}
+
+#[test]
+fn test_file_descriptor_store_preserve_invalid_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    FileDescriptorStorePreserve = maybe
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "Invalid FileDescriptorStorePreserve value should produce an error"
+    );
+}
+
+#[test]
+fn test_file_descriptor_store_preserve_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    FileDescriptorStorePreserve = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+    assert!(
+        result.is_ok(),
+        "FileDescriptorStorePreserve should not produce an unsupported setting warning"
+    );
+}
+
+#[test]
+fn test_file_descriptor_store_preserve_with_store_max() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    FileDescriptorStoreMax = 128
+    FileDescriptorStorePreserve = restart
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.file_descriptor_store_max, 128);
+    assert_eq!(
+        service.srvc.file_descriptor_store_preserve,
+        crate::units::FileDescriptorStorePreserve::Restart,
+    );
+}
+
+#[test]
+fn test_file_descriptor_store_preserve_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    FileDescriptorStorePreserve = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.file_descriptor_store_preserve,
+            crate::units::FileDescriptorStorePreserve::Yes,
+            "FileDescriptorStorePreserve should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
 // ============================================================
 // PrivateTmp= parsing tests
 // ============================================================
