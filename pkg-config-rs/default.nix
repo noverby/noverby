@@ -19,6 +19,8 @@
 
       cargoLock.lockFile = ./Cargo.lock;
 
+      setupHook = ./setup-hook.sh;
+
       postInstall = ''
         ln -s $out/bin/pkgconf $out/bin/pkg-config
       '';
