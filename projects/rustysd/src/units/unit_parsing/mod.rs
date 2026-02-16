@@ -1,9 +1,11 @@
 mod service_unit;
+mod slice_unit;
 mod socket_unit;
 mod target_unit;
 mod unit_parser;
 
 pub use service_unit::*;
+pub use slice_unit::*;
 pub use socket_unit::*;
 pub use target_unit::*;
 pub use unit_parser::*;
@@ -25,6 +27,9 @@ pub struct ParsedSocketConfig {
     pub sock: ParsedSocketSection,
 }
 pub struct ParsedTargetConfig {
+    pub common: ParsedCommonConfig,
+}
+pub struct ParsedSliceConfig {
     pub common: ParsedCommonConfig,
 }
 

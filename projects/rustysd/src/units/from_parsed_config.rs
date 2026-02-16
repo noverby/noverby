@@ -2,10 +2,11 @@ use crate::services::Service;
 use crate::sockets::Socket;
 use crate::units::{
     Common, CommonState, Dependencies, ExecConfig, ParsedExecSection, ParsedInstallSection,
-    ParsedServiceConfig, ParsedSingleSocketConfig, ParsedSocketConfig, ParsedTargetConfig,
-    ParsedUnitSection, PlatformSpecificServiceFields, ServiceConfig, ServiceSpecific, ServiceState,
-    SingleSocketConfig, SocketConfig, SocketSpecific, SocketState, Specific, TargetSpecific,
-    TargetState, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus,
+    ParsedServiceConfig, ParsedSingleSocketConfig, ParsedSliceConfig, ParsedSocketConfig,
+    ParsedTargetConfig, ParsedUnitSection, PlatformSpecificServiceFields, ServiceConfig,
+    ServiceSpecific, ServiceState, SingleSocketConfig, SliceSpecific, SliceState, SocketConfig,
+    SocketSpecific, SocketState, Specific, TargetSpecific, TargetState, Unit, UnitConfig, UnitId,
+    UnitIdKind, UnitStatus,
 };
 
 #[cfg(feature = "cgroups")]
@@ -180,6 +181,21 @@ pub fn unit_from_parsed_target(conf: ParsedTargetConfig) -> Result<Unit, String>
         common: make_common_from_parsed(conf.common.unit, conf.common.install)?,
         specific: Specific::Target(TargetSpecific {
             state: RwLock::new(TargetState {
+                common: CommonState::default(),
+            }),
+        }),
+    })
+}
+
+pub fn unit_from_parsed_slice(conf: ParsedSliceConfig) -> Result<Unit, String> {
+    Ok(Unit {
+        id: UnitId {
+            kind: UnitIdKind::Slice,
+            name: conf.common.name,
+        },
+        common: make_common_from_parsed(conf.common.unit, conf.common.install)?,
+        specific: Specific::Slice(SliceSpecific {
+            state: RwLock::new(SliceState {
                 common: CommonState::default(),
             }),
         }),
@@ -414,5 +430,11 @@ impl std::convert::TryFrom<ParsedTargetConfig> for Unit {
     type Error = String;
     fn try_from(conf: ParsedTargetConfig) -> Result<Self, String> {
         unit_from_parsed_target(conf)
+    }
+}
+impl std::convert::TryFrom<ParsedSliceConfig> for Unit {
+    type Error = String;
+    fn try_from(conf: ParsedSliceConfig) -> Result<Self, String> {
+        unit_from_parsed_slice(conf)
     }
 }

@@ -469,7 +469,7 @@ pub fn execute_command(
                             .as_array_mut()
                             .unwrap()
                             .push(format_socket(unit, status));
-                    } else if name.ends_with(".target") {
+                    } else if name.ends_with(".target") || name.ends_with(".slice") {
                         result_vec
                             .as_array_mut()
                             .unwrap()
@@ -487,7 +487,7 @@ pub fn execute_command(
                         match unit.specific {
                             Specific::Socket(_) => format_socket(unit, status),
                             Specific::Service(_) => format_service(unit, status),
-                            Specific::Target(_) => format_target(unit, status),
+                            Specific::Target(_) | Specific::Slice(_) => format_target(unit, status),
                         }
                     })
                     .collect();
