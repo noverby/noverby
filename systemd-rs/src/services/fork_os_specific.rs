@@ -32,9 +32,7 @@ pub fn pre_fork_os_specific(srvc: &ServiceConfig) -> Result<(), String> {
             let gid = nix::unistd::Gid::from_raw(gid);
             trace!(
                 "Delegating cgroup {:?} to uid={} gid={}",
-                &srvc.platform_specific.cgroup_path,
-                uid,
-                gid
+                &srvc.platform_specific.cgroup_path, uid, gid
             );
             nix::unistd::chown(&srvc.platform_specific.cgroup_path, Some(uid), Some(gid)).map_err(
                 |e| {
@@ -64,14 +62,12 @@ pub fn pre_fork_os_specific(srvc: &ServiceConfig) -> Result<(), String> {
                 };
                 trace!(
                     "Setting TasksMax={} for cgroup {:?}",
-                    value,
-                    &srvc.platform_specific.cgroup_path
+                    value, &srvc.platform_specific.cgroup_path
                 );
                 if let Err(e) = std::fs::write(&pids_max_path, &value) {
                     trace!(
                         "Could not write pids.max for service cgroup ({:?}): {}",
-                        pids_max_path,
-                        e
+                        pids_max_path, e
                     );
                 }
             } else {

@@ -238,8 +238,7 @@ pub fn activate_unit(
                 drop(status);
                 trace!(
                     "Stopping conflicting unit {:?} before starting {:?}",
-                    conflict_id,
-                    id_to_start
+                    conflict_id, id_to_start
                 );
                 if let Err(e) = conflict_unit.deactivate(run_info) {
                     warn!("Failed to stop conflicting unit {:?}: {}", conflict_id, e);

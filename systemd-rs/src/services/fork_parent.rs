@@ -244,8 +244,7 @@ pub fn wait_for_service(
                                 if let Some(daemon_pid) = read_pid_file(pid_file_path) {
                                     trace!(
                                         "[FORK_PARENT] Read daemon PID {} from {:?} for {name}",
-                                        daemon_pid,
-                                        pid_file_path
+                                        daemon_pid, pid_file_path
                                     );
                                     srvc.pid = Some(daemon_pid);
                                     pid_table_locked.insert(

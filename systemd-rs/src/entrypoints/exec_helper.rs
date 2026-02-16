@@ -627,7 +627,8 @@ pub fn run_exec_helper() {
             }
             full_paths.push(full_path.to_string_lossy().into_owned());
         }
-        std::env::set_var("STATE_DIRECTORY", full_paths.join(":"));
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("STATE_DIRECTORY", full_paths.join(":")) };
     }
 
     // Create logs directories under /var/log/ and set LOGS_DIRECTORY env var.
@@ -668,7 +669,8 @@ pub fn run_exec_helper() {
             }
             full_paths.push(full_path.to_string_lossy().into_owned());
         }
-        std::env::set_var("LOGS_DIRECTORY", full_paths.join(":"));
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("LOGS_DIRECTORY", full_paths.join(":")) };
     }
 
     // Create runtime directories under /run/ and set RUNTIME_DIRECTORY env var.
@@ -698,7 +700,8 @@ pub fn run_exec_helper() {
             }
             full_paths.push(full_path.to_string_lossy().into_owned());
         }
-        std::env::set_var("RUNTIME_DIRECTORY", full_paths.join(":"));
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("RUNTIME_DIRECTORY", full_paths.join(":")) };
     }
 
     // Apply OOMScoreAdjust= setting. Write the value to /proc/self/oom_score_adj
@@ -768,10 +771,12 @@ pub fn run_exec_helper() {
 
     // setup environment vars
     for (k, v) in &config.env {
-        std::env::set_var(k, v);
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var(k, v) };
     }
 
-    std::env::set_var("LISTEN_PID", format!("{}", nix::unistd::getpid()));
+    // TODO: Audit that the environment access only happens in single-threaded code.
+    unsafe { std::env::set_var("LISTEN_PID", format!("{}", nix::unistd::getpid())) };
 
     eprintln!(
         "[EXEC_HELPER {}] exec: {} {}",
@@ -914,7 +919,8 @@ fn setup_credentials(config: &ExecHelperConfig) {
     if imported > 0 || !config.import_credentials.is_empty() {
         // Always set the env var so the service knows where to look,
         // even if no credentials were found (matches systemd behaviour).
-        std::env::set_var("CREDENTIALS_DIRECTORY", &cred_dir);
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("CREDENTIALS_DIRECTORY", &cred_dir) };
         eprintln!(
             "[EXEC_HELPER {}] Imported {} credential(s) into {:?}",
             config.name, imported, cred_dir
@@ -963,7 +969,7 @@ fn glob_match_inner(pattern: &[u8], text: &[u8]) -> bool {
 // utmp / wtmp helpers
 // ---------------------------------------------------------------------------
 
-extern "C" {
+unsafe extern "C" {
     fn updwtmpx(file: *const libc::c_char, ut: *const libc::utmpx);
 }
 

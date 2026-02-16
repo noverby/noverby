@@ -4,13 +4,13 @@ use crate::runtime_info::RuntimeInfo;
 use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
-    acquire_locks, ActivationSource, Commandline, DeferTrigger, Delegate, DevicePolicy, EnvVars,
+    ActivationSource, Commandline, DeferTrigger, Delegate, DevicePolicy, EnvVars,
     FileDescriptorStorePreserve, IOSchedulingClass, KeyringMode, KillMode, MemoryLimit,
     MemoryPressureWatch, NotifyKind, OnFailureJobMode, ProcSubset, ProtectHome, ProtectProc,
     ProtectSystem, ResourceLimit, RestrictNamespaces, RuntimeDirectoryPreserve, ServiceRestart,
     ServiceType, StandardInput, StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout,
     Timestamping, UnitAction, UnitCondition, UnitId, UnitIdKind, UnitOperationError,
-    UnitOperationErrorReason, UnitStatus, UtmpMode,
+    UnitOperationErrorReason, UnitStatus, UtmpMode, acquire_locks,
 };
 
 use std::sync::RwLock;

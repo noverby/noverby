@@ -18,7 +18,7 @@ use std::{collections::HashMap, os::unix::io::AsRawFd};
 /// # Safety
 /// The caller must ensure the fd is valid and will outlive the returned BorrowedFd.
 unsafe fn borrow_fd(fd: i32) -> BorrowedFd<'static> {
-    BorrowedFd::borrow_raw(fd)
+    unsafe { BorrowedFd::borrow_raw(fd) }
 }
 
 fn collect_from_srvc<F>(run_info: ArcMutRuntimeInfo, f: F) -> HashMap<i32, UnitId>

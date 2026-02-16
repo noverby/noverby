@@ -7569,11 +7569,13 @@ fn test_slice_mixed_with_other_deps() {
     .unwrap();
 
     assert!(service.common.unit.after.contains(&"user.slice".to_owned()));
-    assert!(service
-        .common
-        .unit
-        .after
-        .contains(&"network.target".to_owned()));
+    assert!(
+        service
+            .common
+            .unit
+            .after
+            .contains(&"network.target".to_owned())
+    );
     assert!(service.common.unit.wants.contains(&"user.slice".to_owned()));
 }
 
@@ -9559,24 +9561,30 @@ fn test_requires_mounts_for_single_path() {
     );
     // Implicit Requires= dependencies added
     assert!(service.common.unit.requires.contains(&"-.mount".to_owned()));
-    assert!(service
-        .common
-        .unit
-        .requires
-        .contains(&"var.mount".to_owned()));
-    assert!(service
-        .common
-        .unit
-        .requires
-        .contains(&"var-log.mount".to_owned()));
+    assert!(
+        service
+            .common
+            .unit
+            .requires
+            .contains(&"var.mount".to_owned())
+    );
+    assert!(
+        service
+            .common
+            .unit
+            .requires
+            .contains(&"var-log.mount".to_owned())
+    );
     // Implicit After= dependencies added
     assert!(service.common.unit.after.contains(&"-.mount".to_owned()));
     assert!(service.common.unit.after.contains(&"var.mount".to_owned()));
-    assert!(service
-        .common
-        .unit
-        .after
-        .contains(&"var-log.mount".to_owned()));
+    assert!(
+        service
+            .common
+            .unit
+            .after
+            .contains(&"var-log.mount".to_owned())
+    );
 }
 
 #[test]
@@ -9602,26 +9610,34 @@ fn test_requires_mounts_for_multiple_paths() {
     );
     // Mount units from both paths
     assert!(service.common.unit.requires.contains(&"-.mount".to_owned()));
-    assert!(service
-        .common
-        .unit
-        .requires
-        .contains(&"var.mount".to_owned()));
-    assert!(service
-        .common
-        .unit
-        .requires
-        .contains(&"var-log.mount".to_owned()));
-    assert!(service
-        .common
-        .unit
-        .requires
-        .contains(&"home.mount".to_owned()));
-    assert!(service
-        .common
-        .unit
-        .requires
-        .contains(&"home-user.mount".to_owned()));
+    assert!(
+        service
+            .common
+            .unit
+            .requires
+            .contains(&"var.mount".to_owned())
+    );
+    assert!(
+        service
+            .common
+            .unit
+            .requires
+            .contains(&"var-log.mount".to_owned())
+    );
+    assert!(
+        service
+            .common
+            .unit
+            .requires
+            .contains(&"home.mount".to_owned())
+    );
+    assert!(
+        service
+            .common
+            .unit
+            .requires
+            .contains(&"home-user.mount".to_owned())
+    );
 }
 
 #[test]
@@ -9680,18 +9696,22 @@ fn test_requires_mounts_for_combined_with_explicit_requires() {
     .unwrap();
 
     // Explicit dependency preserved
-    assert!(service
-        .common
-        .unit
-        .requires
-        .contains(&"network.target".to_owned()));
+    assert!(
+        service
+            .common
+            .unit
+            .requires
+            .contains(&"network.target".to_owned())
+    );
     // Implicit mount deps also present
     assert!(service.common.unit.requires.contains(&"-.mount".to_owned()));
-    assert!(service
-        .common
-        .unit
-        .requires
-        .contains(&"var-log.mount".to_owned()));
+    assert!(
+        service
+            .common
+            .unit
+            .requires
+            .contains(&"var-log.mount".to_owned())
+    );
 }
 
 #[test]
@@ -9713,11 +9733,13 @@ fn test_requires_mounts_for_combined_with_explicit_after() {
     .unwrap();
 
     // Explicit After= preserved
-    assert!(service
-        .common
-        .unit
-        .after
-        .contains(&"network.target".to_owned()));
+    assert!(
+        service
+            .common
+            .unit
+            .after
+            .contains(&"network.target".to_owned())
+    );
     // Implicit mount After= also present
     assert!(service.common.unit.after.contains(&"-.mount".to_owned()));
     assert!(service.common.unit.after.contains(&"home.mount".to_owned()));
@@ -9868,11 +9890,12 @@ fn test_requires_mounts_for_preserved_after_unit_conversion() {
     };
     assert!(unit.common.dependencies.requires.contains(&root_mount_id));
     assert!(unit.common.dependencies.requires.contains(&var_mount_id));
-    assert!(unit
-        .common
-        .dependencies
-        .requires
-        .contains(&var_log_mount_id));
+    assert!(
+        unit.common
+            .dependencies
+            .requires
+            .contains(&var_log_mount_id)
+    );
     assert!(unit.common.dependencies.after.contains(&root_mount_id));
     assert!(unit.common.dependencies.after.contains(&var_mount_id));
     assert!(unit.common.dependencies.after.contains(&var_log_mount_id));
@@ -9900,22 +9923,28 @@ fn test_requires_mounts_for_socket_unit() {
         vec!["/run/myapp".to_owned()]
     );
     assert!(socket.common.unit.requires.contains(&"-.mount".to_owned()));
-    assert!(socket
-        .common
-        .unit
-        .requires
-        .contains(&"run.mount".to_owned()));
-    assert!(socket
-        .common
-        .unit
-        .requires
-        .contains(&"run-myapp.mount".to_owned()));
+    assert!(
+        socket
+            .common
+            .unit
+            .requires
+            .contains(&"run.mount".to_owned())
+    );
+    assert!(
+        socket
+            .common
+            .unit
+            .requires
+            .contains(&"run-myapp.mount".to_owned())
+    );
     assert!(socket.common.unit.after.contains(&"-.mount".to_owned()));
-    assert!(socket
-        .common
-        .unit
-        .after
-        .contains(&"run-myapp.mount".to_owned()));
+    assert!(
+        socket
+            .common
+            .unit
+            .after
+            .contains(&"run-myapp.mount".to_owned())
+    );
 }
 
 #[test]
@@ -9936,27 +9965,35 @@ fn test_requires_mounts_for_multiple_directives_accumulate() {
     )
     .unwrap();
 
-    assert!(service
-        .common
-        .unit
-        .requires_mounts_for
-        .contains(&"/var/log".to_owned()));
-    assert!(service
-        .common
-        .unit
-        .requires_mounts_for
-        .contains(&"/home/user".to_owned()));
+    assert!(
+        service
+            .common
+            .unit
+            .requires_mounts_for
+            .contains(&"/var/log".to_owned())
+    );
+    assert!(
+        service
+            .common
+            .unit
+            .requires_mounts_for
+            .contains(&"/home/user".to_owned())
+    );
     // Mount units from both paths
-    assert!(service
-        .common
-        .unit
-        .requires
-        .contains(&"var-log.mount".to_owned()));
-    assert!(service
-        .common
-        .unit
-        .requires
-        .contains(&"home-user.mount".to_owned()));
+    assert!(
+        service
+            .common
+            .unit
+            .requires
+            .contains(&"var-log.mount".to_owned())
+    );
+    assert!(
+        service
+            .common
+            .unit
+            .requires
+            .contains(&"home-user.mount".to_owned())
+    );
 }
 
 // ── .mount in dependency lists ─────────────────────────────────────────
@@ -10098,22 +10135,28 @@ fn test_mount_mixed_with_other_deps() {
     .unwrap();
 
     assert!(service.common.unit.after.contains(&"-.mount".to_owned()));
-    assert!(service
-        .common
-        .unit
-        .after
-        .contains(&"network.target".to_owned()));
+    assert!(
+        service
+            .common
+            .unit
+            .after
+            .contains(&"network.target".to_owned())
+    );
     assert!(service.common.unit.wants.contains(&"home.mount".to_owned()));
-    assert!(service
-        .common
-        .unit
-        .requires
-        .contains(&"var-log.mount".to_owned()));
-    assert!(service
-        .common
-        .unit
-        .requires
-        .contains(&"basic.target".to_owned()));
+    assert!(
+        service
+            .common
+            .unit
+            .requires
+            .contains(&"var-log.mount".to_owned())
+    );
+    assert!(
+        service
+            .common
+            .unit
+            .requires
+            .contains(&"basic.target".to_owned())
+    );
 }
 
 #[test]

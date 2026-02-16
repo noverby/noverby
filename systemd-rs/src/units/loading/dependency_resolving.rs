@@ -479,8 +479,7 @@ fn apply_sockets_to_services(unit_table: &mut UnitTable) -> Result<(), String> {
                     {
                         trace!(
                             "add socket: {} to service: {} because their names match",
-                            sock_unit.id.name,
-                            srvc_unit.id.name
+                            sock_unit.id.name, srvc_unit.id.name
                         );
 
                         add_sock_srvc_relations(
@@ -503,8 +502,7 @@ fn apply_sockets_to_services(unit_table: &mut UnitTable) -> Result<(), String> {
                     {
                         trace!(
                             "add socket: {} to service: {} because one mentions the other",
-                            sock_unit.id.name,
-                            srvc_unit.id.name
+                            sock_unit.id.name, srvc_unit.id.name
                         );
                         add_sock_srvc_relations(
                             srvc_unit.id.clone(),

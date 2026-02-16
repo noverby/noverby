@@ -146,19 +146,21 @@ fn dup_fds(sockets: &mut [RawFd]) {
 }
 
 unsafe fn unset_cloexec(fd: RawFd) {
-    let old_flags = libc::fcntl(fd, libc::F_GETFD, 0);
-    if old_flags <= -1 {
-        write_to_stderr("Couldn't get fd_flags for FD");
-        std::process::exit(1);
-    } else {
-        // need to actually flip the u32 not just negate the i32.....
-        let unset_cloexec_flag = (libc::FD_CLOEXEC as u32 ^ 0xFFFF_FFFF) as i32;
-        let new_flags = old_flags & unset_cloexec_flag;
-
-        let result = libc::fcntl(fd, libc::F_SETFD, new_flags);
-        if result <= -1 {
-            write_to_stderr("failed to manually unset the CLOEXEC flag on FD");
+    unsafe {
+        let old_flags = libc::fcntl(fd, libc::F_GETFD, 0);
+        if old_flags <= -1 {
+            write_to_stderr("Couldn't get fd_flags for FD");
             std::process::exit(1);
+        } else {
+            // need to actually flip the u32 not just negate the i32.....
+            let unset_cloexec_flag = (libc::FD_CLOEXEC as u32 ^ 0xFFFF_FFFF) as i32;
+            let new_flags = old_flags & unset_cloexec_flag;
+
+            let result = libc::fcntl(fd, libc::F_SETFD, new_flags);
+            if result <= -1 {
+                write_to_stderr("failed to manually unset the CLOEXEC flag on FD");
+                std::process::exit(1);
+            }
         }
     }
 }

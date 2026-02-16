@@ -25,8 +25,7 @@ fn make_cgroup_path(srvc_name: &str) -> Result<PathBuf, String> {
     let service_cgroup = systemd_rs_cgroup.join(srvc_name);
     trace!(
         "Service {} will be moved into cgroup: {:?}",
-        srvc_name,
-        service_cgroup
+        srvc_name, service_cgroup
     );
     Ok(service_cgroup)
 }

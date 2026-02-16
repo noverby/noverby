@@ -5,8 +5,8 @@ use crate::sockets::{
     TcpSocketConfig, UdpSocketConfig, UnixSocketConfig,
 };
 use crate::units::{
-    parse_install_section, parse_unit_section, ParsedCommonConfig, ParsedFile, ParsedSection,
-    ParsedSingleSocketConfig, ParsedSocketConfig, ParsedSocketSection, ParsingErrorReason,
+    ParsedCommonConfig, ParsedFile, ParsedSection, ParsedSingleSocketConfig, ParsedSocketConfig,
+    ParsedSocketSection, ParsingErrorReason, parse_install_section, parse_unit_section,
 };
 use std::path::PathBuf;
 

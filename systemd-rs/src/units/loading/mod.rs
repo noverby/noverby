@@ -4,8 +4,8 @@ use log::{trace, warn};
 
 use crate::runtime_info::UnitTable;
 use crate::units::{
-    get_file_list, parse_file, parse_service, parse_slice, parse_socket, parse_target,
-    ParsingError, ParsingErrorReason, Specific, Unit, UnitId,
+    ParsingError, ParsingErrorReason, Specific, Unit, UnitId, get_file_list, parse_file,
+    parse_service, parse_slice, parse_socket, parse_target,
 };
 
 use std::collections::HashMap;
