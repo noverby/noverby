@@ -363,6 +363,8 @@ pub struct SliceState {
     pub common: CommonState,
 }
 
+// Fields are held to keep RwLockWriteGuards alive during activate/deactivate/reactivate
+#[allow(dead_code)]
 enum LockedState<'a> {
     Service(
         std::sync::RwLockWriteGuard<'a, ServiceState>,
