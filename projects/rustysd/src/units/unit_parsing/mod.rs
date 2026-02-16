@@ -100,6 +100,13 @@ pub enum UnitCondition {
     /// Commonly used to trigger post-upgrade configuration updates.
     /// See systemd.unit(5).
     NeedsUpdate { path: String, negate: bool },
+    /// ConditionPathIsMountPoint=/some/path (true if path is a mount point)
+    /// ConditionPathIsMountPoint=!/some/path (true if path is NOT a mount point)
+    /// Checks whether the specified path exists and is a mount point (i.e.
+    /// a different filesystem is mounted there compared to the parent directory).
+    /// On Linux this is determined by comparing st_dev of the path and its
+    /// parent. See systemd.unit(5).
+    PathIsMountPoint { path: String, negate: bool },
 }
 
 /// The kind of virtualization detected (VM or container).
@@ -634,6 +641,28 @@ impl UnitCondition {
                     !needs_update
                 } else {
                     needs_update
+                }
+            }
+            UnitCondition::PathIsMountPoint { path, negate } => {
+                // ConditionPathIsMountPoint= checks whether the specified path
+                // is a mount point. On Linux, a path is a mount point if its
+                // st_dev differs from its parent directory's st_dev, or if it
+                // is the filesystem root (path == parent).
+                use std::os::unix::fs::MetadataExt;
+                let is_mount_point = std::fs::metadata(path)
+                    .and_then(|meta| {
+                        let path = std::path::Path::new(path);
+                        let parent = path.parent().unwrap_or(path);
+                        let parent_meta = std::fs::metadata(parent)?;
+                        // A path is a mount point if its device ID differs from
+                        // its parent's, or if it IS the root (parent == self).
+                        Ok(meta.dev() != parent_meta.dev() || path == parent)
+                    })
+                    .unwrap_or(false);
+                if *negate {
+                    !is_mount_point
+                } else {
+                    is_mount_point
                 }
             }
         }

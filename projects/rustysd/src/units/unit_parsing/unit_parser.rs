@@ -207,6 +207,7 @@ pub fn parse_unit_section(
     let condition_control_group_controller = section.remove("CONDITIONCONTROLGROUPCONTROLLER");
     let condition_path_is_read_write = section.remove("CONDITIONPATHISREADWRITE");
     let condition_needs_update = section.remove("CONDITIONNEEDSUPDATE");
+    let condition_path_is_mount_point = section.remove("CONDITIONPATHISMOUNTPOINT");
     let success_action = section.remove("SUCCESSACTION");
     let failure_action = section.remove("FAILUREACTION");
     let part_of = section.remove("PARTOF");
@@ -422,6 +423,14 @@ pub fn parse_unit_section(
             (value, false)
         };
         conditions.push(super::UnitCondition::NeedsUpdate { path, negate });
+    }
+    for (_, value) in condition_path_is_mount_point.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        conditions.push(super::UnitCondition::PathIsMountPoint { path, negate });
     }
 
     let success_action = match success_action {

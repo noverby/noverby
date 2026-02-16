@@ -2008,8 +2008,8 @@ This document is meant as a simple way of checking whether all features you need
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionPathIsMountPoint=">ConditionPathIsMountPoint=</a></td>
-  <td>❌</td>
-  <td></td>
+  <td>✔️</td>
+  <td>Parsed, stored, and evaluated at runtime. Checks whether the specified path is a mount point by comparing <code>st_dev</code> of the path and its parent directory. Supports <code>!</code> prefix for negation.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html#ConditionPathIsReadWrite=">ConditionPathIsReadWrite=</a></td>
