@@ -117,14 +117,114 @@ fn parse_signal_to_raw(s: &str) -> Option<i32> {
     None
 }
 
+/// Parse a named exit status (BSD sysexits.h, C library, LSB, and
+/// systemd-specific codes).  Returns the numeric exit code if recognised.
+///
+/// Accepts both the canonical symbolic name (e.g. `DATAERR`) and the
+/// `EX_`-prefixed form (e.g. `EX_DATAERR`), as well as `EXIT_`-prefixed
+/// names (e.g. `EXIT_SUCCESS`, `EXIT_FAILURE`).  Matching is
+/// case-insensitive.
+fn parse_exit_status_name(s: &str) -> Option<i32> {
+    // Strip optional EX_ or EXIT_ prefix for lookup
+    let upper = s.to_uppercase();
+    let name = if let Some(rest) = upper.strip_prefix("EX_") {
+        rest
+    } else if let Some(rest) = upper.strip_prefix("EXIT_") {
+        rest
+    } else {
+        &upper
+    };
+
+    match name {
+        // C library (Table 8)
+        "SUCCESS" => Some(0),
+        "FAILURE" => Some(1),
+
+        // LSB (Table 9)
+        "INVALIDARGUMENT" => Some(2),
+        "NOTIMPLEMENTED" => Some(3),
+        "NOPERMISSION" => Some(4),
+        "NOTINSTALLED" => Some(5),
+        "NOTCONFIGURED" => Some(6),
+        "NOTRUNNING" => Some(7),
+
+        // BSD sysexits.h (Table 11)
+        "USAGE" => Some(64),
+        "DATAERR" => Some(65),
+        "NOINPUT" => Some(66),
+        "NOUSER" => Some(67),
+        "NOHOST" => Some(68),
+        "UNAVAILABLE" => Some(69),
+        "SOFTWARE" => Some(70),
+        "OSERR" => Some(71),
+        "OSFILE" => Some(72),
+        "CANTCREAT" => Some(73),
+        "IOERR" => Some(74),
+        "TEMPFAIL" => Some(75),
+        "PROTOCOL" => Some(76),
+        "NOPERM" => Some(77),
+        "CONFIG" => Some(78),
+
+        // systemd-specific (Table 10)
+        "CHDIR" => Some(200),
+        "NICE" => Some(201),
+        "FDS" => Some(202),
+        "EXEC" => Some(203),
+        "MEMORY" => Some(204),
+        "LIMITS" => Some(205),
+        "OOM_ADJUST" => Some(206),
+        "SIGNAL_MASK" => Some(207),
+        "STDIN" => Some(208),
+        "STDOUT" => Some(209),
+        "CHROOT" => Some(210),
+        "IOPRIO" => Some(211),
+        "TIMERSLACK" => Some(212),
+        "SECUREBITS" => Some(213),
+        "SETSCHEDULER" => Some(214),
+        "CPUAFFINITY" => Some(215),
+        "GROUP" => Some(216),
+        "USER" => Some(217),
+        "CAPABILITIES" => Some(218),
+        "CGROUP" => Some(219),
+        "SETSID" => Some(220),
+        "CONFIRM" => Some(221),
+        "STDERR" => Some(222),
+        "PAM" => Some(224),
+        "NETWORK" => Some(225),
+        "NAMESPACE" => Some(226),
+        "NO_NEW_PRIVILEGES" => Some(227),
+        "SECCOMP" => Some(228),
+        "SELINUX_CONTEXT" => Some(229),
+        "PERSONALITY" => Some(230),
+        "APPARMOR_PROFILE" => Some(231),
+        "ADDRESS_FAMILIES" => Some(232),
+        "RUNTIME_DIRECTORY" => Some(233),
+        "CHOWN" => Some(235),
+        "SMACK_PROCESS_LABEL" => Some(236),
+        "KEYRING" => Some(237),
+        "STATE_DIRECTORY" => Some(238),
+        "CACHE_DIRECTORY" => Some(239),
+        "LOGS_DIRECTORY" => Some(240),
+        "CONFIGURATION_DIRECTORY" => Some(241),
+        "NUMA_POLICY" => Some(242),
+        "CREDENTIALS" => Some(243),
+        "BPF" => Some(245),
+
+        _ => None,
+    }
+}
+
 /// Parse a `SuccessExitStatus=` value.  The value is a space-separated list
-/// of tokens.  Numeric tokens are treated as exit codes; everything else is
-/// tried as a signal name.
+/// of tokens.  Numeric tokens are treated as exit codes; named tokens are
+/// tried first as exit status names (BSD sysexits, LSB, systemd-specific),
+/// then as signal names.
 fn parse_success_exit_status(raw: &str) -> SuccessExitStatus {
     let mut exit_codes = Vec::new();
     let mut signals = Vec::new();
     for token in raw.split_whitespace() {
         if let Ok(code) = token.parse::<i32>() {
+            exit_codes.push(code);
+        } else if let Some(code) = parse_exit_status_name(token) {
             exit_codes.push(code);
         } else if let Some(sig) = parse_signal_name(token) {
             signals.push(sig);
