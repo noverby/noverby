@@ -2,7 +2,7 @@
   lib,
   rustPlatform,
   fetchFromGitHub,
-  pkg-config,
+  pkg-config-rs,
   stdenv,
   darwin,
   nasm,
@@ -27,7 +27,7 @@ rustPlatform.buildRustPackage rec {
   '';
 
   nativeBuildInputs = [
-    pkg-config
+    pkg-config-rs
     nasm
   ];
 
