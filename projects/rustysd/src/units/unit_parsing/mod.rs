@@ -1659,27 +1659,43 @@ pub fn parse_memory_limit(val: &str) -> Result<Option<MemoryLimit>, String> {
             .map_err(|_| format!("memory limit percentage is not a valid number: {val}"))?;
         return Ok(Some(MemoryLimit::Percent(pct_val)));
     }
-    // Try to parse with optional suffix
-    let (num_str, multiplier): (&str, u64) = if let Some(n) = val.strip_suffix('K') {
-        (n, 1024)
-    } else if let Some(n) = val.strip_suffix('M') {
-        (n, 1024 * 1024)
-    } else if let Some(n) = val.strip_suffix('G') {
-        (n, 1024 * 1024 * 1024)
-    } else if let Some(n) = val.strip_suffix('T') {
-        (n, 1024 * 1024 * 1024 * 1024)
-    } else if let Some(n) = val.strip_suffix('P') {
-        (n, 1024 * 1024 * 1024 * 1024 * 1024)
-    } else if let Some(n) = val.strip_suffix('E') {
-        (n, 1024 * 1024 * 1024 * 1024 * 1024 * 1024)
-    } else {
-        (val, 1)
+    // Delegate byte-value parsing (with optional K/M/G/T/P/E suffix) to parse_byte_size
+    let bytes = parse_byte_size(val)
+        .map_err(|_| format!("memory limit is not a valid byte value: {val}"))?;
+    Ok(Some(MemoryLimit::Bytes(bytes)))
+}
+
+/// Parse a systemd byte-size value with optional K, M, G, T, P, E suffix (base 1024).
+/// Returns the value in bytes as a `u64`.
+///
+/// Accepts plain integers (e.g. "8388608") as well as suffixed values
+/// (e.g. "128K", "128M", "1G"). The suffix is case-insensitive.
+/// Returns an error for empty, non-numeric, or otherwise invalid strings.
+pub fn parse_byte_size(val: &str) -> Result<u64, String> {
+    let val = val.trim();
+    if val.is_empty() {
+        return Err("byte size value is empty".to_owned());
+    }
+    let last = val.as_bytes()[val.len() - 1];
+    let (num_str, multiplier): (&str, u64) = match last | 0x20 {
+        // case-insensitive
+        b'k' => (&val[..val.len() - 1], 1024),
+        b'm' => (&val[..val.len() - 1], 1024 * 1024),
+        b'g' => (&val[..val.len() - 1], 1024 * 1024 * 1024),
+        b't' => (&val[..val.len() - 1], 1024 * 1024 * 1024 * 1024),
+        b'p' => (&val[..val.len() - 1], 1024 * 1024 * 1024 * 1024 * 1024),
+        b'e' => (
+            &val[..val.len() - 1],
+            1024 * 1024 * 1024 * 1024 * 1024 * 1024,
+        ),
+        _ => (val, 1),
     };
     let num = num_str
         .trim()
         .parse::<u64>()
-        .map_err(|_| format!("memory limit is not a valid byte value: {val}"))?;
-    Ok(Some(MemoryLimit::Bytes(num.saturating_mul(multiplier))))
+        .map_err(|_| format!("not a valid byte size: {val}"))?;
+    num.checked_mul(multiplier)
+        .ok_or_else(|| format!("byte size overflows u64: {val}"))
 }
 
 /// A single rlimit value: either a numeric value or infinity
