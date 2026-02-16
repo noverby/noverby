@@ -49,17 +49,17 @@
 //! assert!(version::compare("1.2.12", "1.2.11") > 0);
 //! ```
 
+pub mod client;
 pub mod dependency;
 pub mod error;
 pub mod fragment;
 pub mod parser;
+pub mod path;
 pub mod version;
 
 // Planned modules — currently stubs:
 // pub mod audit;
 // pub mod cache;
-// pub mod client;
-// pub mod path;
 // pub mod personality;
 // pub mod pkg;
 // pub mod queue;

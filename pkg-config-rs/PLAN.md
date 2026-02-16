@@ -60,11 +60,11 @@ This plan is organized into phases, each building on the previous one. Each phas
 
 ---
 
-## Phase 2: Client & Search Path Management
+## Phase 2: Client & Search Path Management ✅
 
 **Goal:** Proper client state management and search path handling, including environment variables, sysroot, and build root.
 
-- [ ] **2.1 Search path module** (`path.rs`)
+- [x] **2.1 Search path module** (`path.rs`)
   - `SearchPath` struct wrapping a list of directories
   - `add()`, `prepend()`, `split()` from colon-delimited strings
   - `build_from_environ()` for `PKG_CONFIG_PATH`, `PKG_CONFIG_LIBDIR`
@@ -74,7 +74,7 @@ This plan is organized into phases, each building on the previous one. Each phas
   - `copy_list()`, `prepend_list()` for list merging
   - Unit tests with various path formats
 
-- [ ] **2.2 Client module** (`client.rs`)
+- [x] **2.2 Client module** (`client.rs`)
   - `Client` struct holding all state:
     - Search path list (`dir_list`)
     - Filter lists for system lib/include dirs
@@ -106,7 +106,7 @@ This plan is organized into phases, each building on the previous one. Each phas
     - `PKG_CONFIG_DEBUG_SPEW`
   - Integration tests
 
-- [ ] **2.3 Integrate client into CLI**
+- [x] **2.3 Integrate client into CLI**
   - Refactor `main.rs` to use `Client` instead of ad-hoc state
   - Move search path construction into `Client`
   - Move system directory filtering into `Client`
