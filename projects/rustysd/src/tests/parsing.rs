@@ -24024,6 +24024,295 @@ fn test_runtime_max_sec_with_other_settings() {
 }
 
 // ============================================================
+// CoredumpReceive= parsing tests
+// ============================================================
+
+#[test]
+fn test_coredump_receive_defaults_to_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.coredump_receive, false,
+        "CoredumpReceive should default to false"
+    );
+}
+
+#[test]
+fn test_coredump_receive_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CoredumpReceive = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.coredump_receive, true,
+        "CoredumpReceive=true should parse as true"
+    );
+}
+
+#[test]
+fn test_coredump_receive_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CoredumpReceive = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.coredump_receive, true,
+        "CoredumpReceive=yes should parse as true"
+    );
+}
+
+#[test]
+fn test_coredump_receive_1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CoredumpReceive = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.coredump_receive, true,
+        "CoredumpReceive=1 should parse as true"
+    );
+}
+
+#[test]
+fn test_coredump_receive_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CoredumpReceive = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.coredump_receive, false,
+        "CoredumpReceive=false should parse as false"
+    );
+}
+
+#[test]
+fn test_coredump_receive_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CoredumpReceive = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.coredump_receive, false,
+        "CoredumpReceive=no should parse as false"
+    );
+}
+
+#[test]
+fn test_coredump_receive_0() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CoredumpReceive = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.coredump_receive, false,
+        "CoredumpReceive=0 should parse as false"
+    );
+}
+
+#[test]
+fn test_coredump_receive_case_insensitive() {
+    for (input, expected) in [
+        ("TRUE", true),
+        ("True", true),
+        ("YES", true),
+        ("Yes", true),
+        ("FALSE", false),
+        ("False", false),
+        ("NO", false),
+        ("No", false),
+    ] {
+        let test_service_str = format!(
+            r#"
+            [Service]
+            ExecStart = /bin/myservice
+            CoredumpReceive = {input}
+            "#
+        );
+
+        let parsed_file = crate::units::parse_file(&test_service_str).unwrap();
+        let service = crate::units::parse_service(
+            parsed_file,
+            &std::path::PathBuf::from("/path/to/unitfile.service"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            service.srvc.coredump_receive, expected,
+            "CoredumpReceive={input} should parse as {expected}"
+        );
+    }
+}
+
+#[test]
+fn test_coredump_receive_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CoredumpReceive = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "CoredumpReceive=yes should parse without error"
+    );
+}
+
+#[test]
+fn test_coredump_receive_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CoredumpReceive = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.coredump_receive, true,
+            "CoredumpReceive=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_coredump_receive_false_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.coredump_receive, false,
+            "Default CoredumpReceive (false) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected service unit");
+    }
+}
+
+#[test]
+fn test_coredump_receive_with_other_settings() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myservice
+    CoredumpReceive = yes
+    Restart = on-failure
+    RuntimeMaxSec = 300
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.coredump_receive, true,
+        "CoredumpReceive=yes should parse correctly alongside other settings"
+    );
+    assert_eq!(
+        service.srvc.runtime_max_sec,
+        Some(crate::units::Timeout::Duration(
+            std::time::Duration::from_secs(300)
+        )),
+        "RuntimeMaxSec=300 should also be parsed correctly"
+    );
+}
+
+// ============================================================
 // ReadWritePaths= parsing tests
 // ============================================================
 

@@ -431,6 +431,7 @@ fn parse_service_section(
     let memory_min = section.remove("MEMORYMIN");
     let memory_low = section.remove("MEMORYLOW");
     let runtime_max_sec = section.remove("RUNTIMEMAXSEC");
+    let coredump_receive = section.remove("COREDUMPRECEIVE");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -1194,6 +1195,15 @@ fn parse_service_section(
             }
             None => None,
         },
+        coredump_receive: coredump_receive
+            .map(|vec| {
+                if vec.len() == 1 {
+                    string_to_bool(&vec[0].1)
+                } else {
+                    false
+                }
+            })
+            .unwrap_or(false),
         exec_section: exec_config,
     })
 }
