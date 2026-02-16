@@ -7694,6 +7694,245 @@ fn test_success_exit_status_empty_preserved_after_unit_conversion() {
     }
 }
 
+// ── SuccessExitStatus= named exit status tests ────────────────────────
+
+#[test]
+fn test_success_exit_status_bsd_dataerr() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = DATAERR
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.success_exit_status.exit_codes,
+        vec![65],
+        "DATAERR should map to exit code 65"
+    );
+    assert!(service.srvc.success_exit_status.signals.is_empty());
+}
+
+#[test]
+fn test_success_exit_status_bsd_all_names() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = USAGE DATAERR NOINPUT NOUSER NOHOST UNAVAILABLE SOFTWARE OSERR OSFILE CANTCREAT IOERR TEMPFAIL PROTOCOL NOPERM CONFIG
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.success_exit_status.exit_codes,
+        vec![64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78],
+        "All BSD sysexits names should map correctly"
+    );
+}
+
+#[test]
+fn test_success_exit_status_ex_prefixed() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = EX_DATAERR EX_TEMPFAIL EX_CONFIG
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.success_exit_status.exit_codes,
+        vec![65, 75, 78],
+        "EX_-prefixed names should work"
+    );
+}
+
+#[test]
+fn test_success_exit_status_exit_prefixed() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = EXIT_SUCCESS EXIT_FAILURE
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.success_exit_status.exit_codes,
+        vec![0, 1],
+        "EXIT_SUCCESS and EXIT_FAILURE should map to 0 and 1"
+    );
+}
+
+#[test]
+fn test_success_exit_status_lsb_names() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = INVALIDARGUMENT NOTIMPLEMENTED NOPERMISSION NOTINSTALLED NOTCONFIGURED NOTRUNNING
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.success_exit_status.exit_codes,
+        vec![2, 3, 4, 5, 6, 7],
+        "LSB exit status names should map correctly"
+    );
+}
+
+#[test]
+fn test_success_exit_status_systemd_names() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = CHDIR EXEC NAMESPACE BPF
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.success_exit_status.exit_codes,
+        vec![200, 203, 226, 245],
+        "systemd-specific exit status names should map correctly"
+    );
+}
+
+#[test]
+fn test_success_exit_status_named_case_insensitive() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = dataerr Dataerr DATAERR
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.success_exit_status.exit_codes,
+        vec![65, 65, 65],
+        "Exit status names should be case-insensitive"
+    );
+}
+
+#[test]
+fn test_success_exit_status_mixed_numeric_named_signal() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = 42 DATAERR SIGUSR1 TEMPFAIL HUP
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.success_exit_status.exit_codes,
+        vec![42, 65, 75],
+        "Numeric codes and named exit statuses should be parsed as exit codes"
+    );
+    assert_eq!(
+        service.srvc.success_exit_status.signals,
+        vec![
+            nix::sys::signal::Signal::SIGUSR1,
+            nix::sys::signal::Signal::SIGHUP,
+        ],
+        "Signal names should still be parsed as signals"
+    );
+}
+
+#[test]
+fn test_success_exit_status_named_preserved_after_unit_conversion() {
+    use std::convert::TryInto;
+
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = DATAERR TEMPFAIL
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = service.try_into().unwrap();
+    if let crate::units::Specific::Service(srvc) = &unit.specific {
+        assert_eq!(
+            srvc.conf.success_exit_status.exit_codes,
+            vec![65, 75],
+            "Named exit statuses should survive unit conversion"
+        );
+    } else {
+        panic!("Expected a service unit");
+    }
+}
+
+#[test]
+fn test_success_exit_status_named_with_multiple_lines() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SuccessExitStatus = DATAERR
+    SuccessExitStatus = TEMPFAIL CONFIG
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.success_exit_status.exit_codes,
+        vec![65, 75, 78],
+        "Named exit statuses should accumulate across multiple lines"
+    );
+}
+
 // ── SuccessExitStatus is_success / is_clean_signal tests ──────────────
 
 #[test]

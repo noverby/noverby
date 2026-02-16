@@ -1293,7 +1293,7 @@ This document is meant as a simple way of checking whether all features you need
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#SuccessExitStatus=">SuccessExitStatus=</a></td>
   <td>✔️</td>
-  <td>Extra exit codes and signal names (with or without SIG prefix) treated as clean exit</td>
+  <td>Extra exit codes and signal names (with or without SIG prefix) treated as clean exit. Also supports named exit statuses: BSD sysexits (e.g. DATAERR, TEMPFAIL, CONFIG), C library (SUCCESS, FAILURE), LSB (NOTRUNNING, etc.), and systemd-specific (CHDIR, EXEC, NAMESPACE, etc.). Names are case-insensitive and accept optional EX_ or EXIT_ prefixes.</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html#RestartPreventExitStatus=">RestartPreventExitStatus=</a></td>
