@@ -160,7 +160,7 @@
         ./projects/mojo-wasm
         ./projects/wiki
         ./projects/oxidized-nixos
-        ./projects/rustysd
+        ./projects/systemd-rs
 
         ./slides
       ];
