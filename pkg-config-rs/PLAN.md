@@ -116,11 +116,11 @@ This plan is organized into phases, each building on the previous one. Each phas
 
 ---
 
-## Phase 3: Package Model & Loading
+## Phase 3: Package Model & Loading ✅
 
 **Goal:** Full package representation with `.pc` file loading, prefix redefinition, provides, conflicts, and uninstalled package support.
 
-- [ ] **3.1 Package module** (`pkg.rs`)
+- [x] **3.1 Package module** (`pkg.rs`)
   - `Package` struct mirroring pkgconf's `pkgconf_pkg_t`:
     - id, filename, realname, version, description, url
     - pc_filedir, license, maintainer, copyright, source, license_file
@@ -140,14 +140,14 @@ This plan is organized into phases, each building on the previous one. Each phas
   - `Provides` resolution: a package can satisfy dependencies for other names
   - `scan_all()` — iterate over all `.pc` files in search paths
 
-- [ ] **3.2 Cache module** (`cache.rs`)
+- [x] **3.2 Cache module** (`cache.rs`)
   - `Cache` backed by a `HashMap<String, Package>`
   - `lookup()`, `add()`, `remove()`
   - Respect `PKGCONF_PKG_PKGF_NO_CACHE` flag
   - Preloaded / virtual package registration
   - Cache invalidation on search path changes
 
-- [ ] **3.3 Built-in virtual packages**
+- [x] **3.3 Built-in virtual packages**
   - Register `pkg-config` and `pkgconf` virtual packages
   - Populate with `pc_path`, `pc_system_libdirs`, `pc_system_includedirs` variables
   - Set version to compatibility version

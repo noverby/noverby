@@ -14,9 +14,9 @@
 //! - [`parser`] — `.pc` file parsing, variable expansion, and argv splitting
 //! - [`dependency`] — Dependency specification parsing and representation
 //! - [`fragment`] — Compiler/linker flag fragment management, filtering, and deduplication
-//! - [`client`] — Client state, search path management, and package resolution (TODO)
-//! - [`pkg`] — Package representation and dependency graph traversal (TODO)
-//! - [`cache`] — Package cache for avoiding redundant lookups (TODO)
+//! - [`client`] — Client state, search path management, and configuration
+//! - [`pkg`] — Package representation, loading, prefix redefinition, and provides resolution
+//! - [`cache`] — Package cache for avoiding redundant lookups and virtual package registration
 //! - [`personality`] — Cross-compilation personality support (TODO)
 //! - [`queue`] — Package queue and dependency solver (TODO)
 //! - [`audit`] — Audit logging (TODO)
@@ -49,19 +49,19 @@
 //! assert!(version::compare("1.2.12", "1.2.11") > 0);
 //! ```
 
+pub mod cache;
 pub mod client;
 pub mod dependency;
 pub mod error;
 pub mod fragment;
 pub mod parser;
 pub mod path;
+pub mod pkg;
 pub mod version;
 
 // Planned modules — currently stubs:
 // pub mod audit;
-// pub mod cache;
 // pub mod personality;
-// pub mod pkg;
 // pub mod queue;
 
 /// The version of this library (mirrors pkgconf compatibility version).
