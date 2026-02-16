@@ -9,6 +9,7 @@ use std::process::ExitCode;
 use anyhow::{Context, Result, bail};
 use clap::Parser;
 
+use libpkgconf::client::{Client, ClientFlags};
 use libpkgconf::version as ver;
 use libpkgconf::{PKGCONFIG_COMPAT_VERSION, VERSION};
 
@@ -317,6 +318,117 @@ fn main() -> ExitCode {
     }
 }
 
+/// Build a [`Client`] from CLI arguments and environment.
+fn build_client(cli: &Cli) -> Result<Client> {
+    let mut builder = Client::builder();
+
+    // --with-path (highest priority search paths)
+    for p in &cli.with_path {
+        builder = builder.with_path(p);
+    }
+
+    // --define-variable
+    for def in &cli.define_variable {
+        if let Some((key, value)) = def.split_once('=') {
+            builder = builder.define_variable(key, value);
+        } else {
+            bail!("Invalid --define-variable format: '{def}' (expected varname=value)");
+        }
+    }
+
+    // --keep-system-cflags
+    if cli.keep_system_cflags {
+        builder = builder.keep_system_cflags(true);
+    }
+
+    // --keep-system-libs
+    if cli.keep_system_libs {
+        builder = builder.keep_system_libs(true);
+    }
+
+    // --static
+    if cli.r#static {
+        builder = builder.enable_static(true);
+    }
+
+    // --shared (disables static)
+    if cli.shared {
+        builder = builder.enable_static(false);
+    }
+
+    // --pure
+    if cli.pure {
+        builder = builder.pure(true);
+    }
+
+    // --env-only
+    if cli.env_only {
+        builder = builder.flag(ClientFlags::ENV_ONLY);
+    }
+
+    // --no-cache
+    if cli.no_cache {
+        builder = builder.flag(ClientFlags::NO_CACHE);
+    }
+
+    // --no-uninstalled
+    if cli.no_uninstalled {
+        builder = builder.flag(ClientFlags::NO_UNINSTALLED);
+    }
+
+    // --no-provides
+    if cli.no_provides {
+        builder = builder.flag(ClientFlags::SKIP_PROVIDES);
+    }
+
+    // --ignore-conflicts
+    if cli.ignore_conflicts {
+        builder = builder.flag(ClientFlags::IGNORE_CONFLICTS);
+    }
+
+    // --define-prefix
+    if cli.define_prefix {
+        builder = builder.flag(ClientFlags::DEFINE_PREFIX);
+    }
+
+    // --dont-define-prefix
+    if cli.dont_define_prefix {
+        builder = builder.flag(ClientFlags::DONT_DEFINE_PREFIX);
+    }
+
+    // --dont-relocate-paths
+    if cli.dont_relocate_paths {
+        builder = builder.flag(ClientFlags::DONT_RELOCATE_PATHS);
+    }
+
+    // --msvc-syntax
+    if cli.msvc_syntax {
+        builder = builder.flag(ClientFlags::MSVC_SYNTAX);
+    }
+
+    // --prefix-variable
+    if let Some(ref var) = cli.prefix_variable {
+        builder = builder.prefix_variable(var);
+    }
+
+    // --maximum-traverse-depth
+    if let Some(depth) = cli.maximum_traverse_depth {
+        builder = builder.max_traversal_depth(depth);
+    }
+
+    // --log-file
+    if let Some(ref path) = cli.log_file {
+        builder = builder.log_file(path);
+    }
+
+    // --debug
+    if cli.debug {
+        builder = builder.debug(true);
+    }
+
+    Ok(builder.build())
+}
+
 fn run(cli: &Cli) -> Result<()> {
     // --about
     if cli.about {
@@ -348,52 +460,58 @@ fn run(cli: &Cli) -> Result<()> {
         return Ok(());
     }
 
+    // Build the client from CLI + environment
+    let client = build_client(cli)?;
+
     // --dump-personality
     if cli.dump_personality {
         // TODO: Implement personality dumping
         println!("Triplet: default");
         println!(
             "DefaultSearchPaths: {}",
-            libpkgconf::DEFAULT_PKGCONFIG_PATH.join(":")
+            client.dir_list().to_delimited(':')
         );
         println!(
             "SystemIncludePaths: {}",
-            libpkgconf::DEFAULT_SYSTEM_INCLUDEDIRS.join(":")
+            client.filter_includedirs().to_delimited(':')
         );
         println!(
             "SystemLibraryPaths: {}",
-            libpkgconf::DEFAULT_SYSTEM_LIBDIRS.join(":")
+            client.filter_libdirs().to_delimited(':')
         );
         return Ok(());
     }
 
     // --list-all
     if cli.list_all {
-        // TODO: Implement package listing
-        eprintln!("pkg-config-rs: --list-all is not yet implemented");
+        let all = client.list_all();
+        for (name, description, version) in &all {
+            let desc = if description.is_empty() {
+                "No description available"
+            } else {
+                description
+            };
+            if version.is_empty() {
+                println!("{name:40} {desc}");
+            } else {
+                println!("{name:40} {desc} - {version}");
+            }
+        }
         return Ok(());
     }
 
     // --list-package-names
     if cli.list_package_names {
-        // TODO: Implement package name listing
-        eprintln!("pkg-config-rs: --list-package-names is not yet implemented");
+        let names = client.list_package_names();
+        for name in &names {
+            println!("{name}");
+        }
         return Ok(());
     }
 
     // All other operations require at least one package name
     if cli.packages.is_empty() {
         bail!("Please specify at least one package name on the command line");
-    }
-
-    // Parse --define-variable options
-    let mut global_vars = std::collections::HashMap::new();
-    for def in &cli.define_variable {
-        if let Some((key, value)) = def.split_once('=') {
-            global_vars.insert(key.to_string(), value.to_string());
-        } else {
-            bail!("Invalid --define-variable format: '{def}' (expected varname=value)");
-        }
     }
 
     // Build the combined query string from positional args
@@ -428,34 +546,18 @@ fn run(cli: &Cli) -> Result<()> {
         }
     }
 
-    // Determine sysroot
-    let sysroot = std::env::var("PKG_CONFIG_SYSROOT_DIR").ok();
-
-    // Determine search paths
-    let search_paths = build_search_paths(cli);
-
-    // Keep-system flags
-    let keep_system_cflags = cli.keep_system_cflags
-        || std::env::var(libpkgconf::ENV_PKG_CONFIG_ALLOW_SYSTEM_CFLAGS).is_ok();
-    let keep_system_libs =
-        cli.keep_system_libs || std::env::var(libpkgconf::ENV_PKG_CONFIG_ALLOW_SYSTEM_LIBS).is_ok();
-
-    // System filter dirs
-    let system_libdirs: Vec<String> = libpkgconf::DEFAULT_SYSTEM_LIBDIRS
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    let system_includedirs: Vec<String> = libpkgconf::DEFAULT_SYSTEM_INCLUDEDIRS
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    // System filter dirs from the client
+    let system_libdirs = client.system_libdirs();
+    let system_includedirs = client.system_includedirs();
 
     // Resolve each package
     let mut all_cflags = libpkgconf::fragment::FragmentList::new();
     let mut all_libs = libpkgconf::fragment::FragmentList::new();
 
     for dep in deps.iter() {
-        let pc = find_and_load_package(&dep.package, &search_paths)?;
+        let pc = client
+            .find_package(&dep.package)
+            .with_context(|| format!("Failed to find package '{}'", dep.package))?;
 
         // Check version constraint
         if let Some(ref required_ver) = dep.version {
@@ -470,10 +572,10 @@ fn run(cli: &Cli) -> Result<()> {
             }
         }
 
-        // Resolve variables
-        let resolved_vars =
-            libpkgconf::parser::resolve_variables(&pc, &global_vars, sysroot.as_deref())
-                .with_context(|| format!("Failed to resolve variables for '{}'", dep.package))?;
+        // Resolve variables using the client
+        let resolved_vars = client
+            .resolve_variables(&pc)
+            .with_context(|| format!("Failed to resolve variables for '{}'", dep.package))?;
 
         // --exists / --atleast-version / --exact-version / --max-version:
         // If only checking existence/version, just succeed (version already checked above).
@@ -521,7 +623,7 @@ fn run(cli: &Cli) -> Result<()> {
         // --print-requires
         if cli.print_requires {
             if let Some(req) = pc.get_field(libpkgconf::parser::Keyword::Requires) {
-                let expanded = libpkgconf::parser::resolve_field(req, &resolved_vars)?;
+                let expanded = client.resolve_field(req, &resolved_vars)?;
                 let req_deps = libpkgconf::dependency::DependencyList::parse(&expanded);
                 for d in req_deps.iter() {
                     println!("{d}");
@@ -533,7 +635,7 @@ fn run(cli: &Cli) -> Result<()> {
         // --print-requires-private
         if cli.print_requires_private {
             if let Some(req) = pc.get_field(libpkgconf::parser::Keyword::RequiresPrivate) {
-                let expanded = libpkgconf::parser::resolve_field(req, &resolved_vars)?;
+                let expanded = client.resolve_field(req, &resolved_vars)?;
                 let req_deps = libpkgconf::dependency::DependencyList::parse(&expanded);
                 for d in req_deps.iter() {
                     println!("{d}");
@@ -545,7 +647,7 @@ fn run(cli: &Cli) -> Result<()> {
         // --print-provides
         if cli.print_provides {
             if let Some(prov) = pc.get_field(libpkgconf::parser::Keyword::Provides) {
-                let expanded = libpkgconf::parser::resolve_field(prov, &resolved_vars)?;
+                let expanded = client.resolve_field(prov, &resolved_vars)?;
                 let prov_deps = libpkgconf::dependency::DependencyList::parse(&expanded);
                 for d in prov_deps.iter() {
                     println!("{d}");
@@ -579,7 +681,7 @@ fn run(cli: &Cli) -> Result<()> {
         // Collect cflags
         if cli.cflags || cli.cflags_only_i || cli.cflags_only_other {
             if let Some(raw) = pc.get_field(libpkgconf::parser::Keyword::Cflags) {
-                let expanded = libpkgconf::parser::resolve_field(raw, &resolved_vars)?;
+                let expanded = client.resolve_field(raw, &resolved_vars)?;
                 let frags = libpkgconf::fragment::FragmentList::parse(&expanded);
                 all_cflags.append(&frags);
             }
@@ -588,15 +690,15 @@ fn run(cli: &Cli) -> Result<()> {
         // Collect libs
         if cli.libs || cli.libs_only_l_upper || cli.libs_only_l_lower || cli.libs_only_other {
             if let Some(raw) = pc.get_field(libpkgconf::parser::Keyword::Libs) {
-                let expanded = libpkgconf::parser::resolve_field(raw, &resolved_vars)?;
+                let expanded = client.resolve_field(raw, &resolved_vars)?;
                 let frags = libpkgconf::fragment::FragmentList::parse(&expanded);
                 all_libs.append(&frags);
             }
 
             // Also include Libs.private if --static
-            if cli.r#static {
+            if client.is_static() {
                 if let Some(raw) = pc.get_field(libpkgconf::parser::Keyword::LibsPrivate) {
-                    let expanded = libpkgconf::parser::resolve_field(raw, &resolved_vars)?;
+                    let expanded = client.resolve_field(raw, &resolved_vars)?;
                     let frags = libpkgconf::fragment::FragmentList::parse(&expanded);
                     all_libs.append(&frags);
                 }
@@ -633,7 +735,7 @@ fn run(cli: &Cli) -> Result<()> {
         let mut cflags = all_cflags;
 
         // Filter system dirs unless --keep-system-cflags
-        if !keep_system_cflags {
+        if !client.keep_system_cflags() {
             cflags = cflags.filter_system_dirs(&system_libdirs, &system_includedirs);
         }
 
@@ -657,7 +759,7 @@ fn run(cli: &Cli) -> Result<()> {
         let mut libs = all_libs;
 
         // Filter system dirs unless --keep-system-libs
-        if !keep_system_libs {
+        if !client.keep_system_libs() {
             libs = libs.filter_system_dirs(&system_libdirs, &system_includedirs);
         }
 
@@ -688,68 +790,6 @@ fn run(cli: &Cli) -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Build the list of directories to search for .pc files.
-fn build_search_paths(cli: &Cli) -> Vec<std::path::PathBuf> {
-    let mut paths = Vec::new();
-
-    // --with-path takes highest precedence
-    for p in &cli.with_path {
-        paths.push(std::path::PathBuf::from(p));
-    }
-
-    // PKG_CONFIG_PATH is prepended to the default search path
-    if let Ok(pkg_config_path) = std::env::var(libpkgconf::ENV_PKG_CONFIG_PATH) {
-        for p in pkg_config_path.split(':') {
-            if !p.is_empty() {
-                paths.push(std::path::PathBuf::from(p));
-            }
-        }
-    }
-
-    // PKG_CONFIG_LIBDIR replaces the default search path; otherwise use defaults
-    if let Ok(libdir) = std::env::var(libpkgconf::ENV_PKG_CONFIG_LIBDIR) {
-        for p in libdir.split(':') {
-            if !p.is_empty() {
-                paths.push(std::path::PathBuf::from(p));
-            }
-        }
-    } else if !cli.env_only {
-        for p in libpkgconf::DEFAULT_PKGCONFIG_PATH {
-            paths.push(std::path::PathBuf::from(p));
-        }
-    }
-
-    paths
-}
-
-/// Find and load a .pc file for the given package name from the search paths.
-fn find_and_load_package(
-    name: &str,
-    search_paths: &[std::path::PathBuf],
-) -> Result<libpkgconf::parser::PcFile> {
-    // If the name looks like a path (contains '/' or ends with '.pc'), load directly
-    if name.contains('/') || name.ends_with(".pc") {
-        let path = std::path::Path::new(name);
-        return libpkgconf::parser::PcFile::from_path(path)
-            .with_context(|| format!("Failed to load '{name}'"));
-    }
-
-    let filename = format!("{name}.pc");
-
-    for dir in search_paths {
-        let candidate = dir.join(&filename);
-        if candidate.exists() {
-            return libpkgconf::parser::PcFile::from_path(&candidate)
-                .with_context(|| format!("Failed to load '{}'", candidate.display()));
-        }
-    }
-
-    Err(libpkgconf::error::Error::PackageNotFound {
-        name: name.to_string(),
-    }
-    .into())
 }
 
 fn print_about() {
