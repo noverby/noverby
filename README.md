@@ -4,10 +4,10 @@
 <!-- BEGIN mktoc {"min_depth": 2, "max_depth": 3} -->
 
 - [📁 Repository](#-repository)
+  - [🚀 Projects](#-projects)
+  - [📦 Packages](#-packages)
   - [📋 Configurations](#-configurations)
   - [🧩 Modules](#-modules)
-  - [📦 Packages](#-packages)
-  - [🚀 Projects](#-projects)
 - [💻 Hardware](#-hardware)
 - [🌐 Services](#-services)
   - [🔒 Personal](#-personal)
@@ -46,30 +46,18 @@
 ## 📁 Repository
 [⬆](#toc)
 
-### 📋 Configurations
+### 🚀 Projects
 [⬆](#toc)
 
 <details open>
 
-| Configuration | Description |
+| Project | Description |
 |-|-|
-| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/home-manager) | Home Manager configurations |
-| [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/nixos) | NixOS configurations |
-| [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/devenv) | Devenv configurations |
-
-</details>
-
-### 🧩 Modules
-[⬆](#toc)
-
-<details open>
-
-| Module | Description |
-|-|-|
-| [Flakelight ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/flakelight) | Flakelight modules |
-| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager) | Home Manager modules |
-| [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos) | NixOS modules |
-| [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/devenv) | Devenv modules |
+| [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/homepage) | Personal website and portfolio |
+| [Wiki 🐒➡️🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/projects/wiki) | Platform for political conference & beyond |
+| [Mojo-Wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/mojo-wasm) | WebAssembly interop layer for Mojo |
+| [Oxidized NixOS 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/projects/oxidized-nixos) | NixOS with Rust user space |
+| [Rustysd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/rustysd) | A Systemd replacement in Rust |
 
 </details>
 
@@ -122,18 +110,30 @@
 
 </details>
 
-### 🚀 Projects
+### 📋 Configurations
 [⬆](#toc)
 
 <details open>
 
-| Project | Description |
+| Configuration | Description |
 |-|-|
-| [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/homepage) | Personal website and portfolio |
-| [Wiki 🐒➡️🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/projects/wiki) | Platform for political conference & beyond |
-| [Mojo-Wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/mojo-wasm) | WebAssembly interop layer for Mojo |
-| [Oxidized NixOS 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/projects/oxidized-nixos) | NixOS with Rust user space |
-| [Rustysd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/rustysd) | A Systemd replacement in Rust |
+| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/home-manager) | Home Manager configurations |
+| [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/nixos) | NixOS configurations |
+| [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/configurations/devenv) | Devenv configurations |
+
+</details>
+
+### 🧩 Modules
+[⬆](#toc)
+
+<details open>
+
+| Module | Description |
+|-|-|
+| [Flakelight ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/flakelight) | Flakelight modules |
+| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager) | Home Manager modules |
+| [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos) | NixOS modules |
+| [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/devenv) | Devenv modules |
 
 </details>
 
