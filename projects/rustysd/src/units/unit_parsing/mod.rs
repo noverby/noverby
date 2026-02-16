@@ -93,6 +93,13 @@ pub enum UnitCondition {
     /// it reads /proc/cgroups. The special value `v2` checks whether the
     /// unified (cgroupv2) hierarchy is in use. See systemd.unit(5).
     ControlGroupController { controller: String, negate: bool },
+    /// ConditionNeedsUpdate=/etc (true if /etc is older than /usr)
+    /// ConditionNeedsUpdate=!/var (true if /var does NOT need updating)
+    /// Checks whether the specified directory needs an update because /usr
+    /// has been modified more recently. Takes an absolute path as argument.
+    /// Commonly used to trigger post-upgrade configuration updates.
+    /// See systemd.unit(5).
+    NeedsUpdate { path: String, negate: bool },
 }
 
 /// The kind of virtualization detected (VM or container).
@@ -606,6 +613,27 @@ impl UnitCondition {
                     !result
                 } else {
                     result
+                }
+            }
+            UnitCondition::NeedsUpdate { path, negate } => {
+                // ConditionNeedsUpdate= checks whether the specified directory
+                // needs an update because /usr has been modified more recently.
+                // Compare mtime of the path against mtime of /usr.
+                let needs_update = match (
+                    std::fs::metadata(path).and_then(|m| m.modified()),
+                    std::fs::metadata("/usr").and_then(|m| m.modified()),
+                ) {
+                    (Ok(path_mtime), Ok(usr_mtime)) => usr_mtime > path_mtime,
+                    // If either path doesn't exist or we can't stat it,
+                    // treat it as "needs update" (matching systemd behavior:
+                    // missing stamp file means update is needed).
+                    (Err(_), Ok(_)) => true,
+                    _ => false,
+                };
+                if *negate {
+                    !needs_update
+                } else {
+                    needs_update
                 }
             }
         }
