@@ -22,7 +22,7 @@ RELEVANT_PAGES = [
     'systemd.unit'
 ]
 
-ICON_TICK = "✔️"
+ICON_TICK = "✅"
 ICON_CROSS = "❌"
 ICON_QMARK = "❓"
 
@@ -32,7 +32,7 @@ USED_FEATURES = {}
 SUPPORTED_FEATURES = {
     "READY": {"icon": ICON_TICK, "text": "Waiting for ready notification for service-type notify is supported"},
     "STATUS": {"icon": ICON_TICK, "text": "Sending free-text status updates to be displayed for the user is supported"},
-    "NOTIFY_SOCKET": {"icon": ICON_TICK, "text": "Listening to a notification socket is supported (see section fd_notifiy for details on which messages are understood). NotifyAccess= is not fully supported though."},
+    "NOTIFY_SOCKET": {"icon": ICON_TICK, "text": "Listening to a notification socket is supported (see section fd_notify for details on which messages are understood). NotifyAccess= is not fully supported though."},
     "LISTEN_FDS": {"icon": ICON_TICK, "text": "Providing number of filedescriptors is supported"},
     "LISTEN_FDNAMES": {"icon": ICON_TICK, "text": "Providing names for filedescriptors is supported"},
     "LISTEN_PID": {"icon": ICON_TICK, "text": "Provifing the listen_pid to the child is supported"},
@@ -42,12 +42,12 @@ SUPPORTED_FEATURES = {
     "Restart": {"icon": ICON_QMARK, "text": "Restart is partially supported. The settings 'always' and 'no' are supported"},
     "BusName": {"icon": ICON_TICK, "text": "Setting a bus name to wait for services of type dbus is supported."},
     "NotifyAccess": {"icon": ICON_QMARK, "text": "Not fully supported. All settings are accepted but are not being enforced right now. Acts as if 'all' was set."},
-    "Sockets": {"icon": ICON_QMARK, "text": "Adding more socket files to servcies is supported. But only so that one socket belongs to only one service (sytsemd allows for sockets to belong to multiple services)."},
+    "Sockets": {"icon": ICON_QMARK, "text": "Adding more socket files to services is supported. But only so that one socket belongs to only one service (sytsemd allows for sockets to belong to multiple services)."},
     "ListenStream": {"icon": ICON_TICK, "text": "Opening streaming sockets is supported. The whole IPv4 and IPv6 stuff needs some attention though"},
     "ListenDatagram": {"icon": ICON_TICK, "text": "Opening datagram sockets is supported. The whole IPv4 and IPv6 stuff needs some attention though"},
     "ListenSequentialPacket": {"icon": ICON_TICK, "text": "Opening sequential packet sockets is supported."},
     "ListenFIFO": {"icon": ICON_TICK, "text": "Opening FIFOs is supported. Filemode setting is not supported as of yet though."},
-    "Accept": {"icon": ICON_QMARK, "text": "Only the setting 'no' is supported. Inted-style activation is not yet supported."},
+    "Accept": {"icon": ICON_QMARK, "text": "Only the setting 'no' is supported. Intend-style activation is not yet supported."},
     "ExecStart": {"icon": ICON_TICK, "text": "Exec'ing the command given is supported. The return value is checked for oneshot services. Ignoring the return value with the '-' prefix is supported, other prefixes are not."},
     "ExecStartPre": {"icon": ICON_QMARK,  "text": "Allowing commands to be run is supported. The return value is checked. Ignoring the return value with the '-' prefix is supported, other prefixes are not."},
     "ExecStartPost": {"icon": ICON_QMARK, "text": "Allowing commands to be run is supported. The return value is checked. Ignoring the return value with the '-' prefix is supported, other prefixes are not."},
