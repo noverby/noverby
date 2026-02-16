@@ -1,0 +1,10 @@
+[package]
+name = "libpkgconf"
+version = "0.1.0"
+edition = "2024"
+description = "A pure Rust implementation of the pkg-config/pkgconf library"
+license = "ISC"
+readme = "README.md"
+
+[dependencies]
+thiserror = "2"
