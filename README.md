@@ -56,7 +56,7 @@
 | [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/homepage) | Personal website and portfolio |
 | [Wiki 🐒➡️🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/projects/wiki) | Platform for political conference & beyond |
 | [Mojo-Wasm 🔥](https://tangled.org/@overby.me/overby.me/tree/main/projects/mojo-wasm) | WebAssembly interop layer for Mojo |
-| [Oxidized NixOS 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/projects/oxidized-nixos) | NixOS with Rust user space |
+| [NixOS-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/projects/nixos-rs) | NixOS with Rust user space |
 | [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/projects/systemd-rs) | A Systemd replacement in Rust |
 
 </details>

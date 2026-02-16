@@ -159,7 +159,8 @@
         ./projects/homepage
         ./projects/mojo-wasm
         ./projects/wiki
-        ./projects/oxidized-nixos
+
+        ./projects/nixos-rs
         ./projects/systemd-rs
 
         ./slides
