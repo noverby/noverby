@@ -131,6 +131,7 @@ fn parse_socket_section(
     let send_buffer = section.remove("SENDBUFFER");
     let symlinks = section.remove("SYMLINKS");
     let timestamping = section.remove("TIMESTAMPING");
+    let remove_on_stop = section.remove("REMOVEONSTOP");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -423,6 +424,20 @@ fn parse_socket_section(
         None => false,
     };
 
+    let remove_on_stop = match remove_on_stop {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "RemoveOnStop".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
     let receive_buffer: Option<u64> =
         match receive_buffer {
             Some(vec) => {
@@ -522,6 +537,7 @@ fn parse_socket_section(
         directory_mode,
         pass_credentials,
         pass_security,
+        remove_on_stop,
         receive_buffer,
         send_buffer,
         symlinks,

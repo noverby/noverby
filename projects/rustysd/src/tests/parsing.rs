@@ -36874,6 +36874,235 @@ fn test_symlinks_with_fifo() {
 }
 
 // ===============================================================
+// RemoveOnStop= in [Socket] section tests
+// ===============================================================
+
+#[test]
+fn test_remove_on_stop_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket.sock.remove_on_stop,
+        "RemoveOnStop should default to false"
+    );
+}
+
+#[test]
+fn test_remove_on_stop_true() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    RemoveOnStop = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.remove_on_stop,
+        "RemoveOnStop=yes should be true"
+    );
+}
+
+#[test]
+fn test_remove_on_stop_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    RemoveOnStop = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket.sock.remove_on_stop,
+        "RemoveOnStop=no should be false"
+    );
+}
+
+#[test]
+fn test_remove_on_stop_true_variant() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    RemoveOnStop = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.remove_on_stop,
+        "RemoveOnStop=true should be true"
+    );
+}
+
+#[test]
+fn test_remove_on_stop_one() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    RemoveOnStop = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.remove_on_stop, "RemoveOnStop=1 should be true");
+}
+
+#[test]
+fn test_remove_on_stop_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    RemoveOnStop = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert!(
+            sock.conf.remove_on_stop,
+            "RemoveOnStop=yes should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_remove_on_stop_default_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = socket.try_into().unwrap();
+    if let crate::units::Specific::Socket(sock) = &unit.specific {
+        assert!(
+            !sock.conf.remove_on_stop,
+            "Default RemoveOnStop (false) should survive unit conversion"
+        );
+    } else {
+        panic!("Expected Socket specific");
+    }
+}
+
+#[test]
+fn test_remove_on_stop_no_unsupported_warning() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    RemoveOnStop = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    // If parsing succeeds, no unsupported-setting warning was emitted
+    assert!(!socket.sock.remove_on_stop);
+}
+
+#[test]
+fn test_remove_on_stop_with_symlinks() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/myservice.sock
+    Symlinks = /run/alias.sock
+    RemoveOnStop = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.remove_on_stop);
+    assert_eq!(socket.sock.symlinks, vec!["/run/alias.sock"]);
+}
+
+#[test]
+fn test_remove_on_stop_with_other_socket_settings() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /run/myservice.sock
+    Accept = no
+    PassCredentials = yes
+    PassSecurity = yes
+    RemoveOnStop = yes
+    ReceiveBuffer = 64K
+    Symlinks = /run/alias.sock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(!socket.sock.accept);
+    assert!(socket.sock.pass_credentials);
+    assert!(socket.sock.pass_security);
+    assert!(socket.sock.remove_on_stop);
+    assert_eq!(socket.sock.receive_buffer, Some(64 * 1024));
+    assert_eq!(socket.sock.symlinks, vec!["/run/alias.sock"]);
+}
+
+// ===============================================================
 // PassSecurity= in [Socket] section tests
 // ===============================================================
 
