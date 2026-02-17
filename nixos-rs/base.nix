@@ -20,12 +20,12 @@
   };
 
   users.users = {
-    oxidized = {
+    nixos = {
       isNormalUser = true;
       extraGroups = ["wheel"];
-      password = "oxidized";
+      password = "nixos";
     };
   };
 
-  services.getty.autologinUser = "oxidized";
+  services.getty.autologinUser = "nixos";
 })
