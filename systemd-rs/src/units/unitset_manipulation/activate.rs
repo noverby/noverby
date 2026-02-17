@@ -121,8 +121,20 @@ pub fn unstarted_deps(id: &UnitId, run_info: &RuntimeInfo) -> Vec<UnitId> {
         .after
         .iter()
         .fold(Vec::new(), |mut acc, elem| {
+            // Determine the relationship strength:
+            // - "required" (Requires=/BindsTo=): must be Started
+            // - "pulled" (Wants=): must have left NeverStarted
+            // - "ordering only" (After= without any pull-dep): only block if
+            //   the dep is actually being activated (not NeverStarted).  Pure
+            //   ordering deps that stay in NeverStarted are ignored — they
+            //   were never meant to be activated by this unit.  This matches
+            //   real systemd where After=rescue.target does NOT activate
+            //   rescue.target; it only orders them IF both are activated.
             let required = unit.common.dependencies.requires.contains(elem)
                 || unit.common.dependencies.binds_to.contains(elem);
+            let pulled = unit.common.dependencies.wants.contains(elem);
+            let is_pull_dep = required || pulled;
+
             let Some(elem_unit) = run_info.unit_table.get(elem) else {
                 // Dependency not in unit table (e.g. optional unit that was
                 // never loaded, or removed during pruning/cycle-breaking).
@@ -143,16 +155,30 @@ pub fn unstarted_deps(id: &UnitId, run_info: &RuntimeInfo) -> Vec<UnitId> {
                     poisoned.into_inner()
                 }
             };
+
             let ready = if required {
+                // Hard dependency: must be fully started
                 status_locked.is_started()
-            } else {
+            } else if is_pull_dep {
+                // Soft pull dependency (Wants=): must have left NeverStarted
                 *status_locked != UnitStatus::NeverStarted
+            } else {
+                // Pure ordering dep (After= without Wants=/Requires=/BindsTo=):
+                // Only block if the dep is actively being started (status is
+                // Starting or some transient state).  If it's NeverStarted,
+                // it's not in our activation set — don't wait for it.
+                // If it's already finished (Started or Stopped), it's ready.
+                match &*status_locked {
+                    UnitStatus::NeverStarted => true, // treat as ready — not being activated
+                    UnitStatus::Starting => false,    // actively starting, wait for it
+                    _ => true,                        // finished (started/stopped), ready
+                }
             };
 
             if !ready {
-                info!(
-                    "unstarted_deps: {:?} waiting for {:?} (required={}, status={}, ready={})",
-                    id, elem, required, status_locked, ready
+                trace!(
+                    "unstarted_deps: {:?} waiting for {:?} (required={}, pulled={}, status={}, ready={})",
+                    id, elem, required, pulled, status_locked, ready
                 );
                 acc.push(elem.clone());
             }
@@ -200,6 +226,30 @@ pub fn activate_unit(
             unit_id: id_to_start,
         });
     };
+
+    // Early return if the unit has already been activated (or skipped/failed).
+    // This prevents duplicate condition-check logs and redundant work when the
+    // same unit appears in multiple before-chains.
+    {
+        let status = unit.common.status.read().unwrap();
+        match &*status {
+            UnitStatus::Started(_) => {
+                // Already running — nothing to do, don't re-dispatch before-chain
+                return Ok(StartResult::Started(vec![]));
+            }
+            UnitStatus::Stopped(StatusStopped::StoppedFinal, _) => {
+                // Already finished (e.g. condition-skipped oneshot) — don't re-check
+                return Ok(StartResult::Started(vec![]));
+            }
+            UnitStatus::Stopped(StatusStopped::StoppedUnexpected, _) => {
+                // Already failed — don't retry during initial activation
+                return Ok(StartResult::Started(vec![]));
+            }
+            _ => {
+                // NeverStarted, Starting, Stopping, Restarting — proceed
+            }
+        }
+    }
 
     // Check unit conditions (ConditionPathExists=, etc.) before activation.
     // If any condition fails, the unit is skipped — this is not an error,
@@ -263,6 +313,15 @@ pub fn activate_unit(
     let success_action = unit.common.unit.success_action.clone();
     let failure_action = unit.common.unit.failure_action.clone();
 
+    // Remember whether the unit was already started before we call activate().
+    // If it was, we must NOT re-dispatch the before-chain — doing so would
+    // cause an infinite livelock where already-started units keep returning
+    // their full before-chain, which re-discovers them as "startable", etc.
+    let was_already_started = {
+        let status = unit.common.status.read().unwrap();
+        status.is_started()
+    };
+
     match unit.activate(run_info, source) {
         Ok(status) => {
             // If the unit was already in StoppedUnexpected state (i.e. it
@@ -275,6 +334,20 @@ pub fn activate_unit(
                 status,
                 UnitStatus::Stopped(StatusStopped::StoppedUnexpected, _)
             ) {
+                return Ok(StartResult::Started(vec![]));
+            }
+
+            // If the unit was already started before we tried to activate it,
+            // unit.activate() returned early without doing anything.  Don't
+            // re-dispatch the before-chain — those units have already been
+            // (or are being) activated from the original activation.
+            // Re-dispatching would cause an infinite loop where the same
+            // units keep appearing as "startable" and re-enqueuing each other.
+            if was_already_started {
+                trace!(
+                    "Unit {} was already started, not re-dispatching before-chain",
+                    id_to_start.name
+                );
                 return Ok(StartResult::Started(vec![]));
             }
 
@@ -309,7 +382,7 @@ pub fn activate_unit(
             // optional (non-required) After= deps only need to have left
             // NeverStarted state, which a failed unit does.
             if !matches!(e.reason, UnitOperationErrorReason::DependencyError(_)) {
-                info!(
+                trace!(
                     "Unit {} failed but propagating before-chain to {} units: {:?}",
                     id_to_start.name,
                     next_services_ids.len(),
@@ -458,7 +531,7 @@ pub fn activate_needed_units(
         collect_unit_start_subgraph(&mut needed_ids, &run_info.unit_table);
     }
     let needed_names: Vec<&str> = needed_ids.iter().map(|id| id.name.as_str()).collect();
-    info!(
+    trace!(
         "activate_needed_units: target={}, needed_ids count={}, units: {:?}",
         target_id.name,
         needed_ids.len(),
@@ -471,7 +544,7 @@ pub fn activate_needed_units(
     // the 'after' relations are considered for traversal.
     let root_units = { find_startable_units(&needed_ids, &run_info.read().unwrap()) };
     let root_names: Vec<&str> = root_units.iter().map(|id| id.name.as_str()).collect();
-    info!(
+    trace!(
         "activate_needed_units: root units count={}: {:?}",
         root_units.len(),
         root_names
@@ -489,7 +562,7 @@ pub fn activate_needed_units(
     );
 
     tpool.join();
-    info!("activate_needed_units: threadpool joined, activation complete");
+    trace!("activate_needed_units: threadpool joined, activation complete");
     // TODO can we handle errors in a more meaningful way?
     let errs = (*errors.lock().unwrap()).clone();
     for err in &errs {
@@ -528,7 +601,7 @@ fn activate_units_recursive(
 
     if !startables.is_empty() {
         let names: Vec<&str> = startables.iter().map(|id| id.name.as_str()).collect();
-        info!("activate_units_recursive: startable units: {:?}", names);
+        trace!("activate_units_recursive: startable units: {:?}", names);
     }
     if !ids_to_start.is_empty() && startables.is_empty() {
         let run_info_guard = run_info.read().unwrap();
@@ -537,7 +610,7 @@ fn activate_units_recursive(
                 let unstarted = unstarted_deps(id, &run_info_guard);
                 if !unstarted.is_empty() {
                     let dep_names: Vec<&str> = unstarted.iter().map(|d| d.name.as_str()).collect();
-                    info!(
+                    trace!(
                         "activate_units_recursive: {} NOT startable, waiting for: {:?}",
                         id.name, dep_names
                     );

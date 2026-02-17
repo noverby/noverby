@@ -1,7 +1,7 @@
 mod dependency_resolving;
 mod directory_deps;
 pub use dependency_resolving::*;
-use log::{info, trace, warn};
+use log::{trace, warn};
 
 use crate::runtime_info::UnitTable;
 use crate::units::{ParsingError, Specific, Unit, UnitId, get_file_list, parse_file};
@@ -96,7 +96,7 @@ pub fn load_all_units(
 
     // Log directory deps for debugging
     for dep in &dir_deps {
-        info!(
+        trace!(
             "Dir dep: {} {} {}",
             dep.parent_unit,
             if dep.is_requires { "Requires" } else { "Wants" },
@@ -139,7 +139,7 @@ pub fn load_all_units(
                 .iter()
                 .map(|d| d.name.as_str())
                 .collect();
-            info!(
+            trace!(
                 "Pre-prune unit: {} | wants={:?} | wanted_by={:?} | requires={:?}",
                 id.name, wants, wanted_by, requires
             );
@@ -162,12 +162,12 @@ pub fn load_all_units(
                 .iter()
                 .map(|d| d.name.as_str())
                 .collect();
-            info!(
+            trace!(
                 "Pre-prune {}: wants={:?} requires={:?}",
                 name, wants, requires
             );
         } else {
-            info!("Pre-prune {}: NOT IN TABLE", name);
+            trace!("Pre-prune {}: NOT IN TABLE", name);
         }
     }
 
@@ -181,7 +181,7 @@ pub fn load_all_units(
         .cloned()
         .collect();
     for id in &template_ids {
-        info!("Removing template unit from table: {}", id.name);
+        trace!("Removing template unit from table: {}", id.name);
         unit_table.remove(id);
     }
 
@@ -191,7 +191,7 @@ pub fn load_all_units(
         .filter(|id| id.name.ends_with(".socket"))
         .map(|id| id.name.as_str())
         .collect();
-    info!(
+    trace!(
         "Units found before pruning: {} (sockets: {:?})",
         unit_table.len(),
         socket_names
@@ -224,7 +224,7 @@ pub fn load_all_units(
                 .iter()
                 .map(|d| d.name.as_str())
                 .collect();
-            info!(
+            trace!(
                 "Post-fill unit: {} | wants={:?} | wanted_by={:?}",
                 id.name, wants, wanted_by
             );
@@ -270,7 +270,7 @@ pub fn load_all_units(
         .filter(|id| id.name.ends_with(".socket"))
         .map(|id| id.name.as_str())
         .collect();
-    info!(
+    trace!(
         "Units after pruning: {} (sockets: {:?})",
         unit_table.len(),
         surviving_sockets
@@ -286,7 +286,7 @@ pub fn load_all_units(
     // Log which getty-related units survived pruning
     for id in unit_table.keys() {
         if id.name.contains("getty") || id.name.contains("ttyS") || id.name.contains("autovt") {
-            info!("Survived pruning: {}", id.name);
+            trace!("Survived pruning: {}", id.name);
         }
     }
 
@@ -310,7 +310,7 @@ pub fn load_all_units(
         .filter(|id| id.name.ends_with(".socket"))
         .map(|id| id.name.as_str())
         .collect();
-    info!(
+    trace!(
         "Final unit count after socket pruning: {} (sockets: {:?})",
         unit_table.len(),
         final_sockets

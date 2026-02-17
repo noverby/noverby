@@ -1,5 +1,5 @@
 use log::error;
-use log::info;
+
 use log::trace;
 use log::warn;
 
@@ -46,7 +46,7 @@ pub fn wait_for_service(
     let duration_timeout = srvc.get_start_timeout(conf);
     match conf.srcv_type {
         ServiceType::Notify | ServiceType::NotifyReload => {
-            info!(
+            trace!(
                 "[FORK_PARENT] Waiting for a notification for service {name} (timeout={duration_timeout:?})"
             );
 
@@ -96,7 +96,7 @@ pub fn wait_for_service(
                         if bytes > 0 {
                             let received =
                                 core::str::from_utf8(&buf[..bytes]).unwrap_or("<non-utf8>");
-                            info!(
+                            trace!(
                                 "[FORK_PARENT] Service {name}: received {bytes} bytes on notify socket: {:?}",
                                 received
                             );
@@ -131,7 +131,7 @@ pub fn wait_for_service(
                     srvc.notifications_buffer.push('\n');
                 }
                 if !srvc.notifications_buffer.is_empty() {
-                    info!(
+                    trace!(
                         "[FORK_PARENT] Service {name}: notification buffer before parse: {:?}",
                         srvc.notifications_buffer
                     );
@@ -139,7 +139,7 @@ pub fn wait_for_service(
                 crate::notification_handler::handle_notifications_from_buffer(srvc, name);
                 if srvc.signaled_ready {
                     srvc.signaled_ready = false;
-                    info!("[FORK_PARENT] Service {name} sent READY=1 notification — proceeding!");
+                    trace!("[FORK_PARENT] Service {name} sent READY=1 notification — proceeding!");
                     break;
                 }
                 trace!(
