@@ -28,5 +28,10 @@ members = [
     "crates/oomctl",
     "crates/timesyncd",
     "crates/timedatectl",
+    "crates/user-sessions",
+    "crates/update-done",
+    "crates/random-seed",
+    "crates/pstore",
+    "crates/machine-id-setup",
 ]
 resolver = "2"
