@@ -359,15 +359,12 @@ fn add_default_dependency_relations(units: &mut UnitTable) {
             add_after_to_shutdown.push(unit.id.clone());
         }
 
-        // Services additionally get Requires= and After= on sysinit.target
-        // and After= on basic.target.
+        // Services and sockets get Requires= and After= on sysinit.target.
+        // Services additionally get After= on basic.target.
         //
-        // Socket units do NOT get default dependencies on sysinit.target.
-        // In real systemd, sockets only get Before=sockets.target (added by
-        // add_socket_target_relations) and the shutdown.target conflict.
-        // Adding After=sysinit.target to sockets would create a circular
-        // dependency: socket → After sysinit.target → After sockets.target
-        // → After socket.
+        // In real systemd, sockets get the same sysinit.target deps as
+        // services. There is no circular dependency because sysinit.target
+        // orders before sockets.target, not after it.
         match unit.id.kind {
             UnitIdKind::Service => {
                 if has_sysinit {
@@ -380,12 +377,17 @@ fn add_default_dependency_relations(units: &mut UnitTable) {
                     add_after_to_basic.push(unit.id.clone());
                 }
             }
-            UnitIdKind::Socket
-            | UnitIdKind::Target
-            | UnitIdKind::Slice
-            | UnitIdKind::Mount
-            | UnitIdKind::Device => {
-                // Sockets, targets, slices, mounts, and devices only get the
+            UnitIdKind::Socket => {
+                // Sockets get Requires/After sysinit.target (same as services)
+                // but NOT After basic.target.
+                if has_sysinit {
+                    unit.common.dependencies.requires.push(sysinit_id.clone());
+                    unit.common.dependencies.after.push(sysinit_id.clone());
+                    add_after_to_sysinit.push(unit.id.clone());
+                }
+            }
+            UnitIdKind::Target | UnitIdKind::Slice | UnitIdKind::Mount | UnitIdKind::Device => {
+                // Targets, slices, mounts, and devices only get the
                 // shutdown.target conflict/before (already added above).
             }
         }
