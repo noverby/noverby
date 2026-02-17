@@ -26,6 +26,7 @@ flamegraph.svg
 /deno.json
 /rumdl.toml
 /typos.toml
+/.commitlintrc.yml
 
 *.qcow2
 *.img
