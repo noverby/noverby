@@ -1,4 +1,4 @@
-use log::{trace, warn};
+use log::trace;
 
 use crate::units::{
     ParsedCommonConfig, ParsedFile, ParsedTargetConfig, ParsingErrorReason, parse_install_section,
@@ -27,7 +27,7 @@ pub fn parse_target(
                 );
             }
             _ => {
-                warn!("Ignoring unknown section in target unit {path:?}: {name}");
+                trace!("Ignoring unknown section in target unit {path:?}: {name}");
             }
         }
     }

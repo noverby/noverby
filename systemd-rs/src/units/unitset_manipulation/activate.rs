@@ -256,7 +256,7 @@ pub fn activate_unit(
     // matching systemd's behavior of silently skipping condition-failed units.
     for condition in &unit.common.unit.conditions {
         if !condition.check() {
-            warn!(
+            trace!(
                 "Condition failed for unit {:?}: {:?}. Skipping activation.",
                 id_to_start, condition
             );
