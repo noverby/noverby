@@ -692,6 +692,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-analyze"
+version = "0.1.0"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "systemd-backlight"
 version = "0.1.0"
 dependencies = [
@@ -713,6 +720,20 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "libc",
+]
+
+[[package]]
+name = "systemd-cgls"
+version = "0.1.0"
+dependencies = [
+ "clap",
+]
+
+[[package]]
+name = "systemd-cgtop"
+version = "0.1.0"
+dependencies = [
+ "clap",
 ]
 
 [[package]]
@@ -765,6 +786,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-inhibit"
+version = "0.1.0"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "systemd-journald"
 version = "0.1.0"
 dependencies = [
@@ -811,6 +839,13 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "log",
+]
+
+[[package]]
+name = "systemd-mount"
+version = "0.1.0"
+dependencies = [
+ "clap",
 ]
 
 [[package]]
