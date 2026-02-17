@@ -1,0 +1,19 @@
+[package]
+name = "systemd-journald"
+version = "0.1.0"
+authors = ["Niclas Overby <niclas@overby.me>"]
+edition = "2024"
+
+[[bin]]
+name = "systemd-journald"
+path = "src/main.rs"
+
+[dependencies]
+libsystemd = { path = "../libsystemd" }
+clap = { version = "4.5", features = ["derive"] }
+libc = "0.2"
+nix = { version = "0.31", features = ["socket", "poll", "fs", "process", "signal", "user", "uio"] }
+log = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"

@@ -20,6 +20,7 @@ pub mod control;
 pub mod dbus_wait;
 pub mod entrypoints;
 pub mod fd_store;
+pub mod journal;
 pub mod logging;
 pub mod notification_handler;
 pub mod platform;

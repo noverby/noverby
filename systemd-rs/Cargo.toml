@@ -12,5 +12,9 @@ members = [
     "crates/delta",
     "crates/run",
     "crates/ac-power",
+    "crates/journald",
+    "crates/journalctl",
+    "crates/shutdown",
+    "crates/sleep",
 ]
 resolver = "2"
