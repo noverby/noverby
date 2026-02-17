@@ -487,7 +487,9 @@ pub fn execute_command(
                         match unit.specific {
                             Specific::Socket(_) => format_socket(unit, status),
                             Specific::Service(_) => format_service(unit, status),
-                            Specific::Target(_) | Specific::Slice(_) => format_target(unit, status),
+                            Specific::Target(_) | Specific::Slice(_) | Specific::Mount(_) => {
+                                format_target(unit, status)
+                            }
                         }
                     })
                     .collect();

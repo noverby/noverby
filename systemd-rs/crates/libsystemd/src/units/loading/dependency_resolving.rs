@@ -80,7 +80,7 @@ pub fn prune_units(
                     .cloned()
                     .collect();
             }
-            Specific::Target(_) | Specific::Slice(_) => { /**/ }
+            Specific::Target(_) | Specific::Slice(_) | Specific::Mount(_) => { /**/ }
         }
 
         unit.common.dependencies.before = unit

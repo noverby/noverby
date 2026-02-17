@@ -8,8 +8,8 @@ use std::convert::TryInto;
 use std::path::{Path, PathBuf};
 
 use crate::units::{
-    ParsedFile, ParsingErrorReason, Unit, UnitId, UnitIdKind, parse_file, parse_service,
-    parse_slice, parse_socket, parse_target,
+    ParsedFile, ParsingErrorReason, Unit, UnitId, UnitIdKind, parse_file, parse_mount,
+    parse_service, parse_slice, parse_socket, parse_target,
 };
 
 /// Represents a dependency relationship discovered from a `.wants/` or `.requires/` directory.
@@ -48,6 +48,7 @@ pub fn is_unit_file(filename: &str) -> bool {
         || filename.ends_with(".socket")
         || filename.ends_with(".target")
         || filename.ends_with(".slice")
+        || filename.ends_with(".mount")
 }
 
 /// Check if a unit name is a template (e.g., "getty@.service", "modprobe@.service").
@@ -276,6 +277,20 @@ pub fn insert_parsed_unit(
             }
             Err(e) => {
                 warn!("Skipping slice {:?}: {:?}", path, e);
+            }
+        }
+    } else if path_str.ends_with(".mount") {
+        trace!("Mount found: {:?}", path);
+        match parse_mount(parsed_file, path).and_then(|parsed| {
+            TryInto::<Unit>::try_into(parsed).map_err(ParsingErrorReason::Generic)
+        }) {
+            Ok(unit) => {
+                // Mount units are stored in the slices table (which serves as
+                // the catch-all for non-service/socket/target unit types)
+                slices.insert(unit.id.clone(), unit);
+            }
+            Err(e) => {
+                warn!("Skipping mount {:?}: {:?}", path, e);
             }
         }
     }
