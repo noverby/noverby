@@ -7,7 +7,7 @@ edition = "2024"
 [dependencies]
 signal-hook = "0.4"
 libc = "0.2"
-nix = { version = "0.31", features = ["user", "process", "mount", "poll", "fs", "signal", "socket", "event"] }
+nix = { version = "0.31", features = ["user", "process", "mount", "poll", "fs", "signal", "socket", "event", "hostname"] }
 log = "0.4"
 fern = "0.7"
 chrono = "0.4"

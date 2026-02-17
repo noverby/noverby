@@ -309,6 +309,29 @@ fn pid1_specific_setup() {
         }
     }
 
+    // Set the system hostname from /etc/hostname.
+    //
+    // Real systemd reads /etc/hostname very early during PID 1
+    // initialization and calls sethostname(2).  Without this, the
+    // kernel hostname remains empty (shown as "(none)" in prompts
+    // and login banners).
+    let hostname_path = std::path::Path::new("/etc/hostname");
+    if hostname_path.exists() {
+        if let Ok(raw) = std::fs::read_to_string(hostname_path) {
+            let hostname = raw.trim();
+            if !hostname.is_empty() {
+                match nix::unistd::sethostname(hostname) {
+                    Ok(()) => {
+                        eprintln!("systemd-rs: set hostname to '{hostname}'");
+                    }
+                    Err(e) => {
+                        eprintln!("systemd-rs: failed to set hostname: {e}");
+                    }
+                }
+            }
+        }
+    }
+
     // Ensure /var/log/journal exists so that systemd-journald can use
     // persistent storage and `journalctl --flush` succeeds.  Normally
     // systemd-tmpfiles-setup creates this, but it may run after (or
