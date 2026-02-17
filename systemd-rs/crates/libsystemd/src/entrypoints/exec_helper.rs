@@ -4,6 +4,74 @@ use crate::units::{
     PlatformSpecificServiceFields, RLimitValue, ResourceLimit, StandardInput, UtmpMode,
 };
 
+/// Convert a Linux capability name (e.g. "CAP_SYS_TIME") to its numeric
+/// value as defined in `<linux/capability.h>`.  Returns `None` for
+/// unrecognised names.
+fn cap_name_to_number(name: &str) -> Option<u64> {
+    match name.to_uppercase().as_str() {
+        "CAP_CHOWN" => Some(0),
+        "CAP_DAC_OVERRIDE" => Some(1),
+        "CAP_DAC_READ_SEARCH" => Some(2),
+        "CAP_FOWNER" => Some(3),
+        "CAP_FSETID" => Some(4),
+        "CAP_KILL" => Some(5),
+        "CAP_SETGID" => Some(6),
+        "CAP_SETUID" => Some(7),
+        "CAP_SETPCAP" => Some(8),
+        "CAP_LINUX_IMMUTABLE" => Some(9),
+        "CAP_NET_BIND_SERVICE" => Some(10),
+        "CAP_NET_BROADCAST" => Some(11),
+        "CAP_NET_ADMIN" => Some(12),
+        "CAP_NET_RAW" => Some(13),
+        "CAP_IPC_LOCK" => Some(14),
+        "CAP_IPC_OWNER" => Some(15),
+        "CAP_SYS_MODULE" => Some(16),
+        "CAP_SYS_RAWIO" => Some(17),
+        "CAP_SYS_CHROOT" => Some(18),
+        "CAP_SYS_PTRACE" => Some(19),
+        "CAP_SYS_PACCT" => Some(20),
+        "CAP_SYS_ADMIN" => Some(21),
+        "CAP_SYS_BOOT" => Some(22),
+        "CAP_SYS_NICE" => Some(23),
+        "CAP_SYS_RESOURCE" => Some(24),
+        "CAP_SYS_TIME" => Some(25),
+        "CAP_SYS_TTY_CONFIG" => Some(26),
+        "CAP_MKNOD" => Some(27),
+        "CAP_LEASE" => Some(28),
+        "CAP_AUDIT_WRITE" => Some(29),
+        "CAP_AUDIT_CONTROL" => Some(30),
+        "CAP_SETFCAP" => Some(31),
+        "CAP_MAC_OVERRIDE" => Some(32),
+        "CAP_MAC_ADMIN" => Some(33),
+        "CAP_SYSLOG" => Some(34),
+        "CAP_WAKE_ALARM" => Some(35),
+        "CAP_BLOCK_SUSPEND" => Some(36),
+        "CAP_AUDIT_READ" => Some(37),
+        "CAP_PERFMON" => Some(38),
+        "CAP_BPF" => Some(39),
+        "CAP_CHECKPOINT_RESTORE" => Some(40),
+        _ => None,
+    }
+}
+
+/// Resolve the list of ambient capability names to their numeric values,
+/// filtering out `~`-prefixed (deny-list) entries and unknown names.
+fn resolve_ambient_caps(names: &[String]) -> Vec<u64> {
+    let mut caps = Vec::new();
+    for name in names {
+        let name = name.trim();
+        if name.is_empty() || name.starts_with('~') {
+            continue;
+        }
+        if let Some(cap) = cap_name_to_number(name) {
+            caps.push(cap);
+        } else {
+            eprintln!("[EXEC_HELPER] Unknown ambient capability: {name}");
+        }
+    }
+    caps
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct ExecHelperConfig {
     pub name: String,
@@ -92,6 +160,13 @@ pub struct ExecHelperConfig {
     /// When true AND stdin is NOT a TTY, the TTY is opened independently for stderr.
     #[serde(default)]
     pub stderr_is_tty: bool,
+
+    /// AmbientCapabilities= — Linux capability names (e.g. CAP_SYS_TIME) to
+    /// raise as ambient capabilities after dropping privileges.  Ambient
+    /// capabilities survive execve() even without file capabilities, so the
+    /// unprivileged service process retains them.
+    #[serde(default)]
+    pub ambient_capabilities: Vec<String>,
 }
 
 fn default_true() -> bool {
@@ -709,7 +784,26 @@ pub fn run_exec_helper() {
         }
     }
 
+    // Resolve ambient capabilities BEFORE dropping privileges so we can
+    // set PR_SET_KEEPCAPS and retain them across the UID change.
+    let ambient_caps = resolve_ambient_caps(&config.ambient_capabilities);
+
     if nix::unistd::getuid().is_root() {
+        // If ambient capabilities are requested, tell the kernel to keep
+        // permitted capabilities across the setuid() call.  Without this
+        // the capability sets are cleared when changing UID from root to
+        // an unprivileged user.
+        if !ambient_caps.is_empty() {
+            let ret = unsafe { libc::prctl(libc::PR_SET_KEEPCAPS, 1, 0, 0, 0) };
+            if ret != 0 {
+                eprintln!(
+                    "[EXEC_HELPER {}] PR_SET_KEEPCAPS failed: {}",
+                    config.name,
+                    std::io::Error::last_os_error()
+                );
+            }
+        }
+
         let supp_gids: Vec<nix::unistd::Gid> = config
             .supplementary_groups
             .iter()
@@ -727,6 +821,92 @@ pub fn run_exec_helper() {
                     config.name, e
                 );
                 std::process::exit(1);
+            }
+        }
+
+        // After dropping privileges, raise the requested ambient
+        // capabilities.  We must first re-add each cap to the permitted
+        // and effective sets (PR_SET_KEEPCAPS only preserves the permitted
+        // set; the effective set is cleared on setuid).  Then we can raise
+        // the cap as ambient.
+        //
+        // We use raw structs matching <linux/capability.h> because the
+        // libc crate doesn't expose __user_cap_header_struct /
+        // __user_cap_data_struct.
+        #[repr(C)]
+        struct CapHeader {
+            version: u32,
+            pid: i32,
+        }
+        #[repr(C)]
+        struct CapData {
+            effective: u32,
+            permitted: u32,
+            inheritable: u32,
+        }
+        const CAP_V3: u32 = 0x20080522; // _LINUX_CAPABILITY_VERSION_3
+
+        if !ambient_caps.is_empty() {
+            // Read current capability sets (version 3 uses two CapData
+            // elements covering caps 0-31 and 32-63).
+            let mut hdr = CapHeader {
+                version: CAP_V3,
+                pid: 0,
+            };
+            let mut data: [CapData; 2] = unsafe { std::mem::zeroed() };
+
+            if unsafe { libc::syscall(libc::SYS_capget, &mut hdr as *mut _, data.as_mut_ptr()) }
+                != 0
+            {
+                eprintln!(
+                    "[EXEC_HELPER {}] capget failed: {}",
+                    config.name,
+                    std::io::Error::last_os_error()
+                );
+            } else {
+                // Set all requested caps in permitted, effective, AND
+                // inheritable sets (ambient requires inheritable too).
+                for &cap in &ambient_caps {
+                    let idx = (cap / 32) as usize;
+                    let bit = 1u32 << (cap % 32);
+                    if idx < 2 {
+                        data[idx].permitted |= bit;
+                        data[idx].effective |= bit;
+                        data[idx].inheritable |= bit;
+                    }
+                }
+
+                hdr.version = CAP_V3;
+                hdr.pid = 0;
+                if unsafe { libc::syscall(libc::SYS_capset, &hdr as *const _, data.as_ptr()) } != 0
+                {
+                    eprintln!(
+                        "[EXEC_HELPER {}] capset failed: {}",
+                        config.name,
+                        std::io::Error::last_os_error()
+                    );
+                }
+            }
+
+            // Now raise each cap as ambient.
+            for &cap in &ambient_caps {
+                let ret = unsafe {
+                    libc::prctl(
+                        libc::PR_CAP_AMBIENT,
+                        libc::PR_CAP_AMBIENT_RAISE,
+                        cap as libc::c_ulong,
+                        0,
+                        0,
+                    )
+                };
+                if ret != 0 {
+                    eprintln!(
+                        "[EXEC_HELPER {}] PR_CAP_AMBIENT_RAISE failed for cap {}: {}",
+                        config.name,
+                        cap,
+                        std::io::Error::last_os_error()
+                    );
+                }
             }
         }
     }
