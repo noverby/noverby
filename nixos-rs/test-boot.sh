@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# test-boot.sh — Boot the oxidized-nixos VM in cloud-hypervisor and capture serial output.
+# test-boot.sh — Boot the nixos-rs VM in cloud-hypervisor and capture serial output.
 #
 # Usage:
 #   ./test-boot.sh              # Run with defaults (15s timeout)
@@ -23,7 +23,7 @@ TIMEOUT=15
 LOG_FILE=""
 KEEP=false
 VERBOSE=false
-DISK_IMAGE="$SCRIPT_DIR/oxidized-nixos.raw"
+DISK_IMAGE="$SCRIPT_DIR/nixos-rs.raw"
 
 # Success / failure patterns (checked against the log file)
 SUCCESS_PATTERNS=(
@@ -120,8 +120,8 @@ done
 
 log_info "Resolving kernel and initrd from flake..."
 
-KERNEL_DIR=$(nix build --no-link --print-out-paths "$FLAKE_DIR#nixosConfigurations.oxidized-nixos.config.system.build.kernel" 2>&2)
-INITRD_DIR=$(nix build --no-link --print-out-paths "$FLAKE_DIR#nixosConfigurations.oxidized-nixos.config.system.build.initialRamdisk" 2>&2)
+KERNEL_DIR=$(nix build --no-link --print-out-paths "$FLAKE_DIR#nixosConfigurations.nixos-rs.config.system.build.kernel" 2>&2)
+INITRD_DIR=$(nix build --no-link --print-out-paths "$FLAKE_DIR#nixosConfigurations.nixos-rs.config.system.build.initialRamdisk" 2>&2)
 
 KERNEL="$KERNEL_DIR/bzImage"
 INITRD="$INITRD_DIR/initrd"
@@ -144,7 +144,7 @@ if [[ ! -f "$DISK_IMAGE" ]]; then
     log_warn "Disk image not found at $DISK_IMAGE"
     log_info "Building disk image (this may take a while)..."
     pushd "$SCRIPT_DIR" > /dev/null
-    nixos-rebuild build-image --image-variant qemu --flake "$FLAKE_DIR#oxidized-nixos"
+    nixos-rebuild build-image --image-variant qemu --flake "$FLAKE_DIR#nixos-rs"
     QCOW2=$(ls result/nixos-image-*-x86_64-linux.qcow2 2>/dev/null | head -1)
     if [[ -z "$QCOW2" ]]; then
         log_fail "Failed to build disk image"
