@@ -298,7 +298,7 @@ pub fn load_all_units(
         trace!("DIAG: dbus.socket survived socket pruning");
     } else {
         let was_removed = removed_ids.iter().any(|id| id.name == "dbus.socket");
-        warn!(
+        trace!(
             "DIAG: dbus.socket gone after socket pruning (explicitly removed={})",
             was_removed
         );

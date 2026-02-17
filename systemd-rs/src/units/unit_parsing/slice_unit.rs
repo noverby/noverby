@@ -1,4 +1,4 @@
-use log::{trace, warn};
+use log::trace;
 
 use crate::units::{
     ParsedCommonConfig, ParsedFile, ParsedSliceConfig, ParsingErrorReason, parse_install_section,
@@ -33,7 +33,7 @@ pub fn parse_slice(
                 trace!("Silently ignoring vendor extension section in slice unit {path:?}: {name}");
             }
             _ => {
-                warn!("Ignoring unknown section in slice unit {path:?}: {name}");
+                trace!("Ignoring unknown section in slice unit {path:?}: {name}");
             }
         }
     }

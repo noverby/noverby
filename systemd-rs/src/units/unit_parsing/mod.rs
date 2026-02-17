@@ -10,7 +10,7 @@ pub use socket_unit::*;
 pub use target_unit::*;
 pub use unit_parser::*;
 
-use log::warn;
+use log::trace;
 use std::path::PathBuf;
 
 pub struct ParsedCommonConfig {
@@ -449,7 +449,7 @@ impl UnitCondition {
                     Some(bit) => capability_in_bounding_set(bit),
                     None => {
                         // Unknown capability name — treat as not present
-                        warn!(
+                        trace!(
                             "Unknown capability name in ConditionCapability: {}",
                             capability
                         );
@@ -681,7 +681,7 @@ impl UnitCondition {
                             .unwrap_or(false)
                     }
                     other => {
-                        warn!(
+                        trace!(
                             "Unknown security technology in ConditionSecurity: {}",
                             other
                         );

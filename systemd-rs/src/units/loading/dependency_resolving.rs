@@ -211,12 +211,12 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
         if let Some(unit) = units.get_mut(&wanting) {
             unit.common.dependencies.wants.push(wanted.clone());
         } else {
-            warn!("Dependency {wanting:?} wants {wanted:?}, but {wanting:?} not found");
+            trace!("Dependency {wanting:?} wants {wanted:?}, but {wanting:?} not found");
         }
         if let Some(unit) = units.get_mut(&wanted) {
             unit.common.dependencies.wanted_by.push(wanting);
         } else {
-            warn!("Dependency {wanted:?} wanted by {wanting:?}, but {wanted:?} not found");
+            trace!("Dependency {wanted:?} wanted by {wanting:?}, but {wanted:?} not found");
         }
     }
 
@@ -224,12 +224,12 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
         if let Some(unit) = units.get_mut(&requiring) {
             unit.common.dependencies.requires.push(required.clone());
         } else {
-            warn!("Dependency {requiring:?} requires {required:?}, but {requiring:?} not found");
+            trace!("Dependency {requiring:?} requires {required:?}, but {requiring:?} not found");
         }
         if let Some(unit) = units.get_mut(&required) {
             unit.common.dependencies.required_by.push(requiring);
         } else {
-            warn!("Dependency {required:?} required by {requiring:?}, but {required:?} not found");
+            trace!("Dependency {required:?} required by {requiring:?}, but {required:?} not found");
         }
     }
 
@@ -237,14 +237,14 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
         if let Some(unit) = units.get_mut(&after) {
             unit.common.dependencies.before.push(before);
         } else {
-            warn!("Dependency {before:?} before {after:?}, but {after:?} not found");
+            trace!("Dependency {before:?} before {after:?}, but {after:?} not found");
         }
     }
     for (after, before) in after {
         if let Some(unit) = units.get_mut(&before) {
             unit.common.dependencies.after.push(after);
         } else {
-            warn!("Dependency {after:?} after {before:?}, but {before:?} not found");
+            trace!("Dependency {after:?} after {before:?}, but {before:?} not found");
         }
     }
 
@@ -252,14 +252,14 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
         if let Some(unit) = units.get_mut(&conflicting) {
             unit.common.dependencies.conflicts.push(conflicted.clone());
         } else {
-            warn!(
+            trace!(
                 "Dependency {conflicting:?} conflicts with {conflicted:?}, but {conflicting:?} not found"
             );
         }
         if let Some(unit) = units.get_mut(&conflicted) {
             unit.common.dependencies.conflicted_by.push(conflicting);
         } else {
-            warn!(
+            trace!(
                 "Dependency {conflicted:?} conflicted by {conflicting:?}, but {conflicted:?} not found"
             );
         }
@@ -270,7 +270,7 @@ pub fn fill_dependencies(units: &mut HashMap<UnitId, Unit>) -> Result<(), String
         if let Some(unit) = units.get_mut(&target) {
             unit.common.dependencies.part_of_by.push(dependent);
         } else {
-            warn!("Dependency {dependent:?} is PartOf {target:?}, but {target:?} not found");
+            trace!("Dependency {dependent:?} is PartOf {target:?}, but {target:?} not found");
         }
     }
 

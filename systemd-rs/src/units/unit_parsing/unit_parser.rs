@@ -1,7 +1,7 @@
 //! Parse all supported unit types / options for these and do needed operations like matching services <-> sockets and adding implicit dependencies like
 //! all sockets to socket.target
 
-use log::{debug, trace, warn};
+use log::{debug, trace};
 
 use crate::units::{
     EnvVars, ParsedExecSection, ParsedInstallSection, ParsedUnitSection, ParsingErrorReason,
@@ -232,7 +232,7 @@ pub fn parse_unit_section(
             trace!("Silently ignoring vendor extension in [Unit] section: {key}");
             continue;
         }
-        warn!("Ignoring unsupported setting in [Unit] section: {key}");
+        trace!("Ignoring unsupported setting in [Unit] section: {key}");
     }
 
     // Parse RequiresMountsFor= paths and generate implicit mount unit deps
@@ -612,7 +612,7 @@ fn make_stdio_option(setting: &str) -> Result<StdIoOption, ParsingErrorReason> {
             Ok(StdIoOption::AppendFile(p.into()))
         }
         _ => {
-            warn!(
+            trace!(
                 "Unsupported StandardOutput/StandardError={}, treating as inherit",
                 setting
             );
@@ -727,7 +727,7 @@ pub fn parse_exec_section(
                     "tty-force" => super::StandardInput::TtyForce,
                     "tty-fail" => super::StandardInput::TtyFail,
                     other => {
-                        warn!("Unsupported StandardInput={}, falling back to null", other);
+                        trace!("Unsupported StandardInput={}, falling back to null", other);
                         super::StandardInput::Null
                     }
                 }
@@ -2017,7 +2017,7 @@ pub fn parse_install_section(
             trace!("Silently ignoring vendor extension in [Install] section: {key}");
             continue;
         }
-        warn!("Ignoring unsupported setting in [Install] section: {key}");
+        trace!("Ignoring unsupported setting in [Install] section: {key}");
     }
 
     Ok(ParsedInstallSection {

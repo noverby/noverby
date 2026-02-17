@@ -1,4 +1,4 @@
-use log::{trace, warn};
+use log::trace;
 
 use crate::sockets::{
     FifoConfig, NetlinkSocketConfig, SocketKind, SpecialFileConfig, SpecializedSocketConfig,
@@ -39,7 +39,7 @@ pub fn parse_socket(
                 );
             }
             _ => {
-                warn!("Ignoring unknown section in socket unit {path:?}: {name}");
+                trace!("Ignoring unknown section in socket unit {path:?}: {name}");
             }
         }
     }
@@ -143,7 +143,7 @@ fn parse_socket_section(
             trace!("Silently ignoring vendor extension in [Socket] section: {key}");
             continue;
         }
-        warn!("Ignoring unsupported setting in [Socket] section: {key}");
+        trace!("Ignoring unsupported setting in [Socket] section: {key}");
     }
     let fdname = match fdname {
         None => None,

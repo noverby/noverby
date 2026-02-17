@@ -1,4 +1,4 @@
-use log::{trace, warn};
+use log::trace;
 
 use crate::units::{
     Commandline, CommandlinePrefix, Delegate, KeyringMode, KillMode, MemoryPressureWatch,
@@ -229,7 +229,7 @@ fn parse_success_exit_status(raw: &str) -> SuccessExitStatus {
         } else if let Some(sig) = parse_signal_name(token) {
             signals.push(sig);
         } else {
-            warn!("SuccessExitStatus: ignoring unrecognised token: {token}");
+            trace!("SuccessExitStatus: ignoring unrecognised token: {token}");
         }
     }
     SuccessExitStatus {
@@ -264,7 +264,7 @@ pub fn parse_service(
                 );
             }
             _ => {
-                warn!("Ignoring unknown section in service unit {path:?}: {name}");
+                trace!("Ignoring unknown section in service unit {path:?}: {name}");
             }
         }
     }
@@ -442,7 +442,7 @@ fn parse_service_section(
             trace!("Silently ignoring vendor extension in [Service] section: {key}");
             continue;
         }
-        warn!("Ignoring unsupported setting in [Service] section: {key}");
+        trace!("Ignoring unsupported setting in [Service] section: {key}");
     }
 
     let limit_nofile = match limit_nofile {

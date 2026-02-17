@@ -9,9 +9,7 @@ use crate::units::{
     UnitIdKind, UnitStatus,
 };
 
-#[cfg(feature = "cgroups")]
 use log::trace;
-use log::warn;
 
 use std::convert::TryInto;
 use std::path::PathBuf;
@@ -294,7 +292,7 @@ fn collect_supported_unit_ids(names: Vec<String>) -> Vec<UnitId> {
         match <&str as TryInto<UnitId>>::try_into(name.as_str()) {
             Ok(id) => ids.push(id),
             Err(_) => {
-                warn!(
+                trace!(
                     "Skipping unsupported unit type in dependency list: {}",
                     name
                 );
