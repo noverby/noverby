@@ -8,9 +8,9 @@ use crate::units::{ParsingError, Specific, Unit, UnitId, get_file_list, parse_fi
 
 use directory_deps::{
     DirectoryDependency, apply_directory_dependencies, apply_dropins, collect_dep_dir_entries,
-    collect_dropin_entries, generate_getty_units, insert_parsed_unit, instantiate_template_units,
-    is_template_unit, is_unit_file, parse_dep_dir_name, parse_dropin_dir_name,
-    resolve_symlink_aliases,
+    collect_dropin_entries, generate_fstab_mount_units, generate_getty_units, insert_parsed_unit,
+    instantiate_template_units, is_template_unit, is_unit_file, parse_dep_dir_name,
+    parse_dropin_dir_name, resolve_symlink_aliases,
 };
 
 use std::collections::HashMap;
@@ -106,6 +106,9 @@ pub fn load_all_units(
 
     // Instantiate template units referenced by directory dependencies
     instantiate_template_units(&mut unit_table, &dir_deps, paths, &dropins);
+
+    // Generate mount units from /etc/fstab (replaces systemd-fstab-generator)
+    generate_fstab_mount_units(&mut unit_table);
 
     // Generate getty instances from /proc/cmdline (replaces systemd-getty-generator)
     generate_getty_units(&mut unit_table, paths, &dropins);
