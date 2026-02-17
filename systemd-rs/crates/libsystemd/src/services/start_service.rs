@@ -300,6 +300,7 @@ fn start_service_with_filedescriptors(
         ),
         stdout_is_tty: matches!(conf.exec_config.stdout_path, Some(StdIoOption::Tty)),
         stderr_is_tty: matches!(conf.exec_config.stderr_path, Some(StdIoOption::Tty)),
+        ambient_capabilities: conf.exec_config.ambient_capabilities.clone(),
     };
 
     let marshalled_config = serde_json::to_string(&exec_helper_conf).unwrap();
