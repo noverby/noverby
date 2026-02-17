@@ -765,7 +765,6 @@ fn generate_random_u128() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
 
     fn make_test_entry(msg: &str, priority: u8, seqnum: u64) -> JournalEntry {
         let mut entry = JournalEntry::with_timestamp(1_700_000_000_000_000 + seqnum, seqnum * 1000);

@@ -16,5 +16,13 @@ members = [
     "crates/journalctl",
     "crates/shutdown",
     "crates/sleep",
+    "crates/modules-load",
+    "crates/sysctl",
+    "crates/binfmt",
+    "crates/vconsole-setup",
+    "crates/backlight",
+    "crates/rfkill",
+    "crates/tmpfiles",
+    "crates/sysusers",
 ]
 resolver = "2"

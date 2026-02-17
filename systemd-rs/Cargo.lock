@@ -586,6 +586,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-backlight"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "log",
+]
+
+[[package]]
+name = "systemd-binfmt"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "log",
+]
+
+[[package]]
 name = "systemd-cat"
 version = "0.1.0"
 dependencies = [
@@ -637,6 +653,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-modules-load"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "log",
+]
+
+[[package]]
 name = "systemd-notify"
 version = "0.1.0"
 dependencies = [
@@ -650,6 +674,14 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "libc",
+]
+
+[[package]]
+name = "systemd-rfkill"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "log",
 ]
 
 [[package]]
@@ -674,6 +706,40 @@ dependencies = [
 
 [[package]]
 name = "systemd-sleep"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "log",
+]
+
+[[package]]
+name = "systemd-sysctl"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "log",
+]
+
+[[package]]
+name = "systemd-sysusers"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "libc",
+ "log",
+]
+
+[[package]]
+name = "systemd-tmpfiles"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "libc",
+ "log",
+]
+
+[[package]]
+name = "systemd-vconsole-setup"
 version = "0.1.0"
 dependencies = [
  "clap",
