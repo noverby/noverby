@@ -12,7 +12,7 @@ run:
       --kernel "$KERNEL" \
       --initramfs "$INITRD" \
       --disk path=nixos-rs.raw \
-      --cmdline "console=ttyS0 root=LABEL=nixos init=/nix/var/nix/profiles/system/init" \
+      --cmdline "console=ttyS0 quiet root=LABEL=nixos init=/nix/var/nix/profiles/system/init" \
       --cpus boot=2 \
       --memory size=4096M \
       --serial tty \
