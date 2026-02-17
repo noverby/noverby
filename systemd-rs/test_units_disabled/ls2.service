@@ -1,6 +1,0 @@
-[Service]
-Exec= /usr/bin/ls /etc
-Restart= no
-
-[Install]
-WantedBy= ls

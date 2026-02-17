@@ -1,2 +1,0 @@
-[Unit]
-Description= "Target that can be referenced by services so they get pulled in"
