@@ -13,11 +13,11 @@
         fileset = lib.fileset.unions [
           ./Cargo.toml
           ./Cargo.lock
-          ./src
+          ./crates
         ];
       };
 
-      cargoHash = "sha256-piZYUTsoTa7KrEyao/B0cnA24MQWRYD+WzxrT+Y47zQ=";
+      cargoHash = "sha256-BY2RCwSYlzCQo2gUvjN4rk8ZT9cJ3ztCGBg+oFyXHN4=";
 
       buildInputs = [
         dbus
@@ -30,7 +30,7 @@
         homepage = "https://tangled.org/overby.me/overby.me/tree/main/systemd-rs";
         license = lib.licenses.mit;
         maintainers = with lib.maintainers; [noverby];
-        mainProgram = "systemd-rs";
+        mainProgram = "systemd";
       };
     };
 
@@ -93,6 +93,9 @@
         cp -a "$bin" "$out/bin/$name"
       done
 
+      # Make copied binaries writable so systemd-rs can overwrite them
+      chmod -R u+w $out/bin
+
       # Overwrite with systemd-rs binaries (takes precedence)
       for bin in ${systemd-rs}/bin/*; do
         name=$(basename "$bin")
@@ -108,7 +111,7 @@
       # so NixOS actually boots with systemd-rs as PID 1 instead of systemd.
       # NixOS uses $out/lib/systemd/systemd as the init binary (stage-2).
       # We can't symlink because systemd-rs's main() dispatches on argv[0]
-      # ending with "systemd-rs", so we need a wrapper script.
+      # ending with "systemd-rs" or "systemd", so we need a wrapper script.
       rm -f $out/lib/systemd/systemd
       makeBinaryWrapper ${systemd-rs}/bin/systemd $out/lib/systemd/systemd \
         --argv0 systemd-rs

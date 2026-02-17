@@ -282,6 +282,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "libsystemd"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "dbus",
+ "fern",
+ "libc",
+ "log",
+ "nix",
+ "serde",
+ "serde_json",
+ "shlex",
+ "shmemfdrs",
+ "signal-hook",
+ "threadpool",
+ "which",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -491,23 +511,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "systemd-rs"
+name = "systemctl"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "clap",
- "dbus",
- "fern",
- "libc",
- "log",
- "nix",
- "serde",
+ "libsystemd",
  "serde_json",
- "shlex",
- "shmemfdrs",
- "signal-hook",
- "threadpool",
- "which",
+]
+
+[[package]]
+name = "systemd"
+version = "0.1.0"
+dependencies = [
+ "libsystemd",
 ]
 
 [[package]]
