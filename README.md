@@ -87,7 +87,6 @@
 |-|-|
 | [Mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/mojo.nix) | Mojo development toolchain |
 | [Envy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/envy.nix) | Environment loader CLI tool |
-| [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/lacy.nix) | Fast magical cd alternative |
 | [Nix-sweep 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/nix-sweep.nix) | Nix garbage collector |
 | [Rcgen 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/rcgen.nix) | X.509 certificate generation CLI tool |
 | [Starship-jj 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/starship-jj.nix) | Starship plugin for jj |
@@ -107,6 +106,7 @@
 |-|-|
 | [Busd 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/busd.nix) | A D-Bus bus implementation in Rust |
 | [Cpx 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/cpx.nix) | Cp reimagined |
+| [Lacy 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/lacy.nix) | Fast magical cd alternative |
 | [Sunsetc 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nix/packages/sunsetc.nix) | SSH in Rust |
 
 #### Security
