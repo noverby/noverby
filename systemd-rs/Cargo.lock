@@ -738,6 +738,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-hostnamectl"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+ "nix",
+ "tempfile",
+]
+
+[[package]]
+name = "systemd-hostnamed"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+ "nix",
+ "tempfile",
+]
+
+[[package]]
 name = "systemd-id128"
 version = "0.1.0"
 dependencies = [
@@ -756,6 +776,25 @@ dependencies = [
  "nix",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "systemd-localectl"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+ "tempfile",
+]
+
+[[package]]
+name = "systemd-localed"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+ "nix",
+ "tempfile",
 ]
 
 [[package]]

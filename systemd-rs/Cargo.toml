@@ -33,5 +33,9 @@ members = [
     "crates/random-seed",
     "crates/pstore",
     "crates/machine-id-setup",
+    "crates/hostnamed",
+    "crates/hostnamectl",
+    "crates/localed",
+    "crates/localectl",
 ]
 resolver = "2"
