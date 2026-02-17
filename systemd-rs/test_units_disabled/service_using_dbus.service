@@ -1,5 +1,0 @@
-[Service]
-Exec= /bin/true
-Type= dbus
-BusName= org.freedesktop.DBus
-Restart= no
