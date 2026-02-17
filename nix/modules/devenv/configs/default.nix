@@ -5,5 +5,6 @@
     ln -sf ${./rumdl.toml} rumdl.toml
     ln -sf ${./typos.toml} typos.toml
     ln -sf ${./commitlintrc.yml} .commitlintrc.yml
+    mkdir -p .zed && cp -f ${./zed/settings.json} .zed/settings.json
   '';
 }
