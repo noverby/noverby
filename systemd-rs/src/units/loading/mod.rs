@@ -197,70 +197,7 @@ pub fn load_all_units(
         socket_names
     );
 
-    // Check dbus.socket specifically
-    if unit_table.keys().any(|id| id.name == "dbus.socket") {
-        trace!("DIAG: dbus.socket IS in unit table before fill_dependencies");
-    } else {
-        trace!("DIAG: dbus.socket is NOT in unit table before fill_dependencies");
-    }
-
     fill_dependencies(&mut unit_table).map_err(|e| LoadingError::Dependency(e.into()))?;
-
-    // Log getty-related units after fill_dependencies
-    for id in unit_table.keys() {
-        if id.name.contains("getty") || id.name.contains("ttyS") || id.name.contains("autovt") {
-            let unit = &unit_table[id];
-            let wants: Vec<&str> = unit
-                .common
-                .dependencies
-                .wants
-                .iter()
-                .map(|d| d.name.as_str())
-                .collect();
-            let wanted_by: Vec<&str> = unit
-                .common
-                .dependencies
-                .wanted_by
-                .iter()
-                .map(|d| d.name.as_str())
-                .collect();
-            trace!(
-                "Post-fill unit: {} | wants={:?} | wanted_by={:?}",
-                id.name, wants, wanted_by
-            );
-        }
-    }
-
-    // Check dbus.socket presence before pruning (after fill_dependencies)
-    if unit_table.keys().any(|id| id.name == "dbus.socket") {
-        trace!("DIAG: dbus.socket IS in unit table before prune_units");
-        // Check if systemd-logind.service wants dbus.socket
-        if let Some(logind) = unit_table
-            .values()
-            .find(|u| u.id.name == "systemd-logind.service")
-        {
-            let wants_dbus = logind
-                .common
-                .dependencies
-                .wants
-                .iter()
-                .any(|id| id.name == "dbus.socket");
-            let after_dbus = logind
-                .common
-                .dependencies
-                .after
-                .iter()
-                .any(|id| id.name == "dbus.socket");
-            trace!(
-                "DIAG: systemd-logind.service wants dbus.socket={}, after dbus.socket={}",
-                wants_dbus, after_dbus
-            );
-        }
-    } else {
-        trace!(
-            "DIAG: dbus.socket is NOT in unit table before prune_units (lost during fill_dependencies?)"
-        );
-    }
 
     prune_units(target_unit, &mut unit_table).unwrap();
 
@@ -276,33 +213,8 @@ pub fn load_all_units(
         surviving_sockets
     );
 
-    // Check dbus.socket after pruning
-    if unit_table.keys().any(|id| id.name == "dbus.socket") {
-        trace!("DIAG: dbus.socket survived pruning");
-    } else {
-        trace!("DIAG: dbus.socket was PRUNED");
-    }
-
-    // Log which getty-related units survived pruning
-    for id in unit_table.keys() {
-        if id.name.contains("getty") || id.name.contains("ttyS") || id.name.contains("autovt") {
-            trace!("Survived pruning: {}", id.name);
-        }
-    }
-
     let removed_ids = prune_unused_sockets(&mut unit_table);
     trace!("Finished pruning sockets");
-
-    // Check dbus.socket after socket pruning
-    if unit_table.keys().any(|id| id.name == "dbus.socket") {
-        trace!("DIAG: dbus.socket survived socket pruning");
-    } else {
-        let was_removed = removed_ids.iter().any(|id| id.name == "dbus.socket");
-        trace!(
-            "DIAG: dbus.socket gone after socket pruning (explicitly removed={})",
-            was_removed
-        );
-    }
 
     // Log final socket list
     let final_sockets: Vec<&str> = unit_table

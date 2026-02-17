@@ -165,7 +165,7 @@ impl Service {
         id: UnitId,
         name: &str,
         run_info: &RuntimeInfo,
-        source: ActivationSource,
+        _source: ActivationSource,
     ) -> Result<StartResult, ServiceErrorReason> {
         if let Some(pid) = self.pid {
             return Err(ServiceErrorReason::AlreadyHasPID(pid));
@@ -178,79 +178,78 @@ impl Service {
                 "Inetd style activation is not supported".into(),
             ));
         }
-        if source.is_socket_activation() || conf.sockets.is_empty() {
-            trace!("Start service {name}");
+        // Always start the service when start() is called.  If the service
+        // has associated sockets, the socket units will already have been
+        // activated (opened) before we get here thanks to Requires=/After=
+        // ordering.  Real systemd starts socket-having services immediately
+        // when they are pulled in by Wants=/Requires= from a target; the
+        // WaitingForSocket deferral only applies to services that are NOT
+        // in the active dependency graph and are started on-demand when
+        // traffic arrives on their socket — but in that case start() is
+        // called with ActivationSource::SocketActivation anyway.
+        trace!("Start service {name}");
 
-            super::prepare_service::prepare_service(
-                self,
-                conf,
-                name,
-                &run_info.config.notification_sockets_dir,
-            )
-            .map_err(ServiceErrorReason::PreparingFailed)?;
-            self.run_prestart(conf, id.clone(), name, run_info)
-                .map_err(|prestart_err| {
-                    match self.run_poststop(conf, id.clone(), name, run_info) {
-                        Ok(()) => ServiceErrorReason::PrestartFailed(prestart_err),
-                        Err(poststop_err) => ServiceErrorReason::PrestartAndPoststopFailed(
-                            prestart_err,
-                            poststop_err,
-                        ),
+        super::prepare_service::prepare_service(
+            self,
+            conf,
+            name,
+            &run_info.config.notification_sockets_dir,
+        )
+        .map_err(ServiceErrorReason::PreparingFailed)?;
+        self.run_prestart(conf, id.clone(), name, run_info)
+            .map_err(
+                |prestart_err| match self.run_poststop(conf, id.clone(), name, run_info) {
+                    Ok(()) => ServiceErrorReason::PrestartFailed(prestart_err),
+                    Err(poststop_err) => {
+                        ServiceErrorReason::PrestartAndPoststopFailed(prestart_err, poststop_err)
                     }
-                })?;
+                },
+            )?;
 
-            if conf.exec.is_some() {
-                // Service has an ExecStart command — fork and wait for it.
-                {
-                    let mut pid_table_locked = run_info.pid_table.lock().unwrap();
-                    // This mainly just forks the process. The waiting (if necessary) is done below
-                    // Doing it under the lock of the pid_table prevents races between processes exiting very
-                    // fast and inserting the new pid into the pid table
-                    start_service(
-                        &run_info.config.self_path,
-                        self,
-                        conf,
-                        name,
-                        &run_info.fd_store.read().unwrap(),
-                    )
-                    .map_err(ServiceErrorReason::StartFailed)?;
-                    if let Some(new_pid) = self.pid {
-                        pid_table_locked
-                            .insert(new_pid, PidEntry::Service(id.clone(), conf.srcv_type));
-                    }
+        if conf.exec.is_some() {
+            // Service has an ExecStart command — fork and wait for it.
+            {
+                let mut pid_table_locked = run_info.pid_table.lock().unwrap();
+                // This mainly just forks the process. The waiting (if necessary) is done below
+                // Doing it under the lock of the pid_table prevents races between processes exiting very
+                // fast and inserting the new pid into the pid table
+                start_service(
+                    &run_info.config.self_path,
+                    self,
+                    conf,
+                    name,
+                    &run_info.fd_store.read().unwrap(),
+                )
+                .map_err(ServiceErrorReason::StartFailed)?;
+                if let Some(new_pid) = self.pid {
+                    pid_table_locked.insert(new_pid, PidEntry::Service(id.clone(), conf.srcv_type));
                 }
-
-                super::fork_parent::wait_for_service(self, conf, name, run_info).map_err(
-                    |start_err| match self.run_poststop(conf, id.clone(), name, run_info) {
-                        Ok(()) => ServiceErrorReason::StartFailed(start_err),
-                        Err(poststop_err) => {
-                            ServiceErrorReason::StartAndPoststopFailed(start_err, poststop_err)
-                        }
-                    },
-                )?;
-            } else {
-                // Exec-less oneshot service (e.g. systemd-reboot.service).
-                // No main process to fork — the service succeeds immediately.
-                trace!(
-                    "Service {name} has no ExecStart, treating as immediately successful oneshot"
-                );
             }
 
-            self.run_poststart(conf, id.clone(), name, run_info)
-                .map_err(|poststart_err| {
-                    match self.run_poststop(conf, id.clone(), name, run_info) {
-                        Ok(()) => ServiceErrorReason::PrestartFailed(poststart_err),
-                        Err(poststop_err) => ServiceErrorReason::PoststartAndPoststopFailed(
-                            poststart_err,
-                            poststop_err,
-                        ),
+            super::fork_parent::wait_for_service(self, conf, name, run_info).map_err(
+                |start_err| match self.run_poststop(conf, id.clone(), name, run_info) {
+                    Ok(()) => ServiceErrorReason::StartFailed(start_err),
+                    Err(poststop_err) => {
+                        ServiceErrorReason::StartAndPoststopFailed(start_err, poststop_err)
                     }
-                })?;
-            Ok(StartResult::Started)
+                },
+            )?;
         } else {
-            trace!("Ignore service {name} start, waiting for socket activation instead",);
-            Ok(StartResult::WaitingForSocket)
+            // Exec-less oneshot service (e.g. systemd-reboot.service).
+            // No main process to fork — the service succeeds immediately.
+            trace!("Service {name} has no ExecStart, treating as immediately successful oneshot");
         }
+
+        self.run_poststart(conf, id.clone(), name, run_info)
+            .map_err(
+                |poststart_err| match self.run_poststop(conf, id.clone(), name, run_info) {
+                    Ok(()) => ServiceErrorReason::PrestartFailed(poststart_err),
+                    Err(poststop_err) => {
+                        ServiceErrorReason::PoststartAndPoststopFailed(poststart_err, poststop_err)
+                    }
+                },
+            )?;
+        Ok(StartResult::Started)
     }
 
     pub fn kill_all_remaining_processes(&mut self, conf: &ServiceConfig, name: &str) {

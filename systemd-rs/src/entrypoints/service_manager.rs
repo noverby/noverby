@@ -251,6 +251,70 @@ fn pid1_specific_setup() {
             }
         }
     }
+
+    // Mount cgroup2 filesystem at /sys/fs/cgroup.
+    //
+    // Real systemd mounts this very early during PID 1 initialization.
+    // Many services (notably systemd-journald) need cgroups to work —
+    // without this mount, journald fails with "Failed to acquire cgroup
+    // root path: No medium found" and exits before sending READY=1.
+    //
+    // We mount cgroup2 (the unified hierarchy) which is what modern
+    // systemd expects.  The mount is done with nsdelegate and memory_recursiveprot
+    // options matching what real systemd uses.
+    let _ = std::fs::create_dir_all("/sys/fs/cgroup");
+    match nix::mount::mount(
+        Some("cgroup2"),
+        "/sys/fs/cgroup",
+        Some("cgroup2"),
+        nix::mount::MsFlags::MS_NOSUID
+            | nix::mount::MsFlags::MS_NODEV
+            | nix::mount::MsFlags::MS_NOEXEC,
+        Some("nsdelegate,memory_recursiveprot"),
+    ) {
+        Ok(()) => {
+            eprintln!("systemd-rs: mounted cgroup2 on /sys/fs/cgroup");
+        }
+        Err(nix::Error::EBUSY) => {
+            // Already mounted — fine
+        }
+        Err(e) => {
+            eprintln!("systemd-rs: failed to mount cgroup2 on /sys/fs/cgroup: {e}");
+        }
+    }
+
+    // Ensure /etc/machine-id exists.
+    //
+    // systemd-journald uses the machine-id to name the journal directory
+    // under /var/log/journal/<machine-id>/.  If /etc/machine-id is missing
+    // or empty, journald cannot create persistent storage and may fail.
+    // Real systemd generates this file very early (via systemd-machine-id-setup
+    // or first-boot logic).  We generate a random one if it doesn't exist.
+    let machine_id_path = std::path::Path::new("/etc/machine-id");
+    if !machine_id_path.exists()
+        || std::fs::metadata(machine_id_path).map_or(true, |m| m.len() == 0)
+    {
+        // Generate a random 128-bit ID formatted as 32 hex chars + newline
+        let mut buf = [0u8; 16];
+        if let Ok(f) = std::fs::File::open("/dev/urandom") {
+            use std::io::Read;
+            let mut f = f;
+            if f.read_exact(&mut buf).is_ok() {
+                let hex: String = buf.iter().map(|b| format!("{b:02x}")).collect();
+                if std::fs::write(machine_id_path, format!("{hex}\n")).is_ok() {
+                    eprintln!("systemd-rs: generated /etc/machine-id");
+                }
+            }
+        }
+    }
+
+    // Ensure /var/log/journal exists so that systemd-journald can use
+    // persistent storage and `journalctl --flush` succeeds.  Normally
+    // systemd-tmpfiles-setup creates this, but it may run after (or
+    // concurrently with) systemd-journal-flush.service, and the
+    // RequiresMountsFor=/var/log/journal dependency is silently dropped
+    // because mount units are not yet implemented.
+    let _ = std::fs::create_dir_all("/var/log/journal");
 }
 
 #[cfg(not(target_os = "linux"))]
