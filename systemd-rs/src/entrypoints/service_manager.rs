@@ -153,23 +153,42 @@ fn pid1_specific_setup() {
     // When running as PID 1, the inherited stdin/stdout/stderr may be broken
     // pipes (e.g. the NixOS stage-2 init script redirects stdout through a
     // tee process that can die before exec'ing the service manager).  Reopen
-    // all three standard file descriptors to /dev/console, matching what
-    // systemd does at startup.  This ensures logging actually reaches the
-    // console instead of hitting a dead pipe and panicking.
-    use std::os::unix::io::AsRawFd;
-    let console_path = std::path::Path::new("/dev/console");
-    if console_path.exists() {
-        if let Ok(console) = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(console_path)
-        {
-            let fd = console.as_raw_fd();
-            // dup2 the console fd onto stdin(0), stdout(1), stderr(2)
-            let _ = unsafe { libc::dup2(fd, libc::STDIN_FILENO) };
-            let _ = unsafe { libc::dup2(fd, libc::STDOUT_FILENO) };
-            let _ = unsafe { libc::dup2(fd, libc::STDERR_FILENO) };
-            // The original fd is closed when `console` is dropped (if > 2).
+    // the standard file descriptors matching what real systemd does at startup:
+    //   - stdin  → /dev/null   (PID 1 never reads from the console)
+    //   - stdout → /dev/console (write-only, O_NOCTTY)
+    //   - stderr → /dev/console (write-only, O_NOCTTY)
+    //
+    // Opening /dev/console without O_NOCTTY would make it PID 1's controlling
+    // terminal, which prevents getty from later acquiring it via TIOCSCTTY and
+    // breaks terminal control for login shells.  Real systemd uses
+    // make_null_stdio() + a separate write-only /dev/console fd for logging.
+
+    // stdin → /dev/null
+    let null_fd = unsafe {
+        libc::open(
+            b"/dev/null\0".as_ptr().cast(),
+            libc::O_RDWR | libc::O_CLOEXEC,
+        )
+    };
+    if null_fd >= 0 {
+        let _ = unsafe { libc::dup2(null_fd, libc::STDIN_FILENO) };
+        if null_fd > libc::STDERR_FILENO {
+            unsafe { libc::close(null_fd) };
+        }
+    }
+
+    // stdout/stderr → /dev/console (write-only, O_NOCTTY)
+    let console_fd = unsafe {
+        libc::open(
+            b"/dev/console\0".as_ptr().cast(),
+            libc::O_WRONLY | libc::O_NOCTTY | libc::O_CLOEXEC,
+        )
+    };
+    if console_fd >= 0 {
+        let _ = unsafe { libc::dup2(console_fd, libc::STDOUT_FILENO) };
+        let _ = unsafe { libc::dup2(console_fd, libc::STDERR_FILENO) };
+        if console_fd > libc::STDERR_FILENO {
+            unsafe { libc::close(console_fd) };
         }
     }
 

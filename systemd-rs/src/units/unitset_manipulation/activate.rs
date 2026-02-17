@@ -2,7 +2,7 @@
 
 use crate::runtime_info::{ArcMutRuntimeInfo, RuntimeInfo, UnitTable};
 use crate::services::ServiceErrorReason;
-use crate::units::{UnitAction, UnitId, UnitStatus};
+use crate::units::{StatusStopped, UnitAction, UnitId, UnitStatus};
 
 use log::{error, info, trace, warn};
 use std::sync::{Arc, Mutex};
@@ -150,6 +150,10 @@ pub fn unstarted_deps(id: &UnitId, run_info: &RuntimeInfo) -> Vec<UnitId> {
             };
 
             if !ready {
+                info!(
+                    "unstarted_deps: {:?} waiting for {:?} (required={}, status={}, ready={})",
+                    id, elem, required, status_locked, ready
+                );
                 acc.push(elem.clone());
             }
             acc
@@ -206,6 +210,14 @@ pub fn activate_unit(
                 "Condition failed for unit {:?}: {:?}. Skipping activation.",
                 id_to_start, condition
             );
+            // Mark the unit as stopped so that units with After= on this unit
+            // see it as "no longer NeverStarted" and can proceed.  Real systemd
+            // treats condition-failed units as successfully finished (they just
+            // didn't need to do anything).
+            {
+                let mut status = unit.common.status.write().unwrap();
+                *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
+            }
             // Return the next services so the dependency graph can still proceed.
             // The unit itself just won't be started.
             let next_services_ids = unit.common.dependencies.before.clone();
@@ -274,6 +286,32 @@ pub fn activate_unit(
                     execute_unit_action(&failure_action, &id_to_start.name);
                 }
             }
+
+            // For non-dependency errors (i.e. the unit genuinely failed to
+            // start), still propagate the `before` chain so that units
+            // ordered After= this one can proceed.  Real systemd does not
+            // block After=-ordered units when a Wants= dependency fails;
+            // only hard Requires=/BindsTo= failures propagate.  The
+            // `unstarted_deps` check already handles that distinction:
+            // optional (non-required) After= deps only need to have left
+            // NeverStarted state, which a failed unit does.
+            if !matches!(e.reason, UnitOperationErrorReason::DependencyError(_)) {
+                info!(
+                    "Unit {} failed but propagating before-chain to {} units: {:?}",
+                    id_to_start.name,
+                    next_services_ids.len(),
+                    next_services_ids
+                        .iter()
+                        .map(|id| id.name.as_str())
+                        .collect::<Vec<&str>>()
+                );
+                // Also log the error so it's visible
+                error!("Error while activating unit {e}");
+                // Return the before-chain wrapped in Ok so the activation
+                // graph keeps walking even though this unit failed.
+                return Ok(StartResult::Started(next_services_ids));
+            }
+
             Err(e)
         }
     }
@@ -406,14 +444,25 @@ pub fn activate_needed_units(
         let run_info = run_info.read().unwrap();
         collect_unit_start_subgraph(&mut needed_ids, &run_info.unit_table);
     }
-    trace!("Needed units to start {target_id:?}: {needed_ids:?}");
+    let needed_names: Vec<&str> = needed_ids.iter().map(|id| id.name.as_str()).collect();
+    info!(
+        "activate_needed_units: target={}, needed_ids count={}, units: {:?}",
+        target_id.name,
+        needed_ids.len(),
+        needed_names
+    );
 
     // collect all 'root' units. These are units that do not have any 'after' relations to other unstarted units.
     // These can be started and the the graph can be traversed and other units can be started as soon as
     // all other units they depend on are started. This works because the units form an DAG if only
     // the 'after' relations are considered for traversal.
     let root_units = { find_startable_units(&needed_ids, &run_info.read().unwrap()) };
-    trace!("Root units found: {root_units:?}");
+    let root_names: Vec<&str> = root_units.iter().map(|id| id.name.as_str()).collect();
+    info!(
+        "activate_needed_units: root units count={}: {:?}",
+        root_units.len(),
+        root_names
+    );
 
     // TODO make configurable or at least make guess about amount of threads
     let tpool = ThreadPool::new(6);
@@ -427,6 +476,7 @@ pub fn activate_needed_units(
     );
 
     tpool.join();
+    info!("activate_needed_units: threadpool joined, activation complete");
     // TODO can we handle errors in a more meaningful way?
     let errs = (*errors.lock().unwrap()).clone();
     for err in &errs {
@@ -462,6 +512,27 @@ fn activate_units_recursive(
         .into_iter()
         .filter(|id| filter_ids.contains(id))
         .collect();
+
+    if !startables.is_empty() {
+        let names: Vec<&str> = startables.iter().map(|id| id.name.as_str()).collect();
+        info!("activate_units_recursive: startable units: {:?}", names);
+    }
+    if !ids_to_start.is_empty() && startables.is_empty() {
+        let run_info_guard = run_info.read().unwrap();
+        for id in &ids_to_start {
+            if filter_ids.contains(id) {
+                let unstarted = unstarted_deps(id, &run_info_guard);
+                if !unstarted.is_empty() {
+                    let dep_names: Vec<&str> = unstarted.iter().map(|d| d.name.as_str()).collect();
+                    info!(
+                        "activate_units_recursive: {} NOT startable, waiting for: {:?}",
+                        id.name, dep_names
+                    );
+                }
+            }
+        }
+        drop(run_info_guard);
+    }
 
     for id in startables {
         // make copies to move into the closure

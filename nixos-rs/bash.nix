@@ -21,17 +21,9 @@
              which makes brush exit with "input error occurred". */
           signal(SIGTTOU, SIG_IGN);
           signal(SIGTSTP, SIG_IGN);
-          /* Set up the process group and foreground ownership here in
-             the wrapper, so brush's TerminalControl::acquire() becomes
-             a no-op. This avoids brush's silent tcsetpgrp() failure
-             (it ignores ENOTTY) that would leave the shell in a
-             background group on serial consoles. */
-          if (isatty(STDIN_FILENO)) {
-            setpgid(0, 0);
-            tcsetpgrp(STDIN_FILENO, getpgrp());
-          }
           char **new_argv = malloc(sizeof(char *) * (argc * 3 + 7));
           int n = 0;
+          int is_interactive = 1;
           new_argv[n++] = login ? "-brush" : "brush";
           if (login) new_argv[n++] = "--login";
           /* Force the minimal input backend to avoid crossterm hanging
@@ -56,16 +48,30 @@
                   case 'c': case 'o': case 'O':
                     { char f[3] = {'-', argv[i][j], 0}; new_argv[n++] = strdup(f); }
                     for (++i; i < argc; i++) new_argv[n++] = argv[i];
+                    is_interactive = 0;
                     done = 1; break;
                   default: { char f[3] = {'-', argv[i][j], 0}; new_argv[n++] = strdup(f); break; }
                 }
               }
             } else {
               new_argv[n++] = argv[i];
-              if (argv[i][0] != '-') { for (++i; i < argc; i++) new_argv[n++] = argv[i]; done = 1; }
+              if (argv[i][0] != '-') { is_interactive = 0; for (++i; i < argc; i++) new_argv[n++] = argv[i]; done = 1; }
             }
           }
           new_argv[n] = NULL;
+          /* Set up the process group and foreground ownership here in
+             the wrapper, so brush's TerminalControl::acquire() becomes
+             a no-op. This avoids brush's silent tcsetpgrp() failure
+             (it ignores ENOTTY) that would leave the shell in a
+             background group on serial consoles.
+             Only do this for interactive invocations — doing it for
+             non-interactive scripts (e.g. the NixOS stage-2 init
+             script) changes the foreground group and leaves the parent
+             process in a background group, which can block the boot. */
+          if (is_interactive && isatty(STDIN_FILENO)) {
+            setpgid(0, 0);
+            tcsetpgrp(STDIN_FILENO, getpgrp());
+          }
           execv("${pkgs.brush}/bin/brush", new_argv);
           return 1;
         }
