@@ -8,7 +8,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ### What works today
 
-- 2,686 unit tests passing, boot test passing in ~4 seconds
+- 2,875 unit tests passing, boot test passing in ~3 seconds
 - PID 1 initialization with full NixOS compatibility (VFS mounts, `/etc/mtab` symlink, cgroup2, machine-id, hostname, home directories, PAM/NSS diagnostics)
 - Unit file parsing for all NixOS-generated unit files (service, socket, target, mount, timer, path, slice, scope)
 - Dependency graph resolution and parallel unit activation
@@ -24,11 +24,20 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 - Machine ID setup (systemd-machine-id-setup initializes/commits machine-id)
 - Hostname management (systemd-hostnamed manages static/pretty/transient hostnames, hostnamectl CLI)
 - Locale/keymap management (systemd-localed manages locale and keyboard config, localectl CLI)
+- Boot performance analysis (systemd-analyze with blame, time, critical-chain, calendar, timespan, timestamp, verify, condition, dot, security)
+- Cgroup hierarchy listing (systemd-cgls) and real-time resource monitoring (systemd-cgtop)
+- Inhibitor lock management (systemd-inhibit acquires/lists/releases locks)
+- Mount/unmount operations (systemd-mount/systemd-umount with transient unit creation, mount table listing)
 - Clean shutdown with filesystem unmount
-- 37 crates implemented across Phases 0–4
+- 42 crates implemented across Phases 0–5
 
 ### Recent changes
 
+- Implemented `systemd-analyze` — boot performance analysis and debugging tool with `time` (overall boot timing), `blame` (units sorted by startup duration), `critical-chain` (time-critical unit chain), `calendar` (normalize calendar time specs), `timespan` (normalize time span specs), `timestamp` (normalize timestamp specs), `verify` (validate unit files for correctness), `condition` (evaluate Condition*/Assert* expressions), `dot` (generate dependency graph in dot format), `unit-paths` (list unit file search paths), `log-level`/`log-target` (get/set manager log settings), `service-watchdogs` (get/set watchdog state), `security` (audit unit security hardening) subcommands
+- Implemented `systemd-cgls` — recursively display cgroup2 hierarchy as an indented tree with process listings; supports `--all` (show empty cgroups), `--kernel-threads`, `--depth` limit, `--full` output, specific cgroup path arguments
+- Implemented `systemd-cgtop` — real-time cgroup resource monitor showing CPU percentage, memory usage, and I/O bytes per cgroup; supports sorting by CPU/memory/IO/tasks/path, batch mode, depth limit, configurable refresh interval and iteration count
+- Implemented `systemd-inhibit` — inhibitor lock management tool; acquires shutdown/sleep/idle/handle-* locks while running a command, supports `--list` to show active locks, `--mode block|delay`, automatic stale lock cleanup; lock files stored in `/run/systemd/inhibit/`
+- Implemented `systemd-mount` / `systemd-umount` — transient mount/automount unit creation; `--list` shows active mount table from `/proc/self/mountinfo`; supports `--type`, `--options`, `--read-only`, `--mkdir`, `--automount`, `--timeout-idle-sec`, `--property`, `--force`/`--lazy` unmount; generates proper unit names with path escaping
 - Implemented `systemd-hostnamed` — hostname management daemon managing static hostname (`/etc/hostname`), pretty hostname, and transient (kernel) hostname; reads/writes `/etc/machine-info` for chassis, deployment, location, icon name, hardware vendor/model; auto-detects chassis type from DMI SMBIOS data; reads OS info from `/etc/os-release`; provides control socket for runtime queries/updates; `hostnamectl` CLI with `status`, `show`, `hostname`, `set-hostname`, `icon-name`, `chassis`, `deployment`, `location` commands; supports `--transient`, `--static`, `--pretty` flags and `-p`/`--property` filtering
 - Implemented `systemd-localed` — locale and keyboard layout management daemon managing system locale (`/etc/locale.conf`), virtual console keymap (`/etc/vconsole.conf`), and X11 keyboard layout (`/etc/X11/xorg.conf.d/00-keyboard.conf`); supports all 15 standard locale variables (LANG, LANGUAGE, LC_*); provides control socket for runtime changes; `localectl` CLI with `status`, `show`, `set-locale`, `set-keymap`, `set-x11-keymap`, `list-keymaps`, `list-x11-keymap-layouts`, `list-x11-keymap-models`, `list-x11-keymap-variants`, `list-x11-keymap-options` commands
 - Enhanced `systemctl` — added support for common flags (`--no-block`, `--quiet`, `--force`, `--no-pager`, `--no-ask-password`, `--system`, `-a`, `-q`, `-f`, `-l`, `-t`, `-p`, etc.); flags are stripped before sending commands to PID 1; added command aliases (`poweroff`/`reboot`/`halt` → `shutdown`, `daemon-reload` → `reload`, `condrestart`/`force-reload` → `try-restart`); added proper exit code handling for `is-active` (0=active, 3=inactive), `is-enabled`, `is-failed`; suppresses empty output for commands like `try-restart` (fixes `resolvconf.service` printing `[]` to stdout)
@@ -94,22 +103,22 @@ crates/
 ├── oomctl/              # OOM killer control tool
 ├── coredump/            # Core dump handler (systemd-coredump)
 ├── coredumpctl/         # Core dump query tool
-├── analyze/             # Boot performance analyzer (systemd-analyze)
+├── analyze/             # Boot performance analyzer (systemd-analyze) ✅
 ├── run/                 # Transient unit runner (systemd-run)
-├── cgls/                # Cgroup listing tool (systemd-cgls)
-├── cgtop/               # Cgroup resource monitor (systemd-cgtop)
+├── cgls/                # Cgroup listing tool (systemd-cgls) ✅
+├── cgtop/               # Cgroup resource monitor (systemd-cgtop) ✅
 ├── cat/                 # Unit file viewer (systemd-cat)
 ├── delta/               # Unit file override viewer (systemd-delta)
 ├── detect-virt/         # Virtualization detector (systemd-detect-virt)
 ├── escape/              # Unit name escaping tool (systemd-escape)
 ├── id128/               # 128-bit ID tool (systemd-id128)
-├── mount/               # Mount/unmount utilities (systemd-mount, systemd-umount)
+├── mount/               # Mount/unmount utilities (systemd-mount, systemd-umount) ✅
 ├── notify/              # Notification sender (systemd-notify)
 ├── path/                # Path operation tool (systemd-path)
 ├── socket-activate/     # Socket activation tool (systemd-socket-activate)
 ├── ask-password/        # Password query tool (systemd-ask-password)
 ├── tty-ask-password-agent/ # Password agent (systemd-tty-ask-password-agent)
-├── inhibit/             # Inhibitor lock tool (systemd-inhibit)
+├── inhibit/             # Inhibitor lock tool (systemd-inhibit) ✅
 ├── creds/               # Credential management (systemd-creds)
 ├── dissect/             # Image dissection tool (systemd-dissect)
 ├── firstboot/           # First-boot configuration (systemd-firstboot)
@@ -212,21 +221,21 @@ Higher-level management capabilities:
 - ❌ **`dissect`** — disk image inspection tool
 - ❌ **`firstboot`** — initial system configuration wizard
 - ❌ **`creds`** — credential encryption/decryption tool
-- ❌ **`inhibit`** — inhibitor lock tool
+- ✅ **`inhibit`** — inhibitor lock tool with acquire/release/list, block/delay modes, stale lock cleanup
 
 ## Phase 5 — Utilities, Boot & Polish
 
 Remaining components and production readiness:
 
-- ❌ **`analyze`** — boot performance analysis (`blame`, `critical-chain`, `plot`, `dot`, `calendar`, `timespan`, `timestamp`, `verify`, `security`, `inspect-elf`, `fdstore`, `image-policy`, `pcrs`, `srk`, `log-level`, `log-target`, `service-watchdogs`, `condition`)
-- ❌ **`cgls`** / **`cgtop`** — cgroup tree listing and real-time resource monitor
-- ❌ **`mount`** / **`umount`** — mount unit creation and removal
+- ✅ **`analyze`** — boot performance analysis with `blame`, `time`, `critical-chain`, `dot`, `calendar`, `timespan`, `timestamp`, `verify`, `condition`, `unit-paths`, `security`, `log-level`, `log-target`, `service-watchdogs` subcommands; missing: `plot` (SVG), `inspect-elf`, `fdstore`, `image-policy`, `pcrs`, `srk`
+- ✅ **`cgls`** / ✅ **`cgtop`** — cgroup tree listing with process display; real-time cgroup resource monitor with CPU/memory/I/O tracking, sorting, batch mode
+- ✅ **`mount`** / **`umount`** — transient mount/automount unit creation, mount table listing, filesystem mount/unmount with force/lazy options
 - ✅ **`ac-power`** — AC power state detection
 - ✅ **`detect-virt`** — virtualization/container detection
 - ❌ **`sd-boot`** / **`bootctl`** — UEFI boot manager and control tool (this component is EFI, likely stays as a separate build target or FFI)
 - ❌ **`sd-stub`** — UEFI stub for unified kernel images
 - 🔶 **Generator framework** — fstab and getty generators built into `libsystemd`; missing: `systemd-gpt-auto-generator`, `systemd-cryptsetup-generator`, `systemd-debug-generator`, external generator execution
-- 🔶 **Comprehensive test suite** — unit tests exist (~2,500+); integration tests via nixos-rs boot test; missing: differential testing against real systemd
+- 🔶 **Comprehensive test suite** — unit tests exist (~2,875); integration tests via nixos-rs boot test; missing: differential testing against real systemd
 - ❌ **Documentation** — man-page-compatible documentation for all binaries and configuration formats
 - 🔶 **NixOS / distro integration** — packaging via `default.nix`, boot testing via `test-boot.sh`, NixOS module via `systemd.nix`; working end-to-end
 
