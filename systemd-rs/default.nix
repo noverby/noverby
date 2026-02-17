@@ -129,6 +129,16 @@
 
       # Replace all references to the real systemd store path with
       # the systemd-rs-systemd output path so NixOS module substitutions work.
+      #
+      # NOTE: Only text files are patched. ELF binaries (e.g. udevadm) have
+      # the original systemd store path compiled into their RPATH and default
+      # config/rules directories. Binary string substitution is NOT safe here
+      # because the store paths are different lengths (the original systemd
+      # path like "...-systemd-258.3" is shorter than our overlay path like
+      # "...-systemd-rs-systemd-unstable"), so replacing would corrupt the
+      # binary layout. This means udevd will still read its built-in rules
+      # from the original systemd package — a cosmetic issue until udevd is
+      # reimplemented in Rust.
       find $out -type f | while read -r f; do
         if file "$f" | grep -q text; then
           substituteInPlace "$f" \

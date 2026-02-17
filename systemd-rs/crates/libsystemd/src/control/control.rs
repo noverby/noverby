@@ -43,10 +43,15 @@ pub enum Command {
     LoadAllNewDry,
     Remove(String),
     Restart(String),
+    TryRestart(String),
+    ReloadOrRestart(String),
     Start(String),
     StartAll(String),
     Stop(String),
     StopAll(String),
+    IsActive(String),
+    IsEnabled(String),
+    IsFailed(String),
     Shutdown,
 }
 
@@ -79,6 +84,61 @@ fn parse_command(call: &super::jsonrpc2::Call) -> Result<Command, ParseError> {
                 }
             };
             Command::Restart(name)
+        }
+        "try-restart" | "condrestart" => {
+            let name = match &call.params {
+                Some(Value::String(s)) => s.clone(),
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "Params must be a single string".to_string(),
+                    ));
+                }
+            };
+            Command::TryRestart(name)
+        }
+        "reload-or-restart" | "reload-or-try-restart" | "force-reload" => {
+            let name = match &call.params {
+                Some(Value::String(s)) => s.clone(),
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "Params must be a single string".to_string(),
+                    ));
+                }
+            };
+            Command::ReloadOrRestart(name)
+        }
+        "is-active" => {
+            let name = match &call.params {
+                Some(Value::String(s)) => s.clone(),
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "Params must be a single string".to_string(),
+                    ));
+                }
+            };
+            Command::IsActive(name)
+        }
+        "is-enabled" => {
+            let name = match &call.params {
+                Some(Value::String(s)) => s.clone(),
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "Params must be a single string".to_string(),
+                    ));
+                }
+            };
+            Command::IsEnabled(name)
+        }
+        "is-failed" => {
+            let name = match &call.params {
+                Some(Value::String(s)) => s.clone(),
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "Params must be a single string".to_string(),
+                    ));
+                }
+            };
+            Command::IsFailed(name)
         }
         "start" => {
             let name = match &call.params {
@@ -166,7 +226,7 @@ fn parse_command(call: &super::jsonrpc2::Call) -> Result<Command, ParseError> {
             Command::ListUnits(kind)
         }
         "shutdown" => Command::Shutdown,
-        "reload" => Command::LoadAllNew,
+        "reload" | "daemon-reload" | "daemon-reexec" => Command::LoadAllNew,
         "reload-dry" => Command::LoadAllNewDry,
         "enable" => {
             let names = match &call.params {
@@ -342,6 +402,111 @@ pub fn execute_command(
 
             crate::units::reactivate_unit(id, run_info).map_err(|e| format!("{e}"))?;
             // Happy
+        }
+        Command::TryRestart(unit_name) => {
+            // try-restart: restart the unit only if it is currently active.
+            // If the unit is not active, do nothing (success).
+            let run_info = &*run_info.read().unwrap();
+            let unit_table = &run_info.unit_table;
+            let units = find_units_with_name(&unit_name, unit_table);
+            if units.is_empty() {
+                // Unit not found — nothing to restart, not an error for try-restart.
+                return Ok(serde_json::json!(null));
+            }
+            if units.len() > 1 {
+                let names: Vec<_> = units.iter().map(|unit| unit.id.name.clone()).collect();
+                return Err(format!(
+                    "More than one unit found with name: {unit_name}: {names:?}"
+                ));
+            }
+
+            let id = units[0].id.clone();
+            // Check if the unit is currently active.
+            let is_active = run_info
+                .unit_table
+                .get(&id)
+                .map(|unit| {
+                    let status_locked = unit.common.status.read().unwrap();
+                    matches!(
+                        *status_locked,
+                        crate::units::UnitStatus::Started(_) | crate::units::UnitStatus::Starting
+                    )
+                })
+                .unwrap_or(false);
+
+            if is_active {
+                crate::units::reactivate_unit(id, run_info).map_err(|e| format!("{e}"))?;
+            }
+            // If not active, silently succeed.
+        }
+        Command::ReloadOrRestart(unit_name) => {
+            // reload-or-restart: try to reload, fall back to restart.
+            // Since we don't support reload yet, just restart.
+            let run_info = &*run_info.read().unwrap();
+            let id = {
+                let unit_table = &run_info.unit_table;
+                let units = find_units_with_name(&unit_name, unit_table);
+                if units.len() > 1 {
+                    let names: Vec<_> = units.iter().map(|unit| unit.id.name.clone()).collect();
+                    return Err(format!(
+                        "More than one unit found with name: {unit_name}: {names:?}"
+                    ));
+                }
+                if units.is_empty() {
+                    return Err(format!("No unit found with name: {unit_name}"));
+                }
+
+                units[0].id.clone()
+            };
+
+            crate::units::reactivate_unit(id, run_info).map_err(|e| format!("{e}"))?;
+        }
+        Command::IsActive(unit_name) => {
+            let run_info = &*run_info.read().unwrap();
+            let unit_table = &run_info.unit_table;
+            let units = find_units_with_name(&unit_name, unit_table);
+            if units.is_empty() {
+                return Ok(serde_json::json!("inactive"));
+            }
+            let unit = &units[0];
+            let status_locked = unit.common.status.read().unwrap();
+            let state = match &*status_locked {
+                crate::units::UnitStatus::Started(_) => "active",
+                crate::units::UnitStatus::Starting => "activating",
+                crate::units::UnitStatus::Stopping => "deactivating",
+                crate::units::UnitStatus::Restarting => "activating",
+                crate::units::UnitStatus::Stopped(_, errors) if !errors.is_empty() => "failed",
+                crate::units::UnitStatus::Stopped(_, _) => "inactive",
+                crate::units::UnitStatus::NeverStarted => "inactive",
+            };
+            return Ok(serde_json::json!(state));
+        }
+        Command::IsEnabled(unit_name) => {
+            // Check if the unit is enabled (i.e. has an [Install] section
+            // and is linked in the target wants).
+            // For now, if the unit is loaded at all, report "enabled".
+            let run_info = &*run_info.read().unwrap();
+            let unit_table = &run_info.unit_table;
+            let units = find_units_with_name(&unit_name, unit_table);
+            if units.is_empty() {
+                return Ok(serde_json::json!("disabled"));
+            }
+            return Ok(serde_json::json!("enabled"));
+        }
+        Command::IsFailed(unit_name) => {
+            let run_info = &*run_info.read().unwrap();
+            let unit_table = &run_info.unit_table;
+            let units = find_units_with_name(&unit_name, unit_table);
+            if units.is_empty() {
+                return Ok(serde_json::json!("inactive"));
+            }
+            let unit = &units[0];
+            let status_locked = unit.common.status.read().unwrap();
+            let state = match &*status_locked {
+                crate::units::UnitStatus::Stopped(_, errors) if !errors.is_empty() => "failed",
+                _ => "inactive",
+            };
+            return Ok(serde_json::json!(state));
         }
         Command::Start(unit_name) => {
             let run_info = &*run_info.read().unwrap();

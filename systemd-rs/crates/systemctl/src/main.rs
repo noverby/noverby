@@ -4,14 +4,76 @@
 //! JSON-RPC 2.0 format and sends them to the systemd-rs control socket.
 //! It reads the response and pretty-prints it.
 //!
-//! In the future this will grow into a full `systemctl` replacement with
-//! all subcommands. For now it provides the same functionality as rsdctl
-//! with a systemctl-compatible binary name.
+//! Handles common systemctl flags (stripping them before sending to PID 1):
+//!   --no-block, --quiet, --no-wall, --force, --system, --user,
+//!   --no-pager, --no-legend, --no-ask-password, --plain, --full,
+//!   --show-types, --failed, --all, -a, -f, -q, -l, -t, -p, -n
+//!
+//! Also handles special commands:
+//!   poweroff, reboot, halt  → mapped to "shutdown"
+//!   daemon-reload           → mapped to "reload"
+//!   try-restart             → forwarded as "try-restart"
+//!   reload-or-restart       → forwarded as "reload-or-restart"
+//!   condrestart             → alias for "try-restart"
+//!   is-active               → checks unit state, exits 0 if active, 3 if not
+//!   is-enabled              → checks unit enablement
+//!   is-failed               → checks if unit is in failed state
 
 use serde_json::Value;
 use std::io::Write;
 
 use libsystemd::control::jsonrpc2::Call;
+
+/// Flags we recognize and strip from the argument list before sending
+/// the command to PID 1. These are common systemctl flags that don't
+/// affect the wire protocol.
+const KNOWN_FLAGS: &[&str] = &[
+    "--no-block",
+    "--quiet",
+    "--no-wall",
+    "--force",
+    "--system",
+    "--user",
+    "--no-pager",
+    "--no-legend",
+    "--no-ask-password",
+    "--plain",
+    "--full",
+    "--show-types",
+    "--failed",
+    "--all",
+    "--wait",
+    "--now",
+    "--runtime",
+    "--global",
+    "--no-reload",
+    "--no-warn",
+    "--check-inhibitors=auto",
+    "--check-inhibitors=yes",
+    "--check-inhibitors=no",
+];
+
+/// Short flags we recognize and strip.
+const KNOWN_SHORT_FLAGS: &[&str] = &["-a", "-f", "-q", "-l"];
+
+/// Short flags that consume the next argument (e.g. `-t service`, `-p MainPID`).
+const SHORT_FLAGS_WITH_VALUE: &[&str] = &["-t", "-p", "-n", "-o", "-H", "-M"];
+
+/// Long flags that consume `=value` or the next argument.
+const LONG_FLAGS_WITH_VALUE: &[&str] = &[
+    "--type",
+    "--property",
+    "--lines",
+    "--output",
+    "--host",
+    "--machine",
+    "--signal",
+    "--kill-who",
+    "--state",
+    "--job-mode",
+    "--root",
+    "--preset-mode",
+];
 
 fn main() {
     let mut args: Vec<_> = std::env::args().collect();
@@ -22,6 +84,12 @@ fn main() {
         return;
     }
 
+    if args[0] == "--version" {
+        println!("systemctl (systemd-rs) 258");
+        return;
+    }
+
+    // Determine the control socket address.
     let addr = if let Ok(env_addr) = std::env::var("SYSTEMCTL_ADDR") {
         env_addr
     } else if args.len() >= 2 && (args[0].contains(':') || args[0].starts_with('/')) {
@@ -32,21 +100,102 @@ fn main() {
         "/run/systemd/systemd-rs-notify/control.socket".to_owned()
     };
 
-    if args.is_empty() {
-        eprintln!("Error: no command specified. Run with --help for usage.");
+    // Extract known flags and separate them from positional arguments.
+    let mut quiet = false;
+    let mut positional: Vec<String> = Vec::new();
+
+    let mut i = 0;
+    while i < args.len() {
+        let arg = &args[i];
+
+        // Check known long flags (exact match).
+        if KNOWN_FLAGS.contains(&arg.as_str()) {
+            if arg == "--quiet" || arg == "-q" {
+                quiet = true;
+            }
+            i += 1;
+            continue;
+        }
+
+        // Check known short flags.
+        if KNOWN_SHORT_FLAGS.contains(&arg.as_str()) {
+            if arg == "-q" {
+                quiet = true;
+            }
+            i += 1;
+            continue;
+        }
+
+        // Check long flags with value (--type=foo or --type foo).
+        let mut matched_long = false;
+        for flag in LONG_FLAGS_WITH_VALUE {
+            if arg == *flag {
+                // Consumes next argument.
+                i += 2;
+                matched_long = true;
+                break;
+            }
+            if arg.starts_with(&format!("{}=", flag)) {
+                i += 1;
+                matched_long = true;
+                break;
+            }
+        }
+        if matched_long {
+            continue;
+        }
+
+        // Check short flags with value (-t service).
+        if SHORT_FLAGS_WITH_VALUE.contains(&arg.as_str()) {
+            // Skip this flag and its value.
+            i += 2;
+            continue;
+        }
+
+        // Not a flag — it's a positional argument.
+        positional.push(arg.clone());
+        i += 1;
+    }
+
+    if positional.is_empty() {
+        if !quiet {
+            eprintln!("Error: no command specified. Run with --help for usage.");
+        }
         std::process::exit(1);
     }
 
-    let params = if args.len() == 2 {
-        Some(Value::String(args[1].clone()))
-    } else if args.len() > 2 {
-        Some(args[1..].iter().cloned().map(Value::String).collect())
+    // Map command aliases.
+    let command = match positional[0].as_str() {
+        "poweroff" | "reboot" | "halt" | "kexec" => {
+            positional[0] = "shutdown".to_string();
+            &positional[0]
+        }
+        "daemon-reload" | "daemon-reexec" => {
+            positional[0] = "reload".to_string();
+            &positional[0]
+        }
+        "condrestart" => {
+            positional[0] = "try-restart".to_string();
+            &positional[0]
+        }
+        "force-reload" => {
+            positional[0] = "try-restart".to_string();
+            &positional[0]
+        }
+        _ => &positional[0],
+    };
+
+    let method = command.clone();
+    let params = if positional.len() == 2 {
+        Some(Value::String(positional[1].clone()))
+    } else if positional.len() > 2 {
+        Some(positional[1..].iter().cloned().map(Value::String).collect())
     } else {
         None
     };
 
     let call = Call {
-        method: args[0].clone(),
+        method,
         params,
         id: None,
     };
@@ -60,11 +209,110 @@ fn main() {
 
     match result {
         Ok(resp) => {
-            println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+            handle_response(&positional[0], &resp, quiet);
         }
         Err(e) => {
-            eprintln!("Error communicating with systemd-rs: {e}");
+            if !quiet {
+                eprintln!("Error communicating with systemd-rs: {e}");
+            }
+            // For is-active, connection failure means the unit is not active.
+            if positional[0] == "is-active" {
+                if !quiet {
+                    println!("inactive");
+                }
+                std::process::exit(3);
+            }
             std::process::exit(1);
+        }
+    }
+}
+
+/// Handle the JSON-RPC response, with special exit code logic for
+/// `is-active`, `is-enabled`, and `is-failed`.
+fn handle_response(command: &str, resp: &Value, quiet: bool) {
+    // Check for JSON-RPC error responses.
+    if let Some(error) = resp.get("error") {
+        let message = error
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown error");
+
+        match command {
+            "is-active" => {
+                if !quiet {
+                    println!("inactive");
+                }
+                std::process::exit(3);
+            }
+            "is-enabled" => {
+                if !quiet {
+                    println!("disabled");
+                }
+                std::process::exit(1);
+            }
+            "is-failed" => {
+                // Not failed (or unknown) → exit 1
+                if !quiet {
+                    println!("inactive");
+                }
+                std::process::exit(1);
+            }
+            _ => {
+                if !quiet {
+                    eprintln!("{}", message);
+                }
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Success response.
+    let result = resp.get("result");
+
+    match command {
+        "is-active" => {
+            let state = result.and_then(|v| v.as_str()).unwrap_or("active");
+            if !quiet {
+                println!("{}", state);
+            }
+            match state {
+                "active" | "reloading" => std::process::exit(0),
+                _ => std::process::exit(3),
+            }
+        }
+        "is-enabled" => {
+            let state = result.and_then(|v| v.as_str()).unwrap_or("enabled");
+            if !quiet {
+                println!("{}", state);
+            }
+            match state {
+                "enabled" | "enabled-runtime" | "static" | "indirect" | "generated" => {
+                    std::process::exit(0)
+                }
+                _ => std::process::exit(1),
+            }
+        }
+        "is-failed" => {
+            let state = result.and_then(|v| v.as_str()).unwrap_or("inactive");
+            if !quiet {
+                println!("{}", state);
+            }
+            match state {
+                "failed" => std::process::exit(0),
+                _ => std::process::exit(1),
+            }
+        }
+        _ => {
+            // For all other commands, print the result if non-null and non-empty.
+            if !quiet {
+                if let Some(result) = result {
+                    let is_empty =
+                        result.is_null() || result.as_array().is_some_and(|a| a.is_empty());
+                    if !is_empty {
+                        println!("{}", serde_json::to_string_pretty(result).unwrap());
+                    }
+                }
+            }
         }
     }
 }
@@ -75,11 +323,11 @@ fn print_help() {
 systemctl — control tool for the systemd-rs service manager
 
 Usage:
-    systemctl [address] <command> [args...]
+    systemctl [OPTIONS] <command> [args...]
 
-The address can be a Unix socket path or a TCP host:port.
-If omitted, it defaults to /run/systemd/systemd-rs-notify/control.socket.
-You can also set the SYSTEMCTL_ADDR environment variable.
+The control socket defaults to /run/systemd/systemd-rs-notify/control.socket.
+You can also set the SYSTEMCTL_ADDR environment variable, or pass a socket
+path or TCP address as the first positional argument.
 
 Commands:
     list-units                  List all loaded units
@@ -87,18 +335,40 @@ Commands:
     start <unit>                Start a unit
     stop <unit>                 Stop a unit
     restart <unit>              Restart a unit
-    start-all                   Start all loaded units
-    stop-all                    Stop all units
-    load-new                    Load a new unit file
-    load-all-new                Load all new unit files
+    try-restart <unit>          Restart a unit if it is active
+    reload-or-restart <unit>    Reload or restart a unit
+    is-active <unit>            Check if a unit is active (exit 0=yes, 3=no)
+    is-enabled <unit>           Check if a unit is enabled
+    is-failed <unit>            Check if a unit is in failed state
+    enable <unit>               Enable (load) a unit
+    daemon-reload               Reload the service manager configuration
+    poweroff                    Power off the system
+    reboot                      Reboot the system
+    halt                        Halt the system
     shutdown                    Shut down the service manager
+
+Options:
+    --no-block                  Do not wait for the operation to complete
+    --quiet, -q                 Suppress output
+    --no-wall                   Do not send wall message before shutdown
+    --force, -f                 Force the operation
+    --no-pager                  Do not pipe output into a pager
+    --no-ask-password           Do not ask for password
+    --no-legend                 Do not print legend (column headers)
+    --system                    Connect to system manager (default)
+    --full, -l                  Show full unit names and descriptions
+    --all, -a                   Show all units, including inactive
+    -t, --type <TYPE>           Filter by unit type
+    -p, --property <PROP>       Show only specified property
+    --help, -h                  Show this help
+    --version                   Show version
 
 Examples:
     systemctl list-units
     systemctl status sshd.service
     systemctl restart nginx.service
-    systemctl /run/systemd/systemd-rs-notify/control.socket list-units
-    systemctl 0.0.0.0:8080 restart test.service"
+    systemctl --no-block try-restart nscd.service
+    systemctl is-active sshd.service"
     );
 }
 
