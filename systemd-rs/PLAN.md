@@ -8,7 +8,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ### What works today
 
-- 2,428 unit tests passing, boot test passing in ~4 seconds
+- 2,523 unit tests passing, boot test passing in ~3 seconds
 - PID 1 initialization with full NixOS compatibility (VFS mounts, `/etc/mtab` symlink, cgroup2, machine-id, hostname, home directories, PAM/NSS diagnostics)
 - Unit file parsing for all NixOS-generated unit files (service, socket, target, mount, timer, path, slice, scope)
 - Dependency graph resolution and parallel unit activation
@@ -17,11 +17,21 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 - Socket activation and `sd_notify` protocol
 - Journal logging (systemd-journald starts and collects logs)
 - NTP time synchronization (systemd-timesyncd starts and syncs clock)
+- User session management (systemd-user-sessions permits/denies logins)
+- Random seed persistence (systemd-random-seed loads/saves kernel entropy)
+- Update-done stamps (systemd-update-done marks /etc and /var as updated)
+- Pstore archival (systemd-pstore archives kernel crash logs)
+- Machine ID setup (systemd-machine-id-setup initializes/commits machine-id)
 - Clean shutdown with filesystem unmount
-- 28 crates implemented across Phases 0–4
+- 33 crates implemented across Phases 0–4
 
 ### Recent changes
 
+- Implemented `systemd-user-sessions` — manages `/run/nologin` to permit/deny user logins; fixes the `autovt@tty1.service` ERROR where the getty failed because `systemd-user-sessions.service` had not reached the expected state; `start` removes `/run/nologin`, `stop` creates it with "System is going down." message
+- Implemented `systemd-update-done` — creates/updates `/etc/.updated` and `/var/.updated` stamp files used by `ConditionNeedsUpdate=` directives; compares modification times against `/usr/` to determine if stamps need refreshing
+- Implemented `systemd-random-seed` — loads/saves the kernel random seed across reboots via `/var/lib/systemd/random-seed` (512 bytes); `load` credits saved seed to `/dev/urandom` and uses `RNDADDENTROPY` ioctl, then immediately refreshes the seed so it's never reused; `save` writes fresh random data for next boot
+- Implemented `systemd-pstore` — archives platform-specific persistent storage entries from `/sys/fs/pstore/` into timestamped subdirectories under `/var/lib/systemd/pstore/`; parses `pstore.conf` with `[PStore]` section (`Storage=external|journal|none`, `Unlink=yes|no`), supports drop-in directories
+- Implemented `systemd-machine-id-setup` — initializes or commits `/etc/machine-id`; supports `--commit` (unmounts transient bind mount and writes persistently), `--print`, `--root=PATH`; tries `/var/lib/dbus/machine-id` and `/sys/class/dmi/id/product_uuid` before generating a random ID
 - Implemented `systemd-timesyncd` — SNTP time synchronization daemon with NTP v4 client, `timesyncd.conf` parsing (including drop-in directories), clock adjustment via `adjtimex()`/`clock_settime()` (slew for small offsets, step for large), clock state persistence in `/var/lib/systemd/timesync/clock`, sd_notify READY/WATCHDOG/STATUS protocol, signal handling (SIGTERM/SIGINT for shutdown, SIGHUP for reload), exponential backoff polling, container detection, graceful degradation when no network is available; `timedatectl` CLI with `status`, `show`, `set-time`, `set-timezone`, `set-ntp`, `list-timezones`, and `timesync-status` commands
 - Implemented `systemd-oomd` — userspace OOM killer with PSI-based memory pressure monitoring, cgroup v2 support, `oomd.conf` parsing, managed cgroup discovery from unit files, swap usage monitoring, `oomctl` CLI with `dump` command; re-enabled `systemd.oomd` in nixos-rs config
 - Added `Assert*` directive support (`AssertPathExists=`, `AssertPathIsDirectory=`, `AssertVirtualization=`, etc.) — like `Condition*` but causes unit failure instead of silent skip
@@ -56,6 +66,11 @@ crates/
 ├── resolvectl/          # Resolver control tool
 ├── timesyncd/           # NTP time synchronization (systemd-timesyncd)
 ├── timedatectl/         # Time/date control tool
+├── user-sessions/       # User session gate (systemd-user-sessions)
+├── update-done/         # Update completion marker (systemd-update-done)
+├── random-seed/         # Random seed persistence (systemd-random-seed)
+├── pstore/              # Persistent storage archival (systemd-pstore)
+├── machine-id-setup/    # Machine ID initialization (systemd-machine-id-setup)
 ├── tmpfiles/            # Temporary file manager (systemd-tmpfiles)
 ├── sysusers/            # Declarative system user manager (systemd-sysusers)
 ├── hostnamed/           # Hostname manager daemon (systemd-hostnamed)
@@ -71,8 +86,6 @@ crates/
 ├── homectl/             # Home directory control tool
 ├── oomd/                # Userspace OOM killer (systemd-oomd)
 ├── oomctl/              # OOM killer control tool
-├── timesyncd/           # NTP time synchronization (systemd-timesyncd)
-├── timedatectl/         # Time/date control tool
 ├── coredump/            # Core dump handler (systemd-coredump)
 ├── coredumpctl/         # Core dump query tool
 ├── analyze/             # Boot performance analyzer (systemd-analyze)
@@ -155,6 +168,11 @@ Services required for a fully functional desktop or server:
 - ✅ **`tmpfiles`** — create/delete/clean temporary files and directories per `tmpfiles.d` configuration
 - ✅ **`sysusers`** — create system users and groups per `sysusers.d` configuration
 - ❌ **`logind`** — login/seat/session tracking, multi-seat support, inhibitor locks, idle detection, power key handling, VT switching, `loginctl` CLI
+- ✅ **`user-sessions`** — manage `/run/nologin` to permit/deny user logins during boot/shutdown
+- ✅ **`update-done`** — create/update `/etc/.updated` and `/var/.updated` stamp files for `ConditionNeedsUpdate=`
+- ✅ **`random-seed`** — load/save kernel random seed across reboots via `/var/lib/systemd/random-seed`
+- ✅ **`pstore`** — archive `/sys/fs/pstore/` crash entries to `/var/lib/systemd/pstore/`
+- ✅ **`machine-id-setup`** — initialize or commit `/etc/machine-id` (with `--commit`, `--print`, `--root`)
 - ✅ **`modules-load`** — load kernel modules from `modules-load.d` configuration
 - ✅ **`sysctl`** — apply sysctl settings from `sysctl.d` configuration
 - ✅ **`binfmt`** — register binary formats via `binfmt_misc` from `binfmt.d` configuration
@@ -202,7 +220,7 @@ Remaining components and production readiness:
 - ❌ **`sd-boot`** / **`bootctl`** — UEFI boot manager and control tool (this component is EFI, likely stays as a separate build target or FFI)
 - ❌ **`sd-stub`** — UEFI stub for unified kernel images
 - 🔶 **Generator framework** — fstab and getty generators built into `libsystemd`; missing: `systemd-gpt-auto-generator`, `systemd-cryptsetup-generator`, `systemd-debug-generator`, external generator execution
-- 🔶 **Comprehensive test suite** — unit tests exist (~2,300+); integration tests via nixos-rs boot test; missing: differential testing against real systemd
+- 🔶 **Comprehensive test suite** — unit tests exist (~2,500+); integration tests via nixos-rs boot test; missing: differential testing against real systemd
 - ❌ **Documentation** — man-page-compatible documentation for all binaries and configuration formats
 - 🔶 **NixOS / distro integration** — packaging via `default.nix`, boot testing via `test-boot.sh`, NixOS module via `systemd.nix`; working end-to-end
 

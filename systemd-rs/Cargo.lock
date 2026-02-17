@@ -759,6 +759,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-machine-id-setup"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tempfile",
+]
+
+[[package]]
 name = "systemd-modules-load"
 version = "0.1.0"
 dependencies = [
@@ -790,6 +798,21 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "libc",
+]
+
+[[package]]
+name = "systemd-pstore"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
+name = "systemd-random-seed"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tempfile",
 ]
 
 [[package]]
@@ -871,6 +894,20 @@ dependencies = [
  "clap",
  "libc",
  "log",
+]
+
+[[package]]
+name = "systemd-update-done"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
+name = "systemd-user-sessions"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
 ]
 
 [[package]]
