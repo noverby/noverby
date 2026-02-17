@@ -79,7 +79,7 @@ pub fn is_template_unit(name: &str) -> bool {
 /// apply to both.
 pub fn resolve_symlink_aliases(
     unit_table: &mut HashMap<UnitId, Unit>,
-    dir_deps: &[DirectoryDependency],
+    _dir_deps: &[DirectoryDependency],
     unit_dirs: &[PathBuf],
 ) {
     // Build a mapping: filename -> symlink target filename (if it's a symlink to another unit)

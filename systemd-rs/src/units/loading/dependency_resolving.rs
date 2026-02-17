@@ -25,8 +25,27 @@ pub fn prune_units(
     let mut ids_to_keep = vec![startunit_id];
     crate::units::collect_unit_start_subgraph(&mut ids_to_keep, unit_table);
 
-    // walk the tree along the wants/requires/before/... relations and record which ids are needed
-    //find_needed_units_recursive(startunit_id, unit_table, &mut ids_to_keep);
+    // Also keep services that are socket-activation targets of surviving sockets.
+    // These services are not in the initial start subgraph (they start on-demand
+    // when a connection arrives on the socket), but they must remain in the unit
+    // table so the socket activation handler can find and start them.
+    let mut socket_activation_services = Vec::new();
+    for id in &ids_to_keep {
+        if let Some(unit) = unit_table.get(id) {
+            if let Specific::Socket(sock) = &unit.specific {
+                for srvc_id in &sock.conf.services {
+                    if !ids_to_keep.contains(srvc_id) {
+                        trace!(
+                            "Keeping socket-activation target {} (needed by socket {})",
+                            srvc_id.name, id.name
+                        );
+                        socket_activation_services.push(srvc_id.clone());
+                    }
+                }
+            }
+        }
+    }
+    ids_to_keep.extend(socket_activation_services);
 
     // Remove all units that have been deemed unnecessary
     let mut ids_to_remove = Vec::new();
@@ -340,8 +359,15 @@ fn add_default_dependency_relations(units: &mut UnitTable) {
             add_after_to_shutdown.push(unit.id.clone());
         }
 
-        // Services and sockets additionally get Requires= and After= on sysinit.target
-        // and After= on basic.target (for services)
+        // Services additionally get Requires= and After= on sysinit.target
+        // and After= on basic.target.
+        //
+        // Socket units do NOT get default dependencies on sysinit.target.
+        // In real systemd, sockets only get Before=sockets.target (added by
+        // add_socket_target_relations) and the shutdown.target conflict.
+        // Adding After=sysinit.target to sockets would create a circular
+        // dependency: socket → After sysinit.target → After sockets.target
+        // → After socket.
         match unit.id.kind {
             UnitIdKind::Service => {
                 if has_sysinit {
@@ -354,15 +380,13 @@ fn add_default_dependency_relations(units: &mut UnitTable) {
                     add_after_to_basic.push(unit.id.clone());
                 }
             }
-            UnitIdKind::Socket => {
-                if has_sysinit {
-                    unit.common.dependencies.requires.push(sysinit_id.clone());
-                    unit.common.dependencies.after.push(sysinit_id.clone());
-                    add_after_to_sysinit.push(unit.id.clone());
-                }
-            }
-            UnitIdKind::Target | UnitIdKind::Slice | UnitIdKind::Mount | UnitIdKind::Device => {
-                // Targets, slices, mounts, and devices only get the shutdown.target conflict/before (already added above)
+            UnitIdKind::Socket
+            | UnitIdKind::Target
+            | UnitIdKind::Slice
+            | UnitIdKind::Mount
+            | UnitIdKind::Device => {
+                // Sockets, targets, slices, mounts, and devices only get the
+                // shutdown.target conflict/before (already added above).
             }
         }
 
@@ -543,7 +567,7 @@ fn apply_sockets_to_services(unit_table: &mut UnitTable) -> Result<(), String> {
             warn!("Added socket: {sock_name} to {counter} services (expected at most one)");
         }
         if counter == 0 {
-            warn!("Added socket: {sock_name} to no service");
+            trace!("Added socket: {sock_name} to no service");
         }
     }
 

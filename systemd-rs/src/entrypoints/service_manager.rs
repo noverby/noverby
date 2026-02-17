@@ -24,6 +24,13 @@ pub fn run_service_manager() {
 
     logging::setup_logging(&log_conf).unwrap();
 
+    // Augment PATH with binary directories derived from the unit search
+    // paths.  Many upstream systemd unit files use bare command names in
+    // ExecStart= (e.g. `systemd-tmpfiles`, `udevadm`).  Real systemd
+    // resolves these via compiled-in prefix paths; systemd-rs adds the
+    // relevant package directories to PATH instead.
+    config::augment_path_from_unit_dirs(&conf.unit_dirs);
+
     #[cfg(feature = "cgroups")]
     {
         platform::cgroups::move_to_own_cgroup(&std::path::PathBuf::from("/sys/fs/cgroup")).unwrap();
