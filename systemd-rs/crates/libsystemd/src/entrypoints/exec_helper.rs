@@ -521,16 +521,6 @@ fn setup_stdin(config: &ExecHelperConfig) {
 
 pub fn run_exec_helper() {
     let config: ExecHelperConfig = serde_json::from_reader(std::io::stdin()).unwrap();
-    eprintln!(
-        "[EXEC_HELPER {}] Starting: {}{}",
-        config.name,
-        config.cmd.display(),
-        if config.args.is_empty() {
-            String::new()
-        } else {
-            format!(" {}", config.args.join(" "))
-        }
-    );
 
     nix::unistd::close(libc::STDIN_FILENO).expect("I want to be able to close this fd!");
 
@@ -778,13 +768,6 @@ pub fn run_exec_helper() {
     // TODO: Audit that the environment access only happens in single-threaded code.
     unsafe { std::env::set_var("LISTEN_PID", format!("{}", nix::unistd::getpid())) };
 
-    eprintln!(
-        "[EXEC_HELPER {}] exec: {} {}",
-        config.name,
-        config.cmd.display(),
-        config.args.join(" ")
-    );
-
     // Apply IgnoreSIGPIPE= setting. When true (the default), set SIGPIPE to
     // SIG_IGN so that writes to broken pipes produce EPIPE errors instead of
     // killing the process. When false, restore the default disposition.
@@ -921,10 +904,6 @@ fn setup_credentials(config: &ExecHelperConfig) {
         // even if no credentials were found (matches systemd behaviour).
         // TODO: Audit that the environment access only happens in single-threaded code.
         unsafe { std::env::set_var("CREDENTIALS_DIRECTORY", &cred_dir) };
-        eprintln!(
-            "[EXEC_HELPER {}] Imported {} credential(s) into {:?}",
-            config.name, imported, cred_dir
-        );
     }
 }
 
@@ -1074,14 +1053,6 @@ fn write_utmp_record(config: &ExecHelperConfig) {
         // Append to wtmp as well.
         updwtmpx(WTMP_PATH.as_ptr() as *const libc::c_char, &ut);
     }
-
-    eprintln!(
-        "[EXEC_HELPER {}] Wrote utmp record (id={:?}, line={}, mode={:?})",
-        config.name,
-        config.utmp_identifier,
-        tty_line(config),
-        config.utmp_mode,
-    );
 }
 
 /// Write a DEAD_PROCESS utmp + wtmp record.  Called from the service manager
