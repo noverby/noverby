@@ -217,12 +217,16 @@ fn pid1_specific_setup() {
     // Each entry is (where, options).  We only mount if the path doesn't
     // already have something mounted on it (checked via a simple stat of
     // the path — if the directory doesn't exist we create it first).
-    let tmpfs_mounts: &[(&str, &str)] = &[
-        ("/run/wrappers", "nodev,mode=755,size=50%"),
-        ("/run/initramfs", "mode=0700"),
+    let tmpfs_mounts: &[(&str, nix::mount::MsFlags, &str)] = &[
+        (
+            "/run/wrappers",
+            nix::mount::MsFlags::MS_NODEV,
+            "mode=755,size=50%",
+        ),
+        ("/run/initramfs", nix::mount::MsFlags::empty(), "mode=0700"),
     ];
 
-    for &(where_path, options) in tmpfs_mounts {
+    for &(where_path, flags, options) in tmpfs_mounts {
         // Create the mount point directory if it doesn't exist
         let _ = std::fs::create_dir_all(where_path);
 
@@ -232,7 +236,7 @@ fn pid1_specific_setup() {
             Some("tmpfs"),
             where_path,
             Some("tmpfs"),
-            nix::mount::MsFlags::empty(),
+            flags,
             Some(options),
         );
         match mount_result {
