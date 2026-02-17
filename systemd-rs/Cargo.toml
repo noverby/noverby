@@ -3,5 +3,14 @@ members = [
     "crates/libsystemd",
     "crates/systemd",
     "crates/systemctl",
+    "crates/id128",
+    "crates/escape",
+    "crates/notify",
+    "crates/path",
+    "crates/cat",
+    "crates/detect-virt",
+    "crates/delta",
+    "crates/run",
+    "crates/ac-power",
 ]
 resolver = "2"

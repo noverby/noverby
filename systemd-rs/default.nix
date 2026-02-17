@@ -17,7 +17,8 @@
         ];
       };
 
-      cargoHash = "sha256-BY2RCwSYlzCQo2gUvjN4rk8ZT9cJ3ztCGBg+oFyXHN4=";
+      # TODO: Run `nix build` to get the correct hash after adding new workspace crates
+      cargoHash = "sha256-0000000000000000000000000000000000000000000=";
 
       buildInputs = [
         dbus
