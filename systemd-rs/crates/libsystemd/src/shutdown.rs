@@ -109,6 +109,29 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
         Specific::Target(_) | Specific::Slice(_) => {
             // Nothing to do
         }
+        Specific::Mount(specific) => {
+            // Unmount the filesystem during shutdown
+            trace!("Unmounting mount unit: {}", unit.id.name);
+            let conf = &specific.conf;
+            let mut umount_flags = nix::mount::MntFlags::empty();
+            if conf.lazy_unmount {
+                umount_flags |= nix::mount::MntFlags::MNT_DETACH;
+            }
+            if conf.force_unmount {
+                umount_flags |= nix::mount::MntFlags::MNT_FORCE;
+            }
+            match nix::mount::umount2(conf.where_.as_str(), umount_flags) {
+                Ok(()) => {
+                    trace!("Unmounted mount unit: {}", unit.id.name);
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to unmount {} ({}): {}",
+                        conf.where_, unit.id.name, e
+                    );
+                }
+            }
+        }
     }
     {
         trace!("Set unit status: {}", unit.id.name);

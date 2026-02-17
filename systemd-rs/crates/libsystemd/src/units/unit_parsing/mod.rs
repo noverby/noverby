@@ -1,9 +1,11 @@
+mod mount_unit;
 mod service_unit;
 mod slice_unit;
 mod socket_unit;
 mod target_unit;
 mod unit_parser;
 
+pub use mount_unit::*;
 pub use service_unit::*;
 pub use slice_unit::*;
 pub use socket_unit::*;

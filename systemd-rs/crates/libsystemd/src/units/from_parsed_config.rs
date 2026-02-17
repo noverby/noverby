@@ -1,12 +1,12 @@
 use crate::services::Service;
 use crate::sockets::Socket;
 use crate::units::{
-    Common, CommonState, Dependencies, ExecConfig, ParsedExecSection, ParsedInstallSection,
-    ParsedServiceConfig, ParsedSingleSocketConfig, ParsedSliceConfig, ParsedSocketConfig,
-    ParsedTargetConfig, ParsedUnitSection, PlatformSpecificServiceFields, ServiceConfig,
-    ServiceSpecific, ServiceState, SingleSocketConfig, SliceSpecific, SliceState, SocketConfig,
-    SocketSpecific, SocketState, Specific, TargetSpecific, TargetState, Unit, UnitConfig, UnitId,
-    UnitIdKind, UnitStatus,
+    Common, CommonState, Dependencies, ExecConfig, MountConfig, MountSpecific, MountState,
+    ParsedExecSection, ParsedInstallSection, ParsedMountConfig, ParsedServiceConfig,
+    ParsedSingleSocketConfig, ParsedSliceConfig, ParsedSocketConfig, ParsedTargetConfig,
+    ParsedUnitSection, PlatformSpecificServiceFields, ServiceConfig, ServiceSpecific, ServiceState,
+    SingleSocketConfig, SliceSpecific, SliceState, SocketConfig, SocketSpecific, SocketState,
+    Specific, TargetSpecific, TargetState, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus,
 };
 
 use log::trace;
@@ -193,6 +193,22 @@ pub fn unit_from_parsed_slice(conf: ParsedSliceConfig) -> Result<Unit, String> {
         common: make_common_from_parsed(conf.common.unit, conf.common.install)?,
         specific: Specific::Slice(SliceSpecific {
             state: RwLock::new(SliceState {
+                common: CommonState::default(),
+            }),
+        }),
+    })
+}
+
+pub fn unit_from_parsed_mount(conf: ParsedMountConfig) -> Result<Unit, String> {
+    Ok(Unit {
+        id: UnitId {
+            kind: UnitIdKind::Mount,
+            name: conf.common.name,
+        },
+        common: make_common_from_parsed(conf.common.unit, conf.common.install)?,
+        specific: Specific::Mount(MountSpecific {
+            conf: MountConfig::from(conf.mount),
+            state: RwLock::new(MountState {
                 common: CommonState::default(),
             }),
         }),
@@ -433,5 +449,11 @@ impl std::convert::TryFrom<ParsedSliceConfig> for Unit {
     type Error = String;
     fn try_from(conf: ParsedSliceConfig) -> Result<Self, String> {
         unit_from_parsed_slice(conf)
+    }
+}
+impl std::convert::TryFrom<ParsedMountConfig> for Unit {
+    type Error = String;
+    fn try_from(conf: ParsedMountConfig) -> Result<Self, String> {
+        unit_from_parsed_mount(conf)
     }
 }

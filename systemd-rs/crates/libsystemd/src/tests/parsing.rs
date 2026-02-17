@@ -43443,3 +43443,672 @@ fn test_condition_security_measured_uki() {
         other => panic!("Expected Security condition, got {:?}", other),
     }
 }
+
+// =============================================================================
+// Mount unit parsing and loading tests
+// =============================================================================
+
+#[test]
+fn test_mount_unit_parsing_basic() {
+    let content = r#"
+    [Unit]
+    Description=Mount /var/log
+
+    [Mount]
+    What=/dev/sda2
+    Where=/var/log
+    Type=ext4
+    Options=defaults,noatime
+    "#;
+
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/var-log.mount");
+    let config = crate::units::parse_mount(parsed_file, &path).unwrap();
+
+    assert_eq!(config.mount.what, "/dev/sda2");
+    assert_eq!(config.mount.where_, "/var/log");
+    assert_eq!(config.mount.fs_type, Some("ext4".to_owned()));
+    assert_eq!(config.mount.options, Some("defaults,noatime".to_owned()));
+    assert!(!config.mount.sloppy_options);
+    assert!(!config.mount.lazy_unmount);
+    assert!(!config.mount.read_write_only);
+    assert!(!config.mount.force_unmount);
+    assert_eq!(config.mount.directory_mode, 0o755);
+    assert_eq!(config.mount.timeout_sec, None);
+    assert_eq!(config.common.unit.description, "Mount /var/log");
+}
+
+#[test]
+fn test_mount_unit_parsing_tmpfs() {
+    let content = r#"
+    [Mount]
+    What=tmpfs
+    Where=/run/wrappers
+    Type=tmpfs
+    Options=mode=755,size=50%
+    "#;
+
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/run-wrappers.mount");
+    let config = crate::units::parse_mount(parsed_file, &path).unwrap();
+
+    assert_eq!(config.mount.what, "tmpfs");
+    assert_eq!(config.mount.where_, "/run/wrappers");
+    assert_eq!(config.mount.fs_type, Some("tmpfs".to_owned()));
+    assert_eq!(config.mount.options, Some("mode=755,size=50%".to_owned()));
+}
+
+#[test]
+fn test_mount_unit_parsing_all_options() {
+    let content = r#"
+    [Mount]
+    What=/dev/sda1
+    Where=/boot
+    Type=vfat
+    Options=umask=0077
+    SloppyOptions=yes
+    LazyUnmount=true
+    ReadWriteOnly=yes
+    ForceUnmount=on
+    DirectoryMode=0700
+    TimeoutSec=60
+    "#;
+
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/boot.mount");
+    let config = crate::units::parse_mount(parsed_file, &path).unwrap();
+
+    assert_eq!(config.mount.what, "/dev/sda1");
+    assert_eq!(config.mount.where_, "/boot");
+    assert_eq!(config.mount.fs_type, Some("vfat".to_owned()));
+    assert!(config.mount.sloppy_options);
+    assert!(config.mount.lazy_unmount);
+    assert!(config.mount.read_write_only);
+    assert!(config.mount.force_unmount);
+    assert_eq!(config.mount.directory_mode, 0o700);
+    assert_eq!(config.mount.timeout_sec, Some(60));
+}
+
+#[test]
+fn test_mount_unit_where_derived_from_name() {
+    let content = r#"
+    [Mount]
+    What=/dev/sda2
+    Type=ext4
+    "#;
+
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/var-log.mount");
+    let config = crate::units::parse_mount(parsed_file, &path).unwrap();
+
+    assert_eq!(config.mount.where_, "/var/log");
+}
+
+#[test]
+fn test_mount_unit_root_filesystem() {
+    let content = r#"
+    [Mount]
+    What=/dev/sda1
+    Type=ext4
+    "#;
+
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/-.mount");
+    let config = crate::units::parse_mount(parsed_file, &path).unwrap();
+
+    assert_eq!(config.mount.where_, "/");
+}
+
+#[test]
+fn test_mount_unit_no_mount_section_defaults() {
+    let content = r#"
+    [Unit]
+    Description=Test mount point
+    "#;
+
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/tmp.mount");
+    let config = crate::units::parse_mount(parsed_file, &path).unwrap();
+
+    assert_eq!(config.mount.where_, "/tmp");
+    assert!(config.mount.what.is_empty());
+    assert_eq!(config.mount.fs_type, None);
+    assert_eq!(config.mount.options, None);
+    assert!(!config.mount.sloppy_options);
+    assert!(!config.mount.lazy_unmount);
+    assert!(!config.mount.read_write_only);
+    assert!(!config.mount.force_unmount);
+    assert_eq!(config.mount.directory_mode, 0o755);
+    assert_eq!(config.mount.timeout_sec, None);
+}
+
+#[test]
+fn test_mount_unit_with_install_section() {
+    let content = r#"
+    [Unit]
+    Description=Mount /home
+
+    [Mount]
+    What=/dev/sda3
+    Where=/home
+    Type=ext4
+
+    [Install]
+    WantedBy=local-fs.target
+    "#;
+
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/home.mount");
+    let config = crate::units::parse_mount(parsed_file, &path).unwrap();
+
+    assert_eq!(config.mount.what, "/dev/sda3");
+    assert_eq!(config.mount.where_, "/home");
+    assert!(
+        config
+            .common
+            .install
+            .wanted_by
+            .contains(&"local-fs.target".to_owned())
+    );
+}
+
+#[test]
+fn test_mount_unit_converts_to_unit() {
+    let content = r#"
+    [Unit]
+    Description=Mount /var
+
+    [Mount]
+    What=/dev/sda2
+    Where=/var
+    Type=ext4
+    Options=defaults
+    "#;
+
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/var.mount");
+    let parsed_config = crate::units::parse_mount(parsed_file, &path).unwrap();
+
+    let unit: crate::units::Unit = std::convert::TryInto::try_into(parsed_config).unwrap();
+
+    assert_eq!(unit.id.name, "var.mount");
+    assert_eq!(unit.id.kind, crate::units::UnitIdKind::Mount);
+    assert!(unit.is_mount());
+    assert!(!unit.is_service());
+    assert!(!unit.is_socket());
+    assert!(!unit.is_target());
+    assert!(!unit.is_slice());
+
+    match &unit.specific {
+        crate::units::Specific::Mount(mount_specific) => {
+            assert_eq!(mount_specific.conf.what, "/dev/sda2");
+            assert_eq!(mount_specific.conf.where_, "/var");
+            assert_eq!(mount_specific.conf.fs_type, Some("ext4".to_owned()));
+            assert_eq!(mount_specific.conf.options, Some("defaults".to_owned()));
+        }
+        _ => panic!("Expected Specific::Mount variant"),
+    }
+}
+
+#[test]
+fn test_mount_unit_converts_to_unit_with_deps() {
+    let content = r#"
+    [Unit]
+    Description=Mount /var/log
+    After=local-fs-pre.target
+    Wants=local-fs-pre.target
+
+    [Mount]
+    What=/dev/sda3
+    Where=/var/log
+    Type=ext4
+    "#;
+
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/var-log.mount");
+    let parsed_config = crate::units::parse_mount(parsed_file, &path).unwrap();
+
+    let unit: crate::units::Unit = std::convert::TryInto::try_into(parsed_config).unwrap();
+
+    assert_eq!(unit.id.name, "var-log.mount");
+    assert_eq!(unit.id.kind, crate::units::UnitIdKind::Mount);
+
+    // Check dependencies
+    let after_names: Vec<&str> = unit
+        .common
+        .dependencies
+        .after
+        .iter()
+        .map(|id| id.name.as_str())
+        .collect();
+    assert!(after_names.contains(&"local-fs-pre.target"));
+
+    let wants_names: Vec<&str> = unit
+        .common
+        .dependencies
+        .wants
+        .iter()
+        .map(|id| id.name.as_str())
+        .collect();
+    assert!(wants_names.contains(&"local-fs-pre.target"));
+}
+
+#[test]
+fn test_mount_unit_default_dependencies_flag() {
+    let content = r#"
+    [Unit]
+    Description=Temporary Directory /tmp
+    DefaultDependencies=no
+
+    [Mount]
+    What=tmpfs
+    Where=/tmp
+    Type=tmpfs
+    "#;
+
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/tmp.mount");
+    let parsed_config = crate::units::parse_mount(parsed_file, &path).unwrap();
+
+    let unit: crate::units::Unit = std::convert::TryInto::try_into(parsed_config).unwrap();
+
+    assert!(!unit.common.unit.default_dependencies);
+}
+
+#[test]
+fn test_mount_unit_conditions() {
+    let content = r#"
+    [Unit]
+    Description=Mount /boot
+    ConditionPathExists=/dev/sda1
+
+    [Mount]
+    What=/dev/sda1
+    Where=/boot
+    Type=vfat
+    "#;
+
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/boot.mount");
+    let parsed_config = crate::units::parse_mount(parsed_file, &path).unwrap();
+
+    let unit: crate::units::Unit = std::convert::TryInto::try_into(parsed_config).unwrap();
+
+    assert!(!unit.common.unit.conditions.is_empty());
+    match &unit.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathExists { path, negate } => {
+            assert_eq!(path, "/dev/sda1");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathExists condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_mount_unit_vendor_extension_ignored() {
+    let content = r#"
+    [Unit]
+    Description=Test mount
+
+    [Mount]
+    What=tmpfs
+    Where=/tmp
+    Type=tmpfs
+
+    [X-Custom]
+    SomeKey=SomeValue
+    "#;
+
+    let parsed_file = crate::units::parse_file(content).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/tmp.mount");
+    let config = crate::units::parse_mount(parsed_file, &path).unwrap();
+
+    assert_eq!(config.mount.what, "tmpfs");
+    assert_eq!(config.mount.where_, "/tmp");
+}
+
+#[test]
+fn test_mount_unit_loaded_from_directory() {
+    // Verify that mount units are loaded when calling load_all_units
+    // with a directory containing .mount files
+    let dir = tempfile::tempdir().unwrap();
+
+    // Write a default.target that wants the mount unit
+    std::fs::write(
+        dir.path().join("default.target"),
+        "[Unit]\nDescription=Default Target\nWants=tmp.mount\n",
+    )
+    .unwrap();
+
+    // Write a mount unit
+    std::fs::write(
+        dir.path().join("tmp.mount"),
+        "[Unit]\nDescription=Mount /tmp\nDefaultDependencies=no\n\n[Mount]\nWhat=tmpfs\nWhere=/tmp\nType=tmpfs\nOptions=mode=1777\n",
+    )
+    .unwrap();
+
+    let paths = vec![dir.path().to_path_buf()];
+    let unit_table = crate::units::load_all_units(&paths, "default.target").unwrap();
+
+    // The mount unit should be in the table
+    let mount_id = crate::units::UnitId {
+        name: "tmp.mount".to_owned(),
+        kind: crate::units::UnitIdKind::Mount,
+    };
+
+    assert!(
+        unit_table.contains_key(&mount_id),
+        "Mount unit tmp.mount should be loaded. Loaded units: {:?}",
+        unit_table.keys().map(|id| &id.name).collect::<Vec<_>>()
+    );
+
+    let mount_unit = unit_table.get(&mount_id).unwrap();
+    assert_eq!(mount_unit.id.name, "tmp.mount");
+    assert!(mount_unit.is_mount());
+
+    match &mount_unit.specific {
+        crate::units::Specific::Mount(mount_specific) => {
+            assert_eq!(mount_specific.conf.what, "tmpfs");
+            assert_eq!(mount_specific.conf.where_, "/tmp");
+            assert_eq!(mount_specific.conf.fs_type, Some("tmpfs".to_owned()));
+            assert_eq!(mount_specific.conf.options, Some("mode=1777".to_owned()));
+        }
+        _ => panic!("Expected Specific::Mount variant"),
+    }
+}
+
+#[test]
+fn test_mount_unit_loaded_with_wants_dependency() {
+    let dir = tempfile::tempdir().unwrap();
+
+    std::fs::write(
+        dir.path().join("default.target"),
+        "[Unit]\nDescription=Default Target\nWants=tmp.mount\n",
+    )
+    .unwrap();
+
+    std::fs::write(
+        dir.path().join("tmp.mount"),
+        "[Unit]\nDescription=Mount /tmp\nDefaultDependencies=no\n\n[Mount]\nWhat=tmpfs\nWhere=/tmp\nType=tmpfs\n",
+    )
+    .unwrap();
+
+    let paths = vec![dir.path().to_path_buf()];
+    let unit_table = crate::units::load_all_units(&paths, "default.target").unwrap();
+
+    // Both units should be present
+    let target_id = crate::units::UnitId {
+        name: "default.target".to_owned(),
+        kind: crate::units::UnitIdKind::Target,
+    };
+    let mount_id = crate::units::UnitId {
+        name: "tmp.mount".to_owned(),
+        kind: crate::units::UnitIdKind::Mount,
+    };
+
+    assert!(unit_table.contains_key(&target_id));
+    assert!(unit_table.contains_key(&mount_id));
+
+    // The target should want the mount unit
+    let target_unit = unit_table.get(&target_id).unwrap();
+    let wants_names: Vec<&str> = target_unit
+        .common
+        .dependencies
+        .wants
+        .iter()
+        .map(|id| id.name.as_str())
+        .collect();
+    assert!(
+        wants_names.contains(&"tmp.mount"),
+        "default.target should want tmp.mount, got wants={:?}",
+        wants_names
+    );
+}
+
+#[test]
+fn test_mount_unit_coexists_with_services_and_targets() {
+    let dir = tempfile::tempdir().unwrap();
+
+    std::fs::write(
+        dir.path().join("default.target"),
+        "[Unit]\nDescription=Default\nWants=test.service tmp.mount\n",
+    )
+    .unwrap();
+
+    std::fs::write(
+        dir.path().join("test.service"),
+        "[Unit]\nDescription=Test Service\nDefaultDependencies=no\n\n[Service]\nExecStart=/bin/true\nType=oneshot\n",
+    )
+    .unwrap();
+
+    std::fs::write(
+        dir.path().join("tmp.mount"),
+        "[Unit]\nDescription=Mount /tmp\nDefaultDependencies=no\n\n[Mount]\nWhat=tmpfs\nWhere=/tmp\nType=tmpfs\n",
+    )
+    .unwrap();
+
+    let paths = vec![dir.path().to_path_buf()];
+    let unit_table = crate::units::load_all_units(&paths, "default.target").unwrap();
+
+    // All three units should be loaded
+    assert!(unit_table.values().any(|u| u.id.name == "default.target"));
+    assert!(unit_table.values().any(|u| u.id.name == "test.service"));
+    assert!(unit_table.values().any(|u| u.id.name == "tmp.mount"));
+
+    // Verify unit type checks
+    let mount_unit = unit_table
+        .values()
+        .find(|u| u.id.name == "tmp.mount")
+        .unwrap();
+    assert!(mount_unit.is_mount());
+    assert!(!mount_unit.is_service());
+    assert!(!mount_unit.is_target());
+
+    let service_unit = unit_table
+        .values()
+        .find(|u| u.id.name == "test.service")
+        .unwrap();
+    assert!(service_unit.is_service());
+    assert!(!service_unit.is_mount());
+}
+
+#[test]
+fn test_mount_unit_mount_config_from_parsed() {
+    use crate::units::{MountConfig, ParsedMountSection};
+
+    let parsed = ParsedMountSection {
+        what: "/dev/sda1".to_owned(),
+        where_: "/boot".to_owned(),
+        fs_type: Some("vfat".to_owned()),
+        options: Some("umask=0077".to_owned()),
+        sloppy_options: true,
+        lazy_unmount: true,
+        read_write_only: false,
+        force_unmount: true,
+        directory_mode: 0o700,
+        timeout_sec: Some(30),
+    };
+
+    let config = MountConfig::from(parsed);
+
+    assert_eq!(config.what, "/dev/sda1");
+    assert_eq!(config.where_, "/boot");
+    assert_eq!(config.fs_type, Some("vfat".to_owned()));
+    assert_eq!(config.options, Some("umask=0077".to_owned()));
+    assert!(config.sloppy_options);
+    assert!(config.lazy_unmount);
+    assert!(!config.read_write_only);
+    assert!(config.force_unmount);
+    assert_eq!(config.directory_mode, 0o700);
+    assert_eq!(config.timeout_sec, Some(30));
+}
+
+#[test]
+fn test_mount_unit_name_to_path_conversions() {
+    use crate::units::mount_unit_name_to_path;
+
+    assert_eq!(mount_unit_name_to_path("-.mount"), "/");
+    assert_eq!(mount_unit_name_to_path("var.mount"), "/var");
+    assert_eq!(mount_unit_name_to_path("var-log.mount"), "/var/log");
+    assert_eq!(
+        mount_unit_name_to_path("var-log-journal.mount"),
+        "/var/log/journal"
+    );
+    assert_eq!(mount_unit_name_to_path("home.mount"), "/home");
+    assert_eq!(
+        mount_unit_name_to_path("run-user-1000.mount"),
+        "/run/user/1000"
+    );
+    assert_eq!(mount_unit_name_to_path("boot.mount"), "/boot");
+    assert_eq!(
+        mount_unit_name_to_path("sys-fs-cgroup.mount"),
+        "/sys/fs/cgroup"
+    );
+}
+
+#[test]
+fn test_mount_unit_id_kind_is_mount() {
+    use std::convert::TryInto;
+
+    let id: crate::units::UnitId = "tmp.mount".try_into().unwrap();
+    assert_eq!(id.kind, crate::units::UnitIdKind::Mount);
+    assert_eq!(id.name, "tmp.mount");
+
+    let id: crate::units::UnitId = "var-log.mount".try_into().unwrap();
+    assert_eq!(id.kind, crate::units::UnitIdKind::Mount);
+    assert_eq!(id.name, "var-log.mount");
+
+    let id: crate::units::UnitId = "-.mount".try_into().unwrap();
+    assert_eq!(id.kind, crate::units::UnitIdKind::Mount);
+    assert_eq!(id.name, "-.mount");
+}
+
+#[test]
+fn test_mount_unit_boolean_parsing_variants() {
+    // Test various boolean value representations
+    let content_yes = r#"
+    [Mount]
+    What=tmpfs
+    Where=/tmp
+    Type=tmpfs
+    SloppyOptions=yes
+    "#;
+    let parsed = crate::units::parse_file(content_yes).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/tmp.mount");
+    let config = crate::units::parse_mount(parsed, &path).unwrap();
+    assert!(config.mount.sloppy_options);
+
+    let content_true = r#"
+    [Mount]
+    What=tmpfs
+    Where=/tmp
+    Type=tmpfs
+    SloppyOptions=true
+    "#;
+    let parsed = crate::units::parse_file(content_true).unwrap();
+    let config = crate::units::parse_mount(parsed, &path).unwrap();
+    assert!(config.mount.sloppy_options);
+
+    let content_1 = r#"
+    [Mount]
+    What=tmpfs
+    Where=/tmp
+    Type=tmpfs
+    SloppyOptions=1
+    "#;
+    let parsed = crate::units::parse_file(content_1).unwrap();
+    let config = crate::units::parse_mount(parsed, &path).unwrap();
+    assert!(config.mount.sloppy_options);
+
+    let content_no = r#"
+    [Mount]
+    What=tmpfs
+    Where=/tmp
+    Type=tmpfs
+    SloppyOptions=no
+    "#;
+    let parsed = crate::units::parse_file(content_no).unwrap();
+    let config = crate::units::parse_mount(parsed, &path).unwrap();
+    assert!(!config.mount.sloppy_options);
+}
+
+#[test]
+fn test_mount_unit_directory_mode_octal() {
+    let content = r#"
+    [Mount]
+    What=tmpfs
+    Where=/tmp
+    Type=tmpfs
+    DirectoryMode=0755
+    "#;
+    let parsed = crate::units::parse_file(content).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/tmp.mount");
+    let config = crate::units::parse_mount(parsed, &path).unwrap();
+    assert_eq!(config.mount.directory_mode, 0o755);
+
+    let content2 = r#"
+    [Mount]
+    What=tmpfs
+    Where=/tmp
+    Type=tmpfs
+    DirectoryMode=0700
+    "#;
+    let parsed = crate::units::parse_file(content2).unwrap();
+    let config = crate::units::parse_mount(parsed, &path).unwrap();
+    assert_eq!(config.mount.directory_mode, 0o700);
+}
+
+#[test]
+fn test_mount_unit_timeout_sec_variants() {
+    let content_num = r#"
+    [Mount]
+    What=tmpfs
+    Where=/tmp
+    Type=tmpfs
+    TimeoutSec=90
+    "#;
+    let parsed = crate::units::parse_file(content_num).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/tmp.mount");
+    let config = crate::units::parse_mount(parsed, &path).unwrap();
+    assert_eq!(config.mount.timeout_sec, Some(90));
+
+    let content_inf = r#"
+    [Mount]
+    What=tmpfs
+    Where=/tmp
+    Type=tmpfs
+    TimeoutSec=infinity
+    "#;
+    let parsed = crate::units::parse_file(content_inf).unwrap();
+    let config = crate::units::parse_mount(parsed, &path).unwrap();
+    assert_eq!(config.mount.timeout_sec, None);
+
+    let content_zero = r#"
+    [Mount]
+    What=tmpfs
+    Where=/tmp
+    Type=tmpfs
+    TimeoutSec=0
+    "#;
+    let parsed = crate::units::parse_file(content_zero).unwrap();
+    let config = crate::units::parse_mount(parsed, &path).unwrap();
+    assert_eq!(config.mount.timeout_sec, None);
+}
+
+#[test]
+fn test_mount_unit_empty_type_and_options() {
+    let content = r#"
+    [Mount]
+    What=/dev/sda1
+    Where=/mnt
+    Type=
+    Options=
+    "#;
+
+    let parsed = crate::units::parse_file(content).unwrap();
+    let path = std::path::PathBuf::from("/etc/systemd/system/mnt.mount");
+    let config = crate::units::parse_mount(parsed, &path).unwrap();
+
+    assert_eq!(config.mount.fs_type, None);
+    assert_eq!(config.mount.options, None);
+}

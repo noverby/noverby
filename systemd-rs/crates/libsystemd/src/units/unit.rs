@@ -1,4 +1,4 @@
-use log::trace;
+use log::{error, info, trace};
 
 use crate::runtime_info::RuntimeInfo;
 use crate::services::Service;
@@ -6,11 +6,11 @@ use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
     ActivationSource, Commandline, DeferTrigger, Delegate, DevicePolicy, EnvVars,
     FileDescriptorStorePreserve, IOSchedulingClass, KeyringMode, KillMode, MemoryLimit,
-    MemoryPressureWatch, NotifyKind, OnFailureJobMode, ProcSubset, ProtectHome, ProtectProc,
-    ProtectSystem, ResourceLimit, RestrictNamespaces, RuntimeDirectoryPreserve, ServiceRestart,
-    ServiceType, StandardInput, StatusStarted, StatusStopped, StdIoOption, TasksMax, Timeout,
-    Timestamping, UnitAction, UnitCondition, UnitId, UnitIdKind, UnitOperationError,
-    UnitOperationErrorReason, UnitStatus, UtmpMode, acquire_locks,
+    MemoryPressureWatch, NotifyKind, OnFailureJobMode, ParsedMountSection, ProcSubset, ProtectHome,
+    ProtectProc, ProtectSystem, ResourceLimit, RestrictNamespaces, RuntimeDirectoryPreserve,
+    ServiceRestart, ServiceType, StandardInput, StatusStarted, StatusStopped, StdIoOption,
+    TasksMax, Timeout, Timestamping, UnitAction, UnitCondition, UnitId, UnitIdKind,
+    UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode, acquire_locks,
 };
 
 use std::sync::RwLock;
@@ -36,6 +36,7 @@ pub enum Specific {
     Socket(SocketSpecific),
     Target(TargetSpecific),
     Slice(SliceSpecific),
+    Mount(MountSpecific),
 }
 
 pub struct ServiceSpecific {
@@ -341,6 +342,11 @@ pub struct SliceSpecific {
     pub state: RwLock<SliceState>,
 }
 
+pub struct MountSpecific {
+    pub conf: MountConfig,
+    pub state: RwLock<MountState>,
+}
+
 #[derive(Default)]
 /// All units have some common mutable state
 pub struct CommonState {
@@ -363,6 +369,52 @@ pub struct SliceState {
     pub common: CommonState,
 }
 
+pub struct MountState {
+    pub common: CommonState,
+}
+
+/// Configuration for a `.mount` unit, derived from the parsed `[Mount]` section.
+#[derive(Debug, Clone)]
+pub struct MountConfig {
+    /// What= — the device, file, or resource to mount.
+    pub what: String,
+    /// Where= — the mount point path.
+    pub where_: String,
+    /// Type= — filesystem type (e.g. "ext4", "tmpfs").
+    pub fs_type: Option<String>,
+    /// Options= — comma-separated mount options.
+    pub options: Option<String>,
+    /// SloppyOptions= — tolerate unknown mount options.
+    pub sloppy_options: bool,
+    /// LazyUnmount= — use MNT_DETACH when unmounting.
+    pub lazy_unmount: bool,
+    /// ReadWriteOnly= — fail if can't mount read-write.
+    pub read_write_only: bool,
+    /// ForceUnmount= — use MNT_FORCE when unmounting.
+    pub force_unmount: bool,
+    /// DirectoryMode= — mode for auto-created mount point directory.
+    pub directory_mode: u32,
+    /// TimeoutSec= — mount operation timeout.
+    pub timeout_sec: Option<u64>,
+}
+
+impl From<ParsedMountSection> for MountConfig {
+    fn from(parsed: ParsedMountSection) -> Self {
+        Self {
+            what: parsed.what,
+            where_: parsed.where_,
+            fs_type: parsed.fs_type,
+            options: parsed.options,
+            sloppy_options: parsed.sloppy_options,
+            lazy_unmount: parsed.lazy_unmount,
+            read_write_only: parsed.read_write_only,
+            force_unmount: parsed.force_unmount,
+            directory_mode: parsed.directory_mode,
+            timeout_sec: parsed.timeout_sec,
+        }
+    }
+}
+
 // Fields are held to keep RwLockWriteGuards alive during activate/deactivate/reactivate
 #[allow(dead_code)]
 enum LockedState<'a> {
@@ -376,6 +428,7 @@ enum LockedState<'a> {
     ),
     Target(std::sync::RwLockWriteGuard<'a, TargetState>),
     Slice(std::sync::RwLockWriteGuard<'a, SliceState>),
+    Mount(std::sync::RwLockWriteGuard<'a, MountState>, &'a MountConfig),
 }
 
 impl Unit {
@@ -550,6 +603,9 @@ impl Unit {
             }
             Specific::Target(specific) => LockedState::Target(specific.state.write().unwrap()),
             Specific::Slice(specific) => LockedState::Slice(specific.state.write().unwrap()),
+            Specific::Mount(specific) => {
+                LockedState::Mount(specific.state.write().unwrap(), &specific.conf)
+            }
         };
 
         {
@@ -620,6 +676,7 @@ impl Unit {
                 let state = &mut *state;
                 state.activate(&self.id, conf, &self.common.status, run_info, source)
             }
+            LockedState::Mount(_, conf) => activate_mount(&self.id, conf, &self.common.status),
         }
     }
 
@@ -635,6 +692,9 @@ impl Unit {
             }
             Specific::Target(specific) => LockedState::Target(specific.state.write().unwrap()),
             Specific::Slice(specific) => LockedState::Slice(specific.state.write().unwrap()),
+            Specific::Mount(specific) => {
+                LockedState::Mount(specific.state.write().unwrap(), &specific.conf)
+            }
         };
 
         {
@@ -673,6 +733,7 @@ impl Unit {
                 let state = &mut *state;
                 state.deactivate(&self.id, conf, &self.common.status, run_info)
             }
+            LockedState::Mount(_, conf) => deactivate_mount(&self.id, conf, &self.common.status),
         }
     }
 
@@ -696,6 +757,9 @@ impl Unit {
             }
             Specific::Target(specific) => LockedState::Target(specific.state.write().unwrap()),
             Specific::Slice(specific) => LockedState::Slice(specific.state.write().unwrap()),
+            Specific::Mount(specific) => {
+                LockedState::Mount(specific.state.write().unwrap(), &specific.conf)
+            }
         };
 
         let need_full_restart = self.state_transition_restarting(run_info).map_err(|bad_ids| {
@@ -726,6 +790,10 @@ impl Unit {
                     let state = &mut *state;
                     state.reactivate(&self.id, conf, &self.common.status, run_info, source)
                 }
+                LockedState::Mount(_, conf) => {
+                    deactivate_mount(&self.id, conf, &self.common.status).ok();
+                    activate_mount(&self.id, conf, &self.common.status).map(|_| ())
+                }
             }
         } else {
             match state {
@@ -746,8 +814,290 @@ impl Unit {
                         .activate(&self.id, conf, &self.common.status, run_info, source)
                         .map(|_| ())
                 }
+                LockedState::Mount(_, conf) => {
+                    activate_mount(&self.id, conf, &self.common.status).map(|_| ())
+                }
             }
         }
+    }
+}
+
+/// Perform the mount(2) syscall for a mount unit.
+///
+/// This creates the mount point directory if needed, then calls mount(2)
+/// with the parameters from the `[Mount]` section. On success the unit
+/// status is set to `Started(Running)`; on failure it is set to
+/// `Stopped(StoppedUnexpected)`.
+#[cfg(target_os = "linux")]
+fn activate_mount(
+    id: &UnitId,
+    conf: &MountConfig,
+    status: &RwLock<UnitStatus>,
+) -> Result<UnitStatus, UnitOperationError> {
+    let where_path = std::path::Path::new(&conf.where_);
+
+    // Check if already mounted by reading /proc/mounts
+    if is_already_mounted(&conf.where_) {
+        info!(
+            "Mount point {} is already mounted, marking as active",
+            conf.where_
+        );
+        let mut status = status.write().unwrap();
+        *status = UnitStatus::Started(StatusStarted::Running);
+        return Ok(UnitStatus::Started(StatusStarted::Running));
+    }
+
+    // Create mount point directory if it doesn't exist
+    if !where_path.exists() {
+        let mode = conf.directory_mode;
+        trace!(
+            "Creating mount point directory {} with mode {:o}",
+            conf.where_, mode
+        );
+        if let Err(e) = std::fs::create_dir_all(where_path) {
+            let reason = UnitOperationErrorReason::GenericStartError(format!(
+                "Failed to create mount point {}: {}",
+                conf.where_, e
+            ));
+            let mut status = status.write().unwrap();
+            *status = UnitStatus::Stopped(StatusStopped::StoppedUnexpected, vec![reason.clone()]);
+            return Err(UnitOperationError {
+                reason,
+                unit_name: id.name.clone(),
+                unit_id: id.clone(),
+            });
+        }
+        // Set directory permissions
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(where_path, std::fs::Permissions::from_mode(mode));
+        }
+    }
+
+    // Build mount flags from Options=
+    let mut flags = nix::mount::MsFlags::empty();
+    let mut filtered_options: Vec<String> = Vec::new();
+
+    if let Some(ref options) = conf.options {
+        for opt in options.split(',') {
+            let opt = opt.trim();
+            match opt {
+                "ro" | "rdonly" => flags |= nix::mount::MsFlags::MS_RDONLY,
+                "rw" => flags &= !nix::mount::MsFlags::MS_RDONLY,
+                "nosuid" => flags |= nix::mount::MsFlags::MS_NOSUID,
+                "suid" => flags &= !nix::mount::MsFlags::MS_NOSUID,
+                "nodev" => flags |= nix::mount::MsFlags::MS_NODEV,
+                "dev" => flags &= !nix::mount::MsFlags::MS_NODEV,
+                "noexec" => flags |= nix::mount::MsFlags::MS_NOEXEC,
+                "exec" => flags &= !nix::mount::MsFlags::MS_NOEXEC,
+                "sync" => flags |= nix::mount::MsFlags::MS_SYNCHRONOUS,
+                "async" => flags &= !nix::mount::MsFlags::MS_SYNCHRONOUS,
+                "remount" => flags |= nix::mount::MsFlags::MS_REMOUNT,
+                "bind" => flags |= nix::mount::MsFlags::MS_BIND,
+                "rbind" => flags |= nix::mount::MsFlags::MS_BIND | nix::mount::MsFlags::MS_REC,
+                "move" => flags |= nix::mount::MsFlags::MS_MOVE,
+                "noatime" => flags |= nix::mount::MsFlags::MS_NOATIME,
+                "nodiratime" => flags |= nix::mount::MsFlags::MS_NODIRATIME,
+                "relatime" => flags |= nix::mount::MsFlags::MS_RELATIME,
+                "strictatime" => flags |= nix::mount::MsFlags::MS_STRICTATIME,
+                "lazytime" => flags |= nix::mount::MsFlags::MS_LAZYTIME,
+                "silent" => flags |= nix::mount::MsFlags::MS_SILENT,
+                "loud" => flags &= !nix::mount::MsFlags::MS_SILENT,
+                "dirsync" => flags |= nix::mount::MsFlags::MS_DIRSYNC,
+                "mand" => flags |= nix::mount::MsFlags::MS_MANDLOCK,
+                "nomand" => flags &= !nix::mount::MsFlags::MS_MANDLOCK,
+                "private" => flags |= nix::mount::MsFlags::MS_PRIVATE,
+                "rprivate" => {
+                    flags |= nix::mount::MsFlags::MS_PRIVATE | nix::mount::MsFlags::MS_REC
+                }
+                "shared" => flags |= nix::mount::MsFlags::MS_SHARED,
+                "rshared" => flags |= nix::mount::MsFlags::MS_SHARED | nix::mount::MsFlags::MS_REC,
+                "slave" => flags |= nix::mount::MsFlags::MS_SLAVE,
+                "rslave" => flags |= nix::mount::MsFlags::MS_SLAVE | nix::mount::MsFlags::MS_REC,
+                "unbindable" => flags |= nix::mount::MsFlags::MS_UNBINDABLE,
+                "runbindable" => {
+                    flags |= nix::mount::MsFlags::MS_UNBINDABLE | nix::mount::MsFlags::MS_REC
+                }
+                "defaults" => { /* defaults = rw,suid,dev,exec,auto,nouser,async */ }
+                "auto"
+                | "noauto"
+                | "user"
+                | "nouser"
+                | "users"
+                | "group"
+                | "_netdev"
+                | "comment"
+                | "x-systemd.automount"
+                | "nofail" => {
+                    // These are fstab-only options, not passed to mount(2)
+                }
+                _ => {
+                    // Pass unknown options through as data for the filesystem driver
+                    filtered_options.push(opt.to_owned());
+                }
+            }
+        }
+    }
+
+    if conf.read_write_only {
+        flags &= !nix::mount::MsFlags::MS_RDONLY;
+    }
+
+    let data_str = if filtered_options.is_empty() {
+        None
+    } else {
+        Some(filtered_options.join(","))
+    };
+
+    let what: Option<&str> = if conf.what.is_empty() {
+        None
+    } else {
+        Some(&conf.what)
+    };
+    let fs_type: Option<&str> = conf.fs_type.as_deref();
+    let data: Option<&str> = data_str.as_deref();
+
+    info!(
+        "Mounting {} on {} (type={}, flags={:?}, data={:?})",
+        conf.what,
+        conf.where_,
+        fs_type.unwrap_or("auto"),
+        flags,
+        data
+    );
+
+    match nix::mount::mount(what, conf.where_.as_str(), fs_type, flags, data) {
+        Ok(()) => {
+            info!("Successfully mounted {} on {}", conf.what, conf.where_);
+            let mut status = status.write().unwrap();
+            *status = UnitStatus::Started(StatusStarted::Running);
+            Ok(UnitStatus::Started(StatusStarted::Running))
+        }
+        Err(e) => {
+            error!("Failed to mount {} on {}: {}", conf.what, conf.where_, e);
+            let reason = UnitOperationErrorReason::GenericStartError(format!(
+                "mount({}, {}, {:?}): {}",
+                conf.what, conf.where_, fs_type, e
+            ));
+            let mut status = status.write().unwrap();
+            *status = UnitStatus::Stopped(StatusStopped::StoppedUnexpected, vec![reason.clone()]);
+            Err(UnitOperationError {
+                reason,
+                unit_name: id.name.clone(),
+                unit_id: id.clone(),
+            })
+        }
+    }
+}
+
+/// Non-Linux stub for mount activation — always succeeds and marks the unit
+/// as started.
+#[cfg(not(target_os = "linux"))]
+fn activate_mount(
+    id: &UnitId,
+    _conf: &MountConfig,
+    status: &RwLock<UnitStatus>,
+) -> Result<UnitStatus, UnitOperationError> {
+    trace!("Mount activation is a no-op on non-Linux ({})", id.name);
+    let mut status = status.write().unwrap();
+    *status = UnitStatus::Started(StatusStarted::Running);
+    Ok(UnitStatus::Started(StatusStarted::Running))
+}
+
+/// Perform the umount(2) syscall for a mount unit.
+#[cfg(target_os = "linux")]
+fn deactivate_mount(
+    id: &UnitId,
+    conf: &MountConfig,
+    status: &RwLock<UnitStatus>,
+) -> Result<(), UnitOperationError> {
+    // If not currently mounted, just mark as stopped
+    if !is_already_mounted(&conf.where_) {
+        trace!(
+            "Mount point {} is not mounted, nothing to unmount",
+            conf.where_
+        );
+        let mut status = status.write().unwrap();
+        *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
+        return Ok(());
+    }
+
+    let mut umount_flags = nix::mount::MntFlags::empty();
+    if conf.lazy_unmount {
+        umount_flags |= nix::mount::MntFlags::MNT_DETACH;
+    }
+    if conf.force_unmount {
+        umount_flags |= nix::mount::MntFlags::MNT_FORCE;
+    }
+
+    info!("Unmounting {} (flags={:?})", conf.where_, umount_flags);
+
+    match nix::mount::umount2(conf.where_.as_str(), umount_flags) {
+        Ok(()) => {
+            info!("Successfully unmounted {}", conf.where_);
+            let mut status = status.write().unwrap();
+            *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
+            Ok(())
+        }
+        Err(e) => {
+            error!("Failed to unmount {}: {}", conf.where_, e);
+            let reason = UnitOperationErrorReason::GenericStopError(format!(
+                "umount({}): {}",
+                conf.where_, e
+            ));
+            let mut status = status.write().unwrap();
+            *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![reason.clone()]);
+            Err(UnitOperationError {
+                reason,
+                unit_name: id.name.clone(),
+                unit_id: id.clone(),
+            })
+        }
+    }
+}
+
+/// Non-Linux stub for mount deactivation.
+#[cfg(not(target_os = "linux"))]
+fn deactivate_mount(
+    id: &UnitId,
+    _conf: &MountConfig,
+    status: &RwLock<UnitStatus>,
+) -> Result<(), UnitOperationError> {
+    trace!("Mount deactivation is a no-op on non-Linux ({})", id.name);
+    let mut status = status.write().unwrap();
+    *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
+    Ok(())
+}
+
+/// Check whether a path is already mounted by reading /proc/mounts.
+#[cfg(target_os = "linux")]
+fn is_already_mounted(path: &str) -> bool {
+    let normalized = path.trim_end_matches('/');
+    let check_path = if normalized.is_empty() {
+        "/"
+    } else {
+        normalized
+    };
+
+    match std::fs::read_to_string("/proc/mounts") {
+        Ok(contents) => {
+            for line in contents.lines() {
+                // /proc/mounts format: device mountpoint fstype options dump pass
+                let mut fields = line.split_whitespace();
+                if let Some(_device) = fields.next() {
+                    if let Some(mountpoint) = fields.next() {
+                        let mp = mountpoint.trim_end_matches('/');
+                        let mp = if mp.is_empty() { "/" } else { mp };
+                        if mp == check_path {
+                            return true;
+                        }
+                    }
+                }
+            }
+            false
+        }
+        Err(_) => false,
     }
 }
 

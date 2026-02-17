@@ -208,8 +208,9 @@ fn pid1_specific_setup() {
 
     // Mount essential tmpfs mount points that NixOS services depend on.
     //
-    // systemd-rs does not yet implement mount units, but several NixOS
-    // services (notably suid-sgid-wrappers.service) have
+    // Mount units are now implemented, but these early hardcoded mounts
+    // serve as fallbacks that run before the unit loading pipeline.
+    // Several NixOS services (notably suid-sgid-wrappers.service) have
     // RequiresMountsFor= dependencies on paths that need a tmpfs.  Without
     // these mounts the wrapper setup fails, which breaks PAM/NSS and
     // prevents login.
@@ -311,9 +312,8 @@ fn pid1_specific_setup() {
     // Ensure /var/log/journal exists so that systemd-journald can use
     // persistent storage and `journalctl --flush` succeeds.  Normally
     // systemd-tmpfiles-setup creates this, but it may run after (or
-    // concurrently with) systemd-journal-flush.service, and the
-    // RequiresMountsFor=/var/log/journal dependency is silently dropped
-    // because mount units are not yet implemented.
+    // concurrently with) systemd-journal-flush.service.  This early
+    // creation serves as a fallback before mount units are activated.
     let _ = std::fs::create_dir_all("/var/log/journal");
 }
 
