@@ -27,6 +27,7 @@ rules:
       - nixos-rs
       - pkgs
       - pkg-config-rs
+      - readme
       - slides
       - systemd-rs
       - wasm-mojo
