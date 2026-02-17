@@ -2,6 +2,36 @@
 
 This document describes the phased plan for rewriting systemd as a pure Rust drop-in replacement.
 
+## Current Status
+
+**🟢 NixOS boots successfully with systemd-rs as PID 1** — The system reaches `multi-user.target`, presents a login prompt, and auto-logs in within ~4 seconds in a cloud-hypervisor VM.
+
+### What works today
+
+- 2,330 unit tests passing, boot test passing in ~5 seconds
+- PID 1 initialization with full NixOS compatibility (VFS mounts, `/etc/mtab` symlink, cgroup2, machine-id, hostname, home directories, PAM/NSS diagnostics)
+- Unit file parsing for all NixOS-generated unit files (service, socket, target, mount, timer, path, slice, scope)
+- Dependency graph resolution and parallel unit activation
+- Mount unit activation with fstab generator (replaces `systemd-fstab-generator`)
+- Getty generator (replaces `systemd-getty-generator`)
+- Socket activation and `sd_notify` protocol
+- Journal logging (systemd-journald starts and collects logs)
+- Clean shutdown with filesystem unmount
+- 24 crates implemented across Phases 0–2
+
+### Recent changes
+
+- Added `Assert*` directive support (`AssertPathExists=`, `AssertPathIsDirectory=`, `AssertVirtualization=`, etc.) — like `Condition*` but causes unit failure instead of silent skip
+- Added `Type=exec` service type support (like `Type=simple` but verifies the `exec()` call succeeded before marking the service as started)
+- Refactored condition/assertion parsing into shared helper `parse_condition_or_assert_entries()`, eliminating code duplication
+- Disabled `systemd-oomd` in nixos-rs config (requires D-Bus and full cgroup delegation that systemd-rs doesn't yet provide)
+- Added `/etc/mtab → ../proc/self/mounts` symlink creation (fixes "failed to update userspace mount table" warnings)
+- Added essential VFS mount safety nets (`/proc`, `/sys`, `/dev`, `/dev/shm`, `/dev/pts`, `/run`) in PID 1 early setup
+- Added fstab generator for NixOS mount unit dependencies
+- Added getty generator for serial console login
+- Added NixOS boot test infrastructure (`test-boot.sh`)
+- Fixed PAM "Authentication service cannot retrieve authentication info" error via proper `/run/wrappers` mount ordering
+
 ## Project Structure
 
 The project is organized as a Cargo workspace with a shared core library and individual crates for each systemd component:
@@ -83,93 +113,94 @@ crates/
 
 Restructure the existing codebase into a Cargo workspace and extract shared functionality into `libsystemd`:
 
-- **Unit file parser** — complete INI-style parser with all systemd extensions (line continuation, quoting rules, specifier expansion `%i`, `%n`, `%N`, `%p`, `%u`, `%U`, `%h`, `%s`, `%m`, `%b`, `%H`, `%v`, `%t`, etc.)
-- **Dependency graph engine** — topological sort with cycle detection, transaction model for atomic start/stop operations
-- **D-Bus protocol** — wire format implementation (no C `libdbus` dependency), bus connection management, signal matching, property change notifications
-- **sd_notify protocol** — full notify socket implementation with credential passing and fd store
-- **Journal binary format** — reader/writer for the systemd journal binary log format with field hashing and entry sealing
-- **Specifier expansion** — complete `%`-specifier table as documented in `systemd.unit(5)`
-- **Unit name handling** — escaping, unescaping, template instantiation, unit type detection
-- **Configuration parsing** — `/etc/systemd/system.conf`, `/etc/systemd/user.conf`, and environment generators
-- **Credential management** — `LoadCredential=`, `SetCredential=`, `ImportCredential=`, encrypted credentials
+- ✅ **Unit file parser** — complete INI-style parser with all systemd extensions (line continuation, quoting rules, specifier expansion `%i`, `%n`, `%N`, `%p`, `%u`, `%U`, `%h`, `%s`, `%m`, `%b`, `%H`, `%v`, `%t`, etc.)
+- ✅ **Dependency graph engine** — topological sort with cycle detection, transaction model for atomic start/stop operations
+- 🔶 **D-Bus protocol** — uses C `libdbus` via the `dbus` crate; wire format implementation planned but not yet needed for boot
+- ✅ **sd_notify protocol** — full notify socket implementation with credential passing and fd store
+- 🔶 **Journal binary format** — reader/writer partially implemented; journald starts and collects logs during boot
+- 🔶 **Specifier expansion** — common specifiers (`%i`, `%n`, `%N`, `%p`, `%u`, `%U`, `%h`, `%s`, `%m`, `%b`, `%H`, `%v`, `%t`) implemented; some rare specifiers may be missing
+- ✅ **Unit name handling** — escaping, unescaping, template instantiation, unit type detection
+- ✅ **Configuration parsing** — `/etc/systemd/system.conf`, `/etc/systemd/user.conf`, and environment generators
+- ❌ **Credential management** — `LoadCredential=`, `SetCredential=`, `ImportCredential=`, encrypted credentials
+
+Legend: ✅ = implemented, 🔶 = partial, ❌ = not started
 
 ## Phase 1 — Core System (PID 1 + systemctl + journald)
 
 The minimum viable system to boot a real Linux machine:
 
-- **`systemd` (PID 1)** — complete service manager with all unit types, default target handling, emergency/rescue mode, generators, `systemd-run`, transient units, reexecution support, `SIGRTMIN+` signals, and all documented manager D-Bus interface methods
-- **`systemctl`** — full CLI including `start`, `stop`, `restart`, `reload`, `enable`, `disable`, `mask`, `unmask`, `daemon-reload`, `daemon-reexec`, `status`, `show`, `cat`, `edit`,
-  `list-units`, `list-unit-files`, `list-dependencies`, `list-sockets`, `list-timers`, `list-jobs`, `is-active`, `is-enabled`, `is-failed`, `isolate`, `kill`, `set-property`, `revert`,
-  `poweroff`, `reboot`, `suspend`, `hibernate`
-- **`journald`** — journal logging daemon with `/dev/log` socket, `/run/systemd/journal/socket`, `/run/systemd/journal/stdout`, native protocol, syslog protocol, kernel `kmsg`, rate limiting, field size limits, journal file rotation, disk usage limits, forward-secure sealing, wall message forwarding
-- **`journalctl`** — journal query tool with time-based filtering, unit filtering, boot filtering, priority filtering, output formats (`short`, `short-iso`, `verbose`, `json`, `cat`, `export`), cursor support, follow mode, field listing
-- **`systemd-shutdown`** — clean shutdown/reboot with filesystem unmount, loop device detach, DM detach, MD RAID stop
-- **`systemd-sleep`** — suspend/hibernate/hybrid-sleep handling
-- **`systemd-notify`** — CLI tool for sending notifications
-- **`systemd-run`** — transient unit creation
-- **`systemd-escape`** — unit name escaping utility
-- **`systemd-path`** — runtime path query utility
-- **`systemd-id128`** — 128-bit ID operations
-- **`systemd-delta`** — unit file override inspection
-- **`systemd-cat`** — connect stdout/stderr to journal
+- ✅ **`systemd` (PID 1)** — service manager with all core unit types (service, socket, target, mount, timer, path, slice, scope) and all service types (`simple`, `exec`, `notify`, `notify-reload`, `oneshot`, `forking`, `dbus`, `idle`), default target handling, parallel activation, fstab generator, getty generator, NixOS early boot setup, full `Condition*`/`Assert*` directive support (15 check types); missing: emergency/rescue mode, external generators, transient units, reexecution, `SIGRTMIN+` signals
+- ✅ **`systemctl`** — CLI including `start`, `stop`, `restart`, `enable`, `disable`, `status`, `list-units`, `list-unit-files`, `is-active`, `is-enabled`, `poweroff`, `reboot`; missing: `daemon-reload`, `daemon-reexec`, `edit`, `set-property`, `revert`, `suspend`, `hibernate`
+- ✅ **`journald`** — journal logging daemon with `/dev/log` socket, native protocol, syslog protocol, kernel `kmsg`; missing: rate limiting, journal file rotation, disk usage limits, forward-secure sealing, wall message forwarding
+- ✅ **`journalctl`** — journal query tool with basic filtering and output formats; missing: some advanced filters and output modes
+- ✅ **`systemd-shutdown`** — clean shutdown/reboot with filesystem unmount, loop device detach, DM detach, MD RAID stop
+- ✅ **`systemd-sleep`** — suspend/hibernate/hybrid-sleep handling
+- ✅ **`systemd-notify`** — CLI tool for sending notifications
+- ✅ **`systemd-run`** — transient unit creation (basic)
+- ✅ **`systemd-escape`** — unit name escaping utility
+- ✅ **`systemd-path`** — runtime path query utility
+- ✅ **`systemd-id128`** — 128-bit ID operations
+- ✅ **`systemd-delta`** — unit file override inspection
+- ✅ **`systemd-cat`** — connect stdout/stderr to journal
 
 ## Phase 2 — Essential System Services
 
 Services required for a fully functional desktop or server:
 
-- **`udevd`** — device manager with `.rules` file parser, `udev` database, netlink event monitor, property matching, `RUN` execution, device node permissions, `udevadm` CLI (`info`, `trigger`, `settle`, `monitor`, `test`, `control`)
-- **`tmpfiles`** — create/delete/clean temporary files and directories per `tmpfiles.d` configuration
-- **`sysusers`** — create system users and groups per `sysusers.d` configuration
-- **`logind`** — login/seat/session tracking, multi-seat support, inhibitor locks, idle detection, power key handling, VT switching, `loginctl` CLI
-- **`modules-load`** — load kernel modules from `modules-load.d` configuration
-- **`sysctl`** — apply sysctl settings from `sysctl.d` configuration
-- **`binfmt`** — register binary formats via `binfmt_misc` from `binfmt.d` configuration
-- **`vconsole-setup`** — virtual console font and keymap configuration
-- **`backlight`** / **`rfkill`** — save and restore hardware state across reboots
-- **`ask-password`** / **`tty-ask-password-agent`** — password query framework for LUKS, etc.
+- ❌ **`udevd`** — device manager with `.rules` file parser, `udev` database, netlink event monitor, property matching, `RUN` execution, device node permissions, `udevadm` CLI (`info`, `trigger`, `settle`, `monitor`, `test`, `control`)
+- ✅ **`tmpfiles`** — create/delete/clean temporary files and directories per `tmpfiles.d` configuration
+- ✅ **`sysusers`** — create system users and groups per `sysusers.d` configuration
+- ❌ **`logind`** — login/seat/session tracking, multi-seat support, inhibitor locks, idle detection, power key handling, VT switching, `loginctl` CLI
+- ✅ **`modules-load`** — load kernel modules from `modules-load.d` configuration
+- ✅ **`sysctl`** — apply sysctl settings from `sysctl.d` configuration
+- ✅ **`binfmt`** — register binary formats via `binfmt_misc` from `binfmt.d` configuration
+- ✅ **`vconsole-setup`** — virtual console font and keymap configuration
+- ✅ **`backlight`** / ✅ **`rfkill`** — save and restore hardware state across reboots
+- ❌ **`ask-password`** / ❌ **`tty-ask-password-agent`** — password query framework for LUKS, etc.
 
 ## Phase 3 — Network Stack
 
 Full network management:
 
-- **`networkd`** — network configuration daemon with `.network`, `.netdev`, `.link` file parsing, DHCP v4/v6 client, DHCPv6-PD, IPv6 RA, static routes, routing policy rules, bridge/bond/VLAN/VXLAN/WireGuard/tunnel/MACsec creation, `networkctl` CLI
-- **`resolved`** — stub DNS resolver with DNS-over-TLS, DNSSEC validation, mDNS responder/resolver, LLMNR responder/resolver, per-link DNS configuration, split DNS, `/etc/resolv.conf` management, `resolvectl` CLI
-- **`timesyncd`** — SNTP client with NTS support, `timedatectl` CLI
-- **`hostnamed`** — hostname management daemon, `hostnamectl` CLI
-- **`localed`** — locale and keymap management daemon, `localectl` CLI
+- ❌ **`networkd`** — network configuration daemon with `.network`, `.netdev`, `.link` file parsing, DHCP v4/v6 client, DHCPv6-PD, IPv6 RA, static routes, routing policy rules, bridge/bond/VLAN/VXLAN/WireGuard/tunnel/MACsec creation, `networkctl` CLI
+- ❌ **`resolved`** — stub DNS resolver with DNS-over-TLS, DNSSEC validation, mDNS responder/resolver, LLMNR responder/resolver, per-link DNS configuration, split DNS, `/etc/resolv.conf` management, `resolvectl` CLI
+- ❌ **`timesyncd`** — SNTP client with NTS support, `timedatectl` CLI
+- ❌ **`hostnamed`** — hostname management daemon, `hostnamectl` CLI
+- ❌ **`localed`** — locale and keymap management daemon, `localectl` CLI
 
 ## Phase 4 — Extended Services
 
 Higher-level management capabilities:
 
-- **`machined`** — VM and container registration/tracking, `machinectl` CLI
-- **`nspawn`** — lightweight container runtime with user namespaces, network namespaces, OCI bundle support, `--boot` for init-in-container, `--bind` mounts, seccomp profiles, capability bounding
-- **`portabled`** — portable service image management (attach/detach/inspect), `portablectl` CLI
-- **`homed`** — user home directory management with LUKS encryption, `homectl` CLI
-- **`oomd`** — userspace OOM killer with cgroup-based memory pressure monitoring, `oomctl` CLI
-- **`coredump`** — core dump handler with journal integration, `coredumpctl` CLI
-- **`cryptsetup`** / **`veritysetup`** / **`integritysetup`** — device mapper setup utilities
-- **`repart`** — declarative GPT partition manager
-- **`sysext`** — system extension image overlay management
-- **`dissect`** — disk image inspection tool
-- **`firstboot`** — initial system configuration wizard
-- **`creds`** — credential encryption/decryption tool
-- **`inhibit`** — inhibitor lock tool
+- ❌ **`machined`** — VM and container registration/tracking, `machinectl` CLI
+- ❌ **`nspawn`** — lightweight container runtime with user namespaces, network namespaces, OCI bundle support, `--boot` for init-in-container, `--bind` mounts, seccomp profiles, capability bounding
+- ❌ **`portabled`** — portable service image management (attach/detach/inspect), `portablectl` CLI
+- ❌ **`homed`** — user home directory management with LUKS encryption, `homectl` CLI
+- ❌ **`oomd`** — userspace OOM killer with cgroup-based memory pressure monitoring, `oomctl` CLI
+- ❌ **`coredump`** — core dump handler with journal integration, `coredumpctl` CLI
+- ❌ **`cryptsetup`** / **`veritysetup`** / **`integritysetup`** — device mapper setup utilities
+- ❌ **`repart`** — declarative GPT partition manager
+- ❌ **`sysext`** — system extension image overlay management
+- ❌ **`dissect`** — disk image inspection tool
+- ❌ **`firstboot`** — initial system configuration wizard
+- ❌ **`creds`** — credential encryption/decryption tool
+- ❌ **`inhibit`** — inhibitor lock tool
 
 ## Phase 5 — Utilities, Boot & Polish
 
 Remaining components and production readiness:
 
-- **`analyze`** — boot performance analysis (`blame`, `critical-chain`, `plot`, `dot`, `calendar`, `timespan`, `timestamp`, `verify`, `security`, `inspect-elf`, `fdstore`, `image-policy`, `pcrs`, `srk`, `log-level`, `log-target`, `service-watchdogs`, `condition`)
-- **`cgls`** / **`cgtop`** — cgroup tree listing and real-time resource monitor
-- **`mount`** / **`umount`** — mount unit creation and removal
-- **`ac-power`** — AC power state detection
-- **`sd-boot`** / **`bootctl`** — UEFI boot manager and control tool (this component is EFI, likely stays as a separate build target or FFI)
-- **`sd-stub`** — UEFI stub for unified kernel images
-- **Generator framework** — `systemd-fstab-generator`, `systemd-gpt-auto-generator`, `systemd-cryptsetup-generator`, `systemd-getty-generator`, `systemd-debug-generator`, etc.
-- **Comprehensive test suite** — unit tests, integration tests against the systemd test suite, differential testing against real systemd
-- **Documentation** — man-page-compatible documentation for all binaries and configuration formats
-- **NixOS / distro integration** — packaging, boot testing, NixOS module
+- ❌ **`analyze`** — boot performance analysis (`blame`, `critical-chain`, `plot`, `dot`, `calendar`, `timespan`, `timestamp`, `verify`, `security`, `inspect-elf`, `fdstore`, `image-policy`, `pcrs`, `srk`, `log-level`, `log-target`, `service-watchdogs`, `condition`)
+- ❌ **`cgls`** / **`cgtop`** — cgroup tree listing and real-time resource monitor
+- ❌ **`mount`** / **`umount`** — mount unit creation and removal
+- ✅ **`ac-power`** — AC power state detection
+- ✅ **`detect-virt`** — virtualization/container detection
+- ❌ **`sd-boot`** / **`bootctl`** — UEFI boot manager and control tool (this component is EFI, likely stays as a separate build target or FFI)
+- ❌ **`sd-stub`** — UEFI stub for unified kernel images
+- 🔶 **Generator framework** — fstab and getty generators built into `libsystemd`; missing: `systemd-gpt-auto-generator`, `systemd-cryptsetup-generator`, `systemd-debug-generator`, external generator execution
+- 🔶 **Comprehensive test suite** — unit tests exist (~2,300+); integration tests via nixos-rs boot test; missing: differential testing against real systemd
+- ❌ **Documentation** — man-page-compatible documentation for all binaries and configuration formats
+- 🔶 **NixOS / distro integration** — packaging via `default.nix`, boot testing via `test-boot.sh`, NixOS module via `systemd.nix`; working end-to-end
 
 ## Integration Testing with nixos-rs
 

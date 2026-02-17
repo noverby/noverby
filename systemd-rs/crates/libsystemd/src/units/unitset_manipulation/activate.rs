@@ -251,6 +251,32 @@ pub fn activate_unit(
         }
     }
 
+    // Check unit assertions (AssertPathExists=, etc.) before activation.
+    // Unlike conditions, if any assertion fails the unit enters a **failed**
+    // state. This matches systemd's behavior where Assert* causes an error.
+    for assertion in &unit.common.unit.assertions {
+        if !assertion.check() {
+            error!(
+                "Assertion failed for unit {:?}: {:?}. Unit will fail.",
+                id_to_start, assertion
+            );
+            let reason = UnitOperationErrorReason::GenericStartError(format!(
+                "Assertion failed: {:?}",
+                assertion
+            ));
+            {
+                let mut status = unit.common.status.write().unwrap();
+                *status =
+                    UnitStatus::Stopped(StatusStopped::StoppedUnexpected, vec![reason.clone()]);
+            }
+            return Err(UnitOperationError {
+                reason,
+                unit_name: id_to_start.name.clone(),
+                unit_id: id_to_start.clone(),
+            });
+        }
+    }
+
     // Check unit conditions (ConditionPathExists=, etc.) before activation.
     // If any condition fails, the unit is skipped — this is not an error,
     // matching systemd's behavior of silently skipping condition-failed units.

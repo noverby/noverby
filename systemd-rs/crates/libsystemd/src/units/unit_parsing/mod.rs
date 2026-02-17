@@ -849,6 +849,13 @@ pub struct ParsedUnitSection {
     /// Matches systemd's ConditionPathExists=, ConditionPathIsDirectory=, etc.
     pub conditions: Vec<UnitCondition>,
 
+    /// Assertions that must all be true for the unit to start.
+    /// Unlike conditions, if any assertion fails the unit enters a **failed**
+    /// state (not silently skipped). Uses the same `UnitCondition` type since
+    /// the check logic is identical — only the failure semantics differ.
+    /// Matches systemd's AssertPathExists=, AssertPathIsDirectory=, etc.
+    pub assertions: Vec<UnitCondition>,
+
     /// Action to take when the unit finishes successfully.
     /// Matches systemd's `SuccessAction=` setting.
     pub success_action: UnitAction,
@@ -942,6 +949,7 @@ impl Default for ParsedUnitSection {
             default_dependencies: true,
             ignore_on_isolate: false,
             conditions: Vec::new(),
+            assertions: Vec::new(),
             success_action: UnitAction::default(),
             failure_action: UnitAction::default(),
             requires_mounts_for: Vec::new(),
@@ -1571,6 +1579,12 @@ pub enum ServiceType {
     /// timeout). This is primarily used for improving console output
     /// ordering and has no effect on service dependencies.
     Idle,
+    /// Like Simple, but the service manager waits for the exec() call to
+    /// succeed before considering the service started. If the binary
+    /// cannot be found or fails to execute, the service enters a failed
+    /// state immediately rather than appearing active. This is the
+    /// recommended type for long-running services. See systemd.service(5).
+    Exec,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]

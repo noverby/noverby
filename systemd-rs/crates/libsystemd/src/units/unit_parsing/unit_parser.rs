@@ -209,6 +209,25 @@ pub fn parse_unit_section(
     let condition_needs_update = section.remove("CONDITIONNEEDSUPDATE");
     let condition_path_is_mount_point = section.remove("CONDITIONPATHISMOUNTPOINT");
     let condition_security = section.remove("CONDITIONSECURITY");
+
+    // Assert* directives — same semantics as Condition* but cause the unit
+    // to FAIL (not silently skip) when the check is false.
+    let assert_path_exists = section.remove("ASSERTPATHEXISTS");
+    let assert_path_is_directory = section.remove("ASSERTPATHISDIRECTORY");
+    let assert_virtualization = section.remove("ASSERTVIRTUALIZATION");
+    let assert_capability = section.remove("ASSERTCAPABILITY");
+    let assert_first_boot = section.remove("ASSERTFIRSTBOOT");
+    let assert_file_is_executable = section.remove("ASSERTFILEISEXECUTABLE");
+    let assert_file_not_empty = section.remove("ASSERTFILENOTEMPTY");
+    let assert_kernel_module_loaded = section.remove("ASSERTKERNELMODULELOADED");
+    let assert_directory_not_empty = section.remove("ASSERTDIRECTORYNOTEMPTY");
+    let assert_kernel_command_line = section.remove("ASSERTKERNELCOMMANDLINE");
+    let assert_control_group_controller = section.remove("ASSERTCONTROLGROUPCONTROLLER");
+    let assert_path_is_read_write = section.remove("ASSERTPATHISREADWRITE");
+    let assert_needs_update = section.remove("ASSERTNEEDSUPDATE");
+    let assert_path_is_mount_point = section.remove("ASSERTPATHISMOUNTPOINT");
+    let assert_security = section.remove("ASSERTSECURITY");
+
     let success_action = section.remove("SUCCESSACTION");
     let failure_action = section.remove("FAILUREACTION");
     let part_of = section.remove("PARTOF");
@@ -306,144 +325,41 @@ pub fn parse_unit_section(
         None => super::OnFailureJobMode::default(),
     };
 
-    let mut conditions = Vec::new();
-    for (_, value) in condition_path_exists.unwrap_or_default() {
-        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
-            (stripped.to_string(), true)
-        } else {
-            (value, false)
-        };
-        conditions.push(super::UnitCondition::PathExists { path, negate });
-    }
-    for (_, value) in condition_path_is_directory.unwrap_or_default() {
-        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
-            (stripped.to_string(), true)
-        } else {
-            (value, false)
-        };
-        conditions.push(super::UnitCondition::PathIsDirectory { path, negate });
-    }
-    for (_, raw) in condition_virtualization.unwrap_or_default() {
-        let trimmed = raw.trim();
-        let (value, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
-            (stripped.to_lowercase(), true)
-        } else {
-            (trimmed.to_lowercase(), false)
-        };
-        if !value.is_empty() {
-            conditions.push(super::UnitCondition::Virtualization { value, negate });
-        }
-    }
-    for (_, raw) in condition_capability.unwrap_or_default() {
-        let trimmed = raw.trim();
-        let (capability, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
-            (stripped.trim().to_owned(), true)
-        } else {
-            (trimmed.to_owned(), false)
-        };
-        if !capability.is_empty() {
-            conditions.push(super::UnitCondition::Capability { capability, negate });
-        }
-    }
-    for (_, raw) in condition_first_boot.unwrap_or_default() {
-        let trimmed = raw.trim();
-        let (value_str, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
-            (stripped.trim(), true)
-        } else {
-            (trimmed, false)
-        };
-        let value = string_to_bool(value_str);
-        conditions.push(super::UnitCondition::FirstBoot { value, negate });
-    }
-    for (_, value) in condition_file_is_executable.unwrap_or_default() {
-        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
-            (stripped.to_string(), true)
-        } else {
-            (value, false)
-        };
-        conditions.push(super::UnitCondition::FileIsExecutable { path, negate });
-    }
-    for (_, value) in condition_kernel_module_loaded.unwrap_or_default() {
-        let (module, negate) = if let Some(stripped) = value.strip_prefix('!') {
-            (stripped.to_string(), true)
-        } else {
-            (value, false)
-        };
-        conditions.push(super::UnitCondition::KernelModuleLoaded { module, negate });
-    }
-    for (_, value) in condition_file_not_empty.unwrap_or_default() {
-        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
-            (stripped.to_string(), true)
-        } else {
-            (value, false)
-        };
-        conditions.push(super::UnitCondition::FileNotEmpty { path, negate });
-    }
-    for (_, value) in condition_directory_not_empty.unwrap_or_default() {
-        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
-            (stripped.to_string(), true)
-        } else {
-            (value, false)
-        };
-        conditions.push(super::UnitCondition::DirectoryNotEmpty { path, negate });
-    }
-    for (_, raw) in condition_kernel_command_line.unwrap_or_default() {
-        let trimmed = raw.trim();
-        let (argument, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
-            (stripped.to_owned(), true)
-        } else {
-            (trimmed.to_owned(), false)
-        };
-        if !argument.is_empty() {
-            conditions.push(super::UnitCondition::KernelCommandLine { argument, negate });
-        }
-    }
-    for (_, value) in condition_path_is_read_write.unwrap_or_default() {
-        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
-            (stripped.to_string(), true)
-        } else {
-            (value, false)
-        };
-        conditions.push(super::UnitCondition::PathIsReadWrite { path, negate });
-    }
-    for (_, raw) in condition_control_group_controller.unwrap_or_default() {
-        let trimmed = raw.trim();
-        let (controller, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
-            (stripped.trim().to_owned(), true)
-        } else {
-            (trimmed.to_owned(), false)
-        };
-        if !controller.is_empty() {
-            conditions.push(super::UnitCondition::ControlGroupController { controller, negate });
-        }
-    }
-    for (_, value) in condition_needs_update.unwrap_or_default() {
-        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
-            (stripped.to_string(), true)
-        } else {
-            (value, false)
-        };
-        conditions.push(super::UnitCondition::NeedsUpdate { path, negate });
-    }
-    for (_, value) in condition_path_is_mount_point.unwrap_or_default() {
-        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
-            (stripped.to_string(), true)
-        } else {
-            (value, false)
-        };
-        conditions.push(super::UnitCondition::PathIsMountPoint { path, negate });
-    }
-    for (_, raw) in condition_security.unwrap_or_default() {
-        let trimmed = raw.trim();
-        let (technology, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
-            (stripped.trim().to_owned(), true)
-        } else {
-            (trimmed.to_owned(), false)
-        };
-        if !technology.is_empty() {
-            conditions.push(super::UnitCondition::Security { technology, negate });
-        }
-    }
+    let conditions = parse_condition_or_assert_entries(
+        condition_path_exists,
+        condition_path_is_directory,
+        condition_virtualization,
+        condition_capability,
+        condition_first_boot,
+        condition_file_is_executable,
+        condition_file_not_empty,
+        condition_kernel_module_loaded,
+        condition_directory_not_empty,
+        condition_kernel_command_line,
+        condition_control_group_controller,
+        condition_path_is_read_write,
+        condition_needs_update,
+        condition_path_is_mount_point,
+        condition_security,
+    );
+
+    let assertions = parse_condition_or_assert_entries(
+        assert_path_exists,
+        assert_path_is_directory,
+        assert_virtualization,
+        assert_capability,
+        assert_first_boot,
+        assert_file_is_executable,
+        assert_file_not_empty,
+        assert_kernel_module_loaded,
+        assert_directory_not_empty,
+        assert_kernel_command_line,
+        assert_control_group_controller,
+        assert_path_is_read_write,
+        assert_needs_update,
+        assert_path_is_mount_point,
+        assert_security,
+    );
 
     let success_action = match success_action {
         Some(vec) => {
@@ -579,6 +495,7 @@ pub fn parse_unit_section(
         default_dependencies,
         ignore_on_isolate,
         conditions,
+        assertions,
         success_action,
         failure_action,
         requires_mounts_for: requires_mounts_for_paths,
@@ -594,6 +511,174 @@ pub fn parse_unit_section(
         start_limit_burst,
         start_limit_action,
     })
+}
+
+/// Shared helper for parsing both Condition* and Assert* entries into
+/// `Vec<UnitCondition>`.  The two directive families use identical syntax
+/// and semantics — only the failure mode differs (skip vs. fail), which is
+/// handled by the caller.
+#[allow(clippy::too_many_arguments)]
+fn parse_condition_or_assert_entries(
+    path_exists: Option<Vec<(u32, String)>>,
+    path_is_directory: Option<Vec<(u32, String)>>,
+    virtualization: Option<Vec<(u32, String)>>,
+    capability: Option<Vec<(u32, String)>>,
+    first_boot: Option<Vec<(u32, String)>>,
+    file_is_executable: Option<Vec<(u32, String)>>,
+    file_not_empty: Option<Vec<(u32, String)>>,
+    kernel_module_loaded: Option<Vec<(u32, String)>>,
+    directory_not_empty: Option<Vec<(u32, String)>>,
+    kernel_command_line: Option<Vec<(u32, String)>>,
+    control_group_controller: Option<Vec<(u32, String)>>,
+    path_is_read_write: Option<Vec<(u32, String)>>,
+    needs_update: Option<Vec<(u32, String)>>,
+    path_is_mount_point: Option<Vec<(u32, String)>>,
+    security: Option<Vec<(u32, String)>>,
+) -> Vec<super::UnitCondition> {
+    let mut out = Vec::new();
+
+    for (_, value) in path_exists.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        out.push(super::UnitCondition::PathExists { path, negate });
+    }
+    for (_, value) in path_is_directory.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        out.push(super::UnitCondition::PathIsDirectory { path, negate });
+    }
+    for (_, raw) in virtualization.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (value, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.to_lowercase(), true)
+        } else {
+            (trimmed.to_lowercase(), false)
+        };
+        if !value.is_empty() {
+            out.push(super::UnitCondition::Virtualization { value, negate });
+        }
+    }
+    for (_, raw) in capability.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (cap, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim().to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !cap.is_empty() {
+            out.push(super::UnitCondition::Capability {
+                capability: cap,
+                negate,
+            });
+        }
+    }
+    for (_, raw) in first_boot.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (value_str, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim(), true)
+        } else {
+            (trimmed, false)
+        };
+        let value = string_to_bool(value_str);
+        out.push(super::UnitCondition::FirstBoot { value, negate });
+    }
+    for (_, value) in file_is_executable.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        out.push(super::UnitCondition::FileIsExecutable { path, negate });
+    }
+    for (_, value) in kernel_module_loaded.unwrap_or_default() {
+        let (module, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        out.push(super::UnitCondition::KernelModuleLoaded { module, negate });
+    }
+    for (_, value) in file_not_empty.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        out.push(super::UnitCondition::FileNotEmpty { path, negate });
+    }
+    for (_, value) in directory_not_empty.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        out.push(super::UnitCondition::DirectoryNotEmpty { path, negate });
+    }
+    for (_, raw) in kernel_command_line.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (argument, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !argument.is_empty() {
+            out.push(super::UnitCondition::KernelCommandLine { argument, negate });
+        }
+    }
+    for (_, value) in path_is_read_write.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        out.push(super::UnitCondition::PathIsReadWrite { path, negate });
+    }
+    for (_, raw) in control_group_controller.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (controller, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim().to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !controller.is_empty() {
+            out.push(super::UnitCondition::ControlGroupController { controller, negate });
+        }
+    }
+    for (_, value) in needs_update.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        out.push(super::UnitCondition::NeedsUpdate { path, negate });
+    }
+    for (_, value) in path_is_mount_point.unwrap_or_default() {
+        let (path, negate) = if let Some(stripped) = value.strip_prefix('!') {
+            (stripped.to_string(), true)
+        } else {
+            (value, false)
+        };
+        out.push(super::UnitCondition::PathIsMountPoint { path, negate });
+    }
+    for (_, raw) in security.unwrap_or_default() {
+        let trimmed = raw.trim();
+        let (technology, negate) = if let Some(stripped) = trimmed.strip_prefix('!') {
+            (stripped.trim().to_owned(), true)
+        } else {
+            (trimmed.to_owned(), false)
+        };
+        if !technology.is_empty() {
+            out.push(super::UnitCondition::Security { technology, negate });
+        }
+    }
+
+    out
 }
 
 fn make_stdio_option(setting: &str) -> Result<StdIoOption, ParsingErrorReason> {
