@@ -473,6 +473,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "oomctl"
+version = "0.1.0"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "pkg-config"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -765,6 +772,16 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "libc",
+]
+
+[[package]]
+name = "systemd-oomd"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+ "nix",
+ "tempfile",
 ]
 
 [[package]]

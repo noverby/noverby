@@ -116,6 +116,17 @@
       makeBinaryWrapper ${systemd-rs}/bin/systemd $out/lib/systemd/systemd \
         --argv0 systemd-rs
 
+      # Replace lib/systemd/* helper binaries with systemd-rs equivalents.
+      # Many service units use ExecStart=$out/lib/systemd/systemd-<foo> rather
+      # than $out/bin/systemd-<foo>, so we need to overwrite those too.
+      for bin in ${systemd-rs}/bin/*; do
+        name=$(basename "$bin")
+        if [ -e "$out/lib/systemd/$name" ]; then
+          rm -f "$out/lib/systemd/$name"
+          cp -a "$bin" "$out/lib/systemd/$name"
+        fi
+      done
+
       # Replace all references to the real systemd store path with
       # the systemd-rs-systemd output path so NixOS module substitutions work.
       find $out -type f | while read -r f; do

@@ -19,11 +19,6 @@
     fsType = "ext4";
   };
 
-  # systemd-oomd is the real systemd OOM killer binary — it requires
-  # D-Bus, full cgroup delegation, and memory.pressure support that
-  # systemd-rs doesn't yet provide, so it exits immediately with code 1.
-  systemd.oomd.enable = false;
-
   users.users = {
     nixos = {
       isNormalUser = true;
