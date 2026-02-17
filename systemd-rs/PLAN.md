@@ -17,14 +17,14 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 - Socket activation and `sd_notify` protocol
 - Journal logging (systemd-journald starts and collects logs)
 - Clean shutdown with filesystem unmount
-- 24 crates implemented across Phases 0–2
+- 26 crates implemented across Phases 0–4
 
 ### Recent changes
 
+- Implemented `systemd-oomd` — userspace OOM killer with PSI-based memory pressure monitoring, cgroup v2 support, `oomd.conf` parsing, managed cgroup discovery from unit files, swap usage monitoring, `oomctl` CLI with `dump` command; re-enabled `systemd.oomd` in nixos-rs config
 - Added `Assert*` directive support (`AssertPathExists=`, `AssertPathIsDirectory=`, `AssertVirtualization=`, etc.) — like `Condition*` but causes unit failure instead of silent skip
 - Added `Type=exec` service type support (like `Type=simple` but verifies the `exec()` call succeeded before marking the service as started)
 - Refactored condition/assertion parsing into shared helper `parse_condition_or_assert_entries()`, eliminating code duplication
-- Disabled `systemd-oomd` in nixos-rs config (requires D-Bus and full cgroup delegation that systemd-rs doesn't yet provide)
 - Added `/etc/mtab → ../proc/self/mounts` symlink creation (fixes "failed to update userspace mount table" warnings)
 - Added essential VFS mount safety nets (`/proc`, `/sys`, `/dev`, `/dev/shm`, `/dev/pts`, `/run`) in PID 1 early setup
 - Added fstab generator for NixOS mount unit dependencies
@@ -176,7 +176,7 @@ Higher-level management capabilities:
 - ❌ **`nspawn`** — lightweight container runtime with user namespaces, network namespaces, OCI bundle support, `--boot` for init-in-container, `--bind` mounts, seccomp profiles, capability bounding
 - ❌ **`portabled`** — portable service image management (attach/detach/inspect), `portablectl` CLI
 - ❌ **`homed`** — user home directory management with LUKS encryption, `homectl` CLI
-- ❌ **`oomd`** — userspace OOM killer with cgroup-based memory pressure monitoring, `oomctl` CLI
+- ✅ **`oomd`** — userspace OOM killer with PSI-based memory pressure monitoring, `oomd.conf` parsing, managed cgroup discovery from unit files, swap usage monitoring, `oomctl` CLI with `dump` command
 - ❌ **`coredump`** — core dump handler with journal integration, `coredumpctl` CLI
 - ❌ **`cryptsetup`** / **`veritysetup`** / **`integritysetup`** — device mapper setup utilities
 - ❌ **`repart`** — declarative GPT partition manager

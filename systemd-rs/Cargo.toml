@@ -24,5 +24,7 @@ members = [
     "crates/rfkill",
     "crates/tmpfiles",
     "crates/sysusers",
+    "crates/oomd",
+    "crates/oomctl",
 ]
 resolver = "2"
