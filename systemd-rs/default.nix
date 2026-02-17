@@ -55,10 +55,10 @@
         withCryptsetup = false;
         withEfi = false;
         withFido2 = false;
-        withHostnamed = false;
+        withHostnamed = true;
         withImportd = false;
         withKmod = false;
-        withLocaled = false;
+        withLocaled = true;
         withMachined = false;
         withNetworkd = false;
         withPortabled = false;

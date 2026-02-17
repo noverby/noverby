@@ -26,7 +26,7 @@ use std::path::Path;
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -736,6 +736,18 @@ fn chrono_lite_timestamp() -> String {
 // main
 // ---------------------------------------------------------------------------
 
+/// Parse `WATCHDOG_USEC` from the environment and return the interval at which
+/// we should send `WATCHDOG=1` (half the watchdog timeout). Returns `None` if
+/// the variable is absent or unparsable.
+fn watchdog_interval() -> Option<Duration> {
+    let usec: u64 = env::var("WATCHDOG_USEC").ok()?.parse().ok()?;
+    if usec == 0 {
+        return None;
+    }
+    // Notify at half the watchdog period so we have margin
+    Some(Duration::from_micros(usec / 2))
+}
+
 fn main() {
     init_logging();
     setup_signal_handlers();
@@ -745,6 +757,13 @@ fn main() {
     // Load initial state
     let state = HostnameState::load();
     log::info!("Hostname: {}", state.hostname());
+
+    // Watchdog support — send WATCHDOG=1 at half the configured interval
+    let wd_interval = watchdog_interval();
+    if let Some(ref iv) = wd_interval {
+        log::info!("Watchdog enabled, interval {:?}", iv);
+    }
+    let mut last_watchdog = Instant::now();
 
     // Ensure /run/systemd exists
     let _ = fs::create_dir_all(Path::new(CONTROL_SOCKET_PATH).parent().unwrap());
@@ -770,6 +789,12 @@ fn main() {
             loop {
                 if SHUTDOWN.load(Ordering::SeqCst) {
                     break;
+                }
+                if let Some(ref iv) = wd_interval {
+                    if last_watchdog.elapsed() >= *iv {
+                        sd_notify("WATCHDOG=1");
+                        last_watchdog = Instant::now();
+                    }
                 }
                 thread::sleep(Duration::from_secs(1));
             }
@@ -799,6 +824,14 @@ fn main() {
             let state = HostnameState::load();
             log::info!("Reloaded configuration, hostname: {}", state.hostname());
             sd_notify(&format!("STATUS=Hostname: {}", state.hostname()));
+        }
+
+        // Send watchdog keepalive
+        if let Some(ref iv) = wd_interval {
+            if last_watchdog.elapsed() >= *iv {
+                sd_notify("WATCHDOG=1");
+                last_watchdog = Instant::now();
+            }
         }
 
         match listener.accept() {
