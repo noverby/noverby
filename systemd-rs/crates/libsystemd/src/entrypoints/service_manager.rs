@@ -332,12 +332,91 @@ fn pid1_specific_setup() {
         }
     }
 
+    // Ensure home directories exist for all users in /etc/passwd.
+    //
+    // On NixOS the activation script runs update-users-groups.pl
+    // BEFORE exec'ing into systemd-rs, so /etc/passwd is already
+    // populated with all declared users by this point.  However the
+    // Perl script may fail to create the home directory (e.g. missing
+    // /var/lib/nixos state dir on first boot).  We create any missing
+    // home directories here — before services (including getty) start —
+    // to avoid the "No directory, logging in with HOME=/" message.
+    ensure_home_directories();
+
     // Ensure /var/log/journal exists so that systemd-journald can use
     // persistent storage and `journalctl --flush` succeeds.  Normally
     // systemd-tmpfiles-setup creates this, but it may run after (or
     // concurrently with) systemd-journal-flush.service.  This early
     // creation serves as a fallback before mount units are activated.
     let _ = std::fs::create_dir_all("/var/log/journal");
+}
+
+/// Read /etc/passwd and create any missing home directories with the
+/// correct ownership and mode.  Skips trivial homes like "/" and
+/// "/var/empty".
+fn ensure_home_directories() {
+    let passwd_path = std::path::Path::new("/etc/passwd");
+    if !passwd_path.exists() {
+        eprintln!("systemd-rs: /etc/passwd does not exist, skipping home directory creation");
+        return;
+    }
+    let passwd_contents = match std::fs::read_to_string(passwd_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("systemd-rs: failed to read /etc/passwd: {e}");
+            return;
+        }
+    };
+
+    let line_count = passwd_contents.lines().count();
+    eprintln!("systemd-rs: ensuring home directories ({line_count} passwd entries)");
+
+    for line in passwd_contents.lines() {
+        let fields: Vec<&str> = line.split(':').collect();
+        // passwd format: name:x:uid:gid:gecos:home:shell
+        if fields.len() < 7 {
+            continue;
+        }
+        let user = fields[0];
+        let home = fields[5];
+        // Skip non-directory or special homes
+        if home.is_empty()
+            || home == "/"
+            || home == "/nonexistent"
+            || home == "/dev/null"
+            || home == "/var/empty"
+            || home == "/run/systemd"
+        {
+            continue;
+        }
+        let home_path = std::path::Path::new(home);
+        if home_path.exists() {
+            continue;
+        }
+        let uid: u32 = match fields[2].parse() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let gid: u32 = match fields[3].parse() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        match std::fs::create_dir_all(home_path) {
+            Ok(()) => {}
+            Err(e) => {
+                eprintln!("systemd-rs: failed to create home {home} for {user}: {e}");
+                continue;
+            }
+        }
+        // Set ownership to the user/group from passwd
+        let c_path = match std::ffi::CString::new(home) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        unsafe { libc::chown(c_path.as_ptr(), uid, gid) };
+        unsafe { libc::chmod(c_path.as_ptr(), 0o700) };
+        eprintln!("systemd-rs: created home directory {home} for {user} (uid={uid}, gid={gid})");
+    }
 }
 
 #[cfg(not(target_os = "linux"))]
