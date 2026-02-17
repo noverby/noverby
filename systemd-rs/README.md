@@ -41,6 +41,20 @@ This is a **full drop-in replacement**, not a reimagining — the same way
 4. **Safe by default** — leverage Rust's type system and ownership model to eliminate the classes of memory safety bugs that have historically affected systemd (CVE-2018-15688, CVE-2019-3842, CVE-2021-33910, etc.).
 5. **Incremental adoption** — individual components can be swapped in one at a time. Run the Rust `journald` with the C `systemd` PID 1, or vice versa.
 
+## Project Structure
+
+The project is organized as a Cargo workspace:
+
+```text
+crates/
+├── libsystemd/     # Core library: unit parsing, dependency graph, sd_notify,
+│                   # socket activation, platform abstractions, service lifecycle
+├── systemd/        # PID 1 service manager (init system)
+└── systemctl/      # CLI control tool for the service manager
+```
+
+See [PLAN.md](PLAN.md) for the full phased plan to add all remaining systemd components (`journald`, `udevd`, `logind`, `networkd`, `resolved`, etc.).
+
 ## Current Status
 
 The existing codebase provides a working foundation for the PID 1 service manager with:
@@ -52,38 +66,35 @@ The existing codebase provides a working foundation for the PID 1 service manage
 - Service types: `simple`, `notify`, `dbus`, `oneshot`
 - Target units for synchronization
 - cgroup-based process tracking (optional, Linux only)
-- A basic JSON-RPC control interface (`rsdctl`)
+- `systemctl` CLI control tool (JSON-RPC based)
 - Container PID 1 support
 
-See [PLAN.md](PLAN.md) for the full phased implementation plan, and [feature-comparison.md](feature-comparison.md) for a detailed feature-by-feature comparison with upstream systemd.
+See [feature-comparison.md](feature-comparison.md) for a detailed feature-by-feature comparison with upstream systemd.
 
 ## Building
 
 ```sh
-# Build everything
+# Build the entire workspace
 cargo build --release
 
 # Build just the service manager
 cargo build --release -p systemd
 
+# Build just the control tool
+cargo build --release -p systemctl
+
 # Build with optional features
-cargo build --release --features dbus_support,cgroups,linux_eventfd
+cargo build --release -p libsystemd --features dbus_support,cgroups,linux_eventfd
 ```
 
 ## Testing
 
 ```sh
 # Run all tests
-cargo test
+cargo test --workspace
 
-# Run library tests
+# Run library tests only
 cargo test -p libsystemd
-
-# Run integration tests
-cargo test -p systemd --test integration
-
-# Differential testing against system systemd
-cargo build --release && ./tests/differential.sh --verbose
 ```
 
 ### Boot Testing with nixos-rs
@@ -120,7 +131,7 @@ This is an ambitious project and contributions are very welcome. Good starting p
 
 1. **Unit file parsing** — add support for missing directives (see `feature-comparison.md`)
 2. **New unit types** — implement timer, mount, automount, swap, path, scope units
-3. **systemctl** — build out the full CLI to replace `rsdctl`
+3. **systemctl** — build out the full CLI with all systemctl subcommands
 4. **journald** — implement the journal binary format and logging daemon
 5. **Test coverage** — port systemd's integration test suite
 6. **Documentation** — document behavior differences and compatibility notes
