@@ -49,9 +49,14 @@ The project is organized as a Cargo workspace:
 crates/
 ├── libsystemd/     # Core library: unit parsing, dependency graph, sd_notify,
 │                   # socket activation, platform abstractions, service lifecycle,
-│                   # unit name escaping/unescaping, configuration loading
+│                   # unit name escaping/unescaping, configuration loading,
+│                   # journal entry model and on-disk storage engine
 ├── systemd/        # PID 1 service manager (init system)
 ├── systemctl/      # CLI control tool for the service manager
+├── journald/       # Journal logging daemon (systemd-journald)
+├── journalctl/     # Journal query tool
+├── shutdown/       # System shutdown/reboot (systemd-shutdown)
+├── sleep/          # Suspend/hibernate handler (systemd-sleep)
 ├── id128/          # 128-bit ID tool (systemd-id128)
 ├── escape/         # Unit name escaping tool (systemd-escape)
 ├── notify/         # Notification sender (systemd-notify)
@@ -63,16 +68,20 @@ crates/
 └── ac-power/       # AC power detection (systemd-ac-power)
 ```
 
-See [PLAN.md](PLAN.md) for the full phased plan to add all remaining systemd components (`journald`, `udevd`, `logind`, `networkd`, `resolved`, etc.).
+See [PLAN.md](PLAN.md) for the full phased plan to add all remaining systemd components (`udevd`, `logind`, `networkd`, `resolved`, etc.).
 
 ## Current Status
 
 **Phase 0 (Foundation)** is complete — the project is structured as a Cargo workspace with a shared `libsystemd` core library.
 
-**Phase 1 (Core System)** is in progress. The system successfully boots a NixOS VM as PID 1. Implemented components:
+**Phase 1 (Core System)** is complete. The system successfully boots a NixOS VM as PID 1. All Phase 1 components are implemented:
 
 - **PID 1 service manager** (`systemd`) — unit file parsing, dependency-ordered parallel startup, socket activation, `sd_notify` protocol, service types (`simple`, `notify`, `dbus`, `oneshot`), target/slice units, cgroup tracking, PID 1-specific setup (remounting root, mounting tmpfs/cgroup2, machine-id generation)
 - **`systemctl`** — CLI control tool (JSON-RPC based) with `list-units`, `status`, `start`, `stop`, `restart`, `shutdown`
+- **`systemd-journald`** — journal logging daemon with native journal protocol socket (`/run/systemd/journal/socket`), BSD syslog socket (`/dev/log`), stdout stream socket (`/run/systemd/journal/stdout`), kernel `kmsg` reader, structured field storage, rate limiting, journal file rotation, disk usage limits, sd_notify `READY=1`, SIGUSR1 flush, SIGUSR2 rotate, wall message forwarding, configurable via `/etc/systemd/journald.conf`
+- **`journalctl`** — journal query tool with time-based filtering (`--since`, `--until`), unit filtering (`-u`), boot filtering (`-b`, `--list-boots`), priority filtering (`-p`), identifier filtering (`-t`), grep filtering (`-g`), output formats (`short`, `short-iso`, `short-precise`, `short-monotonic`, `verbose`, `json`, `json-pretty`, `cat`, `export`), cursor support, follow mode (`-f`), reverse output (`-r`), line limiting (`-n`), field listing (`-F`, `-N`), disk usage query (`--disk-usage`), flush/rotate commands, PID/UID/GID filtering, free-form `FIELD=VALUE` match expressions
+- **`systemd-shutdown`** — clean shutdown/reboot binary with SIGTERM/SIGKILL all processes, filesystem unmount (reverse mount order with retry and lazy unmount fallback), loop device detach, device-mapper deactivation, MD RAID stop, root remount read-only, final `reboot(2)` syscall for poweroff/reboot/halt/kexec
+- **`systemd-sleep`** — suspend/hibernate/hybrid-sleep/suspend-then-hibernate via `/sys/power/state` and `/sys/power/disk`, configuration from `/etc/systemd/sleep.conf` and drop-ins, pre/post sleep hooks (`/usr/lib/systemd/system-sleep/`, `/etc/systemd/system-sleep/`), RTC wake alarm for suspend-then-hibernate, system capability checks
 - **`systemd-id128`** — generate/query 128-bit IDs (`new`, `machine-id`, `boot-id`, `invocation-id`, `--uuid`, `--app-specific`)
 - **`systemd-escape`** — unit name escaping/unescaping (`--unescape`, `--mangle`, `--path`, `--suffix`, `--template`, `--instance`)
 - **`systemd-notify`** — send sd_notify messages (`--ready`, `--reloading`, `--stopping`, `--status`, `--booted`, `--pid`)
@@ -82,9 +91,9 @@ See [PLAN.md](PLAN.md) for the full phased plan to add all remaining systemd com
 - **`systemd-delta`** — show overridden, extended, masked, and redirected unit files across search paths (`--type`, `--diff`)
 - **`systemd-run`** — run commands as transient units with user/group switching, environment setup, working directory (`--scope`, `--unit`, `--uid`, `--gid`, `--wait`, `--shell`, `--setenv`, `--on-calendar`)
 - **`systemd-ac-power`** — detect AC power status via `/sys/class/power_supply/` (`--verbose`, `--check-capacity`, `--low`)
-- **`libsystemd` core library** — unit name escaping/unescaping, template instantiation, path escaping, unit name mangling
+- **`libsystemd` core library** — unit name escaping/unescaping, template instantiation, path escaping, unit name mangling, journal entry data model (structured fields, timestamps, trusted metadata, serialisation to export/JSON formats), journal on-disk storage engine (append-only binary format with file headers, entry frames, multi-file rotation, vacuuming, crash-safe writes)
 
-**Remaining Phase 1 items**: `journald`, `journalctl`, `systemd-shutdown` (standalone binary), `systemd-sleep`.
+**Next**: Phase 2 (Essential System Services) — `udevd`, `tmpfiles`, `sysusers`, `logind`, `modules-load`, `sysctl`, `binfmt`, `vconsole-setup`, `backlight`, `rfkill`, `ask-password`.
 
 See [feature-comparison.md](feature-comparison.md) for a detailed feature-by-feature comparison with upstream systemd.
 
@@ -99,6 +108,14 @@ cargo build --release -p systemd
 
 # Build just the control tool
 cargo build --release -p systemctl
+
+# Build the journal daemon and query tool
+cargo build --release -p systemd-journald
+cargo build --release -p journalctl
+
+# Build shutdown and sleep handlers
+cargo build --release -p systemd-shutdown
+cargo build --release -p systemd-sleep
 
 # Build individual utilities
 cargo build --release -p systemd-id128
@@ -123,6 +140,15 @@ cargo test --workspace
 
 # Run library tests only
 cargo test -p libsystemd
+
+# Run journal-related tests
+cargo test -p libsystemd -- journal
+cargo test -p systemd-journald
+cargo test -p journalctl
+
+# Run individual component tests
+cargo test -p systemd-shutdown
+cargo test -p systemd-sleep
 ```
 
 ### Boot Testing with nixos-rs
@@ -157,10 +183,10 @@ See [PLAN.md — Integration Testing](PLAN.md#integration-testing-with-nixos-rs)
 
 This is an ambitious project and contributions are very welcome. Good starting points:
 
-1. **Unit file parsing** — add support for missing directives (see `feature-comparison.md`)
-2. **New unit types** — implement timer, mount, automount, swap, path, scope units
-3. **systemctl** — build out the full CLI with all systemctl subcommands
-4. **journald** — implement the journal binary format and logging daemon
+1. **Phase 2 services** — implement `udevd`, `tmpfiles`, `sysusers`, `logind`, and other essential system services
+2. **Unit file parsing** — add support for missing directives (see `feature-comparison.md`)
+3. **New unit types** — implement timer, mount, automount, swap, path, scope units
+4. **systemctl** — build out the full CLI with all systemctl subcommands
 5. **Test coverage** — port systemd's integration test suite
 6. **Documentation** — document behavior differences and compatibility notes
 
