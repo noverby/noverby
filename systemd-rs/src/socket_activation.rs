@@ -86,8 +86,12 @@ pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
 
                                 if srvc_status
                                     == UnitStatus::Started(StatusStarted::WaitingForSocket)
+                                    || srvc_status == UnitStatus::NeverStarted
                                 {
-                                    // the service unit gets activated
+                                    // the service unit gets activated — either it was
+                                    // waiting for socket activation or it was never
+                                    // started (purely socket-activated service not in
+                                    // the dependency graph).
                                     match crate::units::activate_unit(
                                         srvc_unit.id.clone(),
                                         &run_info,
@@ -112,8 +116,8 @@ pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
                                         }
                                     }
                                 } else {
-                                    // This should not happen too often because the sockets of a service
-                                    // should only be listened on if the service is currently waiting on socket activation
+                                    // Service is already running or stopped — no need
+                                    // to activate it again.
                                     trace!(
                                         "Ignore socket activation. Service has status: {srvc_status:?}"
                                     );

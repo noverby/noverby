@@ -126,16 +126,23 @@ fn start_service_with_filedescriptors(
     let mut names = Vec::new();
 
     for socket in &conf.sockets {
-        let sock_fds = fd_store
-            .get_global(&socket.name)
-            .unwrap()
+        // Skip sockets whose FDs aren't in the store — this can happen when
+        // a socket unit's conditions failed (e.g. ConditionSecurity=audit on
+        // systemd-journald-audit.socket) and the socket was never opened.
+        let Some(global_fds) = fd_store.get_global(&socket.name) else {
+            log::trace!(
+                "Socket {} has no FDs in store (condition-skipped?), skipping for service {name}",
+                socket.name
+            );
+            continue;
+        };
+
+        let sock_fds = global_fds
             .iter()
             .map(|(_, _, fd)| fd.as_raw_fd())
             .collect::<Vec<_>>();
 
-        let sock_names = fd_store
-            .get_global(&socket.name)
-            .unwrap()
+        let sock_names = global_fds
             .iter()
             .map(|(_, name, _)| name.clone())
             .collect::<Vec<_>>();
