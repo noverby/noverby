@@ -8,9 +8,11 @@ use std::convert::TryInto;
 use std::path::{Path, PathBuf};
 
 use crate::units::{
-    ParsedFile, ParsingErrorReason, Unit, UnitId, UnitIdKind, parse_file, parse_mount,
-    parse_service, parse_slice, parse_socket, parse_target,
+    Common, CommonState, Dependencies, MountConfig, MountSpecific, MountState, ParsedFile,
+    ParsingErrorReason, Specific, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus, parse_file,
+    parse_mount, parse_service, parse_slice, parse_socket, parse_target, path_to_mount_unit_name,
 };
+use std::sync::RwLock;
 
 /// Represents a dependency relationship discovered from a `.wants/` or `.requires/` directory.
 #[derive(Debug, Clone)]
@@ -853,6 +855,232 @@ pub fn generate_getty_units(
                 console
             );
         }
+    }
+}
+
+/// Minimal implementation of systemd-fstab-generator functionality.
+///
+/// Reads `/etc/fstab` and creates `.mount` units for each entry that doesn't
+/// already have a corresponding mount unit in the unit table.  This is critical
+/// for NixOS where mount points like `/run/wrappers` are defined in fstab and
+/// services use `RequiresMountsFor=` to depend on them.  Without these
+/// synthetic mount units the dependencies are silently dropped, which can lead
+/// to race conditions (e.g. `suid-sgid-wrappers.service` starting before its
+/// mount point is ready, breaking PAM/NSS and causing "Authentication service
+/// cannot retrieve authentication info").
+pub fn generate_fstab_mount_units(unit_table: &mut HashMap<UnitId, Unit>) {
+    let fstab_path = std::path::Path::new("/etc/fstab");
+    if !fstab_path.exists() {
+        return;
+    }
+
+    let contents = match std::fs::read_to_string(fstab_path) {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("fstab generator: failed to read /etc/fstab: {}", e);
+            return;
+        }
+    };
+
+    let local_target_id = UnitId {
+        name: "local-fs.target".to_owned(),
+        kind: UnitIdKind::Target,
+    };
+    let remote_target_id = UnitId {
+        name: "remote-fs.target".to_owned(),
+        kind: UnitIdKind::Target,
+    };
+
+    for line in contents.lines() {
+        let line = line.trim();
+        // Skip comments and empty lines
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        // fstab format: <device> <mountpoint> <fstype> <options> <dump> <pass>
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 3 {
+            continue;
+        }
+
+        let device = fields[0];
+        let mountpoint = fields[1];
+        let fstype = fields[2];
+        let options = if fields.len() > 3 {
+            fields[3]
+        } else {
+            "defaults"
+        };
+        // fields[4] = dump, fields[5] = pass (ignored)
+
+        // Skip swap entries
+        if fstype == "swap" || mountpoint == "none" {
+            continue;
+        }
+
+        let unit_name = path_to_mount_unit_name(mountpoint);
+
+        // Skip if a mount unit already exists (explicitly defined unit file
+        // takes precedence over fstab-generated ones)
+        let unit_id = UnitId {
+            name: unit_name.clone(),
+            kind: UnitIdKind::Mount,
+        };
+        if unit_table.contains_key(&unit_id) {
+            trace!(
+                "fstab generator: skipping {} — unit already exists",
+                unit_name
+            );
+            continue;
+        }
+
+        // Determine if this is a "noauto" mount (should not be started
+        // automatically).  Also detect "nofail" (failures are not fatal)
+        // and "x-systemd.automount" (should create an automount unit — we
+        // just skip those for now).
+        let opt_list: Vec<&str> = options.split(',').collect();
+        let is_noauto = opt_list.iter().any(|o| *o == "noauto");
+        let is_nofail = opt_list.iter().any(|o| *o == "nofail");
+        let _is_automount = opt_list.iter().any(|o| *o == "x-systemd.automount");
+
+        // Build the mount options string, filtering out fstab-only options
+        let mount_options: Vec<&str> = opt_list
+            .iter()
+            .copied()
+            .filter(|o| {
+                !matches!(
+                    *o,
+                    "noauto"
+                        | "auto"
+                        | "nofail"
+                        | "user"
+                        | "nouser"
+                        | "users"
+                        | "group"
+                        | "_netdev"
+                        | "defaults"
+                        | "x-systemd.automount"
+                ) && !o.starts_with("comment=")
+                    && !o.starts_with("x-systemd.")
+            })
+            .collect();
+
+        let options_str = if mount_options.is_empty() {
+            None
+        } else {
+            Some(mount_options.join(","))
+        };
+
+        // Determine whether this is a network or local filesystem
+        let is_network = matches!(
+            fstype,
+            "nfs" | "nfs4" | "cifs" | "smbfs" | "ncpfs" | "glusterfs" | "ceph" | "fuse.sshfs"
+        ) || opt_list.iter().any(|o| *o == "_netdev");
+
+        let target_id = if is_network {
+            &remote_target_id
+        } else {
+            &local_target_id
+        };
+
+        // Build dependencies: Before= the appropriate fs target, and
+        // the target Wants/Requires this mount.
+        let mut before = vec![target_id.clone()];
+        let mut wanted_by = Vec::new();
+        let mut required_by = Vec::new();
+
+        if !is_noauto {
+            if is_nofail {
+                wanted_by.push(target_id.clone());
+            } else {
+                required_by.push(target_id.clone());
+            }
+        }
+
+        // Root mount should be before local-fs-pre.target
+        if mountpoint == "/" {
+            let pre_target = UnitId {
+                name: "local-fs-pre.target".to_owned(),
+                kind: UnitIdKind::Target,
+            };
+            before.push(pre_target);
+        }
+
+        let mut refs_by_name = Vec::new();
+        refs_by_name.extend(before.iter().cloned());
+        refs_by_name.extend(wanted_by.iter().cloned());
+        refs_by_name.extend(required_by.iter().cloned());
+
+        let unit = Unit {
+            id: unit_id.clone(),
+            common: Common {
+                status: RwLock::new(UnitStatus::NeverStarted),
+                unit: UnitConfig {
+                    description: format!("Mount unit for {mountpoint} (from /etc/fstab)"),
+                    documentation: Vec::new(),
+                    refs_by_name,
+                    default_dependencies: true,
+                    ignore_on_isolate: false,
+                    conditions: Vec::new(),
+                    success_action: Default::default(),
+                    failure_action: Default::default(),
+                    job_timeout_action: Default::default(),
+                    job_timeout_sec: None,
+                    allow_isolate: false,
+                    refuse_manual_start: false,
+                    refuse_manual_stop: false,
+                    on_failure: Vec::new(),
+                    on_failure_job_mode: Default::default(),
+                    start_limit_interval_sec: None,
+                    start_limit_burst: None,
+                    start_limit_action: Default::default(),
+                    aliases: Vec::new(),
+                    default_instance: None,
+                },
+                dependencies: Dependencies {
+                    wants: Vec::new(),
+                    wanted_by,
+                    requires: Vec::new(),
+                    required_by,
+                    conflicts: Vec::new(),
+                    conflicted_by: Vec::new(),
+                    before,
+                    after: Vec::new(),
+                    part_of: Vec::new(),
+                    part_of_by: Vec::new(),
+                    binds_to: Vec::new(),
+                    bound_by: Vec::new(),
+                },
+            },
+            specific: Specific::Mount(MountSpecific {
+                conf: MountConfig {
+                    what: device.to_owned(),
+                    where_: mountpoint.to_owned(),
+                    fs_type: if fstype == "auto" {
+                        None
+                    } else {
+                        Some(fstype.to_owned())
+                    },
+                    options: options_str,
+                    sloppy_options: false,
+                    lazy_unmount: false,
+                    read_write_only: false,
+                    force_unmount: false,
+                    directory_mode: 0o755,
+                    timeout_sec: None,
+                },
+                state: RwLock::new(MountState {
+                    common: CommonState::default(),
+                }),
+            }),
+        };
+
+        trace!(
+            "fstab generator: created {} for {} on {} (type={})",
+            unit_name, device, mountpoint, fstype
+        );
+        unit_table.insert(unit_id, unit);
     }
 }
 

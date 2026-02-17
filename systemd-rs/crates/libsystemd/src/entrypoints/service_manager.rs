@@ -349,6 +349,64 @@ fn pid1_specific_setup() {
     // concurrently with) systemd-journal-flush.service.  This early
     // creation serves as a fallback before mount units are activated.
     let _ = std::fs::create_dir_all("/var/log/journal");
+
+    // ── PAM / NSS prerequisite diagnostics ──────────────────────────────
+    //
+    // Log the state of critical files that PAM and NSS need.  If any of
+    // these are missing at this point, authentication will fail later with
+    // "Authentication service cannot retrieve authentication info".
+    //
+    // /etc/shadow  – password hashes; must exist and be readable by root
+    // /etc/nsswitch.conf – NSS module configuration
+    // /run/wrappers/bin/unix_chkpwd – suid helper used by pam_unix
+    //   (created later by suid-sgid-wrappers.service, so it is expected
+    //    to be absent here; logged for post-mortem debugging)
+
+    let shadow = std::path::Path::new("/etc/shadow");
+    if shadow.exists() {
+        eprintln!("systemd-rs: /etc/shadow exists (ok)");
+    } else {
+        eprintln!("systemd-rs: WARNING: /etc/shadow does not exist — PAM authentication will fail");
+    }
+
+    let nsswitch = std::path::Path::new("/etc/nsswitch.conf");
+    if nsswitch.exists() {
+        eprintln!("systemd-rs: /etc/nsswitch.conf exists (ok)");
+    } else {
+        eprintln!("systemd-rs: WARNING: /etc/nsswitch.conf does not exist — NSS lookups may fail");
+    }
+
+    let chkpwd = std::path::Path::new("/run/wrappers/bin/unix_chkpwd");
+    if chkpwd.exists() {
+        eprintln!("systemd-rs: /run/wrappers/bin/unix_chkpwd exists (ok)");
+    } else {
+        eprintln!(
+            "systemd-rs: /run/wrappers/bin/unix_chkpwd not yet present \
+             (expected — suid-sgid-wrappers.service will create it)"
+        );
+    }
+
+    // Check that /run/wrappers is mounted without nosuid — the suid bit on
+    // unix_chkpwd only works if the filesystem allows it.
+    if let Ok(mounts) = std::fs::read_to_string("/proc/mounts") {
+        for line in mounts.lines() {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            if fields.len() >= 4 && fields[1] == "/run/wrappers" {
+                let opts = fields[3];
+                if opts.split(',').any(|o| o == "nosuid") {
+                    eprintln!(
+                        "systemd-rs: WARNING: /run/wrappers is mounted with nosuid — \
+                         suid wrappers will not work! (options: {opts})"
+                    );
+                } else {
+                    eprintln!(
+                        "systemd-rs: /run/wrappers mounted without nosuid (ok, options: {opts})"
+                    );
+                }
+                break;
+            }
+        }
+    }
 }
 
 /// Read /etc/passwd and create any missing home directories with the
