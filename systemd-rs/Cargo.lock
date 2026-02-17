@@ -846,6 +846,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-timedatectl"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "libc",
+ "log",
+]
+
+[[package]]
+name = "systemd-timesyncd"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+ "nix",
+ "tempfile",
+]
+
+[[package]]
 name = "systemd-tmpfiles"
 version = "0.1.0"
 dependencies = [

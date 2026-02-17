@@ -26,5 +26,7 @@ members = [
     "crates/sysusers",
     "crates/oomd",
     "crates/oomctl",
+    "crates/timesyncd",
+    "crates/timedatectl",
 ]
 resolver = "2"

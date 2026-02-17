@@ -8,7 +8,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ### What works today
 
-- 2,330 unit tests passing, boot test passing in ~5 seconds
+- 2,428 unit tests passing, boot test passing in ~4 seconds
 - PID 1 initialization with full NixOS compatibility (VFS mounts, `/etc/mtab` symlink, cgroup2, machine-id, hostname, home directories, PAM/NSS diagnostics)
 - Unit file parsing for all NixOS-generated unit files (service, socket, target, mount, timer, path, slice, scope)
 - Dependency graph resolution and parallel unit activation
@@ -16,11 +16,13 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 - Getty generator (replaces `systemd-getty-generator`)
 - Socket activation and `sd_notify` protocol
 - Journal logging (systemd-journald starts and collects logs)
+- NTP time synchronization (systemd-timesyncd starts and syncs clock)
 - Clean shutdown with filesystem unmount
-- 26 crates implemented across Phases 0–4
+- 28 crates implemented across Phases 0–4
 
 ### Recent changes
 
+- Implemented `systemd-timesyncd` — SNTP time synchronization daemon with NTP v4 client, `timesyncd.conf` parsing (including drop-in directories), clock adjustment via `adjtimex()`/`clock_settime()` (slew for small offsets, step for large), clock state persistence in `/var/lib/systemd/timesync/clock`, sd_notify READY/WATCHDOG/STATUS protocol, signal handling (SIGTERM/SIGINT for shutdown, SIGHUP for reload), exponential backoff polling, container detection, graceful degradation when no network is available; `timedatectl` CLI with `status`, `show`, `set-time`, `set-timezone`, `set-ntp`, `list-timezones`, and `timesync-status` commands
 - Implemented `systemd-oomd` — userspace OOM killer with PSI-based memory pressure monitoring, cgroup v2 support, `oomd.conf` parsing, managed cgroup discovery from unit files, swap usage monitoring, `oomctl` CLI with `dump` command; re-enabled `systemd.oomd` in nixos-rs config
 - Added `Assert*` directive support (`AssertPathExists=`, `AssertPathIsDirectory=`, `AssertVirtualization=`, etc.) — like `Condition*` but causes unit failure instead of silent skip
 - Added `Type=exec` service type support (like `Type=simple` but verifies the `exec()` call succeeded before marking the service as started)
@@ -69,6 +71,8 @@ crates/
 ├── homectl/             # Home directory control tool
 ├── oomd/                # Userspace OOM killer (systemd-oomd)
 ├── oomctl/              # OOM killer control tool
+├── timesyncd/           # NTP time synchronization (systemd-timesyncd)
+├── timedatectl/         # Time/date control tool
 ├── coredump/            # Core dump handler (systemd-coredump)
 ├── coredumpctl/         # Core dump query tool
 ├── analyze/             # Boot performance analyzer (systemd-analyze)
@@ -164,7 +168,7 @@ Full network management:
 
 - ❌ **`networkd`** — network configuration daemon with `.network`, `.netdev`, `.link` file parsing, DHCP v4/v6 client, DHCPv6-PD, IPv6 RA, static routes, routing policy rules, bridge/bond/VLAN/VXLAN/WireGuard/tunnel/MACsec creation, `networkctl` CLI
 - ❌ **`resolved`** — stub DNS resolver with DNS-over-TLS, DNSSEC validation, mDNS responder/resolver, LLMNR responder/resolver, per-link DNS configuration, split DNS, `/etc/resolv.conf` management, `resolvectl` CLI
-- ❌ **`timesyncd`** — SNTP client with NTS support, `timedatectl` CLI
+- ✅ **`timesyncd`** — SNTP time synchronization daemon with NTP v4 client, `timesyncd.conf` parsing with drop-in directories, clock adjustment (slew via `adjtimex()` for small offsets, step via `clock_settime()` for large), clock state persistence, sd_notify protocol, signal handling, exponential backoff polling, container detection, graceful degradation; `timedatectl` CLI with `status`, `show`, `set-time`, `set-timezone`, `set-ntp`, `list-timezones`, `timesync-status`; missing: NTS support, D-Bus interface (`org.freedesktop.timesync1`), `systemd-timedated` D-Bus daemon (`org.freedesktop.timedate1`)
 - ❌ **`hostnamed`** — hostname management daemon, `hostnamectl` CLI
 - ❌ **`localed`** — locale and keymap management daemon, `localectl` CLI
 
