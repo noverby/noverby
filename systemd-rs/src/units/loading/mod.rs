@@ -185,7 +185,24 @@ pub fn load_all_units(
         unit_table.remove(id);
     }
 
-    info!("Units found before pruning: {}", unit_table.len());
+    // List all loaded socket units at WARN level so they're always visible
+    let socket_names: Vec<&str> = unit_table
+        .keys()
+        .filter(|id| id.name.ends_with(".socket"))
+        .map(|id| id.name.as_str())
+        .collect();
+    info!(
+        "Units found before pruning: {} (sockets: {:?})",
+        unit_table.len(),
+        socket_names
+    );
+
+    // Check dbus.socket specifically
+    if unit_table.keys().any(|id| id.name == "dbus.socket") {
+        trace!("DIAG: dbus.socket IS in unit table before fill_dependencies");
+    } else {
+        trace!("DIAG: dbus.socket is NOT in unit table before fill_dependencies");
+    }
 
     fill_dependencies(&mut unit_table).map_err(|e| LoadingError::Dependency(e.into()))?;
 
@@ -214,8 +231,57 @@ pub fn load_all_units(
         }
     }
 
+    // Check dbus.socket presence before pruning (after fill_dependencies)
+    if unit_table.keys().any(|id| id.name == "dbus.socket") {
+        trace!("DIAG: dbus.socket IS in unit table before prune_units");
+        // Check if systemd-logind.service wants dbus.socket
+        if let Some(logind) = unit_table
+            .values()
+            .find(|u| u.id.name == "systemd-logind.service")
+        {
+            let wants_dbus = logind
+                .common
+                .dependencies
+                .wants
+                .iter()
+                .any(|id| id.name == "dbus.socket");
+            let after_dbus = logind
+                .common
+                .dependencies
+                .after
+                .iter()
+                .any(|id| id.name == "dbus.socket");
+            trace!(
+                "DIAG: systemd-logind.service wants dbus.socket={}, after dbus.socket={}",
+                wants_dbus, after_dbus
+            );
+        }
+    } else {
+        trace!(
+            "DIAG: dbus.socket is NOT in unit table before prune_units (lost during fill_dependencies?)"
+        );
+    }
+
     prune_units(target_unit, &mut unit_table).unwrap();
-    info!("Units after pruning: {}", unit_table.len());
+
+    // List surviving socket units
+    let surviving_sockets: Vec<&str> = unit_table
+        .keys()
+        .filter(|id| id.name.ends_with(".socket"))
+        .map(|id| id.name.as_str())
+        .collect();
+    info!(
+        "Units after pruning: {} (sockets: {:?})",
+        unit_table.len(),
+        surviving_sockets
+    );
+
+    // Check dbus.socket after pruning
+    if unit_table.keys().any(|id| id.name == "dbus.socket") {
+        trace!("DIAG: dbus.socket survived pruning");
+    } else {
+        trace!("DIAG: dbus.socket was PRUNED");
+    }
 
     // Log which getty-related units survived pruning
     for id in unit_table.keys() {
@@ -226,6 +292,29 @@ pub fn load_all_units(
 
     let removed_ids = prune_unused_sockets(&mut unit_table);
     trace!("Finished pruning sockets");
+
+    // Check dbus.socket after socket pruning
+    if unit_table.keys().any(|id| id.name == "dbus.socket") {
+        trace!("DIAG: dbus.socket survived socket pruning");
+    } else {
+        let was_removed = removed_ids.iter().any(|id| id.name == "dbus.socket");
+        warn!(
+            "DIAG: dbus.socket gone after socket pruning (explicitly removed={})",
+            was_removed
+        );
+    }
+
+    // Log final socket list
+    let final_sockets: Vec<&str> = unit_table
+        .keys()
+        .filter(|id| id.name.ends_with(".socket"))
+        .map(|id| id.name.as_str())
+        .collect();
+    info!(
+        "Final unit count after socket pruning: {} (sockets: {:?})",
+        unit_table.len(),
+        final_sockets
+    );
 
     cleanup_removed_ids(&mut unit_table, &removed_ids);
 
@@ -244,15 +333,50 @@ fn cleanup_removed_ids(
 }
 
 fn prune_unused_sockets(sockets: &mut UnitTable) -> Vec<UnitId> {
+    // Collect socket IDs that are explicitly Wants= or Requires= by
+    // non-socket units (services, targets, etc.).  These sockets must be
+    // kept even when they have no associated service — they serve as
+    // stand-alone activation points (e.g. dbus.socket for D-Bus activation).
+    //
+    // We intentionally do NOT include After= or the implicit sockets.target
+    // relationship here: After= is ordering-only and doesn't imply the
+    // socket is actually needed, and sockets.target automatically gets
+    // After= on every socket via add_socket_target_relations.
+    let mut explicitly_wanted_sockets: std::collections::HashSet<UnitId> =
+        std::collections::HashSet::new();
+    for unit in sockets.values() {
+        // Skip socket units themselves — we only care about services/targets
+        // that explicitly pull in sockets via Wants=/Requires=/BindsTo=.
+        if unit.id.kind == crate::units::UnitIdKind::Socket {
+            continue;
+        }
+        let deps = &unit.common.dependencies;
+        for id in deps
+            .wants
+            .iter()
+            .chain(deps.requires.iter())
+            .chain(deps.binds_to.iter())
+        {
+            if id.kind == crate::units::UnitIdKind::Socket {
+                explicitly_wanted_sockets.insert(id.clone());
+            }
+        }
+    }
+
     let mut ids_to_remove = Vec::new();
     for unit in sockets.values() {
         if let Specific::Socket(sock) = &unit.specific {
-            if sock.conf.services.is_empty() {
+            if sock.conf.services.is_empty() && !explicitly_wanted_sockets.contains(&unit.id) {
                 trace!(
-                    "Prune socket {} because it was not added to any service",
+                    "Prune socket {} because it has no associated service and no unit explicitly wants it",
                     unit.id.name
                 );
                 ids_to_remove.push(unit.id.clone());
+            } else if sock.conf.services.is_empty() {
+                trace!(
+                    "Keeping socket {} despite no associated service: explicitly wanted by another unit",
+                    unit.id.name
+                );
             }
         }
     }

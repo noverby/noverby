@@ -24,32 +24,58 @@ pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
                     let unit_table = &run_info.unit_table;
                     for socket_id in ids {
                         {
-                            // search the service this socket belongs to.
-                            // Note that this differs from systemd behaviour where one socket may belong to multiple services
+                            // Search the service this socket belongs to.
+                            //
+                            // Strategy:
+                            // 1. First check the socket unit's own `services` list
+                            //    (populated from the Service= directive or name-matching
+                            //    in apply_sockets_to_services). This is the primary and
+                            //    most reliable lookup — it's how real systemd works.
+                            // 2. Fall back to scanning all services to find one that
+                            //    lists this socket in its `sockets` field.
                             let mut srvc_unit = None;
-                            for unit in unit_table.values() {
-                                if let crate::units::Specific::Service(specific) = &unit.specific {
-                                    if specific.has_socket(&socket_id.name) {
-                                        srvc_unit = Some(unit);
+
+                            // Strategy 1: look at the socket's own services list
+                            let sock_unit = unit_table.get(&socket_id).unwrap();
+                            if let Specific::Socket(specific) = &sock_unit.specific {
+                                for srvc_id in &specific.conf.services {
+                                    if let Some(unit) = unit_table.get(srvc_id) {
                                         trace!(
-                                            "Start service {} by socket activation",
+                                            "Start service {} by socket activation (from socket's Service= list)",
                                             unit.id.name
                                         );
+                                        srvc_unit = Some(unit);
                                         break;
+                                    }
+                                }
+                            }
+
+                            // Strategy 2: fall back to scanning services
+                            if srvc_unit.is_none() {
+                                for unit in unit_table.values() {
+                                    if let Specific::Service(specific) = &unit.specific {
+                                        if specific.has_socket(&socket_id.name) {
+                                            srvc_unit = Some(unit);
+                                            trace!(
+                                                "Start service {} by socket activation (from service's Sockets= list)",
+                                                unit.id.name
+                                            );
+                                            break;
+                                        }
                                     }
                                 }
                             }
 
                             // mark socket as activated, removing it from the set of
                             // fds systemd-rs is actively listening on
-                            let sock_unit = unit_table.get(&socket_id).unwrap();
                             if let Specific::Socket(specific) = &sock_unit.specific {
                                 let mut_state = &mut *specific.state.write().unwrap();
                                 mut_state.sock.activated = true;
                             }
                             if srvc_unit.is_none() {
                                 error!(
-                                    "Socket unit {socket_id:?} activated, but the service could not be found"
+                                    "Socket unit {socket_id:?} activated, but no matching service could be found \
+                                     (checked socket's services list and all services' sockets lists)"
                                 );
                             }
                             if let Some(srvc_unit) = srvc_unit {

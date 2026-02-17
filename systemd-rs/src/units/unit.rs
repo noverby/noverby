@@ -545,6 +545,13 @@ impl Unit {
                     // Dont need activation
                     return Ok(self_status.clone());
                 }
+                UnitStatus::Stopped(StatusStopped::StoppedUnexpected, _) => {
+                    // Unit already tried to start and failed.  Don't retry
+                    // during the initial activation graph walk — only the
+                    // restart mechanism (service_exit_handler / reactivate)
+                    // should retry failed units if Restart= policy allows it.
+                    return Ok(self_status.clone());
+                }
                 UnitStatus::Stopped(_, _) => {
                     if source == ActivationSource::SocketActivation {
                         // Dont need activation

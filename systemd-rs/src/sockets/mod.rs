@@ -98,7 +98,15 @@ impl Socket {
         let mut fds = Vec::new();
         for idx in 0..conf.sockets.len() {
             let single_conf = &conf.sockets[idx];
-            let as_raw_fd = single_conf.specialized.open().unwrap();
+            let as_raw_fd = match single_conf.specialized.open() {
+                Ok(fd) => fd,
+                Err(e) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to open socket {} (index {}): {}", name, idx, e),
+                    ));
+                }
+            };
             // close these fd's on exec. They must not show up in child processes
             // the ńeeded fd's will be duped which unsets the flag again
             let new_fd = as_raw_fd.as_raw_fd();

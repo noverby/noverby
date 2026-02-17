@@ -333,21 +333,46 @@ pub fn handle_all_std_err(run_info: ArcMutRuntimeInfo) {
 }
 
 pub fn handle_notification_message(msg: &str, srvc: &mut Service, name: &str) {
-    let split: Vec<_> = msg.split('=').collect();
+    let split: Vec<_> = msg.splitn(2, '=').collect();
+    if split.is_empty() {
+        return;
+    }
     match split[0] {
         "STATUS" => {
-            srvc.status_msgs.push(split[1].to_owned());
-            trace!(
-                "New status message pushed from service {}: {}",
-                name,
-                srvc.status_msgs.last().unwrap()
-            );
+            if split.len() > 1 {
+                srvc.status_msgs.push(split[1].to_owned());
+                trace!(
+                    "New status message pushed from service {}: {}",
+                    name,
+                    srvc.status_msgs.last().unwrap()
+                );
+            }
         }
         "READY" => {
             srvc.signaled_ready = true;
         }
+        // Known sd_notify fields we accept but don't fully implement yet.
+        // Logged at trace level to avoid spamming warnings during normal operation.
+        "FDSTORE" | "FDSTOREREMOVE" | "FDNAME" => {
+            trace!("Service {name}: sd_notify {msg} (fd store not fully implemented)");
+        }
+        "MAINPID" => {
+            trace!("Service {name}: sd_notify MAINPID notification: {msg}");
+        }
+        "WATCHDOG" | "WATCHDOG_USEC" => {
+            trace!("Service {name}: sd_notify watchdog notification: {msg}");
+        }
+        "RELOADING" | "STOPPING" => {
+            trace!("Service {name}: sd_notify state transition: {msg}");
+        }
+        "ERRNO" | "BUSERROR" | "EXIT_STATUS" => {
+            trace!("Service {name}: sd_notify error/exit info: {msg}");
+        }
+        "NOTIFYACCESS" | "MONOTONIC_USEC" | "INVOCATION_ID" => {
+            trace!("Service {name}: sd_notify metadata: {msg}");
+        }
         _ => {
-            warn!("Unknown notification name{}", split[0]);
+            warn!("Unknown notification from service {name}: {msg}");
         }
     }
 }

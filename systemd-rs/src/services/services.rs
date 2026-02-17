@@ -1,4 +1,3 @@
-use log::error;
 use log::trace;
 
 use super::start_service::start_service;
@@ -285,7 +284,7 @@ impl Service {
                 if let Some(proc_group) = self.process_group {
                     match nix::sys::signal::kill(proc_group, nix::sys::signal::Signal::SIGKILL) {
                         Ok(()) => trace!("Success killing process group for service {name}"),
-                        Err(e) => error!("Error killing process group for service {name}: {e}"),
+                        Err(e) => trace!("Error killing process group for service {name}: {e}"),
                     }
                 } else {
                     trace!(
@@ -295,7 +294,7 @@ impl Service {
                 match super::kill_os_specific::kill(conf, nix::sys::signal::Signal::SIGKILL) {
                     Ok(()) => trace!("Success killing process os specifically for service {name}"),
                     Err(e) => {
-                        error!("Error killing process os specifically for service {name}: {e}")
+                        trace!("Error killing process os specifically for service {name}: {e}")
                     }
                 }
             }
@@ -303,7 +302,7 @@ impl Service {
                 if let Some(pid) = self.pid {
                     match nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGKILL) {
                         Ok(()) => trace!("Success killing main process for service {name}"),
-                        Err(e) => error!("Error killing main process for service {name}: {e}"),
+                        Err(e) => trace!("Error killing main process for service {name}: {e}"),
                     }
                 } else {
                     trace!("KillMode=process but service {name} has no main pid to kill");
@@ -317,7 +316,7 @@ impl Service {
                             trace!("Success sending SIGTERM to main process for service {name}")
                         }
                         Err(e) => {
-                            error!("Error sending SIGTERM to main process for service {name}: {e}")
+                            trace!("Error sending SIGTERM to main process for service {name}: {e}")
                         }
                     }
                 }
@@ -327,14 +326,14 @@ impl Service {
                             trace!("Success killing remaining process group for service {name}")
                         }
                         Err(e) => {
-                            error!("Error killing remaining process group for service {name}: {e}")
+                            trace!("Error killing remaining process group for service {name}: {e}")
                         }
                     }
                 }
                 match super::kill_os_specific::kill(conf, nix::sys::signal::Signal::SIGKILL) {
                     Ok(()) => trace!("Success killing process os specifically for service {name}"),
                     Err(e) => {
-                        error!("Error killing process os specifically for service {name}: {e}")
+                        trace!("Error killing process os specifically for service {name}: {e}")
                     }
                 }
             }
@@ -537,7 +536,16 @@ impl Service {
                     .remove(&nix::unistd::Pid::from_raw(child.id() as i32));
                 wait_result
             }
-            Err(e) => Err(RunCmdError::SpawnError(cmdline.to_string(), format!("{e}"))),
+            Err(e) => {
+                if cmdline.prefixes.contains(&CommandlinePrefix::Minus) {
+                    trace!(
+                        "Ignore spawn error for {cmdline:?} for service: {name} (has '-' prefix): {e}"
+                    );
+                    Ok(())
+                } else {
+                    Err(RunCmdError::SpawnError(cmdline.to_string(), format!("{e}")))
+                }
+            }
         }
     }
 

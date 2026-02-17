@@ -264,7 +264,20 @@ pub fn activate_unit(
     let failure_action = unit.common.unit.failure_action.clone();
 
     match unit.activate(run_info, source) {
-        Ok(_status) => {
+        Ok(status) => {
+            // If the unit was already in StoppedUnexpected state (i.e. it
+            // previously failed and we skipped re-activation), don't
+            // propagate the before-chain again — it was already propagated
+            // when the unit first failed.  This prevents retry loops where
+            // the activation graph keeps re-discovering the failed unit as
+            // "startable" and spinning.
+            if matches!(
+                status,
+                UnitStatus::Stopped(StatusStopped::StoppedUnexpected, _)
+            ) {
+                return Ok(StartResult::Started(vec![]));
+            }
+
             if success_action != UnitAction::None {
                 info!(
                     "Unit {} succeeded, triggering SuccessAction={:?}",
