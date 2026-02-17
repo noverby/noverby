@@ -60,6 +60,7 @@
 | [Wasm-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/wasm-mojo) | WebAssembly interop layer for Mojo |
 | [NixOS-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos-rs) | NixOS with Rust user space |
 | [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | A Systemd replacement in Rust |
+| [Pkg-config-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkg-config-rs) | A pkg-config implementation in Rust |
 
 </details>
 
