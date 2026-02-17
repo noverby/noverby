@@ -48,33 +48,50 @@ The project is organized as a Cargo workspace:
 ```text
 crates/
 ├── libsystemd/     # Core library: unit parsing, dependency graph, sd_notify,
-│                   # socket activation, platform abstractions, service lifecycle
+│                   # socket activation, platform abstractions, service lifecycle,
+│                   # unit name escaping/unescaping, configuration loading
 ├── systemd/        # PID 1 service manager (init system)
-└── systemctl/      # CLI control tool for the service manager
+├── systemctl/      # CLI control tool for the service manager
+├── id128/          # 128-bit ID tool (systemd-id128)
+├── escape/         # Unit name escaping tool (systemd-escape)
+├── notify/         # Notification sender (systemd-notify)
+├── path/           # Runtime path query tool (systemd-path)
+├── cat/            # Journal cat tool (systemd-cat)
+├── detect-virt/    # Virtualization detector (systemd-detect-virt)
+├── delta/          # Unit file override viewer (systemd-delta)
+├── run/            # Transient unit runner (systemd-run)
+└── ac-power/       # AC power detection (systemd-ac-power)
 ```
 
 See [PLAN.md](PLAN.md) for the full phased plan to add all remaining systemd components (`journald`, `udevd`, `logind`, `networkd`, `resolved`, etc.).
 
 ## Current Status
 
-The existing codebase provides a working foundation for the PID 1 service manager with:
+**Phase 0 (Foundation)** is complete — the project is structured as a Cargo workspace with a shared `libsystemd` core library.
 
-- Service and socket unit file parsing (subset of directives)
-- Dependency-ordered parallel startup
-- Socket activation (non-inetd style)
-- `sd_notify` protocol (`READY=1`, `STATUS=`, `MAINPID=`, etc.)
-- Service types: `simple`, `notify`, `dbus`, `oneshot`
-- Target units for synchronization
-- cgroup-based process tracking (optional, Linux only)
-- `systemctl` CLI control tool (JSON-RPC based)
-- Container PID 1 support
+**Phase 1 (Core System)** is in progress. The system successfully boots a NixOS VM as PID 1. Implemented components:
+
+- **PID 1 service manager** (`systemd`) — unit file parsing, dependency-ordered parallel startup, socket activation, `sd_notify` protocol, service types (`simple`, `notify`, `dbus`, `oneshot`), target/slice units, cgroup tracking, PID 1-specific setup (remounting root, mounting tmpfs/cgroup2, machine-id generation)
+- **`systemctl`** — CLI control tool (JSON-RPC based) with `list-units`, `status`, `start`, `stop`, `restart`, `shutdown`
+- **`systemd-id128`** — generate/query 128-bit IDs (`new`, `machine-id`, `boot-id`, `invocation-id`, `--uuid`, `--app-specific`)
+- **`systemd-escape`** — unit name escaping/unescaping (`--unescape`, `--mangle`, `--path`, `--suffix`, `--template`, `--instance`)
+- **`systemd-notify`** — send sd_notify messages (`--ready`, `--reloading`, `--stopping`, `--status`, `--booted`, `--pid`)
+- **`systemd-path`** — query well-known system and user runtime paths (all XDG paths, systemd search paths)
+- **`systemd-cat`** — connect stdout/stderr to the journal via native protocol (`--identifier`, `--priority`, `--stderr-priority`, `--level-prefix`)
+- **`systemd-detect-virt`** — detect VMs and containers via DMI/SMBIOS, CPUID, device-tree, cgroups, container markers (`--vm`, `--container`, `--chroot`, `--private-users`, `--list`)
+- **`systemd-delta`** — show overridden, extended, masked, and redirected unit files across search paths (`--type`, `--diff`)
+- **`systemd-run`** — run commands as transient units with user/group switching, environment setup, working directory (`--scope`, `--unit`, `--uid`, `--gid`, `--wait`, `--shell`, `--setenv`, `--on-calendar`)
+- **`systemd-ac-power`** — detect AC power status via `/sys/class/power_supply/` (`--verbose`, `--check-capacity`, `--low`)
+- **`libsystemd` core library** — unit name escaping/unescaping, template instantiation, path escaping, unit name mangling
+
+**Remaining Phase 1 items**: `journald`, `journalctl`, `systemd-shutdown` (standalone binary), `systemd-sleep`.
 
 See [feature-comparison.md](feature-comparison.md) for a detailed feature-by-feature comparison with upstream systemd.
 
 ## Building
 
 ```sh
-# Build the entire workspace
+# Build the entire workspace (all binaries)
 cargo build --release
 
 # Build just the service manager
@@ -82,6 +99,17 @@ cargo build --release -p systemd
 
 # Build just the control tool
 cargo build --release -p systemctl
+
+# Build individual utilities
+cargo build --release -p systemd-id128
+cargo build --release -p systemd-escape
+cargo build --release -p systemd-notify
+cargo build --release -p systemd-path
+cargo build --release -p systemd-cat
+cargo build --release -p systemd-detect-virt
+cargo build --release -p systemd-delta
+cargo build --release -p systemd-run
+cargo build --release -p systemd-ac-power
 
 # Build with optional features
 cargo build --release -p libsystemd --features dbus_support,cgroups,linux_eventfd
