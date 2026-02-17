@@ -17,8 +17,7 @@
         ];
       };
 
-      # TODO: Run `nix build` to get the correct hash after adding new workspace crates
-      cargoHash = "sha256-fOysHL05EioMO3na0ZwWg3gpo+b8c4/b2laA4jtAkD4=";
+      cargoLock.lockFile = ./Cargo.lock;
 
       buildInputs = [
         dbus
