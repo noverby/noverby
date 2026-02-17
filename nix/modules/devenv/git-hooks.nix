@@ -52,7 +52,7 @@
         enable = true;
         package = pkgs.commitlint-rs;
         name = "prepare-commit-msg-commitlint-rs";
-        entry = "${pkgs.commitlint-rs}/bin/commitlint --edit";
+        entry = "${pkgs.commitlint-rs}/bin/commitlint --config ${./configs/commitlintrc.yml} --edit";
         stages = ["prepare-commit-msg"];
       };
     };

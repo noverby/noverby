@@ -1,0 +1,34 @@
+rules:
+  description-empty:
+    level: error
+  description-format:
+    level: error
+    format: ^[A-Z].*$
+  subject-empty:
+    level: error
+  type-empty:
+    level: error
+  type:
+    level: error
+    options:
+      - feat
+      - fix
+      - chore
+      - doc
+  scope-empty:
+    level: error
+  scope:
+    level: error
+    optional: false
+    options:
+      - backend
+      - homepage
+      - nix
+      - nixos-rs
+      - pkgs
+      - pkg-config-rs
+      - slides
+      - systemd-rs
+      - wasm-mojo
+      - wiki
+      
