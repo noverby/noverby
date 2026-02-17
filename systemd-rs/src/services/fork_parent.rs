@@ -1,4 +1,5 @@
 use log::error;
+use log::info;
 use log::trace;
 use log::warn;
 
@@ -45,7 +46,9 @@ pub fn wait_for_service(
     let duration_timeout = srvc.get_start_timeout(conf);
     match conf.srcv_type {
         ServiceType::Notify | ServiceType::NotifyReload => {
-            trace!("[FORK_PARENT] Waiting for a notification for service {name}");
+            info!(
+                "[FORK_PARENT] Waiting for a notification for service {name} (timeout={duration_timeout:?})"
+            );
 
             //let duration_timeout = Some(std::time::Duration::from_nanos(1_000_000_000_000));
             let mut buf = [0u8; 512];
@@ -89,21 +92,60 @@ pub fn wait_for_service(
                         .unwrap();
                 }
                 let bytes = match stream.recv(&mut buf[..]) {
-                    Ok(bytes) => bytes,
+                    Ok(bytes) => {
+                        if bytes > 0 {
+                            let received =
+                                core::str::from_utf8(&buf[..bytes]).unwrap_or("<non-utf8>");
+                            info!(
+                                "[FORK_PARENT] Service {name}: received {bytes} bytes on notify socket: {:?}",
+                                received
+                            );
+                        }
+                        bytes
+                    }
                     Err(e) => match e.kind() {
-                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted => 0,
-                        _ => panic!("{}", e),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted => {
+                            trace!(
+                                "[FORK_PARENT] Service {name}: recv returned {:?}, elapsed={:?}",
+                                e.kind(),
+                                start_time.elapsed()
+                            );
+                            0
+                        }
+                        _ => {
+                            error!("[FORK_PARENT] Service {name}: recv error: {e}");
+                            panic!("{}", e);
+                        }
                     },
                 };
-                srvc.notifications_buffer
-                    .push_str(core::str::from_utf8(&buf[..bytes]).unwrap());
+                let received_str = core::str::from_utf8(&buf[..bytes]).unwrap();
+                srvc.notifications_buffer.push_str(received_str);
+                // Each recv() returns a complete datagram from sd_notify.
+                // Datagrams use '\n' to separate key=value pairs internally,
+                // but may not end with '\n'.  If we don't add a separator,
+                // the last key=value of one datagram merges with the first
+                // key=value of the next (e.g. "FDNAME=inotifyREADY=1"),
+                // causing READY=1 to never be parsed.  Ensure there is
+                // always a '\n' boundary between datagrams.
+                if bytes > 0 && !received_str.ends_with('\n') {
+                    srvc.notifications_buffer.push('\n');
+                }
+                if !srvc.notifications_buffer.is_empty() {
+                    info!(
+                        "[FORK_PARENT] Service {name}: notification buffer before parse: {:?}",
+                        srvc.notifications_buffer
+                    );
+                }
                 crate::notification_handler::handle_notifications_from_buffer(srvc, name);
                 if srvc.signaled_ready {
                     srvc.signaled_ready = false;
-                    trace!("[FORK_PARENT] Service {name} sent READY=1 notification");
+                    info!("[FORK_PARENT] Service {name} sent READY=1 notification — proceeding!");
                     break;
                 }
-                trace!("[FORK_PARENT] Service {name} still not ready");
+                trace!(
+                    "[FORK_PARENT] Service {name} still not ready (elapsed={:?})",
+                    start_time.elapsed()
+                );
             }
             if let Some(stream) = &srvc.notifications {
                 stream.set_read_timeout(None).unwrap();

@@ -103,6 +103,15 @@ pub fn handle_all_streams(run_info: ArcMutRuntimeInfo) {
                                     let note_str =
                                         String::from_utf8(buf[..bytes].to_vec()).unwrap();
                                     mut_state.srvc.notifications_buffer.push_str(&note_str);
+                                    // Each recv() returns a complete datagram from sd_notify.
+                                    // Datagrams use '\n' to separate key=value pairs internally,
+                                    // but may not end with '\n'.  If we don't add a separator,
+                                    // the last key=value of one datagram merges with the first
+                                    // key=value of the next (e.g. "FDNAME=inotifyREADY=1"),
+                                    // causing READY=1 to never be parsed.
+                                    if bytes > 0 && !note_str.ends_with('\n') {
+                                        mut_state.srvc.notifications_buffer.push('\n');
+                                    }
                                     crate::notification_handler::handle_notifications_from_buffer(
                                         &mut mut_state.srvc,
                                         &srvc_unit.id.name,

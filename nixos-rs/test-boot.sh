@@ -204,8 +204,7 @@ log_info "Serial socket ready"
 # We use a python3 helper that:
 #   1. Connects to the Unix domain socket
 #   2. Reads output, writes it to the log file (and optionally to stderr)
-#   3. When it sees "Stage 2" output, sends two newlines to unblock the boot
-#   4. Runs until killed
+#   3. Runs until killed
 
 VERBOSE_FLAG=""
 if [[ "$VERBOSE" == "true" ]]; then
@@ -238,9 +237,6 @@ else:
 
 sock.setblocking(False)
 
-stage2_enters_sent = False
-buf = b""
-
 with open(log_path, "ab", buffering=0) as log:
     while True:
         try:
@@ -260,24 +256,6 @@ with open(log_path, "ab", buffering=0) as log:
             if verbose:
                 sys.stderr.buffer.write(data)
                 sys.stderr.buffer.flush()
-
-            buf += data
-            # Keep a rolling window so we don't accumulate unboundedly
-            if len(buf) > 65536:
-                buf = buf[-32768:]
-
-            # When NixOS Stage 2 starts, the init script may pause
-            # waiting for input. Send two newlines to unblock it.
-            if not stage2_enters_sent and b"Stage 2" in buf:
-                # Small delay to let the init script reach the read point
-                time.sleep(0.5)
-                try:
-                    sock.sendall(b"\n\n")
-                    stage2_enters_sent = True
-                    if verbose:
-                        print("\n[test-boot] Sent enters for Stage 2\n", file=sys.stderr)
-                except OSError:
-                    pass
 
 sock.close()
 PYEOF

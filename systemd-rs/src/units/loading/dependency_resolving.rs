@@ -419,6 +419,15 @@ fn add_socket_target_relations(units: &mut UnitTable) {
     }
 }
 
+/// Set up socket→service relations.
+///
+/// When the service explicitly lists the socket (via `Sockets=`) or names match,
+/// we add both ordering (Before/After) AND hard dependency (Requires/RequiredBy).
+///
+/// When only the socket references the service (via `Service=`), we add ordering
+/// only — the service does NOT get a hard Requires on the socket.  This matches
+/// real systemd behavior where optional/conditional sockets (e.g. the audit
+/// socket) don't block the service from starting.
 fn add_sock_srvc_relations(
     srvc_id: UnitId,
     srvc_install: &mut Dependencies,
@@ -426,11 +435,19 @@ fn add_sock_srvc_relations(
     sock_id: UnitId,
     sock_install: &mut Dependencies,
     sock_conf: &mut SocketConfig,
+    strong: bool,
 ) {
+    // Always add ordering: service After socket, socket Before service
     srvc_install.after.push(sock_id.clone());
-    srvc_install.requires.push(sock_id.clone());
     sock_install.before.push(srvc_id.clone());
-    sock_install.required_by.push(srvc_id.clone());
+
+    // Only add hard dependency when the service explicitly lists the socket
+    // (name match or Sockets= directive).  When only the socket's Service=
+    // points at the service, the socket is optional and should not block it.
+    if strong {
+        srvc_install.requires.push(sock_id.clone());
+        sock_install.required_by.push(srvc_id.clone());
+    }
 
     sock_install.dedup();
     srvc_install.dedup();
@@ -444,7 +461,16 @@ fn add_sock_srvc_relations(
 }
 
 /// This takes a set of services and sockets and matches them both by their name and their
-/// respective explicit settings. It adds appropriate before/after and `requires/required_by` relations.
+/// respective explicit settings.  It adds appropriate before/after and (where appropriate)
+/// requires/required_by relations.
+///
+/// Matching rules (inclusive OR — all that apply are used):
+/// 1. Names match (e.g. `foo.socket` ↔ `foo.service`) → strong (Requires + ordering)
+/// 2. Service lists socket in `Sockets=` → strong
+/// 3. Socket lists service in `Service=` → weak (ordering only, no Requires)
+///
+/// `add_sock_srvc_relations` handles dedup, so calling it when some relations
+/// already exist from unit-file parsing is safe.
 fn apply_sockets_to_services(unit_table: &mut UnitTable) -> Result<(), String> {
     let mut service_ids = Vec::new();
     let mut socket_ids = Vec::new();
@@ -473,13 +499,25 @@ fn apply_sockets_to_services(unit_table: &mut UnitTable) -> Result<(), String> {
 
                 let srvc = &mut srvc_unit.specific;
                 if let Specific::Service(srvc) = srvc {
-                    // add sockets for services with the exact same name
-                    if (srvc_unit.id.name_without_suffix() == sock_unit.id.name_without_suffix())
-                        && !srvc.has_socket(&sock_unit.id.name)
-                    {
+                    let names_match =
+                        srvc_unit.id.name_without_suffix() == sock_unit.id.name_without_suffix();
+                    let srvc_has_sock = srvc.conf.sockets.contains(&sock_unit.id);
+                    let sock_has_srvc = sock.conf.services.contains(&srvc_unit.id);
+
+                    if names_match || srvc_has_sock || sock_has_srvc {
+                        // Strong relation when the service explicitly owns the
+                        // socket (name match or Sockets= directive).  Weak
+                        // (ordering-only) when only the socket's Service= points
+                        // at the service — the socket may be optional/conditional.
+                        let strong = names_match || srvc_has_sock;
                         trace!(
-                            "add socket: {} to service: {} because their names match",
-                            sock_unit.id.name, srvc_unit.id.name
+                            "add socket: {} to service: {} (names_match={}, srvc_has_sock={}, sock_has_srvc={}, strong={})",
+                            sock_unit.id.name,
+                            srvc_unit.id.name,
+                            names_match,
+                            srvc_has_sock,
+                            sock_has_srvc,
+                            strong,
                         );
 
                         add_sock_srvc_relations(
@@ -489,28 +527,7 @@ fn apply_sockets_to_services(unit_table: &mut UnitTable) -> Result<(), String> {
                             sock_unit.id.clone(),
                             &mut sock_unit.common.dependencies,
                             &mut sock.conf,
-                        );
-                        counter += 1;
-                    }
-
-                    // add sockets to services that specify that the socket belongs to them
-                    // or sockets to services that specify that they belong to the service
-                    if (srvc.conf.sockets.contains(&sock_unit.id)
-                        && !sock.conf.services.contains(&srvc_unit.id))
-                        || (sock.conf.services.contains(&srvc_unit.id)
-                            && !srvc.conf.sockets.contains(&sock_unit.id))
-                    {
-                        trace!(
-                            "add socket: {} to service: {} because one mentions the other",
-                            sock_unit.id.name, srvc_unit.id.name
-                        );
-                        add_sock_srvc_relations(
-                            srvc_unit.id.clone(),
-                            &mut srvc_unit.common.dependencies,
-                            &mut srvc.conf,
-                            sock_unit.id.clone(),
-                            &mut sock_unit.common.dependencies,
-                            &mut sock.conf,
+                            strong,
                         );
                         counter += 1;
                     }
@@ -521,9 +538,9 @@ fn apply_sockets_to_services(unit_table: &mut UnitTable) -> Result<(), String> {
         let sock_name = sock_unit.id.name.clone();
         unit_table.insert(sock_unit.id.clone(), sock_unit);
         if counter > 1 {
-            return Err(format!(
-                "Added socket: {sock_name} to too many services (should be at most one): {counter}"
-            ));
+            // Multiple services matched is only an error for strong matches.
+            // For now just warn, since conditional sockets may match weakly.
+            warn!("Added socket: {sock_name} to {counter} services (expected at most one)");
         }
         if counter == 0 {
             warn!("Added socket: {sock_name} to no service");

@@ -394,8 +394,10 @@ impl Service {
                 Timeout::Infinity => None,
             }
         } else {
-            // TODO is 1 sec ok?
-            Some(std::time::Duration::from_millis(1000))
+            // Match real systemd's DefaultTimeoutStartSec (90 seconds).
+            // The previous 1s default caused notify/dbus services to time out
+            // before they could send their readiness notification.
+            Some(std::time::Duration::from_secs(90))
         }
     }
 

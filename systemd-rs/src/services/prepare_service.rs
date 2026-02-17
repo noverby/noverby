@@ -78,6 +78,18 @@ pub fn prepare_service(
             std::fs::remove_file(&notify_socket_env_var).unwrap();
         }
         let stream = UnixDatagram::bind(&notify_socket_env_var).unwrap();
+
+        // Make the socket world-writable so that services running as non-root
+        // users (e.g. User=nscd) can send sd_notify readiness notifications.
+        // Without this, sendto() on the socket fails with EACCES for non-root
+        // services, causing Type=notify services to time out waiting for READY=1.
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            &notify_socket_env_var,
+            std::fs::Permissions::from_mode(0o666),
+        )
+        .unwrap();
+
         // close these fd's on exec. They must not show up in child processes
         let new_listener_fd = stream.as_raw_fd();
         nix::fcntl::fcntl(
