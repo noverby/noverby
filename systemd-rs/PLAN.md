@@ -8,7 +8,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ### What works today
 
-- 2,523 unit tests passing, boot test passing in ~3 seconds
+- 2,686 unit tests passing, boot test passing in ~4 seconds
 - PID 1 initialization with full NixOS compatibility (VFS mounts, `/etc/mtab` symlink, cgroup2, machine-id, hostname, home directories, PAM/NSS diagnostics)
 - Unit file parsing for all NixOS-generated unit files (service, socket, target, mount, timer, path, slice, scope)
 - Dependency graph resolution and parallel unit activation
@@ -22,11 +22,15 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 - Update-done stamps (systemd-update-done marks /etc and /var as updated)
 - Pstore archival (systemd-pstore archives kernel crash logs)
 - Machine ID setup (systemd-machine-id-setup initializes/commits machine-id)
+- Hostname management (systemd-hostnamed manages static/pretty/transient hostnames, hostnamectl CLI)
+- Locale/keymap management (systemd-localed manages locale and keyboard config, localectl CLI)
 - Clean shutdown with filesystem unmount
-- 33 crates implemented across Phases 0–4
+- 37 crates implemented across Phases 0–4
 
 ### Recent changes
 
+- Implemented `systemd-hostnamed` — hostname management daemon managing static hostname (`/etc/hostname`), pretty hostname, and transient (kernel) hostname; reads/writes `/etc/machine-info` for chassis, deployment, location, icon name, hardware vendor/model; auto-detects chassis type from DMI SMBIOS data; reads OS info from `/etc/os-release`; provides control socket for runtime queries/updates; `hostnamectl` CLI with `status`, `show`, `hostname`, `set-hostname`, `icon-name`, `chassis`, `deployment`, `location` commands; supports `--transient`, `--static`, `--pretty` flags and `-p`/`--property` filtering
+- Implemented `systemd-localed` — locale and keyboard layout management daemon managing system locale (`/etc/locale.conf`), virtual console keymap (`/etc/vconsole.conf`), and X11 keyboard layout (`/etc/X11/xorg.conf.d/00-keyboard.conf`); supports all 15 standard locale variables (LANG, LANGUAGE, LC_*); provides control socket for runtime changes; `localectl` CLI with `status`, `show`, `set-locale`, `set-keymap`, `set-x11-keymap`, `list-keymaps`, `list-x11-keymap-layouts`, `list-x11-keymap-models`, `list-x11-keymap-variants`, `list-x11-keymap-options` commands
 - Enhanced `systemctl` — added support for common flags (`--no-block`, `--quiet`, `--force`, `--no-pager`, `--no-ask-password`, `--system`, `-a`, `-q`, `-f`, `-l`, `-t`, `-p`, etc.); flags are stripped before sending commands to PID 1; added command aliases (`poweroff`/`reboot`/`halt` → `shutdown`, `daemon-reload` → `reload`, `condrestart`/`force-reload` → `try-restart`); added proper exit code handling for `is-active` (0=active, 3=inactive), `is-enabled`, `is-failed`; suppresses empty output for commands like `try-restart` (fixes `resolvconf.service` printing `[]` to stdout)
 - Added `try-restart`, `reload-or-restart`, `is-active`, `is-enabled`, `is-failed` methods to PID 1 control handler — `try-restart` restarts only if unit is active (silently succeeds otherwise), `is-active` returns unit state (`active`/`activating`/`deactivating`/`inactive`/`failed`), `is-enabled` checks if unit is loaded, `is-failed` checks for error state; also added `daemon-reload`/`daemon-reexec` as aliases for `reload`; fixes `resolvconf.service` "Unknown method: try-restart" error during boot
 - Implemented `systemd-user-sessions` — manages `/run/nologin` to permit/deny user logins; fixes the `autovt@tty1.service` ERROR where the getty failed because `systemd-user-sessions.service` had not reached the expected state; `start` removes `/run/nologin`, `stop` creates it with "System is going down." message
@@ -75,10 +79,10 @@ crates/
 ├── machine-id-setup/    # Machine ID initialization (systemd-machine-id-setup)
 ├── tmpfiles/            # Temporary file manager (systemd-tmpfiles)
 ├── sysusers/            # Declarative system user manager (systemd-sysusers)
-├── hostnamed/           # Hostname manager daemon (systemd-hostnamed)
-├── hostnamectl/         # Hostname control tool
-├── localed/             # Locale manager daemon (systemd-localed)
-├── localectl/           # Locale control tool
+├── hostnamed/           # Hostname manager daemon (systemd-hostnamed) ✅
+├── hostnamectl/         # Hostname control tool ✅
+├── localed/             # Locale manager daemon (systemd-localed) ✅
+├── localectl/           # Locale control tool ✅
 ├── machined/            # VM/container manager daemon (systemd-machined)
 ├── machinectl/          # Machine manager control tool
 ├── nspawn/              # Container runtime (systemd-nspawn)
@@ -189,8 +193,8 @@ Full network management:
 - ❌ **`networkd`** — network configuration daemon with `.network`, `.netdev`, `.link` file parsing, DHCP v4/v6 client, DHCPv6-PD, IPv6 RA, static routes, routing policy rules, bridge/bond/VLAN/VXLAN/WireGuard/tunnel/MACsec creation, `networkctl` CLI
 - ❌ **`resolved`** — stub DNS resolver with DNS-over-TLS, DNSSEC validation, mDNS responder/resolver, LLMNR responder/resolver, per-link DNS configuration, split DNS, `/etc/resolv.conf` management, `resolvectl` CLI
 - ✅ **`timesyncd`** — SNTP time synchronization daemon with NTP v4 client, `timesyncd.conf` parsing with drop-in directories, clock adjustment (slew via `adjtimex()` for small offsets, step via `clock_settime()` for large), clock state persistence, sd_notify protocol, signal handling, exponential backoff polling, container detection, graceful degradation; `timedatectl` CLI with `status`, `show`, `set-time`, `set-timezone`, `set-ntp`, `list-timezones`, `timesync-status`; missing: NTS support, D-Bus interface (`org.freedesktop.timesync1`), `systemd-timedated` D-Bus daemon (`org.freedesktop.timedate1`)
-- ❌ **`hostnamed`** — hostname management daemon, `hostnamectl` CLI
-- ❌ **`localed`** — locale and keymap management daemon, `localectl` CLI
+- ✅ **`hostnamed`** — hostname management daemon with static/pretty/transient hostname support, `/etc/hostname` and `/etc/machine-info` management, DMI chassis auto-detection, control socket; `hostnamectl` CLI with `status`, `show`, `hostname`, `set-hostname`, `chassis`, `deployment`, `location`, `icon-name` commands; missing: D-Bus interface (`org.freedesktop.hostname1`)
+- ✅ **`localed`** — locale and keyboard layout management daemon with `/etc/locale.conf`, `/etc/vconsole.conf`, and X11 keyboard configuration management, keymap/layout listing, control socket; `localectl` CLI with `status`, `show`, `set-locale`, `set-keymap`, `set-x11-keymap`, `list-keymaps`, `list-x11-keymap-*` commands; missing: D-Bus interface (`org.freedesktop.locale1`), automatic keymap-to-X11 conversion
 
 ## Phase 4 — Extended Services
 
