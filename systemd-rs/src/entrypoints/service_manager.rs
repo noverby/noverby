@@ -205,6 +205,48 @@ fn pid1_specific_setup() {
     let fs_type: Option<&str> = None;
     let data: Option<&str> = None;
     let _ = nix::mount::mount(source, "/", fs_type, flags, data);
+
+    // Mount essential tmpfs mount points that NixOS services depend on.
+    //
+    // systemd-rs does not yet implement mount units, but several NixOS
+    // services (notably suid-sgid-wrappers.service) have
+    // RequiresMountsFor= dependencies on paths that need a tmpfs.  Without
+    // these mounts the wrapper setup fails, which breaks PAM/NSS and
+    // prevents login.
+    //
+    // Each entry is (where, options).  We only mount if the path doesn't
+    // already have something mounted on it (checked via a simple stat of
+    // the path — if the directory doesn't exist we create it first).
+    let tmpfs_mounts: &[(&str, &str)] = &[
+        ("/run/wrappers", "nodev,mode=755,size=50%"),
+        ("/run/initramfs", "mode=0700"),
+    ];
+
+    for &(where_path, options) in tmpfs_mounts {
+        // Create the mount point directory if it doesn't exist
+        let _ = std::fs::create_dir_all(where_path);
+
+        // Skip if already mounted (a very rough check: try to mount and
+        // ignore EBUSY which means something is already there).
+        let mount_result = nix::mount::mount(
+            Some("tmpfs"),
+            where_path,
+            Some("tmpfs"),
+            nix::mount::MsFlags::empty(),
+            Some(options),
+        );
+        match mount_result {
+            Ok(()) => {
+                eprintln!("systemd-rs: mounted tmpfs on {where_path}");
+            }
+            Err(nix::Error::EBUSY) => {
+                // Already mounted — fine
+            }
+            Err(e) => {
+                eprintln!("systemd-rs: failed to mount tmpfs on {where_path}: {e}");
+            }
+        }
+    }
 }
 
 #[cfg(not(target_os = "linux"))]

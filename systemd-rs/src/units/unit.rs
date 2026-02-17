@@ -422,11 +422,23 @@ impl Unit {
         let unstarted_deps = others
             .iter()
             .fold(Vec::new(), |mut acc, (id, status_locked)| {
-                let required = self.common.dependencies.requires.contains(id);
+                let required = self.common.dependencies.requires.contains(id)
+                    || self.common.dependencies.binds_to.contains(id);
+                let pulled = self.common.dependencies.wants.contains(id);
+                let is_pull_dep = required || pulled;
                 let ready = if required {
                     status_locked.is_started()
-                } else {
+                } else if is_pull_dep {
                     **status_locked != UnitStatus::NeverStarted
+                } else {
+                    // Pure ordering dep (After= without pull-dep):
+                    // NeverStarted means it's not being activated — treat as ready.
+                    // Starting means it's actively starting — wait for it.
+                    match &**status_locked {
+                        UnitStatus::NeverStarted => true,
+                        UnitStatus::Starting => false,
+                        _ => true,
+                    }
                 };
 
                 if !ready {
@@ -460,11 +472,21 @@ impl Unit {
         let unstarted_deps = others
             .iter()
             .fold(Vec::new(), |mut acc, (id, status_locked)| {
-                let required = self.common.dependencies.requires.contains(id);
+                let required = self.common.dependencies.requires.contains(id)
+                    || self.common.dependencies.binds_to.contains(id);
+                let pulled = self.common.dependencies.wants.contains(id);
+                let is_pull_dep = required || pulled;
                 let ready = if required {
                     status_locked.is_started()
-                } else {
+                } else if is_pull_dep {
                     **status_locked != UnitStatus::NeverStarted
+                } else {
+                    // Pure ordering dep: treat NeverStarted as ready
+                    match &**status_locked {
+                        UnitStatus::NeverStarted => true,
+                        UnitStatus::Starting => false,
+                        _ => true,
+                    }
                 };
 
                 if !ready {
@@ -903,11 +925,26 @@ impl Dependencies {
         ids.extend(self.bound_by.iter().cloned());
         ids
     }
+    /// Return units that must be started before this one AND that this unit
+    /// actually pulls in (via Wants=/Requires=/BindsTo=).
+    ///
+    /// Pure `After=` ordering without a pull-dep does NOT cause a unit to be
+    /// included in the activation subgraph — it only affects ordering IF
+    /// both units happen to be activated.  This matches real systemd behavior
+    /// where `After=rescue.target` on `multi-user.target` does NOT cause
+    /// `rescue.target` to be activated during normal boot.
     #[must_use]
     pub fn start_before_this(&self) -> Vec<UnitId> {
-        let mut ids = Vec::new();
-        ids.extend(self.after.iter().cloned());
-        ids
+        // Only return After= deps that are also pull-deps.
+        // Units that are only in `after` (pure ordering) are NOT included —
+        // they don't need to be started, only ordered if they happen to start.
+        self.after
+            .iter()
+            .filter(|id| {
+                self.wants.contains(id) || self.requires.contains(id) || self.binds_to.contains(id)
+            })
+            .cloned()
+            .collect()
     }
     #[must_use]
     pub fn start_concurrently_with_this(&self) -> Vec<UnitId> {
