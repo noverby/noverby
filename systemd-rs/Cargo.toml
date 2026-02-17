@@ -37,5 +37,10 @@ members = [
     "crates/hostnamectl",
     "crates/localed",
     "crates/localectl",
+    "crates/analyze",
+    "crates/cgls",
+    "crates/cgtop",
+    "crates/inhibit",
+    "crates/mount",
 ]
 resolver = "2"
