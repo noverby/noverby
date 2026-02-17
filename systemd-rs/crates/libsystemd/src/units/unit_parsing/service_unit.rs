@@ -678,6 +678,7 @@ fn parse_service_section(
                     "oneshot" => ServiceType::OneShot,
                     "forking" => ServiceType::Forking,
                     "idle" => ServiceType::Idle,
+                    "exec" => ServiceType::Exec,
                     "dbus" => {
                         if cfg!(feature = "dbus_support") {
                             ServiceType::Dbus

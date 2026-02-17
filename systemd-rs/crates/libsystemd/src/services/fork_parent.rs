@@ -154,6 +154,35 @@ pub fn wait_for_service(
         ServiceType::Simple | ServiceType::Idle => {
             trace!("[FORK_PARENT] service {name} doesnt notify");
         }
+        ServiceType::Exec => {
+            // Type=exec is like Simple, but we briefly verify that the
+            // process actually started (i.e. the exec() call succeeded)
+            // by checking that it hasn't already exited with an error.
+            trace!("[FORK_PARENT] Waiting briefly for exec confirmation for service {name}");
+            let pid = srvc.pid.unwrap();
+            // Give the process a short window to fail on exec() errors
+            // (e.g. binary not found, permission denied). If it's still
+            // running after this, exec() succeeded.
+            let exec_check_delay = std::time::Duration::from_millis(50);
+            std::thread::sleep(exec_check_delay);
+            {
+                let mut pid_table_locked = pid_table.lock().unwrap();
+                if let Some(PidEntry::ServiceExited(code)) = pid_table_locked.get(&pid) {
+                    if !conf.success_exit_status.is_success(code) {
+                        let code = code.clone();
+                        pid_table_locked.remove(&pid);
+                        return Err(RunCmdError::BadExitCode(
+                            conf.exec
+                                .as_ref()
+                                .map(|e| e.to_string())
+                                .unwrap_or_else(|| "(no exec)".to_owned()),
+                            code,
+                        ));
+                    }
+                }
+            }
+            trace!("[FORK_PARENT] exec check passed for service {name}");
+        }
         ServiceType::OneShot => {
             trace!("[FORK_PARENT] Waiting for oneshot service to exit: {name}");
             let mut counter = 1u64;

@@ -1023,6 +1023,7 @@ pub fn generate_fstab_mount_units(unit_table: &mut HashMap<UnitId, Unit>) {
                     default_dependencies: true,
                     ignore_on_isolate: false,
                     conditions: Vec::new(),
+                    assertions: Vec::new(),
                     success_action: Default::default(),
                     failure_action: Default::default(),
                     job_timeout_action: Default::default(),

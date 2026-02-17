@@ -354,6 +354,7 @@ fn make_common_from_parsed(
             default_dependencies: unit.default_dependencies,
             ignore_on_isolate: unit.ignore_on_isolate,
             conditions: unit.conditions,
+            assertions: unit.assertions,
             success_action: unit.success_action,
             failure_action: unit.failure_action,
             job_timeout_action: unit.job_timeout_action,

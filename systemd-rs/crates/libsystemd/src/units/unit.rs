@@ -1119,6 +1119,13 @@ pub struct UnitConfig {
     /// Matches systemd's ConditionPathExists=, ConditionPathIsDirectory=, etc.
     pub conditions: Vec<UnitCondition>,
 
+    /// Assertions that must all be true for the unit to activate.
+    /// Unlike conditions, if any assertion fails the unit enters a **failed**
+    /// state (not silently skipped). Uses the same `UnitCondition` type since
+    /// the check logic is identical — only the failure semantics differ.
+    /// Matches systemd's AssertPathExists=, AssertPathIsDirectory=, etc.
+    pub assertions: Vec<UnitCondition>,
+
     /// Action to take when the unit finishes successfully.
     /// Matches systemd's `SuccessAction=` setting.
     pub success_action: UnitAction,
