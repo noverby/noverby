@@ -7,7 +7,7 @@
   env =
     if envJson != ""
     then lib.fromJSON envJson
-    else {PWD = "/home/noverby/Work/noverby";};
+    else {PWD = "/home/noverby/Work/overby-me";};
 in {
   devenv.root = env.PWD;
 }
