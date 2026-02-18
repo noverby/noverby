@@ -10,15 +10,36 @@ use std::path::PathBuf;
 
 fn find_new_unit_path(unit_dirs: &[PathBuf], find_name: &str) -> Result<Option<PathBuf>, String> {
     for dir in unit_dirs {
-        for entry in
-            fs::read_dir(dir).map_err(|e| format!("Error while opening dir {dir:?}: {e}"))?
-        {
-            let entry = entry.unwrap();
-            let meta = entry.metadata().unwrap();
-            if meta.file_type().is_file() && entry.file_name() == find_name {
+        let read_dir = match fs::read_dir(dir) {
+            Ok(rd) => rd,
+            Err(e) => {
+                return Err(format!("Error while opening dir {dir:?}: {e}"));
+            }
+        };
+        for entry in read_dir {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let entry_name = entry.file_name();
+            // Use symlink_metadata so we can handle symlinks explicitly.
+            // NixOS unit files in /etc/systemd/system/ are symlinks into
+            // the Nix store; entry.metadata() (which follows symlinks) can
+            // fail on complex symlink chains, so we match on the raw type.
+            let symlink_meta = match entry.path().symlink_metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            if symlink_meta.file_type().is_symlink() {
+                if entry_name == find_name {
+                    return Ok(Some(entry.path()));
+                }
+                continue;
+            }
+            if symlink_meta.file_type().is_file() && entry_name == find_name {
                 return Ok(Some(entry.path()));
             }
-            if meta.file_type().is_dir() {
+            if symlink_meta.file_type().is_dir() {
                 if let Some(p) = find_new_unit_path(&[entry.path()], find_name)? {
                     return Ok(Some(p));
                 }
@@ -108,6 +129,66 @@ fn check_all_names_exist(
         ));
     }
     Ok(())
+}
+
+/// Inserts a single unit without checking that all referenced dependencies exist.
+/// Used for on-demand unit loading (e.g. `systemctl restart` for a unit that wasn't
+/// part of the initial boot dependency graph). Missing dependency references are
+/// silently ignored — the unit is inserted and wired up to whatever units are
+/// already present in the table.
+pub fn insert_new_unit_lenient(unit: units::Unit, run_info: &mut RuntimeInfo) {
+    let new_id = unit.id.clone();
+    let unit_table = &mut run_info.unit_table;
+
+    // Wire up bidirectional dependency relations with existing units.
+    for existing in unit_table.values_mut() {
+        if unit.common.dependencies.after.contains(&existing.id) {
+            existing.common.dependencies.before.push(new_id.clone());
+        }
+        if unit.common.dependencies.before.contains(&existing.id) {
+            existing.common.dependencies.after.push(new_id.clone());
+        }
+        if unit.common.dependencies.requires.contains(&existing.id) {
+            existing
+                .common
+                .dependencies
+                .required_by
+                .push(new_id.clone());
+        }
+        if unit.common.dependencies.wants.contains(&existing.id) {
+            existing.common.dependencies.wanted_by.push(new_id.clone());
+        }
+        if unit.common.dependencies.required_by.contains(&existing.id) {
+            existing.common.dependencies.requires.push(new_id.clone());
+        }
+        if unit.common.dependencies.wanted_by.contains(&existing.id) {
+            existing.common.dependencies.wants.push(new_id.clone());
+        }
+        if unit.common.dependencies.conflicts.contains(&existing.id) {
+            existing
+                .common
+                .dependencies
+                .conflicted_by
+                .push(new_id.clone());
+        }
+        if unit
+            .common
+            .dependencies
+            .conflicted_by
+            .contains(&existing.id)
+        {
+            existing.common.dependencies.conflicts.push(new_id.clone());
+        }
+        if unit.common.dependencies.binds_to.contains(&existing.id) {
+            existing.common.dependencies.bound_by.push(new_id.clone());
+        }
+        if unit.common.dependencies.bound_by.contains(&existing.id) {
+            existing.common.dependencies.binds_to.push(new_id.clone());
+        }
+    }
+
+    trace!("Leniently inserted unit: {}", unit.id.name);
+    unit_table.insert(new_id, unit);
 }
 
 /// Inserts new units but first checks that the units referenced by the new units do exist

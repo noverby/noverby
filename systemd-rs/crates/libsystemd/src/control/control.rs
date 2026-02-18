@@ -351,6 +351,53 @@ fn find_units_with_name<'a>(unit_name: &str, unit_table: &'a UnitTable) -> Vec<&
         .collect()
 }
 
+/// Try to find a unit by name in the unit table. If not found, attempt to load
+/// it from disk (searching the configured unit directories) and insert it into
+/// the unit table. Returns the UnitId on success.
+///
+/// This enables commands like `systemctl restart <unit>` to work even when the
+/// unit wasn't part of the initial boot dependency graph (e.g. units triggered
+/// on-demand by udev rules).
+fn find_or_load_unit(
+    unit_name: &str,
+    run_info: &ArcMutRuntimeInfo,
+) -> Result<crate::units::UnitId, String> {
+    // First, try to find under a read lock.
+    {
+        let ri = run_info.read().unwrap();
+        let units = find_units_with_name(unit_name, &ri.unit_table);
+        if units.len() > 1 {
+            let names: Vec<_> = units.iter().map(|unit| unit.id.name.clone()).collect();
+            return Err(format!(
+                "More than one unit found with name: {unit_name}: {names:?}"
+            ));
+        }
+        if let Some(unit) = units.first() {
+            return Ok(unit.id.clone());
+        }
+    }
+    // Not found — try to load from disk under a write lock.
+    {
+        let mut ri = run_info.write().unwrap();
+        // Re-check after acquiring write lock (another thread may have loaded it).
+        let already = find_units_with_name(unit_name, &ri.unit_table);
+        if let Some(unit) = already.first() {
+            return Ok(unit.id.clone());
+        }
+        let unit = load_new_unit(&ri.config.unit_dirs, unit_name).map_err(|e| {
+            format!("No unit found with name: {unit_name} (also failed to load from disk: {e})")
+        })?;
+        let id = unit.id.clone();
+        // Use lenient insertion: the unit may reference dependencies that aren't
+        // in the unit table (e.g. it wasn't part of the boot dependency graph).
+        // Missing deps are silently ignored — the unit is wired up to whatever
+        // is already present.
+        crate::units::insert_new_unit_lenient(unit, &mut ri);
+        trace!("Auto-loaded unit {unit_name} from disk");
+        Ok(id)
+    }
+}
+
 // TODO make this some kind of regex pattern matching
 fn find_units_with_pattern<'a>(
     name_pattern: &str,
@@ -383,32 +430,15 @@ pub fn execute_command(
             crate::shutdown::shutdown_sequence(run_info);
         }
         Command::Restart(unit_name) => {
-            let run_info = &*run_info.read().unwrap();
-            let id = {
-                let unit_table = &run_info.unit_table;
-                let units = find_units_with_name(&unit_name, unit_table);
-                if units.len() > 1 {
-                    let names: Vec<_> = units.iter().map(|unit| unit.id.name.clone()).collect();
-                    return Err(format!(
-                        "More than one unit found with name: {unit_name}: {names:?}"
-                    ));
-                }
-                if units.is_empty() {
-                    return Err(format!("No unit found with name: {unit_name}"));
-                }
-
-                units[0].id.clone()
-            };
-
-            crate::units::reactivate_unit(id, run_info).map_err(|e| format!("{e}"))?;
-            // Happy
+            let id = find_or_load_unit(&unit_name, &run_info)?;
+            let ri = run_info.read().unwrap();
+            crate::units::reactivate_unit(id, &ri).map_err(|e| format!("{e}"))?;
         }
         Command::TryRestart(unit_name) => {
             // try-restart: restart the unit only if it is currently active.
             // If the unit is not active, do nothing (success).
-            let run_info = &*run_info.read().unwrap();
-            let unit_table = &run_info.unit_table;
-            let units = find_units_with_name(&unit_name, unit_table);
+            let ri = run_info.read().unwrap();
+            let units = find_units_with_name(&unit_name, &ri.unit_table);
             if units.is_empty() {
                 // Unit not found — nothing to restart, not an error for try-restart.
                 return Ok(serde_json::json!(null));
@@ -422,7 +452,7 @@ pub fn execute_command(
 
             let id = units[0].id.clone();
             // Check if the unit is currently active.
-            let is_active = run_info
+            let is_active = ri
                 .unit_table
                 .get(&id)
                 .map(|unit| {
@@ -435,31 +465,16 @@ pub fn execute_command(
                 .unwrap_or(false);
 
             if is_active {
-                crate::units::reactivate_unit(id, run_info).map_err(|e| format!("{e}"))?;
+                crate::units::reactivate_unit(id, &ri).map_err(|e| format!("{e}"))?;
             }
             // If not active, silently succeed.
         }
         Command::ReloadOrRestart(unit_name) => {
             // reload-or-restart: try to reload, fall back to restart.
             // Since we don't support reload yet, just restart.
-            let run_info = &*run_info.read().unwrap();
-            let id = {
-                let unit_table = &run_info.unit_table;
-                let units = find_units_with_name(&unit_name, unit_table);
-                if units.len() > 1 {
-                    let names: Vec<_> = units.iter().map(|unit| unit.id.name.clone()).collect();
-                    return Err(format!(
-                        "More than one unit found with name: {unit_name}: {names:?}"
-                    ));
-                }
-                if units.is_empty() {
-                    return Err(format!("No unit found with name: {unit_name}"));
-                }
-
-                units[0].id.clone()
-            };
-
-            crate::units::reactivate_unit(id, run_info).map_err(|e| format!("{e}"))?;
+            let id = find_or_load_unit(&unit_name, &run_info)?;
+            let ri = run_info.read().unwrap();
+            crate::units::reactivate_unit(id, &ri).map_err(|e| format!("{e}"))?;
         }
         Command::IsActive(unit_name) => {
             let run_info = &*run_info.read().unwrap();
@@ -509,24 +524,9 @@ pub fn execute_command(
             return Ok(serde_json::json!(state));
         }
         Command::Start(unit_name) => {
-            let run_info = &*run_info.read().unwrap();
-            let id = {
-                let unit_table = &run_info.unit_table;
-                let units = find_units_with_name(&unit_name, unit_table);
-                if units.len() > 1 {
-                    let names: Vec<_> = units.iter().map(|unit| unit.id.name.clone()).collect();
-                    return Err(format!(
-                        "More than one unit found with name: {unit_name}: {names:?}"
-                    ));
-                }
-                if units.is_empty() {
-                    return Err(format!("No unit found with name: {unit_name}"));
-                }
-
-                units[0].id.clone()
-            };
-
-            crate::units::activate_unit(id, run_info, ActivationSource::Regular)
+            let id = find_or_load_unit(&unit_name, &run_info)?;
+            let ri = run_info.read().unwrap();
+            crate::units::activate_unit(id, &ri, ActivationSource::Regular)
                 .map_err(|e| format!("{e}"))?;
             // Happy
         }
