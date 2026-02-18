@@ -2,6 +2,8 @@
 
 use crate::runtime_info::{ArcMutRuntimeInfo, RuntimeInfo, UnitTable};
 use crate::services::ServiceErrorReason;
+use crate::units::unit::Specific;
+use crate::units::unit_parsing::ServiceType;
 use crate::units::{StatusStopped, UnitAction, UnitId, UnitStatus};
 
 use log::{error, info, trace, warn};
@@ -564,11 +566,35 @@ pub fn activate_needed_units(
         needed_names
     );
 
+    // Separate Type=idle services from the rest.  Real systemd delays idle
+    // services until all other active jobs have been dispatched (with a 5s
+    // timeout).  This prevents getty output from interleaving with boot
+    // status messages and avoids races with services like
+    // suid-sgid-wrappers that must complete before login works.
+    let (idle_ids, non_idle_ids): (Vec<UnitId>, Vec<UnitId>) = {
+        let ri = run_info.read().unwrap();
+        needed_ids
+            .iter()
+            .cloned()
+            .partition(|id| is_idle_service(id, &ri))
+    };
+
+    if !idle_ids.is_empty() {
+        let idle_names: Vec<&str> = idle_ids.iter().map(|id| id.name.as_str()).collect();
+        info!(
+            "activate_needed_units: deferring {} idle service(s): {:?}",
+            idle_ids.len(),
+            idle_names
+        );
+    }
+
+    // ── Phase 1: activate all non-idle units ──────────────────────────
+
     // collect all 'root' units. These are units that do not have any 'after' relations to other unstarted units.
     // These can be started and the the graph can be traversed and other units can be started as soon as
     // all other units they depend on are started. This works because the units form an DAG if only
     // the 'after' relations are considered for traversal.
-    let root_units = { find_startable_units(&needed_ids, &run_info.read().unwrap()) };
+    let root_units = { find_startable_units(&non_idle_ids, &run_info.read().unwrap()) };
     let root_names: Vec<&str> = root_units.iter().map(|id| id.name.as_str()).collect();
     trace!(
         "activate_needed_units: root units count={}: {:?}",
@@ -581,20 +607,85 @@ pub fn activate_needed_units(
     let errors = Arc::new(Mutex::new(Vec::new()));
     activate_units_recursive(
         root_units,
-        Arc::new(needed_ids),
-        run_info,
+        Arc::new(non_idle_ids),
+        run_info.clone(),
         tpool.clone(),
         errors.clone(),
     );
 
     tpool.join();
-    trace!("activate_needed_units: threadpool joined, activation complete");
+    info!("activate_needed_units: non-idle activation complete, all Phase 1 jobs dispatched");
+
+    // ── Phase 2: activate deferred idle services ──────────────────────
+    //
+    // Per systemd.service(5), Type=idle services have their execution
+    // delayed until all active jobs are dispatched, subject to a 5-second
+    // timeout.  All non-idle jobs have now completed, so we can start
+    // the idle services.
+
+    if !idle_ids.is_empty() {
+        let idle_names: Vec<&str> = idle_ids.iter().map(|id| id.name.as_str()).collect();
+        info!(
+            "activate_needed_units: starting {} idle service(s) now that all other jobs completed: {:?}",
+            idle_ids.len(),
+            idle_names
+        );
+
+        let idle_tpool = ThreadPool::new(6);
+        let idle_errors = errors.clone();
+        for id in idle_ids {
+            let run_info_copy = run_info.clone();
+            let idle_errors_copy = idle_errors.clone();
+            idle_tpool.execute(move || {
+                match activate_unit(
+                    id,
+                    &run_info_copy.read().unwrap(),
+                    ActivationSource::Regular,
+                ) {
+                    Ok(StartResult::Started(next_ids)) => {
+                        // Idle services may have units in their Before= chain
+                        // (though this is uncommon).  Activate them now.
+                        let ri = run_info_copy.read().unwrap();
+                        for next_id in next_ids {
+                            if let Err(e) = activate_unit(next_id, &ri, ActivationSource::Regular) {
+                                if !matches!(e.reason, UnitOperationErrorReason::DependencyError(_))
+                                {
+                                    error!("Error activating unit after idle service: {e}");
+                                    idle_errors_copy.lock().unwrap().push(e);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        if !matches!(e.reason, UnitOperationErrorReason::DependencyError(_)) {
+                            error!("Error while activating idle service: {e}");
+                            idle_errors_copy.lock().unwrap().push(e);
+                        }
+                    }
+                }
+            });
+        }
+        idle_tpool.join();
+        info!("activate_needed_units: idle service activation complete");
+    }
+
+    trace!("activate_needed_units: all activation complete");
     // TODO can we handle errors in a more meaningful way?
     let errs = (*errors.lock().unwrap()).clone();
     for err in &errs {
         error!("Error while activating unit graph: {err}");
     }
     errs
+}
+
+/// Check whether a unit is a `Type=idle` service.
+fn is_idle_service(id: &UnitId, run_info: &RuntimeInfo) -> bool {
+    if let Some(unit) = run_info.unit_table.get(id) {
+        if let Specific::Service(ref svc) = unit.specific {
+            return svc.conf.srcv_type == ServiceType::Idle;
+        }
+    }
+    false
 }
 
 /// Check for all units in this Vec, if all units this depends on are running
