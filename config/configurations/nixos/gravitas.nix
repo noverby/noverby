@@ -30,5 +30,6 @@
     home-manager
     xr
     veo
+    cloud-hypervisor
   ];
 }
