@@ -2,7 +2,7 @@
 //! drop-in override directories (.d/), template unit instantiation with
 //! specifier resolution, and a minimal getty generator.
 
-use log::{trace, warn};
+use log::{debug, info, trace, warn};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::path::{Path, PathBuf};
@@ -118,112 +118,496 @@ pub fn resolve_symlink_aliases(
     }
 
     if alias_map.is_empty() {
+        info!(
+            "resolve_symlink_aliases: no symlink aliases detected in {} unit dir(s)",
+            unit_dirs.len()
+        );
         return;
     }
 
-    // For each alias relationship, merge dependencies bidirectionally between
-    // the alias unit and the real unit, and register the alias name on the
-    // real unit. Both units stay in the table — removing aliases is unsafe
-    // because it can break dependency chains that other units reference.
+    info!(
+        "resolve_symlink_aliases: detected {} symlink alias(es): {:?}",
+        alias_map.len(),
+        alias_map
+            .iter()
+            .map(|(a, r)| format!("{} -> {}", a, r))
+            .collect::<Vec<_>>()
+    );
+
+    // For each alias relationship:
+    // 1. Merge ALL dependencies from the alias unit into the real unit
+    // 2. Register the alias name on the real unit
+    // 3. Remove the alias unit from the table
+    // 4. Rewrite all references to the alias UnitId → real UnitId
+    //
+    // In real systemd, aliases don't exist as separate units — they're just
+    // alternative names that resolve to the same unit.  Having both in the
+    // table causes the same service to be started twice (e.g.
+    // systemd-resolved.service AND dbus-org.freedesktop.resolve1.service
+    // both launching the resolved binary).
+
+    // Collect (alias_id, real_id) pairs for aliases where both exist in the table.
+    let mut alias_to_real: Vec<(UnitId, UnitId)> = Vec::new();
+
     for (alias_name, real_name) in &alias_map {
         let alias_id = unit_table.keys().find(|id| id.name == *alias_name).cloned();
         let real_id = unit_table.keys().find(|id| id.name == *real_name).cloned();
 
-        if let (Some(alias_id), Some(real_id)) = (alias_id, real_id) {
-            // Collect deps from the real unit that the alias doesn't have
-            let real_wants: Vec<UnitId> = unit_table
-                .get(&real_id)
-                .map(|u| u.common.dependencies.wants.clone())
-                .unwrap_or_default();
-            let real_requires: Vec<UnitId> = unit_table
-                .get(&real_id)
-                .map(|u| u.common.dependencies.requires.clone())
-                .unwrap_or_default();
-            let real_after: Vec<UnitId> = unit_table
-                .get(&real_id)
-                .map(|u| u.common.dependencies.after.clone())
-                .unwrap_or_default();
-            let real_before: Vec<UnitId> = unit_table
-                .get(&real_id)
-                .map(|u| u.common.dependencies.before.clone())
-                .unwrap_or_default();
-            let real_refs: Vec<UnitId> = unit_table
-                .get(&real_id)
-                .map(|u| u.common.unit.refs_by_name.clone())
-                .unwrap_or_default();
-
-            if let Some(alias_unit) = unit_table.get_mut(&alias_id) {
-                for dep in &real_wants {
-                    if !alias_unit.common.dependencies.wants.contains(dep) {
-                        trace!(
-                            "Alias merge: {} inherits Wants={} from {}",
-                            alias_name, dep.name, real_name
-                        );
-                        alias_unit.common.dependencies.wants.push(dep.clone());
+        match (alias_id, real_id) {
+            (Some(alias_id), Some(real_id)) => {
+                alias_to_real.push((alias_id, real_id));
+            }
+            (Some(alias_id), None) => {
+                // Alias exists but real unit doesn't — the alias IS the real unit
+                // under a different name. Keep it but register the mapping so
+                // lookups by real_name can find it.
+                if let Some(alias_unit) = unit_table.get_mut(&alias_id) {
+                    // The "real name" from the symlink target is actually the
+                    // canonical name. Register it as an alias on this unit.
+                    if !alias_unit.common.unit.aliases.contains(real_name) {
+                        alias_unit.common.unit.aliases.push(real_name.clone());
                     }
-                }
-                for dep in &real_requires {
-                    if !alias_unit.common.dependencies.requires.contains(dep) {
-                        trace!(
-                            "Alias merge: {} inherits Requires={} from {}",
-                            alias_name, dep.name, real_name
-                        );
-                        alias_unit.common.dependencies.requires.push(dep.clone());
-                    }
-                }
-                for dep in &real_after {
-                    if !alias_unit.common.dependencies.after.contains(dep) {
-                        alias_unit.common.dependencies.after.push(dep.clone());
-                    }
-                }
-                for dep in &real_before {
-                    if !alias_unit.common.dependencies.before.contains(dep) {
-                        alias_unit.common.dependencies.before.push(dep.clone());
-                    }
-                }
-                for dep in &real_refs {
-                    if !alias_unit.common.unit.refs_by_name.contains(dep) {
-                        alias_unit.common.unit.refs_by_name.push(dep.clone());
-                    }
+                    trace!(
+                        "Alias {} exists but target {} not loaded — keeping alias as primary, registering target name",
+                        alias_name, real_name
+                    );
                 }
             }
+            _ => {}
+        }
+    }
 
-            // Also merge alias's deps into the real unit (e.g., default.target.wants/ into multi-user.target)
-            let alias_wants: Vec<UnitId> = unit_table
-                .get(&alias_id)
-                .map(|u| u.common.dependencies.wants.clone())
-                .unwrap_or_default();
-            let alias_requires: Vec<UnitId> = unit_table
-                .get(&alias_id)
-                .map(|u| u.common.dependencies.requires.clone())
-                .unwrap_or_default();
-            let alias_refs: Vec<UnitId> = unit_table
-                .get(&alias_id)
-                .map(|u| u.common.unit.refs_by_name.clone())
-                .unwrap_or_default();
+    // Phase 1: Merge deps from each alias into its real unit, then remove the alias.
+    for (alias_id, real_id) in &alias_to_real {
+        let alias_name = alias_id.name.clone();
+        let real_name = real_id.name.clone();
 
-            if let Some(real_unit) = unit_table.get_mut(&real_id) {
-                for dep in &alias_wants {
-                    if !real_unit.common.dependencies.wants.contains(dep) {
-                        real_unit.common.dependencies.wants.push(dep.clone());
-                    }
-                }
-                for dep in &alias_requires {
-                    if !real_unit.common.dependencies.requires.contains(dep) {
-                        real_unit.common.dependencies.requires.push(dep.clone());
-                    }
-                }
-                for dep in &alias_refs {
-                    if !real_unit.common.unit.refs_by_name.contains(dep) {
-                        real_unit.common.unit.refs_by_name.push(dep.clone());
-                    }
-                }
+        // Extract all deps from the alias unit before removing it.
+        let alias_deps = unit_table.get(alias_id).map(|u| {
+            (
+                u.common.dependencies.wants.clone(),
+                u.common.dependencies.wanted_by.clone(),
+                u.common.dependencies.requires.clone(),
+                u.common.dependencies.required_by.clone(),
+                u.common.dependencies.before.clone(),
+                u.common.dependencies.after.clone(),
+                u.common.dependencies.conflicts.clone(),
+                u.common.dependencies.conflicted_by.clone(),
+                u.common.dependencies.part_of.clone(),
+                u.common.dependencies.part_of_by.clone(),
+                u.common.dependencies.binds_to.clone(),
+                u.common.dependencies.bound_by.clone(),
+                u.common.unit.refs_by_name.clone(),
+            )
+        });
+
+        if let Some((
+            a_wants,
+            a_wanted_by,
+            a_requires,
+            a_required_by,
+            a_before,
+            a_after,
+            a_conflicts,
+            a_conflicted_by,
+            a_part_of,
+            a_part_of_by,
+            a_binds_to,
+            a_bound_by,
+            a_refs,
+        )) = alias_deps
+        {
+            if let Some(real_unit) = unit_table.get_mut(real_id) {
+                // Merge all dependency types from alias into real unit.
+                // Skip deps that reference the real unit itself (self-loops).
+                merge_dep_vec(&mut real_unit.common.dependencies.wants, &a_wants, real_id);
+                merge_dep_vec(
+                    &mut real_unit.common.dependencies.wanted_by,
+                    &a_wanted_by,
+                    real_id,
+                );
+                merge_dep_vec(
+                    &mut real_unit.common.dependencies.requires,
+                    &a_requires,
+                    real_id,
+                );
+                merge_dep_vec(
+                    &mut real_unit.common.dependencies.required_by,
+                    &a_required_by,
+                    real_id,
+                );
+                merge_dep_vec(
+                    &mut real_unit.common.dependencies.before,
+                    &a_before,
+                    real_id,
+                );
+                merge_dep_vec(&mut real_unit.common.dependencies.after, &a_after, real_id);
+                merge_dep_vec(
+                    &mut real_unit.common.dependencies.conflicts,
+                    &a_conflicts,
+                    real_id,
+                );
+                merge_dep_vec(
+                    &mut real_unit.common.dependencies.conflicted_by,
+                    &a_conflicted_by,
+                    real_id,
+                );
+                merge_dep_vec(
+                    &mut real_unit.common.dependencies.part_of,
+                    &a_part_of,
+                    real_id,
+                );
+                merge_dep_vec(
+                    &mut real_unit.common.dependencies.part_of_by,
+                    &a_part_of_by,
+                    real_id,
+                );
+                merge_dep_vec(
+                    &mut real_unit.common.dependencies.binds_to,
+                    &a_binds_to,
+                    real_id,
+                );
+                merge_dep_vec(
+                    &mut real_unit.common.dependencies.bound_by,
+                    &a_bound_by,
+                    real_id,
+                );
+                merge_dep_vec(&mut real_unit.common.unit.refs_by_name, &a_refs, real_id);
+
                 // Register the alias name so find_units_with_name can match it.
-                if !real_unit.common.unit.aliases.contains(alias_name) {
+                if !real_unit.common.unit.aliases.contains(&alias_name) {
                     real_unit.common.unit.aliases.push(alias_name.clone());
                 }
+
+                info!(
+                    "Alias {} merged into {} and removed from unit table",
+                    alias_name, real_name
+                );
             }
         }
+
+        // Remove the alias unit from the table.
+        if unit_table.remove(alias_id).is_some() {
+            info!(
+                "resolve_symlink_aliases: removed alias unit {} from table (real: {})",
+                alias_id.name, real_id.name
+            );
+        }
+    }
+
+    info!(
+        "resolve_symlink_aliases: {} alias(es) removed, {} units remain in table",
+        alias_to_real.len(),
+        unit_table.len()
+    );
+
+    // Phase 1b: Handle instances of template aliases.
+    //
+    // When a template alias like `autovt@.service` → `getty@.service` was
+    // resolved above, only the template unit itself was merged/removed.
+    // However, `instantiate_template_units` may have already created
+    // concrete instances (e.g. `autovt@tty1.service`) from the alias
+    // template.  These instances need to be merged into the corresponding
+    // real-template instances (e.g. `getty@tty1.service`) — or renamed if
+    // the real instance doesn't exist yet — so that the rest of the system
+    // sees a single canonical unit name.
+    //
+    // Build a template alias map from the filesystem alias_map: entries
+    // where both the alias and target are template names (contain `@.`).
+    let template_alias_map: HashMap<String, String> = alias_map
+        .iter()
+        .filter(|(alias, real)| is_template_unit(alias) && is_template_unit(real))
+        .map(|(a, r)| (a.clone(), r.clone()))
+        .collect();
+
+    let mut instance_alias_to_real: Vec<(UnitId, UnitId)> = Vec::new();
+
+    if !template_alias_map.is_empty() {
+        info!(
+            "resolve_symlink_aliases: detected {} template alias(es) for instance rewriting: {:?}",
+            template_alias_map.len(),
+            template_alias_map
+                .iter()
+                .map(|(a, r)| format!("{} -> {}", a, r))
+                .collect::<Vec<_>>()
+        );
+
+        // For each template alias, find instances in the unit table whose
+        // name matches the alias template pattern and compute the real name.
+        for (alias_template, real_template) in &template_alias_map {
+            // Extract the prefix and suffix from the alias template.
+            // e.g. "autovt@.service" → prefix="autovt@", suffix=".service"
+            let Some(alias_at) = alias_template.find('@') else {
+                continue;
+            };
+            let alias_prefix = &alias_template[..alias_at + 1]; // "autovt@"
+            let Some(alias_dot) = alias_template.rfind('.') else {
+                continue;
+            };
+            let alias_suffix = &alias_template[alias_dot..]; // ".service"
+
+            // Same for the real template.
+            let Some(real_at) = real_template.find('@') else {
+                continue;
+            };
+            let real_prefix = &real_template[..real_at + 1]; // "getty@"
+            let Some(real_dot) = real_template.rfind('.') else {
+                continue;
+            };
+            let real_suffix = &real_template[real_dot..]; // ".service"
+
+            // Suffixes must match (both .service, both .socket, etc.)
+            if alias_suffix != real_suffix {
+                continue;
+            }
+
+            // Find all instances of the alias template in the unit table.
+            let alias_instances: Vec<UnitId> = unit_table
+                .keys()
+                .filter(|id| {
+                    id.name.starts_with(alias_prefix)
+                        && id.name.ends_with(alias_suffix)
+                        && !is_template_unit(&id.name)
+                })
+                .cloned()
+                .collect();
+
+            for alias_instance_id in alias_instances {
+                // Extract the instance part: "autovt@tty1.service" → "tty1"
+                let instance_part = &alias_instance_id.name
+                    [alias_prefix.len()..alias_instance_id.name.len() - alias_suffix.len()];
+                if instance_part.is_empty() {
+                    continue;
+                }
+
+                // Build the real instance name: "getty@tty1.service"
+                let real_instance_name = format!("{}{}{}", real_prefix, instance_part, real_suffix);
+
+                let real_instance_id: UnitId = match real_instance_name.as_str().try_into() {
+                    Ok(id) => id,
+                    Err(_) => continue,
+                };
+
+                info!(
+                    "resolve_symlink_aliases: template instance alias {} -> {}",
+                    alias_instance_id.name, real_instance_name
+                );
+
+                if unit_table.contains_key(&real_instance_id) {
+                    // Both exist — merge alias instance deps into real instance,
+                    // then remove the alias instance.
+                    let alias_deps = unit_table.get(&alias_instance_id).map(|u| {
+                        (
+                            u.common.dependencies.wants.clone(),
+                            u.common.dependencies.wanted_by.clone(),
+                            u.common.dependencies.requires.clone(),
+                            u.common.dependencies.required_by.clone(),
+                            u.common.dependencies.before.clone(),
+                            u.common.dependencies.after.clone(),
+                            u.common.dependencies.conflicts.clone(),
+                            u.common.dependencies.conflicted_by.clone(),
+                            u.common.dependencies.part_of.clone(),
+                            u.common.dependencies.part_of_by.clone(),
+                            u.common.dependencies.binds_to.clone(),
+                            u.common.dependencies.bound_by.clone(),
+                            u.common.unit.refs_by_name.clone(),
+                        )
+                    });
+
+                    if let Some((
+                        a_wants,
+                        a_wanted_by,
+                        a_requires,
+                        a_required_by,
+                        a_before,
+                        a_after,
+                        a_conflicts,
+                        a_conflicted_by,
+                        a_part_of,
+                        a_part_of_by,
+                        a_binds_to,
+                        a_bound_by,
+                        a_refs,
+                    )) = alias_deps
+                    {
+                        if let Some(real_unit) = unit_table.get_mut(&real_instance_id) {
+                            merge_dep_vec(
+                                &mut real_unit.common.dependencies.wants,
+                                &a_wants,
+                                &real_instance_id,
+                            );
+                            merge_dep_vec(
+                                &mut real_unit.common.dependencies.wanted_by,
+                                &a_wanted_by,
+                                &real_instance_id,
+                            );
+                            merge_dep_vec(
+                                &mut real_unit.common.dependencies.requires,
+                                &a_requires,
+                                &real_instance_id,
+                            );
+                            merge_dep_vec(
+                                &mut real_unit.common.dependencies.required_by,
+                                &a_required_by,
+                                &real_instance_id,
+                            );
+                            merge_dep_vec(
+                                &mut real_unit.common.dependencies.before,
+                                &a_before,
+                                &real_instance_id,
+                            );
+                            merge_dep_vec(
+                                &mut real_unit.common.dependencies.after,
+                                &a_after,
+                                &real_instance_id,
+                            );
+                            merge_dep_vec(
+                                &mut real_unit.common.dependencies.conflicts,
+                                &a_conflicts,
+                                &real_instance_id,
+                            );
+                            merge_dep_vec(
+                                &mut real_unit.common.dependencies.conflicted_by,
+                                &a_conflicted_by,
+                                &real_instance_id,
+                            );
+                            merge_dep_vec(
+                                &mut real_unit.common.dependencies.part_of,
+                                &a_part_of,
+                                &real_instance_id,
+                            );
+                            merge_dep_vec(
+                                &mut real_unit.common.dependencies.part_of_by,
+                                &a_part_of_by,
+                                &real_instance_id,
+                            );
+                            merge_dep_vec(
+                                &mut real_unit.common.dependencies.binds_to,
+                                &a_binds_to,
+                                &real_instance_id,
+                            );
+                            merge_dep_vec(
+                                &mut real_unit.common.dependencies.bound_by,
+                                &a_bound_by,
+                                &real_instance_id,
+                            );
+                            merge_dep_vec(
+                                &mut real_unit.common.unit.refs_by_name,
+                                &a_refs,
+                                &real_instance_id,
+                            );
+
+                            if !real_unit
+                                .common
+                                .unit
+                                .aliases
+                                .contains(&alias_instance_id.name)
+                            {
+                                real_unit
+                                    .common
+                                    .unit
+                                    .aliases
+                                    .push(alias_instance_id.name.clone());
+                            }
+                        }
+                    }
+
+                    unit_table.remove(&alias_instance_id);
+                    info!(
+                        "resolve_symlink_aliases: merged template instance {} into {} and removed",
+                        alias_instance_id.name, real_instance_name
+                    );
+                } else {
+                    // Only the alias instance exists — rename it to the real name.
+                    if let Some(mut unit) = unit_table.remove(&alias_instance_id) {
+                        unit.common
+                            .unit
+                            .aliases
+                            .push(alias_instance_id.name.clone());
+                        unit.id = real_instance_id.clone();
+                        unit_table.insert(real_instance_id.clone(), unit);
+                        info!(
+                            "resolve_symlink_aliases: renamed template instance {} -> {}",
+                            alias_instance_id.name, real_instance_name
+                        );
+                    }
+                }
+
+                instance_alias_to_real.push((alias_instance_id, real_instance_id));
+            }
+        }
+
+        if !instance_alias_to_real.is_empty() {
+            info!(
+                "resolve_symlink_aliases: rewrote {} template instance alias(es)",
+                instance_alias_to_real.len()
+            );
+        }
+    }
+
+    // Phase 2: Rewrite all references to alias UnitIds → real UnitIds
+    // throughout the entire unit table.  This includes both the template
+    // aliases from Phase 1 and the instance aliases from Phase 1b.
+    let all_aliases: Vec<(UnitId, UnitId)> = alias_to_real
+        .into_iter()
+        .chain(instance_alias_to_real.into_iter())
+        .collect();
+
+    if !all_aliases.is_empty() {
+        // Build a lookup map: alias_id -> real_id
+        let redirect: HashMap<UnitId, UnitId> = all_aliases.into_iter().collect();
+
+        for unit in unit_table.values_mut() {
+            rewrite_id_vec(&mut unit.common.dependencies.wants, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.wanted_by, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.requires, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.required_by, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.before, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.after, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.conflicts, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.conflicted_by, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.part_of, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.part_of_by, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.binds_to, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.bound_by, &redirect);
+            rewrite_id_vec(&mut unit.common.unit.refs_by_name, &redirect);
+
+            // Also rewrite socket<->service cross-references
+            match &mut unit.specific {
+                Specific::Service(svc) => {
+                    rewrite_id_vec(&mut svc.conf.sockets, &redirect);
+                }
+                Specific::Socket(sock) => {
+                    rewrite_id_vec(&mut sock.conf.services, &redirect);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Merge `source` UnitIds into `target` vec, skipping duplicates and self-references.
+fn merge_dep_vec(target: &mut Vec<UnitId>, source: &[UnitId], skip_id: &UnitId) {
+    for id in source {
+        if id != skip_id && !target.contains(id) {
+            target.push(id.clone());
+        }
+    }
+}
+
+/// Rewrite UnitIds in a vec according to the redirect map (alias→real).
+/// Also deduplicates after rewriting (sort+dedup to catch non-consecutive dupes).
+fn rewrite_id_vec(ids: &mut Vec<UnitId>, redirect: &HashMap<UnitId, UnitId>) {
+    let mut changed = false;
+    for id in ids.iter_mut() {
+        if let Some(real_id) = redirect.get(id) {
+            *id = real_id.clone();
+            changed = true;
+        }
+    }
+    if changed {
+        ids.sort();
+        ids.dedup();
     }
 }
 
@@ -532,6 +916,26 @@ pub fn parse_template_instance(unit_name: &str) -> Option<(String, String)> {
     Some((template, instance.to_owned()))
 }
 
+/// Check whether a string contains unresolved systemd specifiers like `%i`, `%I`,
+/// `%n`, `%N`, `%p`, `%P`, etc.  These appear in template unit files as
+/// cross-references (e.g. `Requires=systemd-journald@%i.socket`) and must not be
+/// treated as literal instance names.
+fn has_unresolved_specifiers(s: &str) -> bool {
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            if let Some(&next) = chars.peek() {
+                // Known systemd specifiers: %i %I %n %N %p %P %u %U %h %s %m %b %H %v %t
+                // Also %% is an escaped percent — not a specifier.
+                if next != '%' && next.is_alphanumeric() {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Resolve systemd specifiers in a unit file content string.
 /// Supports: %I, %i, %N, %n, %p, %P, %%
 pub fn resolve_specifiers(content: &str, unit_name: &str, instance: &str) -> String {
@@ -681,6 +1085,17 @@ pub fn instantiate_template_units(
                 .iter()
                 .any(|(n, _, _)| n == &dep.child_unit)
         {
+            // Skip instances with unresolved specifiers (e.g. %i, %I, %n, %N).
+            // These come from template unit cross-references like
+            // `Requires=systemd-journald@%i.socket` in systemd-journald@.service
+            // and should not be instantiated literally.
+            if has_unresolved_specifiers(&instance_name) {
+                debug!(
+                    "Skipping template instance with unresolved specifier: {} (instance={})",
+                    dep.child_unit, instance_name
+                );
+                continue;
+            }
             instances_to_create.push((dep.child_unit.clone(), template_name, instance_name));
         }
     }
@@ -709,6 +1124,14 @@ pub fn instantiate_template_units(
         if let Some((template_name, instance_name)) = parse_template_instance(ref_name)
             && !instances_to_create.iter().any(|(n, _, _)| n == ref_name)
         {
+            // Skip instances with unresolved specifiers (same reason as above).
+            if has_unresolved_specifiers(&instance_name) {
+                debug!(
+                    "Skipping template instance with unresolved specifier: {} (instance={})",
+                    ref_name, instance_name
+                );
+                continue;
+            }
             instances_to_create.push((ref_name.clone(), template_name, instance_name));
         }
     }
@@ -1343,5 +1766,412 @@ mod tests {
         // Edge cases
         assert!(!is_template_unit("no-extension"));
         assert!(!is_template_unit(""));
+    }
+
+    #[test]
+    fn test_has_unresolved_specifiers() {
+        assert!(has_unresolved_specifiers("%i"));
+        assert!(has_unresolved_specifiers("%I"));
+        assert!(has_unresolved_specifiers("%n"));
+        assert!(has_unresolved_specifiers("foo%ibar"));
+        assert!(has_unresolved_specifiers("systemd-journald@%i"));
+        assert!(!has_unresolved_specifiers("ttyS0"));
+        assert!(!has_unresolved_specifiers("tty1"));
+        assert!(!has_unresolved_specifiers("dm_mod"));
+        assert!(!has_unresolved_specifiers("%%")); // escaped percent
+        assert!(!has_unresolved_specifiers(""));
+        assert!(!has_unresolved_specifiers("no-specifiers-here"));
+    }
+
+    fn make_unit_id(name: &str) -> UnitId {
+        let kind = if name.ends_with(".service") {
+            UnitIdKind::Service
+        } else if name.ends_with(".target") {
+            UnitIdKind::Target
+        } else if name.ends_with(".socket") {
+            UnitIdKind::Socket
+        } else {
+            UnitIdKind::Service
+        };
+        UnitId {
+            kind,
+            name: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_merge_dep_vec() {
+        let a = make_unit_id("a.service");
+        let b = make_unit_id("b.service");
+        let c = make_unit_id("c.service");
+        let skip = make_unit_id("skip.service");
+
+        let mut target = vec![a.clone()];
+        let source = vec![a.clone(), b.clone(), c.clone(), skip.clone()];
+        merge_dep_vec(&mut target, &source, &skip);
+
+        assert_eq!(target.len(), 3);
+        assert!(target.contains(&a));
+        assert!(target.contains(&b));
+        assert!(target.contains(&c));
+        assert!(!target.contains(&skip));
+    }
+
+    #[test]
+    fn test_merge_dep_vec_empty_source() {
+        let a = make_unit_id("a.service");
+        let skip = make_unit_id("skip.service");
+
+        let mut target = vec![a.clone()];
+        merge_dep_vec(&mut target, &[], &skip);
+        assert_eq!(target.len(), 1);
+    }
+
+    #[test]
+    fn test_rewrite_id_vec() {
+        let alias = make_unit_id("dbus-org.freedesktop.resolve1.service");
+        let real = make_unit_id("systemd-resolved.service");
+        let other = make_unit_id("other.service");
+
+        let mut ids = vec![alias.clone(), other.clone()];
+        let redirect: HashMap<UnitId, UnitId> =
+            [(alias.clone(), real.clone())].into_iter().collect();
+
+        rewrite_id_vec(&mut ids, &redirect);
+
+        assert!(ids.contains(&real));
+        assert!(ids.contains(&other));
+        assert!(!ids.contains(&alias));
+    }
+
+    #[test]
+    fn test_rewrite_id_vec_deduplicates() {
+        let alias = make_unit_id("dbus-org.freedesktop.resolve1.service");
+        let real = make_unit_id("systemd-resolved.service");
+
+        // Both alias and real are present — after rewrite, alias becomes real,
+        // and dedup should collapse them.
+        let mut ids = vec![real.clone(), alias.clone()];
+        let redirect: HashMap<UnitId, UnitId> =
+            [(alias.clone(), real.clone())].into_iter().collect();
+
+        rewrite_id_vec(&mut ids, &redirect);
+
+        assert_eq!(ids.iter().filter(|id| **id == real).count(), 1);
+        assert!(!ids.contains(&alias));
+    }
+
+    #[test]
+    fn test_rewrite_id_vec_no_matches() {
+        let a = make_unit_id("a.service");
+        let b = make_unit_id("b.service");
+
+        let mut ids = vec![a.clone(), b.clone()];
+        let redirect: HashMap<UnitId, UnitId> = HashMap::new();
+
+        rewrite_id_vec(&mut ids, &redirect);
+
+        assert_eq!(ids, vec![a, b]);
+    }
+
+    /// Helper to create a minimal Unit for testing alias resolution.
+    fn make_test_unit(name: &str) -> Unit {
+        let id = make_unit_id(name);
+        Unit {
+            id: id.clone(),
+            common: Common {
+                unit: UnitConfig {
+                    description: name.to_string(),
+                    documentation: vec![],
+                    refs_by_name: vec![],
+                    default_dependencies: true,
+                    conditions: vec![],
+                    assertions: vec![],
+                    success_action: crate::units::UnitAction::None,
+                    failure_action: crate::units::UnitAction::None,
+                    aliases: vec![],
+                    ignore_on_isolate: false,
+                    default_instance: None,
+                    allow_isolate: false,
+                    job_timeout_sec: None,
+                    job_timeout_action: crate::units::UnitAction::None,
+                    refuse_manual_start: false,
+                    refuse_manual_stop: false,
+                    on_failure: vec![],
+                    on_failure_job_mode: crate::units::OnFailureJobMode::Replace,
+                    start_limit_interval_sec: None,
+                    start_limit_burst: None,
+                    start_limit_action: crate::units::UnitAction::None,
+                },
+                dependencies: Dependencies {
+                    wants: vec![],
+                    wanted_by: vec![],
+                    requires: vec![],
+                    required_by: vec![],
+                    conflicts: vec![],
+                    conflicted_by: vec![],
+                    before: vec![],
+                    after: vec![],
+                    part_of: vec![],
+                    part_of_by: vec![],
+                    binds_to: vec![],
+                    bound_by: vec![],
+                },
+                status: RwLock::new(UnitStatus::NeverStarted),
+            },
+            specific: Specific::Target(crate::units::TargetSpecific {
+                state: RwLock::new(crate::units::TargetState {
+                    common: CommonState {
+                        up_since: None,
+                        restart_count: 0,
+                    },
+                }),
+            }),
+        }
+    }
+
+    #[test]
+    fn test_template_instance_alias_rename() {
+        // Simulate: autovt@.service is a template alias for getty@.service.
+        // autovt@tty1.service was instantiated. After resolve, only
+        // getty@tty1.service should remain.
+
+        let alias_instance_id = make_unit_id("autovt@tty1.service");
+        let getty_target_id = make_unit_id("getty.target");
+
+        let mut alias_instance = make_test_unit("autovt@tty1.service");
+        // Give it a wanted_by so we can verify deps are carried over
+        alias_instance
+            .common
+            .dependencies
+            .wanted_by
+            .push(getty_target_id.clone());
+
+        let mut getty_target = make_test_unit("getty.target");
+        getty_target
+            .common
+            .dependencies
+            .wants
+            .push(alias_instance_id.clone());
+
+        let mut unit_table: HashMap<UnitId, Unit> = HashMap::new();
+        unit_table.insert(alias_instance_id.clone(), alias_instance);
+        unit_table.insert(getty_target_id.clone(), getty_target);
+
+        // Simulate what Phase 1b does: detect that autovt@tty1.service
+        // should become getty@tty1.service.
+        // We'll call the logic directly by testing the rename path.
+
+        let real_instance_name = "getty@tty1.service";
+        let real_instance_id = make_unit_id(real_instance_name);
+
+        // Since getty@tty1.service doesn't exist, the alias should be renamed
+        assert!(!unit_table.contains_key(&real_instance_id));
+        assert!(unit_table.contains_key(&alias_instance_id));
+
+        // Rename: remove alias, insert as real
+        if let Some(mut unit) = unit_table.remove(&alias_instance_id) {
+            unit.common
+                .unit
+                .aliases
+                .push(alias_instance_id.name.clone());
+            unit.id = real_instance_id.clone();
+            unit_table.insert(real_instance_id.clone(), unit);
+        }
+
+        // Rewrite references
+        let redirect: HashMap<UnitId, UnitId> =
+            [(alias_instance_id.clone(), real_instance_id.clone())]
+                .into_iter()
+                .collect();
+        for unit in unit_table.values_mut() {
+            rewrite_id_vec(&mut unit.common.dependencies.wants, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.wanted_by, &redirect);
+        }
+
+        // Verify: alias instance removed, real instance exists
+        assert!(!unit_table.contains_key(&alias_instance_id));
+        assert!(unit_table.contains_key(&real_instance_id));
+
+        // Verify: renamed unit has old name as alias
+        let real = unit_table.get(&real_instance_id).unwrap();
+        assert!(
+            real.common
+                .unit
+                .aliases
+                .contains(&"autovt@tty1.service".to_string())
+        );
+
+        // Verify: getty.target now wants getty@tty1.service (rewritten)
+        let target = unit_table.get(&getty_target_id).unwrap();
+        assert!(target.common.dependencies.wants.contains(&real_instance_id));
+        assert!(
+            !target
+                .common
+                .dependencies
+                .wants
+                .contains(&alias_instance_id)
+        );
+    }
+
+    #[test]
+    fn test_template_instance_alias_merge() {
+        // Simulate: both autovt@tty1.service and getty@tty1.service exist.
+        // After merge, only getty@tty1.service should remain with merged deps.
+
+        let alias_instance_id = make_unit_id("autovt@tty1.service");
+        let real_instance_id = make_unit_id("getty@tty1.service");
+        let getty_target_id = make_unit_id("getty.target");
+        let some_target_id = make_unit_id("some.target");
+
+        let mut alias_instance = make_test_unit("autovt@tty1.service");
+        alias_instance
+            .common
+            .dependencies
+            .wanted_by
+            .push(getty_target_id.clone());
+
+        let mut real_instance = make_test_unit("getty@tty1.service");
+        real_instance
+            .common
+            .dependencies
+            .wanted_by
+            .push(some_target_id.clone());
+
+        let mut unit_table: HashMap<UnitId, Unit> = HashMap::new();
+        unit_table.insert(alias_instance_id.clone(), alias_instance);
+        unit_table.insert(real_instance_id.clone(), real_instance);
+
+        // Merge alias into real
+        let alias_wanted_by = unit_table
+            .get(&alias_instance_id)
+            .unwrap()
+            .common
+            .dependencies
+            .wanted_by
+            .clone();
+        if let Some(real_unit) = unit_table.get_mut(&real_instance_id) {
+            merge_dep_vec(
+                &mut real_unit.common.dependencies.wanted_by,
+                &alias_wanted_by,
+                &real_instance_id,
+            );
+            real_unit
+                .common
+                .unit
+                .aliases
+                .push("autovt@tty1.service".to_string());
+        }
+        unit_table.remove(&alias_instance_id);
+
+        // Verify: only real remains
+        assert!(!unit_table.contains_key(&alias_instance_id));
+        assert!(unit_table.contains_key(&real_instance_id));
+
+        // Verify: merged deps
+        let real = unit_table.get(&real_instance_id).unwrap();
+        assert!(
+            real.common
+                .dependencies
+                .wanted_by
+                .contains(&getty_target_id)
+        );
+        assert!(real.common.dependencies.wanted_by.contains(&some_target_id));
+        assert!(
+            real.common
+                .unit
+                .aliases
+                .contains(&"autovt@tty1.service".to_string())
+        );
+    }
+
+    #[test]
+    fn test_resolve_symlink_aliases_removes_alias_unit() {
+        // Simulate: dbus-org.freedesktop.resolve1.service is an alias for
+        // systemd-resolved.service. Both are in the unit table. After
+        // resolve_symlink_aliases, only the real unit should remain.
+
+        // We can't easily create real symlinks in a test, so we test the
+        // merge/remove/rewrite helpers directly and verify the logic.
+        let real_id = make_unit_id("systemd-resolved.service");
+        let alias_id = make_unit_id("dbus-org.freedesktop.resolve1.service");
+        let dep_id = make_unit_id("network.target");
+
+        let mut real_unit = make_test_unit("systemd-resolved.service");
+        real_unit.common.dependencies.after.push(dep_id.clone());
+
+        let mut alias_unit = make_test_unit("dbus-org.freedesktop.resolve1.service");
+        alias_unit
+            .common
+            .dependencies
+            .wanted_by
+            .push(make_unit_id("multi-user.target"));
+
+        let mut dep_unit = make_test_unit("network.target");
+        dep_unit.common.dependencies.before.push(alias_id.clone());
+
+        let mut unit_table: HashMap<UnitId, Unit> = HashMap::new();
+        unit_table.insert(real_id.clone(), real_unit);
+        unit_table.insert(alias_id.clone(), alias_unit);
+        unit_table.insert(dep_id.clone(), dep_unit);
+
+        // Simulate what resolve_symlink_aliases does internally:
+        // Phase 1: merge alias deps into real, remove alias
+        let alias_wanted_by = unit_table
+            .get(&alias_id)
+            .unwrap()
+            .common
+            .dependencies
+            .wanted_by
+            .clone();
+
+        if let Some(real_unit) = unit_table.get_mut(&real_id) {
+            merge_dep_vec(
+                &mut real_unit.common.dependencies.wanted_by,
+                &alias_wanted_by,
+                &real_id,
+            );
+            real_unit
+                .common
+                .unit
+                .aliases
+                .push("dbus-org.freedesktop.resolve1.service".to_string());
+        }
+        unit_table.remove(&alias_id);
+
+        // Phase 2: rewrite references
+        let redirect: HashMap<UnitId, UnitId> =
+            [(alias_id.clone(), real_id.clone())].into_iter().collect();
+        for unit in unit_table.values_mut() {
+            rewrite_id_vec(&mut unit.common.dependencies.before, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.after, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.wants, &redirect);
+            rewrite_id_vec(&mut unit.common.dependencies.wanted_by, &redirect);
+        }
+
+        // Verify: alias removed from table
+        assert!(!unit_table.contains_key(&alias_id));
+
+        // Verify: real unit has the alias registered
+        let real = unit_table.get(&real_id).unwrap();
+        assert!(
+            real.common
+                .unit
+                .aliases
+                .contains(&"dbus-org.freedesktop.resolve1.service".to_string())
+        );
+
+        // Verify: alias's wanted_by was merged into real
+        assert!(
+            real.common
+                .dependencies
+                .wanted_by
+                .contains(&make_unit_id("multi-user.target"))
+        );
+
+        // Verify: dep_unit's before now points to real, not alias
+        let dep = unit_table.get(&dep_id).unwrap();
+        assert!(dep.common.dependencies.before.contains(&real_id));
+        assert!(!dep.common.dependencies.before.contains(&alias_id));
     }
 }
