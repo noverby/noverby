@@ -121,9 +121,10 @@ pub fn resolve_symlink_aliases(
         return;
     }
 
-    // For each alias relationship, merge the real unit's Wants/Requires (from dir_deps)
-    // into the alias unit, and vice versa.
-    // Also merge any deps that the real unit has from dir_deps into the alias unit directly.
+    // For each alias relationship, merge dependencies bidirectionally between
+    // the alias unit and the real unit, and register the alias name on the
+    // real unit. Both units stay in the table — removing aliases is unsafe
+    // because it can break dependency chains that other units reference.
     for (alias_name, real_name) in &alias_map {
         let alias_id = unit_table.keys().find(|id| id.name == *alias_name).cloned();
         let real_id = unit_table.keys().find(|id| id.name == *real_name).cloned();
@@ -216,6 +217,10 @@ pub fn resolve_symlink_aliases(
                     if !real_unit.common.unit.refs_by_name.contains(dep) {
                         real_unit.common.unit.refs_by_name.push(dep.clone());
                     }
+                }
+                // Register the alias name so find_units_with_name can match it.
+                if !real_unit.common.unit.aliases.contains(alias_name) {
+                    real_unit.common.unit.aliases.push(alias_name.clone());
                 }
             }
         }
