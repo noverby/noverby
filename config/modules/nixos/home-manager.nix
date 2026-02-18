@@ -6,7 +6,7 @@
   src,
   ...
 }: let
-  usersPath = src + /nix/modules/home-manager/users;
+  usersPath = src + /config/modules/home-manager/users;
   users = lib.listToAttrs (
     map (
       file: {
