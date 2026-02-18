@@ -17,4 +17,5 @@ steps:
       cachix use $CACHIX_NAME
   - name: "Nix flake check"
     command: |
-      cachix watch-exec $CACHIX_NAME nix flake check
+      printf '{"PWD":"%s"}' "$PWD" > .devenv/state/env
+      cachix watch-exec $CACHIX_NAME nix flake check --override-input env path:$(realpath $PWD/.devenv/state/env)
