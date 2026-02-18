@@ -5,7 +5,7 @@
       tailspin
     ];
     sessionVariables = {
-      PAGER = "tspin";
+      PAGER = "tspin --print";
       SYSTEMD_PAGERSECURE = "1";
       NIXOS_OZONE_WL = "1";
     };
