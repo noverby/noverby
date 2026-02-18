@@ -49,5 +49,7 @@ members = [
     "crates/loginctl",
     "crates/networkd",
     "crates/networkctl",
+    "crates/resolved",
+    "crates/resolvectl",
 ]
 resolver = "2"
