@@ -48,6 +48,7 @@ mod dbus_support {
 
     extern crate dbus;
     use super::WaitResult;
+    use crate::lock_ext::MutexExt;
     use dbus::arg;
     use dbus::blocking::Connection;
     use dbus::blocking::Proxy;
@@ -122,7 +123,7 @@ mod dbus_support {
         let name = name.to_owned();
         let _id = obj.match_signal(move |h: NameOwnerChangedHappened, _: &Connection| {
             if h.sender[0] == name {
-                (*stoparc_cb.lock().unwrap()) = true;
+                (*stoparc_cb.lock_poisoned()) = true;
             }
             true
         });
@@ -130,7 +131,7 @@ mod dbus_support {
         let start = std::time::Instant::now();
         loop {
             if let Some(timeout) = timeout {
-                if *stoparc.lock().unwrap() || start.elapsed() >= timeout {
+                if *stoparc.lock_poisoned() || start.elapsed() >= timeout {
                     break;
                 }
             }

@@ -1,3 +1,4 @@
+use crate::lock_ext::RwLockExt;
 use crate::runtime_info::{ArcMutRuntimeInfo, UnitTable};
 use crate::units::{
     ActivationSource, Specific, Unit, UnitIdKind, UnitStatus, insert_new_units, load_all_units,
@@ -317,7 +318,7 @@ pub fn format_service(srvc_unit: &Unit, status: UnitStatus) -> Value {
                     .collect(),
             ),
         );
-        if let Some(instant) = srvc.state.read().unwrap().common.up_since {
+        if let Some(instant) = srvc.state.read_poisoned().common.up_since {
             map.insert(
                 "UpSince".into(),
                 Value::String(format!("{:?}", instant.elapsed())),
@@ -327,7 +328,7 @@ pub fn format_service(srvc_unit: &Unit, status: UnitStatus) -> Value {
             "Restarted".into(),
             Value::String(format!(
                 "{:?}",
-                srvc.state.read().unwrap().common.restart_count
+                srvc.state.read_poisoned().common.restart_count
             )),
         );
     }
@@ -364,7 +365,7 @@ fn find_or_load_unit(
 ) -> Result<crate::units::UnitId, String> {
     // First, try to find under a read lock.
     {
-        let ri = run_info.read().unwrap();
+        let ri = run_info.read_poisoned();
         let units = find_units_with_name(unit_name, &ri.unit_table);
         if units.len() > 1 {
             let names: Vec<_> = units.iter().map(|unit| unit.id.name.clone()).collect();
@@ -378,7 +379,7 @@ fn find_or_load_unit(
     }
     // Not found — try to load from disk under a write lock.
     {
-        let mut ri = run_info.write().unwrap();
+        let mut ri = run_info.write_poisoned();
         // Re-check after acquiring write lock (another thread may have loaded it).
         let already = find_units_with_name(unit_name, &ri.unit_table);
         if let Some(unit) = already.first() {
@@ -431,13 +432,13 @@ pub fn execute_command(
         }
         Command::Restart(unit_name) => {
             let id = find_or_load_unit(&unit_name, &run_info)?;
-            let ri = run_info.read().unwrap();
+            let ri = run_info.read_poisoned();
             crate::units::reactivate_unit(id, &ri).map_err(|e| format!("{e}"))?;
         }
         Command::TryRestart(unit_name) => {
             // try-restart: restart the unit only if it is currently active.
             // If the unit is not active, do nothing (success).
-            let ri = run_info.read().unwrap();
+            let ri = run_info.read_poisoned();
             let units = find_units_with_name(&unit_name, &ri.unit_table);
             if units.is_empty() {
                 // Unit not found — nothing to restart, not an error for try-restart.
@@ -456,7 +457,7 @@ pub fn execute_command(
                 .unit_table
                 .get(&id)
                 .map(|unit| {
-                    let status_locked = unit.common.status.read().unwrap();
+                    let status_locked = unit.common.status.read_poisoned();
                     matches!(
                         *status_locked,
                         crate::units::UnitStatus::Started(_) | crate::units::UnitStatus::Starting
@@ -473,18 +474,18 @@ pub fn execute_command(
             // reload-or-restart: try to reload, fall back to restart.
             // Since we don't support reload yet, just restart.
             let id = find_or_load_unit(&unit_name, &run_info)?;
-            let ri = run_info.read().unwrap();
+            let ri = run_info.read_poisoned();
             crate::units::reactivate_unit(id, &ri).map_err(|e| format!("{e}"))?;
         }
         Command::IsActive(unit_name) => {
-            let run_info = &*run_info.read().unwrap();
+            let run_info = &*run_info.read_poisoned();
             let unit_table = &run_info.unit_table;
             let units = find_units_with_name(&unit_name, unit_table);
             if units.is_empty() {
                 return Ok(serde_json::json!("inactive"));
             }
             let unit = &units[0];
-            let status_locked = unit.common.status.read().unwrap();
+            let status_locked = unit.common.status.read_poisoned();
             let state = match &*status_locked {
                 crate::units::UnitStatus::Started(_) => "active",
                 crate::units::UnitStatus::Starting => "activating",
@@ -500,7 +501,7 @@ pub fn execute_command(
             // Check if the unit is enabled (i.e. has an [Install] section
             // and is linked in the target wants).
             // For now, if the unit is loaded at all, report "enabled".
-            let run_info = &*run_info.read().unwrap();
+            let run_info = &*run_info.read_poisoned();
             let unit_table = &run_info.unit_table;
             let units = find_units_with_name(&unit_name, unit_table);
             if units.is_empty() {
@@ -509,14 +510,14 @@ pub fn execute_command(
             return Ok(serde_json::json!("enabled"));
         }
         Command::IsFailed(unit_name) => {
-            let run_info = &*run_info.read().unwrap();
+            let run_info = &*run_info.read_poisoned();
             let unit_table = &run_info.unit_table;
             let units = find_units_with_name(&unit_name, unit_table);
             if units.is_empty() {
                 return Ok(serde_json::json!("inactive"));
             }
             let unit = &units[0];
-            let status_locked = unit.common.status.read().unwrap();
+            let status_locked = unit.common.status.read_poisoned();
             let state = match &*status_locked {
                 crate::units::UnitStatus::Stopped(_, errors) if !errors.is_empty() => "failed",
                 _ => "inactive",
@@ -525,14 +526,14 @@ pub fn execute_command(
         }
         Command::Start(unit_name) => {
             let id = find_or_load_unit(&unit_name, &run_info)?;
-            let ri = run_info.read().unwrap();
+            let ri = run_info.read_poisoned();
             crate::units::activate_unit(id, &ri, ActivationSource::Regular)
                 .map_err(|e| format!("{e}"))?;
             // Happy
         }
         Command::StartAll(unit_name) => {
             let id = {
-                let run_info_locked = &*run_info.read().unwrap();
+                let run_info_locked = &*run_info.read_poisoned();
                 let unit_table = &run_info_locked.unit_table;
                 let units = find_units_with_name(&unit_name, unit_table);
                 if units.len() > 1 {
@@ -558,7 +559,7 @@ pub fn execute_command(
             }
         }
         Command::Remove(unit_name) => {
-            let run_info = &mut *run_info.write().unwrap();
+            let run_info = &mut *run_info.write_poisoned();
             let id = {
                 let units = find_units_with_name(&unit_name, &run_info.unit_table);
                 if units.len() > 1 {
@@ -577,7 +578,7 @@ pub fn execute_command(
             crate::units::remove_unit_with_dependencies(id, run_info)?;
         }
         Command::Stop(unit_name) => {
-            let run_info = &*run_info.read().unwrap();
+            let run_info = &*run_info.read_poisoned();
             let id = {
                 let units = find_units_with_name(&unit_name, &run_info.unit_table);
                 if units.len() > 1 {
@@ -597,7 +598,7 @@ pub fn execute_command(
             // Happy
         }
         Command::StopAll(unit_name) => {
-            let run_info = &*run_info.read().unwrap();
+            let run_info = &*run_info.read_poisoned();
             let id = {
                 let units = find_units_with_name(&unit_name, &run_info.unit_table);
                 if units.len() > 1 {
@@ -617,13 +618,13 @@ pub fn execute_command(
             // Happy
         }
         Command::Status(unit_name) => {
-            let run_info = &*run_info.read().unwrap();
+            let run_info = &*run_info.read_poisoned();
             let unit_table = &run_info.unit_table;
             if let Some(name) = unit_name {
                 //list specific
                 let units = find_units_with_pattern(&name, unit_table);
                 for unit in units {
-                    let status = { unit.common.status.read().unwrap().clone() };
+                    let status = { unit.common.status.read_poisoned().clone() };
                     if name.ends_with(".service") {
                         result_vec
                             .as_array_mut()
@@ -648,7 +649,7 @@ pub fn execute_command(
                 let strings: Vec<_> = unit_table
                     .values()
                     .map(|unit| {
-                        let status = { unit.common.status.read().unwrap().clone() };
+                        let status = { unit.common.status.read_poisoned().clone() };
                         match unit.specific {
                             Specific::Socket(_) => format_socket(unit, status),
                             Specific::Service(_) => format_service(unit, status),
@@ -664,7 +665,7 @@ pub fn execute_command(
             }
         }
         Command::ListUnits(kind) => {
-            let run_info = &*run_info.read().unwrap();
+            let run_info = &*run_info.read_poisoned();
             let unit_table = &run_info.unit_table;
             for (id, unit) in unit_table {
                 let include = if let Some(kind) = kind {
@@ -681,7 +682,7 @@ pub fn execute_command(
             }
         }
         Command::LoadNew(names) => {
-            let run_info = &mut *run_info.write().unwrap();
+            let run_info = &mut *run_info.write_poisoned();
             let mut map = std::collections::HashMap::new();
             for name in &names {
                 let unit = load_new_unit(&run_info.config.unit_dirs, name)?;
@@ -690,7 +691,7 @@ pub fn execute_command(
             insert_new_units(map, run_info)?;
         }
         Command::LoadAllNew => {
-            let run_info = &mut *run_info.write().unwrap();
+            let run_info = &mut *run_info.write_poisoned();
             let unit_table = &run_info.unit_table;
             // get all units there are
             let units = load_all_units(&run_info.config.unit_dirs, &run_info.config.target_unit)
@@ -728,7 +729,7 @@ pub fn execute_command(
                 .push(Value::Object(response_object));
         }
         Command::LoadAllNewDry => {
-            let run_info = &mut *run_info.write().unwrap();
+            let run_info = &mut *run_info.write_poisoned();
             let unit_table = &run_info.unit_table;
             // get all units there are
             let units = load_all_units(&run_info.config.unit_dirs, &run_info.config.target_unit)

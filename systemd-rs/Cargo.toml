@@ -45,5 +45,7 @@ members = [
     "crates/ask-password",
     "crates/tty-ask-password-agent",
     "crates/socket-activate",
+    "crates/logind",
+    "crates/loginctl",
 ]
 resolver = "2"

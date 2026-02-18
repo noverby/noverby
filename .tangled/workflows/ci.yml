@@ -4,13 +4,17 @@ when:
 
 engine: nixery
 
+environment:
+  USER: root
+  CACHIX_NAME: overby-me
+
 steps:
-  - name: "Install Cachix"
+  - name: "Setup Cachix"
     command: |
       nix-env -iA cachix -f https://cachix.org/api/v1/install
+      mkdir -p /tangled/home/.config/nix
+      touch /tangled/home/.config/nix/nix.conf
+      cachix use $CACHIX_NAME
   - name: "Nix flake check"
     command: |
-      export USER=$(whoami)
-      export CACHIX_NAME=overby-me
-      cachix use $CACHIX_NAME
       cachix watch-exec $CACHIX_NAME nix flake check
