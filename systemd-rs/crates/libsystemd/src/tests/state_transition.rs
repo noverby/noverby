@@ -33,7 +33,7 @@ fn test_service_state_transitions() {
             self_path: std::path::PathBuf::from("./target/debug/systemd-rs"),
         },
         fd_store: std::sync::RwLock::new(crate::fd_store::FDStore::default()),
-        pid_table: std::sync::Mutex::new(PidTable::default()),
+        pid_table: std::sync::Arc::new(std::sync::Mutex::new(PidTable::default())),
         unit_table: UnitTable::default(),
         stdout_eventfd: crate::platform::make_event_fd().unwrap(),
         stderr_eventfd: crate::platform::make_event_fd().unwrap(),
@@ -44,9 +44,10 @@ fn test_service_state_transitions() {
     let signals = signal_hook::iterator::Signals::new(&[signal_hook::consts::SIGCHLD]).unwrap();
 
     let run_info_clone = run_info.clone();
+    let pid_table = run_info.read().unwrap().pid_table.clone();
     let _handle = std::thread::spawn(move || {
         // listen on signals from the child processes
-        crate::signal_handler::handle_signals(signals, run_info_clone);
+        crate::signal_handler::handle_signals(signals, run_info_clone, pid_table);
     });
 
     // TODO this can probably done better with a setup function. Need to look into the test framework more.

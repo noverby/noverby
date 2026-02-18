@@ -44,17 +44,14 @@
     };
   };
 
-  # Disable systemd-networkd-wait-online.service — the upstream systemd binary
-  # tries to talk to networkd via varlink/D-Bus, but the Rust networkd doesn't
-  # implement those interfaces yet.  Without this, the oneshot service hangs
-  # for 90s (DefaultTimeoutStartSec) blocking the thread pool and preventing
-  # idle services (gettys) from starting.
+  # Disable systemd-networkd-wait-online.service — the upstream C binary tries
+  # to talk to networkd via varlink/D-Bus, but the Rust networkd doesn't
+  # implement those interfaces yet.  The service currently exits quickly
+  # (connection refused), so it doesn't block boot, but keeping it disabled
+  # avoids a spurious failure in the activation graph.
   systemd.services.systemd-networkd-wait-online.enable = lib.mkForce false;
 
   # Enable systemd-resolved for DNS resolution (tests the Rust resolved)
-  # NOTE: Disabled for now — enabling resolved adds units that cause the
-  # dependency graph to stall (likely alias handling issue in PID 1).
-  # Re-enable once PID 1 properly handles unit aliases.
   services.resolved = {
     enable = true;
     dnssec = "allow-downgrade";
