@@ -1,17 +1,19 @@
+config := "nixos-rs"
+
 default: run
 
 build:
-    nixos-rebuild build-image --image-variant qemu --flake .#nixos-rs
-    qemu-img convert -p -f qcow2 -O raw result/nixos-image-*-x86_64-linux.qcow2 nixos-rs.raw
+    nixos-rebuild build-image --image-variant qemu --flake .#{{ config }}
+    qemu-img convert -p -f qcow2 -O raw result/nixos-image-*-x86_64-linux.qcow2 {{ config }}.raw
 
 run:
     #!/usr/bin/env bash
-    KERNEL=$(nix build --print-out-paths .#nixosConfigurations.nixos-rs.config.system.build.kernel)/bzImage
-    INITRD=$(nix build --print-out-paths .#nixosConfigurations.nixos-rs.config.system.build.initialRamdisk)/initrd
+    KERNEL=$(nix build --print-out-paths .#nixosConfigurations.{{ config }}.config.system.build.kernel)/bzImage
+    INITRD=$(nix build --print-out-paths .#nixosConfigurations.{{ config }}.config.system.build.initialRamdisk)/initrd
     cloud-hypervisor \
       --kernel "$KERNEL" \
       --initramfs "$INITRD" \
-      --disk path=nixos-rs.raw \
+      --disk path={{ config }}.raw \
       --cmdline "console=ttyS0 quiet root=LABEL=nixos init=/nix/var/nix/profiles/system/init" \
       --cpus boot=2 \
       --memory size=4096M \
@@ -20,31 +22,52 @@ run:
 
 # Run automated boot test with serial output capture (120s timeout)
 test:
-    ./test-boot.sh --verbose
+    ./test-boot.sh --verbose --config {{ config }}
 
 # Run boot test with a custom timeout (in seconds)
 test-timeout seconds="30": build
-    ./test-boot.sh --verbose --timeout {{ seconds }}
+    ./test-boot.sh --verbose --timeout {{ seconds }} --config {{ config }}
 
 # Run boot test and save the boot log to a file
 test-log path="boot.log":
-    ./test-boot.sh --verbose --log {{ path }}
+    ./test-boot.sh --verbose --log {{ path }} --config {{ config }}
 
 # Run boot test quietly (no streaming output, just pass/fail)
 test-quiet:
-    ./test-boot.sh
+    ./test-boot.sh --config {{ config }}
 
 # Boot test then keep the VM running for interactive debugging
 test-keep:
-    ./test-boot.sh --verbose --keep
+    ./test-boot.sh --verbose --keep --config {{ config }}
 
 # Rebuild disk image and re-run boot test
 test-rebuild: build
-    ./test-boot.sh --verbose
+    ./test-boot.sh --verbose --config {{ config }}
 
 clean:
     rm -f result
-    rm -f nixos-rs.raw
+    rm -f {{ config }}.raw
 
 tree:
-    nix-tree --derivation .#nixosConfigurations.nixos-rs.config.system.build.toplevel
+    nix-tree --derivation .#nixosConfigurations.{{ config }}.config.system.build.toplevel
+
+# Compare closure size between nixos-nix and nixos-rs
+compare-closure:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== nixos-nix (vanilla) ==="
+    nix path-info --closure-size -h .#nixosConfigurations.nixos-nix.config.system.build.toplevel
+    echo ""
+    echo "=== nixos-rs (oxidized) ==="
+    nix path-info --closure-size -h .#nixosConfigurations.nixos-rs.config.system.build.toplevel
+
+# Compare package lists between nixos-nix and nixos-rs
+compare-packages:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    NIX_TOPLEVEL=$(nix build --print-out-paths .#nixosConfigurations.nixos-nix.config.system.build.toplevel)
+    RS_TOPLEVEL=$(nix build --print-out-paths .#nixosConfigurations.nixos-rs.config.system.build.toplevel)
+    diff --color=auto -u \
+      <(nix path-info -r "$NIX_TOPLEVEL" | sort) \
+      <(nix path-info -r "$RS_TOPLEVEL" | sort) \
+    || true

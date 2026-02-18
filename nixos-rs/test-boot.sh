@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# test-boot.sh — Boot the nixos-rs VM in cloud-hypervisor and capture serial output.
+# test-boot.sh — Boot a NixOS VM in cloud-hypervisor and capture serial output.
 #
 # Usage:
-#   ./test-boot.sh              # Run with defaults (15s timeout)
+#   ./test-boot.sh              # Run with defaults (nixos-rs, 15s timeout)
+#   ./test-boot.sh --config nixos-nix  # Boot the vanilla NixOS config
 #   ./test-boot.sh --timeout 60 # Custom timeout in seconds
 #   ./test-boot.sh --log /tmp/boot.log  # Custom log path
 #   ./test-boot.sh --keep       # Keep VM running after success pattern is found
@@ -23,7 +24,7 @@ TIMEOUT=15
 LOG_FILE=""
 KEEP=false
 VERBOSE=false
-DISK_IMAGE="$SCRIPT_DIR/nixos-rs.raw"
+CONFIG="nixos-rs"
 
 # Success / failure patterns (checked against the log file)
 SUCCESS_PATTERNS=(
@@ -56,22 +57,26 @@ while [[ $# -gt 0 ]]; do
         --log)      LOG_FILE="$2"; shift 2 ;;
         --keep)     KEEP=true; shift ;;
         --verbose)  VERBOSE=true; shift ;;
+        --config)   CONFIG="$2"; shift 2 ;;
         --disk)     DISK_IMAGE="$2"; shift 2 ;;
         --help|-h)  usage ;;
         *)          log_fail "Unknown option: $1"; usage ;;
     esac
 done
 
+# Derive disk image path from config name if not explicitly set
+DISK_IMAGE="${DISK_IMAGE:-$SCRIPT_DIR/$CONFIG.raw}"
+
 # Set up log file
 if [[ -z "$LOG_FILE" ]]; then
-    LOG_FILE=$(mktemp /tmp/systemd-rs-boot-XXXXXX.log)
+    LOG_FILE=$(mktemp /tmp/$CONFIG-boot-XXXXXX.log)
     CLEANUP_LOG=true
 else
     CLEANUP_LOG=false
 fi
 
 # Serial socket path
-SERIAL_SOCK=$(mktemp -u /tmp/systemd-rs-serial-XXXXXX.sock)
+SERIAL_SOCK=$(mktemp -u /tmp/$CONFIG-serial-XXXXXX.sock)
 
 # Track child processes for cleanup
 CH_PID=""
@@ -118,10 +123,10 @@ done
 
 # ── Build kernel & initrd paths ────────────────────────────────────────────
 
-log_info "Resolving kernel and initrd from flake..."
+log_info "Resolving kernel and initrd from flake ($CONFIG)..."
 
-KERNEL_DIR=$(nix build --no-link --print-out-paths "$FLAKE_DIR#nixosConfigurations.nixos-rs.config.system.build.kernel" 2>&2)
-INITRD_DIR=$(nix build --no-link --print-out-paths "$FLAKE_DIR#nixosConfigurations.nixos-rs.config.system.build.initialRamdisk" 2>&2)
+KERNEL_DIR=$(nix build --no-link --print-out-paths "$FLAKE_DIR#nixosConfigurations.$CONFIG.config.system.build.kernel" 2>&2)
+INITRD_DIR=$(nix build --no-link --print-out-paths "$FLAKE_DIR#nixosConfigurations.$CONFIG.config.system.build.initialRamdisk" 2>&2)
 
 KERNEL="$KERNEL_DIR/bzImage"
 INITRD="$INITRD_DIR/initrd"
@@ -144,7 +149,7 @@ if [[ ! -f "$DISK_IMAGE" ]]; then
     log_warn "Disk image not found at $DISK_IMAGE"
     log_info "Building disk image (this may take a while)..."
     pushd "$SCRIPT_DIR" > /dev/null
-    nixos-rebuild build-image --image-variant qemu --flake "$FLAKE_DIR#nixos-rs"
+    nixos-rebuild build-image --image-variant qemu --flake "$FLAKE_DIR#$CONFIG"
     QCOW2=$(ls result/nixos-image-*-x86_64-linux.qcow2 2>/dev/null | head -1)
     if [[ -z "$QCOW2" ]]; then
         log_fail "Failed to build disk image"
