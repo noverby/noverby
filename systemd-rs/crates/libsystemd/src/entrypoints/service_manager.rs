@@ -89,9 +89,27 @@ pub fn run_service_manager() {
     trace!("Started all helper threads. Start activating units");
 
     let target_id: units::UnitId = {
-        let run_info: &runtime_info::RuntimeInfo = &run_info.read_poisoned();
-        use std::convert::TryInto;
-        run_info.config.target_unit.as_str().try_into().unwrap()
+        let run_info_guard: &runtime_info::RuntimeInfo = &run_info.read_poisoned();
+        let target_name = &run_info_guard.config.target_unit;
+        // The target unit might have been removed as a symlink alias
+        // (e.g. default.target -> multi-user.target). Look it up by name
+        // first, then fall back to checking aliases on other units.
+        if let Some(unit) = run_info_guard
+            .unit_table
+            .values()
+            .find(|u| u.id.name == *target_name)
+        {
+            unit.id.clone()
+        } else if let Some(unit) = run_info_guard
+            .unit_table
+            .values()
+            .find(|u| u.common.unit.aliases.iter().any(|a| a == target_name))
+        {
+            unit.id.clone()
+        } else {
+            use std::convert::TryInto;
+            target_name.as_str().try_into().unwrap()
+        }
     };
 
     // parallel startup of all services
