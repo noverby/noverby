@@ -60,7 +60,7 @@
         withKmod = false;
         withLocaled = true;
         withMachined = false;
-        withNetworkd = false;
+        withNetworkd = true;
         withPortabled = false;
         withSysupdate = false;
         withTimedated = false;

@@ -580,7 +580,22 @@ fn log_generator_output(output: &GeneratorOutput) {
 mod tests {
     use super::*;
     use std::fs;
+    use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
+
+    /// Write an executable script, ensuring the file is fully flushed and closed
+    /// before returning. This avoids ETXTBSY ("Text file busy") races on Linux
+    /// where the kernel still sees the file as open for writing when we try to
+    /// exec it.
+    fn write_executable_script(path: &std::path::Path, content: &str) {
+        {
+            let mut f = fs::File::create(path).unwrap();
+            f.write_all(content.as_bytes()).unwrap();
+            f.sync_all().unwrap();
+            // f is dropped (closed) here
+        }
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
 
     #[test]
     fn test_builtin_generators_are_skipped() {
@@ -676,8 +691,7 @@ mod tests {
 
         // Create a fake generator (executable script)
         let gen_path = gen_dir.join("my-generator");
-        fs::write(&gen_path, "#!/bin/sh\n").unwrap();
-        fs::set_permissions(&gen_path, fs::Permissions::from_mode(0o755)).unwrap();
+        write_executable_script(&gen_path, "#!/bin/sh\n");
 
         // Create a non-executable file (should be skipped)
         let non_exec = gen_dir.join("not-a-generator.txt");
@@ -747,7 +761,7 @@ mod tests {
 
         // Create a generator script that writes a unit file
         let gen_path = dir.path().join("test-gen");
-        fs::write(
+        write_executable_script(
             &gen_path,
             r#"#!/bin/sh
 cat > "$1/generated.service" <<EOF
@@ -758,9 +772,7 @@ Description=Generated Service
 ExecStart=/bin/true
 EOF
 "#,
-        )
-        .unwrap();
-        fs::set_permissions(&gen_path, fs::Permissions::from_mode(0o755)).unwrap();
+        );
 
         let result = execute_generator(&gen_path, &output);
         assert!(result.is_ok(), "generator should succeed: {result:?}");
@@ -788,8 +800,7 @@ EOF
 
         // Create a generator that fails
         let gen_path = dir.path().join("fail-gen");
-        fs::write(&gen_path, "#!/bin/sh\nexit 1\n").unwrap();
-        fs::set_permissions(&gen_path, fs::Permissions::from_mode(0o755)).unwrap();
+        write_executable_script(&gen_path, "#!/bin/sh\nexit 1\n");
 
         let result = execute_generator(&gen_path, &output);
         assert!(result.is_err(), "failing generator should return error");
@@ -807,16 +818,14 @@ EOF
 
         // Create a generator that writes to all three dirs
         let gen_path = dir.path().join("multi-gen");
-        fs::write(
+        write_executable_script(
             &gen_path,
             r#"#!/bin/sh
 echo "[Unit]" > "$1/normal.service"
 echo "[Unit]" > "$2/early.service"
 echo "[Unit]" > "$3/late.service"
 "#,
-        )
-        .unwrap();
-        fs::set_permissions(&gen_path, fs::Permissions::from_mode(0o755)).unwrap();
+        );
 
         let result = execute_generator(&gen_path, &output);
         assert!(result.is_ok(), "generator should succeed: {result:?}");
@@ -923,7 +932,7 @@ echo "[Unit]" > "$3/late.service"
 
         // Create a generator that writes to the normal dir
         let gen_path = gen_dir.join("test-generator");
-        fs::write(
+        write_executable_script(
             &gen_path,
             r#"#!/bin/sh
 cat > "$1/from-generator.service" <<EOF
@@ -935,18 +944,14 @@ Type=oneshot
 ExecStart=/bin/true
 EOF
 "#,
-        )
-        .unwrap();
-        fs::set_permissions(&gen_path, fs::Permissions::from_mode(0o755)).unwrap();
+        );
 
         // Also create a built-in generator that should be skipped
         let fstab_gen = gen_dir.join("systemd-fstab-generator");
-        fs::write(
+        write_executable_script(
             &fstab_gen,
             "#!/bin/sh\necho SHOULD NOT RUN > \"$1/fstab.txt\"\n",
-        )
-        .unwrap();
-        fs::set_permissions(&fstab_gen, fs::Permissions::from_mode(0o755)).unwrap();
+        );
 
         // Use temp output dirs so we don't need root / /run access
         let out_dir = tempfile::tempdir().unwrap();
@@ -987,7 +992,7 @@ EOF
 
         // Create a generator that creates .wants symlinks
         let gen_path = dir.path().join("wants-gen");
-        fs::write(
+        write_executable_script(
             &gen_path,
             r#"#!/bin/sh
 mkdir -p "$1/multi-user.target.wants"
@@ -1000,9 +1005,7 @@ ExecStart=/bin/true
 EOF
 ln -s ../my-generated.service "$1/multi-user.target.wants/my-generated.service"
 "#,
-        )
-        .unwrap();
-        fs::set_permissions(&gen_path, fs::Permissions::from_mode(0o755)).unwrap();
+        );
 
         let result = execute_generator(&gen_path, &output);
         assert!(result.is_ok(), "generator should succeed: {result:?}");

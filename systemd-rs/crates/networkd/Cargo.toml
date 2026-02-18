@@ -1,0 +1,20 @@
+[package]
+name = "systemd-networkd"
+version = "0.1.0"
+authors = ["Niclas Overby <niclas@overby.me>"]
+edition = "2024"
+
+[[bin]]
+name = "systemd-networkd"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"
+log = "0.4"
+fern = "0.7"
+chrono = "0.4"
+signal-hook = "0.4"
+nix = { version = "0.31", features = ["signal", "process", "net", "socket", "ioctl", "poll", "hostname"] }
+
+[dev-dependencies]
+tempfile = "3"

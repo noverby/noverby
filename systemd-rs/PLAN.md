@@ -8,7 +8,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ### What works today
 
-- 2,968 unit tests passing, boot test passing in ~4 seconds with clean login and zero panics/errors
+- 3,077 unit tests passing, boot test passing in ~4 seconds with clean login and zero panics/errors
 - PID 1 initialization with full NixOS compatibility (VFS mounts, `/etc/mtab` symlink, cgroup2, machine-id, hostname, home directories, PAM/NSS diagnostics)
 - Unit file parsing for all NixOS-generated unit files (service, socket, target, mount, timer, path, slice, scope)
 - Dependency graph resolution and parallel unit activation
@@ -34,7 +34,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 - Poison-recovering lock infrastructure — all `Mutex` and `RwLock` acquisitions in PID 1 recover from poisoned locks instead of cascading panics, ensuring one thread's failure never brings down the service manager
 - Login/session management (systemd-logind manages sessions, seats, users, inhibitor locks; loginctl CLI)
 - External generator framework — discovers and executes standard systemd generators (e.g. `systemd-gpt-auto-generator`, `systemd-run-generator`, `zram-generator`) before unit loading; skips built-in generators (fstab, getty); output directories inserted into unit search path at correct priority; NixOS boot runs 15 generators successfully
-- 47 crates implemented across Phases 0–5
+- 49 crates implemented across Phases 0–5
 
 ### Recent changes
 
@@ -93,8 +93,8 @@ crates/
 ├── udevadm/             # udev administration tool
 ├── logind/              # Login and session manager (systemd-logind) 🔶
 ├── loginctl/            # Login manager control tool 🔶
-├── networkd/            # Network configuration manager (systemd-networkd)
-├── networkctl/          # Network manager control tool
+├── networkd/            # Network configuration manager (systemd-networkd) 🔶
+├── networkctl/          # Network manager control tool 🔶
 ├── resolved/            # DNS stub resolver (systemd-resolved)
 ├── resolvectl/          # Resolver control tool
 ├── timesyncd/           # NTP time synchronization (systemd-timesyncd)
@@ -219,7 +219,7 @@ Services required for a fully functional desktop or server:
 
 Full network management:
 
-- ❌ **`networkd`** — network configuration daemon with `.network`, `.netdev`, `.link` file parsing, DHCP v4/v6 client, DHCPv6-PD, IPv6 RA, static routes, routing policy rules, bridge/bond/VLAN/VXLAN/WireGuard/tunnel/MACsec creation, `networkctl` CLI
+- 🔶 **`networkd`** — network configuration daemon with `.network` file parsing ([Match], [Network], [Address], [Route], [DHCPv4], [Link] sections), DHCPv4 client with full DORA state machine (discover/offer/request/ack, lease renewal T1/T2, rebinding, exponential backoff retransmission, classless static routes RFC 3442, release/decline/inform), static IPv4 address and route configuration, netlink-based interface management (RTM_NEWLINK/GETLINK/NEWADDR/DELADDR/NEWROUTE/DELROUTE, bring up/down, set MTU, flush addresses/routes), DNS resolver configuration (`/run/systemd/resolve/resolv.conf`), runtime state files (`/run/systemd/netif/links/`, `/run/systemd/netif/leases/`, `/run/systemd/netif/state`), sd_notify protocol (READY/WATCHDOG/STATUS/STOPPING), signal handling (SIGTERM/SIGINT for shutdown, SIGHUP for reload), NixOS integration enabled (`withNetworkd = true`); `networkctl` CLI with `list` (interface table with type/operational/setup state), `status [LINK]` (detailed per-link info including address/gateway/DNS/DHCP lease), `lldp` (stub); missing: `.netdev` file parsing, `.link` file parsing, DHCPv6 client, DHCPv6-PD, IPv6 RA, IPv6 address management, routing policy rules, bridge/bond/VLAN/VXLAN/WireGuard/tunnel/MACsec creation, D-Bus interface (`org.freedesktop.network1`), `networkctl` reconfigure/reload/forcerenew, `systemd-networkd-wait-online`, `systemd-network-generator`
 - ❌ **`resolved`** — stub DNS resolver with DNS-over-TLS, DNSSEC validation, mDNS responder/resolver, LLMNR responder/resolver, per-link DNS configuration, split DNS, `/etc/resolv.conf` management, `resolvectl` CLI
 - ✅ **`timesyncd`** — SNTP time synchronization daemon with NTP v4 client, `timesyncd.conf` parsing with drop-in directories, clock adjustment (slew via `adjtimex()` for small offsets, step via `clock_settime()` for large), clock state persistence, sd_notify protocol, signal handling, exponential backoff polling, container detection, graceful degradation; `timedatectl` CLI with `status`, `show`, `set-time`, `set-timezone`, `set-ntp`, `list-timezones`, `timesync-status`; missing: NTS support, D-Bus interface (`org.freedesktop.timesync1`), `systemd-timedated` D-Bus daemon (`org.freedesktop.timedate1`)
 - ✅ **`hostnamed`** — hostname management daemon with static/pretty/transient hostname support, `/etc/hostname` and `/etc/machine-info` management, DMI chassis auto-detection, control socket, watchdog keepalive; NixOS integration enabled (`withHostnamed = true`); `hostnamectl` CLI with `status`, `show`, `hostname`, `set-hostname`, `chassis`, `deployment`, `location`, `icon-name` commands; missing: D-Bus interface (`org.freedesktop.hostname1`)
@@ -256,9 +256,9 @@ Remaining components and production readiness:
 - ❌ **`sd-boot`** / **`bootctl`** — UEFI boot manager and control tool (this component is EFI, likely stays as a separate build target or FFI)
 - ❌ **`sd-stub`** — UEFI stub for unified kernel images
 - ✅ **Generator framework** — fstab and getty generators built natively into `libsystemd`; external generator execution framework discovers and runs all standard generators (`systemd-gpt-auto-generator`, `systemd-cryptsetup-generator`, `systemd-debug-generator`, `systemd-run-generator`, etc.) from well-known directories plus package-relative paths; output directories inserted at correct unit search path priorities; built-in generators automatically skipped; per-generator timeout with graceful failure handling
-- 🔶 **Comprehensive test suite** — unit tests exist (~2,901); integration tests via nixos-rs boot test; missing: differential testing against real systemd
+- 🔶 **Comprehensive test suite** — unit tests exist (~3,077); integration tests via nixos-rs boot test; missing: differential testing against real systemd
 - ❌ **Documentation** — man-page-compatible documentation for all binaries and configuration formats
-- 🔶 **NixOS / distro integration** — packaging via `default.nix`, boot testing via `test-boot.sh`, NixOS module via `systemd.nix`; working end-to-end; udev rules override ensures correct `systemctl` path in udev `RUN+=` actions; `Type=idle` deferral eliminates getty/PAM race conditions; on-demand unit loading enables `systemctl restart` for units outside the boot dependency graph (e.g. udev-triggered `systemd-vconsole-setup.service`); symlink-aware unit discovery handles NixOS `/etc/systemd/system/` layouts; poison-recovering lock infrastructure prevents panic cascades from poisoned `Mutex`/`RwLock` guards; external generator framework discovers generators in NixOS store paths via executable-relative search (15 generators execute successfully during boot); boot log is completely clean with zero panics and zero errors
+- 🔶 **NixOS / distro integration** — packaging via `default.nix`, boot testing via `test-boot.sh`, NixOS module via `systemd.nix`; working end-to-end; udev rules override ensures correct `systemctl` path in udev `RUN+=` actions; `Type=idle` deferral eliminates getty/PAM race conditions; on-demand unit loading enables `systemctl restart` for units outside the boot dependency graph (e.g. udev-triggered `systemd-vconsole-setup.service`); symlink-aware unit discovery handles NixOS `/etc/systemd/system/` layouts; poison-recovering lock infrastructure prevents panic cascades from poisoned `Mutex`/`RwLock` guards; external generator framework discovers generators in NixOS store paths via executable-relative search (15 generators execute successfully during boot); networkd integration enabled (`withNetworkd = true`) with `.network` file for DHCP on ethernet interfaces; boot log is completely clean with zero panics and zero errors
 
 ## Integration Testing with nixos-rs
 

@@ -47,5 +47,7 @@ members = [
     "crates/socket-activate",
     "crates/logind",
     "crates/loginctl",
+    "crates/networkd",
+    "crates/networkctl",
 ]
 resolver = "2"
