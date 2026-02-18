@@ -6,7 +6,9 @@ extend-ignore-re = [
   "Importd",
   "Localed",
   "Iinclude",
-  "localed"
+  "localed",
+  "OIF",
+  "oif"
 ]
 
 [files]
