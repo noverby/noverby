@@ -8,7 +8,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ### What works today
 
-- 2,875 unit tests passing, boot test passing in ~3 seconds
+- 2,901 unit tests passing, boot test passing in ~3 seconds
 - PID 1 initialization with full NixOS compatibility (VFS mounts, `/etc/mtab` symlink, cgroup2, machine-id, hostname, home directories, PAM/NSS diagnostics)
 - Unit file parsing for all NixOS-generated unit files (service, socket, target, mount, timer, path, slice, scope)
 - Dependency graph resolution and parallel unit activation
@@ -28,11 +28,16 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 - Cgroup hierarchy listing (systemd-cgls) and real-time resource monitoring (systemd-cgtop)
 - Inhibitor lock management (systemd-inhibit acquires/lists/releases locks)
 - Mount/unmount operations (systemd-mount/systemd-umount with transient unit creation, mount table listing)
+- Password query framework (systemd-ask-password TTY/agent protocol, systemd-tty-ask-password-agent with query/watch/wall/list modes)
+- Socket activation testing (systemd-socket-activate with TCP/UDP/Unix sockets, sd_listen_fds protocol, per-connection spawning)
 - Clean shutdown with filesystem unmount
-- 42 crates implemented across Phases 0–5
+- 45 crates implemented across Phases 0–5
 
 ### Recent changes
 
+- Implemented `systemd-ask-password` — password query tool supporting direct TTY input (with echo suppression via termios, backspace handling, Ctrl-C/Ctrl-D cancellation), agent protocol via question files in `/run/systemd/ask-password/` (INI-format `[Ask]` section with PID, Socket, Message, Icon, Id, NotAfter, AcceptCached, Echo fields), Unix socket reply protocol (`+password` for success, `-` for cancel), credential lookup via `$CREDENTIALS_DIRECTORY`, `--no-tty`/`--no-agent`/`--multiple` mode selection, `--timeout`, `--echo`, `--accept-cached`, `--credential`, `--keyname`, `--id`, `--icon` options
+- Implemented `systemd-tty-ask-password-agent` — TTY-based password agent that monitors `/run/systemd/ask-password/` for question files; `--query` mode processes all pending questions once; `--watch` mode continuously polls for new questions (500ms interval); `--wall` mode broadcasts password requests to all TTYs via `/dev/pts/*` and `/dev/tty*`; `--list` mode displays pending questions with metadata; `--console` for custom TTY path; parses INI question files with expiry checking via `CLOCK_MONOTONIC`; sends responses through Unix datagram sockets
+- Implemented `systemd-socket-activate` — socket activation testing/debugging tool; creates TCP, UDP, or Unix domain listening sockets from `-l` address specs (port numbers, host:port pairs, absolute paths); passes socket FDs starting at FD 3 with `LISTEN_FDS`/`LISTEN_PID`/`LISTEN_FDNAMES` environment variables per sd_listen_fds(3) protocol; `--accept` mode accepts connections and spawns per-connection child processes; `--datagram` for UDP sockets; `--recv-buffer`, `--backlog`, `--foreground`, `--fdnames` options; proper FD conflict resolution during dup2 shuffling; Unix socket cleanup on exit
 - Enabled NixOS integration for `systemd-hostnamed` and `systemd-localed` — set `withHostnamed = true` and `withLocaled = true` in the systemd-rs-systemd packaging so NixOS generates proper unit files (`systemd-hostnamed.service`, `systemd-hostnamed.socket`, `systemd-localed.service`, `dbus-org.freedesktop.hostname1.service`, `dbus-org.freedesktop.locale1.service`); both daemons are deployed at `bin/` and `lib/systemd/` paths; NixOS boot test passes with services registered for on-demand activation
 - Added watchdog support to `systemd-hostnamed` and `systemd-localed` — parse `WATCHDOG_USEC` from environment, send `WATCHDOG=1` at half the configured interval in the main loop; prevents PID 1 from killing the daemons when NixOS unit files specify `WatchdogSec=3min`
 - Implemented `systemd-analyze` — boot performance analysis and debugging tool with `time` (overall boot timing), `blame` (units sorted by startup duration), `critical-chain` (time-critical unit chain), `calendar` (normalize calendar time specs), `timespan` (normalize time span specs), `timestamp` (normalize timestamp specs), `verify` (validate unit files for correctness), `condition` (evaluate Condition*/Assert* expressions), `dot` (generate dependency graph in dot format), `unit-paths` (list unit file search paths), `log-level`/`log-target` (get/set manager log settings), `service-watchdogs` (get/set watchdog state), `security` (audit unit security hardening) subcommands
@@ -99,6 +104,8 @@ crates/
 ├── nspawn/              # Container runtime (systemd-nspawn)
 ├── portabled/           # Portable service manager (systemd-portabled)
 ├── portablectl/         # Portable service control tool
+├── ask-password/        # Password query tool (systemd-ask-password) ✅
+├── tty-ask-password-agent/ # Password agent (systemd-tty-ask-password-agent) ✅
 ├── homed/               # Home directory manager (systemd-homed)
 ├── homectl/             # Home directory control tool
 ├── oomd/                # Userspace OOM killer (systemd-oomd)
@@ -117,9 +124,9 @@ crates/
 ├── mount/               # Mount/unmount utilities (systemd-mount, systemd-umount) ✅
 ├── notify/              # Notification sender (systemd-notify)
 ├── path/                # Path operation tool (systemd-path)
-├── socket-activate/     # Socket activation tool (systemd-socket-activate)
-├── ask-password/        # Password query tool (systemd-ask-password)
-├── tty-ask-password-agent/ # Password agent (systemd-tty-ask-password-agent)
+├── socket-activate/     # Socket activation tool (systemd-socket-activate) ✅
+├── ask-password/        # Password query tool (systemd-ask-password) ✅
+├── tty-ask-password-agent/ # Password agent (systemd-tty-ask-password-agent) ✅
 ├── inhibit/             # Inhibitor lock tool (systemd-inhibit) ✅
 ├── creds/               # Credential management (systemd-creds)
 ├── dissect/             # Image dissection tool (systemd-dissect)
@@ -195,7 +202,7 @@ Services required for a fully functional desktop or server:
 - ✅ **`binfmt`** — register binary formats via `binfmt_misc` from `binfmt.d` configuration
 - ✅ **`vconsole-setup`** — virtual console font and keymap configuration
 - ✅ **`backlight`** / ✅ **`rfkill`** — save and restore hardware state across reboots
-- ❌ **`ask-password`** / ❌ **`tty-ask-password-agent`** — password query framework for LUKS, etc.
+- ✅ **`ask-password`** / ✅ **`tty-ask-password-agent`** — password query framework with TTY input (echo suppression, backspace handling), agent protocol via question files in `/run/systemd/ask-password/`, Unix socket reply (`+password` / `-` cancel), credential lookup, wall message broadcasting, continuous watch mode; missing: inotify-based watching (uses polling), Plymouth integration, kernel keyring caching
 
 ## Phase 3 — Network Stack
 
@@ -232,6 +239,7 @@ Remaining components and production readiness:
 - ✅ **`analyze`** — boot performance analysis with `blame`, `time`, `critical-chain`, `dot`, `calendar`, `timespan`, `timestamp`, `verify`, `condition`, `unit-paths`, `security`, `log-level`, `log-target`, `service-watchdogs` subcommands; missing: `plot` (SVG), `inspect-elf`, `fdstore`, `image-policy`, `pcrs`, `srk`
 - ✅ **`cgls`** / ✅ **`cgtop`** — cgroup tree listing with process display; real-time cgroup resource monitor with CPU/memory/I/O tracking, sorting, batch mode
 - ✅ **`mount`** / **`umount`** — transient mount/automount unit creation, mount table listing, filesystem mount/unmount with force/lazy options
+- ✅ **`socket-activate`** — socket activation testing tool; creates TCP/UDP/Unix listening sockets, passes FDs via sd_listen_fds(3) protocol (`LISTEN_FDS`/`LISTEN_PID`/`LISTEN_FDNAMES`), `--accept` mode for per-connection spawning, `--datagram` for UDP, `--recv-buffer`/`--backlog`/`--foreground` options
 - ✅ **`ac-power`** — AC power state detection
 - ✅ **`detect-virt`** — virtualization/container detection
 - ❌ **`sd-boot`** / **`bootctl`** — UEFI boot manager and control tool (this component is EFI, likely stays as a separate build target or FFI)

@@ -42,5 +42,8 @@ members = [
     "crates/cgtop",
     "crates/inhibit",
     "crates/mount",
+    "crates/ask-password",
+    "crates/tty-ask-password-agent",
+    "crates/socket-activate",
 ]
 resolver = "2"
