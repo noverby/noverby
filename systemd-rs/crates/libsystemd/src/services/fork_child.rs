@@ -23,17 +23,11 @@ pub fn after_fork_child(
     // Setup the new stdio so println! and eprintln! go to the expected fds
     dup_stdio(new_stdout, new_stderr, exec_helper_config);
 
-    // Now we may at least write to stderr
-    write_to_stderr("Prepare fork child before execing!");
-
     // Lets move into a new process group before execing
     move_into_new_process_group();
 
     // Dup all the fds for the service here, because we use SO_CLOEXEC on all fds so doing it after exec isn't possible
     dup_fds(socket_fds);
-
-    // Just so we have a clearer picture on what is happening while debugging
-    write_to_stderr("Exec the exec helper");
 
     // Finally exec the exec_helper
     if unsafe { libc::execv(selfpath.as_ptr(), self_args.as_ptr().cast()) } == -1 {
