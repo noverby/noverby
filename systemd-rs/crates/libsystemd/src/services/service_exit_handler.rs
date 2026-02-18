@@ -1,10 +1,10 @@
 use log::{error, info, trace};
 
 use crate::lock_ext::{MutexExt, RwLockExt};
-use crate::runtime_info::{ArcMutRuntimeInfo, PidEntry, RuntimeInfo};
+use crate::runtime_info::{ArcMutRuntimeInfo, RuntimeInfo};
 use crate::signal_handler::ChildTermination;
 use crate::units::{
-    ServiceRestart, ServiceType, Specific, SuccessExitStatus, Timeout, UnitAction,
+    ServiceRestart, ServiceType, Specific, SuccessExitStatus, Timeout, UnitAction, UnitId,
     UnitOperationErrorReason, UnitStatus,
 };
 
@@ -106,74 +106,42 @@ fn is_clean_signal_value(sig: nix::sys::signal::Signal) -> bool {
     )
 }
 
+/// Spawn a new thread to handle service exit cleanup and restart logic.
+///
+/// **Important**: The PID table entry has already been updated to
+/// `ServiceExited` by the signal handler (see `signal_handler.rs`).  This
+/// function only handles the *aftermath* — utmp records, oneshot cleanup,
+/// restart policy, SuccessAction/FailureAction, etc.  It acquires the
+/// `RuntimeInfo` read lock, which is safe because the critical PID-table
+/// update is already visible to `wait_for_service`.
 pub fn service_exit_handler_new_thread(
     pid: nix::unistd::Pid,
+    srvc_id: UnitId,
     code: ChildTermination,
     run_info: ArcMutRuntimeInfo,
 ) {
     std::thread::spawn(move || {
-        if let Err(e) = service_exit_handler(pid, code, &run_info.read_poisoned()) {
+        if let Err(e) = service_exit_handler(pid, srvc_id, code, &run_info.read_poisoned()) {
             error!("{e}");
         }
     });
 }
 
+/// Handle the aftermath of a service process exiting.
+///
+/// The PID table has already been updated by the signal handler; this function
+/// deals with utmp records, oneshot process cleanup, restart decisions, and
+/// SuccessAction/FailureAction triggers.
 pub fn service_exit_handler(
     pid: nix::unistd::Pid,
+    srvc_id: UnitId,
     code: ChildTermination,
     run_info: &RuntimeInfo,
 ) -> Result<(), String> {
-    trace!("Exit handler with pid: {pid}");
-
-    // Handle exiting of helper processes and oneshot processes
-    {
-        let pid_table_locked = &mut *run_info.pid_table.lock_poisoned();
-        let entry = pid_table_locked.get(&pid);
-        if let Some(entry) = entry {
-            match entry {
-                PidEntry::Service(_id, _srvctype) => {
-                    // ignore at this point, will be handled below
-                }
-                PidEntry::Helper(_id, srvc_name) => {
-                    trace!("Helper process for service: {srvc_name} exited with: {code:?}");
-                    // this will be collected by the thread that waits for the helper process to exit
-                    pid_table_locked.insert(pid, PidEntry::HelperExited(code));
-                    return Ok(());
-                }
-                PidEntry::HelperExited(_) | PidEntry::ServiceExited(_) => {
-                    // TODO is this sensible? How do we handle this?
-                    error!("Pid exited that was already saved as exited");
-                    return Ok(());
-                }
-            }
-        } else {
-            trace!(
-                "All processes spawned by systemd-rs have a pid entry. This did not: {pid}. Probably a rerooted orphan that got killed."
-            );
-            return Ok(());
-        }
-    }
-
-    // find out which service exited and if it was a oneshot service save an entry in the pid table that marks the service as exited
-    let srvc_id = {
-        let pid_table_locked = &mut *run_info.pid_table.lock_poisoned();
-        let entry = pid_table_locked.remove(&pid);
-        match entry {
-            Some(entry) => match entry {
-                PidEntry::Service(id, _srvctype) => {
-                    trace!("Save service as exited. PID: {pid}");
-                    pid_table_locked.insert(pid, PidEntry::ServiceExited(code));
-                    id
-                }
-                PidEntry::Helper(..) | PidEntry::HelperExited(_) | PidEntry::ServiceExited(_) => {
-                    unreachable!();
-                }
-            },
-            None => {
-                unreachable!();
-            }
-        }
-    };
+    trace!(
+        "Exit handler for service {:?} with pid: {pid}",
+        srvc_id.name
+    );
 
     let Some(unit) = run_info.unit_table.get(&srvc_id) else {
         panic!("Tried to run a unit that has been removed from the map");

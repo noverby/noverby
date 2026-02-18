@@ -537,7 +537,7 @@ fn prepare_runtimeinfo(conf: &config::Config, dry_run: bool) -> runtime_info::Ar
         unrecoverable_error("Started as dry-run".into());
     }
 
-    let pid_table = Mutex::new(std::collections::HashMap::new());
+    let pid_table = Arc::new(Mutex::new(std::collections::HashMap::new()));
 
     Arc::new(RwLock::new(runtime_info::RuntimeInfo {
         unit_table,
@@ -570,9 +570,14 @@ fn start_signal_handler_thread(
     signals: Signals,
     run_info: runtime_info::ArcMutRuntimeInfo,
 ) -> std::thread::JoinHandle<()> {
+    // Clone the pid_table Arc *before* moving run_info into the closure.
+    // The signal handler uses this separate handle to update PID entries
+    // (Service → ServiceExited) without acquiring the RuntimeInfo read lock,
+    // breaking the 3-way deadlock described in signal_handler.rs.
+    let pid_table = run_info.read_poisoned().pid_table.clone();
     std::thread::spawn(move || {
         // listen on signals from the child processes
-        signal_handler::handle_signals(signals, run_info);
+        signal_handler::handle_signals(signals, run_info, pid_table);
     })
 }
 

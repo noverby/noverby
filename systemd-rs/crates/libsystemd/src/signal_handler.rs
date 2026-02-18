@@ -1,13 +1,38 @@
-//! Handle signals send to this process from either the outside or the child processes
+//! Handle signals sent to this process from either the outside or the child processes
+//!
+//! ## Deadlock prevention
+//!
+//! The signal handler receives a cloned `ArcMutPidTable` so it can update PID
+//! table entries (e.g. `Service` → `ServiceExited`) **without** acquiring the
+//! `RuntimeInfo` read lock.  This breaks a 3-way deadlock that otherwise occurs
+//! when:
+//!
+//!   1. Activation threads hold read locks on `RuntimeInfo` while polling
+//!      `wait_for_service` (checking the PID table for `ServiceExited`).
+//!   2. A `systemctl` command (e.g. from a udev `RUN+=` rule) tries to acquire
+//!      a write lock on `RuntimeInfo` — it blocks because readers hold locks,
+//!      and on glibc's writer-preferring `pthread_rwlock` all *new* readers are
+//!      also blocked.
+//!   3. The old exit-handler thread needed a read lock to update the PID table
+//!      — but was blocked by the pending writer from (2).
+//!
+//! Now the signal handler updates the PID table directly (step 3 no longer
+//! needs the lock), so `wait_for_service` sees `ServiceExited` promptly,
+//! releases its read lock, and the writer from (2) can proceed.
 
-use crate::runtime_info::ArcMutRuntimeInfo;
+use crate::lock_ext::MutexExt;
+use crate::runtime_info::{ArcMutPidTable, ArcMutRuntimeInfo, PidEntry};
 use crate::services;
 use log::error;
 use log::info;
 use log::trace;
 use signal_hook::iterator::Signals;
 
-pub fn handle_signals(mut signals: Signals, run_info: ArcMutRuntimeInfo) {
+pub fn handle_signals(
+    mut signals: Signals,
+    run_info: ArcMutRuntimeInfo,
+    pid_table: ArcMutPidTable,
+) {
     loop {
         // Pick up new signals
         for signal in signals.forever() {
@@ -16,13 +41,67 @@ pub fn handle_signals(mut signals: Signals, run_info: ArcMutRuntimeInfo) {
                     std::iter::from_fn(get_next_exited_child)
                         .take_while(Result::is_ok)
                         .for_each(|val| {
-                            let run_info_clone = run_info.clone();
                             match val {
-                                Ok((pid, code)) => services::service_exit_handler_new_thread(
-                                    pid,
-                                    code,
-                                    run_info_clone,
-                                ),
+                                Ok((pid, code)) => {
+                                    // Phase 1: Update the PID table immediately,
+                                    // WITHOUT acquiring the RuntimeInfo read lock.
+                                    // This lets `wait_for_service` (which polls the
+                                    // PID table under a RuntimeInfo read lock) see
+                                    // the `ServiceExited` entry and proceed.
+                                    let unit_id = {
+                                        let mut pt = pid_table.lock_poisoned();
+                                        match pt.get(&pid) {
+                                            Some(PidEntry::Helper(_id, srvc_name)) => {
+                                                trace!(
+                                                    "Helper process for service: {srvc_name} exited with: {code:?}"
+                                                );
+                                                pt.insert(pid, PidEntry::HelperExited(code));
+                                                None // no further handling needed
+                                            }
+                                            Some(PidEntry::Service(_id, _srvctype)) => {
+                                                // Remove the Service entry and replace
+                                                // it with ServiceExited so that
+                                                // wait_for_service can observe it.
+                                                let entry = pt.remove(&pid);
+                                                let id = match entry {
+                                                    Some(PidEntry::Service(id, _)) => id,
+                                                    _ => unreachable!(),
+                                                };
+                                                trace!("Save service as exited. PID: {pid}");
+                                                pt.insert(pid, PidEntry::ServiceExited(code));
+                                                Some(id)
+                                            }
+                                            Some(
+                                                PidEntry::HelperExited(_)
+                                                | PidEntry::ServiceExited(_),
+                                            ) => {
+                                                error!(
+                                                    "Pid {pid} exited but was already saved as exited"
+                                                );
+                                                None
+                                            }
+                                            None => {
+                                                trace!(
+                                                    "All processes spawned by systemd-rs have a pid entry. \
+                                                     This did not: {pid}. Probably a rerooted orphan."
+                                                );
+                                                None
+                                            }
+                                        }
+                                    };
+
+                                    // Phase 2: If the exited process was a service,
+                                    // spawn a thread to handle restart/cleanup logic.
+                                    // That thread *will* need the RuntimeInfo read
+                                    // lock, but by now the critical PID-table update
+                                    // is already visible.
+                                    if let Some(id) = unit_id {
+                                        let run_info_clone = run_info.clone();
+                                        services::service_exit_handler_new_thread(
+                                            pid, id, code, run_info_clone,
+                                        );
+                                    }
+                                }
                                 Err(e) => {
                                     error!("{e}");
                                 }

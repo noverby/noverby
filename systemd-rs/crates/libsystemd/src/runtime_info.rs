@@ -16,10 +16,30 @@ use std::sync::{Arc, Mutex, RwLock};
 pub type UnitTable = HashMap<UnitId, Unit>;
 pub type MutFDStore = RwLock<FDStore>;
 
+/// Shared handle to the PID table, accessible without the RuntimeInfo RwLock.
+///
+/// The PID table is wrapped in `Arc<Mutex<…>>` so that the signal handler can
+/// update entries (e.g. `Service` → `ServiceExited`) **without** acquiring a
+/// read lock on `RuntimeInfo`.  This breaks a 3-way deadlock:
+///
+///   1. Activation threads hold **read locks** on RuntimeInfo while polling
+///      `wait_for_service` (which checks the PID table for `ServiceExited`).
+///   2. A `systemctl` command (e.g. from a udev rule) tries to acquire a
+///      **write lock** — it blocks because readers hold locks, and on glibc's
+///      writer-preferring `pthread_rwlock` all *new* readers are also blocked.
+///   3. The service-exit handler thread needs a **read lock** to update the
+///      PID table — but it is blocked by the pending writer from (2).
+///
+/// By giving the signal handler a cloned `Arc` it can update the PID table
+/// directly, allowing `wait_for_service` to observe `ServiceExited` and
+/// release the read lock, which in turn unblocks the writer and the exit
+/// handler.
+pub type ArcMutPidTable = Arc<Mutex<PidTable>>;
+
 /// This will be passed through to all the different threads as a central state struct
 pub struct RuntimeInfo {
     pub unit_table: UnitTable,
-    pub pid_table: Mutex<PidTable>,
+    pub pid_table: ArcMutPidTable,
     pub fd_store: MutFDStore,
     pub config: crate::config::Config,
     pub stdout_eventfd: EventFd,
