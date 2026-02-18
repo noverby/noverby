@@ -23,7 +23,7 @@ rules:
     options:
       - backend
       - homepage
-      - nix
+      - config
       - nixos-rs
       - pkgs
       - pkg-config-rs
