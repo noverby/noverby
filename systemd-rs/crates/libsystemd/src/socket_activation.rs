@@ -2,6 +2,7 @@
 use log::error;
 use log::trace;
 
+use crate::lock_ext::RwLockExt;
 use crate::runtime_info::ArcMutRuntimeInfo;
 use crate::units::{ActivationSource, Specific, StatusStarted, UnitId, UnitStatus};
 use std::os::unix::io::BorrowedFd;
@@ -20,7 +21,7 @@ pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
             let wait_result = wait_for_socket(run_info.clone());
             match wait_result {
                 Ok(ids) => {
-                    let run_info = run_info.read().unwrap();
+                    let run_info = run_info.read_poisoned();
                     let unit_table = &run_info.unit_table;
                     for socket_id in ids {
                         {
@@ -69,7 +70,7 @@ pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
                             // mark socket as activated, removing it from the set of
                             // fds systemd-rs is actively listening on
                             if let Specific::Socket(specific) = &sock_unit.specific {
-                                let mut_state = &mut *specific.state.write().unwrap();
+                                let mut_state = &mut *specific.state.write_poisoned();
                                 mut_state.sock.activated = true;
                             }
                             if srvc_unit.is_none() {
@@ -80,7 +81,7 @@ pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
                             }
                             if let Some(srvc_unit) = srvc_unit {
                                 let srvc_status = {
-                                    let status_locked = &*srvc_unit.common.status.read().unwrap();
+                                    let status_locked = &*srvc_unit.common.status.read_poisoned();
                                     status_locked.clone()
                                 };
 
@@ -136,18 +137,18 @@ pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
 }
 
 pub fn wait_for_socket(run_info: ArcMutRuntimeInfo) -> Result<Vec<UnitId>, String> {
-    let eventfd = { run_info.read().unwrap().socket_activation_eventfd };
+    let eventfd = { run_info.read_poisoned().socket_activation_eventfd };
     let (mut fdset, fd_to_sock_id) = {
-        let run_info_locked = &*run_info.read().unwrap();
+        let run_info_locked = &*run_info.read_poisoned();
 
-        let fd_to_sock_id = run_info_locked.fd_store.read().unwrap().global_fds_to_ids();
+        let fd_to_sock_id = run_info_locked.fd_store.read_poisoned().global_fds_to_ids();
         let mut fdset = nix::sys::select::FdSet::new();
         {
             let unit_table_locked = &run_info_locked.unit_table;
             for (fd, id) in &fd_to_sock_id {
                 let unit = unit_table_locked.get(id).unwrap();
                 if let Specific::Socket(specific) = &unit.specific {
-                    let mut_state = &*specific.state.read().unwrap();
+                    let mut_state = &*specific.state.read_poisoned();
                     if !mut_state.sock.activated {
                         fdset.insert(unsafe { borrow_fd(*fd) });
                     }

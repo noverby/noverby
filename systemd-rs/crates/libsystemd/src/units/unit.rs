@@ -1,5 +1,6 @@
 use log::{error, info, trace};
 
+use crate::lock_ext::RwLockExt;
 use crate::runtime_info::RuntimeInfo;
 use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
@@ -58,7 +59,7 @@ impl SocketState {
                 conf,
                 id.name.clone(),
                 id.clone(),
-                &mut run_info.fd_store.write().unwrap(),
+                &mut run_info.fd_store.write_poisoned(),
             )
             .map_err(|e| UnitOperationError {
                 unit_name: id.name.clone(),
@@ -67,13 +68,13 @@ impl SocketState {
             });
         match open_res {
             Ok(()) => {
-                let mut status = status.write().unwrap();
+                let mut status = status.write_poisoned();
                 *status = UnitStatus::Started(StatusStarted::Running);
                 run_info.notify_eventfds();
                 Ok(UnitStatus::Started(StatusStarted::Running))
             }
             Err(e) => {
-                let mut status = status.write().unwrap();
+                let mut status = status.write_poisoned();
                 *status =
                     UnitStatus::Stopped(StatusStopped::StoppedUnexpected, vec![e.reason.clone()]);
                 Err(e)
@@ -93,7 +94,7 @@ impl SocketState {
             .close_all(
                 conf,
                 id.name.clone(),
-                &mut run_info.fd_store.write().unwrap(),
+                &mut run_info.fd_store.write_poisoned(),
             )
             .map_err(|e| UnitOperationError {
                 unit_name: id.name.clone(),
@@ -102,11 +103,11 @@ impl SocketState {
             });
         match &close_result {
             Ok(()) => {
-                let mut status = status.write().unwrap();
+                let mut status = status.write_poisoned();
                 *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
             }
             Err(e) => {
-                let mut status = status.write().unwrap();
+                let mut status = status.write_poisoned();
                 *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![e.reason.clone()]);
             }
         }
@@ -125,7 +126,7 @@ impl SocketState {
             .close_all(
                 conf,
                 id.name.clone(),
-                &mut run_info.fd_store.write().unwrap(),
+                &mut run_info.fd_store.write_poisoned(),
             )
             .map_err(|e| UnitOperationError {
                 unit_name: id.name.clone(),
@@ -135,7 +136,7 @@ impl SocketState {
 
         // If closing failed, dont try to restart but fail early
         if let Err(error) = close_result {
-            let mut status = status.write().unwrap();
+            let mut status = status.write_poisoned();
             *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![error.reason.clone()]);
             return Err(error);
         }
@@ -147,7 +148,7 @@ impl SocketState {
                 conf,
                 id.name.clone(),
                 id.clone(),
-                &mut run_info.fd_store.write().unwrap(),
+                &mut run_info.fd_store.write_poisoned(),
             )
             .map_err(|e| UnitOperationError {
                 unit_name: id.name.clone(),
@@ -156,13 +157,13 @@ impl SocketState {
             });
         match open_res {
             Ok(()) => {
-                let mut status = status.write().unwrap();
+                let mut status = status.write_poisoned();
                 *status = UnitStatus::Started(StatusStarted::Running);
                 run_info.notify_eventfds();
                 Ok(())
             }
             Err(e) => {
-                let mut status = status.write().unwrap();
+                let mut status = status.write_poisoned();
                 *status =
                     UnitStatus::Stopped(StatusStopped::StoppedUnexpected, vec![e.reason.clone()]);
                 Err(e)
@@ -191,21 +192,21 @@ impl ServiceState {
         match start_res {
             Ok(crate::services::StartResult::Started) => {
                 {
-                    let mut status = status.write().unwrap();
+                    let mut status = status.write_poisoned();
                     *status = UnitStatus::Started(StatusStarted::Running);
                 }
                 Ok(UnitStatus::Started(StatusStarted::Running))
             }
             Ok(crate::services::StartResult::WaitingForSocket) => {
                 {
-                    let mut status = status.write().unwrap();
+                    let mut status = status.write_poisoned();
                     *status = UnitStatus::Started(StatusStarted::WaitingForSocket);
                 }
                 // tell socket activation to listen to these sockets again
                 for socket_id in &conf.sockets {
                     if let Some(unit) = run_info.unit_table.get(socket_id) {
                         if let Specific::Socket(sock) = &unit.specific {
-                            let mut_state = &mut *sock.state.write().unwrap();
+                            let mut_state = &mut *sock.state.write_poisoned();
                             mut_state.sock.activated = false;
                         }
                     }
@@ -214,7 +215,7 @@ impl ServiceState {
                 Ok(UnitStatus::Started(StatusStarted::WaitingForSocket))
             }
             Err(e) => {
-                let mut status = status.write().unwrap();
+                let mut status = status.write_poisoned();
                 *status =
                     UnitStatus::Stopped(StatusStopped::StoppedUnexpected, vec![e.reason.clone()]);
                 Err(e)
@@ -239,11 +240,11 @@ impl ServiceState {
             });
         match &kill_result {
             Ok(()) => {
-                let mut status = status.write().unwrap();
+                let mut status = status.write_poisoned();
                 *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
             }
             Err(e) => {
-                let mut status = status.write().unwrap();
+                let mut status = status.write_poisoned();
                 *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![e.reason.clone()]);
             }
         }
@@ -268,7 +269,7 @@ impl ServiceState {
 
         // If killing failed, dont try to restart but fail early
         if let Err(error) = kill_result {
-            let mut status = status.write().unwrap();
+            let mut status = status.write_poisoned();
             *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![error.reason.clone()]);
             return Err(error);
         }
@@ -285,21 +286,21 @@ impl ServiceState {
         match start_res {
             Ok(crate::services::StartResult::Started) => {
                 {
-                    let mut status = status.write().unwrap();
+                    let mut status = status.write_poisoned();
                     *status = UnitStatus::Started(StatusStarted::Running);
                 }
                 Ok(())
             }
             Ok(crate::services::StartResult::WaitingForSocket) => {
                 {
-                    let mut status = status.write().unwrap();
+                    let mut status = status.write_poisoned();
                     *status = UnitStatus::Started(StatusStarted::WaitingForSocket);
                 }
                 // tell socket activation to listen to these sockets again
                 for socket_id in &conf.sockets {
                     if let Some(unit) = run_info.unit_table.get(socket_id) {
                         if let Specific::Socket(sock) = &unit.specific {
-                            let mut_state = &mut *sock.state.write().unwrap();
+                            let mut_state = &mut *sock.state.write_poisoned();
                             mut_state.sock.activated = false;
                         }
                     }
@@ -308,7 +309,7 @@ impl ServiceState {
                 Ok(())
             }
             Err(e) => {
-                let mut status = status.write().unwrap();
+                let mut status = status.write_poisoned();
                 *status =
                     UnitStatus::Stopped(StatusStopped::StoppedUnexpected, vec![e.reason.clone()]);
                 Err(e)
@@ -596,20 +597,20 @@ impl Unit {
     ) -> Result<UnitStatus, UnitOperationError> {
         let state = match &self.specific {
             Specific::Service(specific) => {
-                LockedState::Service(specific.state.write().unwrap(), &specific.conf)
+                LockedState::Service(specific.state.write_poisoned(), &specific.conf)
             }
             Specific::Socket(specific) => {
-                LockedState::Socket(specific.state.write().unwrap(), &specific.conf)
+                LockedState::Socket(specific.state.write_poisoned(), &specific.conf)
             }
-            Specific::Target(specific) => LockedState::Target(specific.state.write().unwrap()),
-            Specific::Slice(specific) => LockedState::Slice(specific.state.write().unwrap()),
+            Specific::Target(specific) => LockedState::Target(specific.state.write_poisoned()),
+            Specific::Slice(specific) => LockedState::Slice(specific.state.write_poisoned()),
             Specific::Mount(specific) => {
-                LockedState::Mount(specific.state.write().unwrap(), &specific.conf)
+                LockedState::Mount(specific.state.write_poisoned(), &specific.conf)
             }
         };
 
         {
-            let self_status = &*self.common.status.read().unwrap();
+            let self_status = &*self.common.status.read_poisoned();
             match self_status {
                 UnitStatus::Started(StatusStarted::WaitingForSocket) => {
                     if source == ActivationSource::SocketActivation {
@@ -659,7 +660,7 @@ impl Unit {
         match state {
             LockedState::Target(_) | LockedState::Slice(_) => {
                 {
-                    let mut status = self.common.status.write().unwrap();
+                    let mut status = self.common.status.write_poisoned();
                     if status.is_started() {
                         return Ok(status.clone());
                     }
@@ -685,20 +686,20 @@ impl Unit {
     pub fn deactivate(&self, run_info: &RuntimeInfo) -> Result<(), UnitOperationError> {
         let state = match &self.specific {
             Specific::Service(specific) => {
-                LockedState::Service(specific.state.write().unwrap(), &specific.conf)
+                LockedState::Service(specific.state.write_poisoned(), &specific.conf)
             }
             Specific::Socket(specific) => {
-                LockedState::Socket(specific.state.write().unwrap(), &specific.conf)
+                LockedState::Socket(specific.state.write_poisoned(), &specific.conf)
             }
-            Specific::Target(specific) => LockedState::Target(specific.state.write().unwrap()),
-            Specific::Slice(specific) => LockedState::Slice(specific.state.write().unwrap()),
+            Specific::Target(specific) => LockedState::Target(specific.state.write_poisoned()),
+            Specific::Slice(specific) => LockedState::Slice(specific.state.write_poisoned()),
             Specific::Mount(specific) => {
-                LockedState::Mount(specific.state.write().unwrap(), &specific.conf)
+                LockedState::Mount(specific.state.write_poisoned(), &specific.conf)
             }
         };
 
         {
-            let self_status = &*self.common.status.read().unwrap();
+            let self_status = &*self.common.status.read_poisoned();
             if let UnitStatus::Stopped(_, _) = self_status {
                 return Ok(());
             }
@@ -721,7 +722,7 @@ impl Unit {
         trace!("Deactivate unit: {}", self.id.name);
         match state {
             LockedState::Target(_) | LockedState::Slice(_) => {
-                let mut status = self.common.status.write().unwrap();
+                let mut status = self.common.status.write_poisoned();
                 *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
                 Ok(())
             }
@@ -750,15 +751,15 @@ impl Unit {
 
         let state = match &self.specific {
             Specific::Service(specific) => {
-                LockedState::Service(specific.state.write().unwrap(), &specific.conf)
+                LockedState::Service(specific.state.write_poisoned(), &specific.conf)
             }
             Specific::Socket(specific) => {
-                LockedState::Socket(specific.state.write().unwrap(), &specific.conf)
+                LockedState::Socket(specific.state.write_poisoned(), &specific.conf)
             }
-            Specific::Target(specific) => LockedState::Target(specific.state.write().unwrap()),
-            Specific::Slice(specific) => LockedState::Slice(specific.state.write().unwrap()),
+            Specific::Target(specific) => LockedState::Target(specific.state.write_poisoned()),
+            Specific::Slice(specific) => LockedState::Slice(specific.state.write_poisoned()),
             Specific::Mount(specific) => {
-                LockedState::Mount(specific.state.write().unwrap(), &specific.conf)
+                LockedState::Mount(specific.state.write_poisoned(), &specific.conf)
             }
         };
 
@@ -778,7 +779,7 @@ impl Unit {
         if need_full_restart {
             match state {
                 LockedState::Target(_) | LockedState::Slice(_) => {
-                    let mut status = self.common.status.write().unwrap();
+                    let mut status = self.common.status.write_poisoned();
                     *status = UnitStatus::Started(StatusStarted::Running);
                     Ok(())
                 }
@@ -798,7 +799,7 @@ impl Unit {
         } else {
             match state {
                 LockedState::Target(_) | LockedState::Slice(_) => {
-                    let mut status = self.common.status.write().unwrap();
+                    let mut status = self.common.status.write_poisoned();
                     *status = UnitStatus::Started(StatusStarted::Running);
                     Ok(())
                 }
@@ -842,7 +843,7 @@ fn activate_mount(
             "Mount point {} is already mounted, marking as active",
             conf.where_
         );
-        let mut status = status.write().unwrap();
+        let mut status = status.write_poisoned();
         *status = UnitStatus::Started(StatusStarted::Running);
         return Ok(UnitStatus::Started(StatusStarted::Running));
     }
@@ -859,7 +860,7 @@ fn activate_mount(
                 "Failed to create mount point {}: {}",
                 conf.where_, e
             ));
-            let mut status = status.write().unwrap();
+            let mut status = status.write_poisoned();
             *status = UnitStatus::Stopped(StatusStopped::StoppedUnexpected, vec![reason.clone()]);
             return Err(UnitOperationError {
                 reason,
@@ -970,7 +971,7 @@ fn activate_mount(
     match nix::mount::mount(what, conf.where_.as_str(), fs_type, flags, data) {
         Ok(()) => {
             info!("Successfully mounted {} on {}", conf.what, conf.where_);
-            let mut status = status.write().unwrap();
+            let mut status = status.write_poisoned();
             *status = UnitStatus::Started(StatusStarted::Running);
             Ok(UnitStatus::Started(StatusStarted::Running))
         }
@@ -980,7 +981,7 @@ fn activate_mount(
                 "mount({}, {}, {:?}): {}",
                 conf.what, conf.where_, fs_type, e
             ));
-            let mut status = status.write().unwrap();
+            let mut status = status.write_poisoned();
             *status = UnitStatus::Stopped(StatusStopped::StoppedUnexpected, vec![reason.clone()]);
             Err(UnitOperationError {
                 reason,
@@ -1000,7 +1001,7 @@ fn activate_mount(
     status: &RwLock<UnitStatus>,
 ) -> Result<UnitStatus, UnitOperationError> {
     trace!("Mount activation is a no-op on non-Linux ({})", id.name);
-    let mut status = status.write().unwrap();
+    let mut status = status.write_poisoned();
     *status = UnitStatus::Started(StatusStarted::Running);
     Ok(UnitStatus::Started(StatusStarted::Running))
 }
@@ -1018,7 +1019,7 @@ fn deactivate_mount(
             "Mount point {} is not mounted, nothing to unmount",
             conf.where_
         );
-        let mut status = status.write().unwrap();
+        let mut status = status.write_poisoned();
         *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
         return Ok(());
     }
@@ -1036,7 +1037,7 @@ fn deactivate_mount(
     match nix::mount::umount2(conf.where_.as_str(), umount_flags) {
         Ok(()) => {
             info!("Successfully unmounted {}", conf.where_);
-            let mut status = status.write().unwrap();
+            let mut status = status.write_poisoned();
             *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
             Ok(())
         }
@@ -1046,7 +1047,7 @@ fn deactivate_mount(
                 "umount({}): {}",
                 conf.where_, e
             ));
-            let mut status = status.write().unwrap();
+            let mut status = status.write_poisoned();
             *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![reason.clone()]);
             Err(UnitOperationError {
                 reason,
@@ -1065,7 +1066,7 @@ fn deactivate_mount(
     status: &RwLock<UnitStatus>,
 ) -> Result<(), UnitOperationError> {
     trace!("Mount deactivation is a no-op on non-Linux ({})", id.name);
-    let mut status = status.write().unwrap();
+    let mut status = status.write_poisoned();
     *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
     Ok(())
 }

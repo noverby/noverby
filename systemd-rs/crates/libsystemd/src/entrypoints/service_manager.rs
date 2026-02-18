@@ -4,6 +4,8 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use crate::config;
 use crate::control;
+use crate::generators;
+use crate::lock_ext::RwLockExt;
 use crate::logging;
 use crate::notification_handler;
 use crate::platform;
@@ -20,7 +22,7 @@ pub fn run_service_manager() {
         unreachable!();
     });
 
-    let (log_conf, conf) = config::load_config();
+    let (log_conf, mut conf) = config::load_config();
 
     logging::setup_logging(&log_conf).unwrap();
 
@@ -30,6 +32,19 @@ pub fn run_service_manager() {
     // resolves these via compiled-in prefix paths; systemd-rs adds the
     // relevant package directories to PATH instead.
     config::augment_path_from_unit_dirs(&conf.unit_dirs);
+
+    // Run external generators before loading units.
+    //
+    // Generators are small executables (e.g. systemd-gpt-auto-generator,
+    // zram-generator) that dynamically create unit files at boot time.
+    // They are called with three output directory arguments and can write
+    // unit files, symlinks, and .wants/.requires directories.
+    //
+    // Built-in generators (fstab, getty) are skipped since systemd-rs has
+    // native implementations.  The output directories are then inserted
+    // into the unit search path at the correct priority positions.
+    let generator_output = generators::run_generators(&conf.unit_dirs);
+    generators::augment_unit_dirs_with_generators(&mut conf.unit_dirs, &generator_output);
 
     #[cfg(feature = "cgroups")]
     {
@@ -74,7 +89,7 @@ pub fn run_service_manager() {
     trace!("Started all helper threads. Start activating units");
 
     let target_id: units::UnitId = {
-        let run_info: &runtime_info::RuntimeInfo = &run_info.read().unwrap();
+        let run_info: &runtime_info::RuntimeInfo = &run_info.read_poisoned();
         use std::convert::TryInto;
         run_info.config.target_unit.as_str().try_into().unwrap()
     };

@@ -1,5 +1,6 @@
 //! Activate units (recursively and parallel along the dependency tree)
 
+use crate::lock_ext::{MutexExt, RwLockExt};
 use crate::runtime_info::{ArcMutRuntimeInfo, RuntimeInfo, UnitTable};
 use crate::services::ServiceErrorReason;
 use crate::units::unit::Specific;
@@ -233,7 +234,7 @@ pub fn activate_unit(
     // This prevents duplicate condition-check logs and redundant work when the
     // same unit appears in multiple before-chains.
     {
-        let status = unit.common.status.read().unwrap();
+        let status = unit.common.status.read_poisoned();
         match &*status {
             UnitStatus::Started(_) => {
                 // Already running — nothing to do, don't re-dispatch before-chain
@@ -267,7 +268,7 @@ pub fn activate_unit(
                 assertion
             ));
             {
-                let mut status = unit.common.status.write().unwrap();
+                let mut status = unit.common.status.write_poisoned();
                 *status =
                     UnitStatus::Stopped(StatusStopped::StoppedUnexpected, vec![reason.clone()]);
             }
@@ -293,7 +294,7 @@ pub fn activate_unit(
             // treats condition-failed units as successfully finished (they just
             // didn't need to do anything).
             {
-                let mut status = unit.common.status.write().unwrap();
+                let mut status = unit.common.status.write_poisoned();
                 *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
             }
             // Return the next services so the dependency graph can still proceed.
@@ -346,7 +347,7 @@ pub fn activate_unit(
     // cause an infinite livelock where already-started units keep returning
     // their full before-chain, which re-discovers them as "startable", etc.
     let was_already_started = {
-        let status = unit.common.status.read().unwrap();
+        let status = unit.common.status.read_poisoned();
         status.is_started()
     };
 
@@ -555,7 +556,7 @@ pub fn activate_needed_units(
 ) -> Vec<UnitOperationError> {
     let mut needed_ids = vec![target_id.clone()];
     {
-        let run_info = run_info.read().unwrap();
+        let run_info = run_info.read_poisoned();
         collect_unit_start_subgraph(&mut needed_ids, &run_info.unit_table);
     }
     let needed_names: Vec<&str> = needed_ids.iter().map(|id| id.name.as_str()).collect();
@@ -572,7 +573,7 @@ pub fn activate_needed_units(
     // status messages and avoids races with services like
     // suid-sgid-wrappers that must complete before login works.
     let (idle_ids, non_idle_ids): (Vec<UnitId>, Vec<UnitId>) = {
-        let ri = run_info.read().unwrap();
+        let ri = run_info.read_poisoned();
         needed_ids
             .iter()
             .cloned()
@@ -594,7 +595,7 @@ pub fn activate_needed_units(
     // These can be started and the the graph can be traversed and other units can be started as soon as
     // all other units they depend on are started. This works because the units form an DAG if only
     // the 'after' relations are considered for traversal.
-    let root_units = { find_startable_units(&non_idle_ids, &run_info.read().unwrap()) };
+    let root_units = { find_startable_units(&non_idle_ids, &run_info.read_poisoned()) };
     let root_names: Vec<&str> = root_units.iter().map(|id| id.name.as_str()).collect();
     trace!(
         "activate_needed_units: root units count={}: {:?}",
@@ -639,19 +640,19 @@ pub fn activate_needed_units(
             idle_tpool.execute(move || {
                 match activate_unit(
                     id,
-                    &run_info_copy.read().unwrap(),
+                    &run_info_copy.read_poisoned(),
                     ActivationSource::Regular,
                 ) {
                     Ok(StartResult::Started(next_ids)) => {
                         // Idle services may have units in their Before= chain
                         // (though this is uncommon).  Activate them now.
-                        let ri = run_info_copy.read().unwrap();
+                        let ri = run_info_copy.read_poisoned();
                         for next_id in next_ids {
                             if let Err(e) = activate_unit(next_id, &ri, ActivationSource::Regular) {
                                 if !matches!(e.reason, UnitOperationErrorReason::DependencyError(_))
                                 {
                                     error!("Error activating unit after idle service: {e}");
-                                    idle_errors_copy.lock().unwrap().push(e);
+                                    idle_errors_copy.lock_poisoned().push(e);
                                 }
                             }
                         }
@@ -659,7 +660,7 @@ pub fn activate_needed_units(
                     Err(e) => {
                         if !matches!(e.reason, UnitOperationErrorReason::DependencyError(_)) {
                             error!("Error while activating idle service: {e}");
-                            idle_errors_copy.lock().unwrap().push(e);
+                            idle_errors_copy.lock_poisoned().push(e);
                         }
                     }
                 }
@@ -671,7 +672,7 @@ pub fn activate_needed_units(
 
     trace!("activate_needed_units: all activation complete");
     // TODO can we handle errors in a more meaningful way?
-    let errs = (*errors.lock().unwrap()).clone();
+    let errs = (*errors.lock_poisoned()).clone();
     for err in &errs {
         error!("Error while activating unit graph: {err}");
     }
@@ -710,7 +711,7 @@ fn activate_units_recursive(
     tpool: ThreadPool,
     errors: Arc<Mutex<Vec<UnitOperationError>>>,
 ) {
-    let startables = { find_startable_units(&ids_to_start, &run_info.read().unwrap()) };
+    let startables = { find_startable_units(&ids_to_start, &run_info.read_poisoned()) };
     let startables: Vec<UnitId> = startables
         .into_iter()
         .filter(|id| filter_ids.contains(id))
@@ -721,7 +722,7 @@ fn activate_units_recursive(
         trace!("activate_units_recursive: startable units: {:?}", names);
     }
     if !ids_to_start.is_empty() && startables.is_empty() {
-        let run_info_guard = run_info.read().unwrap();
+        let run_info_guard = run_info.read_poisoned();
         for id in &ids_to_start {
             if filter_ids.contains(id) {
                 let unstarted = unstarted_deps(id, &run_info_guard);
@@ -746,7 +747,7 @@ fn activate_units_recursive(
         tpool.execute(move || {
             match activate_unit(
                 id,
-                &run_info_copy.read().unwrap(),
+                &run_info_copy.read_poisoned(),
                 ActivationSource::Regular,
             ) {
                 Ok(StartResult::Started(next_services_ids)) => {
@@ -776,7 +777,7 @@ fn activate_units_recursive(
                         // to only get the startables
                     } else {
                         error!("Error while activating unit {e}");
-                        errors_copy.lock().unwrap().push(e);
+                        errors_copy.lock_poisoned().push(e);
                     }
                 }
             }

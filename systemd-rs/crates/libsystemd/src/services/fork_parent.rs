@@ -3,6 +3,7 @@ use log::error;
 use log::trace;
 use log::warn;
 
+use crate::lock_ext::MutexExt;
 use crate::runtime_info::{PidEntry, RuntimeInfo};
 use crate::services::RunCmdError;
 use crate::services::Service;
@@ -60,7 +61,7 @@ pub fn wait_for_service(
                 };
 
                 {
-                    let mut pid_table_locked = pid_table.lock().unwrap();
+                    let mut pid_table_locked = pid_table.lock_poisoned();
                     if let Some(PidEntry::ServiceExited(_)) =
                         pid_table_locked.get(&srvc.pid.unwrap())
                     {
@@ -166,7 +167,7 @@ pub fn wait_for_service(
             let exec_check_delay = std::time::Duration::from_millis(50);
             std::thread::sleep(exec_check_delay);
             {
-                let mut pid_table_locked = pid_table.lock().unwrap();
+                let mut pid_table_locked = pid_table.lock_poisoned();
                 if let Some(PidEntry::ServiceExited(code)) = pid_table_locked.get(&pid) {
                     if !conf.success_exit_status.is_success(code) {
                         let code = code.clone();
@@ -201,7 +202,7 @@ pub fn wait_for_service(
                     }
                 }
                 {
-                    let mut pid_table_locked = pid_table.lock().unwrap();
+                    let mut pid_table_locked = pid_table.lock_poisoned();
                     match pid_table_locked.get(&pid) {
                         Some(entry) => {
                             match entry {
@@ -284,7 +285,7 @@ pub fn wait_for_service(
                     }
                 }
                 {
-                    let mut pid_table_locked = pid_table.lock().unwrap();
+                    let mut pid_table_locked = pid_table.lock_poisoned();
                     match pid_table_locked.get(&pid) {
                         Some(PidEntry::Service(_, _)) => {
                             // Still running. Wait more.

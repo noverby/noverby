@@ -1,5 +1,6 @@
 use log::{error, info, trace};
 
+use crate::lock_ext::{MutexExt, RwLockExt};
 use crate::runtime_info::{ArcMutRuntimeInfo, PidEntry, RuntimeInfo};
 use crate::signal_handler::ChildTermination;
 use crate::units::{
@@ -111,7 +112,7 @@ pub fn service_exit_handler_new_thread(
     run_info: ArcMutRuntimeInfo,
 ) {
     std::thread::spawn(move || {
-        if let Err(e) = service_exit_handler(pid, code, &run_info.read().unwrap()) {
+        if let Err(e) = service_exit_handler(pid, code, &run_info.read_poisoned()) {
             error!("{e}");
         }
     });
@@ -126,7 +127,7 @@ pub fn service_exit_handler(
 
     // Handle exiting of helper processes and oneshot processes
     {
-        let pid_table_locked = &mut *run_info.pid_table.lock().unwrap();
+        let pid_table_locked = &mut *run_info.pid_table.lock_poisoned();
         let entry = pid_table_locked.get(&pid);
         if let Some(entry) = entry {
             match entry {
@@ -155,7 +156,7 @@ pub fn service_exit_handler(
 
     // find out which service exited and if it was a oneshot service save an entry in the pid table that marks the service as exited
     let srvc_id = {
-        let pid_table_locked = &mut *run_info.pid_table.lock().unwrap();
+        let pid_table_locked = &mut *run_info.pid_table.lock_poisoned();
         let entry = pid_table_locked.remove(&pid);
         match entry {
             Some(entry) => match entry {
@@ -195,7 +196,7 @@ pub fn service_exit_handler(
     {
         if let Specific::Service(srvc) = &unit.specific {
             if srvc.conf.srcv_type == ServiceType::OneShot {
-                let mut_state = &mut *srvc.state.write().unwrap();
+                let mut_state = &mut *srvc.state.write_poisoned();
                 mut_state
                     .srvc
                     .kill_all_remaining_processes(&srvc.conf, &unit.id.name);
@@ -265,7 +266,7 @@ pub fn service_exit_handler(
 
     // check that the status is "Started". If thats not the case this service got killed by something else (control interface for example) so dont interfere
     {
-        let status_locked = &*unit.common.status.read().unwrap();
+        let status_locked = &*unit.common.status.read_poisoned();
         if !(status_locked.is_started() || *status_locked == UnitStatus::Starting) {
             trace!(
                 "Exit handler ignores exit of service {}. Its status is not 'Started'/'Starting', it is: {:?}",

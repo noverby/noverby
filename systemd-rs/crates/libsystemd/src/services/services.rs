@@ -1,6 +1,7 @@
 use log::trace;
 
 use super::start_service::start_service;
+use crate::lock_ext::{MutexExt, RwLockExt};
 use crate::runtime_info::{PidEntry, RuntimeInfo};
 use crate::units::{
     ActivationSource, Commandline, CommandlinePrefix, KillMode, ServiceConfig, ServiceType,
@@ -209,7 +210,7 @@ impl Service {
         if conf.exec.is_some() {
             // Service has an ExecStart command — fork and wait for it.
             {
-                let mut pid_table_locked = run_info.pid_table.lock().unwrap();
+                let mut pid_table_locked = run_info.pid_table.lock_poisoned();
                 // This mainly just forks the process. The waiting (if necessary) is done below
                 // Doing it under the lock of the pid_table prevents races between processes exiting very
                 // fast and inserting the new pid into the pid table
@@ -218,7 +219,7 @@ impl Service {
                     self,
                     conf,
                     name,
-                    &run_info.fd_store.read().unwrap(),
+                    &run_info.fd_store.read_poisoned(),
                 )
                 .map_err(ServiceErrorReason::StartFailed)?;
                 if let Some(new_pid) = self.pid {
@@ -466,7 +467,7 @@ impl Service {
         cmd.stdin(Stdio::null());
         trace!("Run {cmdline:?} for service: {name}");
         let spawn_result = {
-            let mut pid_table_locked = run_info.pid_table.lock().unwrap();
+            let mut pid_table_locked = run_info.pid_table.lock_poisoned();
             let res = cmd.spawn();
             if let Ok(child) = &res {
                 pid_table_locked.insert(
@@ -512,7 +513,7 @@ impl Service {
                 };
                 {
                     let unit = run_info.unit_table.get(&id).unwrap();
-                    let status = &*unit.common.status.read().unwrap();
+                    let status = &*unit.common.status.read_poisoned();
                     use std::io::Read;
                     if let Some(stream) = &mut child.stderr {
                         let mut buf = Vec::new();
@@ -735,7 +736,7 @@ fn wait_for_helper_child(
             }
         }
         {
-            let mut pid_table_locked = run_info.pid_table.lock().unwrap();
+            let mut pid_table_locked = run_info.pid_table.lock_poisoned();
             match pid_table_locked.get(&pid) {
                 Some(entry) => {
                     match entry {

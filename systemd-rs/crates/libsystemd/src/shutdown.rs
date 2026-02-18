@@ -3,6 +3,7 @@ use log::info;
 use log::trace;
 use log::warn;
 
+use crate::lock_ext::RwLockExt;
 use crate::runtime_info::{ArcMutRuntimeInfo, RuntimeInfo, UnitTable};
 use crate::units::{Specific, StatusStopped, UnitId, UnitStatus};
 
@@ -10,7 +11,7 @@ fn get_next_service_to_shutdown(unit_table: &UnitTable) -> Option<UnitId> {
     for unit in unit_table.values() {
         let status = &unit.common.status;
         {
-            let status_locked = status.read().unwrap();
+            let status_locked = status.read_poisoned();
             if !(*status_locked).is_started() {
                 continue;
             }
@@ -24,7 +25,7 @@ fn get_next_service_to_shutdown(unit_table: &UnitTable) -> Option<UnitId> {
             .filter(|&next_id| {
                 let unit = unit_table.get(next_id).unwrap();
                 let status = &unit.common.status;
-                let status_locked = status.read().unwrap();
+                let status_locked = status.read_poisoned();
                 status_locked.is_started()
             })
             .cloned()
@@ -45,12 +46,12 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
     let unit = run_info.unit_table.get(shutdown_id).unwrap();
     {
         trace!("Set unit status: {}", unit.id.name);
-        let mut status_locked = unit.common.status.write().unwrap();
+        let mut status_locked = unit.common.status.write_poisoned();
         *status_locked = UnitStatus::Stopping;
     }
     match &unit.specific {
         Specific::Service(specific) => {
-            let mut_state = &mut *specific.state.write().unwrap();
+            let mut_state = &mut *specific.state.write_poisoned();
             let kill_res =
                 mut_state
                     .srvc
@@ -95,12 +96,12 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
             }
         }
         Specific::Socket(specific) => {
-            let mut_state = &mut *specific.state.write().unwrap();
+            let mut_state = &mut *specific.state.write_poisoned();
             trace!("Close socket unit: {}", unit.id.name);
             if let Err(e) = mut_state.sock.close_all(
                 &specific.conf,
                 unit.id.name.clone(),
-                &mut run_info.fd_store.write().unwrap(),
+                &mut run_info.fd_store.write_poisoned(),
             ) {
                 error!("Error while closing sockets: {e}")
             }
@@ -135,7 +136,7 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
     }
     {
         trace!("Set unit status: {}", unit.id.name);
-        let mut status_locked = unit.common.status.write().unwrap();
+        let mut status_locked = unit.common.status.write_poisoned();
         *status_locked = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
     }
 }

@@ -1,5 +1,6 @@
 use log::trace;
 
+use crate::lock_ext::RwLockExt;
 use crate::runtime_info::{RuntimeInfo, UnitTable};
 use crate::units::UnitId;
 
@@ -30,7 +31,7 @@ pub fn remove_unit_with_dependencies(
 /// Check that this and all units that "require" this unit are stopped
 fn check_deactivated_recursive(remove_id: UnitId, run_info: &RuntimeInfo) -> Result<(), String> {
     let unit = run_info.unit_table.get(&remove_id).unwrap();
-    let status_locked = unit.common.status.read().unwrap();
+    let status_locked = unit.common.status.read_poisoned();
 
     // If the unit is not stopped, return the name of the unit and stop the recursion
     if status_locked.is_stopped() {
