@@ -40,6 +40,17 @@
     };
   };
 
+  # Enable systemd-resolved for DNS resolution (tests the Rust resolved)
+  # NOTE: Disabled for now — enabling resolved adds units that cause the
+  # dependency graph to stall (likely alias handling issue in PID 1).
+  # Re-enable once PID 1 properly handles unit aliases.
+  # services.resolved = {
+  #   enable = true;
+  #   dnssec = "allow-downgrade";
+  #   llmnr = "true";
+  #   fallbackDns = ["1.1.1.1" "8.8.8.8"];
+  # };
+
   users.users = {
     nixos = {
       isNormalUser = true;

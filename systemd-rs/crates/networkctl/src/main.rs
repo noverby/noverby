@@ -28,6 +28,10 @@ fn main() {
             cmd_status(link_name);
         }
         "lldp" => cmd_lldp(),
+        "persistent-storage" => {
+            let enable = args.get(2).map(|s| s.as_str()).unwrap_or("yes");
+            cmd_persistent_storage(enable);
+        }
         other => {
             // If it looks like a flag, ignore and list.
             if other.starts_with('-') {
@@ -50,10 +54,37 @@ fn print_help() {
     println!("  list              List all network links (default)");
     println!("  status [LINK]     Show detailed status of a link or all links");
     println!("  lldp              Show LLDP neighbor information");
+    println!("  persistent-storage [BOOL]  Enable/disable persistent storage for networkd");
     println!();
     println!("Options:");
     println!("  -h, --help        Show this help message");
     println!("  --version         Show version information");
+}
+
+/// Enable or disable persistent storage for networkd state.
+///
+/// When enabled, networkd persists link state, LLDP neighbors, etc. to
+/// `/var/lib/systemd/network/`. This is called by the
+/// `systemd-networkd-persistent-storage.service` unit.
+fn cmd_persistent_storage(enable: &str) {
+    let enabled = matches!(enable, "yes" | "true" | "1" | "on");
+
+    let state_dir = Path::new("/var/lib/systemd/network");
+
+    if enabled {
+        // Create the persistent storage directory
+        if let Err(e) = fs::create_dir_all(state_dir) {
+            eprintln!("Failed to create {}: {}", state_dir.display(), e);
+            std::process::exit(1);
+        }
+        // Also ensure the runtime state directories exist
+        let _ = fs::create_dir_all("/run/systemd/netif/links");
+        let _ = fs::create_dir_all("/run/systemd/netif/leases");
+        let _ = fs::create_dir_all("/run/systemd/netif/lldp");
+    } else {
+        // When disabling, we don't remove the directory — just acknowledge
+        // the request. Real systemd doesn't remove it either.
+    }
 }
 
 fn print_version() {
