@@ -3,8 +3,6 @@
 use crate::lock_ext::{MutexExt, RwLockExt};
 use crate::runtime_info::{ArcMutRuntimeInfo, RuntimeInfo, UnitTable};
 use crate::services::ServiceErrorReason;
-use crate::units::unit::Specific;
-use crate::units::unit_parsing::ServiceType;
 use crate::units::{StatusStopped, UnitAction, UnitId, UnitStatus};
 
 use log::{error, info, trace, warn};
@@ -557,45 +555,97 @@ pub fn activate_needed_units(
     let mut needed_ids = vec![target_id.clone()];
     {
         let run_info = run_info.read_poisoned();
+
+        // Log getty.target dependencies for debugging before subgraph collection
+        for unit in run_info.unit_table.values() {
+            if unit.id.name.contains("getty")
+                || unit.id.name.contains("autovt")
+                || unit.id.name.contains("ttyS")
+            {
+                let wants: Vec<&str> = unit
+                    .common
+                    .dependencies
+                    .wants
+                    .iter()
+                    .map(|d| d.name.as_str())
+                    .collect();
+                let after: Vec<&str> = unit
+                    .common
+                    .dependencies
+                    .after
+                    .iter()
+                    .map(|d| d.name.as_str())
+                    .collect();
+                let before: Vec<&str> = unit
+                    .common
+                    .dependencies
+                    .before
+                    .iter()
+                    .map(|d| d.name.as_str())
+                    .collect();
+                let wanted_by: Vec<&str> = unit
+                    .common
+                    .dependencies
+                    .wanted_by
+                    .iter()
+                    .map(|d| d.name.as_str())
+                    .collect();
+                info!(
+                    "activate_needed_units: unit {} | wants={:?} | after={:?} | before={:?} | wanted_by={:?}",
+                    unit.id.name, wants, after, before, wanted_by
+                );
+            }
+        }
+
         collect_unit_start_subgraph(&mut needed_ids, &run_info.unit_table);
     }
     let needed_names: Vec<&str> = needed_ids.iter().map(|id| id.name.as_str()).collect();
-    trace!(
+    info!(
         "activate_needed_units: target={}, needed_ids count={}, units: {:?}",
         target_id.name,
         needed_ids.len(),
         needed_names
     );
 
-    // Separate Type=idle services from the rest.  Real systemd delays idle
-    // services until all other active jobs have been dispatched (with a 5s
-    // timeout).  This prevents getty output from interleaving with boot
-    // status messages and avoids races with services like
-    // suid-sgid-wrappers that must complete before login works.
-    let (idle_ids, non_idle_ids): (Vec<UnitId>, Vec<UnitId>) = {
-        let ri = run_info.read_poisoned();
-        needed_ids
-            .iter()
-            .cloned()
-            .partition(|id| is_idle_service(id, &ri))
-    };
-
-    if !idle_ids.is_empty() {
-        let idle_names: Vec<&str> = idle_ids.iter().map(|id| id.name.as_str()).collect();
+    // Check if getty-related units are in the subgraph
+    let getty_in_subgraph: Vec<&str> = needed_ids
+        .iter()
+        .filter(|id| {
+            id.name.contains("getty") || id.name.contains("autovt") || id.name.contains("ttyS")
+        })
+        .map(|id| id.name.as_str())
+        .collect();
+    if getty_in_subgraph.is_empty() {
+        warn!("activate_needed_units: NO getty/autovt/serial-getty units in activation subgraph!");
+    } else {
         info!(
-            "activate_needed_units: deferring {} idle service(s): {:?}",
-            idle_ids.len(),
-            idle_names
+            "activate_needed_units: getty-related units in subgraph: {:?}",
+            getty_in_subgraph
         );
     }
 
-    // ── Phase 1: activate all non-idle units ──────────────────────────
+    // Note on Type=idle services (e.g. getty):
+    //
+    // Real systemd delays idle services until all other active jobs have
+    // been dispatched (with a 5s timeout).  We previously separated idle
+    // services into a Phase 2 that ran after Phase 1 completed.  However,
+    // this caused a deadlock: Phase 1 threads hold read locks on the
+    // RuntimeInfo RwLock, and if any control command (e.g. from a udev
+    // rule running `systemctl`) requests a write lock, glibc's
+    // write-preferring RwLock blocks all subsequent read lock requests —
+    // including Phase 2 threads trying to start idle services.
+    //
+    // The fix: include idle services in the normal activation graph.
+    // They naturally end up ordered After= their dependencies (e.g.
+    // systemd-user-sessions.service) and will be started when those
+    // complete.  The slight output interleaving is acceptable; a
+    // non-booting system is not.
 
     // collect all 'root' units. These are units that do not have any 'after' relations to other unstarted units.
     // These can be started and the the graph can be traversed and other units can be started as soon as
     // all other units they depend on are started. This works because the units form an DAG if only
     // the 'after' relations are considered for traversal.
-    let root_units = { find_startable_units(&non_idle_ids, &run_info.read_poisoned()) };
+    let root_units = { find_startable_units(&needed_ids, &run_info.read_poisoned()) };
     let root_names: Vec<&str> = root_units.iter().map(|id| id.name.as_str()).collect();
     trace!(
         "activate_needed_units: root units count={}: {:?}",
@@ -608,67 +658,14 @@ pub fn activate_needed_units(
     let errors = Arc::new(Mutex::new(Vec::new()));
     activate_units_recursive(
         root_units,
-        Arc::new(non_idle_ids),
+        Arc::new(needed_ids),
         run_info.clone(),
         tpool.clone(),
         errors.clone(),
     );
 
     tpool.join();
-    info!("activate_needed_units: non-idle activation complete, all Phase 1 jobs dispatched");
-
-    // ── Phase 2: activate deferred idle services ──────────────────────
-    //
-    // Per systemd.service(5), Type=idle services have their execution
-    // delayed until all active jobs are dispatched, subject to a 5-second
-    // timeout.  All non-idle jobs have now completed, so we can start
-    // the idle services.
-
-    if !idle_ids.is_empty() {
-        let idle_names: Vec<&str> = idle_ids.iter().map(|id| id.name.as_str()).collect();
-        info!(
-            "activate_needed_units: starting {} idle service(s) now that all other jobs completed: {:?}",
-            idle_ids.len(),
-            idle_names
-        );
-
-        let idle_tpool = ThreadPool::new(6);
-        let idle_errors = errors.clone();
-        for id in idle_ids {
-            let run_info_copy = run_info.clone();
-            let idle_errors_copy = idle_errors.clone();
-            idle_tpool.execute(move || {
-                match activate_unit(
-                    id,
-                    &run_info_copy.read_poisoned(),
-                    ActivationSource::Regular,
-                ) {
-                    Ok(StartResult::Started(next_ids)) => {
-                        // Idle services may have units in their Before= chain
-                        // (though this is uncommon).  Activate them now.
-                        let ri = run_info_copy.read_poisoned();
-                        for next_id in next_ids {
-                            if let Err(e) = activate_unit(next_id, &ri, ActivationSource::Regular) {
-                                if !matches!(e.reason, UnitOperationErrorReason::DependencyError(_))
-                                {
-                                    error!("Error activating unit after idle service: {e}");
-                                    idle_errors_copy.lock_poisoned().push(e);
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        if !matches!(e.reason, UnitOperationErrorReason::DependencyError(_)) {
-                            error!("Error while activating idle service: {e}");
-                            idle_errors_copy.lock_poisoned().push(e);
-                        }
-                    }
-                }
-            });
-        }
-        idle_tpool.join();
-        info!("activate_needed_units: idle service activation complete");
-    }
+    info!("activate_needed_units: activation complete, all jobs dispatched");
 
     trace!("activate_needed_units: all activation complete");
     // TODO can we handle errors in a more meaningful way?
@@ -677,16 +674,6 @@ pub fn activate_needed_units(
         error!("Error while activating unit graph: {err}");
     }
     errs
-}
-
-/// Check whether a unit is a `Type=idle` service.
-fn is_idle_service(id: &UnitId, run_info: &RuntimeInfo) -> bool {
-    if let Some(unit) = run_info.unit_table.get(id) {
-        if let Specific::Service(ref svc) = unit.specific {
-            return svc.conf.srcv_type == ServiceType::Idle;
-        }
-    }
-    false
 }
 
 /// Check for all units in this Vec, if all units this depends on are running
@@ -711,6 +698,16 @@ fn activate_units_recursive(
     tpool: ThreadPool,
     errors: Arc<Mutex<Vec<UnitOperationError>>>,
 ) {
+    // Log what we were called with (only interesting units, not empty calls)
+    if !ids_to_start.is_empty() {
+        let input_names: Vec<&str> = ids_to_start.iter().map(|id| id.name.as_str()).collect();
+        info!(
+            "activate_units_recursive: called with {} ids: {:?}",
+            ids_to_start.len(),
+            input_names
+        );
+    }
+
     let startables = { find_startable_units(&ids_to_start, &run_info.read_poisoned()) };
     let startables: Vec<UnitId> = startables
         .into_iter()
@@ -719,7 +716,7 @@ fn activate_units_recursive(
 
     if !startables.is_empty() {
         let names: Vec<&str> = startables.iter().map(|id| id.name.as_str()).collect();
-        trace!("activate_units_recursive: startable units: {:?}", names);
+        info!("activate_units_recursive: startable units: {:?}", names);
     }
     if !ids_to_start.is_empty() && startables.is_empty() {
         let run_info_guard = run_info.read_poisoned();
@@ -728,11 +725,16 @@ fn activate_units_recursive(
                 let unstarted = unstarted_deps(id, &run_info_guard);
                 if !unstarted.is_empty() {
                     let dep_names: Vec<&str> = unstarted.iter().map(|d| d.name.as_str()).collect();
-                    trace!(
+                    warn!(
                         "activate_units_recursive: {} NOT startable, waiting for: {:?}",
                         id.name, dep_names
                     );
                 }
+            } else {
+                info!(
+                    "activate_units_recursive: {} filtered out (not in activation subgraph)",
+                    id.name
+                );
             }
         }
         drop(run_info_guard);
@@ -745,12 +747,31 @@ fn activate_units_recursive(
         let errors_copy = errors.clone();
         let filter_ids_copy = filter_ids.clone();
         tpool.execute(move || {
+            let unit_name = id.name.clone();
             match activate_unit(
                 id,
                 &run_info_copy.read_poisoned(),
                 ActivationSource::Regular,
             ) {
                 Ok(StartResult::Started(next_services_ids)) => {
+                    if !next_services_ids.is_empty() {
+                        let next_names: Vec<&str> = next_services_ids
+                            .iter()
+                            .map(|id| id.name.as_str())
+                            .collect();
+                        info!(
+                            "activate_units_recursive: {} completed, dispatching {} next: {:?}",
+                            unit_name,
+                            next_services_ids.len(),
+                            next_names
+                        );
+                    } else {
+                        info!(
+                            "activate_units_recursive: {} completed with empty before-chain",
+                            unit_name
+                        );
+                    }
+
                     // make copies to move into the closure
                     let run_info_copy2 = run_info_copy.clone();
                     let tpool_copy2 = tpool_copy.clone();

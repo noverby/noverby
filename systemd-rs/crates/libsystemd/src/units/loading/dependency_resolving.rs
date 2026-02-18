@@ -13,7 +13,14 @@ pub fn prune_units(
     unit_table: &mut HashMap<UnitId, Unit>,
 ) -> Result<(), String> {
     let startunit = unit_table.values().fold(None, |mut result, unit| {
-        if unit.id.name == target_unit_name {
+        if unit.id.name == target_unit_name
+            || unit
+                .common
+                .unit
+                .aliases
+                .iter()
+                .any(|a| a == target_unit_name)
+        {
             result = Some(unit.id.clone());
         }
         result

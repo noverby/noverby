@@ -1,7 +1,7 @@
 mod dependency_resolving;
 mod directory_deps;
 pub use dependency_resolving::*;
-use log::{trace, warn};
+use log::{info, trace, warn};
 
 use crate::runtime_info::UnitTable;
 use crate::units::{ParsingError, Specific, Unit, UnitId, get_file_list, parse_file};
@@ -117,6 +117,41 @@ pub fn load_all_units(
     // so that .wants/ directories for the real name also apply to the alias.
     resolve_symlink_aliases(&mut unit_table, &dir_deps, paths);
 
+    // Log multi-user.target deps after alias resolution (info-level for boot debugging)
+    for name in &["default.target", "multi-user.target"] {
+        if let Some(unit) = unit_table
+            .values()
+            .find(|u| u.id.name == *name || u.common.unit.aliases.iter().any(|a| a == *name))
+        {
+            let wants: Vec<&str> = unit
+                .common
+                .dependencies
+                .wants
+                .iter()
+                .map(|d| d.name.as_str())
+                .collect();
+            let requires: Vec<&str> = unit
+                .common
+                .dependencies
+                .requires
+                .iter()
+                .map(|d| d.name.as_str())
+                .collect();
+            info!(
+                "Post-alias-resolution {}: id={}, aliases={:?}, wants({})={:?}, requires({})={:?}",
+                name,
+                unit.id.name,
+                unit.common.unit.aliases,
+                wants.len(),
+                wants,
+                requires.len(),
+                requires
+            );
+        } else {
+            info!("Post-alias-resolution {}: NOT IN TABLE", name);
+        }
+    }
+
     // Log getty-related units before pruning
     for id in unit_table.keys() {
         if id.name.contains("getty") || id.name.contains("ttyS") || id.name.contains("autovt") {
@@ -174,17 +209,27 @@ pub fn load_all_units(
         }
     }
 
-    // Remove template units (e.g., "getty@.service", "modprobe@.service") from the
-    // unit table. Templates should never be activated directly — only concrete
-    // instances (e.g., "getty@tty1.service") should be started. Keeping templates
-    // in the table causes them to be activated with unresolved %i/%I specifiers.
-    let template_ids: Vec<UnitId> = unit_table
+    // Remove template units (e.g., "getty@.service", "modprobe@.service") and
+    // units with unresolved specifiers (e.g., "systemd-journald@%i.socket")
+    // from the unit table. Templates should never be activated directly — only
+    // concrete instances (e.g., "getty@tty1.service") should be started.
+    // Units with unresolved specifiers come from template cross-references
+    // like `Requires=systemd-journald@%i.socket` in systemd-journald@.service
+    // and should not exist as real units.
+    let bad_ids: Vec<UnitId> = unit_table
         .keys()
-        .filter(|id| is_template_unit(&id.name))
+        .filter(|id| is_template_unit(&id.name) || id.name.contains('%'))
         .cloned()
         .collect();
-    for id in &template_ids {
-        trace!("Removing template unit from table: {}", id.name);
+    for id in &bad_ids {
+        if is_template_unit(&id.name) {
+            trace!("Removing template unit from table: {}", id.name);
+        } else {
+            info!(
+                "Removing unit with unresolved specifier from table: {}",
+                id.name
+            );
+        }
         unit_table.remove(id);
     }
 
@@ -200,9 +245,42 @@ pub fn load_all_units(
         socket_names
     );
 
+    info!("Units before fill_dependencies: {} total", unit_table.len());
+
     fill_dependencies(&mut unit_table).map_err(|e| LoadingError::Dependency(e.into()))?;
 
+    info!(
+        "Units before prune: {} total, pruning to target={}",
+        unit_table.len(),
+        target_unit
+    );
+
     prune_units(target_unit, &mut unit_table).unwrap();
+
+    info!("Units after prune: {} total", unit_table.len());
+
+    // Log multi-user.target deps after pruning
+    for name in &["default.target", "multi-user.target"] {
+        if let Some(unit) = unit_table
+            .values()
+            .find(|u| u.id.name == *name || u.common.unit.aliases.iter().any(|a| a == *name))
+        {
+            let wants: Vec<&str> = unit
+                .common
+                .dependencies
+                .wants
+                .iter()
+                .map(|d| d.name.as_str())
+                .collect();
+            info!(
+                "Post-prune {}: id={}, wants({})={:?}",
+                name,
+                unit.id.name,
+                wants.len(),
+                wants
+            );
+        }
+    }
 
     // List surviving socket units
     let surviving_sockets: Vec<&str> = unit_table
