@@ -233,9 +233,16 @@ fn start_service_with_filedescriptors(
                     env.push((var_name.clone(), value));
                 }
             }
-            // Internal variables added last — these must not be overridden
-            env.push(("LISTEN_FDS".to_owned(), format!("{}", names.len())));
-            env.push(("LISTEN_FDNAMES".to_owned(), names.join(":")));
+            // Internal variables added last — these must not be overridden.
+            // Only set LISTEN_FDS/LISTEN_FDNAMES when there are actual FDs to
+            // pass. Real systemd does not set these for services without
+            // sockets, and some services (e.g. systemd-logind) call
+            // sd_listen_fds_with_names() which returns -EINVAL when
+            // LISTEN_FDNAMES is present but mismatches LISTEN_FDS.
+            if !names.is_empty() {
+                env.push(("LISTEN_FDS".to_owned(), format!("{}", names.len())));
+                env.push(("LISTEN_FDNAMES".to_owned(), names.join(":")));
+            }
             env.push(("NOTIFY_SOCKET".to_owned(), notifications_path));
 
             // UnsetEnvironment= is applied as the final step (see systemd.exec(5)).
