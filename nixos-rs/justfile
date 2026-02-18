@@ -17,6 +17,7 @@ run:
       --cmdline "console=ttyS0 quiet root=LABEL=nixos init=/nix/var/nix/profiles/system/init" \
       --cpus boot=2 \
       --memory size=4096M \
+      --net "tap=vmtap0,mac=12:34:56:78:90:ab" \
       --serial tty \
       --console off
 

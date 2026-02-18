@@ -11,6 +11,10 @@ set -euo pipefail
 #   ./test-boot.sh --keep       # Keep VM running after success pattern is found
 #   ./test-boot.sh --verbose    # Stream boot output to stderr in real-time
 #
+# Networking:
+#   Locally — expects vmtap0 to exist (created by NixOS host config).
+#   CI      — auto-creates vmtap0 with sudo if it doesn't exist.
+#
 # Exit codes:
 #   0 — boot succeeded (login prompt reached)
 #   1 — boot failed (kernel panic, systemd-rs crash, or timeout)
@@ -25,6 +29,13 @@ LOG_FILE=""
 KEEP=false
 VERBOSE=false
 CONFIG="nixos-rs"
+
+# Networking
+TAP_NAME="vmtap0"
+TAP_ADDR="192.168.100.1/24"
+TAP_SUBNET="192.168.100.0/24"
+CI_NET_SETUP=false
+DNSMASQ_PID=""
 
 # Success / failure patterns (checked against the log file)
 SUCCESS_PATTERNS=(
@@ -41,7 +52,7 @@ FAILURE_PATTERNS=(
 )
 
 usage() {
-    sed -n '3,14s/^# \?//p' "$0"
+    sed -n '3,17s/^# \?//p' "$0"
     exit 2
 }
 
@@ -104,6 +115,16 @@ cleanup() {
     fi
     # Clean up socket
     rm -f "$SERIAL_SOCK"
+    # Tear down CI networking if we set it up
+    if [[ "$CI_NET_SETUP" == "true" ]]; then
+        log_info "Tearing down CI network..."
+        if [[ -n "$DNSMASQ_PID" ]] && kill -0 "$DNSMASQ_PID" 2>/dev/null; then
+            sudo kill "$DNSMASQ_PID" 2>/dev/null || true
+            wait "$DNSMASQ_PID" 2>/dev/null || true
+        fi
+        sudo ip link del "$TAP_NAME" 2>/dev/null || true
+        sudo iptables -t nat -D POSTROUTING -s "$TAP_SUBNET" -j MASQUERADE 2>/dev/null || true
+    fi
     # Clean up temp log if needed
     if [[ "$CLEANUP_LOG" == "true" && -f "$LOG_FILE" ]]; then
         rm -f "$LOG_FILE"
@@ -120,6 +141,43 @@ for cmd in cloud-hypervisor nix python3; do
         exit 2
     fi
 done
+
+# ── Network setup ──────────────────────────────────────────────────────────
+#
+# If vmtap0 exists (NixOS host config), use it directly.
+# Otherwise, create it with sudo (CI fallback).
+
+if ip link show "$TAP_NAME" &>/dev/null; then
+    log_info "Using existing TAP device $TAP_NAME"
+else
+    log_info "TAP device $TAP_NAME not found — setting up networking with sudo (CI mode)"
+    for cmd in dnsmasq; do
+        if ! command -v "$cmd" &>/dev/null; then
+            log_fail "Required command not found: $cmd (needed for CI network setup)"
+            exit 2
+        fi
+    done
+    sudo ip tuntap add dev "$TAP_NAME" mode tap user "$(whoami)"
+    sudo ip addr add "$TAP_ADDR" dev "$TAP_NAME"
+    sudo ip link set "$TAP_NAME" up
+    sudo sysctl -qw net.ipv4.ip_forward=1
+    if ! sudo iptables -t nat -C POSTROUTING -s "$TAP_SUBNET" -j MASQUERADE 2>/dev/null; then
+        sudo iptables -t nat -A POSTROUTING -s "$TAP_SUBNET" -j MASQUERADE
+    fi
+    sudo dnsmasq \
+        --keep-in-foreground \
+        --interface="$TAP_NAME" \
+        --bind-interfaces \
+        --dhcp-range=192.168.100.100,192.168.100.200,24h \
+        --dhcp-option=option:router,192.168.100.1 \
+        --dhcp-option=option:dns-server,1.1.1.1,8.8.8.8 \
+        --no-resolv \
+        --log-dhcp \
+        &
+    DNSMASQ_PID=$!
+    CI_NET_SETUP=true
+    log_info "CI network ready: $TAP_NAME ($TAP_ADDR), dnsmasq PID $DNSMASQ_PID"
+fi
 
 # ── Build kernel & initrd paths ────────────────────────────────────────────
 
@@ -163,8 +221,8 @@ log_info "Disk image: $DISK_IMAGE"
 
 # ── Launch VM ──────────────────────────────────────────────────────────────
 
-log_info "Booting VM with ${TIMEOUT}s timeout, serial socket → $SERIAL_SOCK"
-log_info "Boot log → $LOG_FILE"
+log_info "Booting VM with ${TIMEOUT}s timeout, serial socket -> $SERIAL_SOCK"
+log_info "Boot log -> $LOG_FILE"
 
 # Truncate log file
 > "$LOG_FILE"
@@ -176,6 +234,7 @@ cloud-hypervisor \
     --cmdline "console=ttyS0 root=LABEL=nixos init=/nix/var/nix/profiles/system/init" \
     --cpus boot=2 \
     --memory size=4096M \
+    --net "tap=$TAP_NAME,mac=12:34:56:78:90:ab" \
     --serial socket="$SERIAL_SOCK" \
     --console off \
     &
@@ -219,7 +278,6 @@ fi
 python3 - "$SERIAL_SOCK" "$LOG_FILE" $VERBOSE_FLAG <<'PYEOF' &
 import socket
 import sys
-import os
 import time
 import select
 
@@ -315,13 +373,13 @@ fi
 
 # Print the captured output (unless verbose already streamed it)
 if [[ "$VERBOSE" != "true" ]]; then
-    log_info "─── Boot output ───"
+    log_info "--- Boot output ---"
     if [[ -f "$LOG_FILE" && -s "$LOG_FILE" ]]; then
         cat "$LOG_FILE" >&2
     else
-        log_warn "(empty — no serial output captured)"
+        log_warn "(empty -- no serial output captured)"
     fi
-    log_info "─── End boot output ───"
+    log_info "--- End boot output ---"
     echo "" >&2
 fi
 
@@ -335,7 +393,7 @@ case "$BOOT_RESULT" in
         exit 0
         ;;
     failure)
-        log_fail "Boot failed — see output above"
+        log_fail "Boot failed -- see output above"
         exit 1
         ;;
     timeout)
