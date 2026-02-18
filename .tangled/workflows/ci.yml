@@ -1,0 +1,10 @@
+when:
+  - event: ["push", "pull_request"]
+    branch: main
+
+engine: nixery
+
+steps:
+  - name: "Nix flake check"
+    command: |
+      nix flake check
