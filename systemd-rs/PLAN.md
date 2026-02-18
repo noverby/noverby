@@ -8,7 +8,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ### What works today
 
-- 2,901 unit tests passing, boot test passing in ~3 seconds
+- 2,901 unit tests passing, boot test passing in ~4 seconds with clean login (no PAM errors)
 - PID 1 initialization with full NixOS compatibility (VFS mounts, `/etc/mtab` symlink, cgroup2, machine-id, hostname, home directories, PAM/NSS diagnostics)
 - Unit file parsing for all NixOS-generated unit files (service, socket, target, mount, timer, path, slice, scope)
 - Dependency graph resolution and parallel unit activation
@@ -35,6 +35,8 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ### Recent changes
 
+- Implemented proper `Type=idle` service behavior — idle services (like `serial-getty@ttyS0.service` and `autovt@tty1.service`) are now deferred until all other active jobs have been dispatched, matching real systemd behavior per systemd.service(5); activation is split into Phase 1 (all non-idle units in parallel via dependency graph) and Phase 2 (idle services started after Phase 1 completes); this eliminates the PAM "Authentication service cannot retrieve authentication info" error that occurred when getty services raced with `suid-sgid-wrappers.service`; the `is_idle_service()` helper checks `ServiceType::Idle` on each unit in the activation subgraph
+- Fixed udev rules path issue for systemd-rs overlay — the C udevd binary has the original systemd store path compiled in for its built-in rules directory, causing `RUN+=` actions (like `90-vconsole.rules`) to invoke the wrong `systemctl`; solved by creating a `udevRulesOverride` package containing only rules files that reference `systemctl`, added to `services.udev.packages` in the NixOS config so they end up in `/etc/udev/rules.d/` which takes priority over the compiled-in path; the udevd now correctly calls systemd-rs's `systemctl` instead of the original systemd's
 - Implemented `systemd-ask-password` — password query tool supporting direct TTY input (with echo suppression via termios, backspace handling, Ctrl-C/Ctrl-D cancellation), agent protocol via question files in `/run/systemd/ask-password/` (INI-format `[Ask]` section with PID, Socket, Message, Icon, Id, NotAfter, AcceptCached, Echo fields), Unix socket reply protocol (`+password` for success, `-` for cancel), credential lookup via `$CREDENTIALS_DIRECTORY`, `--no-tty`/`--no-agent`/`--multiple` mode selection, `--timeout`, `--echo`, `--accept-cached`, `--credential`, `--keyname`, `--id`, `--icon` options
 - Implemented `systemd-tty-ask-password-agent` — TTY-based password agent that monitors `/run/systemd/ask-password/` for question files; `--query` mode processes all pending questions once; `--watch` mode continuously polls for new questions (500ms interval); `--wall` mode broadcasts password requests to all TTYs via `/dev/pts/*` and `/dev/tty*`; `--list` mode displays pending questions with metadata; `--console` for custom TTY path; parses INI question files with expiry checking via `CLOCK_MONOTONIC`; sends responses through Unix datagram sockets
 - Implemented `systemd-socket-activate` — socket activation testing/debugging tool; creates TCP, UDP, or Unix domain listening sockets from `-l` address specs (port numbers, host:port pairs, absolute paths); passes socket FDs starting at FD 3 with `LISTEN_FDS`/`LISTEN_PID`/`LISTEN_FDNAMES` environment variables per sd_listen_fds(3) protocol; `--accept` mode accepts connections and spawns per-connection child processes; `--datagram` for UDP sockets; `--recv-buffer`, `--backlog`, `--foreground`, `--fdnames` options; proper FD conflict resolution during dup2 shuffling; Unix socket cleanup on exit
@@ -170,7 +172,7 @@ Legend: ✅ = implemented, 🔶 = partial, ❌ = not started
 
 The minimum viable system to boot a real Linux machine:
 
-- ✅ **`systemd` (PID 1)** — service manager with all core unit types (service, socket, target, mount, timer, path, slice, scope) and all service types (`simple`, `exec`, `notify`, `notify-reload`, `oneshot`, `forking`, `dbus`, `idle`), default target handling, parallel activation, fstab generator, getty generator, NixOS early boot setup, full `Condition*`/`Assert*` directive support (15 check types); missing: emergency/rescue mode, external generators, transient units, reexecution, `SIGRTMIN+` signals
+- ✅ **`systemd` (PID 1)** — service manager with all core unit types (service, socket, target, mount, timer, path, slice, scope) and all service types (`simple`, `exec`, `notify`, `notify-reload`, `oneshot`, `forking`, `dbus`, `idle`), default target handling, parallel activation, fstab generator, getty generator, NixOS early boot setup, full `Condition*`/`Assert*` directive support (15 check types), proper `Type=idle` deferral (idle services wait for all other jobs to complete before starting); missing: emergency/rescue mode, external generators, transient units, reexecution, `SIGRTMIN+` signals
 - ✅ **`systemctl`** — CLI including `start`, `stop`, `restart`, `try-restart`, `reload-or-restart`, `enable`, `disable`, `status`, `list-units`, `list-unit-files`, `is-active`, `is-enabled`, `is-failed`, `poweroff`, `reboot`, `daemon-reload`; handles common flags (`--no-block`, `--quiet`, `--force`, `--no-pager`, `--system`, `-a`, `-q`, `-f`, `-l`, `-t`, `-p`); proper exit codes for query commands; missing: `edit`, `set-property`, `revert`, `suspend`, `hibernate`, `show`
 - ✅ **`journald`** — journal logging daemon with `/dev/log` socket, native protocol, syslog protocol, kernel `kmsg`; missing: rate limiting, journal file rotation, disk usage limits, forward-secure sealing, wall message forwarding
 - ✅ **`journalctl`** — journal query tool with basic filtering and output formats; missing: some advanced filters and output modes
@@ -245,9 +247,9 @@ Remaining components and production readiness:
 - ❌ **`sd-boot`** / **`bootctl`** — UEFI boot manager and control tool (this component is EFI, likely stays as a separate build target or FFI)
 - ❌ **`sd-stub`** — UEFI stub for unified kernel images
 - 🔶 **Generator framework** — fstab and getty generators built into `libsystemd`; missing: `systemd-gpt-auto-generator`, `systemd-cryptsetup-generator`, `systemd-debug-generator`, external generator execution
-- 🔶 **Comprehensive test suite** — unit tests exist (~2,875); integration tests via nixos-rs boot test; missing: differential testing against real systemd
+- 🔶 **Comprehensive test suite** — unit tests exist (~2,901); integration tests via nixos-rs boot test; missing: differential testing against real systemd
 - ❌ **Documentation** — man-page-compatible documentation for all binaries and configuration formats
-- 🔶 **NixOS / distro integration** — packaging via `default.nix`, boot testing via `test-boot.sh`, NixOS module via `systemd.nix`; working end-to-end
+- 🔶 **NixOS / distro integration** — packaging via `default.nix`, boot testing via `test-boot.sh`, NixOS module via `systemd.nix`; working end-to-end; udev rules override ensures correct `systemctl` path in udev `RUN+=` actions; `Type=idle` deferral eliminates getty/PAM race conditions
 
 ## Integration Testing with nixos-rs
 
