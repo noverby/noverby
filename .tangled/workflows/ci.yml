@@ -5,6 +5,11 @@ when:
 engine: nixery
 
 steps:
+  - name: "Install Cachix"
+    command: |
+      nix-env -iA cachix -f https://cachix.org/api/v1/install
   - name: "Nix flake check"
     command: |
-      nix flake check
+      export CACHIX_NAME=overby-me
+      cachix use $CACHIX_NAME
+      cachix watch-exec $CACHIX_NAME nix flake check
