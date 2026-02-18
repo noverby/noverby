@@ -945,8 +945,15 @@ pub fn run_exec_helper() {
         unsafe { std::env::set_var(k, v) };
     }
 
+    // Only set LISTEN_PID when LISTEN_FDS is present in the environment.
+    // Real systemd only sets LISTEN_PID for socket-activated services.
+    // Setting it unconditionally confuses services like systemd-logind that
+    // call sd_listen_fds_with_names() and get unexpected results when
+    // LISTEN_PID matches but there are no actual FDs to receive.
     // TODO: Audit that the environment access only happens in single-threaded code.
-    unsafe { std::env::set_var("LISTEN_PID", format!("{}", nix::unistd::getpid())) };
+    if std::env::var("LISTEN_FDS").is_ok() {
+        unsafe { std::env::set_var("LISTEN_PID", format!("{}", nix::unistd::getpid())) };
+    }
 
     // Apply IgnoreSIGPIPE= setting. When true (the default), set SIGPIPE to
     // SIG_IGN so that writes to broken pipes produce EPIPE errors instead of
