@@ -147,13 +147,14 @@
   outputs = inputs:
     inputs.flakelight ./. {
       inherit inputs;
+      nixDir = ./config;
       nixpkgs.config = {
         allowUnfree = true;
       };
       imports = [
-        ./nix/modules/flakelight/libBuiltins.nix
-        ./nix/modules/flakelight/devenvModules.nix
-        ./nix/modules/flakelight/devenvConfigurations.nix
+        ./config/modules/flakelight/libBuiltins.nix
+        ./config/modules/flakelight/devenvModules.nix
+        ./config/modules/flakelight/devenvConfigurations.nix
 
         ./backend
         ./homepage
