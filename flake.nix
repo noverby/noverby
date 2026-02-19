@@ -152,9 +152,9 @@
         allowUnfree = true;
       };
       imports = [
-        ./config/modules/flakelight/libBuiltins.nix
-        ./config/modules/flakelight/devenvModules.nix
-        ./config/modules/flakelight/devenvConfigurations.nix
+        ./modules/flakelight/libBuiltins.nix
+        ./modules/flakelight/devenvModules.nix
+        ./modules/flakelight/devenvConfigurations.nix
 
         ./backend
         ./homepage
@@ -172,13 +172,13 @@
         packages = ["pkgs"];
         formatters = ["config/formatters"];
         lib = ["config/lib"];
-        flakelightModules = ["config/modules/flakelight"];
+        flakelightModules = ["modules/flakelight"];
         nixosConfigurations = ["config/nixos"];
-        nixosModules = ["config/modules/nixos" "config/modules/nixos/hardware" "config/modules/nixos/desktop"];
+        nixosModules = ["modules/nixos" "modules/nixos/hardware" "modules/nixos/desktop"];
         homeConfigurations = ["config/home-manager"];
-        homeModules = ["config/modules/home-manager" "config/modules/home-manager/users" "config/modules/home-manager/desktop"];
+        homeModules = ["modules/home-manager" "modules/home-manager/users" "modules/home-manager/desktop"];
         devenvConfigurations = ["config/devenv"];
-        devenvModules = ["config/modules/devenv"];
+        devenvModules = ["modules/devenv"];
         withOverlays = ["config/with-overlays"];
       };
     };
