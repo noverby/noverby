@@ -27,11 +27,26 @@ The Mojo source (`src/main.mojo`) exports functions demonstrating interop across
 
 | Category | Functions |
 |---|---|
-| Arithmetic | `add_int32`, `add_int64`, `add_float32`, `add_float64` |
+| Add | `add_int32`, `add_int64`, `add_float32`, `add_float64` |
+| Subtract | `sub_int32`, `sub_int64`, `sub_float32`, `sub_float64` |
+| Multiply | `mul_int32`, `mul_int64`, `mul_float32`, `mul_float64` |
+| Division | `div_int32`, `div_int64`, `div_float32`, `div_float64` |
+| Modulo | `mod_int32`, `mod_int64` |
 | Power | `pow_int32`, `pow_int64`, `pow_float32`, `pow_float64` |
+| Negate | `neg_int32`, `neg_int64`, `neg_float32`, `neg_float64` |
+| Absolute value | `abs_int32`, `abs_int64`, `abs_float32`, `abs_float64` |
+| Min / Max | `min_int32`, `max_int32`, `min_int64`, `max_int64`, `min_float64`, `max_float64` |
+| Clamp | `clamp_int32`, `clamp_float64` |
+| Bitwise | `bitand_int32`, `bitor_int32`, `bitxor_int32`, `bitnot_int32`, `shl_int32`, `shr_int32` |
+| Comparison | `eq_int32`, `ne_int32`, `lt_int32`, `le_int32`, `gt_int32`, `ge_int32` |
+| Boolean logic | `bool_and`, `bool_or`, `bool_not` |
+| Fibonacci | `fib_int32`, `fib_int64` |
+| Factorial | `factorial_int32`, `factorial_int64` |
+| GCD | `gcd_int32` |
+| Identity | `identity_int32`, `identity_int64`, `identity_float32`, `identity_float64` |
 | Print | `print_static_string`, `print_int32`, `print_int64`, `print_float32`, `print_float64` |
 | String I/O | `print_input_string`, `return_static_string`, `return_input_string` |
-| Global state | `get_global_string`, `set_global_string` |
+| String ops | `string_length`, `string_concat`, `string_repeat`, `string_eq` |
 
 ## Prerequisites
 
@@ -49,6 +64,12 @@ Build the WASM binary:
 
 ```sh
 just build
+```
+
+Run the tests (requires Deno):
+
+```sh
+just test
 ```
 
 Run the tests (requires Deno):
