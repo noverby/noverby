@@ -11,6 +11,7 @@
       statix.enable = true;
       taplo.enable = true;
       typos.enable = true;
+      lychee.enable = true;
       rustfmt = {
         enable = true;
         entry = "${pkgs.writeShellScript "rustfmt-multi-project" ''
