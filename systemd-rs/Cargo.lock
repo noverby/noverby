@@ -575,6 +575,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "machinectl"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+ "tempfile",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1110,6 +1119,16 @@ name = "systemd-machine-id-setup"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "tempfile",
+]
+
+[[package]]
+name = "systemd-machined"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+ "nix",
  "tempfile",
 ]
 

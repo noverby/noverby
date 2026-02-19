@@ -54,6 +54,8 @@ members = [
   "crates/creds",
   "crates/coredump",
   "crates/coredumpctl",
+  "crates/machined",
+  "crates/machinectl",
   "crates/firstboot",
   "crates/sysext",
   "crates/dissect",

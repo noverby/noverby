@@ -113,6 +113,10 @@ struct LinkEntry {
 }
 
 impl LinkEntry {
+    fn is_up(&self) -> bool {
+        (self.flags & 0x1) != 0
+    }
+
     fn is_loopback(&self) -> bool {
         (self.flags & 0x8) != 0
     }

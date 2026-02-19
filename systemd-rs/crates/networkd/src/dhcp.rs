@@ -1090,18 +1090,19 @@ impl DhcpClient {
             DhcpState::Bound => {
                 // Check if we need to renew.
                 if let Some(ref lease) = self.lease
-                    && lease.needs_renewal() {
-                        self.state = DhcpState::Renewing;
-                        self.xid = generate_xid(&self.config.mac);
-                        self.last_send = Some(Instant::now());
-                        return Some(DhcpPacket::build_request(
-                            &self.config,
-                            self.xid,
-                            lease.address,
-                            Some(lease.server_id),
-                            lease.address,
-                        ));
-                    }
+                    && lease.needs_renewal()
+                {
+                    self.state = DhcpState::Renewing;
+                    self.xid = generate_xid(&self.config.mac);
+                    self.last_send = Some(Instant::now());
+                    return Some(DhcpPacket::build_request(
+                        &self.config,
+                        self.xid,
+                        lease.address,
+                        Some(lease.server_id),
+                        lease.address,
+                    ));
+                }
                 None
             }
             DhcpState::Renewing => {
@@ -1373,7 +1374,7 @@ mod tests {
 
     #[test]
     fn test_parse_invalid_magic_cookie() {
-        let mut data = vec![0u8; 300];
+        let data = vec![0u8; 300];
         // No valid magic cookie at offset 236.
         let result = DhcpPacket::parse(&data);
         assert!(result.is_err());

@@ -6,9 +6,11 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 **🟢 NixOS boots successfully with systemd-rs as PID 1** — The system reaches `multi-user.target`, presents a login prompt, and auto-logs in within ~8 seconds in a cloud-hypervisor VM with full networking (networkd + resolved).
 
+**3,913 unit tests passing** across 59 crates.
+
 ### What works today
 
-- 3,466 unit tests passing, boot test passing in ~5 seconds with networking, clean login and zero panics/errors
+- 3,913 unit tests passing, boot test passing in ~5 seconds with networking, clean login and zero panics/errors
 - PID 1 initialization with full NixOS compatibility (VFS mounts, `/etc/mtab` symlink, cgroup2, machine-id, hostname, home directories, PAM/NSS diagnostics)
 - Unit file parsing for all NixOS-generated unit files (service, socket, target, mount, timer, path, slice, scope)
 - Dependency graph resolution and parallel unit activation
@@ -37,10 +39,11 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 - DNS resolution (systemd-resolved with stub listener on 127.0.0.53, upstream forwarding, per-link DNS from networkd; resolvectl CLI)
 - External generator framework — discovers and executes standard systemd generators (e.g. `systemd-gpt-auto-generator`, `systemd-run-generator`, `zram-generator`) before unit loading; skips built-in generators (fstab, getty); output directories inserted into unit search path at correct priority; NixOS boot runs 15 generators successfully
 - Deadlock-free PID table — `pid_table` extracted to `Arc<Mutex<…>>` so the signal handler can update entries (Service → ServiceExited) without the RuntimeInfo read lock, breaking a 3-way deadlock between activation threads, the control handler write lock, and exit handler threads on glibc's writer-preferring `pthread_rwlock`
-- 55 crates implemented across Phases 0–5
+- 59 crates implemented across Phases 0–5
 
 ### Recent changes
 
+- Implemented `systemd-machined` and `machinectl` — VM/container registration daemon and management CLI; `systemd-machined` manages a machine registry with register/terminate/GC operations, machine classes (VM/container), state tracking (opening/running/closing), runtime state files in `/run/systemd/machines/`, control socket at `/run/systemd/machined-control`, stale machine cleanup via leader PID liveness checks, sd_notify protocol, signal handling, periodic GC; `machinectl` CLI with `list`, `status`, `show` (with `-p`/`--property`/`--value`), `terminate`/`poweroff`/`reboot`, `kill` (with `--signal`/`-s`), `clean`, `list-images`, `login`/`shell` (stubs); offline fallback reads state files directly when daemon is unavailable; 123 new unit tests covering machine class/state parsing, state file roundtrips, registry operations, persistence, GC, control commands, argument parsing, signal parsing
 - Implemented `systemd-coredump` and `coredumpctl` — kernel core dump handler and query CLI; `systemd-coredump` is invoked via `/proc/sys/kernel/core_pattern` pipe protocol with PID/UID/GID/SIGNAL/TIMESTAMP/RLIMIT/HOSTNAME/COMM/EXE arguments and optional `--backtrace` flag; reads core dump from stdin; stores in `/var/lib/systemd/coredump/` with descriptive filenames (`core.COMM.UID.BOOT_ID.PID.TIMESTAMP`) and JSON metadata sidecars; `coredump.conf` parsing ([Coredump] section: Storage=none/external/journal/both, Compress, ProcessSizeMax, ExternalSizeMax, MaxUse, KeepFree) with drop-in directories; automatic vacuum of old core dumps based on MaxUse and KeepFree (statvfs-based); `coredumpctl` CLI with `list` (tabular TIME/PID/UID/GID/SIG/COREFILE/EXE, `--lines`/`--reverse`/`--since`/`--until`/`--no-legend`), `info` (detailed metadata with username/group resolution), `dump` (binary output to `-o` file or stdout with TTY safety), `debug`/`gdb` (launch debugger with `--debugger`/`--debugger-arguments`); match by PID number, COMM prefix, or EXE path prefix; 82 new unit tests covering config parsing, JSON roundtrips, argument parsing, storage, vacuum, discovery, filtering, and timestamp formatting
 
 - Implemented `systemctl suspend`, `systemctl hibernate`, `systemctl hybrid-sleep`, `systemctl suspend-then-hibernate` — sleep commands forwarded to PID 1 which locates and spawns the `systemd-sleep` binary (searched relative to PID 1's executable for NixOS Nix store paths, then well-known system paths); 7 new unit tests covering parse_command for all four sleep methods, params-ignored handling, and `find_sleep_binary` helper
@@ -98,7 +101,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ## Project Structure
 
-The project is organized as a Cargo workspace with a shared core library and individual crates for each systemd component (55 crates):
+The project is organized as a Cargo workspace with a shared core library and individual crates for each systemd component (59 crates):
 
 ```text
 crates/
@@ -129,8 +132,8 @@ crates/
 ├── hostnamectl/         # Hostname control tool ✅
 ├── localed/             # Locale manager daemon (systemd-localed) ✅
 ├── localectl/           # Locale control tool ✅
-├── machined/            # VM/container manager daemon (systemd-machined)
-├── machinectl/          # Machine manager control tool
+├── machined/            # VM/container manager daemon (systemd-machined) ✅
+├── machinectl/          # Machine manager control tool ✅
 ├── nspawn/              # Container runtime (systemd-nspawn)
 ├── portabled/           # Portable service manager (systemd-portabled)
 ├── portablectl/         # Portable service control tool
@@ -159,10 +162,10 @@ crates/
 ├── tty-ask-password-agent/ # Password agent (systemd-tty-ask-password-agent) ✅
 ├── inhibit/             # Inhibitor lock tool (systemd-inhibit) ✅
 ├── creds/               # Credential management (systemd-creds)
-├── dissect/             # Image dissection tool (systemd-dissect)
-├── firstboot/           # First-boot configuration (systemd-firstboot)
+├── dissect/             # Image dissection tool (systemd-dissect) ✅
+├── firstboot/           # First-boot configuration (systemd-firstboot) ✅
 ├── repart/              # Partition manager (systemd-repart)
-├── sysext/              # System extension manager (systemd-sysext)
+├── sysext/              # System extension manager (systemd-sysext) ✅
 ├── modules-load/        # Kernel module loader (systemd-modules-load)
 ├── sysctl/              # Sysctl applicator (systemd-sysctl)
 ├── binfmt/              # binfmt_misc registration (systemd-binfmt)
@@ -248,7 +251,7 @@ Full network management:
 
 Higher-level management capabilities:
 
-- ❌ **`machined`** — VM and container registration/tracking, `machinectl` CLI
+- ✅ **`machined`** — VM and container registration/tracking daemon with machine registry (register/terminate/GC), machine class (VM/container), state tracking (opening/running/closing), runtime state files in `/run/systemd/machines/`, control socket at `/run/systemd/machined-control`, stale machine cleanup (leader PID liveness check), sd_notify protocol (READY/WATCHDOG/STATUS/STOPPING), signal handling (SIGTERM/SIGINT for shutdown, SIGHUP for reload), periodic GC of dead machines; `machinectl` CLI with `list` (registered machines table with class/service/state), `status` (detailed machine info with name/class/service/scope/leader/root/state/since/netif), `show` (key=value properties with `-p`/`--property` filtering and `--value` output), `terminate`/`poweroff`/`reboot` (unregister + SIGTERM leader), `kill` (send signal to leader with `--signal`/`-s`, numeric or named signals), `clean` (trigger GC), `list-images` (enumerate `/var/lib/machines/`), `login`/`shell` (stubs); offline fallback reads state files directly when daemon is unavailable; 123 unit tests covering machine class/state parsing and display, state file roundtrips (with/without netif, VM/container classes, minimal fields, missing/invalid fields), machine format (status/show output), name validation (valid names, .host special name, length limits, invalid chars), registry operations (register/terminate/get/find-by-leader/duplicate/empty-name/invalid-name), persistence (save/load/save-one, empty/nonexistent dirs, dotfile skipping, invalid file skipping), GC (keeps alive PIDs, removes dead, leader-zero), format_list (empty/with-machines), control commands (PING/LIST/STATUS/SHOW/REGISTER/TERMINATE/GC, case insensitivity, error cases), env content parsing, timestamp formatting, argument parsing (all commands/flags/options), signal parsing (numeric/named/case-insensitive/unknown-fallback); missing: D-Bus interface (`org.freedesktop.machine1`), image management (clone/rename/remove/set-limit), machine scoping (transient scope units), copy-to/copy-from, PTY forwarding for login/shell, OS image import/export/pull
 - ❌ **`nspawn`** — lightweight container runtime with user namespaces, network namespaces, OCI bundle support, `--boot` for init-in-container, `--bind` mounts, seccomp profiles, capability bounding
 - ❌ **`portabled`** — portable service image management (attach/detach/inspect), `portablectl` CLI
 - ❌ **`homed`** — user home directory management with LUKS encryption, `homectl` CLI
@@ -256,9 +259,9 @@ Higher-level management capabilities:
 - ✅ **`coredump`** — core dump handler with `coredump.conf` parsing ([Coredump] section with Storage, Compress, ProcessSizeMax, ExternalSizeMax, MaxUse, KeepFree), drop-in directory support, kernel pipe handler (`/proc/sys/kernel/core_pattern` protocol with PID/UID/GID/SIGNAL/TIMESTAMP/RLIMIT/HOSTNAME/COMM/EXE arguments and `--backtrace` flag), core dump storage in `/var/lib/systemd/coredump/` with descriptive filenames (`core.COMM.UID.BOOT_ID.PID.TIMESTAMP`), JSON metadata sidecar files, size limit enforcement (ProcessSizeMax, ExternalSizeMax), automatic vacuum of old core dumps (MaxUse, KeepFree with statvfs-based free space detection), boot ID and machine ID collection, signal name mapping; `coredumpctl` CLI with `list` (tabular display with TIME/PID/UID/GID/SIG/COREFILE/EXE columns, `--lines`/`-n` limit, `--reverse`, `--since`/`--until` time filters, `--no-legend`), `info` (detailed per-dump display with username/group resolution from `/etc/passwd`/`/etc/group`), `dump` (binary output to file via `-o` or stdout with TTY safety check), `debug`/`gdb` (launch debugger with `--debugger`/`--debugger-arguments` options), match patterns (PID number, COMM name prefix, EXE path prefix); 82 unit tests covering config parsing (all Storage modes, Compress, size directives, infinity, drop-in override, case-insensitive sections, comments, missing files), size parsing (bytes/K/M/G/T/infinity), bool parsing, JSON roundtrips (basic, special characters, control chars, unescape, invalid input), metadata (signal names, filename generation, special char sanitization), argument parsing (basic, --backtrace, no exe, missing args, invalid PID), storage (basic store+read, exceeds external max, directory creation, empty data), vacuum (removes oldest, empty dir, nonexistent dir), listing (empty, with entries, skips non-core files), discovery+filter integration (by comm, PID, exe path, time range), timestamp formatting (epoch, known date, leap year), date math (days_to_ymd, is_leap_year); missing: compression (lz4/zstd/xz), journal integration, `/proc/PID/` metadata enrichment (cmdline, cgroup, environ)
 - ❌ **`cryptsetup`** / **`veritysetup`** / **`integritysetup`** — device mapper setup utilities
 - ❌ **`repart`** — declarative GPT partition manager
-- ❌ **`sysext`** — system extension image overlay management
-- ❌ **`dissect`** — disk image inspection tool
-- ❌ **`firstboot`** — initial system configuration wizard
+- ✅ **`sysext`** — system extension image overlay management with `status` (show merge state and active extensions), `list` (enumerate available extensions from `/run/extensions/`, `/var/lib/extensions/`, `/usr/lib/extensions/`, `/usr/local/lib/extensions/`), `merge` (overlayfs-based merging of extension hierarchies `/usr/` and `/opt/`), `unmerge` (tear down overlayfs mounts), `refresh` (unmerge + merge), `check-inhibit` (check for inhibitor), JSON output modes (short/pretty), extension release file parsing with host compatibility checking (ID, VERSION_ID, SYSEXT_LEVEL, ARCHITECTURE, SYSEXT_SCOPE), hierarchy detection, merge marker tracking, `--root`/`--force`/`--no-reload`/`--json` options; 80 unit tests
+- ✅ **`dissect`** — disk image inspection tool with GPT and MBR partition table parsing, `show` (detailed image info with partition types, GUIDs, sizes, attributes), `list` (partition listing), `discover` (scan image search paths), `validate` (check partition table integrity), `mount`/`umount` (loopback mount/unmount), `copy-from`/`copy-to` (stubs), JSON output modes (short/pretty), known GPT partition type database (root/home/srv/swap/ESP/XBOOTLDR for x86-64/ARM64/etc.), CRC32 header validation, UTF-16LE partition name parsing, human-readable size formatting, `--root-hash`/`--verity-data`/`--no-legend` options; 100+ unit tests
+- ✅ **`firstboot`** — initial system configuration wizard with `--locale`, `--keymap`, `--timezone`, `--hostname`, `--machine-id`, `--root-password`/`--root-password-hashed`, `--root-shell`, `--kernel-cmdline` settings; `--prompt`/`--prompt-*` interactive modes; `--copy-*` to copy host settings; `--reset-*` to clear settings; `--root` for chroot operation; `--force` to overwrite existing; `--delete-root-password` to unlock root; `--setup-machine-id` alias; `--welcome` banner; credential loading from `$CREDENTIALS_DIRECTORY`; system-already-booted detection; locale/keymap/timezone/shell enumeration; SHA-512 password hashing; proper `/etc/passwd` and `/etc/shadow` manipulation; 100+ unit tests
 - ✅ **`creds`** — credential encryption/decryption tool with `list` (enumerate credentials with size/security state), `cat` (show credential contents with transcode options), `setup` (generate host encryption key), `encrypt` (AES-256-GCM with host key or null key, Base64 output, `--pretty` for unit file embedding), `decrypt` (with name validation, expiry checking, `--allow-null`), `has-tpm2` (TPM2 device detection); custom wire format compatible with systemd's credential header; runtime decryption integrated into exec helper for `LoadCredentialEncrypted=`/`SetCredentialEncrypted=`; missing: TPM2 sealing, host+tpm2 combined mode
 - ✅ **`inhibit`** — inhibitor lock tool with acquire/release/list, block/delay modes, stale lock cleanup
 
@@ -275,7 +278,7 @@ Remaining components and production readiness:
 - ❌ **`sd-boot`** / **`bootctl`** — UEFI boot manager and control tool (this component is EFI, likely stays as a separate build target or FFI)
 - ❌ **`sd-stub`** — UEFI stub for unified kernel images
 - ✅ **Generator framework** — fstab and getty generators built natively into `libsystemd`; external generator execution framework discovers and runs all standard generators (`systemd-gpt-auto-generator`, `systemd-cryptsetup-generator`, `systemd-debug-generator`, `systemd-run-generator`, etc.) from well-known directories plus package-relative paths; output directories inserted at correct unit search path priorities; built-in generators automatically skipped; per-generator timeout with graceful failure handling
-- 🔶 **Comprehensive test suite** — 3,384 unit tests passing; integration tests via nixos-rs boot test; missing: differential testing against real systemd
+- 🔶 **Comprehensive test suite** — 3,913 unit tests passing; integration tests via nixos-rs boot test; missing: differential testing against real systemd
 - ❌ **Documentation** — man-page-compatible documentation for all binaries and configuration formats
 - 🔶 **NixOS / distro integration** — packaging via `default.nix`, boot testing via `test-boot.sh`, NixOS module via `systemd.nix`; working end-to-end; udev rules override ensures correct `systemctl` path in udev `RUN+=` actions; `Type=idle` deferral eliminates getty/PAM race conditions; on-demand unit loading enables `systemctl restart` for units outside the boot dependency graph (e.g. udev-triggered `systemd-vconsole-setup.service`); symlink-aware unit discovery handles NixOS `/etc/systemd/system/` layouts; poison-recovering lock infrastructure prevents panic cascades from poisoned `Mutex`/`RwLock` guards; external generator framework discovers generators in NixOS store paths via executable-relative search (15 generators execute successfully during boot); networkd integration enabled (`withNetworkd = true`) with `.network` file for DHCP on ethernet interfaces; resolved integration enabled (`services.resolved.enable = true`) with stub DNS on 127.0.0.53 and fallback DNS servers; `networkctl persistent-storage` subcommand added for NixOS `systemd-networkd-persistent-storage.service` compatibility; deadlock-free PID table (`Arc<Mutex<PidTable>>`) allows signal handler to update entries without RuntimeInfo read lock, preventing 3-way RwLock deadlock with activation threads and control handler; cloud-hypervisor VM boots with full networking (TAP device + dnsmasq DHCP) in ~8 seconds
 
