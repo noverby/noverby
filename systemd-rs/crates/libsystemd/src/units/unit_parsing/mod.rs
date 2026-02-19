@@ -274,25 +274,26 @@ fn detect_virtualization() -> Option<DetectedVirt> {
         // environ is NUL-separated KEY=VALUE pairs
         for entry in environ.split(|&b| b == 0) {
             if let Ok(s) = std::str::from_utf8(entry)
-                && let Some(val) = s.strip_prefix("container=") {
-                    let name = match val {
-                        "systemd-nspawn" => "systemd-nspawn",
-                        "lxc" => "lxc",
-                        "lxc-libvirt" => "lxc-libvirt",
-                        "docker" => "docker",
-                        "podman" => "podman",
-                        "rkt" => "rkt",
-                        "wsl" => "wsl",
-                        "proot" => "proot",
-                        "pouch" => "pouch",
-                        "oci" => "docker", // generic OCI → docker
-                        other => other,
-                    };
-                    return Some(DetectedVirt {
-                        name: name.to_owned(),
-                        kind: VirtKind::Container,
-                    });
-                }
+                && let Some(val) = s.strip_prefix("container=")
+            {
+                let name = match val {
+                    "systemd-nspawn" => "systemd-nspawn",
+                    "lxc" => "lxc",
+                    "lxc-libvirt" => "lxc-libvirt",
+                    "docker" => "docker",
+                    "podman" => "podman",
+                    "rkt" => "rkt",
+                    "wsl" => "wsl",
+                    "proot" => "proot",
+                    "pouch" => "pouch",
+                    "oci" => "docker", // generic OCI → docker
+                    other => other,
+                };
+                return Some(DetectedVirt {
+                    name: name.to_owned(),
+                    kind: VirtKind::Container,
+                });
+            }
         }
     }
 
@@ -420,13 +421,14 @@ fn detect_virtualization() -> Option<DetectedVirt> {
     if let Ok(cpuinfo) = std::fs::read_to_string("/proc/cpuinfo") {
         for line in cpuinfo.lines() {
             if (line.starts_with("flags") || line.starts_with("Features"))
-                && (line.contains(" hypervisor") || line.contains("\thypervisor")) {
-                    // Generic VM detected via CPUID hypervisor bit
-                    return Some(DetectedVirt {
-                        name: "vm-other".to_owned(),
-                        kind: VirtKind::Vm,
-                    });
-                }
+                && (line.contains(" hypervisor") || line.contains("\thypervisor"))
+            {
+                // Generic VM detected via CPUID hypervisor bit
+                return Some(DetectedVirt {
+                    name: "vm-other".to_owned(),
+                    kind: VirtKind::Vm,
+                });
+            }
         }
     }
 
@@ -542,10 +544,9 @@ impl UnitCondition {
                     Ok(contents) => {
                         // Each line in /proc/modules starts with the module name
                         // followed by a space. We check for an exact module name match.
-                        contents.lines().any(|line| {
-                            line.split_whitespace()
-                                .next() == Some(module.as_str())
-                        })
+                        contents
+                            .lines()
+                            .any(|line| line.split_whitespace().next() == Some(module.as_str()))
                     }
                     Err(_) => false,
                 };
@@ -737,8 +738,7 @@ impl UnitCondition {
 ///
 /// Matches systemd's `SuccessAction=` / `FailureAction=` settings.
 /// See <https://www.freedesktop.org/software/systemd/man/systemd.unit.html#SuccessAction=>.
-#[derive(Clone, Eq, PartialEq, Debug)]
-#[derive(Default)]
+#[derive(Clone, Eq, PartialEq, Debug, Default)]
 pub enum UnitAction {
     /// Do nothing (default).
     #[default]
@@ -773,12 +773,10 @@ pub enum UnitAction {
     KexecImmediate,
 }
 
-
 /// DevicePolicy= — controls the policy for device access for the unit.
 /// Matches systemd's `DevicePolicy=` resource-control setting.
 /// See <https://www.freedesktop.org/software/systemd/man/systemd.resource-control.html#DevicePolicy=auto|closed|strict>.
-#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize, Default)]
 pub enum DevicePolicy {
     /// No restrictions on device access (default).
     #[default]
@@ -791,12 +789,12 @@ pub enum DevicePolicy {
     Strict,
 }
 
-
 /// IOSchedulingClass= — sets the I/O scheduling class for executed processes.
 /// Matches systemd's `IOSchedulingClass=` exec setting.
 /// See <https://www.freedesktop.org/software/systemd/man/systemd.exec.html#IOSchedulingClass=>.
-#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(
+    Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize, Default,
+)]
 pub enum IOSchedulingClass {
     /// No explicit class set; the kernel default (best-effort) is used.
     #[default]
@@ -814,13 +812,11 @@ pub enum IOSchedulingClass {
     Idle,
 }
 
-
 /// Job mode for OnFailure= units.
 /// Controls how the triggered failure units are enqueued.
 /// Matches systemd's `OnFailureJobMode=` setting.
 /// See <https://www.freedesktop.org/software/systemd/man/systemd.unit.html#OnFailureJobMode=>.
-#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize, Default)]
 pub enum OnFailureJobMode {
     /// Replace existing conflicting jobs (default).
     #[default]
@@ -838,7 +834,6 @@ pub enum OnFailureJobMode {
     /// Ignore only `Requires=` dependencies.
     IgnoreRequirements,
 }
-
 
 pub struct ParsedUnitSection {
     pub description: String,
@@ -1588,8 +1583,9 @@ pub struct ParsedExecSection {
 
 /// The type of utmp/wtmp record to create for a service.
 /// Corresponds to systemd's `UtmpMode=` setting.
-#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(
+    Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize, Default,
+)]
 pub enum UtmpMode {
     /// Write an INIT_PROCESS record (default).
     #[default]
@@ -1599,7 +1595,6 @@ pub enum UtmpMode {
     /// Write a USER_PROCESS record.
     User,
 }
-
 
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]
 pub enum ServiceType {
@@ -1636,8 +1631,7 @@ pub enum NotifyKind {
     None,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
-#[derive(Default)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Default)]
 pub enum KillMode {
     /// Kill all processes in the control group (default)
     #[default]
@@ -1650,10 +1644,8 @@ pub enum KillMode {
     None,
 }
 
-
 /// Whether to delegate cgroup control to the service process
-#[derive(Clone, Eq, PartialEq, Debug)]
-#[derive(Default)]
+#[derive(Clone, Eq, PartialEq, Debug, Default)]
 pub enum Delegate {
     /// No delegation (default)
     #[default]
@@ -1664,12 +1656,10 @@ pub enum Delegate {
     Controllers(Vec<String>),
 }
 
-
 /// MemoryPressureWatch= — configures whether to watch for memory pressure
 /// events via PSI (Pressure Stall Information). Parsed and stored; no runtime
 /// enforcement (requires cgroup + PSI support). See systemd.resource-control(5).
-#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize, Default)]
 pub enum MemoryPressureWatch {
     /// Automatically enable if the service has a dedicated cgroup and PSI is
     /// available (default).
@@ -1683,11 +1673,9 @@ pub enum MemoryPressureWatch {
     Skip,
 }
 
-
 /// KeyringMode= — controls how the kernel session keyring is set up for the
 /// service. See session-keyring(7) and systemd.exec(5).
-#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize, Default)]
 pub enum KeyringMode {
     /// No special keyring setup; kernel default behaviour applies.
     Inherit,
@@ -1702,11 +1690,11 @@ pub enum KeyringMode {
     Shared,
 }
 
-
 /// ProtectSystem= — controls whether the service has read-only access to the
 /// OS file system hierarchy. See systemd.exec(5).
-#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(
+    Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize, Default,
+)]
 pub enum ProtectSystem {
     /// No file system protection (default).
     #[default]
@@ -1721,11 +1709,11 @@ pub enum ProtectSystem {
     Strict,
 }
 
-
 /// ProtectHome= — controls whether /home, /root, and /run/user are
 /// accessible to the service. See systemd.exec(5).
-#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(
+    Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize, Default,
+)]
 pub enum ProtectHome {
     /// No protection (default). Directories are left accessible as normal.
     #[default]
@@ -1742,12 +1730,12 @@ pub enum ProtectHome {
     Tmpfs,
 }
 
-
 /// ProtectProc= — controls the `hidepid=` mount option of the procfs instance
 /// for the unit. Controls which `/proc/PID` directories are visible and
 /// accessible. See systemd.exec(5).
-#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(
+    Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize, Default,
+)]
 pub enum ProtectProc {
     /// No restrictions on /proc/ access or visibility (default).
     #[default]
@@ -1760,12 +1748,12 @@ pub enum ProtectProc {
     Ptraceable,
 }
 
-
 /// ProcSubset= — controls which subset of /proc/ is mounted for the unit.
 /// Matches systemd's `ProcSubset=` exec setting.
 /// See <https://www.freedesktop.org/software/systemd/man/systemd.exec.html#ProcSubset=>.
-#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(
+    Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize, Default,
+)]
 pub enum ProcSubset {
     /// The full /proc/ file system is mounted (default).
     #[default]
@@ -1775,7 +1763,6 @@ pub enum ProcSubset {
     /// are not available.
     Pid,
 }
-
 
 /// DeferTrigger= — controls whether to defer triggering the associated service
 /// when a connection comes in. May only be used when Accept=no.
@@ -1807,8 +1794,9 @@ pub enum Timestamping {
 
 /// RuntimeDirectoryPreserve= — controls whether runtime directories created
 /// by `RuntimeDirectory=` are removed when the service stops. See systemd.exec(5).
-#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(
+    Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize, Default,
+)]
 pub enum RuntimeDirectoryPreserve {
     /// Always remove runtime directories when the service is stopped (default).
     #[default]
@@ -1820,12 +1808,12 @@ pub enum RuntimeDirectoryPreserve {
     Restart,
 }
 
-
 /// FileDescriptorStorePreserve= — controls whether file descriptors stored
 /// in the service manager (via FDSTORE=1 sd_notify messages) are preserved
 /// across service restarts or stops. See systemd.service(5).
-#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(
+    Clone, Copy, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize, Default,
+)]
 pub enum FileDescriptorStorePreserve {
     /// Discard stored file descriptors when the service is stopped (default).
     #[default]
@@ -1838,11 +1826,9 @@ pub enum FileDescriptorStorePreserve {
     Restart,
 }
 
-
 /// RestrictNamespaces= — restricts access to Linux namespace types for the
 /// service. See systemd.exec(5).
-#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize, Default)]
 pub enum RestrictNamespaces {
     /// No namespace restrictions (default).
     #[default]
@@ -1854,7 +1840,6 @@ pub enum RestrictNamespaces {
     /// Allow all namespace types except the listed ones (deny-list, ~ prefix).
     Deny(Vec<String>),
 }
-
 
 /// Limit on the number of tasks (processes/threads) in the service's cgroup
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -2008,8 +1993,7 @@ pub enum StdIoOption {
 
 /// How stdin should be set up for the service process.
 /// Matches systemd's StandardInput= setting.
-#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize, Default)]
 pub enum StandardInput {
     /// stdin is connected to /dev/null (default)
     #[default]
@@ -2021,7 +2005,6 @@ pub enum StandardInput {
     /// Like Tty, but fail if the TTY cannot be opened exclusively
     TtyFail,
 }
-
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum CommandlinePrefix {

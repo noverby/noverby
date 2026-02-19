@@ -161,9 +161,10 @@ pub fn load_config() -> (LoggingConfig, Config) {
         .collect();
 
     if let Some(pkg_dir) = package_unit_dir()
-        && !unit_dirs.contains(&pkg_dir) {
-            unit_dirs.push(pkg_dir);
-        }
+        && !unit_dirs.contains(&pkg_dir)
+    {
+        unit_dirs.push(pkg_dir);
+    }
 
     let self_path = std::env::current_exe().expect("Could not determine own executable path");
 

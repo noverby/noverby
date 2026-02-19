@@ -259,21 +259,22 @@ fn read_ntp_servers() -> (Vec<String>, Vec<String>) {
                 parse_ntp_config(&contents, &mut ntp, &mut fallback);
             }
         } else if path.is_dir()
-            && let Ok(mut entries) = fs::read_dir(path) {
-                let mut files: Vec<PathBuf> = Vec::new();
-                while let Some(Ok(entry)) = entries.next() {
-                    let p = entry.path();
-                    if p.extension().is_some_and(|e| e == "conf") {
-                        files.push(p);
-                    }
-                }
-                files.sort();
-                for f in files {
-                    if let Ok(contents) = fs::read_to_string(&f) {
-                        parse_ntp_config(&contents, &mut ntp, &mut fallback);
-                    }
+            && let Ok(mut entries) = fs::read_dir(path)
+        {
+            let mut files: Vec<PathBuf> = Vec::new();
+            while let Some(Ok(entry)) = entries.next() {
+                let p = entry.path();
+                if p.extension().is_some_and(|e| e == "conf") {
+                    files.push(p);
                 }
             }
+            files.sort();
+            for f in files {
+                if let Ok(contents) = fs::read_to_string(&f) {
+                    parse_ntp_config(&contents, &mut ntp, &mut fallback);
+                }
+            }
+        }
     }
 
     if fallback.is_empty() {
@@ -744,20 +745,21 @@ fn cmd_timesync_status() {
     let clock_state = Path::new(TIMESYNCD_STATE_DIR).join("clock");
     if clock_state.exists()
         && let Ok(contents) = fs::read_to_string(&clock_state)
-            && let Ok(saved) = contents.trim().parse::<u64>() {
-                let (now_secs, _) = get_unix_timestamp();
-                let age = now_secs as u64 - saved;
-                let age_str = if age < 60 {
-                    format!("{}s ago", age)
-                } else if age < 3600 {
-                    format!("{}min {}s ago", age / 60, age % 60)
-                } else if age < 86400 {
-                    format!("{}h {}min ago", age / 3600, (age % 3600) / 60)
-                } else {
-                    format!("{}d {}h ago", age / 86400, (age % 86400) / 3600)
-                };
-                println!("   Last sync: {}", age_str);
-            }
+        && let Ok(saved) = contents.trim().parse::<u64>()
+    {
+        let (now_secs, _) = get_unix_timestamp();
+        let age = now_secs as u64 - saved;
+        let age_str = if age < 60 {
+            format!("{}s ago", age)
+        } else if age < 3600 {
+            format!("{}min {}s ago", age / 60, age % 60)
+        } else if age < 86400 {
+            format!("{}h {}min ago", age / 3600, (age % 3600) / 60)
+        } else {
+            format!("{}d {}h ago", age / 86400, (age % 86400) / 3600)
+        };
+        println!("   Last sync: {}", age_str);
+    }
 
     if !ntp_synced {
         println!();

@@ -828,36 +828,38 @@ fn analyze_image(path: &Path) -> Result<ImageInfo, String> {
 
     // Try GPT first
     if size >= 2 * SECTOR_SIZE + GPT_HEADER_MIN_SIZE
-        && let Ok(Some(header)) = read_gpt_header(&mut file) {
-            let partitions = read_gpt_partitions(&mut file, &header)
-                .map_err(|e| format!("Failed to read GPT partitions: {}", e))?;
+        && let Ok(Some(header)) = read_gpt_header(&mut file)
+    {
+        let partitions = read_gpt_partitions(&mut file, &header)
+            .map_err(|e| format!("Failed to read GPT partitions: {}", e))?;
 
-            return Ok(ImageInfo {
-                path: path.to_path_buf(),
-                size,
-                table_type: PartitionTableType::Gpt,
-                gpt_header: Some(header),
-                gpt_partitions: partitions,
-                mbr_partitions: Vec::new(),
-            });
-        }
+        return Ok(ImageInfo {
+            path: path.to_path_buf(),
+            size,
+            table_type: PartitionTableType::Gpt,
+            gpt_header: Some(header),
+            gpt_partitions: partitions,
+            mbr_partitions: Vec::new(),
+        });
+    }
 
     // Try MBR
     if size >= SECTOR_SIZE
-        && let Ok(Some(partitions)) = read_mbr_partitions(&mut file) {
-            // Check if MBR is just a protective MBR for GPT
-            let is_protective = partitions.len() == 1 && partitions[0].partition_type == 0xEE;
-            if !is_protective {
-                return Ok(ImageInfo {
-                    path: path.to_path_buf(),
-                    size,
-                    table_type: PartitionTableType::Mbr,
-                    gpt_header: None,
-                    gpt_partitions: Vec::new(),
-                    mbr_partitions: partitions,
-                });
-            }
+        && let Ok(Some(partitions)) = read_mbr_partitions(&mut file)
+    {
+        // Check if MBR is just a protective MBR for GPT
+        let is_protective = partitions.len() == 1 && partitions[0].partition_type == 0xEE;
+        if !is_protective {
+            return Ok(ImageInfo {
+                path: path.to_path_buf(),
+                size,
+                table_type: PartitionTableType::Mbr,
+                gpt_header: None,
+                gpt_partitions: Vec::new(),
+                mbr_partitions: partitions,
+            });
         }
+    }
 
     Ok(ImageInfo {
         path: path.to_path_buf(),
@@ -1346,10 +1348,7 @@ fn cmd_list(info: &ImageInfo, no_legend: bool) -> Result<(), String> {
     let type_map = known_partition_types();
 
     if !no_legend {
-        println!(
-            "{:<5} {:<28} {:<10} MOUNT POINT",
-            "IDX", "TYPE", "SIZE"
-        );
+        println!("{:<5} {:<28} {:<10} MOUNT POINT", "IDX", "TYPE", "SIZE");
     }
 
     match info.table_type {

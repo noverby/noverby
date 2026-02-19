@@ -116,7 +116,7 @@ pub fn unstarted_deps(id: &UnitId, run_info: &RuntimeInfo) -> Vec<UnitId> {
 
     // if not all dependencies are yet started ignore this call. This unit will be activated again when
     // the next dependency gets ready
-    
+
     unit
         .common
         .dependencies

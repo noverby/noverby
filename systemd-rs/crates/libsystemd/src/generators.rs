@@ -328,9 +328,10 @@ fn find_generators(unit_dirs: &[PathBuf]) -> Vec<PathBuf> {
     // lib/systemd/system/ (unit files are in /etc/systemd/system/ instead),
     // so the unit-dir-based derivation above won't find them.
     if let Some(pkg_gen_dir) = package_generator_dir()
-        && !search_dirs.contains(&pkg_gen_dir) {
-            search_dirs.push(pkg_gen_dir);
-        }
+        && !search_dirs.contains(&pkg_gen_dir)
+    {
+        search_dirs.push(pkg_gen_dir);
+    }
 
     for dir in &search_dirs {
         if !dir.is_dir() {

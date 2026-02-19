@@ -286,11 +286,10 @@ impl MachineRegistry {
             if fname.starts_with('.') {
                 continue;
             }
-            if let Ok(content) = fs::read_to_string(&path) {
-                if let Some(machine) = Machine::from_state_file(&content) {
+            if let Ok(content) = fs::read_to_string(&path)
+                && let Some(machine) = Machine::from_state_file(&content) {
                     self.machines.insert(machine.name.clone(), machine);
                 }
-            }
         }
     }
 
@@ -478,13 +477,11 @@ fn parse_env_content(content: &str) -> BTreeMap<String, String> {
             let key = key.trim();
             let mut value = value.trim().to_string();
             // Strip surrounding quotes
-            if (value.starts_with('"') && value.ends_with('"'))
-                || (value.starts_with('\'') && value.ends_with('\''))
-            {
-                if value.len() >= 2 {
+            if ((value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\'')))
+                && value.len() >= 2 {
                     value = value[1..value.len() - 1].to_string();
                 }
-            }
             map.insert(key.to_string(), value);
         }
     }
@@ -514,7 +511,7 @@ fn format_timestamp(usec: u64) -> String {
     static MONTHS: [&str; 12] = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ];
-    let mon = if month >= 1 && month <= 12 {
+    let mon = if (1..=12).contains(&month) {
         MONTHS[(month - 1) as usize]
     } else {
         "???"
@@ -588,7 +585,7 @@ fn handle_control_command(registry: &mut MachineRegistry, line: &str) -> String 
                     return format!(
                         "ERROR: Invalid class '{}'. Use 'container' or 'vm'\n",
                         reg_parts[1]
-                    )
+                    );
                 }
             };
             let service = reg_parts[2].to_string();
@@ -825,12 +822,11 @@ fn main() {
                 if SHUTDOWN.load(Ordering::SeqCst) {
                     break;
                 }
-                if let Some(ref iv) = wd_interval {
-                    if last_watchdog.elapsed() >= *iv {
+                if let Some(ref iv) = wd_interval
+                    && last_watchdog.elapsed() >= *iv {
                         sd_notify("WATCHDOG=1");
                         last_watchdog = Instant::now();
                     }
-                }
                 thread::sleep(Duration::from_secs(1));
             }
             sd_notify("STOPPING=1");
@@ -882,12 +878,11 @@ fn main() {
         }
 
         // Watchdog keepalive
-        if let Some(ref iv) = wd_interval {
-            if last_watchdog.elapsed() >= *iv {
+        if let Some(ref iv) = wd_interval
+            && last_watchdog.elapsed() >= *iv {
                 sd_notify("WATCHDOG=1");
                 last_watchdog = Instant::now();
             }
-        }
 
         match listener.accept() {
             Ok((mut stream, _addr)) => {

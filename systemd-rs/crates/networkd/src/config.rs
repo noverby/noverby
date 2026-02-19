@@ -134,8 +134,7 @@ impl MatchSection {
 // ---------------------------------------------------------------------------
 
 /// How to obtain addresses on a link.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DhcpMode {
     #[default]
     No,
@@ -143,7 +142,6 @@ pub enum DhcpMode {
     Ipv4,
     Ipv6,
 }
-
 
 impl fmt::Display for DhcpMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -157,8 +155,7 @@ impl fmt::Display for DhcpMode {
 }
 
 /// How to configure IPv6 link-local addressing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LinkLocalMode {
     No,
     Yes,
@@ -167,16 +164,13 @@ pub enum LinkLocalMode {
     Ipv6,
 }
 
-
 /// Whether/how to accept IPv6 router advertisements.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Ipv6AcceptRa {
     No,
     #[default]
     Yes,
 }
-
 
 #[derive(Debug, Clone, Default)]
 pub struct NetworkSection {
@@ -430,16 +424,17 @@ pub fn load_network_configs() -> Vec<NetworkConfig> {
 
     // Add package-relative paths for NixOS.
     if let Ok(exe) = std::env::current_exe()
-        && let Some(parent) = exe.parent() {
-            // exe is in  <pkg>/bin/ or <pkg>/lib/systemd/
-            for ancestor in parent.ancestors().skip(1) {
-                let candidate = ancestor.join("lib/systemd/network");
-                if candidate.is_dir() && !search_dirs.contains(&candidate) {
-                    search_dirs.push(candidate);
-                    break;
-                }
+        && let Some(parent) = exe.parent()
+    {
+        // exe is in  <pkg>/bin/ or <pkg>/lib/systemd/
+        for ancestor in parent.ancestors().skip(1) {
+            let candidate = ancestor.join("lib/systemd/network");
+            if candidate.is_dir() && !search_dirs.contains(&candidate) {
+                search_dirs.push(candidate);
+                break;
             }
         }
+    }
 
     load_network_configs_from(&search_dirs)
 }

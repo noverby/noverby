@@ -507,46 +507,48 @@ fn handle_response(
             // The result contains { "show": "Key=Value\n..." }
             if let Some(result) = result
                 && let Some(text) = result.get("show").and_then(|v| v.as_str())
-                    && !quiet {
-                        if value_only && !property_filter.is_empty() {
-                            // --value mode: print only the values, one per line
-                            for line in text.lines() {
-                                if let Some((_key, val)) = line.split_once('=') {
-                                    println!("{val}");
-                                }
-                            }
-                        } else {
-                            print!("{text}");
+                && !quiet
+            {
+                if value_only && !property_filter.is_empty() {
+                    // --value mode: print only the values, one per line
+                    for line in text.lines() {
+                        if let Some((_key, val)) = line.split_once('=') {
+                            println!("{val}");
                         }
                     }
+                } else {
+                    print!("{text}");
+                }
+            }
         }
         "cat" => {
             // The result contains { "cat": "# /path/to/unit\n[Unit]\n..." }
             if let Some(result) = result
                 && let Some(text) = result.get("cat").and_then(|v| v.as_str())
-                    && !quiet {
-                        print!("{text}");
-                    }
+                && !quiet
+            {
+                print!("{text}");
+            }
         }
         "list-unit-files" => {
             if let Some(result) = result
                 && let Some(text) = result.get("list-unit-files").and_then(|v| v.as_str())
-                    && !quiet {
-                        print!("{text}");
-                    }
+                && !quiet
+            {
+                print!("{text}");
+            }
         }
         "disable" => {
             if let Some(result) = result
                 && let Some(arr) = result.get("disabled").and_then(|v| v.as_array())
-                    && !quiet {
-                        for name in arr {
-                            if let Some(s) = name.as_str() {
-                                println!(
-                                    "Removed /etc/systemd/system/multi-user.target.wants/{s}."
-                                );
-                            }
-                        }
+                && !quiet
+            {
+                for name in arr {
+                    if let Some(s) = name.as_str() {
+                        println!("Removed /etc/systemd/system/multi-user.target.wants/{s}.");
                     }
+                }
+            }
         }
         "reset-failed"
         | "kill"
@@ -560,49 +562,51 @@ fn handle_response(
         "list-timers" => {
             if let Some(result) = result
                 && let Some(arr) = result.as_array()
-                    && !quiet {
-                        format_timer_table(arr);
-                    }
+                && !quiet
+            {
+                format_timer_table(arr);
+            }
         }
         "list-dependencies" => {
             if let Some(result) = result
                 && let Some(text) = result.get("list-dependencies").and_then(|v| v.as_str())
-                    && !quiet {
-                        print!("{text}");
-                    }
+                && !quiet
+            {
+                print!("{text}");
+            }
         }
         "mask" => {
             if let Some(result) = result
                 && let Some(arr) = result.get("masked").and_then(|v| v.as_array())
-                    && !quiet {
-                        for name in arr {
-                            if let Some(s) = name.as_str() {
-                                println!("Created symlink /etc/systemd/system/{s} → /dev/null.");
-                            }
-                        }
+                && !quiet
+            {
+                for name in arr {
+                    if let Some(s) = name.as_str() {
+                        println!("Created symlink /etc/systemd/system/{s} → /dev/null.");
                     }
+                }
+            }
         }
         "unmask" => {
             if let Some(result) = result
                 && let Some(arr) = result.get("unmasked").and_then(|v| v.as_array())
-                    && !quiet {
-                        for name in arr {
-                            if let Some(s) = name.as_str() {
-                                println!("Removed /etc/systemd/system/{s}.");
-                            }
-                        }
+                && !quiet
+            {
+                for name in arr {
+                    if let Some(s) = name.as_str() {
+                        println!("Removed /etc/systemd/system/{s}.");
                     }
+                }
+            }
         }
         _ => {
             // For all other commands, print the result if non-null and non-empty.
-            if !quiet
-                && let Some(result) = result {
-                    let is_empty =
-                        result.is_null() || result.as_array().is_some_and(|a| a.is_empty());
-                    if !is_empty {
-                        println!("{}", serde_json::to_string_pretty(result).unwrap());
-                    }
+            if !quiet && let Some(result) = result {
+                let is_empty = result.is_null() || result.as_array().is_some_and(|a| a.is_empty());
+                if !is_empty {
+                    println!("{}", serde_json::to_string_pretty(result).unwrap());
                 }
+            }
         }
     }
 }

@@ -61,10 +61,11 @@ pub fn is_template_unit(name: &str) -> bool {
     // i.e., the instance part is empty: "foo@.service"
     if let Some(at_pos) = name.find('@')
         && let Some(dot_pos) = name.rfind('.')
-            && dot_pos > at_pos {
-                let instance = &name[at_pos + 1..dot_pos];
-                return instance.is_empty();
-            }
+        && dot_pos > at_pos
+    {
+        let instance = &name[at_pos + 1..dot_pos];
+        return instance.is_empty();
+    }
     false
 }
 
@@ -100,16 +101,17 @@ pub fn resolve_symlink_aliases(
             // Check if this is a symlink
             if let Ok(metadata) = std::fs::symlink_metadata(&path)
                 && metadata.file_type().is_symlink()
-                    && let Ok(target) = std::fs::read_link(&path) {
-                        let target_name = target
-                            .file_name()
-                            .map(|f| f.to_string_lossy().to_string())
-                            .unwrap_or_default();
-                        if is_unit_file(&target_name) && target_name != file_name {
-                            trace!("Symlink alias detected: {} -> {}", file_name, target_name);
-                            alias_map.insert(file_name, target_name);
-                        }
-                    }
+                && let Ok(target) = std::fs::read_link(&path)
+            {
+                let target_name = target
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                if is_unit_file(&target_name) && target_name != file_name {
+                    trace!("Symlink alias detected: {} -> {}", file_name, target_name);
+                    alias_map.insert(file_name, target_name);
+                }
+            }
         }
     }
 
@@ -212,73 +214,74 @@ pub fn resolve_symlink_aliases(
             a_bound_by,
             a_refs,
         )) = alias_deps
-            && let Some(real_unit) = unit_table.get_mut(real_id) {
-                // Merge all dependency types from alias into real unit.
-                // Skip deps that reference the real unit itself (self-loops).
-                merge_dep_vec(&mut real_unit.common.dependencies.wants, &a_wants, real_id);
-                merge_dep_vec(
-                    &mut real_unit.common.dependencies.wanted_by,
-                    &a_wanted_by,
-                    real_id,
-                );
-                merge_dep_vec(
-                    &mut real_unit.common.dependencies.requires,
-                    &a_requires,
-                    real_id,
-                );
-                merge_dep_vec(
-                    &mut real_unit.common.dependencies.required_by,
-                    &a_required_by,
-                    real_id,
-                );
-                merge_dep_vec(
-                    &mut real_unit.common.dependencies.before,
-                    &a_before,
-                    real_id,
-                );
-                merge_dep_vec(&mut real_unit.common.dependencies.after, &a_after, real_id);
-                merge_dep_vec(
-                    &mut real_unit.common.dependencies.conflicts,
-                    &a_conflicts,
-                    real_id,
-                );
-                merge_dep_vec(
-                    &mut real_unit.common.dependencies.conflicted_by,
-                    &a_conflicted_by,
-                    real_id,
-                );
-                merge_dep_vec(
-                    &mut real_unit.common.dependencies.part_of,
-                    &a_part_of,
-                    real_id,
-                );
-                merge_dep_vec(
-                    &mut real_unit.common.dependencies.part_of_by,
-                    &a_part_of_by,
-                    real_id,
-                );
-                merge_dep_vec(
-                    &mut real_unit.common.dependencies.binds_to,
-                    &a_binds_to,
-                    real_id,
-                );
-                merge_dep_vec(
-                    &mut real_unit.common.dependencies.bound_by,
-                    &a_bound_by,
-                    real_id,
-                );
-                merge_dep_vec(&mut real_unit.common.unit.refs_by_name, &a_refs, real_id);
+            && let Some(real_unit) = unit_table.get_mut(real_id)
+        {
+            // Merge all dependency types from alias into real unit.
+            // Skip deps that reference the real unit itself (self-loops).
+            merge_dep_vec(&mut real_unit.common.dependencies.wants, &a_wants, real_id);
+            merge_dep_vec(
+                &mut real_unit.common.dependencies.wanted_by,
+                &a_wanted_by,
+                real_id,
+            );
+            merge_dep_vec(
+                &mut real_unit.common.dependencies.requires,
+                &a_requires,
+                real_id,
+            );
+            merge_dep_vec(
+                &mut real_unit.common.dependencies.required_by,
+                &a_required_by,
+                real_id,
+            );
+            merge_dep_vec(
+                &mut real_unit.common.dependencies.before,
+                &a_before,
+                real_id,
+            );
+            merge_dep_vec(&mut real_unit.common.dependencies.after, &a_after, real_id);
+            merge_dep_vec(
+                &mut real_unit.common.dependencies.conflicts,
+                &a_conflicts,
+                real_id,
+            );
+            merge_dep_vec(
+                &mut real_unit.common.dependencies.conflicted_by,
+                &a_conflicted_by,
+                real_id,
+            );
+            merge_dep_vec(
+                &mut real_unit.common.dependencies.part_of,
+                &a_part_of,
+                real_id,
+            );
+            merge_dep_vec(
+                &mut real_unit.common.dependencies.part_of_by,
+                &a_part_of_by,
+                real_id,
+            );
+            merge_dep_vec(
+                &mut real_unit.common.dependencies.binds_to,
+                &a_binds_to,
+                real_id,
+            );
+            merge_dep_vec(
+                &mut real_unit.common.dependencies.bound_by,
+                &a_bound_by,
+                real_id,
+            );
+            merge_dep_vec(&mut real_unit.common.unit.refs_by_name, &a_refs, real_id);
 
-                // Register the alias name so find_units_with_name can match it.
-                if !real_unit.common.unit.aliases.contains(&alias_name) {
-                    real_unit.common.unit.aliases.push(alias_name.clone());
-                }
-
-                info!(
-                    "Alias {} merged into {} and removed from unit table",
-                    alias_name, real_name
-                );
+            // Register the alias name so find_units_with_name can match it.
+            if !real_unit.common.unit.aliases.contains(&alias_name) {
+                real_unit.common.unit.aliases.push(alias_name.clone());
             }
+
+            info!(
+                "Alias {} merged into {} and removed from unit table",
+                alias_name, real_name
+            );
+        }
 
         // Remove the alias unit from the table.
         if unit_table.remove(alias_id).is_some() {
@@ -423,86 +426,87 @@ pub fn resolve_symlink_aliases(
                         a_bound_by,
                         a_refs,
                     )) = alias_deps
-                        && let Some(real_unit) = unit_table.get_mut(&real_instance_id) {
-                            merge_dep_vec(
-                                &mut real_unit.common.dependencies.wants,
-                                &a_wants,
-                                &real_instance_id,
-                            );
-                            merge_dep_vec(
-                                &mut real_unit.common.dependencies.wanted_by,
-                                &a_wanted_by,
-                                &real_instance_id,
-                            );
-                            merge_dep_vec(
-                                &mut real_unit.common.dependencies.requires,
-                                &a_requires,
-                                &real_instance_id,
-                            );
-                            merge_dep_vec(
-                                &mut real_unit.common.dependencies.required_by,
-                                &a_required_by,
-                                &real_instance_id,
-                            );
-                            merge_dep_vec(
-                                &mut real_unit.common.dependencies.before,
-                                &a_before,
-                                &real_instance_id,
-                            );
-                            merge_dep_vec(
-                                &mut real_unit.common.dependencies.after,
-                                &a_after,
-                                &real_instance_id,
-                            );
-                            merge_dep_vec(
-                                &mut real_unit.common.dependencies.conflicts,
-                                &a_conflicts,
-                                &real_instance_id,
-                            );
-                            merge_dep_vec(
-                                &mut real_unit.common.dependencies.conflicted_by,
-                                &a_conflicted_by,
-                                &real_instance_id,
-                            );
-                            merge_dep_vec(
-                                &mut real_unit.common.dependencies.part_of,
-                                &a_part_of,
-                                &real_instance_id,
-                            );
-                            merge_dep_vec(
-                                &mut real_unit.common.dependencies.part_of_by,
-                                &a_part_of_by,
-                                &real_instance_id,
-                            );
-                            merge_dep_vec(
-                                &mut real_unit.common.dependencies.binds_to,
-                                &a_binds_to,
-                                &real_instance_id,
-                            );
-                            merge_dep_vec(
-                                &mut real_unit.common.dependencies.bound_by,
-                                &a_bound_by,
-                                &real_instance_id,
-                            );
-                            merge_dep_vec(
-                                &mut real_unit.common.unit.refs_by_name,
-                                &a_refs,
-                                &real_instance_id,
-                            );
+                        && let Some(real_unit) = unit_table.get_mut(&real_instance_id)
+                    {
+                        merge_dep_vec(
+                            &mut real_unit.common.dependencies.wants,
+                            &a_wants,
+                            &real_instance_id,
+                        );
+                        merge_dep_vec(
+                            &mut real_unit.common.dependencies.wanted_by,
+                            &a_wanted_by,
+                            &real_instance_id,
+                        );
+                        merge_dep_vec(
+                            &mut real_unit.common.dependencies.requires,
+                            &a_requires,
+                            &real_instance_id,
+                        );
+                        merge_dep_vec(
+                            &mut real_unit.common.dependencies.required_by,
+                            &a_required_by,
+                            &real_instance_id,
+                        );
+                        merge_dep_vec(
+                            &mut real_unit.common.dependencies.before,
+                            &a_before,
+                            &real_instance_id,
+                        );
+                        merge_dep_vec(
+                            &mut real_unit.common.dependencies.after,
+                            &a_after,
+                            &real_instance_id,
+                        );
+                        merge_dep_vec(
+                            &mut real_unit.common.dependencies.conflicts,
+                            &a_conflicts,
+                            &real_instance_id,
+                        );
+                        merge_dep_vec(
+                            &mut real_unit.common.dependencies.conflicted_by,
+                            &a_conflicted_by,
+                            &real_instance_id,
+                        );
+                        merge_dep_vec(
+                            &mut real_unit.common.dependencies.part_of,
+                            &a_part_of,
+                            &real_instance_id,
+                        );
+                        merge_dep_vec(
+                            &mut real_unit.common.dependencies.part_of_by,
+                            &a_part_of_by,
+                            &real_instance_id,
+                        );
+                        merge_dep_vec(
+                            &mut real_unit.common.dependencies.binds_to,
+                            &a_binds_to,
+                            &real_instance_id,
+                        );
+                        merge_dep_vec(
+                            &mut real_unit.common.dependencies.bound_by,
+                            &a_bound_by,
+                            &real_instance_id,
+                        );
+                        merge_dep_vec(
+                            &mut real_unit.common.unit.refs_by_name,
+                            &a_refs,
+                            &real_instance_id,
+                        );
 
-                            if !real_unit
+                        if !real_unit
+                            .common
+                            .unit
+                            .aliases
+                            .contains(&alias_instance_id.name)
+                        {
+                            real_unit
                                 .common
                                 .unit
                                 .aliases
-                                .contains(&alias_instance_id.name)
-                            {
-                                real_unit
-                                    .common
-                                    .unit
-                                    .aliases
-                                    .push(alias_instance_id.name.clone());
-                            }
+                                .push(alias_instance_id.name.clone());
                         }
+                    }
 
                     unit_table.remove(&alias_instance_id);
                     info!(
@@ -932,13 +936,14 @@ fn has_unresolved_specifiers(s: &str) -> bool {
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '%'
-            && let Some(&next) = chars.peek() {
-                // Known systemd specifiers: %i %I %n %N %p %P %u %U %h %s %m %b %H %v %t
-                // Also %% is an escaped percent — not a specifier.
-                if next != '%' && next.is_alphanumeric() {
-                    return true;
-                }
+            && let Some(&next) = chars.peek()
+        {
+            // Known systemd specifiers: %i %I %n %N %p %P %u %U %h %s %m %b %H %v %t
+            // Also %% is an escaped percent — not a specifier.
+            if next != '%' && next.is_alphanumeric() {
+                return true;
             }
+        }
     }
     false
 }

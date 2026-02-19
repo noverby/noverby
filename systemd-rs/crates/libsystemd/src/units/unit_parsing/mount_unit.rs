@@ -146,53 +146,63 @@ fn parse_mount_section(
     mount: &mut ParsedMountSection,
 ) -> Result<(), ParsingErrorReason> {
     if let Some(values) = section.get("WHAT")
-        && let Some((_line, value)) = values.last() {
-            mount.what = value.clone();
-        }
+        && let Some((_line, value)) = values.last()
+    {
+        mount.what = value.clone();
+    }
     if let Some(values) = section.get("WHERE")
-        && let Some((_line, value)) = values.last() {
-            mount.where_ = value.clone();
-        }
+        && let Some((_line, value)) = values.last()
+    {
+        mount.where_ = value.clone();
+    }
     if let Some(values) = section.get("TYPE")
-        && let Some((_line, value)) = values.last() {
-            mount.fs_type = if value.is_empty() {
-                None
-            } else {
-                Some(value.clone())
-            };
-        }
+        && let Some((_line, value)) = values.last()
+    {
+        mount.fs_type = if value.is_empty() {
+            None
+        } else {
+            Some(value.clone())
+        };
+    }
     if let Some(values) = section.get("OPTIONS")
-        && let Some((_line, value)) = values.last() {
-            mount.options = if value.is_empty() {
-                None
-            } else {
-                Some(value.clone())
-            };
-        }
+        && let Some((_line, value)) = values.last()
+    {
+        mount.options = if value.is_empty() {
+            None
+        } else {
+            Some(value.clone())
+        };
+    }
     if let Some(values) = section.get("SLOPPYOPTIONS")
-        && let Some((_line, value)) = values.last() {
-            mount.sloppy_options = parse_bool_value(value);
-        }
+        && let Some((_line, value)) = values.last()
+    {
+        mount.sloppy_options = parse_bool_value(value);
+    }
     if let Some(values) = section.get("LAZYUNMOUNT")
-        && let Some((_line, value)) = values.last() {
-            mount.lazy_unmount = parse_bool_value(value);
-        }
+        && let Some((_line, value)) = values.last()
+    {
+        mount.lazy_unmount = parse_bool_value(value);
+    }
     if let Some(values) = section.get("READWRITEONLY")
-        && let Some((_line, value)) = values.last() {
-            mount.read_write_only = parse_bool_value(value);
-        }
+        && let Some((_line, value)) = values.last()
+    {
+        mount.read_write_only = parse_bool_value(value);
+    }
     if let Some(values) = section.get("FORCEUNMOUNT")
-        && let Some((_line, value)) = values.last() {
-            mount.force_unmount = parse_bool_value(value);
-        }
+        && let Some((_line, value)) = values.last()
+    {
+        mount.force_unmount = parse_bool_value(value);
+    }
     if let Some(values) = section.get("DIRECTORYMODE")
-        && let Some((_line, value)) = values.last() {
-            mount.directory_mode = parse_directory_mode(value);
-        }
+        && let Some((_line, value)) = values.last()
+    {
+        mount.directory_mode = parse_directory_mode(value);
+    }
     if let Some(values) = section.get("TIMEOUTSEC")
-        && let Some((_line, value)) = values.last() {
-            mount.timeout_sec = parse_timeout_sec(value);
-        }
+        && let Some((_line, value)) = values.last()
+    {
+        mount.timeout_sec = parse_timeout_sec(value);
+    }
     // Log any unrecognized keys at trace level
     let known_keys = [
         "WHAT",

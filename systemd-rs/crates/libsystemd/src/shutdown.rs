@@ -79,20 +79,21 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
             mut_state.srvc.notifications = None;
 
             if let Some(note_sock_path) = &mut_state.srvc.notifications_path
-                && note_sock_path.exists() {
-                    match std::fs::remove_file(note_sock_path) {
-                        Ok(()) => {
-                            trace!(
-                                "Removed notification socket for service unit: {}",
-                                unit.id.name
-                            );
-                        }
-                        Err(e) => error!(
-                            "Error removing notification socket for service unit {}: {}",
-                            unit.id.name, e
-                        ),
+                && note_sock_path.exists()
+            {
+                match std::fs::remove_file(note_sock_path) {
+                    Ok(()) => {
+                        trace!(
+                            "Removed notification socket for service unit: {}",
+                            unit.id.name
+                        );
                     }
+                    Err(e) => error!(
+                        "Error removing notification socket for service unit {}: {}",
+                        unit.id.name, e
+                    ),
                 }
+            }
         }
         Specific::Socket(specific) => {
             let mut_state = &mut *specific.state.write_poisoned();

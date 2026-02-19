@@ -884,9 +884,10 @@ fn process_membership_entry(
     // For 'm' entries, the third field is actually a group name, not a numeric ID.
     // We handle this by checking if the user:group was in the name field first.
     if user.contains(':')
-        && let Some((u, g)) = user.split_once(':') {
-            return add_user_to_group(u, g, root, dry_run, verbose);
-        }
+        && let Some((u, g)) = user.split_once(':')
+    {
+        return add_user_to_group(u, g, root, dry_run, verbose);
+    }
 
     // Otherwise, the group name was parsed as an ID. Since IdSpec::Automatic
     // means "-", and anything else means we couldn't parse it as ID,
@@ -991,9 +992,10 @@ fn run() -> u8 {
                 &cli.root,
                 cli.dry_run,
                 verbose,
-            ) {
-                any_failed = true;
-            }
+            )
+        {
+            any_failed = true;
+        }
     }
 
     // Phase 2: Create groups
@@ -1006,9 +1008,10 @@ fn run() -> u8 {
                 &cli.root,
                 cli.dry_run,
                 verbose,
-            ) {
-                any_failed = true;
-            }
+            )
+        {
+            any_failed = true;
+        }
     }
 
     // Phase 3: Create users (and their primary groups)
@@ -1021,17 +1024,19 @@ fn run() -> u8 {
                 &cli.root,
                 cli.dry_run,
                 verbose,
-            ) {
-                any_failed = true;
-            }
+            )
+        {
+            any_failed = true;
+        }
     }
 
     // Phase 4: Add memberships
     for entry in &all_entries {
         if entry.entry_type == EntryType::AddToGroup
-            && !process_membership_entry(entry, &cli.root, cli.dry_run, verbose) {
-                any_failed = true;
-            }
+            && !process_membership_entry(entry, &cli.root, cli.dry_run, verbose)
+        {
+            any_failed = true;
+        }
     }
 
     if any_failed {

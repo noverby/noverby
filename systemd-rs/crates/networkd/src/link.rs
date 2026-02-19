@@ -1077,15 +1077,16 @@ pub fn flush_routes(ifindex: u32) -> io::Result<()> {
     let routes = list_routes()?;
     for route in routes {
         if route.oif == Some(ifindex)
-            && let Err(e) = del_route(route.destination, route.dst_len, route.gateway, ifindex) {
-                log::warn!(
-                    "Failed to remove route {} via {:?} on ifindex {}: {}",
-                    route.destination,
-                    route.gateway,
-                    ifindex,
-                    e
-                );
-            }
+            && let Err(e) = del_route(route.destination, route.dst_len, route.gateway, ifindex)
+        {
+            log::warn!(
+                "Failed to remove route {} via {:?} on ifindex {}: {}",
+                route.destination,
+                route.gateway,
+                ifindex,
+                e
+            );
+        }
     }
     Ok(())
 }

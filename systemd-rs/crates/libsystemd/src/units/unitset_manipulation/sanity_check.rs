@@ -217,12 +217,13 @@ fn find_cycle_dfs(
     let unit = unit_table.get(id).unwrap();
     for next_id in &unit.common.dependencies.before {
         // Only follow edges to units that exist and are unfinished
-        if not_finished_ids.contains(next_id) && unit_table.contains_key(next_id)
+        if not_finished_ids.contains(next_id)
+            && unit_table.contains_key(next_id)
             && let Some(cycle) =
                 find_cycle_dfs(next_id, unit_table, not_finished_ids, visited, visited_set)
-            {
-                return Some(cycle);
-            }
+        {
+            return Some(cycle);
+        }
     }
 
     visited.pop();

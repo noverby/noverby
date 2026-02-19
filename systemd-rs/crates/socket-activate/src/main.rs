@@ -163,13 +163,14 @@ fn create_socket(addr: &str, datagram: bool, backlog: i32) -> io::Result<Listeni
     // Try resolving as hostname:port
     use std::net::ToSocketAddrs;
     if let Ok(mut addrs) = addr.to_socket_addrs()
-        && let Some(sock_addr) = addrs.next() {
-            return if datagram {
-                create_udp_socket(&sock_addr, addr)
-            } else {
-                create_tcp_socket(&sock_addr, addr, backlog)
-            };
-        }
+        && let Some(sock_addr) = addrs.next()
+    {
+        return if datagram {
+            create_udp_socket(&sock_addr, addr)
+        } else {
+            create_tcp_socket(&sock_addr, addr, backlog)
+        };
+    }
 
     Err(io::Error::new(
         io::ErrorKind::InvalidInput,
