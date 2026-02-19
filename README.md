@@ -521,6 +521,7 @@
 | 🚧 | Compiler Framework | [Mlir 💣](https://github.com/llvm/llvm-project/tree/main/mlir), [LLVM 💣](https://github.com/llvm/llvm-project) | [Cranelift 🦀](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift) | ⬅️ | |
 | 🚧 | Linker | [Mold 💣](https://github.com/rui314/mold) | [Wild 🦀](https://github.com/davidlattimore/wild) | ⬅️ | [GNU ld 💣](https://sourceware.org/binutils) |
 | ✅ | Formatter | [Rustfmt 🦀](https://github.com/rust-lang/rustfmt) | | | |
+| ✅ | Language Server | [Rust-analyzer 🦀](https://github.com/rust-lang/rust-analyzer) | | | |
 
 </details>
 
@@ -536,6 +537,7 @@
 | ✅ | Formatter | [Biome 🦀](https://github.com/biomejs/biome) | | 🆗 | [Prettier 🐒](https://github.com/prettier/prettier) |
 | 🚧 | ECMAScript Typechecker | [TypeScript 🐒](https://github.com/microsoft/typescript) | [Ezno 🦀](https://github.com/kaleidawave/ezno), [TypeScript Go 🐹](https://github.com/microsoft/typescript-go) | 🆗 | |
 | ✅ | Certificate Generation | [Rcgen 🦀](https://github.com/rustls/rcgen) | | 🆗 | [Mkcert 🐹](https://github.com/FiloSottile/mkcert) |
+| 🚧 | Language Server | [TypeScript 🐒](https://github.com/microsoft/TypeScript) | [TypeScript Go 🐹](https://github.com/microsoft/typescript-go) | 🆗 | |
 
 </details>
 
@@ -553,6 +555,7 @@
 | ✅ | Linter | [Ruff 🦀](https://github.com/astral-sh/ruff) | | 🆗 | [Flake8 🐍](https://github.com/PyCQA/flake8) |
 | ✅ | Type Checker | [Ty 🦀](https://github.com/astral-sh/ty) | | 🆗 | [Mypy 🐍](https://github.com/python/mypy) |
 | ✅ | Profiler | [Py-spy 🦀](https://github.com/benfred/py-spy) | | 🆗 | [Yappi](https://github.com/sumerc/yappi) |
+| ✅ | Language Server | [Ty 🦀](https://github.com/astral-sh/ty) | | 🆗 | [Pyright 🐒](https://github.com/microsoft/pyright) |
 
 </details>
 
