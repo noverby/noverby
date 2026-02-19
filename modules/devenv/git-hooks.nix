@@ -9,6 +9,7 @@
       deadnix.enable = true;
       ripsecrets.enable = true;
       statix.enable = true;
+      taplo.enable = true;
       typos.enable = true;
       rustfmt = {
         enable = true;
