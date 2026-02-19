@@ -9,12 +9,6 @@
     configs
   ];
 
-  languages = {
-    rust = {
-      enable = true;
-    };
-  };
-
   packages = with pkgs; [
     # IDE
     harper
