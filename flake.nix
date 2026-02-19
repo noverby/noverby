@@ -147,7 +147,7 @@
   outputs = inputs:
     inputs.flakelight ./. {
       inherit inputs;
-      nixDir = ./config;
+      nixDir = ./.;
       nixpkgs.config = {
         allowUnfree = true;
       };
@@ -169,14 +169,15 @@
         ./slides
       ];
       nixDirAliases = {
-        flakelightModules = ["modules/flakelight"];
-        nixosConfigurations = ["configurations/nixos"];
-        nixosModules = ["modules/nixos" "modules/nixos/hardware" "modules/nixos/desktop"];
-        homeConfigurations = ["configurations/home-manager"];
-        homeModules = ["modules/home-manager" "modules/home-manager/users" "modules/home-manager/desktop"];
-        devenvConfigurations = ["configurations/devenv"];
-        devenvModules = ["modules/devenv"];
-        withOverlays = ["with-overlays"];
+        packages = ["config/packages"];
+        flakelightModules = ["config/modules/flakelight"];
+        nixosConfigurations = ["config/configurations/nixos"];
+        nixosModules = ["config/modules/nixos" "config/modules/nixos/hardware" "config/modules/nixos/desktop"];
+        homeConfigurations = ["config/configurations/home-manager"];
+        homeModules = ["config/modules/home-manager" "config/modules/home-manager/users" "config/modules/home-manager/desktop"];
+        devenvConfigurations = ["config/configurations/devenv"];
+        devenvModules = ["config/modules/devenv"];
+        withOverlays = ["config/with-overlays"];
       };
     };
 }
