@@ -26,7 +26,7 @@
   - [❄️ Nix](#-nix)
   - [🦀 Rust](#-rust)
   - [🌐 Web](#-web)
-  - [🐍 Python](#-python)
+  - [🐍 Scripting](#-scripting)
 - [📱 Applications](#-applications)
   - [💻 Command Line](#-command-line)
   - [🖥️ Desktop Environment](#-desktop-environment)
@@ -538,7 +538,7 @@
 
 </details>
 
-### 🐍 Python
+### 🐍 Scripting
 
 [⬆](#toc)
 
