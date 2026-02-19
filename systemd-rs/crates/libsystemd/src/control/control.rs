@@ -81,6 +81,10 @@ pub enum Command {
     HybridSleep,
     /// `suspend-then-hibernate` — suspend first, then hibernate after a delay.
     SuspendThenHibernate,
+    /// `list-timers` — list active timer units with next elapse times.
+    ListTimers,
+    /// `set-property <unit> <property>=<value>...` — set runtime properties (no-op for now).
+    SetProperty(String, Vec<String>),
 }
 
 #[derive(Debug)]
@@ -425,6 +429,26 @@ fn parse_command(call: &super::jsonrpc2::Call) -> Result<Command, ParseError> {
             };
             Command::Unmask(names)
         }
+        "list-timers" => Command::ListTimers,
+        "set-property" => {
+            // set-property <unit> <prop=val>...
+            match &call.params {
+                Some(Value::String(s)) => Command::SetProperty(s.clone(), vec![]),
+                Some(Value::Array(arr)) if !arr.is_empty() => {
+                    let name = arr[0].as_str().unwrap_or("").to_owned();
+                    let props = arr[1..]
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_owned()))
+                        .collect();
+                    Command::SetProperty(name, props)
+                }
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "set-property requires a unit name".to_string(),
+                    ));
+                }
+            }
+        }
         _ => {
             return Err(ParseError::MethodNotFound(format!(
                 "Unknown method: {}",
@@ -434,6 +458,32 @@ fn parse_command(call: &super::jsonrpc2::Call) -> Result<Command, ParseError> {
     };
 
     Ok(command)
+}
+
+/// Format a Duration as a human-readable string (e.g. "1h 30min", "15min", "2s").
+fn format_duration(d: &std::time::Duration) -> String {
+    let total_secs = d.as_secs();
+    if total_secs == 0 {
+        return "0".into();
+    }
+    let mut parts = Vec::new();
+    let days = total_secs / 86400;
+    let hours = (total_secs % 86400) / 3600;
+    let mins = (total_secs % 3600) / 60;
+    let secs = total_secs % 60;
+    if days > 0 {
+        parts.push(format!("{days}d"));
+    }
+    if hours > 0 {
+        parts.push(format!("{hours}h"));
+    }
+    if mins > 0 {
+        parts.push(format!("{mins}min"));
+    }
+    if secs > 0 {
+        parts.push(format!("{secs}s"));
+    }
+    parts.join(" ")
 }
 
 pub fn format_socket(socket_unit: &Unit, status: UnitStatus) -> Value {
@@ -788,6 +838,63 @@ pub fn execute_command(
             // NixOS activation scripts call `systemctl disable`.
             let disabled: Vec<Value> = names.into_iter().map(Value::String).collect();
             return Ok(serde_json::json!({ "disabled": disabled }));
+        }
+        Command::SetProperty(unit_name, props) => {
+            // No-op for now — real systemd sets runtime properties on units
+            // (e.g. CPUWeight=, MemoryMax=). We silently succeed to prevent
+            // "Unknown method" errors from systemd-run --scope and NixOS
+            // switch-to-configuration.
+            log::debug!("set-property {}: {:?} (no-op)", unit_name, props);
+            return Ok(serde_json::json!(null));
+        }
+        Command::ListTimers => {
+            let ri = run_info.read_poisoned();
+            let mut timers: Vec<Value> = Vec::new();
+            for unit in ri.unit_table.values() {
+                if let Specific::Timer(timer_specific) = &unit.specific {
+                    let status = unit.common.status.read_poisoned().clone();
+                    let active = matches!(status, UnitStatus::Started(_));
+                    let conf = &timer_specific.conf;
+                    let target = &conf.unit;
+
+                    // Build a description of when the timer fires
+                    let mut triggers = Vec::new();
+                    for d in &conf.on_boot_sec {
+                        triggers.push(format!("OnBootSec={}", format_duration(d)));
+                    }
+                    for d in &conf.on_startup_sec {
+                        triggers.push(format!("OnStartupSec={}", format_duration(d)));
+                    }
+                    for d in &conf.on_active_sec {
+                        triggers.push(format!("OnActiveSec={}", format_duration(d)));
+                    }
+                    for d in &conf.on_unit_active_sec {
+                        triggers.push(format!("OnUnitActiveSec={}", format_duration(d)));
+                    }
+                    for d in &conf.on_unit_inactive_sec {
+                        triggers.push(format!("OnUnitInactiveSec={}", format_duration(d)));
+                    }
+                    for expr in &conf.on_calendar {
+                        triggers.push(format!("OnCalendar={}", expr));
+                    }
+
+                    timers.push(serde_json::json!({
+                        "UNIT": unit.id.name,
+                        "ACTIVATES": target,
+                        "ACTIVE": if active { "active" } else { "inactive" },
+                        "TRIGGERS": triggers.join("; "),
+                        "PERSISTENT": conf.persistent,
+                    }));
+                }
+            }
+            // Sort by unit name
+            timers.sort_by(|a, b| {
+                a.get("UNIT")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .cmp(b.get("UNIT").and_then(|v| v.as_str()).unwrap_or(""))
+            });
+            return Ok(Value::Array(timers));
         }
         Command::ResetFailed(unit_name) => {
             let ri = run_info.read_poisoned();
@@ -1255,9 +1362,10 @@ pub fn execute_command(
                         match unit.specific {
                             Specific::Socket(_) => format_socket(unit, status),
                             Specific::Service(_) => format_service(unit, status),
-                            Specific::Target(_) | Specific::Slice(_) | Specific::Mount(_) => {
-                                format_target(unit, status)
-                            }
+                            Specific::Target(_)
+                            | Specific::Slice(_)
+                            | Specific::Mount(_)
+                            | Specific::Timer(_) => format_target(unit, status),
                         }
                     })
                     .collect();

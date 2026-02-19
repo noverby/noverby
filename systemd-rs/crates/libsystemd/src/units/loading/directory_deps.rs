@@ -620,6 +620,8 @@ pub fn insert_parsed_unit(
     parsed_file: ParsedFile,
     path: &PathBuf,
 ) {
+    use crate::units::parse_timer;
+
     let path_str = path.to_str().unwrap_or("");
 
     if path_str.ends_with(".service") {
@@ -682,6 +684,20 @@ pub fn insert_parsed_unit(
             }
             Err(e) => {
                 warn!("Skipping mount {:?}: {:?}", path, e);
+            }
+        }
+    } else if path_str.ends_with(".timer") {
+        trace!("Timer found: {:?}", path);
+        match parse_timer(parsed_file, path).and_then(|parsed| {
+            TryInto::<Unit>::try_into(parsed).map_err(ParsingErrorReason::Generic)
+        }) {
+            Ok(unit) => {
+                // Timer units are stored in the targets table (which serves as
+                // the catch-all for simple unit types like target/slice/timer)
+                targets.insert(unit.id.clone(), unit);
+            }
+            Err(e) => {
+                warn!("Skipping timer {:?}: {:?}", path, e);
             }
         }
     }

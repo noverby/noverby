@@ -39,6 +39,7 @@ pub enum Specific {
     Target(TargetSpecific),
     Slice(SliceSpecific),
     Mount(MountSpecific),
+    Timer(TimerSpecific),
 }
 
 pub struct ServiceSpecific {
@@ -349,6 +350,11 @@ pub struct MountSpecific {
     pub state: RwLock<MountState>,
 }
 
+pub struct TimerSpecific {
+    pub conf: TimerConfig,
+    pub state: RwLock<TimerState>,
+}
+
 #[derive(Default)]
 /// All units have some common mutable state
 pub struct CommonState {
@@ -373,6 +379,39 @@ pub struct SliceState {
 
 pub struct MountState {
     pub common: CommonState,
+}
+
+pub struct TimerState {
+    pub common: CommonState,
+}
+
+/// Configuration for a `.timer` unit, derived from the parsed `[Timer]` section.
+#[derive(Debug, Clone)]
+pub struct TimerConfig {
+    /// OnActiveSec= — relative to the time the timer unit itself is activated.
+    pub on_active_sec: Vec<std::time::Duration>,
+    /// OnBootSec= — relative to when the machine was booted up.
+    pub on_boot_sec: Vec<std::time::Duration>,
+    /// OnStartupSec= — relative to when the service manager was first started.
+    pub on_startup_sec: Vec<std::time::Duration>,
+    /// OnUnitActiveSec= — relative to when the unit the timer activates was last activated.
+    pub on_unit_active_sec: Vec<std::time::Duration>,
+    /// OnUnitInactiveSec= — relative to when the unit the timer activates was last deactivated.
+    pub on_unit_inactive_sec: Vec<std::time::Duration>,
+    /// OnCalendar= — calendar event expressions (stored as raw strings for now).
+    pub on_calendar: Vec<String>,
+    /// AccuracySec= — accuracy of the timer.
+    pub accuracy_sec: std::time::Duration,
+    /// RandomizedDelaySec= — random delay added on top of the timer.
+    pub randomized_delay_sec: std::time::Duration,
+    /// Persistent= — if true, missed runs are triggered immediately on boot.
+    pub persistent: bool,
+    /// WakeSystem= — if true, wake the system from suspend to fire the timer.
+    pub wake_system: bool,
+    /// RemainAfterElapse= — if true, timer stays loaded after elapsing (default true).
+    pub remain_after_elapse: bool,
+    /// Unit= — the unit to activate when the timer elapses (defaults to same-name .service).
+    pub unit: String,
 }
 
 /// Configuration for a `.mount` unit, derived from the parsed `[Mount]` section.
@@ -431,6 +470,7 @@ enum LockedState<'a> {
     Target(std::sync::RwLockWriteGuard<'a, TargetState>),
     Slice(std::sync::RwLockWriteGuard<'a, SliceState>),
     Mount(std::sync::RwLockWriteGuard<'a, MountState>, &'a MountConfig),
+    Timer(std::sync::RwLockWriteGuard<'a, TimerState>, &'a TimerConfig),
 }
 
 impl Unit {
@@ -608,6 +648,9 @@ impl Unit {
             Specific::Mount(specific) => {
                 LockedState::Mount(specific.state.write_poisoned(), &specific.conf)
             }
+            Specific::Timer(specific) => {
+                LockedState::Timer(specific.state.write_poisoned(), &specific.conf)
+            }
         };
 
         {
@@ -679,6 +722,17 @@ impl Unit {
                 state.activate(&self.id, conf, &self.common.status, run_info, source)
             }
             LockedState::Mount(_, conf) => activate_mount(&self.id, conf, &self.common.status),
+            LockedState::Timer(_, _) => {
+                // Timer units are "started" by marking them as running.
+                // The actual scheduling is handled by the timer thread.
+                let mut status = self.common.status.write_poisoned();
+                if status.is_started() {
+                    return Ok(status.clone());
+                }
+                *status = UnitStatus::Started(StatusStarted::Running);
+                trace!("Started timer {}", self.id.name);
+                Ok(UnitStatus::Started(StatusStarted::Running))
+            }
         }
     }
 
@@ -696,6 +750,9 @@ impl Unit {
             Specific::Slice(specific) => LockedState::Slice(specific.state.write_poisoned()),
             Specific::Mount(specific) => {
                 LockedState::Mount(specific.state.write_poisoned(), &specific.conf)
+            }
+            Specific::Timer(specific) => {
+                LockedState::Timer(specific.state.write_poisoned(), &specific.conf)
             }
         };
 
@@ -736,6 +793,11 @@ impl Unit {
                 state.deactivate(&self.id, conf, &self.common.status, run_info)
             }
             LockedState::Mount(_, conf) => deactivate_mount(&self.id, conf, &self.common.status),
+            LockedState::Timer(_, _) => {
+                let mut status = self.common.status.write_poisoned();
+                *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
+                Ok(())
+            }
         }
     }
 
@@ -761,6 +823,9 @@ impl Unit {
             Specific::Slice(specific) => LockedState::Slice(specific.state.write_poisoned()),
             Specific::Mount(specific) => {
                 LockedState::Mount(specific.state.write_poisoned(), &specific.conf)
+            }
+            Specific::Timer(specific) => {
+                LockedState::Timer(specific.state.write_poisoned(), &specific.conf)
             }
         };
 
@@ -796,6 +861,11 @@ impl Unit {
                     deactivate_mount(&self.id, conf, &self.common.status).ok();
                     activate_mount(&self.id, conf, &self.common.status).map(|_| ())
                 }
+                LockedState::Timer(_, _) => {
+                    let mut status = self.common.status.write_poisoned();
+                    *status = UnitStatus::Started(StatusStarted::Running);
+                    Ok(())
+                }
             }
         } else {
             match state {
@@ -818,6 +888,11 @@ impl Unit {
                 }
                 LockedState::Mount(_, conf) => {
                     activate_mount(&self.id, conf, &self.common.status).map(|_| ())
+                }
+                LockedState::Timer(_, _) => {
+                    let mut status = self.common.status.write_poisoned();
+                    *status = UnitStatus::Started(StatusStarted::Running);
+                    Ok(())
                 }
             }
         }

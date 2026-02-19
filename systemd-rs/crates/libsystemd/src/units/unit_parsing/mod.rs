@@ -3,6 +3,7 @@ mod service_unit;
 mod slice_unit;
 mod socket_unit;
 mod target_unit;
+mod timer_unit;
 mod unit_parser;
 
 pub use mount_unit::*;
@@ -10,6 +11,7 @@ pub use service_unit::*;
 pub use slice_unit::*;
 pub use socket_unit::*;
 pub use target_unit::*;
+pub use timer_unit::*;
 pub use unit_parser::*;
 
 use log::trace;
@@ -35,6 +37,42 @@ pub struct ParsedTargetConfig {
 }
 pub struct ParsedSliceConfig {
     pub common: ParsedCommonConfig,
+}
+
+pub struct ParsedTimerConfig {
+    pub common: ParsedCommonConfig,
+    pub timer: ParsedTimerSection,
+}
+
+/// Parsed [Timer] section from a `.timer` unit file.
+#[derive(Clone, Debug, Default)]
+pub struct ParsedTimerSection {
+    /// OnActiveSec= — relative to the time the timer unit itself is activated.
+    pub on_active_sec: Vec<String>,
+    /// OnBootSec= — relative to when the machine was booted up.
+    pub on_boot_sec: Vec<String>,
+    /// OnStartupSec= — relative to when the service manager was first started.
+    pub on_startup_sec: Vec<String>,
+    /// OnUnitActiveSec= — relative to when the unit the timer activates was last activated.
+    pub on_unit_active_sec: Vec<String>,
+    /// OnUnitInactiveSec= — relative to when the unit the timer activates was last deactivated.
+    pub on_unit_inactive_sec: Vec<String>,
+    /// OnCalendar= — defines realtime (wallclock) calendar event expressions.
+    pub on_calendar: Vec<String>,
+    /// AccuracySec= — accuracy of the timer, default 1min.
+    pub accuracy_sec: Option<String>,
+    /// RandomizedDelaySec= — random delay added on top of the timer.
+    pub randomized_delay_sec: Option<String>,
+    /// FixedRandomDelay= — if true, the random delay is stable across reboots.
+    pub fixed_random_delay: bool,
+    /// Persistent= — if true, missed runs are triggered immediately on boot.
+    pub persistent: bool,
+    /// WakeSystem= — if true, wake the system from suspend to fire the timer.
+    pub wake_system: bool,
+    /// RemainAfterElapse= — if true, timer stays loaded after elapsing (default true).
+    pub remain_after_elapse: bool,
+    /// Unit= — the unit to activate when the timer elapses (defaults to same-name .service).
+    pub unit: Option<String>,
 }
 
 /// A parsed condition from the [Unit] section.

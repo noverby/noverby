@@ -275,11 +275,26 @@ fn main() {
         }
         // Sleep commands — pass through as-is to PID 1
         "suspend" | "hibernate" | "hybrid-sleep" | "suspend-then-hibernate" => &positional[0],
+        // Timer and property commands — pass through
+        "list-timers" | "set-property" => &positional[0],
         _ => &positional[0],
     };
 
     let method = command.clone();
-    let params = if method == "list-unit-files" {
+    let params = if method == "list-timers" {
+        // list-timers takes no parameters
+        None
+    } else if method == "set-property" {
+        // set-property <unit> <prop=val>...
+        if positional.len() < 2 {
+            if !quiet {
+                eprintln!("Error: set-property requires a unit name.");
+            }
+            std::process::exit(1);
+        }
+        let arr: Vec<Value> = positional[1..].iter().cloned().map(Value::String).collect();
+        Some(Value::Array(arr))
+    } else if method == "list-unit-files" {
         // list-unit-files [--type=TYPE] — optional type filter extracted from -t flag
         // Check if there's a type filter passed as a positional argument
         if positional.len() >= 2 {
@@ -546,8 +561,18 @@ fn handle_response(
         | "suspend"
         | "hibernate"
         | "hybrid-sleep"
-        | "suspend-then-hibernate" => {
+        | "suspend-then-hibernate"
+        | "set-property" => {
             // These return null on success — nothing to print.
+        }
+        "list-timers" => {
+            if let Some(result) = result {
+                if let Some(arr) = result.as_array() {
+                    if !quiet {
+                        format_timer_table(arr);
+                    }
+                }
+            }
         }
         "list-dependencies" => {
             if let Some(result) = result {
@@ -597,6 +622,29 @@ fn handle_response(
             }
         }
     }
+}
+
+fn format_timer_table(timers: &[Value]) {
+    if timers.is_empty() {
+        println!("0 timers listed.");
+        return;
+    }
+    // Print header
+    println!(
+        "{:<40} {:<8} {:<40} {}",
+        "UNIT", "ACTIVE", "ACTIVATES", "TRIGGERS"
+    );
+    for timer in timers {
+        let unit = timer.get("UNIT").and_then(|v| v.as_str()).unwrap_or("");
+        let active = timer.get("ACTIVE").and_then(|v| v.as_str()).unwrap_or("");
+        let activates = timer
+            .get("ACTIVATES")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let triggers = timer.get("TRIGGERS").and_then(|v| v.as_str()).unwrap_or("");
+        println!("{:<40} {:<8} {:<40} {}", unit, active, activates, triggers);
+    }
+    println!("\n{} timers listed.", timers.len());
 }
 
 fn print_help() {

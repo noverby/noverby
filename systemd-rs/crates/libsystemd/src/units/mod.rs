@@ -1,6 +1,6 @@
 //! The different parts of unit handling: parsing and activating
 
-mod from_parsed_config;
+pub(crate) mod from_parsed_config;
 mod id;
 mod loading;
 mod status;

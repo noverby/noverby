@@ -87,6 +87,29 @@ pub fn collect_properties(unit: &Unit) -> BTreeMap<String, String> {
         Specific::Mount(mnt) => {
             insert_mount_config(&mut props, &mnt.conf);
         }
+        Specific::Timer(tmr) => {
+            // Timer-specific properties
+            insert(&mut props, "Unit", &tmr.conf.unit);
+            insert(
+                &mut props,
+                "Persistent",
+                if tmr.conf.persistent { "yes" } else { "no" },
+            );
+            insert(
+                &mut props,
+                "RemainAfterElapse",
+                if tmr.conf.remain_after_elapse {
+                    "yes"
+                } else {
+                    "no"
+                },
+            );
+            insert(
+                &mut props,
+                "WakeSystem",
+                if tmr.conf.wake_system { "yes" } else { "no" },
+            );
+        }
     }
 
     // ── LoadState / UnitFileState (synthetic) ─────────────────────────
