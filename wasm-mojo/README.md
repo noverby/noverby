@@ -51,6 +51,12 @@ Build the WASM binary:
 just build
 ```
 
+Run the tests (requires Deno):
+
+```sh
+just test
+```
+
 Start the dev server:
 
 ```sh

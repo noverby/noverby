@@ -3,6 +3,7 @@
   enterShell = ''
     ln -sf ${./biome-nix.jsonc} biome.jsonc
     ln -sf ${./deno.jsonc} deno.jsonc
+    ln -sf ${./lychee.toml} lychee.toml
     ln -sf ${./rumdl.toml} rumdl.toml
     ln -sf ${./typos.toml} typos.toml
     ln -sf ${./commitlintrc.yml} .commitlintrc.yml
