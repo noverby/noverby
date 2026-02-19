@@ -59,5 +59,7 @@ members = [
   "crates/firstboot",
   "crates/sysext",
   "crates/dissect",
+  "crates/portabled",
+  "crates/portablectl",
 ]
 resolver = "2"

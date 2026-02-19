@@ -60,7 +60,7 @@
         withLocaled = true;
         withMachined = false;
         withNetworkd = true;
-        withPortabled = false;
+        withPortabled = true;
         withSysupdate = false;
         withTimedated = false;
         withTpm2Tss = false;
