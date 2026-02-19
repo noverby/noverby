@@ -684,6 +684,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "portablectl"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+ "tempfile",
+]
+
+[[package]]
 name = "prettyplease"
 version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1184,6 +1193,15 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "libc",
+]
+
+[[package]]
+name = "systemd-portabled"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+ "tempfile",
 ]
 
 [[package]]

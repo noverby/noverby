@@ -287,9 +287,10 @@ impl MachineRegistry {
                 continue;
             }
             if let Ok(content) = fs::read_to_string(&path)
-                && let Some(machine) = Machine::from_state_file(&content) {
-                    self.machines.insert(machine.name.clone(), machine);
-                }
+                && let Some(machine) = Machine::from_state_file(&content)
+            {
+                self.machines.insert(machine.name.clone(), machine);
+            }
         }
     }
 
@@ -479,9 +480,10 @@ fn parse_env_content(content: &str) -> BTreeMap<String, String> {
             // Strip surrounding quotes
             if ((value.starts_with('"') && value.ends_with('"'))
                 || (value.starts_with('\'') && value.ends_with('\'')))
-                && value.len() >= 2 {
-                    value = value[1..value.len() - 1].to_string();
-                }
+                && value.len() >= 2
+            {
+                value = value[1..value.len() - 1].to_string();
+            }
             map.insert(key.to_string(), value);
         }
     }
@@ -823,10 +825,11 @@ fn main() {
                     break;
                 }
                 if let Some(ref iv) = wd_interval
-                    && last_watchdog.elapsed() >= *iv {
-                        sd_notify("WATCHDOG=1");
-                        last_watchdog = Instant::now();
-                    }
+                    && last_watchdog.elapsed() >= *iv
+                {
+                    sd_notify("WATCHDOG=1");
+                    last_watchdog = Instant::now();
+                }
                 thread::sleep(Duration::from_secs(1));
             }
             sd_notify("STOPPING=1");
@@ -879,10 +882,11 @@ fn main() {
 
         // Watchdog keepalive
         if let Some(ref iv) = wd_interval
-            && last_watchdog.elapsed() >= *iv {
-                sd_notify("WATCHDOG=1");
-                last_watchdog = Instant::now();
-            }
+            && last_watchdog.elapsed() >= *iv
+        {
+            sd_notify("WATCHDOG=1");
+            last_watchdog = Instant::now();
+        }
 
         match listener.accept() {
             Ok((mut stream, _addr)) => {
