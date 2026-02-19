@@ -12,6 +12,13 @@
       statix.enable = true;
       taplo.enable = true;
       typos.enable = true;
+      mojo-format = {
+        enable = true;
+        name = "mojo-format";
+        entry = "${pkgs.mojo}/bin/mojo format";
+        files = "\\.mojo$";
+        pass_filenames = true;
+      };
       lychee = let
         lychee = pkgs.writeShellScriptBin "lychee" ''
           token=$(${pkgs.gh}/bin/gh auth token 2>/dev/null || true)
