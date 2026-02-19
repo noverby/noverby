@@ -18,6 +18,9 @@
 //!   is-active               → checks unit state, exits 0 if active, 3 if not
 //!   is-enabled              → checks unit enablement
 //!   is-failed               → checks if unit is in failed state
+//!   list-dependencies       → show dependency tree for a unit
+//!   mask                    → symlink unit files to /dev/null
+//!   unmask                  → remove /dev/null symlinks for units
 
 use serde_json::Value;
 use std::io::Write;
@@ -198,6 +201,17 @@ fn main() {
         std::process::exit(1);
     }
 
+    // Extract --reverse flag for list-dependencies
+    let mut reverse = false;
+    positional.retain(|arg| {
+        if arg == "--reverse" {
+            reverse = true;
+            false
+        } else {
+            true
+        }
+    });
+
     // Map command aliases.
     let command = match positional[0].as_str() {
         "poweroff" | "reboot" | "halt" | "kexec" => {
@@ -220,7 +234,33 @@ fn main() {
     };
 
     let method = command.clone();
-    let params = if method == "show" {
+    let params = if method == "list-dependencies" {
+        // list-dependencies <unit> [--reverse]
+        if positional.len() < 2 {
+            if !quiet {
+                eprintln!("Error: list-dependencies requires a unit name.");
+            }
+            std::process::exit(1);
+        }
+        let mut arr = vec![Value::String(positional[1].clone())];
+        if reverse {
+            arr.push(Value::String("--reverse".to_owned()));
+        }
+        Some(Value::Array(arr))
+    } else if method == "mask" || method == "unmask" {
+        // mask/unmask <unit>...
+        if positional.len() < 2 {
+            if !quiet {
+                eprintln!("Error: {} requires at least one unit name.", method);
+            }
+            std::process::exit(1);
+        }
+        if positional.len() == 2 {
+            Some(Value::String(positional[1].clone()))
+        } else {
+            Some(positional[1..].iter().cloned().map(Value::String).collect())
+        }
+    } else if method == "show" {
         // show <unit> [property-filter...] — send unit name + optional filter
         if positional.len() < 2 {
             if !quiet {
@@ -384,6 +424,41 @@ fn handle_response(
                 }
             }
         }
+        "list-dependencies" => {
+            if let Some(result) = result {
+                if let Some(text) = result.get("list-dependencies").and_then(|v| v.as_str()) {
+                    if !quiet {
+                        print!("{text}");
+                    }
+                }
+            }
+        }
+        "mask" => {
+            if let Some(result) = result {
+                if let Some(arr) = result.get("masked").and_then(|v| v.as_array()) {
+                    if !quiet {
+                        for name in arr {
+                            if let Some(s) = name.as_str() {
+                                println!("Created symlink /etc/systemd/system/{s} → /dev/null.");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "unmask" => {
+            if let Some(result) = result {
+                if let Some(arr) = result.get("unmasked").and_then(|v| v.as_array()) {
+                    if !quiet {
+                        for name in arr {
+                            if let Some(s) = name.as_str() {
+                                println!("Removed /etc/systemd/system/{s}.");
+                            }
+                        }
+                    }
+                }
+            }
+        }
         _ => {
             // For all other commands, print the result if non-null and non-empty.
             if !quiet {
@@ -413,6 +488,7 @@ path or TCP address as the first positional argument.
 
 Commands:
     list-units                  List all loaded units
+    list-dependencies <unit>    Show dependency tree for a unit
     status <unit>               Show status of a unit
     show <unit>                 Show properties of a unit (key=value format)
     cat <unit>                  Show the unit file source
@@ -425,6 +501,8 @@ Commands:
     is-enabled <unit>           Check if a unit is enabled
     is-failed <unit>            Check if a unit is in failed state
     enable <unit>               Enable (load) a unit
+    mask <unit>...              Mask (symlink to /dev/null) one or more units
+    unmask <unit>...            Unmask (remove /dev/null symlinks) one or more units
     daemon-reload               Reload the service manager configuration
     poweroff                    Power off the system
     reboot                      Reboot the system
@@ -442,6 +520,7 @@ Options:
     --system                    Connect to system manager (default)
     --full, -l                  Show full unit names and descriptions
     --all, -a                   Show all units, including inactive
+    --reverse                   Show reverse dependencies (for list-dependencies)
     -t, --type <TYPE>           Filter by unit type
     -p, --property <PROP>       Show only specified property (for show)
     --value                     Show only property values (with -p)
@@ -457,7 +536,11 @@ Examples:
     systemctl cat sshd.service
     systemctl restart nginx.service
     systemctl --no-block try-restart nscd.service
-    systemctl is-active sshd.service"
+    systemctl is-active sshd.service
+    systemctl list-dependencies multi-user.target
+    systemctl list-dependencies --reverse sshd.service
+    systemctl mask tmp.mount
+    systemctl unmask tmp.mount"
     );
 }
 
