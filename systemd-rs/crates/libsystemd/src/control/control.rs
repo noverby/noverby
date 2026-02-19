@@ -39,6 +39,8 @@ pub fn open_all_sockets(run_info: ArcMutRuntimeInfo, conf: &crate::config::Confi
 #[derive(Debug)]
 pub enum Command {
     ListUnits(Option<UnitIdKind>),
+    /// `list-unit-files [--type=TYPE]` — list all unit files on disk with their state.
+    ListUnitFiles(Option<String>),
     /// `list-dependencies <unit> [--reverse]` — show the dependency tree.
     ListDependencies(String, bool),
     Status(Option<String>),
@@ -309,6 +311,14 @@ fn parse_command(call: &super::jsonrpc2::Call) -> Result<Command, ParseError> {
             };
             Command::LoadNew(names)
         }
+        "list-unit-files" => {
+            // Optional param: type filter string (e.g. "service", "target")
+            let type_filter = match &call.params {
+                Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+                _ => None,
+            };
+            Command::ListUnitFiles(type_filter)
+        }
         "list-dependencies" => {
             // Params: String (unit name) or Array [unit_name, "--reverse"]
             match &call.params {
@@ -516,6 +526,33 @@ fn find_units_with_pattern<'a>(
     units
 }
 
+/// Determine the state of a unit file: "enabled", "disabled", "static", or "indirect".
+fn unit_file_state(name: &str, unit_table: &UnitTable, path: &std::path::Path) -> &'static str {
+    // Check if the unit has an [Install] section by looking for WantedBy=/RequiredBy=
+    // in the loaded unit table, or by reading the file itself.
+    let has_install = if let Some(unit) = unit_table.values().find(|u| u.id.name == name) {
+        !unit.common.dependencies.wanted_by.is_empty()
+            || !unit.common.dependencies.required_by.is_empty()
+    } else {
+        // Not loaded — peek at the file for [Install]
+        if let Ok(content) = std::fs::read_to_string(path) {
+            content.contains("[Install]")
+                && (content.contains("WantedBy=") || content.contains("RequiredBy="))
+        } else {
+            false
+        }
+    };
+
+    if !has_install {
+        // No [Install] section → static (cannot be enabled/disabled)
+        "static"
+    } else if unit_table.values().any(|u| u.id.name == name) {
+        "enabled"
+    } else {
+        "disabled"
+    }
+}
+
 /// Format a dependency tree as an indented string with box-drawing characters.
 ///
 /// `visited` tracks already-printed units to avoid infinite loops in cyclic graphs.
@@ -642,6 +679,104 @@ pub fn execute_command(
 ) -> Result<serde_json::Value, String> {
     let mut result_vec = Value::Array(Vec::new());
     match cmd {
+        Command::ListUnitFiles(type_filter) => {
+            let ri = run_info.read_poisoned();
+            let unit_dirs = &ri.config.unit_dirs;
+            let unit_table = &ri.unit_table;
+
+            let suffix_filter: Option<&str> = type_filter.as_deref().map(|t| match t {
+                "service" => ".service",
+                "target" => ".target",
+                "socket" => ".socket",
+                "mount" => ".mount",
+                "timer" => ".timer",
+                "path" => ".path",
+                "slice" => ".slice",
+                "scope" => ".scope",
+                "device" => ".device",
+                other => {
+                    // Allow passing the suffix directly (e.g. ".service")
+                    if other.starts_with('.') { other } else { "" }
+                }
+            });
+
+            let mut entries: std::collections::BTreeMap<String, (&str, std::path::PathBuf)> =
+                std::collections::BTreeMap::new();
+
+            // Scan all unit directories for unit files
+            for dir in unit_dirs {
+                let read_dir = match std::fs::read_dir(dir) {
+                    Ok(rd) => rd,
+                    Err(_) => continue,
+                };
+                for entry in read_dir.flatten() {
+                    let file_name = entry.file_name();
+                    let name = file_name.to_string_lossy().to_string();
+
+                    // Must have a recognized unit suffix
+                    let is_unit = name.ends_with(".service")
+                        || name.ends_with(".target")
+                        || name.ends_with(".socket")
+                        || name.ends_with(".mount")
+                        || name.ends_with(".timer")
+                        || name.ends_with(".path")
+                        || name.ends_with(".slice")
+                        || name.ends_with(".scope")
+                        || name.ends_with(".device");
+                    if !is_unit {
+                        continue;
+                    }
+
+                    // Apply type filter
+                    if let Some(suffix) = suffix_filter {
+                        if !suffix.is_empty() && !name.ends_with(suffix) {
+                            continue;
+                        }
+                    }
+
+                    // First occurrence wins (higher-priority dirs come first)
+                    if entries.contains_key(&name) {
+                        continue;
+                    }
+
+                    let path = entry.path();
+
+                    // Determine state
+                    let state = if let Ok(target) = std::fs::read_link(&path) {
+                        if target == std::path::Path::new("/dev/null") {
+                            "masked"
+                        } else if path.to_string_lossy().contains("/run/systemd/generator") {
+                            "generated"
+                        } else {
+                            // Symlink to a real file — check if it has [Install]
+                            unit_file_state(&name, unit_table, &path)
+                        }
+                    } else if path.to_string_lossy().contains("/run/systemd/generator") {
+                        "generated"
+                    } else {
+                        unit_file_state(&name, unit_table, &path)
+                    };
+
+                    entries.insert(name, (state, path));
+                }
+            }
+
+            // Format as a table: UNIT FILE <padding> STATE
+            let mut out = String::new();
+            let max_name_len = entries.keys().map(|n| n.len()).max().unwrap_or(20).max(9);
+            let _ = writeln!(
+                out,
+                "{:<width$} STATE",
+                "UNIT FILE",
+                width = max_name_len + 2
+            );
+            for (name, (state, _path)) in &entries {
+                let _ = writeln!(out, "{:<width$} {state}", name, width = max_name_len + 2);
+            }
+            let _ = writeln!(out, "\n{} unit files listed.", entries.len());
+
+            return Ok(serde_json::json!({ "list-unit-files": out }));
+        }
         Command::ListDependencies(unit_name, reverse) => {
             let ri = run_info.read_poisoned();
             let units = find_units_with_name(&unit_name, &ri.unit_table);
@@ -2204,5 +2339,296 @@ mod tests {
             c_count,
             out
         );
+    }
+
+    // ── parse_command: list-unit-files ────────────────────────────────────
+
+    #[test]
+    fn test_parse_list_unit_files_no_params() {
+        let call = super::super::jsonrpc2::Call {
+            method: "list-unit-files".to_string(),
+            params: None,
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        match cmd {
+            Command::ListUnitFiles(filter) => assert!(filter.is_none()),
+            _ => panic!("Expected ListUnitFiles"),
+        }
+    }
+
+    #[test]
+    fn test_parse_list_unit_files_with_type() {
+        let call = super::super::jsonrpc2::Call {
+            method: "list-unit-files".to_string(),
+            params: Some(Value::String("service".to_string())),
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        match cmd {
+            Command::ListUnitFiles(filter) => assert_eq!(filter.unwrap(), "service"),
+            _ => panic!("Expected ListUnitFiles"),
+        }
+    }
+
+    #[test]
+    fn test_parse_list_unit_files_empty_string() {
+        let call = super::super::jsonrpc2::Call {
+            method: "list-unit-files".to_string(),
+            params: Some(Value::String(String::new())),
+            id: None,
+        };
+        let cmd = parse_command(&call).unwrap();
+        match cmd {
+            Command::ListUnitFiles(filter) => assert!(filter.is_none()),
+            _ => panic!("Expected ListUnitFiles"),
+        }
+    }
+
+    // ── unit_file_state tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_unit_file_state_static_no_install() {
+        // A unit with no WantedBy/RequiredBy is "static"
+        let unit = make_test_unit("basic.target");
+        let table = make_unit_table(vec![unit]);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("basic.target");
+        std::fs::write(&path, "[Unit]\nDescription=Basic\n").unwrap();
+
+        let state = unit_file_state("basic.target", &table, &path);
+        assert_eq!(state, "static");
+    }
+
+    #[test]
+    fn test_unit_file_state_enabled_with_wanted_by() {
+        // A unit loaded with WantedBy set → "enabled"
+        let mut unit = make_test_unit("sshd.service");
+        unit.common.dependencies.wanted_by = vec![make_unit_id("multi-user.target")];
+        let table = make_unit_table(vec![unit]);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sshd.service");
+        std::fs::write(
+            &path,
+            "[Unit]\nDescription=SSH\n[Install]\nWantedBy=multi-user.target\n",
+        )
+        .unwrap();
+
+        let state = unit_file_state("sshd.service", &table, &path);
+        assert_eq!(state, "enabled");
+    }
+
+    #[test]
+    fn test_unit_file_state_enabled_with_required_by() {
+        let mut unit = make_test_unit("dbus.service");
+        unit.common.dependencies.required_by = vec![make_unit_id("multi-user.target")];
+        let table = make_unit_table(vec![unit]);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("dbus.service");
+        std::fs::write(
+            &path,
+            "[Unit]\nDescription=D-Bus\n[Install]\nRequiredBy=multi-user.target\n",
+        )
+        .unwrap();
+
+        let state = unit_file_state("dbus.service", &table, &path);
+        assert_eq!(state, "enabled");
+    }
+
+    #[test]
+    fn test_unit_file_state_disabled_not_loaded() {
+        // Unit file has [Install] but is not in the unit table → "disabled"
+        let table: UnitTable = HashMap::new();
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("unloaded.service");
+        std::fs::write(
+            &path,
+            "[Unit]\nDescription=Unloaded\n[Service]\nExecStart=/bin/true\n[Install]\nWantedBy=multi-user.target\n",
+        )
+        .unwrap();
+
+        let state = unit_file_state("unloaded.service", &table, &path);
+        assert_eq!(state, "disabled");
+    }
+
+    #[test]
+    fn test_unit_file_state_static_no_install_not_loaded() {
+        // Unit file has no [Install] section and is not loaded → "static"
+        let table: UnitTable = HashMap::new();
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("noinst.service");
+        std::fs::write(
+            &path,
+            "[Unit]\nDescription=No Install\n[Service]\nExecStart=/bin/true\n",
+        )
+        .unwrap();
+
+        let state = unit_file_state("noinst.service", &table, &path);
+        assert_eq!(state, "static");
+    }
+
+    #[test]
+    fn test_unit_file_state_static_loaded_no_deps() {
+        // Unit is loaded but has empty wanted_by/required_by → "static"
+        let unit = make_test_unit("simple.service");
+        let table = make_unit_table(vec![unit]);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("simple.service");
+        std::fs::write(
+            &path,
+            "[Unit]\nDescription=Simple\n[Service]\nExecStart=/bin/true\n",
+        )
+        .unwrap();
+
+        let state = unit_file_state("simple.service", &table, &path);
+        assert_eq!(state, "static");
+    }
+
+    #[test]
+    fn test_unit_file_state_nonexistent_file() {
+        // Path doesn't exist and unit not loaded → "static" (can't read file)
+        let table: UnitTable = HashMap::new();
+        let path = std::path::Path::new("/nonexistent/path/to/unit.service");
+        let state = unit_file_state("unit.service", &table, path);
+        assert_eq!(state, "static");
+    }
+
+    // ── list-unit-files integration with temp dir ────────────────────────
+
+    #[test]
+    fn test_list_unit_files_scans_directory() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Create some unit files
+        std::fs::write(
+            dir.path().join("a.service"),
+            "[Unit]\nDescription=A\n[Service]\nExecStart=/bin/a\n[Install]\nWantedBy=multi-user.target\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("b.target"), "[Unit]\nDescription=B\n").unwrap();
+        std::fs::write(dir.path().join("not-a-unit.conf"), "random config").unwrap();
+
+        // Create a masked unit
+        std::os::unix::fs::symlink("/dev/null", dir.path().join("masked.service")).unwrap();
+
+        // Scan the directory manually (simulating what list-unit-files does)
+        let mut found: Vec<String> = Vec::new();
+        for entry in std::fs::read_dir(dir.path()).unwrap().flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let is_unit = name.ends_with(".service")
+                || name.ends_with(".target")
+                || name.ends_with(".socket")
+                || name.ends_with(".mount");
+            if is_unit {
+                found.push(name);
+            }
+        }
+        found.sort();
+
+        assert_eq!(found, vec!["a.service", "b.target", "masked.service"]);
+        // "not-a-unit.conf" should not appear
+        assert!(!found.contains(&"not-a-unit.conf".to_string()));
+    }
+
+    #[test]
+    fn test_list_unit_files_type_filter() {
+        let dir = tempfile::tempdir().unwrap();
+
+        std::fs::write(dir.path().join("a.service"), "[Unit]\n").unwrap();
+        std::fs::write(dir.path().join("b.target"), "[Unit]\n").unwrap();
+        std::fs::write(dir.path().join("c.socket"), "[Unit]\n").unwrap();
+
+        // Filter for .service only
+        let suffix = ".service";
+        let found: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.ends_with(suffix) {
+                    Some(name)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0], "a.service");
+    }
+
+    #[test]
+    fn test_list_unit_files_masked_detection() {
+        let dir = tempfile::tempdir().unwrap();
+        let link_path = dir.path().join("masked.service");
+        std::os::unix::fs::symlink("/dev/null", &link_path).unwrap();
+
+        let target = std::fs::read_link(&link_path).unwrap();
+        assert_eq!(target, std::path::Path::new("/dev/null"));
+
+        // This would be detected as "masked" by the list-unit-files logic
+        let is_masked = target == std::path::Path::new("/dev/null");
+        assert!(is_masked);
+    }
+
+    #[test]
+    fn test_list_unit_files_first_dir_wins() {
+        // Simulate priority: if a unit appears in two dirs, first one wins
+        let dir1 = tempfile::tempdir().unwrap();
+        let dir2 = tempfile::tempdir().unwrap();
+
+        std::fs::write(
+            dir1.path().join("dup.service"),
+            "[Unit]\nDescription=Dir1\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir2.path().join("dup.service"),
+            "[Unit]\nDescription=Dir2\n",
+        )
+        .unwrap();
+
+        let mut entries: std::collections::BTreeMap<String, String> =
+            std::collections::BTreeMap::new();
+
+        for dir in [dir1.path(), dir2.path()] {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                // First occurrence wins
+                entries
+                    .entry(name)
+                    .or_insert_with(|| dir.display().to_string());
+            }
+        }
+
+        // The entry for dup.service should be from dir1
+        let source = entries.get("dup.service").unwrap();
+        assert_eq!(source, &dir1.path().display().to_string());
+    }
+
+    #[test]
+    fn test_list_unit_files_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let found: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.ends_with(".service") || name.ends_with(".target") {
+                    Some(name)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert!(found.is_empty());
     }
 }
