@@ -1,5 +1,5 @@
+// Run `direnv reload` to apply changes to the repository.
 {
-	"$comment": "After editing config files in this directory, run `direnv reload` to apply changes to the repository.",
 	"$schema": "https://biomejs.dev/schemas/2.2.2/schema.json",
 	"files": {
 		"includes": [

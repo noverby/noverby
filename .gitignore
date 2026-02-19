@@ -23,8 +23,8 @@ flamegraph.svg
 
 # Configs
 /.zed
-/biome.json
-/deno.json
+/biome.jsonc
+/deno.jsonc
 /rumdl.toml
 /typos.toml
 /.commitlintrc.yml

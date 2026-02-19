@@ -1,4 +1,4 @@
-# After editing config files in this directory, run `direnv reload` to apply changes to the repository.
+# Run `direnv reload` to apply changes to the repository.
 
 [default]
 extend-ignore-re = [
