@@ -14,12 +14,43 @@ Mojo → LLVM IR → WASM Object → WASM Binary
 2. `llc` compiles the IR to a wasm64-wasi object file
 3. `wasm-ld` links the object into a `.wasm` binary
 
-The browser-side JavaScript runtime (`index.html`) provides the necessary environment stubs for the WASM module, including:
+The TypeScript runtime (`runtime/`) provides the necessary environment stubs for the WASM module, including:
 
 - **Memory management** — a bump allocator for `KGEN_CompilerRT_AlignedAlloc`/`AlignedFree`
 - **I/O** — `write` routed to `console.log`/`console.error` for stdout/stderr
 - **Math builtins** — `fma`, `fmin`, `fmax` and their float variants
 - **Libc stubs** — `dup`, `fdopen`, `fflush`, `fclose`, `__cxa_atexit`
+- **String ABI** — helpers for reading/writing Mojo `String` structs (including SSO)
+
+## Project structure
+
+```txt
+wasm-mojo/
+├── src/
+│   └── main.mojo              # Mojo source with all @export functions
+├── runtime/
+│   ├── mod.ts                 # Entry point — instantiate WASM + re-exports
+│   ├── types.ts               # WasmExports interface (typed WASM bindings)
+│   ├── memory.ts              # Bump allocator and WASM memory state
+│   ├── env.ts                 # Environment imports (I/O, math, libc stubs)
+│   └── strings.ts             # Mojo String ABI helpers (read/write/alloc)
+├── test/
+│   ├── run.ts                 # Test entry point — loads WASM, runs all suites
+│   ├── harness.ts             # Test harness (suite, assert, assertClose, summary)
+│   ├── arithmetic.test.ts     # add, sub, mul, div, mod, pow
+│   ├── unary.test.ts          # neg, abs
+│   ├── minmax.test.ts         # min, max, clamp
+│   ├── bitwise.test.ts        # bitand, bitor, bitxor, bitnot, shl, shr
+│   ├── comparison.test.ts     # eq, ne, lt, le, gt, ge, boolean logic
+│   ├── algorithms.test.ts     # fib, factorial, gcd
+│   ├── identity.test.ts       # identity / passthrough
+│   ├── print.test.ts          # print functions
+│   ├── strings.test.ts        # string I/O and operations
+│   └── consistency.test.ts    # cross-function consistency checks
+├── build/                     # Build output (generated)
+├── justfile                   # Build and test commands
+└── default.nix                # Nix dev shell definition
+```
 
 ## Exported Mojo functions
 
