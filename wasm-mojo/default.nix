@@ -4,6 +4,7 @@
       just
       mojo
       deno
+      wabt
       llvmPackages_latest.llvm
       llvmPackages_latest.lld
     ];
