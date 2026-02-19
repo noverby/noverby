@@ -306,14 +306,18 @@ fn available_mem_sleep_modes() -> Vec<String> {
 fn has_resume_device() -> bool {
     // Check /sys/power/resume for a non-zero device
     if let Ok(contents) = read_sysfs(SYS_POWER_RESUME)
-        && contents != "0:0" && !contents.is_empty() && contents != "0" {
-            return true;
-        }
+        && contents != "0:0"
+        && !contents.is_empty()
+        && contents != "0"
+    {
+        return true;
+    }
     // Also check the kernel command line for a resume= parameter
     if let Ok(cmdline) = fs::read_to_string("/proc/cmdline")
-        && cmdline.split_whitespace().any(|w| w.starts_with("resume=")) {
-            return true;
-        }
+        && cmdline.split_whitespace().any(|w| w.starts_with("resume="))
+    {
+        return true;
+    }
     false
 }
 

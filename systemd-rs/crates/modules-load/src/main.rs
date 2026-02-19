@@ -128,9 +128,10 @@ fn is_module_loaded(module_name: &str) -> bool {
         Ok(contents) => {
             for line in contents.lines() {
                 if let Some(name) = line.split_whitespace().next()
-                    && name == normalized {
-                        return true;
-                    }
+                    && name == normalized
+                {
+                    return true;
+                }
             }
             false
         }

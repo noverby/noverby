@@ -188,10 +188,11 @@ fn unescape_mountinfo(s: &str) -> String {
             }
 
             if octal.len() == 3
-                && let Ok(val) = u8::from_str_radix(&octal, 8) {
-                    result.push(val as char);
-                    continue;
-                }
+                && let Ok(val) = u8::from_str_radix(&octal, 8)
+            {
+                result.push(val as char);
+                continue;
+            }
 
             // If not a valid octal escape, put the backslash back
             result.push('\\');
@@ -356,10 +357,9 @@ fn do_mount(
     mkdir: bool,
 ) -> Result<(), String> {
     // Create mount point if requested
-    if mkdir
-        && let Err(e) = fs::create_dir_all(where_) {
-            return Err(format!("Failed to create mount point {}: {}", where_, e));
-        }
+    if mkdir && let Err(e) = fs::create_dir_all(where_) {
+        return Err(format!("Failed to create mount point {}: {}", where_, e));
+    }
 
     // Check if mount point exists
     if !Path::new(where_).exists() {
@@ -446,10 +446,7 @@ fn display_mounts() {
     }
 
     // Header
-    println!(
-        "{:<50} {:<30} {:<12} OPTIONS",
-        "WHAT", "WHERE", "TYPE"
-    );
+    println!("{:<50} {:<30} {:<12} OPTIONS", "WHAT", "WHERE", "TYPE");
 
     // Sort by mount point for consistent output
     entries.sort_by(|a, b| a.mount_point.cmp(&b.mount_point));

@@ -21,9 +21,10 @@ fn read_pid_file(path: &std::path::Path) -> Option<nix::unistd::Pid> {
         }
         if let Ok(contents) = std::fs::read_to_string(path)
             && let Ok(pid) = contents.trim().parse::<i32>()
-                && pid > 0 {
-                    return Some(nix::unistd::Pid::from_raw(pid));
-                }
+            && pid > 0
+        {
+            return Some(nix::unistd::Pid::from_raw(pid));
+        }
     }
     None
 }
@@ -167,17 +168,18 @@ pub fn wait_for_service(
             {
                 let mut pid_table_locked = pid_table.lock_poisoned();
                 if let Some(PidEntry::ServiceExited(code)) = pid_table_locked.get(&pid)
-                    && !conf.success_exit_status.is_success(code) {
-                        let code = *code;
-                        pid_table_locked.remove(&pid);
-                        return Err(RunCmdError::BadExitCode(
-                            conf.exec
-                                .as_ref()
-                                .map(|e| e.to_string())
-                                .unwrap_or_else(|| "(no exec)".to_owned()),
-                            code,
-                        ));
-                    }
+                    && !conf.success_exit_status.is_success(code)
+                {
+                    let code = *code;
+                    pid_table_locked.remove(&pid);
+                    return Err(RunCmdError::BadExitCode(
+                        conf.exec
+                            .as_ref()
+                            .map(|e| e.to_string())
+                            .unwrap_or_else(|| "(no exec)".to_owned()),
+                        code,
+                    ));
+                }
             }
             trace!("[FORK_PARENT] exec check passed for service {name}");
         }
@@ -187,16 +189,17 @@ pub fn wait_for_service(
             let pid = srvc.pid.unwrap();
             loop {
                 if let Some(time_out) = duration_timeout
-                    && start_time.elapsed() >= time_out {
-                        error!("oneshot service {name} reached timeout");
-                        return Err(RunCmdError::Timeout(
-                            conf.exec
-                                .as_ref()
-                                .map(|e| e.to_string())
-                                .unwrap_or_else(|| "(no exec)".to_owned()),
-                            format!("{duration_timeout:?}"),
-                        ));
-                    }
+                    && start_time.elapsed() >= time_out
+                {
+                    error!("oneshot service {name} reached timeout");
+                    return Err(RunCmdError::Timeout(
+                        conf.exec
+                            .as_ref()
+                            .map(|e| e.to_string())
+                            .unwrap_or_else(|| "(no exec)".to_owned()),
+                        format!("{duration_timeout:?}"),
+                    ));
+                }
                 {
                     let mut pid_table_locked = pid_table.lock_poisoned();
                     match pid_table_locked.get(&pid) {
@@ -210,22 +213,20 @@ pub fn wait_for_service(
                                     let entry_owned = pid_table_locked.remove(&pid).unwrap();
                                     if let PidEntry::ServiceExited(code) = entry_owned
                                         && !conf.success_exit_status.is_success(&code)
-                                            && !conf
-                                                .exec
+                                        && !conf
+                                            .exec
+                                            .as_ref()
+                                            .map(|e| e.prefixes.contains(&CommandlinePrefix::Minus))
+                                            .unwrap_or(false)
+                                    {
+                                        return Err(RunCmdError::BadExitCode(
+                                            conf.exec
                                                 .as_ref()
-                                                .map(|e| {
-                                                    e.prefixes.contains(&CommandlinePrefix::Minus)
-                                                })
-                                                .unwrap_or(false)
-                                        {
-                                            return Err(RunCmdError::BadExitCode(
-                                                conf.exec
-                                                    .as_ref()
-                                                    .map(|e| e.to_string())
-                                                    .unwrap_or_else(|| "(no exec)".to_owned()),
-                                                code,
-                                            ));
-                                        }
+                                                .map(|e| e.to_string())
+                                                .unwrap_or_else(|| "(no exec)".to_owned()),
+                                            code,
+                                        ));
+                                    }
                                     break;
                                 }
                                 PidEntry::Helper(_, _) => {
@@ -268,16 +269,17 @@ pub fn wait_for_service(
             let pid = srvc.pid.unwrap();
             loop {
                 if let Some(time_out) = duration_timeout
-                    && start_time.elapsed() >= time_out {
-                        error!("forking service {name} reached timeout waiting for parent to exit");
-                        return Err(RunCmdError::Timeout(
-                            conf.exec
-                                .as_ref()
-                                .map(|e| e.to_string())
-                                .unwrap_or_else(|| "(no exec)".to_owned()),
-                            format!("{duration_timeout:?}"),
-                        ));
-                    }
+                    && start_time.elapsed() >= time_out
+                {
+                    error!("forking service {name} reached timeout waiting for parent to exit");
+                    return Err(RunCmdError::Timeout(
+                        conf.exec
+                            .as_ref()
+                            .map(|e| e.to_string())
+                            .unwrap_or_else(|| "(no exec)".to_owned()),
+                        format!("{duration_timeout:?}"),
+                    ));
+                }
                 {
                     let mut pid_table_locked = pid_table.lock_poisoned();
                     match pid_table_locked.get(&pid) {
@@ -289,20 +291,20 @@ pub fn wait_for_service(
                             let entry_owned = pid_table_locked.remove(&pid).unwrap();
                             if let PidEntry::ServiceExited(code) = entry_owned
                                 && !conf.success_exit_status.is_success(&code)
-                                    && !conf
-                                        .exec
+                                && !conf
+                                    .exec
+                                    .as_ref()
+                                    .map(|e| e.prefixes.contains(&CommandlinePrefix::Minus))
+                                    .unwrap_or(false)
+                            {
+                                return Err(RunCmdError::BadExitCode(
+                                    conf.exec
                                         .as_ref()
-                                        .map(|e| e.prefixes.contains(&CommandlinePrefix::Minus))
-                                        .unwrap_or(false)
-                                {
-                                    return Err(RunCmdError::BadExitCode(
-                                        conf.exec
-                                            .as_ref()
-                                            .map(|e| e.to_string())
-                                            .unwrap_or_else(|| "(no exec)".to_owned()),
-                                        code,
-                                    ));
-                                }
+                                        .map(|e| e.to_string())
+                                        .unwrap_or_else(|| "(no exec)".to_owned()),
+                                    code,
+                                ));
+                            }
                             // Parent exited successfully — the daemon should be
                             // running now. Try to pick up its PID from PIDFile.
                             if let Some(ref pid_file_path) = conf.pid_file {

@@ -47,8 +47,7 @@ pub const STATE_DIR: &str = "/run/systemd/resolve";
 // ── DNSSEC mode ────────────────────────────────────────────────────────────
 
 /// DNSSEC validation mode
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DnssecMode {
     /// Full DNSSEC validation
     Yes,
@@ -58,7 +57,6 @@ pub enum DnssecMode {
     #[default]
     AllowDowngrade,
 }
-
 
 impl DnssecMode {
     pub fn parse(s: &str) -> Self {
@@ -82,8 +80,7 @@ impl DnssecMode {
 // ── DNS-over-TLS mode ──────────────────────────────────────────────────────
 
 /// DNS-over-TLS mode
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DnsOverTlsMode {
     /// DNS-over-TLS disabled
     #[default]
@@ -93,7 +90,6 @@ pub enum DnsOverTlsMode {
     /// Strict DNS-over-TLS (require TLS)
     Yes,
 }
-
 
 impl DnsOverTlsMode {
     pub fn parse(s: &str) -> Self {
@@ -149,8 +145,7 @@ impl ResolutionMode {
 // ── Stub listener mode ─────────────────────────────────────────────────────
 
 /// Whether the stub listener is enabled
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum StubListenerMode {
     /// Listen on 127.0.0.53:53 (UDP + TCP)
     #[default]
@@ -162,7 +157,6 @@ pub enum StubListenerMode {
     /// Disabled
     No,
 }
-
 
 impl StubListenerMode {
     pub fn parse(s: &str) -> Self {
@@ -270,8 +264,7 @@ fn parse_dns_server(s: &str) -> Option<DnsServer> {
     if colon_count == 1 {
         // IPv4 with port
         let (ip_str, port_str) = addr_part.rsplit_once(':')?;
-        
-        
+
         if let (Ok(ip), Ok(port)) = (ip_str.parse::<IpAddr>(), port_str.parse::<u16>()) {
             return Some(DnsServer {
                 addr: ip,
@@ -633,9 +626,10 @@ impl ResolvedConfig {
 
             if let Ok(content) = fs::read_to_string(&path)
                 && let Some(link_dns) = parse_link_state(ifindex, &content)
-                    && !link_dns.dns_servers.is_empty() {
-                        self.link_dns.push(link_dns);
-                    }
+                && !link_dns.dns_servers.is_empty()
+            {
+                self.link_dns.push(link_dns);
+            }
         }
     }
 

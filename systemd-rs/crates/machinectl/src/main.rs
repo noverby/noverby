@@ -237,28 +237,22 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
         "clean" => {
             args.command = Command::Clean;
         }
-        "list-images" | "image" => {
-            // "image list" or "list-images"
-            if cmd == "image" && positional.get(1).map(|s| s.as_str()) == Some("list") {
-                args.command = Command::ImageList;
-            } else if cmd == "list-images" {
-                args.command = Command::ImageList;
-            } else if cmd == "image" {
-                match positional.get(1).map(|s| s.as_str()) {
-                    Some("show") | Some("status") => {
-                        args.command = Command::ShowImage;
-                        args.machine = positional.get(2).cloned();
-                    }
-                    Some("cat") => {
-                        args.command = Command::CatImage;
-                        args.machine = positional.get(2).cloned();
-                    }
-                    _ => {
-                        args.command = Command::ImageList;
-                    }
-                }
-            }
+        "list-images" => {
+            args.command = Command::ImageList;
         }
+        "image" => match positional.get(1).map(|s| s.as_str()) {
+            Some("show") | Some("status") => {
+                args.command = Command::ShowImage;
+                args.machine = positional.get(2).cloned();
+            }
+            Some("cat") => {
+                args.command = Command::CatImage;
+                args.machine = positional.get(2).cloned();
+            }
+            _ => {
+                args.command = Command::ImageList;
+            }
+        },
         "help" => {
             args.command = Command::Help;
         }
@@ -462,7 +456,7 @@ fn format_timestamp(usec: u64) -> String {
     static MONTHS: [&str; 12] = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ];
-    let mon = if month >= 1 && month <= 12 {
+    let mon = if (1..=12).contains(&month) {
         MONTHS[(month - 1) as usize]
     } else {
         "???"
@@ -600,13 +594,13 @@ fn cmd_show(args: &Args) -> i32 {
             // Apply property filter
             if let Some(ref prop) = args.property {
                 for line in resp.lines() {
-                    if let Some((key, value)) = line.split_once('=') {
-                        if key == prop {
-                            if args.value {
-                                println!("{}", value);
-                            } else {
-                                println!("{}", line);
-                            }
+                    if let Some((key, value)) = line.split_once('=')
+                        && key == prop
+                    {
+                        if args.value {
+                            println!("{}", value);
+                        } else {
+                            println!("{}", line);
                         }
                     }
                 }
@@ -630,10 +624,10 @@ fn cmd_show(args: &Args) -> i32 {
                     let ts_s = m.timestamp.to_string();
 
                     for (key, value) in &pairs {
-                        if let Some(ref prop) = args.property {
-                            if *key != prop.as_str() {
-                                continue;
-                            }
+                        if let Some(ref prop) = args.property
+                            && *key != prop.as_str()
+                        {
+                            continue;
                         }
                         if args.value {
                             println!("{}", value);
@@ -644,10 +638,10 @@ fn cmd_show(args: &Args) -> i32 {
                     // Leader and Timestamp as separate entries
                     let extras = [("Leader", leader_s.as_str()), ("Timestamp", ts_s.as_str())];
                     for (key, value) in &extras {
-                        if let Some(ref prop) = args.property {
-                            if *key != prop.as_str() {
-                                continue;
-                            }
+                        if let Some(ref prop) = args.property
+                            && *key != prop.as_str()
+                        {
+                            continue;
                         }
                         if args.value {
                             println!("{}", value);
@@ -734,7 +728,7 @@ fn parse_signal(sig: &str) -> i32 {
         return n;
     }
     let s = sig.to_uppercase();
-    let s = if s.starts_with("SIG") { &s[3..] } else { &s };
+    let s = s.strip_prefix("SIG").unwrap_or(&s);
     match s {
         "HUP" => libc::SIGHUP,
         "INT" => libc::SIGINT,

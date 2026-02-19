@@ -101,9 +101,10 @@ impl Socket {
             let as_raw_fd = match single_conf.specialized.open() {
                 Ok(fd) => fd,
                 Err(e) => {
-                    return Err(std::io::Error::other(
-                        format!("Failed to open socket {} (index {}): {}", name, idx, e),
-                    ));
+                    return Err(std::io::Error::other(format!(
+                        "Failed to open socket {} (index {}): {}",
+                        name, idx, e
+                    )));
                 }
             };
             // close these fd's on exec. They must not show up in child processes

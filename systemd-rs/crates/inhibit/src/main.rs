@@ -239,16 +239,17 @@ fn list_locks() -> Vec<InhibitorLock> {
             }
 
             if let Ok(content) = fs::read_to_string(&path)
-                && let Some(lock) = InhibitorLock::parse(&path, &content) {
-                    // Verify the process is still alive
-                    let proc_path = format!("/proc/{}", lock.pid);
-                    if Path::new(&proc_path).exists() || lock.pid == 0 {
-                        locks.push(lock);
-                    } else {
-                        // Stale lock — clean it up
-                        let _ = fs::remove_file(&path);
-                    }
+                && let Some(lock) = InhibitorLock::parse(&path, &content)
+            {
+                // Verify the process is still alive
+                let proc_path = format!("/proc/{}", lock.pid);
+                if Path::new(&proc_path).exists() || lock.pid == 0 {
+                    locks.push(lock);
+                } else {
+                    // Stale lock — clean it up
+                    let _ = fs::remove_file(&path);
                 }
+            }
         }
     }
 
@@ -297,9 +298,10 @@ fn uid_to_name(uid: u32) -> String {
             let fields: Vec<&str> = line.split(':').collect();
             if fields.len() >= 3
                 && let Ok(entry_uid) = fields[2].parse::<u32>()
-                    && entry_uid == uid {
-                        return fields[0].to_string();
-                    }
+                && entry_uid == uid
+            {
+                return fields[0].to_string();
+            }
         }
     }
     uid.to_string()

@@ -69,56 +69,55 @@ pub fn handle_all_streams(run_info: ArcMutRuntimeInfo) {
                 for (fd, id) in &fd_to_srvc_id {
                     if fdset.contains(unsafe { borrow_fd(*fd) })
                         && let Some(srvc_unit) = unit_table.get(id)
-                            && let Specific::Service(srvc) = &srvc_unit.specific {
-                                let mut_state = &mut *srvc.state.write_poisoned();
-                                if let Some(socket) = &mut_state.srvc.notifications {
-                                    let old_flags = nix::fcntl::fcntl(
-                                        unsafe { borrow_fd(*fd) },
-                                        nix::fcntl::FcntlArg::F_GETFL,
-                                    )
-                                    .unwrap();
+                        && let Specific::Service(srvc) = &srvc_unit.specific
+                    {
+                        let mut_state = &mut *srvc.state.write_poisoned();
+                        if let Some(socket) = &mut_state.srvc.notifications {
+                            let old_flags = nix::fcntl::fcntl(
+                                unsafe { borrow_fd(*fd) },
+                                nix::fcntl::FcntlArg::F_GETFL,
+                            )
+                            .unwrap();
 
-                                    let old_flags =
-                                        nix::fcntl::OFlag::from_bits(old_flags).unwrap();
-                                    let mut new_flags = old_flags;
-                                    new_flags.insert(nix::fcntl::OFlag::O_NONBLOCK);
-                                    nix::fcntl::fcntl(
-                                        unsafe { borrow_fd(*fd) },
-                                        nix::fcntl::FcntlArg::F_SETFL(new_flags),
-                                    )
-                                    .unwrap();
-                                    let bytes = {
-                                        match socket.recv(&mut buf[..]) {
-                                            Ok(b) => b,
-                                            Err(e) => match e.kind() {
-                                                std::io::ErrorKind::WouldBlock => 0,
-                                                _ => panic!("{}", e),
-                                            },
-                                        }
-                                    };
-                                    nix::fcntl::fcntl(
-                                        unsafe { borrow_fd(*fd) },
-                                        nix::fcntl::FcntlArg::F_SETFL(old_flags),
-                                    )
-                                    .unwrap();
-                                    let note_str =
-                                        String::from_utf8(buf[..bytes].to_vec()).unwrap();
-                                    mut_state.srvc.notifications_buffer.push_str(&note_str);
-                                    // Each recv() returns a complete datagram from sd_notify.
-                                    // Datagrams use '\n' to separate key=value pairs internally,
-                                    // but may not end with '\n'.  If we don't add a separator,
-                                    // the last key=value of one datagram merges with the first
-                                    // key=value of the next (e.g. "FDNAME=inotifyREADY=1"),
-                                    // causing READY=1 to never be parsed.
-                                    if bytes > 0 && !note_str.ends_with('\n') {
-                                        mut_state.srvc.notifications_buffer.push('\n');
-                                    }
-                                    crate::notification_handler::handle_notifications_from_buffer(
-                                        &mut mut_state.srvc,
-                                        &srvc_unit.id.name,
-                                    );
+                            let old_flags = nix::fcntl::OFlag::from_bits(old_flags).unwrap();
+                            let mut new_flags = old_flags;
+                            new_flags.insert(nix::fcntl::OFlag::O_NONBLOCK);
+                            nix::fcntl::fcntl(
+                                unsafe { borrow_fd(*fd) },
+                                nix::fcntl::FcntlArg::F_SETFL(new_flags),
+                            )
+                            .unwrap();
+                            let bytes = {
+                                match socket.recv(&mut buf[..]) {
+                                    Ok(b) => b,
+                                    Err(e) => match e.kind() {
+                                        std::io::ErrorKind::WouldBlock => 0,
+                                        _ => panic!("{}", e),
+                                    },
                                 }
+                            };
+                            nix::fcntl::fcntl(
+                                unsafe { borrow_fd(*fd) },
+                                nix::fcntl::FcntlArg::F_SETFL(old_flags),
+                            )
+                            .unwrap();
+                            let note_str = String::from_utf8(buf[..bytes].to_vec()).unwrap();
+                            mut_state.srvc.notifications_buffer.push_str(&note_str);
+                            // Each recv() returns a complete datagram from sd_notify.
+                            // Datagrams use '\n' to separate key=value pairs internally,
+                            // but may not end with '\n'.  If we don't add a separator,
+                            // the last key=value of one datagram merges with the first
+                            // key=value of the next (e.g. "FDNAME=inotifyREADY=1"),
+                            // causing READY=1 to never be parsed.
+                            if bytes > 0 && !note_str.ends_with('\n') {
+                                mut_state.srvc.notifications_buffer.push('\n');
                             }
+                            crate::notification_handler::handle_notifications_from_buffer(
+                                &mut mut_state.srvc,
+                                &srvc_unit.id.name,
+                            );
+                        }
+                    }
                 }
             }
             Err(e) => {
@@ -158,67 +157,67 @@ pub fn handle_all_std_out(run_info: ArcMutRuntimeInfo) {
                 let mut eof_ids = Vec::new();
                 for (fd, id) in &fd_to_srvc_id {
                     if fdset.contains(unsafe { borrow_fd(*fd) })
-                        && let Some(srvc_unit) = unit_table.get(id) {
-                            let name = srvc_unit.id.name.clone();
-                            if let Specific::Service(srvc) = &srvc_unit.specific {
-                                let mut_state = &mut *srvc.state.write_poisoned();
-                                let status = srvc_unit.common.status.read_poisoned();
+                        && let Some(srvc_unit) = unit_table.get(id)
+                    {
+                        let name = srvc_unit.id.name.clone();
+                        if let Specific::Service(srvc) = &srvc_unit.specific {
+                            let mut_state = &mut *srvc.state.write_poisoned();
+                            let status = srvc_unit.common.status.read_poisoned();
 
-                                let old_flags = nix::fcntl::fcntl(
-                                    unsafe { borrow_fd(*fd) },
-                                    nix::fcntl::FcntlArg::F_GETFL,
-                                )
-                                .unwrap();
-                                let old_flags = nix::fcntl::OFlag::from_bits(old_flags).unwrap();
-                                let mut new_flags = old_flags;
-                                new_flags.insert(nix::fcntl::OFlag::O_NONBLOCK);
-                                nix::fcntl::fcntl(
-                                    unsafe { borrow_fd(*fd) },
-                                    nix::fcntl::FcntlArg::F_SETFL(new_flags),
-                                )
-                                .unwrap();
+                            let old_flags = nix::fcntl::fcntl(
+                                unsafe { borrow_fd(*fd) },
+                                nix::fcntl::FcntlArg::F_GETFL,
+                            )
+                            .unwrap();
+                            let old_flags = nix::fcntl::OFlag::from_bits(old_flags).unwrap();
+                            let mut new_flags = old_flags;
+                            new_flags.insert(nix::fcntl::OFlag::O_NONBLOCK);
+                            nix::fcntl::fcntl(
+                                unsafe { borrow_fd(*fd) },
+                                nix::fcntl::FcntlArg::F_SETFL(new_flags),
+                            )
+                            .unwrap();
 
-                                ////
-                                let bytes = match nix::unistd::read(
-                                    unsafe { borrow_fd(*fd) },
-                                    &mut buf[..],
-                                ) {
+                            ////
+                            let bytes =
+                                match nix::unistd::read(unsafe { borrow_fd(*fd) }, &mut buf[..]) {
                                     Ok(b) => b,
                                     Err(nix::Error::EWOULDBLOCK) => 0,
                                     Err(e) => panic!("{}", e),
                                 };
-                                ////
+                            ////
 
-                                nix::fcntl::fcntl(
-                                    unsafe { borrow_fd(*fd) },
-                                    nix::fcntl::FcntlArg::F_SETFL(old_flags),
-                                )
-                                .unwrap();
+                            nix::fcntl::fcntl(
+                                unsafe { borrow_fd(*fd) },
+                                nix::fcntl::FcntlArg::F_SETFL(old_flags),
+                            )
+                            .unwrap();
 
-                                if bytes == 0 {
-                                    // EOF: the write end of the pipe was closed.
-                                    // This happens when a service redirects its
-                                    // stdout to a TTY or file (e.g. debug-shell).
-                                    // Mark for cleanup to avoid a busy select loop.
-                                    eof_ids.push((id.clone(), name));
-                                } else {
-                                    mut_state.srvc.stdout_buffer.extend(&buf[..bytes]);
-                                    mut_state.srvc.log_stdout_lines(&name, &status).unwrap();
-                                }
+                            if bytes == 0 {
+                                // EOF: the write end of the pipe was closed.
+                                // This happens when a service redirects its
+                                // stdout to a TTY or file (e.g. debug-shell).
+                                // Mark for cleanup to avoid a busy select loop.
+                                eof_ids.push((id.clone(), name));
+                            } else {
+                                mut_state.srvc.stdout_buffer.extend(&buf[..bytes]);
+                                mut_state.srvc.log_stdout_lines(&name, &status).unwrap();
                             }
                         }
+                    }
                 }
                 // Close pipes that hit EOF so they are no longer selected.
                 for (id, name) in eof_ids {
                     if let Some(srvc_unit) = unit_table.get(&id)
-                        && let Specific::Service(srvc) = &srvc_unit.specific {
-                            let mut_state = &mut *srvc.state.write_poisoned();
-                            if let Some(StdIo::Piped(r, _w)) = &mut_state.srvc.stdout {
-                                trace!("stdout pipe EOF for service {name}, closing read end");
-                                let _ = nix::unistd::close(*r);
-                            }
-                            mut_state.srvc.stdout = None;
+                        && let Specific::Service(srvc) = &srvc_unit.specific
+                    {
+                        let mut_state = &mut *srvc.state.write_poisoned();
+                        if let Some(StdIo::Piped(r, _w)) = &mut_state.srvc.stdout {
+                            trace!("stdout pipe EOF for service {name}, closing read end");
+                            let _ = nix::unistd::close(*r);
                         }
+                        mut_state.srvc.stdout = None;
+                    }
                 }
             }
             Err(e) => {
@@ -258,66 +257,66 @@ pub fn handle_all_std_err(run_info: ArcMutRuntimeInfo) {
                 let mut eof_ids = Vec::new();
                 for (fd, id) in &fd_to_srvc_id {
                     if fdset.contains(unsafe { borrow_fd(*fd) })
-                        && let Some(srvc_unit) = unit_table.get(id) {
-                            let name = srvc_unit.id.name.clone();
-                            if let Specific::Service(srvc) = &srvc_unit.specific {
-                                let mut_state = &mut *srvc.state.write_poisoned();
-                                let status = srvc_unit.common.status.read_poisoned();
+                        && let Some(srvc_unit) = unit_table.get(id)
+                    {
+                        let name = srvc_unit.id.name.clone();
+                        if let Specific::Service(srvc) = &srvc_unit.specific {
+                            let mut_state = &mut *srvc.state.write_poisoned();
+                            let status = srvc_unit.common.status.read_poisoned();
 
-                                let old_flags = nix::fcntl::fcntl(
-                                    unsafe { borrow_fd(*fd) },
-                                    nix::fcntl::FcntlArg::F_GETFL,
-                                )
-                                .unwrap();
-                                let old_flags = nix::fcntl::OFlag::from_bits(old_flags).unwrap();
-                                let mut new_flags = old_flags;
-                                new_flags.insert(nix::fcntl::OFlag::O_NONBLOCK);
-                                nix::fcntl::fcntl(
-                                    unsafe { borrow_fd(*fd) },
-                                    nix::fcntl::FcntlArg::F_SETFL(new_flags),
-                                )
-                                .unwrap();
+                            let old_flags = nix::fcntl::fcntl(
+                                unsafe { borrow_fd(*fd) },
+                                nix::fcntl::FcntlArg::F_GETFL,
+                            )
+                            .unwrap();
+                            let old_flags = nix::fcntl::OFlag::from_bits(old_flags).unwrap();
+                            let mut new_flags = old_flags;
+                            new_flags.insert(nix::fcntl::OFlag::O_NONBLOCK);
+                            nix::fcntl::fcntl(
+                                unsafe { borrow_fd(*fd) },
+                                nix::fcntl::FcntlArg::F_SETFL(new_flags),
+                            )
+                            .unwrap();
 
-                                ////
-                                let bytes = match nix::unistd::read(
-                                    unsafe { borrow_fd(*fd) },
-                                    &mut buf[..],
-                                ) {
+                            ////
+                            let bytes =
+                                match nix::unistd::read(unsafe { borrow_fd(*fd) }, &mut buf[..]) {
                                     Ok(b) => b,
                                     Err(nix::Error::EWOULDBLOCK) => 0,
                                     Err(e) => panic!("{}", e),
                                 };
-                                ////
-                                nix::fcntl::fcntl(
-                                    unsafe { borrow_fd(*fd) },
-                                    nix::fcntl::FcntlArg::F_SETFL(old_flags),
-                                )
-                                .unwrap();
+                            ////
+                            nix::fcntl::fcntl(
+                                unsafe { borrow_fd(*fd) },
+                                nix::fcntl::FcntlArg::F_SETFL(old_flags),
+                            )
+                            .unwrap();
 
-                                if bytes == 0 {
-                                    // EOF: the write end of the pipe was closed.
-                                    // This happens when a service redirects its
-                                    // stderr to a TTY or file (e.g. debug-shell).
-                                    // Mark for cleanup to avoid a busy select loop.
-                                    eof_ids.push((id.clone(), name));
-                                } else {
-                                    mut_state.srvc.stderr_buffer.extend(&buf[..bytes]);
-                                    mut_state.srvc.log_stderr_lines(&name, &status).unwrap();
-                                }
+                            if bytes == 0 {
+                                // EOF: the write end of the pipe was closed.
+                                // This happens when a service redirects its
+                                // stderr to a TTY or file (e.g. debug-shell).
+                                // Mark for cleanup to avoid a busy select loop.
+                                eof_ids.push((id.clone(), name));
+                            } else {
+                                mut_state.srvc.stderr_buffer.extend(&buf[..bytes]);
+                                mut_state.srvc.log_stderr_lines(&name, &status).unwrap();
                             }
                         }
+                    }
                 }
                 // Close pipes that hit EOF so they are no longer selected.
                 for (id, name) in eof_ids {
                     if let Some(srvc_unit) = unit_table.get(&id)
-                        && let Specific::Service(srvc) = &srvc_unit.specific {
-                            let mut_state = &mut *srvc.state.write_poisoned();
-                            if let Some(StdIo::Piped(r, _w)) = &mut_state.srvc.stderr {
-                                trace!("stderr pipe EOF for service {name}, closing read end");
-                                let _ = nix::unistd::close(*r);
-                            }
-                            mut_state.srvc.stderr = None;
+                        && let Specific::Service(srvc) = &srvc_unit.specific
+                    {
+                        let mut_state = &mut *srvc.state.write_poisoned();
+                        if let Some(StdIo::Piped(r, _w)) = &mut_state.srvc.stderr {
+                            trace!("stderr pipe EOF for service {name}, closing read end");
+                            let _ = nix::unistd::close(*r);
                         }
+                        mut_state.srvc.stderr = None;
+                    }
                 }
             }
             Err(e) => {

@@ -149,36 +149,38 @@ pub fn service_exit_handler(
 
     // Write DEAD_PROCESS utmp/wtmp record if the service had UtmpIdentifier= set.
     if let Specific::Service(srvc) = &unit.specific
-        && let Some(ref utmp_id) = srvc.conf.exec_config.utmp_identifier {
-            crate::entrypoints::write_utmp_dead_record(
-                utmp_id,
-                srvc.conf.exec_config.tty_path.as_deref(),
-                pid,
-            );
-        }
+        && let Some(ref utmp_id) = srvc.conf.exec_config.utmp_identifier
+    {
+        crate::entrypoints::write_utmp_dead_record(
+            utmp_id,
+            srvc.conf.exec_config.tty_path.as_deref(),
+            pid,
+        );
+    }
 
     let success_exit_status = get_success_exit_status(unit);
 
     // kill oneshot service processes. There should be none but just in case...
     {
         if let Specific::Service(srvc) = &unit.specific
-            && srvc.conf.srcv_type == ServiceType::OneShot {
-                let mut_state = &mut *srvc.state.write_poisoned();
-                mut_state
-                    .srvc
-                    .kill_all_remaining_processes(&srvc.conf, &unit.id.name);
+            && srvc.conf.srcv_type == ServiceType::OneShot
+        {
+            let mut_state = &mut *srvc.state.write_poisoned();
+            mut_state
+                .srvc
+                .kill_all_remaining_processes(&srvc.conf, &unit.id.name);
 
-                // RemainAfterExit=yes: keep the unit in Started status after a
-                // clean exit, matching systemd's behaviour for oneshot services
-                // that perform setup tasks.
-                if srvc.conf.remain_after_exit && success_exit_status.is_success(&code) {
-                    trace!(
-                        "Oneshot service {} exited cleanly with RemainAfterExit=yes, staying active",
-                        unit.id.name
-                    );
-                }
-                return Ok(());
+            // RemainAfterExit=yes: keep the unit in Started status after a
+            // clean exit, matching systemd's behaviour for oneshot services
+            // that perform setup tasks.
+            if srvc.conf.remain_after_exit && success_exit_status.is_success(&code) {
+                trace!(
+                    "Oneshot service {} exited cleanly with RemainAfterExit=yes, staying active",
+                    unit.id.name
+                );
             }
+            return Ok(());
+        }
     }
 
     // Determine SuccessAction / FailureAction for this unit and whether

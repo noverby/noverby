@@ -241,9 +241,10 @@ impl JournalEntry {
                         self.set_field("_UID", uid_str);
                     }
                 } else if let Some(rest) = line.strip_prefix("Gid:")
-                    && let Some(gid_str) = rest.split_whitespace().next() {
-                        self.set_field("_GID", gid_str);
-                    }
+                    && let Some(gid_str) = rest.split_whitespace().next()
+                {
+                    self.set_field("_GID", gid_str);
+                }
             }
         }
 

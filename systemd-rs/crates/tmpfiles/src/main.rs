@@ -334,9 +334,10 @@ fn parse_age(age_str: &str) -> Option<Duration> {
 
     // Trailing number without suffix is treated as seconds
     if !num_buf.is_empty()
-        && let Ok(n) = num_buf.parse::<u64>() {
-            total_secs += n;
-        }
+        && let Ok(n) = num_buf.parse::<u64>()
+    {
+        total_secs += n;
+    }
 
     if total_secs == 0 && !s.contains('0') {
         // If we got 0 and the string doesn't contain '0', parsing probably failed
@@ -713,37 +714,43 @@ fn execute_create(item: &TmpfilesItem, graceful: bool) -> bool {
                 // File already exists, just adjust permissions
                 if let Some(mode) = item.mode
                     && let Err(e) = apply_mode(path, mode)
-                        && !graceful && !item.minus {
-                            eprintln!(
-                                "systemd-tmpfiles: Failed to set mode on {}: {}",
-                                path.display(),
-                                e
-                            );
-                            return false;
-                        }
+                    && !graceful
+                    && !item.minus
+                {
+                    eprintln!(
+                        "systemd-tmpfiles: Failed to set mode on {}: {}",
+                        path.display(),
+                        e
+                    );
+                    return false;
+                }
                 if let Err(e) = apply_ownership(path, &item.user, &item.group)
-                    && !graceful && !item.minus {
-                        eprintln!(
-                            "systemd-tmpfiles: Failed to set ownership on {}: {}",
-                            path.display(),
-                            e
-                        );
-                        return false;
-                    }
+                    && !graceful
+                    && !item.minus
+                {
+                    eprintln!(
+                        "systemd-tmpfiles: Failed to set ownership on {}: {}",
+                        path.display(),
+                        e
+                    );
+                    return false;
+                }
                 return true;
             }
 
             // Create parent directories
             if let Some(parent) = path.parent()
                 && let Err(e) = fs::create_dir_all(parent)
-                    && !graceful && !item.minus {
-                        eprintln!(
-                            "systemd-tmpfiles: Failed to create parent directory {}: {}",
-                            parent.display(),
-                            e
-                        );
-                        return false;
-                    }
+                && !graceful
+                && !item.minus
+            {
+                eprintln!(
+                    "systemd-tmpfiles: Failed to create parent directory {}: {}",
+                    parent.display(),
+                    e
+                );
+                return false;
+            }
 
             // Create the file
             let content = item.argument.as_deref().unwrap_or("");
@@ -792,14 +799,16 @@ fn execute_create(item: &TmpfilesItem, graceful: bool) -> bool {
                     Ok(mut f) => {
                         use std::io::Write;
                         if let Err(e) = f.write_all(content.as_bytes())
-                            && !graceful && !item.minus {
-                                eprintln!(
-                                    "systemd-tmpfiles: Failed to write to {}: {}",
-                                    path.display(),
-                                    e
-                                );
-                                return false;
-                            }
+                            && !graceful
+                            && !item.minus
+                        {
+                            eprintln!(
+                                "systemd-tmpfiles: Failed to write to {}: {}",
+                                path.display(),
+                                e
+                            );
+                            return false;
+                        }
                         true
                     }
                     Err(e) => {
@@ -846,21 +855,25 @@ fn execute_create(item: &TmpfilesItem, graceful: bool) -> bool {
             if path.is_dir() {
                 if let Some(mode) = item.mode
                     && let Err(e) = apply_mode(path, mode)
-                        && !graceful && !item.minus {
-                            eprintln!(
-                                "systemd-tmpfiles: Failed to set mode on {}: {}",
-                                path.display(),
-                                e
-                            );
-                        }
+                    && !graceful
+                    && !item.minus
+                {
+                    eprintln!(
+                        "systemd-tmpfiles: Failed to set mode on {}: {}",
+                        path.display(),
+                        e
+                    );
+                }
                 if let Err(e) = apply_ownership(path, &item.user, &item.group)
-                    && !graceful && !item.minus {
-                        eprintln!(
-                            "systemd-tmpfiles: Failed to set ownership on {}: {}",
-                            path.display(),
-                            e
-                        );
-                    }
+                    && !graceful
+                    && !item.minus
+                {
+                    eprintln!(
+                        "systemd-tmpfiles: Failed to set ownership on {}: {}",
+                        path.display(),
+                        e
+                    );
+                }
             }
 
             true
@@ -888,15 +901,14 @@ fn execute_create(item: &TmpfilesItem, graceful: bool) -> bool {
             let ret = unsafe { libc::mkfifo(c_path.as_ptr(), mode) };
             if ret != 0 {
                 let e = io::Error::last_os_error();
-                if e.kind() != io::ErrorKind::AlreadyExists
-                    && !graceful && !item.minus {
-                        eprintln!(
-                            "systemd-tmpfiles: Failed to create FIFO {}: {}",
-                            path.display(),
-                            e
-                        );
-                        return false;
-                    }
+                if e.kind() != io::ErrorKind::AlreadyExists && !graceful && !item.minus {
+                    eprintln!(
+                        "systemd-tmpfiles: Failed to create FIFO {}: {}",
+                        path.display(),
+                        e
+                    );
+                    return false;
+                }
             }
             let _ = apply_ownership(path, &item.user, &item.group);
             true
@@ -1029,15 +1041,14 @@ fn execute_create(item: &TmpfilesItem, graceful: bool) -> bool {
             let ret = unsafe { libc::mknod(c_path.as_ptr(), node_type | mode, dev) };
             if ret != 0 {
                 let e = io::Error::last_os_error();
-                if e.kind() != io::ErrorKind::AlreadyExists
-                    && !graceful && !item.minus {
-                        eprintln!(
-                            "systemd-tmpfiles: Failed to create device node {}: {}",
-                            path.display(),
-                            e
-                        );
-                        return false;
-                    }
+                if e.kind() != io::ErrorKind::AlreadyExists && !graceful && !item.minus {
+                    eprintln!(
+                        "systemd-tmpfiles: Failed to create device node {}: {}",
+                        path.display(),
+                        e
+                    );
+                    return false;
+                }
             }
             let _ = apply_ownership(path, &item.user, &item.group);
             true
@@ -1117,23 +1128,27 @@ fn execute_create(item: &TmpfilesItem, graceful: bool) -> bool {
                 let mut ok = true;
                 if let Some(mode) = item.mode
                     && let Err(e) = apply_mode(p, mode)
-                        && !graceful && !item.minus {
-                            eprintln!(
-                                "systemd-tmpfiles: Failed to set mode on {}: {}",
-                                p.display(),
-                                e
-                            );
-                            ok = false;
-                        }
+                    && !graceful
+                    && !item.minus
+                {
+                    eprintln!(
+                        "systemd-tmpfiles: Failed to set mode on {}: {}",
+                        p.display(),
+                        e
+                    );
+                    ok = false;
+                }
                 if let Err(e) = apply_ownership(p, &item.user, &item.group)
-                    && !graceful && !item.minus {
-                        eprintln!(
-                            "systemd-tmpfiles: Failed to set ownership on {}: {}",
-                            p.display(),
-                            e
-                        );
-                        ok = false;
-                    }
+                    && !graceful
+                    && !item.minus
+                {
+                    eprintln!(
+                        "systemd-tmpfiles: Failed to set ownership on {}: {}",
+                        p.display(),
+                        e
+                    );
+                    ok = false;
+                }
                 ok
             };
 
@@ -1145,13 +1160,15 @@ fn execute_create(item: &TmpfilesItem, graceful: bool) -> bool {
                             ok = false;
                         }
                     })
-                        && !graceful && !item.minus {
-                            eprintln!(
-                                "systemd-tmpfiles: Failed to walk directory {}: {}",
-                                path.display(),
-                                e
-                            );
-                        }
+                    && !graceful
+                    && !item.minus
+                {
+                    eprintln!(
+                        "systemd-tmpfiles: Failed to walk directory {}: {}",
+                        path.display(),
+                        e
+                    );
+                }
                 ok
             } else {
                 apply_to(path)
@@ -1258,16 +1275,20 @@ fn execute_remove(item: &TmpfilesItem, graceful: bool) -> bool {
                         let entry_path = entry.path();
                         if entry_path.is_dir() {
                             if let Err(e) = fs::remove_dir_all(&entry_path)
-                                && !graceful && !item.minus {
-                                    eprintln!(
-                                        "systemd-tmpfiles: Failed to remove {}: {}",
-                                        entry_path.display(),
-                                        e
-                                    );
-                                    ok = false;
-                                }
+                                && !graceful
+                                && !item.minus
+                            {
+                                eprintln!(
+                                    "systemd-tmpfiles: Failed to remove {}: {}",
+                                    entry_path.display(),
+                                    e
+                                );
+                                ok = false;
+                            }
                         } else if let Err(e) = fs::remove_file(&entry_path)
-                        && !graceful && !item.minus {
+                            && !graceful
+                            && !item.minus
+                        {
                             eprintln!(
                                 "systemd-tmpfiles: Failed to remove {}: {}",
                                 entry_path.display(),
@@ -1396,17 +1417,21 @@ fn clean_directory(
                     if e.kind() != io::ErrorKind::Other
                         && e.raw_os_error() != Some(libc::ENOTEMPTY)
                         && e.raw_os_error() != Some(libc::EEXIST)
-                        && !graceful && !ignore_errors {
-                            eprintln!(
-                                "systemd-tmpfiles: Failed to remove old directory {}: {}",
-                                entry_path.display(),
-                                e
-                            );
-                            ok = false;
-                        }
+                        && !graceful
+                        && !ignore_errors
+                    {
+                        eprintln!(
+                            "systemd-tmpfiles: Failed to remove old directory {}: {}",
+                            entry_path.display(),
+                            e
+                        );
+                        ok = false;
+                    }
                 }
             } else if let Err(e) = fs::remove_file(&entry_path)
-            && !graceful && !ignore_errors {
+                && !graceful
+                && !ignore_errors
+            {
                 eprintln!(
                     "systemd-tmpfiles: Failed to remove old file {}: {}",
                     entry_path.display(),

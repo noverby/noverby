@@ -212,9 +212,10 @@ fn archive_entries(source: &Path, archive_base: &Path, config: &Config) -> io::R
 
                 // Remove the original if configured.
                 if config.unlink
-                    && let Err(e) = fs::remove_file(&src_path) {
-                        eprintln!("Warning: failed to remove {}: {}", src_path.display(), e);
-                    }
+                    && let Err(e) = fs::remove_file(&src_path)
+                {
+                    eprintln!("Warning: failed to remove {}: {}", src_path.display(), e);
+                }
             }
             Err(e) => {
                 eprintln!("Warning: failed to archive {}: {}", src_path.display(), e);

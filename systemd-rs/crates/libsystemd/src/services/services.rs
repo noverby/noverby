@@ -263,20 +263,19 @@ impl Service {
         // This notifies shell-like processes that their connection has been
         // severed, matching systemd.kill(5) behaviour.
         if conf.send_sighup
-            && let Some(proc_group) = self.process_group {
-                match nix::sys::signal::kill(proc_group, nix::sys::signal::Signal::SIGHUP) {
-                    Ok(()) => {
-                        trace!(
-                            "SendSIGHUP: success sending SIGHUP to process group for service {name}"
-                        )
-                    }
-                    Err(e) => {
-                        trace!(
-                            "SendSIGHUP: error sending SIGHUP to process group for service {name}: {e}"
-                        )
-                    }
+            && let Some(proc_group) = self.process_group
+        {
+            match nix::sys::signal::kill(proc_group, nix::sys::signal::Signal::SIGHUP) {
+                Ok(()) => {
+                    trace!("SendSIGHUP: success sending SIGHUP to process group for service {name}")
+                }
+                Err(e) => {
+                    trace!(
+                        "SendSIGHUP: error sending SIGHUP to process group for service {name}: {e}"
+                    )
                 }
             }
+        }
 
         match conf.kill_mode {
             KillMode::ControlGroup => {
@@ -730,9 +729,10 @@ fn wait_for_helper_child(
     let start_time = std::time::Instant::now();
     loop {
         if let Some(time_out) = time_out
-            && start_time.elapsed() >= time_out {
-                return WaitResult::TimedOut;
-            }
+            && start_time.elapsed() >= time_out
+        {
+            return WaitResult::TimedOut;
+        }
         {
             let mut pid_table_locked = run_info.pid_table.lock_poisoned();
             match pid_table_locked.get(&pid) {

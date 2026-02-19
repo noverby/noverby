@@ -181,9 +181,10 @@ fn expand_glob_recursive(
     if index >= parts.len() {
         // We've matched all parts; check if the path exists and is a file
         if current_path.is_file()
-            && let Some(key) = proc_path_to_key(current_path) {
-                results.push(key);
-            }
+            && let Some(key) = proc_path_to_key(current_path)
+        {
+            results.push(key);
+        }
         return;
     }
 

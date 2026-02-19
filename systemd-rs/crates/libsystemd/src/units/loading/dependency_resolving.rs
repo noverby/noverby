@@ -39,17 +39,18 @@ pub fn prune_units(
     let mut socket_activation_services = Vec::new();
     for id in &ids_to_keep {
         if let Some(unit) = unit_table.get(id)
-            && let Specific::Socket(sock) = &unit.specific {
-                for srvc_id in &sock.conf.services {
-                    if !ids_to_keep.contains(srvc_id) {
-                        trace!(
-                            "Keeping socket-activation target {} (needed by socket {})",
-                            srvc_id.name, id.name
-                        );
-                        socket_activation_services.push(srvc_id.clone());
-                    }
+            && let Specific::Socket(sock) = &unit.specific
+        {
+            for srvc_id in &sock.conf.services {
+                if !ids_to_keep.contains(srvc_id) {
+                    trace!(
+                        "Keeping socket-activation target {} (needed by socket {})",
+                        srvc_id.name, id.name
+                    );
+                    socket_activation_services.push(srvc_id.clone());
                 }
             }
+        }
     }
     ids_to_keep.extend(socket_activation_services);
 
