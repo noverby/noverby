@@ -177,7 +177,7 @@
         nixosModules = ["modules/nixos" "modules/nixos/hardware" "modules/nixos/desktop"];
         homeConfigurations = ["config/home-manager"];
         homeModules = ["modules/home-manager" "modules/home-manager/users" "modules/home-manager/desktop"];
-        devenvConfigurations = ["config/devenv"];
+        devenvConfiguration = ["config/devenv"];
         devenvModules = ["modules/devenv"];
         withOverlays = ["config/with-overlays"];
       };
