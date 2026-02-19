@@ -41,12 +41,14 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
         cgroup_path: make_cgroup_path(&conf.common.name)?,
     };
 
+    let fragment_path = conf.common.fragment_path.clone();
+
     let mut sockets: Vec<UnitId> = Vec::new();
     for sock in conf.srvc.sockets {
         sockets.push(sock.as_str().try_into()?);
     }
 
-    let mut common = make_common_from_parsed(conf.common.unit, conf.common.install)?;
+    let mut common = make_common_from_parsed(conf.common.unit, conf.common.install, fragment_path)?;
     common.unit.refs_by_name.extend(sockets.iter().cloned());
 
     Ok(Unit {
@@ -123,12 +125,14 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
 }
 
 pub fn unit_from_parsed_socket(conf: ParsedSocketConfig) -> Result<Unit, String> {
+    let fragment_path = conf.common.fragment_path.clone();
+
     let mut services: Vec<UnitId> = Vec::new();
     for srvc in conf.sock.services {
         services.push(srvc.as_str().try_into()?);
     }
 
-    let mut common = make_common_from_parsed(conf.common.unit, conf.common.install)?;
+    let mut common = make_common_from_parsed(conf.common.unit, conf.common.install, fragment_path)?;
     common.unit.refs_by_name.extend(services.iter().cloned());
 
     Ok(Unit {
@@ -170,12 +174,13 @@ pub fn unit_from_parsed_socket(conf: ParsedSocketConfig) -> Result<Unit, String>
     })
 }
 pub fn unit_from_parsed_target(conf: ParsedTargetConfig) -> Result<Unit, String> {
+    let fragment_path = conf.common.fragment_path.clone();
     Ok(Unit {
         id: UnitId {
             kind: UnitIdKind::Target,
             name: conf.common.name,
         },
-        common: make_common_from_parsed(conf.common.unit, conf.common.install)?,
+        common: make_common_from_parsed(conf.common.unit, conf.common.install, fragment_path)?,
         specific: Specific::Target(TargetSpecific {
             state: RwLock::new(TargetState {
                 common: CommonState::default(),
@@ -185,12 +190,13 @@ pub fn unit_from_parsed_target(conf: ParsedTargetConfig) -> Result<Unit, String>
 }
 
 pub fn unit_from_parsed_slice(conf: ParsedSliceConfig) -> Result<Unit, String> {
+    let fragment_path = conf.common.fragment_path.clone();
     Ok(Unit {
         id: UnitId {
             kind: UnitIdKind::Slice,
             name: conf.common.name,
         },
-        common: make_common_from_parsed(conf.common.unit, conf.common.install)?,
+        common: make_common_from_parsed(conf.common.unit, conf.common.install, fragment_path)?,
         specific: Specific::Slice(SliceSpecific {
             state: RwLock::new(SliceState {
                 common: CommonState::default(),
@@ -200,12 +206,13 @@ pub fn unit_from_parsed_slice(conf: ParsedSliceConfig) -> Result<Unit, String> {
 }
 
 pub fn unit_from_parsed_mount(conf: ParsedMountConfig) -> Result<Unit, String> {
+    let fragment_path = conf.common.fragment_path.clone();
     Ok(Unit {
         id: UnitId {
             kind: UnitIdKind::Mount,
             name: conf.common.name,
         },
-        common: make_common_from_parsed(conf.common.unit, conf.common.install)?,
+        common: make_common_from_parsed(conf.common.unit, conf.common.install, fragment_path)?,
         specific: Specific::Mount(MountSpecific {
             conf: MountConfig::from(conf.mount),
             state: RwLock::new(MountState {
@@ -325,6 +332,7 @@ fn collect_supported_unit_ids(names: Vec<String>) -> Vec<UnitId> {
 fn make_common_from_parsed(
     unit: ParsedUnitSection,
     install: ParsedInstallSection,
+    fragment_path: Option<std::path::PathBuf>,
 ) -> Result<Common, String> {
     let mut wants = collect_supported_unit_ids(unit.wants);
     // Also= in [Install] is treated as a soft (wants) dependency
@@ -354,6 +362,7 @@ fn make_common_from_parsed(
         unit: UnitConfig {
             description: unit.description,
             documentation: unit.documentation,
+            fragment_path,
             refs_by_name,
             default_dependencies: unit.default_dependencies,
             ignore_on_isolate: unit.ignore_on_isolate,

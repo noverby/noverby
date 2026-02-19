@@ -842,8 +842,8 @@ This document is meant as a simple way of checking whether all features you need
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LoadCredentialEncrypted=">LoadCredentialEncrypted=</a></td>
   <td>✅</td>
-  <td>🔶</td>
-  <td>Parsed and loaded identically to LoadCredential=; decryption not yet implemented (encrypted content is copied as-is)</td>
+  <td>✅</td>
+  <td>Loads encrypted credential from file path and decrypts at runtime using AES-256-GCM with host key (/var/lib/systemd/credential.secret) or null key; supports Base64-encoded blobs (as produced by systemd-creds encrypt); graceful fallback to writing as-is if decryption fails (e.g. no host key, TPM2-sealed); missing: TPM2 sealing</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#SetCredential=">SetCredential=</a></td>
@@ -854,8 +854,8 @@ This document is meant as a simple way of checking whether all features you need
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#SetCredentialEncrypted=">SetCredentialEncrypted=</a></td>
   <td>✅</td>
-  <td>🔶</td>
-  <td>Parsed and written identically to SetCredential=; decryption not yet implemented (encrypted content is written as-is)</td>
+  <td>✅</td>
+  <td>Decrypts inline encrypted credential data at runtime using AES-256-GCM with host key or null key; supports Base64-encoded data (as produced by systemd-creds encrypt --pretty); graceful fallback to writing as-is if decryption fails; missing: TPM2 sealing</td>
 </tr>
 <tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$PATH">$PATH</a></td>

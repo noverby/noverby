@@ -103,10 +103,19 @@ fn main() {
     // Extract known flags and separate them from positional arguments.
     let mut quiet = false;
     let mut positional: Vec<String> = Vec::new();
+    let mut property_filter: Vec<String> = Vec::new();
+    let mut value_only = false;
 
     let mut i = 0;
     while i < args.len() {
         let arg = &args[i];
+
+        // --value flag (for `show --value -p Prop`)
+        if arg == "--value" {
+            value_only = true;
+            i += 1;
+            continue;
+        }
 
         // Check known long flags (exact match).
         if KNOWN_FLAGS.contains(&arg.as_str()) {
@@ -121,6 +130,31 @@ fn main() {
         if KNOWN_SHORT_FLAGS.contains(&arg.as_str()) {
             if arg == "-q" {
                 quiet = true;
+            }
+            i += 1;
+            continue;
+        }
+
+        // Capture -p / --property values for `show` filtering.
+        if arg == "-p" || arg == "--property" {
+            if i + 1 < args.len() {
+                // Value may be comma-separated: -p MainPID,ActiveState
+                for part in args[i + 1].split(',') {
+                    let trimmed = part.trim();
+                    if !trimmed.is_empty() {
+                        property_filter.push(trimmed.to_owned());
+                    }
+                }
+            }
+            i += 2;
+            continue;
+        }
+        if let Some(rest) = arg.strip_prefix("--property=") {
+            for part in rest.split(',') {
+                let trimmed = part.trim();
+                if !trimmed.is_empty() {
+                    property_filter.push(trimmed.to_owned());
+                }
             }
             i += 1;
             continue;
@@ -186,7 +220,20 @@ fn main() {
     };
 
     let method = command.clone();
-    let params = if positional.len() == 2 {
+    let params = if method == "show" {
+        // show <unit> [property-filter...] — send unit name + optional filter
+        if positional.len() < 2 {
+            if !quiet {
+                eprintln!("Error: show requires a unit name.");
+            }
+            std::process::exit(1);
+        }
+        let mut arr = vec![Value::String(positional[1].clone())];
+        for prop in &property_filter {
+            arr.push(Value::String(prop.clone()));
+        }
+        Some(Value::Array(arr))
+    } else if positional.len() == 2 {
         Some(Value::String(positional[1].clone()))
     } else if positional.len() > 2 {
         Some(positional[1..].iter().cloned().map(Value::String).collect())
@@ -209,7 +256,7 @@ fn main() {
 
     match result {
         Ok(resp) => {
-            handle_response(&positional[0], &resp, quiet);
+            handle_response(&positional[0], &resp, quiet, value_only, &property_filter);
         }
         Err(e) => {
             if !quiet {
@@ -229,7 +276,13 @@ fn main() {
 
 /// Handle the JSON-RPC response, with special exit code logic for
 /// `is-active`, `is-enabled`, and `is-failed`.
-fn handle_response(command: &str, resp: &Value, quiet: bool) {
+fn handle_response(
+    command: &str,
+    resp: &Value,
+    quiet: bool,
+    value_only: bool,
+    property_filter: &[String],
+) {
     // Check for JSON-RPC error responses.
     if let Some(error) = resp.get("error") {
         let message = error
@@ -302,6 +355,35 @@ fn handle_response(command: &str, resp: &Value, quiet: bool) {
                 _ => std::process::exit(1),
             }
         }
+        "show" => {
+            // The result contains { "show": "Key=Value\n..." }
+            if let Some(result) = result {
+                if let Some(text) = result.get("show").and_then(|v| v.as_str()) {
+                    if !quiet {
+                        if value_only && !property_filter.is_empty() {
+                            // --value mode: print only the values, one per line
+                            for line in text.lines() {
+                                if let Some((_key, val)) = line.split_once('=') {
+                                    println!("{val}");
+                                }
+                            }
+                        } else {
+                            print!("{text}");
+                        }
+                    }
+                }
+            }
+        }
+        "cat" => {
+            // The result contains { "cat": "# /path/to/unit\n[Unit]\n..." }
+            if let Some(result) = result {
+                if let Some(text) = result.get("cat").and_then(|v| v.as_str()) {
+                    if !quiet {
+                        print!("{text}");
+                    }
+                }
+            }
+        }
         _ => {
             // For all other commands, print the result if non-null and non-empty.
             if !quiet {
@@ -332,6 +414,8 @@ path or TCP address as the first positional argument.
 Commands:
     list-units                  List all loaded units
     status <unit>               Show status of a unit
+    show <unit>                 Show properties of a unit (key=value format)
+    cat <unit>                  Show the unit file source
     start <unit>                Start a unit
     stop <unit>                 Stop a unit
     restart <unit>              Restart a unit
@@ -359,13 +443,18 @@ Options:
     --full, -l                  Show full unit names and descriptions
     --all, -a                   Show all units, including inactive
     -t, --type <TYPE>           Filter by unit type
-    -p, --property <PROP>       Show only specified property
+    -p, --property <PROP>       Show only specified property (for show)
+    --value                     Show only property values (with -p)
     --help, -h                  Show this help
     --version                   Show version
 
 Examples:
     systemctl list-units
     systemctl status sshd.service
+    systemctl show sshd.service
+    systemctl show -p MainPID,ActiveState sshd.service
+    systemctl show --value -p MainPID sshd.service
+    systemctl cat sshd.service
     systemctl restart nginx.service
     systemctl --no-block try-restart nscd.service
     systemctl is-active sshd.service"

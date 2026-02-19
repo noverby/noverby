@@ -1447,6 +1447,7 @@ pub fn generate_fstab_mount_units(unit_table: &mut HashMap<UnitId, Unit>) {
                 unit: UnitConfig {
                     description: format!("Mount unit for {mountpoint} (from /etc/fstab)"),
                     documentation: Vec::new(),
+                    fragment_path: None,
                     refs_by_name,
                     default_dependencies: true,
                     ignore_on_isolate: false,
@@ -1883,6 +1884,7 @@ mod tests {
                 unit: UnitConfig {
                     description: name.to_string(),
                     documentation: vec![],
+                    fragment_path: None,
                     refs_by_name: vec![],
                     default_dependencies: true,
                     conditions: vec![],

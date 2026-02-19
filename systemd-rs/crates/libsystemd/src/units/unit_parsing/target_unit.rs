@@ -37,6 +37,7 @@ pub fn parse_target(
             name: path.file_name().unwrap().to_str().unwrap().to_owned(),
             unit: unit_config.unwrap_or_else(Default::default),
             install: install_config.unwrap_or_else(Default::default),
+            fragment_path: Some(path.clone()),
         },
     })
 }
