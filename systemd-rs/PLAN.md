@@ -8,7 +8,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ### What works today
 
-- 3,384 unit tests passing, boot test passing in ~5 seconds with networking, clean login and zero panics/errors
+- 3,466 unit tests passing, boot test passing in ~5 seconds with networking, clean login and zero panics/errors
 - PID 1 initialization with full NixOS compatibility (VFS mounts, `/etc/mtab` symlink, cgroup2, machine-id, hostname, home directories, PAM/NSS diagnostics)
 - Unit file parsing for all NixOS-generated unit files (service, socket, target, mount, timer, path, slice, scope)
 - Dependency graph resolution and parallel unit activation
@@ -37,9 +37,11 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 - DNS resolution (systemd-resolved with stub listener on 127.0.0.53, upstream forwarding, per-link DNS from networkd; resolvectl CLI)
 - External generator framework — discovers and executes standard systemd generators (e.g. `systemd-gpt-auto-generator`, `systemd-run-generator`, `zram-generator`) before unit loading; skips built-in generators (fstab, getty); output directories inserted into unit search path at correct priority; NixOS boot runs 15 generators successfully
 - Deadlock-free PID table — `pid_table` extracted to `Arc<Mutex<…>>` so the signal handler can update entries (Service → ServiceExited) without the RuntimeInfo read lock, breaking a 3-way deadlock between activation threads, the control handler write lock, and exit handler threads on glibc's writer-preferring `pthread_rwlock`
-- 53 crates implemented across Phases 0–5
+- 55 crates implemented across Phases 0–5
 
 ### Recent changes
+
+- Implemented `systemd-coredump` and `coredumpctl` — kernel core dump handler and query CLI; `systemd-coredump` is invoked via `/proc/sys/kernel/core_pattern` pipe protocol with PID/UID/GID/SIGNAL/TIMESTAMP/RLIMIT/HOSTNAME/COMM/EXE arguments and optional `--backtrace` flag; reads core dump from stdin; stores in `/var/lib/systemd/coredump/` with descriptive filenames (`core.COMM.UID.BOOT_ID.PID.TIMESTAMP`) and JSON metadata sidecars; `coredump.conf` parsing ([Coredump] section: Storage=none/external/journal/both, Compress, ProcessSizeMax, ExternalSizeMax, MaxUse, KeepFree) with drop-in directories; automatic vacuum of old core dumps based on MaxUse and KeepFree (statvfs-based); `coredumpctl` CLI with `list` (tabular TIME/PID/UID/GID/SIG/COREFILE/EXE, `--lines`/`--reverse`/`--since`/`--until`/`--no-legend`), `info` (detailed metadata with username/group resolution), `dump` (binary output to `-o` file or stdout with TTY safety), `debug`/`gdb` (launch debugger with `--debugger`/`--debugger-arguments`); match by PID number, COMM prefix, or EXE path prefix; 82 new unit tests covering config parsing, JSON roundtrips, argument parsing, storage, vacuum, discovery, filtering, and timestamp formatting
 
 - Implemented `systemctl suspend`, `systemctl hibernate`, `systemctl hybrid-sleep`, `systemctl suspend-then-hibernate` — sleep commands forwarded to PID 1 which locates and spawns the `systemd-sleep` binary (searched relative to PID 1's executable for NixOS Nix store paths, then well-known system paths); 7 new unit tests covering parse_command for all four sleep methods, params-ignored handling, and `find_sleep_binary` helper
 - Fixed socket activation `DependencyError` handling — when a socket-activated service has unsatisfied `After=` dependencies (e.g. `systemd-udevd.service` waiting for `systemd-tmpfiles-setup-dev-early.service`), the error is now silently deferred instead of logged as ERROR; the normal activation graph starts the service once deps are met; this eliminates the only ERROR in the boot log (besides the expected `lvm-devices-import.service` binary-not-found)
@@ -96,7 +98,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ## Project Structure
 
-The project is organized as a Cargo workspace with a shared core library and individual crates for each systemd component:
+The project is organized as a Cargo workspace with a shared core library and individual crates for each systemd component (55 crates):
 
 ```text
 crates/
@@ -138,8 +140,8 @@ crates/
 ├── homectl/             # Home directory control tool
 ├── oomd/                # Userspace OOM killer (systemd-oomd)
 ├── oomctl/              # OOM killer control tool
-├── coredump/            # Core dump handler (systemd-coredump)
-├── coredumpctl/         # Core dump query tool
+├── coredump/            # Core dump handler (systemd-coredump) ✅
+├── coredumpctl/         # Core dump query tool ✅
 ├── analyze/             # Boot performance analyzer (systemd-analyze) ✅
 ├── run/                 # Transient unit runner (systemd-run)
 ├── cgls/                # Cgroup listing tool (systemd-cgls) ✅
@@ -251,7 +253,7 @@ Higher-level management capabilities:
 - ❌ **`portabled`** — portable service image management (attach/detach/inspect), `portablectl` CLI
 - ❌ **`homed`** — user home directory management with LUKS encryption, `homectl` CLI
 - ✅ **`oomd`** — userspace OOM killer with PSI-based memory pressure monitoring, `oomd.conf` parsing, managed cgroup discovery from unit files, swap usage monitoring, `oomctl` CLI with `dump` command
-- ❌ **`coredump`** — core dump handler with journal integration, `coredumpctl` CLI
+- ✅ **`coredump`** — core dump handler with `coredump.conf` parsing ([Coredump] section with Storage, Compress, ProcessSizeMax, ExternalSizeMax, MaxUse, KeepFree), drop-in directory support, kernel pipe handler (`/proc/sys/kernel/core_pattern` protocol with PID/UID/GID/SIGNAL/TIMESTAMP/RLIMIT/HOSTNAME/COMM/EXE arguments and `--backtrace` flag), core dump storage in `/var/lib/systemd/coredump/` with descriptive filenames (`core.COMM.UID.BOOT_ID.PID.TIMESTAMP`), JSON metadata sidecar files, size limit enforcement (ProcessSizeMax, ExternalSizeMax), automatic vacuum of old core dumps (MaxUse, KeepFree with statvfs-based free space detection), boot ID and machine ID collection, signal name mapping; `coredumpctl` CLI with `list` (tabular display with TIME/PID/UID/GID/SIG/COREFILE/EXE columns, `--lines`/`-n` limit, `--reverse`, `--since`/`--until` time filters, `--no-legend`), `info` (detailed per-dump display with username/group resolution from `/etc/passwd`/`/etc/group`), `dump` (binary output to file via `-o` or stdout with TTY safety check), `debug`/`gdb` (launch debugger with `--debugger`/`--debugger-arguments` options), match patterns (PID number, COMM name prefix, EXE path prefix); 82 unit tests covering config parsing (all Storage modes, Compress, size directives, infinity, drop-in override, case-insensitive sections, comments, missing files), size parsing (bytes/K/M/G/T/infinity), bool parsing, JSON roundtrips (basic, special characters, control chars, unescape, invalid input), metadata (signal names, filename generation, special char sanitization), argument parsing (basic, --backtrace, no exe, missing args, invalid PID), storage (basic store+read, exceeds external max, directory creation, empty data), vacuum (removes oldest, empty dir, nonexistent dir), listing (empty, with entries, skips non-core files), discovery+filter integration (by comm, PID, exe path, time range), timestamp formatting (epoch, known date, leap year), date math (days_to_ymd, is_leap_year); missing: compression (lz4/zstd/xz), journal integration, `/proc/PID/` metadata enrichment (cmdline, cgroup, environ)
 - ❌ **`cryptsetup`** / **`veritysetup`** / **`integritysetup`** — device mapper setup utilities
 - ❌ **`repart`** — declarative GPT partition manager
 - ❌ **`sysext`** — system extension image overlay management
