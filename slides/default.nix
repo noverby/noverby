@@ -9,13 +9,13 @@
           jupyter-console
 
           # Kernels
-          deno-jupyter-kernel
-          mojo-jupyter-kernel
-          rust-jupyter-kernel
-          nu-jupyter-kernel
-          xeus-lix
+          #deno-jupyter-kernel
+          #mojo-jupyter-kernel
+          #rust-jupyter-kernel
+          #nu-jupyter-kernel
+          #xeus-lix
         ]))
-      sidecar
+      #sidecar
     ];
   };
 }
