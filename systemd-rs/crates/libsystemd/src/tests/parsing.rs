@@ -11863,6 +11863,557 @@ fn test_import_credential_combined_with_environment() {
 }
 
 // ---------------------------------------------------------------------------
+// LoadCredential= tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_load_credential_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.load_credentials.is_empty(),
+        "LoadCredential should default to empty when not specified"
+    );
+}
+
+#[test]
+fn test_load_credential_single_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LoadCredential = mycred:/etc/myapp/secret
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.load_credentials,
+        vec![("mycred".to_owned(), "/etc/myapp/secret".to_owned())],
+        "LoadCredential=mycred:/etc/myapp/secret should be stored as (id, path) tuple"
+    );
+}
+
+#[test]
+fn test_load_credential_multiple_directives() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LoadCredential = tls.key:/etc/ssl/private/myapp.key
+    LoadCredential = tls.cert:/etc/ssl/certs/myapp.crt
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.load_credentials,
+        vec![
+            (
+                "tls.key".to_owned(),
+                "/etc/ssl/private/myapp.key".to_owned()
+            ),
+            ("tls.cert".to_owned(), "/etc/ssl/certs/myapp.crt".to_owned()),
+        ],
+        "Multiple LoadCredential= lines should accumulate"
+    );
+}
+
+#[test]
+fn test_load_credential_empty_resets() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LoadCredential = old:/etc/old
+    LoadCredential =
+    LoadCredential = new:/etc/new
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.load_credentials,
+        vec![("new".to_owned(), "/etc/new".to_owned())],
+        "Empty LoadCredential= should reset the list"
+    );
+}
+
+#[test]
+fn test_load_credential_relative_path() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LoadCredential = mytoken:mytoken
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.load_credentials,
+        vec![("mytoken".to_owned(), "mytoken".to_owned())],
+        "LoadCredential with relative path should be stored as-is (resolved at runtime)"
+    );
+}
+
+#[test]
+fn test_load_credential_no_warning_when_set() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LoadCredential = secret:/run/secrets/mysecret
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "Parsing a service with LoadCredential should succeed without errors"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// SetCredential= tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_set_credential_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.exec_section.set_credentials.is_empty(),
+        "SetCredential should default to empty when not specified"
+    );
+}
+
+#[test]
+fn test_set_credential_single_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SetCredential = mytoken:s3cret
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.set_credentials,
+        vec![("mytoken".to_owned(), "s3cret".to_owned())],
+        "SetCredential=mytoken:s3cret should be stored as (id, data) tuple"
+    );
+}
+
+#[test]
+fn test_set_credential_data_with_colons() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SetCredential = db-url:postgres://user:pass@host:5432/db
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.set_credentials,
+        vec![(
+            "db-url".to_owned(),
+            "postgres://user:pass@host:5432/db".to_owned()
+        )],
+        "SetCredential data should preserve colons after the first separator"
+    );
+}
+
+#[test]
+fn test_set_credential_multiple_directives() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SetCredential = api-key:abc123
+    SetCredential = api-secret:xyz789
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.set_credentials,
+        vec![
+            ("api-key".to_owned(), "abc123".to_owned()),
+            ("api-secret".to_owned(), "xyz789".to_owned()),
+        ],
+        "Multiple SetCredential= lines should accumulate"
+    );
+}
+
+#[test]
+fn test_set_credential_empty_resets() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SetCredential = old:data
+    SetCredential =
+    SetCredential = new:data
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.set_credentials,
+        vec![("new".to_owned(), "data".to_owned())],
+        "Empty SetCredential= should reset the list"
+    );
+}
+
+#[test]
+fn test_set_credential_empty_data() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SetCredential = empty-cred:
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.set_credentials,
+        vec![("empty-cred".to_owned(), "".to_owned())],
+        "SetCredential with empty data after colon should store empty string"
+    );
+}
+
+#[test]
+fn test_set_credential_no_warning_when_set() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SetCredential = some-token:value
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "Parsing a service with SetCredential should succeed without errors"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// LoadCredentialEncrypted= tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_load_credential_encrypted_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service
+            .srvc
+            .exec_section
+            .load_credentials_encrypted
+            .is_empty(),
+        "LoadCredentialEncrypted should default to empty when not specified"
+    );
+}
+
+#[test]
+fn test_load_credential_encrypted_single_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LoadCredentialEncrypted = secret:/etc/credstore.encrypted/mysecret
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.load_credentials_encrypted,
+        vec![(
+            "secret".to_owned(),
+            "/etc/credstore.encrypted/mysecret".to_owned()
+        )],
+        "LoadCredentialEncrypted should be stored as (id, path) tuple"
+    );
+}
+
+#[test]
+fn test_load_credential_encrypted_multiple_directives() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LoadCredentialEncrypted = tls.key:/etc/credstore.encrypted/tls.key
+    LoadCredentialEncrypted = tls.cert:/etc/credstore.encrypted/tls.cert
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.load_credentials_encrypted.len(),
+        2,
+        "Multiple LoadCredentialEncrypted= lines should accumulate"
+    );
+}
+
+#[test]
+fn test_load_credential_encrypted_no_warning_when_set() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    LoadCredentialEncrypted = encrypted-secret:/etc/credstore.encrypted/secret
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "Parsing a service with LoadCredentialEncrypted should succeed without errors"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// SetCredentialEncrypted= tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_set_credential_encrypted_defaults_to_empty() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service
+            .srvc
+            .exec_section
+            .set_credentials_encrypted
+            .is_empty(),
+        "SetCredentialEncrypted should default to empty when not specified"
+    );
+}
+
+#[test]
+fn test_set_credential_encrypted_single_value() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SetCredentialEncrypted = mysecret:AABBCCDD==
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.set_credentials_encrypted,
+        vec![("mysecret".to_owned(), "AABBCCDD==".to_owned())],
+        "SetCredentialEncrypted should be stored as (id, data) tuple"
+    );
+}
+
+#[test]
+fn test_set_credential_encrypted_no_warning_when_set() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SetCredentialEncrypted = encrypted-data:base64encodedstuff==
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_ok(),
+        "Parsing a service with SetCredentialEncrypted should succeed without errors"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Combined credential directive tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_all_credential_directives_combined() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myapp
+    ImportCredential = myapp.*
+    LoadCredential = db-password:/run/secrets/db-pass
+    SetCredential = api-key:default-key-value
+    LoadCredentialEncrypted = tls.key:/etc/credstore.encrypted/tls.key
+    SetCredentialEncrypted = bootstrap-token:ENCRYPTED==
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.exec_section.import_credentials,
+        vec!["myapp.*".to_owned()],
+        "ImportCredential should be parsed alongside other credential directives"
+    );
+    assert_eq!(
+        service.srvc.exec_section.load_credentials,
+        vec![("db-password".to_owned(), "/run/secrets/db-pass".to_owned())],
+        "LoadCredential should be parsed alongside other credential directives"
+    );
+    assert_eq!(
+        service.srvc.exec_section.set_credentials,
+        vec![("api-key".to_owned(), "default-key-value".to_owned())],
+        "SetCredential should be parsed alongside other credential directives"
+    );
+    assert_eq!(
+        service.srvc.exec_section.load_credentials_encrypted,
+        vec![(
+            "tls.key".to_owned(),
+            "/etc/credstore.encrypted/tls.key".to_owned()
+        )],
+        "LoadCredentialEncrypted should be parsed alongside other credential directives"
+    );
+    assert_eq!(
+        service.srvc.exec_section.set_credentials_encrypted,
+        vec![("bootstrap-token".to_owned(), "ENCRYPTED==".to_owned())],
+        "SetCredentialEncrypted should be parsed alongside other credential directives"
+    );
+}
+
+#[test]
+fn test_credential_directives_with_environment_and_user() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/myapp
+    User = nobody
+    Environment = MY_VAR=hello
+    LoadCredential = secret:/etc/secret
+    SetCredential = fallback:default
+    ImportCredential = myapp.*
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.exec_section.load_credentials.len(), 1);
+    assert_eq!(service.srvc.exec_section.set_credentials.len(), 1);
+    assert_eq!(service.srvc.exec_section.import_credentials.len(), 1);
+    assert!(
+        service.srvc.exec_section.environment.is_some(),
+        "Environment should still be parsed alongside credential directives"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // glob_match tests (the helper used by ImportCredential= at runtime)
 // ---------------------------------------------------------------------------
 

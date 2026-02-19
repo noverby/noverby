@@ -144,6 +144,28 @@ pub struct ExecHelperConfig {
     #[serde(default)]
     pub import_credentials: Vec<String>,
 
+    /// LoadCredential=ID:PATH — load a credential from a file at PATH and
+    /// place it in the service's credential directory under the name ID.
+    #[serde(default)]
+    pub load_credentials: Vec<(String, String)>,
+
+    /// LoadCredentialEncrypted=ID:PATH — like LoadCredential= but the file
+    /// content is expected to be encrypted. Parsed but decryption is not yet
+    /// implemented (credential is loaded as-is).
+    #[serde(default)]
+    pub load_credentials_encrypted: Vec<(String, String)>,
+
+    /// SetCredential=ID:DATA — set a credential from inline data. The data
+    /// is written verbatim to the credential directory under the given ID.
+    #[serde(default)]
+    pub set_credentials: Vec<(String, String)>,
+
+    /// SetCredentialEncrypted=ID:DATA — like SetCredential= but the inline
+    /// data is expected to be encrypted (base64-encoded). Parsed but
+    /// decryption is not yet implemented (credential is written as-is).
+    #[serde(default)]
+    pub set_credentials_encrypted: Vec<(String, String)>,
+
     /// Whether StandardOutput is set to inherit (or journal/kmsg/tty/unset).
     /// When true AND stdin is a TTY, stdout will be dup'd from the TTY fd.
     #[serde(default = "default_true")]
@@ -656,10 +678,19 @@ pub fn run_exec_helper() {
     // Import credentials from the system credential store into a per-service
     // credential directory. This must happen BEFORE dropping privileges,
     // because /run/credentials/ is typically only writable by root.
-    // Matches systemd's ImportCredential= behaviour: glob patterns are matched
-    // against files in the system credential stores and copied into
-    // /run/credentials/<unit-name>/.
-    if !config.import_credentials.is_empty() {
+    // Matches systemd's credential directives:
+    //   SetCredential=       — write inline data to credential dir
+    //   LoadCredential=      — copy file to credential dir
+    //   ImportCredential=    — glob-match from system credential stores
+    // The order matches systemd: SetCredential first (lowest priority,
+    // can be overridden), then LoadCredential/LoadCredentialEncrypted,
+    // then ImportCredential (highest priority, won't overwrite).
+    let has_credentials = !config.import_credentials.is_empty()
+        || !config.load_credentials.is_empty()
+        || !config.load_credentials_encrypted.is_empty()
+        || !config.set_credentials.is_empty()
+        || !config.set_credentials_encrypted.is_empty();
+    if has_credentials {
         setup_credentials(&config);
     }
 
@@ -985,7 +1016,21 @@ const CREDENTIAL_STORES: &[&str] = &[
     "/etc/credstore",
 ];
 
-/// Set up the per-service credential directory and import matching credentials.
+/// Set up the per-service credential directory, processing all credential
+/// directives in the correct priority order (matching systemd):
+///
+/// 1. `SetCredential=` / `SetCredentialEncrypted=` — lowest priority, written
+///    first so they can be overridden by later directives.
+/// 2. `LoadCredential=` / `LoadCredentialEncrypted=` — medium priority, copies
+///    from file paths. Overwrites credentials set by `SetCredential=`.
+/// 3. `ImportCredential=` — highest priority, glob-matches from system
+///    credential stores. Does NOT overwrite existing credentials (first match
+///    wins across stores, but won't override LoadCredential/SetCredential).
+///
+/// Note: Encrypted variants are parsed but decryption is not yet implemented.
+/// The encrypted content is written/loaded as-is, which means the service
+/// will see the raw (still-encrypted) bytes. This matches the principle of
+/// "parse everything, implement runtime gradually".
 fn setup_credentials(config: &ExecHelperConfig) {
     let cred_dir = PathBuf::from(format!("/run/credentials/{}", config.name));
 
@@ -1027,8 +1072,180 @@ fn setup_credentials(config: &ExecHelperConfig) {
         );
     }
 
-    let mut imported = 0usize;
+    let mut _wrote = 0usize;
 
+    // --- Phase 1: SetCredential= (lowest priority) ---
+    for (id, data) in &config.set_credentials {
+        let dst = cred_dir.join(id);
+        match std::fs::write(&dst, data.as_bytes()) {
+            Ok(()) => {
+                set_credential_perms(&dst, uid, gid);
+                _wrote += 1;
+            }
+            Err(e) => {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to write SetCredential {:?}: {}",
+                    config.name, id, e
+                );
+            }
+        }
+    }
+
+    // --- Phase 1b: SetCredentialEncrypted= (same priority as SetCredential) ---
+    // NOTE: Decryption not yet implemented — data is written as-is.
+    for (id, data) in &config.set_credentials_encrypted {
+        let dst = cred_dir.join(id);
+        // Don't overwrite a credential set by SetCredential= with the same ID
+        // (first writer wins within the same priority level).
+        if dst.exists() {
+            continue;
+        }
+        match std::fs::write(&dst, data.as_bytes()) {
+            Ok(()) => {
+                set_credential_perms(&dst, uid, gid);
+                _wrote += 1;
+            }
+            Err(e) => {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to write SetCredentialEncrypted {:?}: {}",
+                    config.name, id, e
+                );
+            }
+        }
+    }
+
+    // --- Phase 2: LoadCredential= (overwrites SetCredential) ---
+    for (id, path_str) in &config.load_credentials {
+        let src = Path::new(path_str);
+
+        // If the path is not absolute, search credential stores (matching
+        // systemd's behaviour for relative LoadCredential= paths).
+        let resolved = if src.is_absolute() {
+            src.to_path_buf()
+        } else {
+            let mut found = None;
+            for store_dir in CREDENTIAL_STORES {
+                let candidate = Path::new(store_dir).join(path_str);
+                if candidate.exists() {
+                    found = Some(candidate);
+                    break;
+                }
+            }
+            match found {
+                Some(p) => p,
+                None => {
+                    eprintln!(
+                        "[EXEC_HELPER {}] LoadCredential {:?}: path {:?} not found (searched credential stores)",
+                        config.name, id, path_str
+                    );
+                    continue;
+                }
+            }
+        };
+
+        if !resolved.exists() {
+            eprintln!(
+                "[EXEC_HELPER {}] LoadCredential {:?}: source {:?} does not exist",
+                config.name, id, resolved
+            );
+            continue;
+        }
+
+        let dst = cred_dir.join(id);
+
+        // If the source is a directory, load all files within it as
+        // sub-credentials (matching systemd behaviour).
+        if resolved.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&resolved) {
+                for entry in entries.flatten() {
+                    if entry.path().is_file() {
+                        let sub_dst = cred_dir.join(entry.file_name());
+                        match std::fs::copy(entry.path(), &sub_dst) {
+                            Ok(_) => {
+                                set_credential_perms(&sub_dst, uid, gid);
+                                _wrote += 1;
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "[EXEC_HELPER {}] Failed to load credential {:?} from dir {:?}: {}",
+                                    config.name,
+                                    entry.file_name(),
+                                    resolved,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            match std::fs::copy(&resolved, &dst) {
+                Ok(_) => {
+                    set_credential_perms(&dst, uid, gid);
+                    _wrote += 1;
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[EXEC_HELPER {}] Failed to load credential {:?} from {:?}: {}",
+                        config.name, id, resolved, e
+                    );
+                }
+            }
+        }
+    }
+
+    // --- Phase 2b: LoadCredentialEncrypted= (same priority as LoadCredential) ---
+    // NOTE: Decryption not yet implemented — file content is copied as-is.
+    for (id, path_str) in &config.load_credentials_encrypted {
+        let src = Path::new(path_str);
+
+        let resolved = if src.is_absolute() {
+            src.to_path_buf()
+        } else {
+            let mut found = None;
+            for store_dir in CREDENTIAL_STORES {
+                let candidate = Path::new(store_dir).join(path_str);
+                if candidate.exists() {
+                    found = Some(candidate);
+                    break;
+                }
+            }
+            match found {
+                Some(p) => p,
+                None => {
+                    eprintln!(
+                        "[EXEC_HELPER {}] LoadCredentialEncrypted {:?}: path {:?} not found",
+                        config.name, id, path_str
+                    );
+                    continue;
+                }
+            }
+        };
+
+        if !resolved.exists() || !resolved.is_file() {
+            eprintln!(
+                "[EXEC_HELPER {}] LoadCredentialEncrypted {:?}: source {:?} not found or not a file",
+                config.name, id, resolved
+            );
+            continue;
+        }
+
+        let dst = cred_dir.join(id);
+        match std::fs::copy(&resolved, &dst) {
+            Ok(_) => {
+                set_credential_perms(&dst, uid, gid);
+                _wrote += 1;
+            }
+            Err(e) => {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to load encrypted credential {:?} from {:?}: {}",
+                    config.name, id, resolved, e
+                );
+            }
+        }
+    }
+
+    // --- Phase 3: ImportCredential= (highest priority, won't overwrite) ---
     for pattern in &config.import_credentials {
         for store_dir in CREDENTIAL_STORES {
             let store = Path::new(store_dir);
@@ -1056,24 +1273,16 @@ fn setup_credentials(config: &ExecHelperConfig) {
 
                 let dst = cred_dir.join(&file_name);
 
-                // Don't overwrite — first match wins (higher-priority store).
+                // Don't overwrite — first match wins (higher-priority store),
+                // and ImportCredential never overwrites LoadCredential/SetCredential.
                 if dst.exists() {
                     continue;
                 }
 
                 match std::fs::copy(&src, &dst) {
                     Ok(_) => {
-                        // Make the credential file readable only by the service user (0o400).
-                        let _ = unsafe {
-                            libc::chmod(
-                                std::ffi::CString::new(dst.to_string_lossy().as_bytes())
-                                    .unwrap()
-                                    .as_ptr(),
-                                0o400,
-                            )
-                        };
-                        let _ = nix::unistd::chown(&dst, Some(uid), Some(gid));
-                        imported += 1;
+                        set_credential_perms(&dst, uid, gid);
+                        _wrote += 1;
                     }
                     Err(e) => {
                         eprintln!(
@@ -1086,12 +1295,23 @@ fn setup_credentials(config: &ExecHelperConfig) {
         }
     }
 
-    if imported > 0 || !config.import_credentials.is_empty() {
-        // Always set the env var so the service knows where to look,
-        // even if no credentials were found (matches systemd behaviour).
-        // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::set_var("CREDENTIALS_DIRECTORY", &cred_dir) };
-    }
+    // Always set the env var so the service knows where to look,
+    // even if no credentials were found (matches systemd behaviour).
+    // TODO: Audit that the environment access only happens in single-threaded code.
+    unsafe { std::env::set_var("CREDENTIALS_DIRECTORY", &cred_dir) };
+}
+
+/// Set a credential file to owner-read-only (0o400) and chown to service user/group.
+fn set_credential_perms(path: &Path, uid: nix::unistd::Uid, gid: nix::unistd::Gid) {
+    let _ = unsafe {
+        libc::chmod(
+            std::ffi::CString::new(path.to_string_lossy().as_bytes())
+                .unwrap()
+                .as_ptr(),
+            0o400,
+        )
+    };
+    let _ = nix::unistd::chown(path, Some(uid), Some(gid));
 }
 
 /// Simple glob matcher supporting `*` (any chars) and `?` (single char).

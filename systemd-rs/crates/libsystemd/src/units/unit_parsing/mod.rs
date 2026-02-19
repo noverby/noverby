@@ -1318,6 +1318,25 @@ pub struct ParsedExecSection {
     /// Multiple patterns may be specified (the setting accumulates).
     /// See systemd.exec(5).
     pub import_credentials: Vec<String>,
+    /// LoadCredential=ID:PATH — load a credential from a file. The credential
+    /// is made available in the service's credential directory under the given
+    /// ID name. Multiple directives accumulate; an empty assignment resets.
+    /// See systemd.exec(5).
+    pub load_credentials: Vec<(String, String)>,
+    /// LoadCredentialEncrypted=ID:PATH — like LoadCredential= but the file
+    /// content is expected to be encrypted with a system credential key.
+    /// Parsed but decryption is not yet implemented (credential is loaded
+    /// as-is). See systemd.exec(5).
+    pub load_credentials_encrypted: Vec<(String, String)>,
+    /// SetCredential=ID:DATA — set a credential from inline data. The data
+    /// is written verbatim to the credential directory under the given ID.
+    /// The DATA part may contain colons. Multiple directives accumulate;
+    /// an empty assignment resets. See systemd.exec(5).
+    pub set_credentials: Vec<(String, String)>,
+    /// SetCredentialEncrypted=ID:DATA — like SetCredential= but the inline
+    /// data is expected to be encrypted (base64-encoded). Parsed but
+    /// decryption is not yet implemented. See systemd.exec(5).
+    pub set_credentials_encrypted: Vec<(String, String)>,
     /// PassEnvironment= — a list of environment variable names to import from
     /// the system manager's (PID 1) environment into the service's execution
     /// environment. Only variables that are actually set in the manager's

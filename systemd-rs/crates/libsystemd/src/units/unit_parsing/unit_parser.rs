@@ -731,6 +731,10 @@ pub fn parse_exec_section(
     let utmp_identifier = section.remove("UTMPIDENTIFIER");
     let utmp_mode = section.remove("UTMPMODE");
     let import_credential = section.remove("IMPORTCREDENTIAL");
+    let load_credential = section.remove("LOADCREDENTIAL");
+    let load_credential_encrypted = section.remove("LOADCREDENTIALENCRYPTED");
+    let set_credential = section.remove("SETCREDENTIAL");
+    let set_credential_encrypted = section.remove("SETCREDENTIALENCRYPTED");
     let pass_environment = section.remove("PASSENVIRONMENT");
     let unset_environment = section.remove("UNSETENVIRONMENT");
     let oom_score_adjust = section.remove("OOMSCOREADJUST");
@@ -1436,6 +1440,101 @@ pub fn parse_exec_section(
                         .collect::<Vec<_>>()
                 })
                 .collect(),
+            None => Vec::new(),
+        },
+        load_credentials: match load_credential {
+            Some(vec) => {
+                // LoadCredential=ID:PATH — each directive specifies a credential
+                // name and file path separated by a colon. Multiple directives
+                // accumulate; an empty assignment resets the list.
+                let mut creds = Vec::new();
+                for (_idx, val) in vec {
+                    let trimmed = val.trim();
+                    if trimmed.is_empty() {
+                        creds.clear();
+                        continue;
+                    }
+                    if let Some((id, path)) = trimmed.split_once(':') {
+                        let id = id.trim();
+                        let path = path.trim();
+                        if !id.is_empty() && !path.is_empty() {
+                            creds.push((id.to_owned(), path.to_owned()));
+                        }
+                    }
+                }
+                creds
+            }
+            None => Vec::new(),
+        },
+        load_credentials_encrypted: match load_credential_encrypted {
+            Some(vec) => {
+                // LoadCredentialEncrypted=ID:PATH — same format as LoadCredential
+                // but the file content is expected to be encrypted. We parse it
+                // identically; decryption is handled at runtime.
+                let mut creds = Vec::new();
+                for (_idx, val) in vec {
+                    let trimmed = val.trim();
+                    if trimmed.is_empty() {
+                        creds.clear();
+                        continue;
+                    }
+                    if let Some((id, path)) = trimmed.split_once(':') {
+                        let id = id.trim();
+                        let path = path.trim();
+                        if !id.is_empty() && !path.is_empty() {
+                            creds.push((id.to_owned(), path.to_owned()));
+                        }
+                    }
+                }
+                creds
+            }
+            None => Vec::new(),
+        },
+        set_credentials: match set_credential {
+            Some(vec) => {
+                // SetCredential=ID:DATA — each directive specifies a credential
+                // name and inline data separated by a colon. The data part may
+                // contain colons (only the first colon separates ID from DATA).
+                // Multiple directives accumulate; an empty assignment resets.
+                let mut creds = Vec::new();
+                for (_idx, val) in vec {
+                    let trimmed = val.trim();
+                    if trimmed.is_empty() {
+                        creds.clear();
+                        continue;
+                    }
+                    if let Some((id, data)) = trimmed.split_once(':') {
+                        let id = id.trim();
+                        if !id.is_empty() {
+                            creds.push((id.to_owned(), data.to_owned()));
+                        }
+                    }
+                }
+                creds
+            }
+            None => Vec::new(),
+        },
+        set_credentials_encrypted: match set_credential_encrypted {
+            Some(vec) => {
+                // SetCredentialEncrypted=ID:DATA — same format as SetCredential
+                // but the data is expected to be encrypted (base64). We parse it
+                // identically; decryption is handled at runtime.
+                let mut creds = Vec::new();
+                for (_idx, val) in vec {
+                    let trimmed = val.trim();
+                    if trimmed.is_empty() {
+                        creds.clear();
+                        continue;
+                    }
+                    if let Some((id, data)) = trimmed.split_once(':') {
+                        let id = id.trim();
+                        if !id.is_empty() {
+                            creds.push((id.to_owned(), data.to_owned()));
+                        }
+                    }
+                }
+                creds
+            }
             None => Vec::new(),
         },
         pass_environment: match pass_environment {

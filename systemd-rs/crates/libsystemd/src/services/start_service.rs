@@ -291,6 +291,10 @@ fn start_service_with_filedescriptors(
         utmp_identifier: conf.exec_config.utmp_identifier.clone(),
         utmp_mode: conf.exec_config.utmp_mode,
         import_credentials: conf.exec_config.import_credentials.clone(),
+        load_credentials: conf.exec_config.load_credentials.clone(),
+        load_credentials_encrypted: conf.exec_config.load_credentials_encrypted.clone(),
+        set_credentials: conf.exec_config.set_credentials.clone(),
+        set_credentials_encrypted: conf.exec_config.set_credentials_encrypted.clone(),
         stdout_is_inherit: matches!(
             conf.exec_config.stdout_path,
             None | Some(StdIoOption::Inherit)
