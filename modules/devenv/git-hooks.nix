@@ -4,6 +4,7 @@
     package = pkgs.prek;
     hooks = {
       denolint.enable = false;
+      flake-checker.enable = true;
       biome.enable = true;
       alejandra.enable = true;
       deadnix.enable = true;
