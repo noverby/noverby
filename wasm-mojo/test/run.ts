@@ -5,12 +5,15 @@ import { testBitwise } from "./bitwise.test.ts";
 import { testBoundaries } from "./boundaries.test.ts";
 import { testComparison } from "./comparison.test.ts";
 import { testConsistency } from "./consistency.test.ts";
+import { testElementId } from "./element_id.test.ts";
 import { testFloats } from "./floats.test.ts";
 import { summary } from "./harness.ts";
 import { testIdentity } from "./identity.test.ts";
 import { testMinMax } from "./minmax.test.ts";
 import { testPrint } from "./print.test.ts";
 import { testProperties } from "./properties.test.ts";
+import { testProtocol } from "./protocol.test.ts";
+import { testSignals } from "./signals.test.ts";
 import { testSSO } from "./sso.test.ts";
 import { testStress } from "./stress.test.ts";
 import { testStrings } from "./strings.test.ts";
@@ -39,6 +42,9 @@ async function run(): Promise<void> {
 	testUnicode(fns);
 	testProperties(fns);
 	testStress(fns);
+	testProtocol(fns);
+	testElementId(fns);
+	testSignals(fns);
 
 	summary();
 }

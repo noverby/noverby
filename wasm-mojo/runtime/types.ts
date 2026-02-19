@@ -101,6 +101,97 @@ export interface WasmExports extends WebAssembly.Exports {
 	identity_float32(x: number): number;
 	identity_float64(x: number): number;
 
+	// ── Mutation Protocol ────────────────────────────────────────────
+
+	// Buffer management
+	mutation_buf_alloc(capacity: number): bigint;
+	mutation_buf_free(ptr: bigint): void;
+
+	// Simple opcodes (no string/path payload)
+	write_op_end(buf: bigint, off: number): number;
+	write_op_append_children(
+		buf: bigint,
+		off: number,
+		id: number,
+		m: number,
+	): number;
+	write_op_create_placeholder(buf: bigint, off: number, id: number): number;
+	write_op_load_template(
+		buf: bigint,
+		off: number,
+		tmplId: number,
+		index: number,
+		id: number,
+	): number;
+	write_op_replace_with(
+		buf: bigint,
+		off: number,
+		id: number,
+		m: number,
+	): number;
+	write_op_insert_after(
+		buf: bigint,
+		off: number,
+		id: number,
+		m: number,
+	): number;
+	write_op_insert_before(
+		buf: bigint,
+		off: number,
+		id: number,
+		m: number,
+	): number;
+	write_op_remove(buf: bigint, off: number, id: number): number;
+	write_op_push_root(buf: bigint, off: number, id: number): number;
+
+	// String-carrying opcodes (text param is a Mojo String struct pointer)
+	write_op_create_text_node(
+		buf: bigint,
+		off: number,
+		id: number,
+		text: bigint,
+	): number;
+	write_op_set_text(buf: bigint, off: number, id: number, text: bigint): number;
+	write_op_set_attribute(
+		buf: bigint,
+		off: number,
+		id: number,
+		ns: number,
+		name: bigint,
+		value: bigint,
+	): number;
+	write_op_new_event_listener(
+		buf: bigint,
+		off: number,
+		id: number,
+		name: bigint,
+	): number;
+	write_op_remove_event_listener(
+		buf: bigint,
+		off: number,
+		id: number,
+		name: bigint,
+	): number;
+
+	// Path-carrying opcodes
+	write_op_assign_id(
+		buf: bigint,
+		off: number,
+		pathPtr: bigint,
+		pathLen: number,
+		id: number,
+	): number;
+	write_op_replace_placeholder(
+		buf: bigint,
+		off: number,
+		pathPtr: bigint,
+		pathLen: number,
+		m: number,
+	): number;
+
+	// Composite test helper
+	write_test_sequence(buf: bigint): number;
+
 	// Print
 	print_static_string(): void;
 	print_int32(): void;
@@ -122,4 +213,44 @@ export interface WasmExports extends WebAssembly.Exports {
 	): void;
 	string_repeat(xStructPtr: bigint, n: number, outStructPtr: bigint): void;
 	string_eq(xStructPtr: bigint, yStructPtr: bigint): number;
+
+	// ── ElementId Allocator ──────────────────────────────────────────
+
+	eid_alloc_create(): bigint;
+	eid_alloc_destroy(allocPtr: bigint): void;
+	eid_alloc(allocPtr: bigint): number;
+	eid_free(allocPtr: bigint, id: number): void;
+	eid_is_alive(allocPtr: bigint, id: number): number;
+	eid_count(allocPtr: bigint): number;
+	eid_user_count(allocPtr: bigint): number;
+
+	// ── Reactive Runtime / Signals ───────────────────────────────────
+
+	// Runtime lifecycle
+	runtime_create(): bigint;
+	runtime_destroy(rtPtr: bigint): void;
+
+	// Signal CRUD
+	signal_create_i32(rtPtr: bigint, initial: number): number;
+	signal_read_i32(rtPtr: bigint, key: number): number;
+	signal_write_i32(rtPtr: bigint, key: number, value: number): void;
+	signal_peek_i32(rtPtr: bigint, key: number): number;
+	signal_destroy(rtPtr: bigint, key: number): void;
+
+	// Signal queries
+	signal_subscriber_count(rtPtr: bigint, key: number): number;
+	signal_version(rtPtr: bigint, key: number): number;
+	signal_count(rtPtr: bigint): number;
+	signal_contains(rtPtr: bigint, key: number): number;
+
+	// Signal arithmetic helpers
+	signal_iadd_i32(rtPtr: bigint, key: number, rhs: number): void;
+	signal_isub_i32(rtPtr: bigint, key: number, rhs: number): void;
+
+	// Context management
+	runtime_set_context(rtPtr: bigint, contextId: number): void;
+	runtime_clear_context(rtPtr: bigint): void;
+	runtime_has_context(rtPtr: bigint): number;
+	runtime_dirty_count(rtPtr: bigint): number;
+	runtime_has_dirty(rtPtr: bigint): number;
 }
