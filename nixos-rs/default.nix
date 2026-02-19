@@ -5,21 +5,13 @@
       nix-tree
     ];
   };
-  nixosConfigurations.nixos-nix = {
-    inputs,
-    lib,
-    ...
-  }: {
+  nixosConfigurations.nixos-nix = _: {
     system = "x86_64-linux";
     modules = [
       ./base.nix
     ];
   };
-  nixosConfigurations.nixos-rs = {
-    inputs,
-    lib,
-    ...
-  }: {
+  nixosConfigurations.nixos-rs = _: {
     system = "x86_64-linux";
     modules = [
       ./base.nix

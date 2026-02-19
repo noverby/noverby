@@ -35,7 +35,6 @@
     };
 
   packages.systemd-rs-systemd = {
-    lib,
     runCommand,
     makeBinaryWrapper,
     systemd-rs,
