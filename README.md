@@ -23,6 +23,7 @@
   - [📚 Libraries](#-libraries)
   - [🏗️ Infrastructure](#-infrastructure)
 - [🛠️ Development](#-development)
+  - [🔧 Tooling](#-tooling)
   - [❄️ Configuration](#-configuration)
   - [🦀 Systems](#-systems)
   - [🌐 Web](#-web)
@@ -449,7 +450,7 @@
 
 <details open>
 
-### Languages & Compilers
+### 🔧 Tooling
 
 #### Tools & Utilities
 
