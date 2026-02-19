@@ -13,6 +13,7 @@ import { testMinMax } from "./minmax.test.ts";
 import { testPrint } from "./print.test.ts";
 import { testProperties } from "./properties.test.ts";
 import { testProtocol } from "./protocol.test.ts";
+import { testScopes } from "./scopes.test.ts";
 import { testSignals } from "./signals.test.ts";
 import { testSSO } from "./sso.test.ts";
 import { testStress } from "./stress.test.ts";
@@ -45,6 +46,7 @@ async function run(): Promise<void> {
 	testProtocol(fns);
 	testElementId(fns);
 	testSignals(fns);
+	testScopes(fns);
 
 	summary();
 }

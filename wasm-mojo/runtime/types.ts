@@ -253,4 +253,34 @@ export interface WasmExports extends WebAssembly.Exports {
 	runtime_has_context(rtPtr: bigint): number;
 	runtime_dirty_count(rtPtr: bigint): number;
 	runtime_has_dirty(rtPtr: bigint): number;
+
+	// ── Scopes ───────────────────────────────────────────────────────
+
+	// Scope lifecycle
+	scope_create(rtPtr: bigint, height: number, parentId: number): number;
+	scope_create_child(rtPtr: bigint, parentId: number): number;
+	scope_destroy(rtPtr: bigint, id: number): void;
+	scope_count(rtPtr: bigint): number;
+	scope_contains(rtPtr: bigint, id: number): number;
+
+	// Scope queries
+	scope_height(rtPtr: bigint, id: number): number;
+	scope_parent(rtPtr: bigint, id: number): number;
+	scope_is_dirty(rtPtr: bigint, id: number): number;
+	scope_set_dirty(rtPtr: bigint, id: number, dirty: number): void;
+	scope_render_count(rtPtr: bigint, id: number): number;
+	scope_hook_count(rtPtr: bigint, id: number): number;
+	scope_hook_value_at(rtPtr: bigint, id: number, index: number): number;
+	scope_hook_tag_at(rtPtr: bigint, id: number, index: number): number;
+
+	// Scope rendering lifecycle
+	scope_begin_render(rtPtr: bigint, scopeId: number): number;
+	scope_end_render(rtPtr: bigint, prevScope: number): void;
+	scope_has_scope(rtPtr: bigint): number;
+	scope_get_current(rtPtr: bigint): number;
+	scope_is_first_render(rtPtr: bigint, scopeId: number): number;
+
+	// ── Hooks ────────────────────────────────────────────────────────
+
+	hook_use_signal_i32(rtPtr: bigint, initial: number): number;
 }

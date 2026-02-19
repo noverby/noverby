@@ -1,6 +1,7 @@
 # Reactive Runtime — Global signal storage and context tracking.
 #
-# This module provides the core reactive infrastructure:
+# This module provides the core reactive infrastructure, including scope
+# management for components:
 #
 #   - `SignalStore`  — Type-erased storage for all signal values, backed
 #     by raw memory. Each signal is identified by a `UInt32` key.
@@ -29,6 +30,7 @@
 
 from sys import size_of
 from memory import UnsafePointer, memcpy
+from scope import ScopeArena, ScopeState, HOOK_SIGNAL, HOOK_MEMO, HOOK_EFFECT
 
 
 # ── SignalEntry ──────────────────────────────────────────────────────────────
@@ -293,19 +295,25 @@ struct Runtime(Movable):
     """
 
     var signals: SignalStore
+    var scopes: ScopeArena
     var current_context: Int  # -1 = no active context
+    var current_scope: Int  # -1 = no active scope (for hooks)
     var dirty_scopes: List[UInt32]
 
     # ── Construction ─────────────────────────────────────────────────
 
     fn __init__(out self):
         self.signals = SignalStore()
+        self.scopes = ScopeArena()
         self.current_context = -1
+        self.current_scope = -1
         self.dirty_scopes = List[UInt32]()
 
     fn __moveinit__(out self, deinit other: Self):
         self.signals = other.signals^
+        self.scopes = other.scopes^
         self.current_context = other.current_context
+        self.current_scope = other.current_scope
         self.dirty_scopes = other.dirty_scopes^
 
     # ── Context management ───────────────────────────────────────────
@@ -408,6 +416,94 @@ struct Runtime(Movable):
     fn dirty_count(self) -> Int:
         """Number of scopes in the dirty queue."""
         return len(self.dirty_scopes)
+
+    # ── Scope management ─────────────────────────────────────────────
+
+    fn create_scope(mut self, height: UInt32, parent_id: Int) -> UInt32:
+        """Create a new scope and return its ID."""
+        return self.scopes.create(height, parent_id)
+
+    fn create_child_scope(mut self, parent_id: UInt32) -> UInt32:
+        """Create a child scope whose height is parent.height + 1."""
+        return self.scopes.create_child(parent_id)
+
+    fn destroy_scope(mut self, id: UInt32):
+        """Destroy a scope, freeing its slot for reuse."""
+        self.scopes.destroy(id)
+
+    fn scope_count(self) -> Int:
+        """Return the number of live scopes."""
+        return self.scopes.count()
+
+    fn scope_contains(self, id: UInt32) -> Bool:
+        """Check whether `id` is a live scope."""
+        return self.scopes.contains(id)
+
+    # ── Scope rendering ──────────────────────────────────────────────
+
+    @always_inline
+    fn has_scope(self) -> Bool:
+        """Check whether a scope is currently active (being rendered)."""
+        return self.current_scope != -1
+
+    @always_inline
+    fn get_scope(self) -> UInt32:
+        """Return the current scope ID.
+
+        Precondition: `has_scope()` is True.
+        """
+        return UInt32(self.current_scope)
+
+    fn begin_scope_render(mut self, scope_id: UInt32) -> Int:
+        """Begin rendering a scope.
+
+        Sets the current scope, begins the render pass on the scope state,
+        and sets the reactive context to the scope ID (so signal reads
+        during rendering are tracked).
+
+        Returns the previous scope ID (as Int, -1 if none) for restoration.
+        """
+        var prev_scope = self.current_scope
+        self.current_scope = Int(scope_id)
+        self.scopes.begin_render(scope_id)
+        # Also set the reactive context to this scope so signal reads
+        # during rendering auto-subscribe this scope.
+        self.set_context(scope_id)
+        return prev_scope
+
+    fn end_scope_render(mut self, prev_scope: Int):
+        """End rendering the current scope and restore the previous scope.
+
+        Clears the reactive context and restores the previous scope/context.
+        """
+        self.current_scope = prev_scope
+        if prev_scope == -1:
+            self.clear_context()
+        else:
+            self.set_context(UInt32(prev_scope))
+
+    # ── Hook-based signal creation ───────────────────────────────────
+
+    fn use_signal_i32(mut self, initial: Int32) -> UInt32:
+        """Hook: create or retrieve an Int32 signal for the current scope.
+
+        On first render: creates a new signal with `initial`, stores its
+        key in the scope's hook array, and returns the key.
+
+        On re-render: retrieves the existing signal key from the hook array
+        (initial value is ignored) and returns it.
+
+        Precondition: `has_scope()` is True.
+        """
+        var scope_id = self.get_scope()
+        if self.scopes.is_first_render(scope_id):
+            # First render — create signal and store in hooks
+            var key = self.signals.create[Int32](initial)
+            self.scopes.push_hook(scope_id, HOOK_SIGNAL, key)
+            return key
+        else:
+            # Re-render — return existing signal key
+            return self.scopes.next_hook(scope_id)
 
 
 # ── Heap-allocated Runtime handle ────────────────────────────────────────────
