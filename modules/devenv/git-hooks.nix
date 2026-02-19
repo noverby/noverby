@@ -29,28 +29,40 @@
       rustfmt = {
         enable = true;
         entry = "${pkgs.writeShellScript "rustfmt-multi-project" ''
+          pids=()
           for manifest in $(${pkgs.findutils}/bin/find . -name Cargo.toml -not -path '*/target/*'); do
             if ${pkgs.gnugrep}/bin/grep -q '^\[workspace\]' "$manifest" && ! ${pkgs.gnugrep}/bin/grep -q '^\[package\]' "$manifest"; then
               echo "Skipping workspace-only $manifest"
               continue
             fi
             echo "Running cargo fmt for $manifest"
-            ${pkgs.cargo}/bin/cargo fmt --manifest-path "$manifest"
+            ${pkgs.cargo}/bin/cargo fmt --manifest-path "$manifest" &
+            pids+=($!)
           done
+          exit_code=0
+          for pid in "''${pids[@]}"; do
+            if ! wait "$pid"; then
+              exit_code=1
+            fi
+          done
+          exit $exit_code
         ''}";
         pass_filenames = false;
       };
       clippy = {
         enable = true;
         entry = "${pkgs.writeShellScript "clippy-multi-project" ''
-          # Collect workspace root directories
+          pids=()
+
+          # Collect workspace root directories and run clippy for workspaces
           workspace_dirs=()
           for manifest in $(${pkgs.findutils}/bin/find . -name Cargo.toml -not -path '*/target/*'); do
             if ${pkgs.gnugrep}/bin/grep -q '^\[workspace\]' "$manifest"; then
               dir=$(dirname "$manifest")
               workspace_dirs+=("$dir")
               echo "Running cargo clippy --workspace for $manifest"
-              ${pkgs.cargo}/bin/cargo clippy --manifest-path "$manifest" --workspace -- -D warnings
+              ${pkgs.cargo}/bin/cargo clippy --manifest-path "$manifest" --workspace -- -D warnings &
+              pids+=($!)
             fi
           done
 
@@ -71,9 +83,18 @@
             done
             if [ "$is_member" = false ]; then
               echo "Running cargo clippy for $manifest"
-              ${pkgs.cargo}/bin/cargo clippy --manifest-path "$manifest" -- -D warnings
+              ${pkgs.cargo}/bin/cargo clippy --manifest-path "$manifest" -- -D warnings &
+              pids+=($!)
             fi
           done
+
+          exit_code=0
+          for pid in "''${pids[@]}"; do
+            if ! wait "$pid"; then
+              exit_code=1
+            fi
+          done
+          exit $exit_code
         ''}";
         pass_filenames = false;
       };
