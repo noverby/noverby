@@ -18,6 +18,7 @@ import { testSignals } from "./signals.test.ts";
 import { testSSO } from "./sso.test.ts";
 import { testStress } from "./stress.test.ts";
 import { testStrings } from "./strings.test.ts";
+import { testTemplates } from "./templates.test.ts";
 import { testUnary } from "./unary.test.ts";
 import { testUnicode } from "./unicode.test.ts";
 
@@ -47,6 +48,7 @@ async function run(): Promise<void> {
 	testElementId(fns);
 	testSignals(fns);
 	testScopes(fns);
+	testTemplates(fns);
 
 	summary();
 }

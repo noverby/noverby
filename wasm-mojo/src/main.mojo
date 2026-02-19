@@ -1,6 +1,56 @@
 from bridge import MutationWriter
 from arena import ElementId, ElementIdAllocator
 from signals import Runtime, create_runtime, destroy_runtime, HOOK_SIGNAL
+from vdom import (
+    TemplateBuilder,
+    create_builder,
+    destroy_builder,
+    VNode,
+    VNodeStore,
+    DynamicNode,
+    DynamicAttr,
+    AttributeValue,
+    TNODE_ELEMENT,
+    TNODE_TEXT,
+    TNODE_DYNAMIC,
+    TNODE_DYNAMIC_TEXT,
+    TATTR_STATIC,
+    TATTR_DYNAMIC,
+    VNODE_TEMPLATE_REF,
+    VNODE_TEXT,
+    VNODE_PLACEHOLDER,
+    VNODE_FRAGMENT,
+    AVAL_TEXT,
+    AVAL_INT,
+    AVAL_FLOAT,
+    AVAL_BOOL,
+    AVAL_EVENT,
+    AVAL_NONE,
+    DNODE_TEXT,
+    DNODE_PLACEHOLDER,
+    TAG_DIV,
+    TAG_SPAN,
+    TAG_P,
+    TAG_H1,
+    TAG_H2,
+    TAG_H3,
+    TAG_H4,
+    TAG_H5,
+    TAG_H6,
+    TAG_UL,
+    TAG_OL,
+    TAG_LI,
+    TAG_BUTTON,
+    TAG_INPUT,
+    TAG_FORM,
+    TAG_A,
+    TAG_IMG,
+    TAG_TABLE,
+    TAG_TR,
+    TAG_TD,
+    TAG_TH,
+    TAG_UNKNOWN,
+)
 from memory import UnsafePointer
 
 
@@ -43,6 +93,38 @@ fn _int_to_runtime_ptr(addr: Int) -> UnsafePointer[Runtime]:
 @always_inline
 fn _runtime_ptr_to_i64(ptr: UnsafePointer[Runtime]) -> Int64:
     """Return the raw address of a Runtime pointer as Int64."""
+    return Int64(Int(ptr))
+
+
+@always_inline
+fn _int_to_builder_ptr(addr: Int) -> UnsafePointer[TemplateBuilder]:
+    """Reinterpret an integer address as an UnsafePointer[TemplateBuilder]."""
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[TemplateBuilder]]()[0]
+    slot.free()
+    return result
+
+
+@always_inline
+fn _builder_ptr_to_i64(ptr: UnsafePointer[TemplateBuilder]) -> Int64:
+    """Return the raw address of a TemplateBuilder pointer as Int64."""
+    return Int64(Int(ptr))
+
+
+@always_inline
+fn _int_to_vnode_store_ptr(addr: Int) -> UnsafePointer[VNodeStore]:
+    """Reinterpret an integer address as an UnsafePointer[VNodeStore]."""
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[VNodeStore]]()[0]
+    slot.free()
+    return result
+
+
+@always_inline
+fn _vnode_store_ptr_to_i64(ptr: UnsafePointer[VNodeStore]) -> Int64:
+    """Return the raw address of a VNodeStore pointer as Int64."""
     return Int64(Int(ptr))
 
 
@@ -404,6 +486,560 @@ fn scope_is_first_render(rt_ptr: Int64, scope_id: Int32) -> Int32:
     if rt[0].scopes.is_first_render(UInt32(scope_id)):
         return 1
     return 0
+
+
+# ── Template Builder Exports ─────────────────────────────────────────────────
+#
+# These functions exercise the template builder and registry system.
+# The TemplateBuilder is heap-allocated and accessed via Int64 pointer.
+
+
+@export
+fn tmpl_builder_create(name: String) -> Int64:
+    """Create a heap-allocated TemplateBuilder.  Returns its pointer."""
+    return _builder_ptr_to_i64(create_builder(name))
+
+
+@export
+fn tmpl_builder_destroy(ptr: Int64):
+    """Destroy and free a heap-allocated TemplateBuilder."""
+    destroy_builder(_int_to_builder_ptr(Int(ptr)))
+
+
+fn _get_builder(ptr: Int64) -> UnsafePointer[TemplateBuilder]:
+    return _int_to_builder_ptr(Int(ptr))
+
+
+@export
+fn tmpl_builder_push_element(
+    ptr: Int64, html_tag: Int32, parent: Int32
+) -> Int32:
+    """Add an Element node.  parent=-1 means root.  Returns node index."""
+    var b = _get_builder(ptr)
+    return Int32(b[0].push_element(UInt8(html_tag), Int(parent)))
+
+
+@export
+fn tmpl_builder_push_text(ptr: Int64, text: String, parent: Int32) -> Int32:
+    """Add a static Text node.  Returns node index."""
+    var b = _get_builder(ptr)
+    return Int32(b[0].push_text(text, Int(parent)))
+
+
+@export
+fn tmpl_builder_push_dynamic(
+    ptr: Int64, dynamic_index: Int32, parent: Int32
+) -> Int32:
+    """Add a Dynamic node placeholder.  Returns node index."""
+    var b = _get_builder(ptr)
+    return Int32(b[0].push_dynamic(UInt32(dynamic_index), Int(parent)))
+
+
+@export
+fn tmpl_builder_push_dynamic_text(
+    ptr: Int64, dynamic_index: Int32, parent: Int32
+) -> Int32:
+    """Add a DynamicText node placeholder.  Returns node index."""
+    var b = _get_builder(ptr)
+    return Int32(b[0].push_dynamic_text(UInt32(dynamic_index), Int(parent)))
+
+
+@export
+fn tmpl_builder_push_static_attr(
+    ptr: Int64, node_index: Int32, name: String, value: String
+):
+    """Add a static attribute to the specified node."""
+    var b = _get_builder(ptr)
+    b[0].push_static_attr(Int(node_index), name, value)
+
+
+@export
+fn tmpl_builder_push_dynamic_attr(
+    ptr: Int64, node_index: Int32, dynamic_index: Int32
+):
+    """Add a dynamic attribute placeholder to the specified node."""
+    var b = _get_builder(ptr)
+    b[0].push_dynamic_attr(Int(node_index), UInt32(dynamic_index))
+
+
+@export
+fn tmpl_builder_node_count(ptr: Int64) -> Int32:
+    """Return the number of nodes in the builder."""
+    var b = _get_builder(ptr)
+    return Int32(b[0].node_count())
+
+
+@export
+fn tmpl_builder_root_count(ptr: Int64) -> Int32:
+    """Return the number of root nodes in the builder."""
+    var b = _get_builder(ptr)
+    return Int32(b[0].root_count())
+
+
+@export
+fn tmpl_builder_attr_count(ptr: Int64) -> Int32:
+    """Return the total number of attributes in the builder."""
+    var b = _get_builder(ptr)
+    return Int32(b[0].attr_count())
+
+
+@export
+fn tmpl_builder_register(rt_ptr: Int64, builder_ptr: Int64) -> Int32:
+    """Build the template and register it in the runtime.  Returns template ID.
+
+    The builder is consumed (reset to empty) after this call.
+    """
+    var rt = _get_runtime(rt_ptr)
+    var b = _get_builder(builder_ptr)
+    var template = b[0].build()
+    return Int32(rt[0].templates.register(template^))
+
+
+# ── Template Registry Query Exports ──────────────────────────────────────────
+
+
+@export
+fn tmpl_count(rt_ptr: Int64) -> Int32:
+    """Return the number of registered templates."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].templates.count())
+
+
+@export
+fn tmpl_root_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
+    """Return the number of root nodes in the template."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].templates.root_count(UInt32(tmpl_id)))
+
+
+@export
+fn tmpl_node_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
+    """Return the total number of nodes in the template."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].templates.node_count(UInt32(tmpl_id)))
+
+
+@export
+fn tmpl_node_kind(rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32) -> Int32:
+    """Return the kind tag (TNODE_*) of the node at node_idx."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].templates.node_kind(UInt32(tmpl_id), Int(node_idx)))
+
+
+@export
+fn tmpl_node_tag(rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32) -> Int32:
+    """Return the HTML tag constant of the Element node at node_idx."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].templates.node_html_tag(UInt32(tmpl_id), Int(node_idx)))
+
+
+@export
+fn tmpl_node_child_count(
+    rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32
+) -> Int32:
+    """Return the number of children of the node at node_idx."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(
+        rt[0].templates.node_child_count(UInt32(tmpl_id), Int(node_idx))
+    )
+
+
+@export
+fn tmpl_node_child_at(
+    rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32, child_pos: Int32
+) -> Int32:
+    """Return the node index of the child at child_pos within node_idx."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(
+        rt[0].templates.node_child_at(
+            UInt32(tmpl_id), Int(node_idx), Int(child_pos)
+        )
+    )
+
+
+@export
+fn tmpl_node_dynamic_index(
+    rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32
+) -> Int32:
+    """Return the dynamic slot index of the node at node_idx."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(
+        rt[0].templates.node_dynamic_index(UInt32(tmpl_id), Int(node_idx))
+    )
+
+
+@export
+fn tmpl_node_attr_count(
+    rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32
+) -> Int32:
+    """Return the number of attributes on the node at node_idx."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(
+        rt[0].templates.node_attr_count(UInt32(tmpl_id), Int(node_idx))
+    )
+
+
+@export
+fn tmpl_attr_total_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
+    """Return the total number of attributes in the template."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].templates.attr_total_count(UInt32(tmpl_id)))
+
+
+@export
+fn tmpl_get_root_index(rt_ptr: Int64, tmpl_id: Int32, root_pos: Int32) -> Int32:
+    """Return the node index of the root at position root_pos."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].templates.get_root_index(UInt32(tmpl_id), Int(root_pos)))
+
+
+@export
+fn tmpl_attr_kind(rt_ptr: Int64, tmpl_id: Int32, attr_idx: Int32) -> Int32:
+    """Return the kind (TATTR_*) of the attribute at attr_idx."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].templates.get_attr_kind(UInt32(tmpl_id), Int(attr_idx)))
+
+
+@export
+fn tmpl_attr_dynamic_index(
+    rt_ptr: Int64, tmpl_id: Int32, attr_idx: Int32
+) -> Int32:
+    """Return the dynamic index of the attribute at attr_idx."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(
+        rt[0].templates.get_attr_dynamic_index(UInt32(tmpl_id), Int(attr_idx))
+    )
+
+
+@export
+fn tmpl_dynamic_node_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
+    """Return the number of Dynamic node slots in the template."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].templates.dynamic_node_count(UInt32(tmpl_id)))
+
+
+@export
+fn tmpl_dynamic_text_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
+    """Return the number of DynamicText slots in the template."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].templates.dynamic_text_count(UInt32(tmpl_id)))
+
+
+@export
+fn tmpl_dynamic_attr_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
+    """Return the number of dynamic attribute slots in the template."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].templates.dynamic_attr_count(UInt32(tmpl_id)))
+
+
+@export
+fn tmpl_static_attr_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
+    """Return the number of static attributes in the template."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].templates.static_attr_count(UInt32(tmpl_id)))
+
+
+@export
+fn tmpl_contains_name(rt_ptr: Int64, name: String) -> Int32:
+    """Check if a template with the given name is registered.  Returns 1 or 0.
+    """
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].templates.contains_name(name):
+        return 1
+    return 0
+
+
+@export
+fn tmpl_find_by_name(rt_ptr: Int64, name: String) -> Int32:
+    """Find a template by name.  Returns ID or -1 if not found."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].templates.find_by_name(name))
+
+
+@export
+fn tmpl_node_first_attr(
+    rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32
+) -> Int32:
+    """Return the first attribute index of the node at node_idx."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(
+        rt[0].templates.node_first_attr(UInt32(tmpl_id), Int(node_idx))
+    )
+
+
+# ── VNode Store Exports ──────────────────────────────────────────────────────
+#
+# VNodes are stored in a VNodeStore (heap-allocated separately or embedded
+# in the Runtime).  These exports use the Runtime's built-in VNodeStore.
+
+
+@export
+fn vnode_store_create() -> Int64:
+    """Allocate a standalone VNodeStore on the heap.  Returns its pointer."""
+    var ptr = UnsafePointer[VNodeStore].alloc(1)
+    ptr.init_pointee_move(VNodeStore())
+    return _vnode_store_ptr_to_i64(ptr)
+
+
+@export
+fn vnode_store_destroy(store_ptr: Int64):
+    """Destroy and free a heap-allocated VNodeStore."""
+    var ptr = _int_to_vnode_store_ptr(Int(store_ptr))
+    ptr.destroy_pointee()
+    ptr.free()
+
+
+fn _get_vnode_store(store_ptr: Int64) -> UnsafePointer[VNodeStore]:
+    return _int_to_vnode_store_ptr(Int(store_ptr))
+
+
+@export
+fn vnode_push_template_ref(store_ptr: Int64, tmpl_id: Int32) -> Int32:
+    """Create a TemplateRef VNode and push it into the store.  Returns index."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].push(VNode.template_ref(UInt32(tmpl_id))))
+
+
+@export
+fn vnode_push_template_ref_keyed(
+    store_ptr: Int64, tmpl_id: Int32, key: String
+) -> Int32:
+    """Create a keyed TemplateRef VNode.  Returns index."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].push(VNode.template_ref_keyed(UInt32(tmpl_id), key)))
+
+
+@export
+fn vnode_push_text(store_ptr: Int64, text: String) -> Int32:
+    """Create a Text VNode and push it into the store.  Returns index."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].push(VNode.text_node(text)))
+
+
+@export
+fn vnode_push_placeholder(store_ptr: Int64, element_id: Int32) -> Int32:
+    """Create a Placeholder VNode.  Returns index."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].push(VNode.placeholder(UInt32(element_id))))
+
+
+@export
+fn vnode_push_fragment(store_ptr: Int64) -> Int32:
+    """Create an empty Fragment VNode.  Returns index."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].push(VNode.fragment()))
+
+
+@export
+fn vnode_count(store_ptr: Int64) -> Int32:
+    """Return the number of VNodes in the store."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].count())
+
+
+@export
+fn vnode_kind(store_ptr: Int64, index: Int32) -> Int32:
+    """Return the kind tag (VNODE_*) of the VNode at index."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].kind(UInt32(index)))
+
+
+@export
+fn vnode_template_id(store_ptr: Int64, index: Int32) -> Int32:
+    """Return the template_id of the TemplateRef VNode at index."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].template_id(UInt32(index)))
+
+
+@export
+fn vnode_element_id(store_ptr: Int64, index: Int32) -> Int32:
+    """Return the element_id of the Placeholder VNode at index."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].element_id(UInt32(index)))
+
+
+@export
+fn vnode_has_key(store_ptr: Int64, index: Int32) -> Int32:
+    """Check if the VNode has a key.  Returns 1 or 0."""
+    var s = _get_vnode_store(store_ptr)
+    if s[0].has_key(UInt32(index)):
+        return 1
+    return 0
+
+
+@export
+fn vnode_dynamic_node_count(store_ptr: Int64, index: Int32) -> Int32:
+    """Return the number of dynamic nodes on the VNode."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].dynamic_node_count(UInt32(index)))
+
+
+@export
+fn vnode_dynamic_attr_count(store_ptr: Int64, index: Int32) -> Int32:
+    """Return the number of dynamic attributes on the VNode."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].dynamic_attr_count(UInt32(index)))
+
+
+@export
+fn vnode_fragment_child_count(store_ptr: Int64, index: Int32) -> Int32:
+    """Return the number of fragment children on the VNode."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].fragment_child_count(UInt32(index)))
+
+
+@export
+fn vnode_fragment_child_at(
+    store_ptr: Int64, index: Int32, child_pos: Int32
+) -> Int32:
+    """Return the VNode index of the fragment child at child_pos."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].get_fragment_child(UInt32(index), Int(child_pos)))
+
+
+@export
+fn vnode_push_dynamic_text_node(
+    store_ptr: Int64, vnode_index: Int32, text: String
+):
+    """Append a dynamic text node to the VNode at vnode_index."""
+    var s = _get_vnode_store(store_ptr)
+    s[0].push_dynamic_node(UInt32(vnode_index), DynamicNode.text_node(text))
+
+
+@export
+fn vnode_push_dynamic_placeholder(store_ptr: Int64, vnode_index: Int32):
+    """Append a dynamic placeholder node to the VNode at vnode_index."""
+    var s = _get_vnode_store(store_ptr)
+    s[0].push_dynamic_node(UInt32(vnode_index), DynamicNode.placeholder())
+
+
+@export
+fn vnode_push_dynamic_attr_text(
+    store_ptr: Int64,
+    vnode_index: Int32,
+    name: String,
+    value: String,
+    elem_id: Int32,
+):
+    """Append a dynamic text attribute to the VNode."""
+    var s = _get_vnode_store(store_ptr)
+    s[0].push_dynamic_attr(
+        UInt32(vnode_index),
+        DynamicAttr(name, AttributeValue.text(value), UInt32(elem_id)),
+    )
+
+
+@export
+fn vnode_push_dynamic_attr_int(
+    store_ptr: Int64,
+    vnode_index: Int32,
+    name: String,
+    value: Int32,
+    elem_id: Int32,
+):
+    """Append a dynamic integer attribute to the VNode."""
+    var s = _get_vnode_store(store_ptr)
+    s[0].push_dynamic_attr(
+        UInt32(vnode_index),
+        DynamicAttr(
+            name, AttributeValue.integer(Int64(value)), UInt32(elem_id)
+        ),
+    )
+
+
+@export
+fn vnode_push_dynamic_attr_bool(
+    store_ptr: Int64,
+    vnode_index: Int32,
+    name: String,
+    value: Int32,
+    elem_id: Int32,
+):
+    """Append a dynamic boolean attribute to the VNode."""
+    var s = _get_vnode_store(store_ptr)
+    s[0].push_dynamic_attr(
+        UInt32(vnode_index),
+        DynamicAttr(name, AttributeValue.boolean(value != 0), UInt32(elem_id)),
+    )
+
+
+@export
+fn vnode_push_dynamic_attr_event(
+    store_ptr: Int64,
+    vnode_index: Int32,
+    name: String,
+    handler_id: Int32,
+    elem_id: Int32,
+):
+    """Append a dynamic event handler attribute to the VNode."""
+    var s = _get_vnode_store(store_ptr)
+    s[0].push_dynamic_attr(
+        UInt32(vnode_index),
+        DynamicAttr(
+            name, AttributeValue.event(UInt32(handler_id)), UInt32(elem_id)
+        ),
+    )
+
+
+@export
+fn vnode_push_dynamic_attr_none(
+    store_ptr: Int64, vnode_index: Int32, name: String, elem_id: Int32
+):
+    """Append a dynamic none attribute (removal) to the VNode."""
+    var s = _get_vnode_store(store_ptr)
+    s[0].push_dynamic_attr(
+        UInt32(vnode_index),
+        DynamicAttr(name, AttributeValue.none(), UInt32(elem_id)),
+    )
+
+
+@export
+fn vnode_push_fragment_child(
+    store_ptr: Int64, vnode_index: Int32, child_index: Int32
+):
+    """Append a child VNode index to the Fragment at vnode_index."""
+    var s = _get_vnode_store(store_ptr)
+    s[0].push_fragment_child(UInt32(vnode_index), UInt32(child_index))
+
+
+@export
+fn vnode_get_dynamic_node_kind(
+    store_ptr: Int64, vnode_index: Int32, dyn_index: Int32
+) -> Int32:
+    """Return the kind of the dynamic node at dyn_index."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(
+        s[0].get_dynamic_node_kind(UInt32(vnode_index), Int(dyn_index))
+    )
+
+
+@export
+fn vnode_get_dynamic_attr_kind(
+    store_ptr: Int64, vnode_index: Int32, attr_index: Int32
+) -> Int32:
+    """Return the attribute value kind of the dynamic attr at attr_index."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(
+        s[0].get_dynamic_attr_kind(UInt32(vnode_index), Int(attr_index))
+    )
+
+
+@export
+fn vnode_get_dynamic_attr_element_id(
+    store_ptr: Int64, vnode_index: Int32, attr_index: Int32
+) -> Int32:
+    """Return the element_id of the dynamic attr at attr_index."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(
+        s[0].get_dynamic_attr_element_id(UInt32(vnode_index), Int(attr_index))
+    )
+
+
+@export
+fn vnode_store_clear(store_ptr: Int64):
+    """Clear all VNodes from the store."""
+    var s = _get_vnode_store(store_ptr)
+    s[0].clear()
 
 
 # ── Signal arithmetic helpers (test += style operations) ─────────────────────

@@ -283,4 +283,164 @@ export interface WasmExports extends WebAssembly.Exports {
 	// ── Hooks ────────────────────────────────────────────────────────
 
 	hook_use_signal_i32(rtPtr: bigint, initial: number): number;
+
+	// ── Template Builder ─────────────────────────────────────────────
+
+	tmpl_builder_create(namePtr: bigint): bigint;
+	tmpl_builder_destroy(ptr: bigint): void;
+	tmpl_builder_push_element(
+		ptr: bigint,
+		htmlTag: number,
+		parent: number,
+	): number;
+	tmpl_builder_push_text(ptr: bigint, text: bigint, parent: number): number;
+	tmpl_builder_push_dynamic(
+		ptr: bigint,
+		dynamicIndex: number,
+		parent: number,
+	): number;
+	tmpl_builder_push_dynamic_text(
+		ptr: bigint,
+		dynamicIndex: number,
+		parent: number,
+	): number;
+	tmpl_builder_push_static_attr(
+		ptr: bigint,
+		nodeIndex: number,
+		name: bigint,
+		value: bigint,
+	): void;
+	tmpl_builder_push_dynamic_attr(
+		ptr: bigint,
+		nodeIndex: number,
+		dynamicIndex: number,
+	): void;
+	tmpl_builder_node_count(ptr: bigint): number;
+	tmpl_builder_root_count(ptr: bigint): number;
+	tmpl_builder_attr_count(ptr: bigint): number;
+	tmpl_builder_register(rtPtr: bigint, builderPtr: bigint): number;
+
+	// ── Template Registry Queries ────────────────────────────────────
+
+	tmpl_count(rtPtr: bigint): number;
+	tmpl_root_count(rtPtr: bigint, tmplId: number): number;
+	tmpl_node_count(rtPtr: bigint, tmplId: number): number;
+	tmpl_node_kind(rtPtr: bigint, tmplId: number, nodeIdx: number): number;
+	tmpl_node_tag(rtPtr: bigint, tmplId: number, nodeIdx: number): number;
+	tmpl_node_child_count(rtPtr: bigint, tmplId: number, nodeIdx: number): number;
+	tmpl_node_child_at(
+		rtPtr: bigint,
+		tmplId: number,
+		nodeIdx: number,
+		childPos: number,
+	): number;
+	tmpl_node_dynamic_index(
+		rtPtr: bigint,
+		tmplId: number,
+		nodeIdx: number,
+	): number;
+	tmpl_node_attr_count(rtPtr: bigint, tmplId: number, nodeIdx: number): number;
+	tmpl_attr_total_count(rtPtr: bigint, tmplId: number): number;
+	tmpl_get_root_index(rtPtr: bigint, tmplId: number, rootPos: number): number;
+	tmpl_attr_kind(rtPtr: bigint, tmplId: number, attrIdx: number): number;
+	tmpl_attr_dynamic_index(
+		rtPtr: bigint,
+		tmplId: number,
+		attrIdx: number,
+	): number;
+	tmpl_dynamic_node_count(rtPtr: bigint, tmplId: number): number;
+	tmpl_dynamic_text_count(rtPtr: bigint, tmplId: number): number;
+	tmpl_dynamic_attr_count(rtPtr: bigint, tmplId: number): number;
+	tmpl_static_attr_count(rtPtr: bigint, tmplId: number): number;
+	tmpl_contains_name(rtPtr: bigint, name: bigint): number;
+	tmpl_find_by_name(rtPtr: bigint, name: bigint): number;
+	tmpl_node_first_attr(rtPtr: bigint, tmplId: number, nodeIdx: number): number;
+
+	// ── VNode Store ──────────────────────────────────────────────────
+
+	vnode_store_create(): bigint;
+	vnode_store_destroy(storePtr: bigint): void;
+	vnode_push_template_ref(storePtr: bigint, tmplId: number): number;
+	vnode_push_template_ref_keyed(
+		storePtr: bigint,
+		tmplId: number,
+		key: bigint,
+	): number;
+	vnode_push_text(storePtr: bigint, text: bigint): number;
+	vnode_push_placeholder(storePtr: bigint, elementId: number): number;
+	vnode_push_fragment(storePtr: bigint): number;
+	vnode_count(storePtr: bigint): number;
+	vnode_kind(storePtr: bigint, index: number): number;
+	vnode_template_id(storePtr: bigint, index: number): number;
+	vnode_element_id(storePtr: bigint, index: number): number;
+	vnode_has_key(storePtr: bigint, index: number): number;
+	vnode_dynamic_node_count(storePtr: bigint, index: number): number;
+	vnode_dynamic_attr_count(storePtr: bigint, index: number): number;
+	vnode_fragment_child_count(storePtr: bigint, index: number): number;
+	vnode_fragment_child_at(
+		storePtr: bigint,
+		index: number,
+		childPos: number,
+	): number;
+	vnode_push_dynamic_text_node(
+		storePtr: bigint,
+		vnodeIndex: number,
+		text: bigint,
+	): void;
+	vnode_push_dynamic_placeholder(storePtr: bigint, vnodeIndex: number): void;
+	vnode_push_dynamic_attr_text(
+		storePtr: bigint,
+		vnodeIndex: number,
+		name: bigint,
+		value: bigint,
+		elemId: number,
+	): void;
+	vnode_push_dynamic_attr_int(
+		storePtr: bigint,
+		vnodeIndex: number,
+		name: bigint,
+		value: number,
+		elemId: number,
+	): void;
+	vnode_push_dynamic_attr_bool(
+		storePtr: bigint,
+		vnodeIndex: number,
+		name: bigint,
+		value: number,
+		elemId: number,
+	): void;
+	vnode_push_dynamic_attr_event(
+		storePtr: bigint,
+		vnodeIndex: number,
+		name: bigint,
+		handlerId: number,
+		elemId: number,
+	): void;
+	vnode_push_dynamic_attr_none(
+		storePtr: bigint,
+		vnodeIndex: number,
+		name: bigint,
+		elemId: number,
+	): void;
+	vnode_push_fragment_child(
+		storePtr: bigint,
+		vnodeIndex: number,
+		childIndex: number,
+	): void;
+	vnode_get_dynamic_node_kind(
+		storePtr: bigint,
+		vnodeIndex: number,
+		dynIndex: number,
+	): number;
+	vnode_get_dynamic_attr_kind(
+		storePtr: bigint,
+		vnodeIndex: number,
+		attrIndex: number,
+	): number;
+	vnode_get_dynamic_attr_element_id(
+		storePtr: bigint,
+		vnodeIndex: number,
+		attrIndex: number,
+	): number;
+	vnode_store_clear(storePtr: bigint): void;
 }

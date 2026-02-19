@@ -31,6 +31,7 @@
 from sys import size_of
 from memory import UnsafePointer, memcpy
 from scope import ScopeArena, ScopeState, HOOK_SIGNAL, HOOK_MEMO, HOOK_EFFECT
+from vdom import TemplateRegistry, VNodeStore
 
 
 # ── SignalEntry ──────────────────────────────────────────────────────────────
@@ -296,6 +297,8 @@ struct Runtime(Movable):
 
     var signals: SignalStore
     var scopes: ScopeArena
+    var templates: TemplateRegistry
+    var vnodes: VNodeStore
     var current_context: Int  # -1 = no active context
     var current_scope: Int  # -1 = no active scope (for hooks)
     var dirty_scopes: List[UInt32]
@@ -305,6 +308,8 @@ struct Runtime(Movable):
     fn __init__(out self):
         self.signals = SignalStore()
         self.scopes = ScopeArena()
+        self.templates = TemplateRegistry()
+        self.vnodes = VNodeStore()
         self.current_context = -1
         self.current_scope = -1
         self.dirty_scopes = List[UInt32]()
@@ -312,6 +317,8 @@ struct Runtime(Movable):
     fn __moveinit__(out self, deinit other: Self):
         self.signals = other.signals^
         self.scopes = other.scopes^
+        self.templates = other.templates^
+        self.vnodes = other.vnodes^
         self.current_context = other.current_context
         self.current_scope = other.current_scope
         self.dirty_scopes = other.dirty_scopes^
