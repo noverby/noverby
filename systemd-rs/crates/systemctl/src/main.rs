@@ -22,6 +22,13 @@
 //!   list-unit-files         → list all unit files on disk with their state
 //!   mask                    → symlink unit files to /dev/null
 //!   unmask                  → remove /dev/null symlinks for units
+//!   disable                 → disable unit(s) (no-op for now)
+//!   reset-failed            → clear failed state of unit(s)
+//!   kill                    → send signal to a unit's processes
+//!   suspend                 → suspend the system (sleep to RAM)
+//!   hibernate               → hibernate the system (sleep to disk)
+//!   hybrid-sleep            → hybrid sleep (RAM + disk)
+//!   suspend-then-hibernate  → suspend first, then hibernate after delay
 
 use serde_json::Value;
 use std::io::Write;
@@ -61,7 +68,7 @@ const KNOWN_FLAGS: &[&str] = &[
 const KNOWN_SHORT_FLAGS: &[&str] = &["-a", "-f", "-q", "-l"];
 
 /// Short flags that consume the next argument (e.g. `-t service`, `-p MainPID`).
-const SHORT_FLAGS_WITH_VALUE: &[&str] = &["-t", "-p", "-n", "-o", "-H", "-M"];
+const SHORT_FLAGS_WITH_VALUE: &[&str] = &["-t", "-p", "-n", "-o", "-H", "-M", "-s"];
 
 /// Long flags that consume `=value` or the next argument.
 const LONG_FLAGS_WITH_VALUE: &[&str] = &[
@@ -72,6 +79,7 @@ const LONG_FLAGS_WITH_VALUE: &[&str] = &[
     "--host",
     "--machine",
     "--signal",
+    "--kill-mode",
     "--kill-who",
     "--state",
     "--job-mode",
@@ -202,6 +210,40 @@ fn main() {
         std::process::exit(1);
     }
 
+    // Extract --signal flag for kill command
+    let mut kill_signal: Option<i32> = None;
+    {
+        let mut i = 0;
+        while i < positional.len() {
+            if positional[i] == "--signal" || positional[i] == "-s" {
+                positional.remove(i);
+                if i < positional.len() {
+                    if let Ok(sig) = positional[i].parse::<i32>() {
+                        kill_signal = Some(sig);
+                    } else {
+                        // Try signal name mapping
+                        kill_signal = match positional[i].as_str() {
+                            "SIGTERM" | "TERM" => Some(15),
+                            "SIGKILL" | "KILL" => Some(9),
+                            "SIGHUP" | "HUP" => Some(1),
+                            "SIGINT" | "INT" => Some(2),
+                            "SIGUSR1" | "USR1" => Some(10),
+                            "SIGUSR2" | "USR2" => Some(12),
+                            "SIGCONT" | "CONT" => Some(18),
+                            _ => Some(15),
+                        };
+                    }
+                    positional.remove(i);
+                }
+            } else if let Some(rest) = positional[i].strip_prefix("--signal=") {
+                kill_signal = rest.parse::<i32>().ok().or(Some(15));
+                positional.remove(i);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
     // Extract --reverse flag for list-dependencies
     let mut reverse = false;
     positional.retain(|arg| {
@@ -231,6 +273,8 @@ fn main() {
             positional[0] = "try-restart".to_string();
             &positional[0]
         }
+        // Sleep commands — pass through as-is to PID 1
+        "suspend" | "hibernate" | "hybrid-sleep" | "suspend-then-hibernate" => &positional[0],
         _ => &positional[0],
     };
 
@@ -256,6 +300,46 @@ fn main() {
             arr.push(Value::String("--reverse".to_owned()));
         }
         Some(Value::Array(arr))
+    } else if method == "kill" {
+        // kill <unit> [--signal=SIG]
+        if positional.len() < 2 {
+            if !quiet {
+                eprintln!("Error: kill requires a unit name.");
+            }
+            std::process::exit(1);
+        }
+        let mut arr = vec![Value::String(positional[1].clone())];
+        if let Some(sig) = kill_signal {
+            arr.push(Value::String(sig.to_string()));
+        }
+        Some(Value::Array(arr))
+    } else if method == "suspend"
+        || method == "hibernate"
+        || method == "hybrid-sleep"
+        || method == "suspend-then-hibernate"
+    {
+        // Sleep commands take no parameters.
+        None
+    } else if method == "disable" {
+        // disable <unit>...
+        if positional.len() < 2 {
+            if !quiet {
+                eprintln!("Error: disable requires at least one unit name.");
+            }
+            std::process::exit(1);
+        }
+        if positional.len() == 2 {
+            Some(Value::String(positional[1].clone()))
+        } else {
+            Some(positional[1..].iter().cloned().map(Value::String).collect())
+        }
+    } else if method == "reset-failed" {
+        // reset-failed [unit] — optional unit name
+        if positional.len() >= 2 {
+            Some(Value::String(positional[1].clone()))
+        } else {
+            None
+        }
     } else if method == "mask" || method == "unmask" {
         // mask/unmask <unit>...
         if positional.len() < 2 {
@@ -442,6 +526,29 @@ fn handle_response(
                 }
             }
         }
+        "disable" => {
+            if let Some(result) = result {
+                if let Some(arr) = result.get("disabled").and_then(|v| v.as_array()) {
+                    if !quiet {
+                        for name in arr {
+                            if let Some(s) = name.as_str() {
+                                println!(
+                                    "Removed /etc/systemd/system/multi-user.target.wants/{s}."
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "reset-failed"
+        | "kill"
+        | "suspend"
+        | "hibernate"
+        | "hybrid-sleep"
+        | "suspend-then-hibernate" => {
+            // These return null on success — nothing to print.
+        }
         "list-dependencies" => {
             if let Some(result) = result {
                 if let Some(text) = result.get("list-dependencies").and_then(|v| v.as_str()) {
@@ -508,6 +615,13 @@ Commands:
     list-units                  List all loaded units
     list-unit-files [TYPE]      List all unit files on disk with their state
     list-dependencies <unit>    Show dependency tree for a unit
+    disable <unit>...           Disable one or more units
+    reset-failed [unit]         Reset the failed state of a unit (or all)
+    kill <unit>                 Send a signal to a unit's processes
+    suspend                     Suspend the system
+    hibernate                   Hibernate the system
+    hybrid-sleep                Hybrid suspend (RAM + disk)
+    suspend-then-hibernate      Suspend, then hibernate after a delay
     status <unit>               Show status of a unit
     show <unit>                 Show properties of a unit (key=value format)
     cat <unit>                  Show the unit file source
@@ -540,6 +654,7 @@ Options:
     --full, -l                  Show full unit names and descriptions
     --all, -a                   Show all units, including inactive
     --reverse                   Show reverse dependencies (for list-dependencies)
+    -s, --signal <SIG>          Signal to send (for kill, default: SIGTERM)
     -t, --type <TYPE>           Filter by unit type
     -p, --property <PROP>       Show only specified property (for show)
     --value                     Show only property values (with -p)
@@ -558,6 +673,11 @@ Examples:
     systemctl is-active sshd.service
     systemctl list-unit-files
     systemctl list-unit-files service
+    systemctl disable tmp.mount
+    systemctl reset-failed sshd.service
+    systemctl kill --signal=SIGKILL sshd.service
+    systemctl suspend
+    systemctl hibernate
     systemctl list-dependencies multi-user.target
     systemctl list-dependencies --reverse sshd.service
     systemctl mask tmp.mount

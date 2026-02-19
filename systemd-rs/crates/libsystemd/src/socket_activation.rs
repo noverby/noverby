@@ -4,7 +4,9 @@ use log::trace;
 
 use crate::lock_ext::RwLockExt;
 use crate::runtime_info::ArcMutRuntimeInfo;
-use crate::units::{ActivationSource, Specific, StatusStarted, UnitId, UnitStatus};
+use crate::units::{
+    ActivationSource, Specific, StatusStarted, UnitId, UnitOperationErrorReason, UnitStatus,
+};
 use std::os::unix::io::BorrowedFd;
 
 /// Helper to create a BorrowedFd from a raw fd.
@@ -111,9 +113,28 @@ pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
                                             );
                                         }
                                         Err(e) => {
-                                            error!(
-                                                "Error while starting service from socket activation: {e}"
-                                            );
+                                            if matches!(
+                                                e.reason,
+                                                UnitOperationErrorReason::DependencyError(_)
+                                            ) {
+                                                // Dependencies not yet satisfied — the normal
+                                                // activation graph will start this service once
+                                                // its After= deps are met.  This commonly
+                                                // happens for socket-activated services like
+                                                // systemd-udevd whose sockets are ready before
+                                                // all ordering deps (e.g.
+                                                // systemd-tmpfiles-setup-dev-early.service)
+                                                // have completed.
+                                                trace!(
+                                                    "Socket activation deferred for {}: deps not yet ready, \
+                                                     normal activation will handle it",
+                                                    e.unit_name
+                                                );
+                                            } else {
+                                                error!(
+                                                    "Error while starting service from socket activation: {e}"
+                                                );
+                                            }
                                         }
                                     }
                                 } else {
