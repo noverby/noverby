@@ -834,6 +834,30 @@ This document is meant as a simple way of checking whether all features you need
   <td>Imports credentials from system stores (/run/credentials/@system, /run/credstore, /etc/credstore) matching glob patterns into /run/credentials/&lt;unit&gt;/ and sets CREDENTIALS_DIRECTORY</td>
 </tr>
 <tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LoadCredential=">LoadCredential=</a></td>
+  <td>✅</td>
+  <td>✅</td>
+  <td>Loads credential from file path (absolute or relative to credential stores) into /run/credentials/&lt;unit&gt;/&lt;ID&gt;; supports directory sources (all files copied as sub-credentials); correct priority: overwrites SetCredential, won't be overwritten by ImportCredential</td>
+</tr>
+<tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#LoadCredentialEncrypted=">LoadCredentialEncrypted=</a></td>
+  <td>✅</td>
+  <td>🔶</td>
+  <td>Parsed and loaded identically to LoadCredential=; decryption not yet implemented (encrypted content is copied as-is)</td>
+</tr>
+<tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#SetCredential=">SetCredential=</a></td>
+  <td>✅</td>
+  <td>✅</td>
+  <td>Writes inline data to /run/credentials/&lt;unit&gt;/&lt;ID&gt;; colons preserved in data (only first colon separates ID from DATA); lowest priority (overwritten by LoadCredential and ImportCredential)</td>
+</tr>
+<tr>
+  <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#SetCredentialEncrypted=">SetCredentialEncrypted=</a></td>
+  <td>✅</td>
+  <td>🔶</td>
+  <td>Parsed and written identically to SetCredential=; decryption not yet implemented (encrypted content is written as-is)</td>
+</tr>
+<tr>
   <td><a href="https://www.freedesktop.org/software/systemd/man/systemd.exec.html#$PATH">$PATH</a></td>
   <td>❌</td>
   <td>🚧</td>
