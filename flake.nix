@@ -170,6 +170,8 @@
       ];
       nixDirAliases = {
         packages = ["pkgs"];
+        formatters = ["config/formatters"];
+        lib = ["config/lib"];
         flakelightModules = ["config/modules/flakelight"];
         nixosConfigurations = ["config/configurations/nixos"];
         nixosModules = ["config/modules/nixos" "config/modules/nixos/hardware" "config/modules/nixos/desktop"];
