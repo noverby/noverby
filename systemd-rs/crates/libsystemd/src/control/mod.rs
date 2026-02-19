@@ -1,4 +1,4 @@
-//! This module provides the control access similar to systemctl from systemd. It uses the jsonrpc 2.0 spec and has the interface defined in doc/ControlInterface.md
+//! This module provides the control access similar to systemctl from systemd. It uses the jsonrpc 2.0 spec.
 
 #[allow(clippy::module_inception)]
 mod control;
