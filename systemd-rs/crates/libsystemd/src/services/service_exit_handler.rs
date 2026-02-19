@@ -1,6 +1,6 @@
 use log::{error, info, trace};
 
-use crate::lock_ext::{MutexExt, RwLockExt};
+use crate::lock_ext::RwLockExt;
 use crate::runtime_info::{ArcMutRuntimeInfo, RuntimeInfo};
 use crate::signal_handler::ChildTermination;
 use crate::units::{
@@ -287,6 +287,7 @@ pub fn service_exit_handler(
             };
             if !retry {
                 res.map_err(|e| format!("{e}"))?;
+                break;
             }
         }
     }
