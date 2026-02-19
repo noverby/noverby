@@ -41,6 +41,19 @@ export const assertClose = (
 	}
 };
 
+/** Assert that a value is NaN (since NaN !== NaN, strict equality won't work). */
+export const assertNaN = (actual: number, label: string): void => {
+	if (Number.isNaN(actual)) {
+		passed++;
+		console.log(`    ✓ ${label}`);
+	} else {
+		failed++;
+		console.log(
+			`    ✗ ${label}\n      expected: NaN\n      actual:   ${actual}`,
+		);
+	}
+};
+
 /** Increment the passed counter (for tests that only check "no throw"). */
 export const pass = (count = 1): void => {
 	passed += count;
