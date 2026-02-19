@@ -1,3 +1,4 @@
+# Run `direnv reload` to apply changes to the repository.
 {pkgs, ...}: {
   git-hooks = {
     package = pkgs.prek;
@@ -6,6 +7,7 @@
       biome.enable = true;
       alejandra.enable = true;
       deadnix.enable = true;
+      ripsecrets.enable = true;
       statix.enable = true;
       typos.enable = true;
       rustfmt = {
