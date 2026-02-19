@@ -1,6 +1,6 @@
 from bridge import MutationWriter
 from arena import ElementId, ElementIdAllocator
-from signals import Runtime, create_runtime, destroy_runtime
+from signals import Runtime, create_runtime, destroy_runtime, HOOK_SIGNAL
 from memory import UnsafePointer
 
 
@@ -239,6 +239,169 @@ fn runtime_has_dirty(rt_ptr: Int64) -> Int32:
     """Check if any scopes are dirty.  Returns 1 or 0."""
     var rt = _get_runtime(rt_ptr)
     if rt[0].has_dirty():
+        return 1
+    return 0
+
+
+# ── Scope management exports ─────────────────────────────────────────────────
+#
+# These functions exercise the scope arena and hook system.
+# Scopes live inside the Runtime alongside signals.
+
+
+@export
+fn scope_create(rt_ptr: Int64, height: Int32, parent_id: Int32) -> Int32:
+    """Create a new scope.  Returns its ID."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].create_scope(UInt32(height), Int(parent_id)))
+
+
+@export
+fn scope_create_child(rt_ptr: Int64, parent_id: Int32) -> Int32:
+    """Create a child scope.  Height is parent.height + 1."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].create_child_scope(UInt32(parent_id)))
+
+
+@export
+fn scope_destroy(rt_ptr: Int64, id: Int32):
+    """Destroy a scope."""
+    var rt = _get_runtime(rt_ptr)
+    rt[0].destroy_scope(UInt32(id))
+
+
+@export
+fn scope_count(rt_ptr: Int64) -> Int32:
+    """Return the number of live scopes."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].scope_count())
+
+
+@export
+fn scope_contains(rt_ptr: Int64, id: Int32) -> Int32:
+    """Check whether a scope ID is live.  Returns 1 or 0."""
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].scope_contains(UInt32(id)):
+        return 1
+    return 0
+
+
+@export
+fn scope_height(rt_ptr: Int64, id: Int32) -> Int32:
+    """Return the height (depth) of a scope."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].scopes.height(UInt32(id)))
+
+
+@export
+fn scope_parent(rt_ptr: Int64, id: Int32) -> Int32:
+    """Return the parent ID of a scope, or -1 if root."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].scopes.parent_id(UInt32(id)))
+
+
+@export
+fn scope_is_dirty(rt_ptr: Int64, id: Int32) -> Int32:
+    """Check whether a scope is dirty.  Returns 1 or 0."""
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].scopes.is_dirty(UInt32(id)):
+        return 1
+    return 0
+
+
+@export
+fn scope_set_dirty(rt_ptr: Int64, id: Int32, dirty: Int32):
+    """Set the dirty flag on a scope."""
+    var rt = _get_runtime(rt_ptr)
+    rt[0].scopes.set_dirty(UInt32(id), dirty != 0)
+
+
+@export
+fn scope_render_count(rt_ptr: Int64, id: Int32) -> Int32:
+    """Return how many times a scope has been rendered."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].scopes.render_count(UInt32(id)))
+
+
+@export
+fn scope_hook_count(rt_ptr: Int64, id: Int32) -> Int32:
+    """Return the number of hooks in a scope."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].scopes.hook_count(UInt32(id)))
+
+
+@export
+fn scope_hook_value_at(rt_ptr: Int64, id: Int32, index: Int32) -> Int32:
+    """Return the hook value (signal key) at position `index` in scope `id`."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].scopes.hook_value_at(UInt32(id), Int(index)))
+
+
+@export
+fn scope_hook_tag_at(rt_ptr: Int64, id: Int32, index: Int32) -> Int32:
+    """Return the hook tag at position `index` in scope `id`."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].scopes.hook_tag_at(UInt32(id), Int(index)))
+
+
+# ── Scope rendering lifecycle exports ────────────────────────────────────────
+
+
+@export
+fn scope_begin_render(rt_ptr: Int64, scope_id: Int32) -> Int32:
+    """Begin rendering a scope.
+
+    Sets current scope and reactive context.
+    Returns the previous scope ID (or -1 if none).
+    """
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].begin_scope_render(UInt32(scope_id)))
+
+
+@export
+fn scope_end_render(rt_ptr: Int64, prev_scope: Int32):
+    """End rendering the current scope and restore the previous scope."""
+    var rt = _get_runtime(rt_ptr)
+    rt[0].end_scope_render(Int(prev_scope))
+
+
+@export
+fn scope_has_scope(rt_ptr: Int64) -> Int32:
+    """Check if a scope is currently active.  Returns 1 or 0."""
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].has_scope():
+        return 1
+    return 0
+
+
+@export
+fn scope_get_current(rt_ptr: Int64) -> Int32:
+    """Return the current scope ID, or -1 if none."""
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].has_scope():
+        return Int32(rt[0].get_scope())
+    return -1
+
+
+# ── Hook exports ─────────────────────────────────────────────────────────────
+
+
+@export
+fn hook_use_signal_i32(rt_ptr: Int64, initial: Int32) -> Int32:
+    """Hook: create or retrieve an Int32 signal for the current scope.
+
+    On first render: creates signal, stores in hooks, returns key.
+    On re-render: returns existing signal key (initial ignored).
+    """
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].use_signal_i32(initial))
+
+
+@export
+fn scope_is_first_render(rt_ptr: Int64, scope_id: Int32) -> Int32:
+    """Check if a scope is on its first render.  Returns 1 or 0."""
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].scopes.is_first_render(UInt32(scope_id)):
         return 1
     return 0
 
