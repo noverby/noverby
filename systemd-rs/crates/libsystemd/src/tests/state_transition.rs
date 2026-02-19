@@ -23,8 +23,33 @@ fn find_bin(cmd: &str) -> String {
     panic!("Could not find `{}` in any standard location", cmd);
 }
 
+/// Run the state-transition tests with a global timeout so they never hang
+/// indefinitely in CI.  The signal-handler thread runs an infinite loop, and
+/// if something goes wrong with SIGCHLD delivery inside the cargo-test process
+/// the polling wait could spin forever.
 #[test]
 fn test_service_state_transitions() {
+    let handle = std::thread::spawn(test_service_state_transitions_inner);
+
+    let timeout = std::time::Duration::from_secs(30);
+    let start = std::time::Instant::now();
+
+    loop {
+        if handle.is_finished() {
+            handle.join().unwrap();
+            return;
+        }
+        if start.elapsed() >= timeout {
+            panic!(
+                "test_service_state_transitions timed out after {timeout:?} — \
+                 this likely indicates a deadlock or missed SIGCHLD in the test harness"
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+fn test_service_state_transitions_inner() {
     let run_info = std::sync::Arc::new(std::sync::RwLock::new(RuntimeInfo {
         config: crate::config::Config {
             notification_sockets_dir: "./notifications".into(),

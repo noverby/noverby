@@ -1092,8 +1092,28 @@ pub fn flush_routes(ifindex: u32) -> io::Result<()> {
 }
 
 /// Write DNS server addresses to /run/systemd/resolve/resolv.conf.
-/// This is the stub resolv.conf that systemd-resolved manages.
+///
+/// When systemd-resolved is running it owns `/run/systemd/resolve/` and
+/// reads per-link DNS configuration from networkd's state files in
+/// `/run/systemd/netif/links/`.  In that case networkd must **not** write
+/// to resolved's directory — doing so causes "Permission denied" errors
+/// because resolved restricts the directory to its own user.
+///
+/// We detect resolved by checking for `/run/systemd/resolve/stub-resolv.conf`
+/// which resolved creates on startup.
 pub fn write_resolv_conf(dns_servers: &[Ipv4Addr], search_domains: &[String]) -> io::Result<()> {
+    // If systemd-resolved is running it manages resolv.conf itself.
+    // It picks up per-link DNS from /run/systemd/netif/links/ state files
+    // that networkd already writes, so we can safely skip.
+    let stub = std::path::Path::new("/run/systemd/resolve/stub-resolv.conf");
+    if stub.exists() {
+        log::debug!(
+            "systemd-resolved is running (stub-resolv.conf exists), \
+             skipping resolv.conf write — resolved reads per-link DNS from netif state files"
+        );
+        return Ok(());
+    }
+
     let dir = std::path::Path::new("/run/systemd/resolve");
     if !dir.exists() {
         std::fs::create_dir_all(dir)?;
