@@ -479,6 +479,10 @@
 | ✅ | Version Control TUI | [Lazyjj 🦀](https://github.com/Cretezy/lazyjj) | | | |
 | ✅ | Merger | [Mergiraf 🦀](https://codeberg.org/mergiraf/mergiraf) | | ⬅️ | |
 | ✅ | Pre-commit Manager | [Prek 🦀](https://github.com/j178/prek) | | | [Pre-commit 🐍](https://github.com/pre-commit/pre-commit) |
+| ✅ | Spell Checker | [Typos 🦀](https://github.com/crate-ci/typos) | | | |
+| ✅ | Commit Linter | [Commitlint-rs 🦀](https://github.com/KeisukeYamashita/commitlint-rs) | | | |
+| ✅ | Secret Scanner | [Ripsecrets 🦀](https://github.com/sirwart/ripsecrets) | | | |
+| ✅ | Markdown Linter | [Rumdl 🦀](https://github.com/squalrus/rumdl) | | | |
 
 </details>
 
