@@ -1,0 +1,2 @@
+# Run `direnv reload` to apply changes to the repository.
+exclude = ['\$\{', '%7B', 'localhost']

@@ -1,8 +1,12 @@
 build:
   mkdir -p build
-  mojo build --emit-llvm --target-features "none" --emit shared-lib src/main.mojo > build/out.ll
+  mojo build --emit llvm --target-features "none" -o build/out.ll src/main.mojo
+  sed -i '/call void @llvm\.lifetime\.\(start\|end\)/d' build/out.ll
   llc --mtriple=wasm64-wasi -filetype=obj build/out.ll
   wasm-ld --no-entry --export-all --allow-undefined -mwasm64 -o build/out.wasm build/out.o
+
+test: build
+  deno run --allow-read test.ts
 
 server:
   python server.py
