@@ -107,7 +107,7 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
             }
             trace!("Closed socket unit: {}", unit.id.name);
         }
-        Specific::Target(_) | Specific::Slice(_) => {
+        Specific::Target(_) | Specific::Slice(_) | Specific::Timer(_) => {
             // Nothing to do
         }
         Specific::Mount(specific) => {

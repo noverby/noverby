@@ -5,7 +5,7 @@ use crate::runtime_info::{ArcMutRuntimeInfo, RuntimeInfo, UnitTable};
 use crate::services::ServiceErrorReason;
 use crate::units::{StatusStopped, UnitAction, UnitId, UnitStatus};
 
-use log::{error, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use std::sync::{Arc, Mutex};
 use threadpool::ThreadPool;
 
@@ -725,7 +725,7 @@ fn activate_units_recursive(
                 let unstarted = unstarted_deps(id, &run_info_guard);
                 if !unstarted.is_empty() {
                     let dep_names: Vec<&str> = unstarted.iter().map(|d| d.name.as_str()).collect();
-                    warn!(
+                    debug!(
                         "activate_units_recursive: {} NOT startable, waiting for: {:?}",
                         id.name, dep_names
                     );

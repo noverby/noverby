@@ -32,6 +32,7 @@ pub mod shutdown;
 pub mod signal_handler;
 pub mod socket_activation;
 pub mod sockets;
+pub mod timer_scheduler;
 pub mod unit_name;
 pub mod units;
 

@@ -87,7 +87,8 @@ pub fn prune_units(
                     .cloned()
                     .collect();
             }
-            Specific::Target(_) | Specific::Slice(_) | Specific::Mount(_) => { /**/ }
+            Specific::Target(_) | Specific::Slice(_) | Specific::Mount(_) | Specific::Timer(_) => { /**/
+            }
         }
 
         unit.common.dependencies.before = unit
@@ -393,8 +394,12 @@ fn add_default_dependency_relations(units: &mut UnitTable) {
                     add_after_to_sysinit.push(unit.id.clone());
                 }
             }
-            UnitIdKind::Target | UnitIdKind::Slice | UnitIdKind::Mount | UnitIdKind::Device => {
-                // Targets, slices, mounts, and devices only get the
+            UnitIdKind::Target
+            | UnitIdKind::Slice
+            | UnitIdKind::Mount
+            | UnitIdKind::Device
+            | UnitIdKind::Timer => {
+                // Targets, slices, mounts, devices, and timers only get the
                 // shutdown.target conflict/before (already added above).
             }
         }
@@ -509,6 +514,9 @@ fn apply_sockets_to_services(unit_table: &mut UnitTable) -> Result<(), String> {
     let mut socket_ids = Vec::new();
     for id in unit_table.keys() {
         match id.kind {
+            UnitIdKind::Timer => {
+                // Timer units are simple — no special cross-references needed.
+            }
             UnitIdKind::Service => {
                 service_ids.push(id.clone());
             }

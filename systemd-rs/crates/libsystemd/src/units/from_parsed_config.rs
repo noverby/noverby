@@ -4,9 +4,10 @@ use crate::units::{
     Common, CommonState, Dependencies, ExecConfig, MountConfig, MountSpecific, MountState,
     ParsedExecSection, ParsedInstallSection, ParsedMountConfig, ParsedServiceConfig,
     ParsedSingleSocketConfig, ParsedSliceConfig, ParsedSocketConfig, ParsedTargetConfig,
-    ParsedUnitSection, PlatformSpecificServiceFields, ServiceConfig, ServiceSpecific, ServiceState,
-    SingleSocketConfig, SliceSpecific, SliceState, SocketConfig, SocketSpecific, SocketState,
-    Specific, TargetSpecific, TargetState, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus,
+    ParsedTimerConfig, ParsedUnitSection, PlatformSpecificServiceFields, ServiceConfig,
+    ServiceSpecific, ServiceState, SingleSocketConfig, SliceSpecific, SliceState, SocketConfig,
+    SocketSpecific, SocketState, Specific, TargetSpecific, TargetState, TimerConfig, TimerSpecific,
+    TimerState, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus,
 };
 
 use log::trace;
@@ -222,6 +223,163 @@ pub fn unit_from_parsed_mount(conf: ParsedMountConfig) -> Result<Unit, String> {
     })
 }
 
+pub fn unit_from_parsed_timer(conf: ParsedTimerConfig) -> Result<Unit, String> {
+    let fragment_path = conf.common.fragment_path.clone();
+    let timer_name = &conf.common.name;
+
+    // Determine the unit to activate: explicit Unit= or same-name .service
+    let target_unit = conf.timer.unit.clone().unwrap_or_else(|| {
+        timer_name
+            .strip_suffix(".timer")
+            .map(|base| format!("{base}.service"))
+            .unwrap_or_else(|| format!("{timer_name}.service"))
+    });
+
+    let timer_conf = TimerConfig {
+        on_active_sec: conf
+            .timer
+            .on_active_sec
+            .iter()
+            .filter_map(|s| parse_timespan(s))
+            .collect(),
+        on_boot_sec: conf
+            .timer
+            .on_boot_sec
+            .iter()
+            .filter_map(|s| parse_timespan(s))
+            .collect(),
+        on_startup_sec: conf
+            .timer
+            .on_startup_sec
+            .iter()
+            .filter_map(|s| parse_timespan(s))
+            .collect(),
+        on_unit_active_sec: conf
+            .timer
+            .on_unit_active_sec
+            .iter()
+            .filter_map(|s| parse_timespan(s))
+            .collect(),
+        on_unit_inactive_sec: conf
+            .timer
+            .on_unit_inactive_sec
+            .iter()
+            .filter_map(|s| parse_timespan(s))
+            .collect(),
+        on_calendar: conf.timer.on_calendar.clone(),
+        accuracy_sec: conf
+            .timer
+            .accuracy_sec
+            .as_deref()
+            .and_then(parse_timespan)
+            .unwrap_or(std::time::Duration::from_secs(60)),
+        randomized_delay_sec: conf
+            .timer
+            .randomized_delay_sec
+            .as_deref()
+            .and_then(parse_timespan)
+            .unwrap_or(std::time::Duration::ZERO),
+        persistent: conf.timer.persistent,
+        wake_system: conf.timer.wake_system,
+        remain_after_elapse: conf.timer.remain_after_elapse,
+        unit: target_unit,
+    };
+
+    Ok(Unit {
+        id: UnitId {
+            kind: UnitIdKind::Timer,
+            name: conf.common.name,
+        },
+        common: make_common_from_parsed(conf.common.unit, conf.common.install, fragment_path)?,
+        specific: Specific::Timer(TimerSpecific {
+            conf: timer_conf,
+            state: RwLock::new(TimerState {
+                common: CommonState::default(),
+            }),
+        }),
+    })
+}
+
+/// Parse a systemd timespan string (e.g. "15min", "1h 30min", "2s", "1d 6h")
+/// into a `Duration`. Supports the suffixes: us/usec, ms/msec, s/sec/seconds,
+/// min/minutes, h/hr/hour/hours, d/day/days, w/week/weeks, month/months,
+/// y/year/years. A bare number is treated as seconds. Returns `None` on parse error.
+pub fn parse_timespan(input: &str) -> Option<std::time::Duration> {
+    let input = input.trim();
+    if input.is_empty() {
+        return None;
+    }
+
+    // Try bare number first (seconds)
+    if let Ok(secs) = input.parse::<f64>() {
+        if secs >= 0.0 {
+            return Some(std::time::Duration::from_secs_f64(secs));
+        }
+        return None;
+    }
+
+    let mut total_us: u64 = 0;
+    let mut chars = input.chars().peekable();
+
+    while chars.peek().is_some() {
+        // Skip whitespace
+        while chars.peek() == Some(&' ') {
+            chars.next();
+        }
+        if chars.peek().is_none() {
+            break;
+        }
+
+        // Parse number
+        let mut num_str = String::new();
+        while let Some(&c) = chars.peek() {
+            if c.is_ascii_digit() || c == '.' {
+                num_str.push(c);
+                chars.next();
+            } else {
+                break;
+            }
+        }
+        if num_str.is_empty() {
+            return None;
+        }
+        let num: f64 = num_str.parse().ok()?;
+
+        // Skip whitespace between number and unit
+        while chars.peek() == Some(&' ') {
+            chars.next();
+        }
+
+        // Parse unit suffix
+        let mut unit = String::new();
+        while let Some(&c) = chars.peek() {
+            if c.is_ascii_alphabetic() {
+                unit.push(c);
+                chars.next();
+            } else {
+                break;
+            }
+        }
+
+        let multiplier_us: u64 = match unit.as_str() {
+            "" | "s" | "sec" | "second" | "seconds" => 1_000_000,
+            "us" | "usec" => 1,
+            "ms" | "msec" => 1_000,
+            "min" | "minute" | "minutes" | "m" => 60 * 1_000_000,
+            "h" | "hr" | "hour" | "hours" => 3600 * 1_000_000,
+            "d" | "day" | "days" => 86400 * 1_000_000,
+            "w" | "week" | "weeks" => 7 * 86400 * 1_000_000,
+            "month" | "months" => 30 * 86400 * 1_000_000, // approximate
+            "y" | "year" | "years" => 365 * 86400 * 1_000_000, // approximate
+            _ => return None,
+        };
+
+        total_us += (num * multiplier_us as f64) as u64;
+    }
+
+    Some(std::time::Duration::from_micros(total_us))
+}
+
 impl From<ParsedSingleSocketConfig> for SingleSocketConfig {
     fn from(parsed: ParsedSingleSocketConfig) -> Self {
         Self {
@@ -433,6 +591,11 @@ impl std::convert::TryInto<UnitId> for &str {
                 name: self.to_owned(),
                 kind: UnitIdKind::Device,
             })
+        } else if self.ends_with(".timer") {
+            Ok(UnitId {
+                name: self.to_owned(),
+                kind: UnitIdKind::Timer,
+            })
         } else {
             Err(format!(
                 "{self} is not a valid unit name. The suffix is not supported."
@@ -469,5 +632,11 @@ impl std::convert::TryFrom<ParsedMountConfig> for Unit {
     type Error = String;
     fn try_from(conf: ParsedMountConfig) -> Result<Self, String> {
         unit_from_parsed_mount(conf)
+    }
+}
+impl std::convert::TryFrom<ParsedTimerConfig> for Unit {
+    type Error = String;
+    fn try_from(conf: ParsedTimerConfig) -> Result<Self, String> {
+        unit_from_parsed_timer(conf)
     }
 }
