@@ -53,10 +53,10 @@ The Mojo source (`src/main.mojo`) exports functions demonstrating interop across
 Enter the dev shell (requires [Nix](https://nixos.org/)):
 
 ```sh
-nix develop .#mojo-wasm
+nix develop .#wasm-mojo
 ```
 
-This provides `just`, `mojo`, `python3`, `llc`, and `wasm-ld`.
+This provides `just`, `mojo`, `deno`, `llc`, and `wasm-ld`.
 
 ## Usage
 
@@ -66,22 +66,8 @@ Build the WASM binary:
 just build
 ```
 
-Run the tests (requires Deno):
+Run the tests:
 
 ```sh
 just test
 ```
-
-Run the tests (requires Deno):
-
-```sh
-just test
-```
-
-Start the dev server:
-
-```sh
-just server
-```
-
-Open <http://localhost:8000> and check the browser console for output.

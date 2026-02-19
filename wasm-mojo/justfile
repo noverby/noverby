@@ -7,6 +7,3 @@ build:
 
 test: build
   deno run --allow-read test.ts
-
-server:
-  python server.py
