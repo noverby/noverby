@@ -709,6 +709,7 @@ fn unit_file_state(name: &str, unit_table: &UnitTable, path: &std::path::Path) -
 /// Format a dependency tree as an indented string with box-drawing characters.
 ///
 /// `visited` tracks already-printed units to avoid infinite loops in cyclic graphs.
+#[allow(clippy::too_many_arguments)]
 fn format_dep_tree(
     unit_name: &str,
     unit_table: &UnitTable,
@@ -905,20 +906,20 @@ pub fn execute_command(
                 }
                 for unit in &units {
                     let mut status = unit.common.status.write_poisoned();
-                    if let UnitStatus::Stopped(_, ref errors) = *status {
-                        if !errors.is_empty() {
-                            *status = UnitStatus::NeverStarted;
-                        }
+                    if let UnitStatus::Stopped(_, ref errors) = *status
+                        && !errors.is_empty()
+                    {
+                        *status = UnitStatus::NeverStarted;
                     }
                 }
             } else {
                 // Reset all failed units
                 for unit in ri.unit_table.values() {
                     let mut status = unit.common.status.write_poisoned();
-                    if let UnitStatus::Stopped(_, ref errors) = *status {
-                        if !errors.is_empty() {
-                            *status = UnitStatus::NeverStarted;
-                        }
+                    if let UnitStatus::Stopped(_, ref errors) = *status
+                        && !errors.is_empty()
+                    {
+                        *status = UnitStatus::NeverStarted;
                     }
                 }
             }
@@ -1000,10 +1001,11 @@ pub fn execute_command(
                     }
 
                     // Apply type filter
-                    if let Some(suffix) = suffix_filter {
-                        if !suffix.is_empty() && !name.ends_with(suffix) {
-                            continue;
-                        }
+                    if let Some(suffix) = suffix_filter
+                        && !suffix.is_empty()
+                        && !name.ends_with(suffix)
+                    {
+                        continue;
                     }
 
                     // First occurrence wins (higher-priority dirs come first)
@@ -1485,10 +1487,10 @@ pub fn execute_command(
             for name in &names {
                 let link_path = mask_dir.join(name);
                 // Remove existing file/symlink if present
-                if link_path.exists() || link_path.symlink_metadata().is_ok() {
-                    if let Err(e) = std::fs::remove_file(&link_path) {
-                        return Err(format!("Failed to remove {}: {e}", link_path.display()));
-                    }
+                if (link_path.exists() || link_path.symlink_metadata().is_ok())
+                    && let Err(e) = std::fs::remove_file(&link_path)
+                {
+                    return Err(format!("Failed to remove {}: {e}", link_path.display()));
                 }
                 // Create symlink to /dev/null
                 if let Err(e) = std::os::unix::fs::symlink("/dev/null", &link_path) {
@@ -1507,16 +1509,16 @@ pub fn execute_command(
             for name in &names {
                 let link_path = mask_dir.join(name);
                 // Only remove if it's a symlink pointing to /dev/null
-                if let Ok(target) = std::fs::read_link(&link_path) {
-                    if target == std::path::Path::new("/dev/null") {
-                        if let Err(e) = std::fs::remove_file(&link_path) {
-                            return Err(format!(
-                                "Failed to remove mask symlink {}: {e}",
-                                link_path.display()
-                            ));
-                        }
-                        unmasked.push(Value::String(name.clone()));
+                if let Ok(target) = std::fs::read_link(&link_path)
+                    && target == std::path::Path::new("/dev/null")
+                {
+                    if let Err(e) = std::fs::remove_file(&link_path) {
+                        return Err(format!(
+                            "Failed to remove mask symlink {}: {e}",
+                            link_path.display()
+                        ));
                     }
+                    unmasked.push(Value::String(name.clone()));
                 }
                 // If it's not a symlink to /dev/null, silently skip
             }

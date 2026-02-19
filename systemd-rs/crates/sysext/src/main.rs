@@ -320,12 +320,11 @@ fn parse_env_file(content: &str) -> HashMap<String, String> {
             let key = line[..pos].trim().to_string();
             let mut value = line[pos + 1..].trim().to_string();
             // Strip quotes
-            if (value.starts_with('"') && value.ends_with('"'))
-                || (value.starts_with('\'') && value.ends_with('\''))
+            if ((value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\'')))
+                && value.len() >= 2
             {
-                if value.len() >= 2 {
-                    value = value[1..value.len() - 1].to_string();
-                }
+                value = value[1..value.len() - 1].to_string();
             }
             vars.insert(key, value);
         }
@@ -445,10 +444,10 @@ fn read_extension_release(
                     .is_some_and(|n| n.starts_with("extension-release."))
             })
             .collect();
-        if files.len() == 1 {
-            if let Ok(content) = fs::read_to_string(files[0].path()) {
-                return parse_env_file(&content);
-            }
+        if files.len() == 1
+            && let Ok(content) = fs::read_to_string(files[0].path())
+        {
+            return parse_env_file(&content);
         }
     }
 
@@ -514,43 +513,38 @@ fn is_compatible(ext: &Extension, host: &HostInfo) -> bool {
     }
 
     // Check ID matches
-    if let Some(ext_id) = ext.release.get("ID") {
-        if let Some(host_id) = &host.id {
-            if ext_id != host_id && ext_id != "_any" {
-                return false;
-            }
-        }
+    if let Some(ext_id) = ext.release.get("ID")
+        && let Some(host_id) = &host.id
+        && ext_id != host_id
+        && ext_id != "_any"
+    {
+        return false;
     }
 
     // Check VERSION_ID matches (if SYSEXT_LEVEL is not set)
-    if ext.release.get("SYSEXT_LEVEL").is_none() {
-        if let Some(ext_version) = ext.release.get("VERSION_ID") {
-            if let Some(host_version) = &host.version_id {
-                if ext_version != host_version {
-                    return false;
-                }
-            }
-        }
+    if !ext.release.contains_key("SYSEXT_LEVEL")
+        && let Some(ext_version) = ext.release.get("VERSION_ID")
+        && let Some(host_version) = &host.version_id
+        && ext_version != host_version
+    {
+        return false;
     }
 
     // Check SYSEXT_LEVEL matches
-    if let Some(ext_level) = ext.release.get("SYSEXT_LEVEL") {
-        if let Some(host_level) = &host.sysext_level {
-            if ext_level != host_level {
-                return false;
-            }
-        }
+    if let Some(ext_level) = ext.release.get("SYSEXT_LEVEL")
+        && let Some(host_level) = &host.sysext_level
+        && ext_level != host_level
+    {
+        return false;
     }
 
     // Check ARCHITECTURE matches
-    if let Some(ext_arch) = ext.release.get("ARCHITECTURE") {
-        if ext_arch != "_any" {
-            if let Some(host_arch) = &host.architecture {
-                if ext_arch != host_arch {
-                    return false;
-                }
-            }
-        }
+    if let Some(ext_arch) = ext.release.get("ARCHITECTURE")
+        && ext_arch != "_any"
+        && let Some(host_arch) = &host.architecture
+        && ext_arch != host_arch
+    {
+        return false;
     }
 
     // Check SYSEXT_SCOPE (if present, must include "system")
@@ -833,14 +827,13 @@ fn is_overlayfs_mount(path: &Path) -> bool {
             // mountinfo format: id parent major:minor root mount_point ... - fstype source opts
             if fields.len() > 8 {
                 // Find the separator "-"
-                if let Some(sep_pos) = fields.iter().position(|&f| f == "-") {
-                    if sep_pos + 1 < fields.len()
-                        && fields[sep_pos + 1] == "overlay"
-                        && fields.len() > 4
-                        && fields[4] == path_str
-                    {
-                        return true;
-                    }
+                if let Some(sep_pos) = fields.iter().position(|&f| f == "-")
+                    && sep_pos + 1 < fields.len()
+                    && fields[sep_pos + 1] == "overlay"
+                    && fields.len() > 4
+                    && fields[4] == path_str
+                {
+                    return true;
                 }
             }
         }
@@ -995,8 +988,8 @@ fn cmd_list(extensions: &[Extension], json_mode: JsonMode) {
     }
 
     println!(
-        "{:<20} {:<10} {:<10} {:<12} {}",
-        "NAME", "TYPE", "COMPAT", "HIERARCHIES", "PATH"
+        "{:<20} {:<10} {:<10} {:<12} PATH",
+        "NAME", "TYPE", "COMPAT", "HIERARCHIES"
     );
 
     for ext in extensions {

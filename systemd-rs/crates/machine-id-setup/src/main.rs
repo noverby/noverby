@@ -91,7 +91,7 @@ fn write_machine_id(path: &Path, id: &str) -> io::Result<()> {
     // Write to a temporary file first for atomicity.
     let dir = path
         .parent()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "machine-id path has no parent"))?;
+        .ok_or_else(|| io::Error::other("machine-id path has no parent"))?;
     let tmp_path = dir.join(".machine-id.tmp");
 
     {
@@ -124,7 +124,7 @@ fn initialize(machine_id_path: &Path) -> Result<String, i32> {
 
     // Try to read from other sources before generating a new one.
     let id = try_dbus_machine_id()
-        .or_else(|| try_product_uuid())
+        .or_else(try_product_uuid)
         .map(Ok)
         .unwrap_or_else(|| {
             generate_machine_id().map_err(|e| {
@@ -255,12 +255,11 @@ fn is_mount_point(path: &Path) -> bool {
     // Each line in mountinfo has the mount point as the 5th field (0-indexed: 4).
     for line in mountinfo.lines() {
         let fields: Vec<&str> = line.split_whitespace().collect();
-        if fields.len() >= 5 {
-            if let Ok(mount_path) = fs::canonicalize(fields[4]) {
-                if mount_path == canonical {
-                    return true;
-                }
-            }
+        if fields.len() >= 5
+            && let Ok(mount_path) = fs::canonicalize(fields[4])
+            && mount_path == canonical
+        {
+            return true;
         }
     }
 
@@ -318,7 +317,7 @@ fn run(args: &[String]) -> i32 {
             arg if arg.starts_with("--root=") => {
                 root = PathBuf::from(&arg["--root=".len()..]);
             }
-            arg if arg == "--root" => {
+            "--root" => {
                 i += 1;
                 if i >= args.len() {
                     eprintln!("Error: --root requires an argument");

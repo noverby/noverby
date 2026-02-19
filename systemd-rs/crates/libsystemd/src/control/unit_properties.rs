@@ -323,7 +323,7 @@ fn insert_service_config(props: &mut BTreeMap<String, String>, conf: &ServiceCon
 
     // Exec lines
     match &conf.exec {
-        Some(cmd) => insert_commandlines(props, "ExecStart", &[cmd.clone()]),
+        Some(cmd) => insert_commandlines(props, "ExecStart", std::slice::from_ref(cmd)),
         None => insert_commandlines(props, "ExecStart", &[]),
     }
     insert_commandlines(props, "ExecStartPre", &conf.startpre);
@@ -407,11 +407,11 @@ fn insert_exec_config(props: &mut BTreeMap<String, String>, conf: &ExecConfig) {
     }
 
     // Environment variables
-    if let Some(env) = &conf.environment {
-        if !env.vars.is_empty() {
-            let env_strs: Vec<String> = env.vars.iter().map(|(k, v)| format!("{k}={v}")).collect();
-            insert(props, "Environment", &env_strs.join(" "));
-        }
+    if let Some(env) = &conf.environment
+        && !env.vars.is_empty()
+    {
+        let env_strs: Vec<String> = env.vars.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        insert(props, "Environment", &env_strs.join(" "));
     }
 
     // Environment files

@@ -116,7 +116,8 @@ pub fn unstarted_deps(id: &UnitId, run_info: &RuntimeInfo) -> Vec<UnitId> {
 
     // if not all dependencies are yet started ignore this call. This unit will be activated again when
     // the next dependency gets ready
-    let unstarted_deps = unit
+    
+    unit
         .common
         .dependencies
         .after
@@ -184,8 +185,7 @@ pub fn unstarted_deps(id: &UnitId, run_info: &RuntimeInfo) -> Vec<UnitId> {
                 acc.push(elem.clone());
             }
             acc
-        });
-    unstarted_deps
+        })
 }
 
 #[derive(Debug)]

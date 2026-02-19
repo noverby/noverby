@@ -208,7 +208,7 @@ impl JournaldConfig {
             let mut files: Vec<PathBuf> = entries
                 .filter_map(|e| e.ok())
                 .map(|e| e.path())
-                .filter(|p| p.extension().map_or(false, |ext| ext == "conf"))
+                .filter(|p| p.extension().is_some_and(|ext| ext == "conf"))
                 .collect();
             files.sort();
             for path in files {
@@ -319,7 +319,7 @@ impl JournaldConfig {
             "persistent" => true,
             "volatile" => false,
             "none" => false,
-            "auto" | _ => {
+            _ => {
                 // "auto" mode: use persistent if /var/log/journal exists
                 Path::new("/var/log/journal").is_dir()
             }
@@ -472,10 +472,10 @@ impl JournaldState {
     /// Dispatch a fully-formed journal entry into storage.
     fn dispatch_entry(&self, mut entry: JournalEntry) {
         // Check priority against MaxLevelStore
-        if let Some(priority) = entry.priority() {
-            if priority > self.config.max_level_store {
-                return;
-            }
+        if let Some(priority) = entry.priority()
+            && priority > self.config.max_level_store
+        {
+            return;
         }
 
         // Rate limiting
@@ -498,10 +498,10 @@ impl JournaldState {
         if max_field > 0 {
             let keys: Vec<String> = entry.fields.keys().cloned().collect();
             for key in keys {
-                if let Some(value) = entry.fields.get_mut(&key) {
-                    if value.len() > max_field {
-                        value.truncate(max_field);
-                    }
+                if let Some(value) = entry.fields.get_mut(&key)
+                    && value.len() > max_field
+                {
+                    value.truncate(max_field);
                 }
             }
         }
@@ -511,21 +511,19 @@ impl JournaldState {
         entry.seqnum = seqnum;
 
         // Forward to console if configured
-        if self.config.forward_to_console {
-            if let Some(priority) = entry.priority() {
-                if priority <= self.config.max_level_console {
-                    let _ = writeln!(io::stderr(), "{}", entry);
-                }
-            }
+        if self.config.forward_to_console
+            && let Some(priority) = entry.priority()
+            && priority <= self.config.max_level_console
+        {
+            let _ = writeln!(io::stderr(), "{}", entry);
         }
 
         // Forward to wall if configured (only for emerg/alert)
-        if self.config.forward_to_wall {
-            if let Some(priority) = entry.priority() {
-                if priority <= self.config.max_level_wall {
-                    forward_to_wall(&entry);
-                }
-            }
+        if self.config.forward_to_wall
+            && let Some(priority) = entry.priority()
+            && priority <= self.config.max_level_wall
+        {
+            forward_to_wall(&entry);
         }
 
         // Store the entry
@@ -740,22 +738,21 @@ fn parse_syslog_tag_and_message(s: &str) -> (Option<String>, Option<String>, Str
         let message = &s[colon_pos + 2..];
 
         // Check for [pid] in the tag
-        if let Some(bracket_open) = tag_part.rfind('[') {
-            if let Some(bracket_close) = tag_part.rfind(']') {
-                if bracket_close > bracket_open {
-                    let identifier = tag_part[..bracket_open].trim();
-                    let pid = &tag_part[bracket_open + 1..bracket_close];
+        if let Some(bracket_open) = tag_part.rfind('[')
+            && let Some(bracket_close) = tag_part.rfind(']')
+            && bracket_close > bracket_open
+        {
+            let identifier = tag_part[..bracket_open].trim();
+            let pid = &tag_part[bracket_open + 1..bracket_close];
 
-                    // The identifier might have a hostname prefix; take last word
-                    let identifier = identifier.split_whitespace().last().unwrap_or(identifier);
+            // The identifier might have a hostname prefix; take last word
+            let identifier = identifier.split_whitespace().last().unwrap_or(identifier);
 
-                    return (
-                        Some(identifier.to_string()),
-                        Some(pid.to_string()),
-                        message.to_string(),
-                    );
-                }
-            }
+            return (
+                Some(identifier.to_string()),
+                Some(pid.to_string()),
+                message.to_string(),
+            );
         }
 
         // No PID — just identifier: message
@@ -782,16 +779,16 @@ fn skip_syslog_timestamp(s: &str) -> &str {
         let first = words[0];
         if months.contains(&first) {
             // words[1] should be the day, words[2] should be HH:MM:SS
-            if let Some(time_word) = words.get(2) {
-                if time_word.contains(':') {
-                    // Find the byte position after "Mon DD HH:MM:SS " in the
-                    // original string by locating the end of the time word.
-                    if let Some(time_start) = s.find(time_word) {
-                        let after_time = time_start + time_word.len();
-                        // Skip any whitespace after the time
-                        let rest = &s[after_time..];
-                        return rest.strip_prefix(' ').unwrap_or(rest);
-                    }
+            if let Some(time_word) = words.get(2)
+                && time_word.contains(':')
+            {
+                // Find the byte position after "Mon DD HH:MM:SS " in the
+                // original string by locating the end of the time word.
+                if let Some(time_start) = s.find(time_word) {
+                    let after_time = time_start + time_word.len();
+                    // Skip any whitespace after the time
+                    let rest = &s[after_time..];
+                    return rest.strip_prefix(' ').unwrap_or(rest);
                 }
             }
         }
@@ -831,13 +828,13 @@ fn parse_kmsg_line(line: &str) -> Option<JournalEntry> {
 
     // Parse header: "priority,seqnum,timestamp,flags"
     let parts: Vec<&str> = header.split(',').collect();
-    if let Some(pri_str) = parts.first() {
-        if let Ok(pri_val) = pri_str.parse::<u32>() {
-            let severity = (pri_val & 7) as u8;
-            let facility = pri_val >> 3;
-            entry.set_field("PRIORITY", severity.to_string());
-            entry.set_field("SYSLOG_FACILITY", facility.to_string());
-        }
+    if let Some(pri_str) = parts.first()
+        && let Ok(pri_val) = pri_str.parse::<u32>()
+    {
+        let severity = (pri_val & 7) as u8;
+        let facility = pri_val >> 3;
+        entry.set_field("PRIORITY", severity.to_string());
+        entry.set_field("SYSLOG_FACILITY", facility.to_string());
     }
 
     // Set a default identifier for kernel messages
@@ -1127,16 +1124,13 @@ fn handle_stdout_connection(stream: UnixStream, state: Arc<JournaldState>) {
 /// Parse a kernel-style `<N>` priority prefix from a log line.
 /// Returns (priority, message_without_prefix).
 fn parse_level_prefix_line(line: &str, default_priority: u8) -> (u8, &str) {
-    if let Some(rest) = line.strip_prefix('<') {
-        if let Some(close_pos) = rest.find('>') {
-            if close_pos <= 1 {
-                if let Ok(p) = rest[..close_pos].parse::<u8>() {
-                    if p <= 7 {
-                        return (p, &rest[close_pos + 1..]);
-                    }
-                }
-            }
-        }
+    if let Some(rest) = line.strip_prefix('<')
+        && let Some(close_pos) = rest.find('>')
+        && close_pos <= 1
+        && let Ok(p) = rest[..close_pos].parse::<u8>()
+        && p <= 7
+    {
+        return (p, &rest[close_pos + 1..]);
     }
     (default_priority, line)
 }
@@ -1261,9 +1255,9 @@ extern "C" fn signal_handler_rotate(_sig: libc::c_int) {
 /// Send an sd_notify message to the service manager.
 fn sd_notify(msg: &str) {
     if let Ok(socket_path) = std::env::var("NOTIFY_SOCKET") {
-        let path = if socket_path.starts_with('@') {
+        let path = if let Some(stripped) = socket_path.strip_prefix('@') {
             // Abstract socket
-            format!("\0{}", &socket_path[1..])
+            format!("\0{}", stripped)
         } else {
             socket_path.clone()
         };

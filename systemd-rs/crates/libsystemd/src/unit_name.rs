@@ -226,24 +226,22 @@ pub fn unit_name_template_split(name: &str) -> Option<(&str, &str, &str)> {
 
 /// Check if a unit name is a template (contains `@` before the suffix).
 pub fn is_template(name: &str) -> bool {
-    if let Some(at_pos) = name.find('@') {
-        if let Some(dot_pos) = name.rfind('.') {
+    if let Some(at_pos) = name.find('@')
+        && let Some(dot_pos) = name.rfind('.') {
             // Template: foo@.service (instance is empty)
             return at_pos < dot_pos && at_pos + 1 == dot_pos;
         }
-    }
     false
 }
 
 /// Check if a unit name is a template instance (contains `@` with an
 /// instance string before the suffix).
 pub fn is_instance(name: &str) -> bool {
-    if let Some(at_pos) = name.find('@') {
-        if let Some(dot_pos) = name.rfind('.') {
+    if let Some(at_pos) = name.find('@')
+        && let Some(dot_pos) = name.rfind('.') {
             // Instance: foo@bar.service (instance is non-empty)
             return at_pos < dot_pos && at_pos + 1 < dot_pos;
         }
-    }
     false
 }
 
@@ -283,12 +281,7 @@ fn recognized_suffix(name: &str) -> Option<&'static str> {
         ".scope",
     ];
 
-    for &suffix in SUFFIXES {
-        if name.ends_with(suffix) {
-            return Some(suffix);
-        }
-    }
-    None
+    SUFFIXES.iter().find(|&&suffix| name.ends_with(suffix)).copied().map(|v| v as _)
 }
 
 /// Normalize a filesystem path by stripping leading/trailing slashes

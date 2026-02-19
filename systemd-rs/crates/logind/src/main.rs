@@ -110,9 +110,9 @@ fn chrono_lite_timestamp() -> String {
 
 fn sd_notify(msg: &str) {
     if let Ok(path) = std::env::var("NOTIFY_SOCKET") {
-        let path = if path.starts_with('@') {
+        let path = if let Some(stripped) = path.strip_prefix('@') {
             // Abstract socket
-            format!("\0{}", &path[1..])
+            format!("\0{}", stripped)
         } else {
             path
         };
@@ -123,13 +123,13 @@ fn sd_notify(msg: &str) {
 }
 
 fn watchdog_interval() -> Option<Duration> {
-    if let Ok(usec_str) = std::env::var("WATCHDOG_USEC") {
-        if let Ok(usec) = usec_str.parse::<u64>() {
-            // Send keepalive at half the configured interval
-            let half = usec / 2;
-            if half > 0 {
-                return Some(Duration::from_micros(half));
-            }
+    if let Ok(usec_str) = std::env::var("WATCHDOG_USEC")
+        && let Ok(usec) = usec_str.parse::<u64>()
+    {
+        // Send keepalive at half the configured interval
+        let half = usec / 2;
+        if half > 0 {
+            return Some(Duration::from_micros(half));
         }
     }
     None
@@ -309,6 +309,7 @@ impl LoginManager {
     }
 
     /// Create a new session.
+    #[allow(clippy::too_many_arguments)]
     fn create_session(
         &mut self,
         uid: u32,
@@ -342,12 +343,12 @@ impl LoginManager {
         };
 
         // Register in seat
-        if let Some(ref seat_id) = seat_name {
-            if let Some(seat) = self.seats.get_mut(seat_id) {
-                seat.sessions.push(id.clone());
-                if seat.active_session.is_none() {
-                    seat.active_session = Some(id.clone());
-                }
+        if let Some(ref seat_id) = seat_name
+            && let Some(seat) = self.seats.get_mut(seat_id)
+        {
+            seat.sessions.push(id.clone());
+            if seat.active_session.is_none() {
+                seat.active_session = Some(id.clone());
             }
         }
 
@@ -377,12 +378,12 @@ impl LoginManager {
         };
 
         // Remove from seat
-        if let Some(ref seat_id) = session.seat {
-            if let Some(seat) = self.seats.get_mut(seat_id) {
-                seat.sessions.retain(|s| s != session_id);
-                if seat.active_session.as_deref() == Some(session_id) {
-                    seat.active_session = seat.sessions.first().cloned();
-                }
+        if let Some(ref seat_id) = session.seat
+            && let Some(seat) = self.seats.get_mut(seat_id)
+        {
+            seat.sessions.retain(|s| s != session_id);
+            if seat.active_session.as_deref() == Some(session_id) {
+                seat.active_session = seat.sessions.first().cloned();
             }
         }
 
@@ -740,11 +741,11 @@ fn handle_control_command(mgr: &mut LoginManager, cmd: &str) -> String {
                 if let Some(ref seat_id) = session.seat {
                     if let Some(seat) = mgr.seats.get_mut(seat_id) {
                         // Deactivate current active session
-                        if let Some(ref old_active) = seat.active_session {
-                            if let Some(old_session) = mgr.sessions.get_mut(old_active) {
-                                old_session.active = false;
-                                old_session.state = "online".to_string();
-                            }
+                        if let Some(ref old_active) = seat.active_session
+                            && let Some(old_session) = mgr.sessions.get_mut(old_active)
+                        {
+                            old_session.active = false;
+                            old_session.state = "online".to_string();
                         }
                         // Activate new session
                         seat.active_session = Some(args.to_string());
@@ -962,11 +963,11 @@ fn main() {
                 if SHUTDOWN_FLAG.load(Ordering::SeqCst) {
                     break;
                 }
-                if let Some(ref iv) = wd_interval {
-                    if last_watchdog.elapsed() >= *iv {
-                        sd_notify("WATCHDOG=1");
-                        last_watchdog = Instant::now();
-                    }
+                if let Some(ref iv) = wd_interval
+                    && last_watchdog.elapsed() >= *iv
+                {
+                    sd_notify("WATCHDOG=1");
+                    last_watchdog = Instant::now();
                 }
                 thread::sleep(Duration::from_secs(1));
             }
@@ -1010,11 +1011,11 @@ fn main() {
         }
 
         // Send watchdog keepalive
-        if let Some(ref iv) = wd_interval {
-            if last_watchdog.elapsed() >= *iv {
-                sd_notify("WATCHDOG=1");
-                last_watchdog = Instant::now();
-            }
+        if let Some(ref iv) = wd_interval
+            && last_watchdog.elapsed() >= *iv
+        {
+            sd_notify("WATCHDOG=1");
+            last_watchdog = Instant::now();
         }
 
         // Handle incoming control connections
@@ -1034,7 +1035,7 @@ fn main() {
 
         // Periodic cleanup (every ~60 iterations = ~12 seconds)
         cleanup_counter += 1;
-        if cleanup_counter % 60 == 0 {
+        if cleanup_counter.is_multiple_of(60) {
             mgr.cleanup_stale_inhibitors();
         }
 

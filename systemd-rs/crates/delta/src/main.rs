@@ -16,7 +16,7 @@
 //! Supported options:
 //!
 //! - `--type=TYPE`    — Filter by override type (overridden, extended, masked,
-//!                      redirected, equivalent). Can be specified multiple times.
+//!   redirected, equivalent). Can be specified multiple times.
 //! - `--diff`         — Show a unified diff for overridden files (default: true)
 //! - `--no-pager`     — Do not pipe output into a pager
 //! - `PREFIX...`      — Limit output to unit directories matching these prefixes
@@ -176,13 +176,13 @@ fn find_dropins(name: &str, dirs: &[&str]) -> Vec<PathBuf> {
 
     for dir in dirs {
         let dropin_path = Path::new(dir).join(&dropin_dir_name);
-        if dropin_path.is_dir() {
-            if let Ok(entries) = fs::read_dir(&dropin_path) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if p.extension().is_some_and(|e| e == "conf") && p.is_file() {
-                        results.push(p);
-                    }
+        if dropin_path.is_dir()
+            && let Ok(entries) = fs::read_dir(&dropin_path)
+        {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.extension().is_some_and(|e| e == "conf") && p.is_file() {
+                    results.push(p);
                 }
             }
         }
@@ -206,7 +206,7 @@ fn scan_dirs(dirs: &[&str], prefix_filter: &[String]) -> Vec<DeltaEntry> {
             .collect()
     };
 
-    if effective_dirs.len() < 1 {
+    if effective_dirs.is_empty() {
         return entries;
     }
 
@@ -260,14 +260,14 @@ fn scan_dirs(dirs: &[&str], prefix_filter: &[String]) -> Vec<DeltaEntry> {
                         top_path: path.clone(),
                         bottom_path: None,
                     });
-                } else if is_redirected(path) {
-                    if let Ok(target) = fs::read_link(path) {
-                        entries.push(DeltaEntry {
-                            delta_type: DeltaType::Redirected,
-                            top_path: path.clone(),
-                            bottom_path: Some(target),
-                        });
-                    }
+                } else if is_redirected(path)
+                    && let Ok(target) = fs::read_link(path)
+                {
+                    entries.push(DeltaEntry {
+                        delta_type: DeltaType::Redirected,
+                        top_path: path.clone(),
+                        bottom_path: Some(target),
+                    });
                 }
             }
         } else {
@@ -412,12 +412,12 @@ fn simple_diff(old_path: &Path, new_path: &Path) -> String {
         } else {
             if !in_hunk {
                 in_hunk = true;
-                hunk_start_old = if i >= context { i - context } else { 0 };
-                hunk_start_new = if j >= context { j - context } else { 0 };
+                hunk_start_old = i.saturating_sub(context);
+                hunk_start_new = j.saturating_sub(context);
                 hunk_count_old = 0;
                 hunk_count_new = 0;
                 // Add context before
-                let ctx_start = if i >= context { i - context } else { 0 };
+                let ctx_start = i.saturating_sub(context);
                 for k in ctx_start..i {
                     if k < old_lines.len() {
                         hunk.push_str(&format!(" {}\n", old_lines[k]));
@@ -541,13 +541,14 @@ fn main() {
             }
 
             // Show diff for overridden files
-            if cli.diff && entry.delta_type == DeltaType::Overridden {
-                if let Some(bottom) = &entry.bottom_path {
-                    let diff = simple_diff(bottom, &entry.top_path);
-                    if !diff.is_empty() {
-                        println!();
-                        println!("{diff}");
-                    }
+            if cli.diff
+                && entry.delta_type == DeltaType::Overridden
+                && let Some(bottom) = &entry.bottom_path
+            {
+                let diff = simple_diff(bottom, &entry.top_path);
+                if !diff.is_empty() {
+                    println!();
+                    println!("{diff}");
                 }
             }
         }

@@ -63,21 +63,18 @@ impl LocaleState {
         // Load locale
         let locale_entries = parse_env_file(LOCALE_CONF_PATH);
         for var in LOCALE_VARIABLES {
-            if let Some(val) = locale_entries.get(*var) {
-                if !val.is_empty() {
+            if let Some(val) = locale_entries.get(*var)
+                && !val.is_empty() {
                     state.locale.insert(var.to_string(), val.clone());
                 }
-            }
         }
 
         // Also check environment for LANG if not set in locale.conf
-        if !state.locale.contains_key("LANG") {
-            if let Ok(lang) = env::var("LANG") {
-                if !lang.is_empty() {
+        if !state.locale.contains_key("LANG")
+            && let Ok(lang) = env::var("LANG")
+                && !lang.is_empty() {
                     state.locale.insert("LANG".to_string(), lang);
                 }
-            }
-        }
 
         // Load vconsole keymap and X11 settings
         let vc_entries = parse_env_file(VCONSOLE_CONF_PATH);
@@ -121,13 +118,11 @@ fn parse_env_file_content(content: &str) -> BTreeMap<String, String> {
             let key = key.trim();
             let mut value = value.trim().to_string();
             // Strip surrounding quotes
-            if (value.starts_with('"') && value.ends_with('"'))
-                || (value.starts_with('\'') && value.ends_with('\''))
-            {
-                if value.len() >= 2 {
+            if ((value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\'')))
+                && value.len() >= 2 {
                     value = value[1..value.len() - 1].to_string();
                 }
-            }
             // Unescape
             value = value.replace("\\\"", "\"").replace("\\\\", "\\");
             if !key.is_empty() {
@@ -278,11 +273,10 @@ fn list_keymaps() -> Vec<String> {
     ];
 
     for dir in &keymap_dirs {
-        if let Ok(()) = collect_keymaps_recursive(Path::new(dir), &mut keymaps) {
-            if !keymaps.is_empty() {
+        if let Ok(()) = collect_keymaps_recursive(Path::new(dir), &mut keymaps)
+            && !keymaps.is_empty() {
                 break;
             }
-        }
     }
 
     keymaps.sort();
@@ -304,11 +298,7 @@ fn collect_keymaps_recursive(dir: &Path, keymaps: &mut Vec<String>) -> io::Resul
         } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
             let keymap_name = if let Some(stripped) = name.strip_suffix(".map.gz") {
                 Some(stripped.to_string())
-            } else if let Some(stripped) = name.strip_suffix(".map") {
-                Some(stripped.to_string())
-            } else {
-                None
-            };
+            } else { name.strip_suffix(".map").map(|stripped| stripped.to_string()) };
 
             if let Some(km) = keymap_name {
                 keymaps.push(km);
@@ -434,10 +424,8 @@ fn list_x11_keymap_variants(layout_filter: Option<&str>) -> Vec<(String, String)
                     } else {
                         entries.push((name.to_string(), format!("{}: {}", layout, desc)));
                     }
-                } else {
-                    if layout_filter.is_none() {
-                        entries.push((name.to_string(), rest.to_string()));
-                    }
+                } else if layout_filter.is_none() {
+                    entries.push((name.to_string(), rest.to_string()));
                 }
             }
         }

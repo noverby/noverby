@@ -101,8 +101,7 @@ impl Socket {
             let as_raw_fd = match single_conf.specialized.open() {
                 Ok(fd) => fd,
                 Err(e) => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    return Err(std::io::Error::other(
                         format!("Failed to open socket {} (index {}): {}", name, idx, e),
                     ));
                 }

@@ -139,7 +139,7 @@ impl SleepConfig {
             let mut files: Vec<PathBuf> = entries
                 .filter_map(|e| e.ok())
                 .map(|e| e.path())
-                .filter(|p| p.extension().map_or(false, |ext| ext == "conf"))
+                .filter(|p| p.extension().is_some_and(|ext| ext == "conf"))
                 .collect();
             files.sort();
             for path in files {
@@ -305,17 +305,15 @@ fn available_mem_sleep_modes() -> Vec<String> {
 /// Check whether hibernation has a usable resume device configured.
 fn has_resume_device() -> bool {
     // Check /sys/power/resume for a non-zero device
-    if let Ok(contents) = read_sysfs(SYS_POWER_RESUME) {
-        if contents != "0:0" && !contents.is_empty() && contents != "0" {
+    if let Ok(contents) = read_sysfs(SYS_POWER_RESUME)
+        && contents != "0:0" && !contents.is_empty() && contents != "0" {
             return true;
         }
-    }
     // Also check the kernel command line for a resume= parameter
-    if let Ok(cmdline) = fs::read_to_string("/proc/cmdline") {
-        if cmdline.split_whitespace().any(|w| w.starts_with("resume=")) {
+    if let Ok(cmdline) = fs::read_to_string("/proc/cmdline")
+        && cmdline.split_whitespace().any(|w| w.starts_with("resume=")) {
             return true;
         }
-    }
     false
 }
 
@@ -358,8 +356,8 @@ fn can_sleep(action: SleepAction, config: &SleepConfig) -> bool {
 /// Execute pre/post sleep hooks by running scripts in the hook directories.
 fn run_hooks(action: SleepAction, phase: &str) {
     let hook_dirs = [
-        format!("/usr/lib/systemd/system-sleep"),
-        format!("/etc/systemd/system-sleep"),
+        "/usr/lib/systemd/system-sleep".to_string(),
+        "/etc/systemd/system-sleep".to_string(),
     ];
 
     for dir in &hook_dirs {

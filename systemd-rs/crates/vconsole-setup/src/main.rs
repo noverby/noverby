@@ -104,13 +104,11 @@ impl VconsoleConfig {
                 let mut value = trimmed[pos + 1..].trim().to_string();
 
                 // Strip surrounding quotes
-                if (value.starts_with('"') && value.ends_with('"'))
-                    || (value.starts_with('\'') && value.ends_with('\''))
-                {
-                    if value.len() >= 2 {
+                if ((value.starts_with('"') && value.ends_with('"'))
+                    || (value.starts_with('\'') && value.ends_with('\'')))
+                    && value.len() >= 2 {
                         value = value[1..value.len() - 1].to_string();
                     }
-                }
 
                 if !value.is_empty() {
                     vars.insert(key, value);
@@ -148,14 +146,13 @@ fn find_executable(paths: &[&str], name: &str) -> Option<PathBuf> {
     }
 
     // Fall back to searching PATH via `which`-style lookup
-    if let Ok(output) = Command::new("which").arg(name).output() {
-        if output.status.success() {
+    if let Ok(output) = Command::new("which").arg(name).output()
+        && output.status.success() {
             let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !path_str.is_empty() {
                 return Some(PathBuf::from(path_str));
             }
         }
-    }
 
     None
 }
@@ -315,15 +312,12 @@ fn get_active_vts() -> Vec<String> {
             let name_str = name.to_string_lossy();
 
             // Virtual terminals are named tty1, tty2, ..., tty63
-            if name_str.starts_with("tty") {
-                if let Some(num_str) = name_str.strip_prefix("tty") {
-                    if let Ok(num) = num_str.parse::<u32>() {
-                        if num >= 1 && num <= 63 {
+            if name_str.starts_with("tty")
+                && let Some(num_str) = name_str.strip_prefix("tty")
+                    && let Ok(num) = num_str.parse::<u32>()
+                        && (1..=63).contains(&num) {
                             vts.push(format!("/dev/{}", name_str));
                         }
-                    }
-                }
-            }
         }
     }
 
@@ -377,11 +371,10 @@ fn run() -> u8 {
 
     // Apply keymap (only needs to be done once, not per-TTY, since loadkeys
     // affects the kernel console driver globally — unless a specific TTY is given)
-    if config.has_keymap() {
-        if !apply_keymap(&config, tty, verbose) {
+    if config.has_keymap()
+        && !apply_keymap(&config, tty, verbose) {
             any_failed = true;
         }
-    }
 
     // Apply font
     if config.has_font() {

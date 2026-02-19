@@ -110,10 +110,10 @@ fn build_journal_message(identifier: &str, priority: Priority, message: &str) ->
     let mut msg = Vec::with_capacity(256);
 
     // PRIORITY=<n>
-    write!(msg, "PRIORITY={}\n", priority.as_u8()).unwrap();
+    writeln!(msg, "PRIORITY={}", priority.as_u8()).unwrap();
 
     // SYSLOG_IDENTIFIER=<id>
-    write!(msg, "SYSLOG_IDENTIFIER={identifier}\n").unwrap();
+    writeln!(msg, "SYSLOG_IDENTIFIER={identifier}").unwrap();
 
     // MESSAGE=<text>
     // If the message contains a newline, use the binary-safe encoding:
@@ -126,11 +126,11 @@ fn build_journal_message(identifier: &str, priority: Priority, message: &str) ->
         msg.extend_from_slice(bytes);
         msg.push(b'\n');
     } else {
-        write!(msg, "MESSAGE={message}\n").unwrap();
+        writeln!(msg, "MESSAGE={message}").unwrap();
     }
 
     // SYSLOG_PID=<pid>
-    write!(msg, "SYSLOG_PID={}\n", process::id()).unwrap();
+    writeln!(msg, "SYSLOG_PID={}", process::id()).unwrap();
 
     msg
 }

@@ -134,7 +134,7 @@ fn write_seed(seed_path: &Path, data: &[u8]) -> io::Result<()> {
     // Write atomically: write to a temp file, then rename.
     let dir = seed_path
         .parent()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "seed path has no parent"))?;
+        .ok_or_else(|| io::Error::other("seed path has no parent"))?;
     let tmp_path = dir.join(".random-seed.tmp");
 
     {

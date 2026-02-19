@@ -48,20 +48,17 @@ pub const STATE_DIR: &str = "/run/systemd/resolve";
 
 /// DNSSEC validation mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum DnssecMode {
     /// Full DNSSEC validation
     Yes,
     /// DNSSEC validation disabled
     No,
     /// Allow downgrade if server doesn't support DNSSEC
+    #[default]
     AllowDowngrade,
 }
 
-impl Default for DnssecMode {
-    fn default() -> Self {
-        Self::AllowDowngrade
-    }
-}
 
 impl DnssecMode {
     pub fn parse(s: &str) -> Self {
@@ -86,8 +83,10 @@ impl DnssecMode {
 
 /// DNS-over-TLS mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum DnsOverTlsMode {
     /// DNS-over-TLS disabled
+    #[default]
     No,
     /// Opportunistic DNS-over-TLS (try TLS, fall back to plain)
     Opportunistic,
@@ -95,11 +94,6 @@ pub enum DnsOverTlsMode {
     Yes,
 }
 
-impl Default for DnsOverTlsMode {
-    fn default() -> Self {
-        Self::No
-    }
-}
 
 impl DnsOverTlsMode {
     pub fn parse(s: &str) -> Self {
@@ -156,8 +150,10 @@ impl ResolutionMode {
 
 /// Whether the stub listener is enabled
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum StubListenerMode {
     /// Listen on 127.0.0.53:53 (UDP + TCP)
+    #[default]
     Yes,
     /// Listen only on UDP
     Udp,
@@ -167,11 +163,6 @@ pub enum StubListenerMode {
     No,
 }
 
-impl Default for StubListenerMode {
-    fn default() -> Self {
-        Self::Yes
-    }
-}
 
 impl StubListenerMode {
     pub fn parse(s: &str) -> Self {
@@ -278,9 +269,9 @@ fn parse_dns_server(s: &str) -> Option<DnsServer> {
     let colon_count = addr_part.chars().filter(|c| *c == ':').count();
     if colon_count == 1 {
         // IPv4 with port
-        let mut parts = addr_part.rsplitn(2, ':');
-        let port_str = parts.next()?;
-        let ip_str = parts.next()?;
+        let (ip_str, port_str) = addr_part.rsplit_once(':')?;
+        
+        
         if let (Ok(ip), Ok(port)) = (ip_str.parse::<IpAddr>(), port_str.parse::<u16>()) {
             return Some(DnsServer {
                 addr: ip,
@@ -640,13 +631,11 @@ impl ResolvedConfig {
                 None => continue,
             };
 
-            if let Ok(content) = fs::read_to_string(&path) {
-                if let Some(link_dns) = parse_link_state(ifindex, &content) {
-                    if !link_dns.dns_servers.is_empty() {
+            if let Ok(content) = fs::read_to_string(&path)
+                && let Some(link_dns) = parse_link_state(ifindex, &content)
+                    && !link_dns.dns_servers.is_empty() {
                         self.link_dns.push(link_dns);
                     }
-                }
-            }
         }
     }
 

@@ -174,8 +174,8 @@ fn derive_app_specific(base: Id128, app_id_str: &str) -> Result<Id128, String> {
     let app_id = Id128::from_hex(app_id_str)?;
 
     let mut result = [0u8; 16];
-    for i in 0..16 {
-        result[i] = base.0[i] ^ app_id.0[i];
+    for (i, byte) in result.iter_mut().enumerate() {
+        *byte = base.0[i] ^ app_id.0[i];
     }
 
     // Mix further by rotating bytes based on XOR sum to avoid trivial collisions.

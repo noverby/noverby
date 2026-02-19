@@ -324,29 +324,24 @@ fn cmd_dump() {
 
             // Show current memory usage
             let mem_current_path = cg.path.join("memory.current");
-            if let Ok(val) = fs::read_to_string(&mem_current_path) {
-                if let Ok(bytes) = val.trim().parse::<u64>() {
+            if let Ok(val) = fs::read_to_string(&mem_current_path)
+                && let Ok(bytes) = val.trim().parse::<u64>() {
                     println!("    Current Memory: {}", format_bytes(bytes));
                 }
-            }
 
             // Show memory min/low
             let mem_min_path = cg.path.join("memory.min");
-            if let Ok(val) = fs::read_to_string(&mem_min_path) {
-                if let Ok(bytes) = val.trim().parse::<u64>() {
-                    if bytes > 0 {
+            if let Ok(val) = fs::read_to_string(&mem_min_path)
+                && let Ok(bytes) = val.trim().parse::<u64>()
+                    && bytes > 0 {
                         println!("    Memory Min: {}", format_bytes(bytes));
                     }
-                }
-            }
             let mem_low_path = cg.path.join("memory.low");
-            if let Ok(val) = fs::read_to_string(&mem_low_path) {
-                if let Ok(bytes) = val.trim().parse::<u64>() {
-                    if bytes > 0 {
+            if let Ok(val) = fs::read_to_string(&mem_low_path)
+                && let Ok(bytes) = val.trim().parse::<u64>()
+                    && bytes > 0 {
                         println!("    Memory Low: {}", format_bytes(bytes));
                     }
-                }
-            }
 
             // Show pressure
             if let Some(psi) = PsiMetrics::read(&cg.path.join("memory.pressure")) {

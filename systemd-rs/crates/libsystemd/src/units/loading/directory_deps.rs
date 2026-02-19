@@ -59,14 +59,12 @@ pub fn is_unit_file(filename: &str) -> bool {
 pub fn is_template_unit(name: &str) -> bool {
     // Find the '@' and then check if the next char before the extension dot is '.'
     // i.e., the instance part is empty: "foo@.service"
-    if let Some(at_pos) = name.find('@') {
-        if let Some(dot_pos) = name.rfind('.') {
-            if dot_pos > at_pos {
+    if let Some(at_pos) = name.find('@')
+        && let Some(dot_pos) = name.rfind('.')
+            && dot_pos > at_pos {
                 let instance = &name[at_pos + 1..dot_pos];
                 return instance.is_empty();
             }
-        }
-    }
     false
 }
 
@@ -100,9 +98,9 @@ pub fn resolve_symlink_aliases(
             }
             let path = entry.path();
             // Check if this is a symlink
-            if let Ok(metadata) = std::fs::symlink_metadata(&path) {
-                if metadata.file_type().is_symlink() {
-                    if let Ok(target) = std::fs::read_link(&path) {
+            if let Ok(metadata) = std::fs::symlink_metadata(&path)
+                && metadata.file_type().is_symlink()
+                    && let Ok(target) = std::fs::read_link(&path) {
                         let target_name = target
                             .file_name()
                             .map(|f| f.to_string_lossy().to_string())
@@ -112,8 +110,6 @@ pub fn resolve_symlink_aliases(
                             alias_map.insert(file_name, target_name);
                         }
                     }
-                }
-            }
         }
     }
 
@@ -216,8 +212,7 @@ pub fn resolve_symlink_aliases(
             a_bound_by,
             a_refs,
         )) = alias_deps
-        {
-            if let Some(real_unit) = unit_table.get_mut(real_id) {
+            && let Some(real_unit) = unit_table.get_mut(real_id) {
                 // Merge all dependency types from alias into real unit.
                 // Skip deps that reference the real unit itself (self-loops).
                 merge_dep_vec(&mut real_unit.common.dependencies.wants, &a_wants, real_id);
@@ -284,7 +279,6 @@ pub fn resolve_symlink_aliases(
                     alias_name, real_name
                 );
             }
-        }
 
         // Remove the alias unit from the table.
         if unit_table.remove(alias_id).is_some() {
@@ -429,8 +423,7 @@ pub fn resolve_symlink_aliases(
                         a_bound_by,
                         a_refs,
                     )) = alias_deps
-                    {
-                        if let Some(real_unit) = unit_table.get_mut(&real_instance_id) {
+                        && let Some(real_unit) = unit_table.get_mut(&real_instance_id) {
                             merge_dep_vec(
                                 &mut real_unit.common.dependencies.wants,
                                 &a_wants,
@@ -510,7 +503,6 @@ pub fn resolve_symlink_aliases(
                                     .push(alias_instance_id.name.clone());
                             }
                         }
-                    }
 
                     unit_table.remove(&alias_instance_id);
                     info!(
@@ -550,7 +542,7 @@ pub fn resolve_symlink_aliases(
     // aliases from Phase 1 and the instance aliases from Phase 1b.
     let all_aliases: Vec<(UnitId, UnitId)> = alias_to_real
         .into_iter()
-        .chain(instance_alias_to_real.into_iter())
+        .chain(instance_alias_to_real)
         .collect();
 
     if !all_aliases.is_empty() {
@@ -939,15 +931,14 @@ pub fn parse_template_instance(unit_name: &str) -> Option<(String, String)> {
 fn has_unresolved_specifiers(s: &str) -> bool {
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
-        if c == '%' {
-            if let Some(&next) = chars.peek() {
+        if c == '%'
+            && let Some(&next) = chars.peek() {
                 // Known systemd specifiers: %i %I %n %N %p %P %u %U %h %s %m %b %H %v %t
                 // Also %% is an escaped percent — not a specifier.
                 if next != '%' && next.is_alphanumeric() {
                     return true;
                 }
             }
-        }
     }
     false
 }
@@ -1384,9 +1375,9 @@ pub fn generate_fstab_mount_units(unit_table: &mut HashMap<UnitId, Unit>) {
         // and "x-systemd.automount" (should create an automount unit — we
         // just skip those for now).
         let opt_list: Vec<&str> = options.split(',').collect();
-        let is_noauto = opt_list.iter().any(|o| *o == "noauto");
-        let is_nofail = opt_list.iter().any(|o| *o == "nofail");
-        let _is_automount = opt_list.iter().any(|o| *o == "x-systemd.automount");
+        let is_noauto = opt_list.contains(&"noauto");
+        let is_nofail = opt_list.contains(&"nofail");
+        let _is_automount = opt_list.contains(&"x-systemd.automount");
 
         // Build the mount options string, filtering out fstab-only options
         let mount_options: Vec<&str> = opt_list
@@ -1420,7 +1411,7 @@ pub fn generate_fstab_mount_units(unit_table: &mut HashMap<UnitId, Unit>) {
         let is_network = matches!(
             fstype,
             "nfs" | "nfs4" | "cifs" | "smbfs" | "ncpfs" | "glusterfs" | "ceph" | "fuse.sshfs"
-        ) || opt_list.iter().any(|o| *o == "_netdev");
+        ) || opt_list.contains(&"_netdev");
 
         let target_id = if is_network {
             &remote_target_id

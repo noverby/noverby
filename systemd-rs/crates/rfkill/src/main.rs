@@ -98,8 +98,7 @@ impl RfkillDevice {
         // Replace characters that are problematic in filenames
         let id = self
             .state_id()
-            .replace('/', "-")
-            .replace('\\', "-")
+            .replace(['/', '\\'], "-")
             .replace('\0', "");
         PathBuf::from(STATE_DIR).join(id)
     }

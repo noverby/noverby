@@ -206,12 +206,7 @@ fn pid1_specific_setup() {
     // make_null_stdio() + a separate write-only /dev/console fd for logging.
 
     // stdin → /dev/null
-    let null_fd = unsafe {
-        libc::open(
-            b"/dev/null\0".as_ptr().cast(),
-            libc::O_RDWR | libc::O_CLOEXEC,
-        )
-    };
+    let null_fd = unsafe { libc::open(c"/dev/null".as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
     if null_fd >= 0 {
         let _ = unsafe { libc::dup2(null_fd, libc::STDIN_FILENO) };
         if null_fd > libc::STDERR_FILENO {
@@ -222,7 +217,7 @@ fn pid1_specific_setup() {
     // stdout/stderr → /dev/console (write-only, O_NOCTTY)
     let console_fd = unsafe {
         libc::open(
-            b"/dev/console\0".as_ptr().cast(),
+            c"/dev/console".as_ptr(),
             libc::O_WRONLY | libc::O_NOCTTY | libc::O_CLOEXEC,
         )
     };
@@ -351,17 +346,17 @@ fn pid1_specific_setup() {
     // kernel hostname remains empty (shown as "(none)" in prompts
     // and login banners).
     let hostname_path = std::path::Path::new("/etc/hostname");
-    if hostname_path.exists() {
-        if let Ok(raw) = std::fs::read_to_string(hostname_path) {
-            let hostname = raw.trim();
-            if !hostname.is_empty() {
-                match nix::unistd::sethostname(hostname) {
-                    Ok(()) => {
-                        eprintln!("systemd-rs: set hostname to '{hostname}'");
-                    }
-                    Err(e) => {
-                        eprintln!("systemd-rs: failed to set hostname: {e}");
-                    }
+    if hostname_path.exists()
+        && let Ok(raw) = std::fs::read_to_string(hostname_path)
+    {
+        let hostname = raw.trim();
+        if !hostname.is_empty() {
+            match nix::unistd::sethostname(hostname) {
+                Ok(()) => {
+                    eprintln!("systemd-rs: set hostname to '{hostname}'");
+                }
+                Err(e) => {
+                    eprintln!("systemd-rs: failed to set hostname: {e}");
                 }
             }
         }

@@ -8,7 +8,6 @@
 //! timers and re-negotiates as needed.
 
 use std::fmt;
-use std::io;
 use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
 
@@ -433,7 +432,7 @@ impl DhcpPacket {
                     let prefix_len = data[i];
                     i += 1;
                     // Number of significant octets in the destination.
-                    let octets = ((prefix_len + 7) / 8) as usize;
+                    let octets = prefix_len.div_ceil(8) as usize;
                     if i + octets + 4 > data.len() {
                         break;
                     }
@@ -1090,8 +1089,8 @@ impl DhcpClient {
             }
             DhcpState::Bound => {
                 // Check if we need to renew.
-                if let Some(ref lease) = self.lease {
-                    if lease.needs_renewal() {
+                if let Some(ref lease) = self.lease
+                    && lease.needs_renewal() {
                         self.state = DhcpState::Renewing;
                         self.xid = generate_xid(&self.config.mac);
                         self.last_send = Some(Instant::now());
@@ -1103,7 +1102,6 @@ impl DhcpClient {
                             lease.address,
                         ));
                     }
-                }
                 None
             }
             DhcpState::Renewing => {

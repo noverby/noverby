@@ -67,9 +67,9 @@ pub fn handle_all_streams(run_info: ArcMutRuntimeInfo) {
                 }
                 let mut buf = [0u8; 512];
                 for (fd, id) in &fd_to_srvc_id {
-                    if fdset.contains(unsafe { borrow_fd(*fd) }) {
-                        if let Some(srvc_unit) = unit_table.get(id) {
-                            if let Specific::Service(srvc) = &srvc_unit.specific {
+                    if fdset.contains(unsafe { borrow_fd(*fd) })
+                        && let Some(srvc_unit) = unit_table.get(id)
+                            && let Specific::Service(srvc) = &srvc_unit.specific {
                                 let mut_state = &mut *srvc.state.write_poisoned();
                                 if let Some(socket) = &mut_state.srvc.notifications {
                                     let old_flags = nix::fcntl::fcntl(
@@ -119,8 +119,6 @@ pub fn handle_all_streams(run_info: ArcMutRuntimeInfo) {
                                     );
                                 }
                             }
-                        }
-                    }
                 }
             }
             Err(e) => {
@@ -159,8 +157,8 @@ pub fn handle_all_std_out(run_info: ArcMutRuntimeInfo) {
                 let mut buf = [0u8; 512];
                 let mut eof_ids = Vec::new();
                 for (fd, id) in &fd_to_srvc_id {
-                    if fdset.contains(unsafe { borrow_fd(*fd) }) {
-                        if let Some(srvc_unit) = unit_table.get(id) {
+                    if fdset.contains(unsafe { borrow_fd(*fd) })
+                        && let Some(srvc_unit) = unit_table.get(id) {
                             let name = srvc_unit.id.name.clone();
                             if let Specific::Service(srvc) = &srvc_unit.specific {
                                 let mut_state = &mut *srvc.state.write_poisoned();
@@ -209,12 +207,11 @@ pub fn handle_all_std_out(run_info: ArcMutRuntimeInfo) {
                                 }
                             }
                         }
-                    }
                 }
                 // Close pipes that hit EOF so they are no longer selected.
                 for (id, name) in eof_ids {
-                    if let Some(srvc_unit) = unit_table.get(&id) {
-                        if let Specific::Service(srvc) = &srvc_unit.specific {
+                    if let Some(srvc_unit) = unit_table.get(&id)
+                        && let Specific::Service(srvc) = &srvc_unit.specific {
                             let mut_state = &mut *srvc.state.write_poisoned();
                             if let Some(StdIo::Piped(r, _w)) = &mut_state.srvc.stdout {
                                 trace!("stdout pipe EOF for service {name}, closing read end");
@@ -222,7 +219,6 @@ pub fn handle_all_std_out(run_info: ArcMutRuntimeInfo) {
                             }
                             mut_state.srvc.stdout = None;
                         }
-                    }
                 }
             }
             Err(e) => {
@@ -261,8 +257,8 @@ pub fn handle_all_std_err(run_info: ArcMutRuntimeInfo) {
                 let mut buf = [0u8; 512];
                 let mut eof_ids = Vec::new();
                 for (fd, id) in &fd_to_srvc_id {
-                    if fdset.contains(unsafe { borrow_fd(*fd) }) {
-                        if let Some(srvc_unit) = unit_table.get(id) {
+                    if fdset.contains(unsafe { borrow_fd(*fd) })
+                        && let Some(srvc_unit) = unit_table.get(id) {
                             let name = srvc_unit.id.name.clone();
                             if let Specific::Service(srvc) = &srvc_unit.specific {
                                 let mut_state = &mut *srvc.state.write_poisoned();
@@ -310,12 +306,11 @@ pub fn handle_all_std_err(run_info: ArcMutRuntimeInfo) {
                                 }
                             }
                         }
-                    }
                 }
                 // Close pipes that hit EOF so they are no longer selected.
                 for (id, name) in eof_ids {
-                    if let Some(srvc_unit) = unit_table.get(&id) {
-                        if let Specific::Service(srvc) = &srvc_unit.specific {
+                    if let Some(srvc_unit) = unit_table.get(&id)
+                        && let Specific::Service(srvc) = &srvc_unit.specific {
                             let mut_state = &mut *srvc.state.write_poisoned();
                             if let Some(StdIo::Piped(r, _w)) = &mut_state.srvc.stderr {
                                 trace!("stderr pipe EOF for service {name}, closing read end");
@@ -323,7 +318,6 @@ pub fn handle_all_std_err(run_info: ArcMutRuntimeInfo) {
                             }
                             mut_state.srvc.stderr = None;
                         }
-                    }
                 }
             }
             Err(e) => {

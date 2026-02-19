@@ -148,22 +148,21 @@ pub fn service_exit_handler(
     };
 
     // Write DEAD_PROCESS utmp/wtmp record if the service had UtmpIdentifier= set.
-    if let Specific::Service(srvc) = &unit.specific {
-        if let Some(ref utmp_id) = srvc.conf.exec_config.utmp_identifier {
+    if let Specific::Service(srvc) = &unit.specific
+        && let Some(ref utmp_id) = srvc.conf.exec_config.utmp_identifier {
             crate::entrypoints::write_utmp_dead_record(
                 utmp_id,
                 srvc.conf.exec_config.tty_path.as_deref(),
                 pid,
             );
         }
-    }
 
     let success_exit_status = get_success_exit_status(unit);
 
     // kill oneshot service processes. There should be none but just in case...
     {
-        if let Specific::Service(srvc) = &unit.specific {
-            if srvc.conf.srcv_type == ServiceType::OneShot {
+        if let Specific::Service(srvc) = &unit.specific
+            && srvc.conf.srcv_type == ServiceType::OneShot {
                 let mut_state = &mut *srvc.state.write_poisoned();
                 mut_state
                     .srvc
@@ -180,7 +179,6 @@ pub fn service_exit_handler(
                 }
                 return Ok(());
             }
-        }
     }
 
     // Determine SuccessAction / FailureAction for this unit and whether

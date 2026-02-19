@@ -379,7 +379,7 @@ fn format_timestamp(epoch_secs: u64) -> String {
     let mut year = 1970u64;
     let mut remaining_days = days_since_epoch;
     loop {
-        let days_in_year = if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) {
+        let days_in_year = if year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400)) {
             366
         } else {
             365
@@ -391,7 +391,7 @@ fn format_timestamp(epoch_secs: u64) -> String {
         year += 1;
     }
 
-    let days_in_months: &[u64] = if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) {
+    let days_in_months: &[u64] = if year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400)) {
         &[31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
     } else {
         &[31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]

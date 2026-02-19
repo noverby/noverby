@@ -56,8 +56,8 @@ pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
                             // Strategy 2: fall back to scanning services
                             if srvc_unit.is_none() {
                                 for unit in unit_table.values() {
-                                    if let Specific::Service(specific) = &unit.specific {
-                                        if specific.has_socket(&socket_id.name) {
+                                    if let Specific::Service(specific) = &unit.specific
+                                        && specific.has_socket(&socket_id.name) {
                                             srvc_unit = Some(unit);
                                             trace!(
                                                 "Start service {} by socket activation (from service's Sockets= list)",
@@ -65,7 +65,6 @@ pub fn start_socketactivation_thread(run_info: ArcMutRuntimeInfo) {
                                             );
                                             break;
                                         }
-                                    }
                                 }
                             }
 

@@ -238,8 +238,8 @@ fn list_locks() -> Vec<InhibitorLock> {
                 continue;
             }
 
-            if let Ok(content) = fs::read_to_string(&path) {
-                if let Some(lock) = InhibitorLock::parse(&path, &content) {
+            if let Ok(content) = fs::read_to_string(&path)
+                && let Some(lock) = InhibitorLock::parse(&path, &content) {
                     // Verify the process is still alive
                     let proc_path = format!("/proc/{}", lock.pid);
                     if Path::new(&proc_path).exists() || lock.pid == 0 {
@@ -249,7 +249,6 @@ fn list_locks() -> Vec<InhibitorLock> {
                         let _ = fs::remove_file(&path);
                     }
                 }
-            }
         }
     }
 
@@ -296,13 +295,11 @@ fn uid_to_name(uid: u32) -> String {
     if let Ok(content) = fs::read_to_string("/etc/passwd") {
         for line in content.lines() {
             let fields: Vec<&str> = line.split(':').collect();
-            if fields.len() >= 3 {
-                if let Ok(entry_uid) = fields[2].parse::<u32>() {
-                    if entry_uid == uid {
+            if fields.len() >= 3
+                && let Ok(entry_uid) = fields[2].parse::<u32>()
+                    && entry_uid == uid {
                         return fields[0].to_string();
                     }
-                }
-            }
         }
     }
     uid.to_string()

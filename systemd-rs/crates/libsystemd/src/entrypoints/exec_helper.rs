@@ -369,28 +369,27 @@ fn tty_reset_destructive(config: &ExecHelperConfig) {
         // Extract VT number from path like /dev/tty9
         let tty_str = tty_path.to_string_lossy();
         let tty_name = tty_str.strip_prefix("/dev/").unwrap_or(&tty_str);
-        if let Some(vt_num_str) = tty_name.strip_prefix("tty") {
-            if let Ok(vt_num) = vt_num_str.parse::<libc::c_int>() {
-                if vt_num > 0 {
-                    // Try VT_DISALLOCATE via /dev/tty0
-                    let tty0 = std::ffi::CString::new("/dev/tty0").unwrap();
-                    let tty0_fd = open_terminal(
-                        &tty0,
-                        libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC | libc::O_NONBLOCK,
-                    );
-                    if tty0_fd >= 0 {
-                        let ret = unsafe {
-                            libc::ioctl(tty0_fd, 0x5608 /* VT_DISALLOCATE */, vt_num)
-                        };
-                        unsafe {
-                            libc::close(tty0_fd);
-                        }
-                        if ret >= 0 {
-                            return; // Successfully disallocated
-                        }
-                        // EBUSY means the VT is active — fall through to clear it
-                    }
+        if let Some(vt_num_str) = tty_name.strip_prefix("tty")
+            && let Ok(vt_num) = vt_num_str.parse::<libc::c_int>()
+            && vt_num > 0
+        {
+            // Try VT_DISALLOCATE via /dev/tty0
+            let tty0 = std::ffi::CString::new("/dev/tty0").unwrap();
+            let tty0_fd = open_terminal(
+                &tty0,
+                libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC | libc::O_NONBLOCK,
+            );
+            if tty0_fd >= 0 {
+                let ret = unsafe {
+                    libc::ioctl(tty0_fd, 0x5608 /* VT_DISALLOCATE */, vt_num)
+                };
+                unsafe {
+                    libc::close(tty0_fd);
                 }
+                if ret >= 0 {
+                    return; // Successfully disallocated
+                }
+                // EBUSY means the VT is active — fall through to clear it
             }
         }
 
@@ -472,12 +471,8 @@ fn setup_stdin(config: &ExecHelperConfig) {
     match config.stdin_option {
         StandardInput::Null => {
             // Open /dev/null as stdin
-            let null_fd = unsafe {
-                libc::open(
-                    b"/dev/null\0".as_ptr().cast(),
-                    libc::O_RDONLY | libc::O_CLOEXEC,
-                )
-            };
+            let null_fd =
+                unsafe { libc::open(c"/dev/null".as_ptr(), libc::O_RDONLY | libc::O_CLOEXEC) };
             if null_fd < 0 {
                 eprintln!(
                     "[EXEC_HELPER {}] Failed to open /dev/null for stdin: {}",
@@ -546,7 +541,7 @@ fn setup_stdin(config: &ExecHelperConfig) {
                     "[EXEC_HELPER {}] Falling back to /dev/null for stdin",
                     config.name
                 );
-                let null_fd = unsafe { libc::open(b"/dev/null\0".as_ptr().cast(), libc::O_RDONLY) };
+                let null_fd = unsafe { libc::open(c"/dev/null".as_ptr(), libc::O_RDONLY) };
                 if null_fd >= 0 && null_fd != libc::STDIN_FILENO {
                     unsafe {
                         libc::dup2(null_fd, libc::STDIN_FILENO);

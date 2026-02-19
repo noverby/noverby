@@ -123,10 +123,10 @@ const CGROUP_ROOT: &str = "/sys/fs/cgroup";
 fn read_task_count(cgroup_path: &Path) -> u64 {
     // Try pids.current first (gives the count directly)
     let pids_current = cgroup_path.join("pids.current");
-    if let Ok(content) = fs::read_to_string(&pids_current) {
-        if let Ok(count) = content.trim().parse::<u64>() {
-            return count;
-        }
+    if let Ok(content) = fs::read_to_string(&pids_current)
+        && let Ok(count) = content.trim().parse::<u64>()
+    {
+        return count;
     }
 
     // Fall back to counting lines in cgroup.procs
@@ -157,10 +157,10 @@ fn read_cpu_usage(cgroup_path: &Path) -> u64 {
 /// Read memory usage in bytes from `memory.current`.
 fn read_memory_usage(cgroup_path: &Path) -> u64 {
     let mem_file = cgroup_path.join("memory.current");
-    if let Ok(content) = fs::read_to_string(&mem_file) {
-        if let Ok(bytes) = content.trim().parse::<u64>() {
-            return bytes;
-        }
+    if let Ok(content) = fs::read_to_string(&mem_file)
+        && let Ok(bytes) = content.trim().parse::<u64>()
+    {
+        return bytes;
     }
     0
 }
@@ -179,10 +179,10 @@ fn read_io_usage(cgroup_path: &Path) -> (u64, u64) {
                     if let Ok(v) = val.parse::<u64>() {
                         total_read = total_read.saturating_add(v);
                     }
-                } else if let Some(val) = field.strip_prefix("wbytes=") {
-                    if let Ok(v) = val.parse::<u64>() {
-                        total_write = total_write.saturating_add(v);
-                    }
+                } else if let Some(val) = field.strip_prefix("wbytes=")
+                    && let Ok(v) = val.parse::<u64>()
+                {
+                    total_write = total_write.saturating_add(v);
                 }
             }
         }
@@ -194,7 +194,7 @@ fn read_io_usage(cgroup_path: &Path) -> (u64, u64) {
 /// Recursively discover all cgroups under the given root.
 fn discover_cgroups(
     root: &Path,
-    base: &Path,
+    _base: &Path,
     max_depth: Option<usize>,
     current_depth: usize,
     result: &mut Vec<PathBuf>,
@@ -214,7 +214,7 @@ fn discover_cgroups(
         dirs.sort_by_key(|e| e.file_name());
 
         for entry in dirs {
-            discover_cgroups(&entry.path(), base, max_depth, current_depth + 1, result);
+            discover_cgroups(&entry.path(), _base, max_depth, current_depth + 1, result);
         }
     }
 }
@@ -305,10 +305,10 @@ fn num_cpus() -> usize {
     }
 
     // Try /sys/devices/system/cpu/online
-    if let Ok(content) = fs::read_to_string("/sys/devices/system/cpu/online") {
-        if let Some(count) = parse_cpu_range(&content) {
-            return count;
-        }
+    if let Ok(content) = fs::read_to_string("/sys/devices/system/cpu/online")
+        && let Some(count) = parse_cpu_range(&content)
+    {
+        return count;
     }
 
     // Fallback
@@ -368,8 +368,6 @@ fn format_cpu(percent: f64) -> String {
         "-".to_string()
     } else if percent >= 100.0 {
         format!("{:.0}%", percent)
-    } else if percent >= 10.0 {
-        format!("{:.1}%", percent)
     } else {
         format!("{:.1}%", percent)
     }

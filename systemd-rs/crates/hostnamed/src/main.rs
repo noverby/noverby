@@ -60,7 +60,7 @@ const VALID_CHASSIS: &[&str] = &[
 // ---------------------------------------------------------------------------
 
 /// All hostname and machine-info state held by the daemon.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct HostnameState {
     /// Static hostname (from /etc/hostname).
     pub static_hostname: String,
@@ -92,27 +92,6 @@ pub struct HostnameState {
     pub kernel_release: String,
 }
 
-impl Default for HostnameState {
-    fn default() -> Self {
-        Self {
-            static_hostname: String::new(),
-            pretty_hostname: String::new(),
-            transient_hostname: String::new(),
-            chassis: String::new(),
-            deployment: String::new(),
-            location: String::new(),
-            icon_name: String::new(),
-            hardware_vendor: String::new(),
-            hardware_model: String::new(),
-            os_pretty_name: String::new(),
-            os_cpe_name: String::new(),
-            os_home_url: String::new(),
-            kernel_name: String::new(),
-            kernel_release: String::new(),
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Reading state
 // ---------------------------------------------------------------------------
@@ -141,13 +120,11 @@ impl HostnameState {
         dmi_vendor_path: &str,
         dmi_model_path: &str,
     ) -> Self {
-        let mut state = HostnameState::default();
-
-        // Static hostname
-        state.static_hostname = read_trimmed(hostname_path).unwrap_or_default();
-
-        // Transient (kernel) hostname
-        state.transient_hostname = get_kernel_hostname();
+        let mut state = HostnameState {
+            static_hostname: read_trimmed(hostname_path).unwrap_or_default(),
+            transient_hostname: get_kernel_hostname(),
+            ..Default::default()
+        };
 
         // Machine-info
         let mi = parse_env_file(machine_info_path);
@@ -337,8 +314,7 @@ pub fn set_static_hostname_at(hostname: &str, path: &str) -> io::Result<()> {
 
 /// Set the transient (kernel) hostname via `sethostname(2)`.
 pub fn set_transient_hostname(hostname: &str) -> io::Result<()> {
-    nix::unistd::sethostname(hostname)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+    nix::unistd::sethostname(hostname).map_err(|e| io::Error::other(e.to_string()))
 }
 
 /// Update a key in /etc/machine-info. If value is empty, the key is removed.
@@ -458,7 +434,7 @@ fn detect_chassis_from_dmi(dmi_chassis_path: &str) -> String {
     match chassis_type {
         1 | 2 => "desktop".to_string(), // Other, Unknown -> default to desktop
         3 | 4 | 5 | 6 | 7 | 24 => "desktop".to_string(), // Desktop, LP Desktop, Pizza Box, Mini Tower, Tower, Sealed-Case PC
-        8 | 9 | 10 => "laptop".to_string(),              // Portable, Laptop, Notebook
+        8..=10 => "laptop".to_string(),                  // Portable, Laptop, Notebook
         11 => "handset".to_string(),                     // Hand Held
         12 => "laptop".to_string(), // Docking Station -> associated with laptops
         13 => "desktop".to_string(), // All In One
@@ -504,7 +480,7 @@ fn is_valid_hostname(name: &str) -> bool {
 /// Commands are simple line-based: `COMMAND [ARGS...]`
 fn handle_control_command(line: &str) -> String {
     let parts: Vec<&str> = line.trim().splitn(3, ' ').collect();
-    let cmd = parts.first().map(|s| *s).unwrap_or("");
+    let cmd = parts.first().copied().unwrap_or("");
 
     match cmd {
         "STATUS" | "status" => {
@@ -557,7 +533,7 @@ fn handle_control_command(line: &str) -> String {
         "SET-PRETTY-HOSTNAME" | "set-pretty-hostname" => {
             // Pretty hostname can contain spaces, so use everything after the command
             let pretty = if parts.len() >= 2 {
-                line.trim().splitn(2, ' ').nth(1).unwrap_or("")
+                line.trim().split_once(' ').map(|x| x.1).unwrap_or("")
             } else {
                 ""
             };
@@ -589,7 +565,7 @@ fn handle_control_command(line: &str) -> String {
         }
         "SET-LOCATION" | "set-location" => {
             let location = if parts.len() >= 2 {
-                line.trim().splitn(2, ' ').nth(1).unwrap_or("")
+                line.trim().split_once(' ').map(|x| x.1).unwrap_or("")
             } else {
                 ""
             };
@@ -615,7 +591,7 @@ fn handle_client(stream: &mut UnixStream) {
 
     let reader = BufReader::new(stream.try_clone().unwrap_or_else(|_| {
         // Can't clone; just return — client will get EOF
-        return stream.try_clone().expect("stream clone failed twice");
+        stream.try_clone().expect("stream clone failed twice")
     }));
 
     for line in reader.lines() {
@@ -641,9 +617,9 @@ fn sd_notify(msg: &str) {
         Err(_) => return,
     };
 
-    let path = if sock_path.starts_with('@') {
+    let path = if let Some(stripped) = sock_path.strip_prefix('@') {
         // Abstract socket — use nul byte prefix
-        format!("\0{}", &sock_path[1..])
+        format!("\0{}", stripped)
     } else {
         sock_path
     };
@@ -790,11 +766,11 @@ fn main() {
                 if SHUTDOWN.load(Ordering::SeqCst) {
                     break;
                 }
-                if let Some(ref iv) = wd_interval {
-                    if last_watchdog.elapsed() >= *iv {
-                        sd_notify("WATCHDOG=1");
-                        last_watchdog = Instant::now();
-                    }
+                if let Some(ref iv) = wd_interval
+                    && last_watchdog.elapsed() >= *iv
+                {
+                    sd_notify("WATCHDOG=1");
+                    last_watchdog = Instant::now();
                 }
                 thread::sleep(Duration::from_secs(1));
             }
@@ -827,11 +803,11 @@ fn main() {
         }
 
         // Send watchdog keepalive
-        if let Some(ref iv) = wd_interval {
-            if last_watchdog.elapsed() >= *iv {
-                sd_notify("WATCHDOG=1");
-                last_watchdog = Instant::now();
-            }
+        if let Some(ref iv) = wd_interval
+            && last_watchdog.elapsed() >= *iv
+        {
+            sd_notify("WATCHDOG=1");
+            last_watchdog = Instant::now();
         }
 
         match listener.accept() {

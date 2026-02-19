@@ -78,8 +78,8 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
             }
             mut_state.srvc.notifications = None;
 
-            if let Some(note_sock_path) = &mut_state.srvc.notifications_path {
-                if note_sock_path.exists() {
+            if let Some(note_sock_path) = &mut_state.srvc.notifications_path
+                && note_sock_path.exists() {
                     match std::fs::remove_file(note_sock_path) {
                         Ok(()) => {
                             trace!(
@@ -93,7 +93,6 @@ fn shutdown_unit(shutdown_id: &UnitId, run_info: &RuntimeInfo) {
                         ),
                     }
                 }
-            }
         }
         Specific::Socket(specific) => {
             let mut_state = &mut *specific.state.write_poisoned();

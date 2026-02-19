@@ -90,12 +90,12 @@ fn send_notification(socket_path: &str, message: &str) -> Result<(), String> {
     let sock = UnixDatagram::unbound()
         .map_err(|e| format!("Failed to create Unix datagram socket: {e}"))?;
 
-    if socket_path.starts_with('@') {
+    if let Some(stripped) = socket_path.strip_prefix('@') {
         // Abstract socket: replace the leading '@' with a NUL byte.
         // Rust's UnixDatagram doesn't directly support abstract sockets
         // via the std API, so we use the raw address.
         let mut addr_bytes = vec![0u8]; // leading NUL for abstract namespace
-        addr_bytes.extend_from_slice(socket_path[1..].as_bytes());
+        addr_bytes.extend_from_slice(stripped.as_bytes());
 
         // Use the lower-level nix or libc approach for abstract sockets.
         use std::os::unix::io::AsRawFd;
@@ -105,7 +105,7 @@ fn send_notification(socket_path: &str, message: &str) -> Result<(), String> {
         addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
 
         // Abstract socket: sun_path[0] = 0, followed by the name
-        let name = &socket_path[1..];
+        let name = stripped;
         let name_bytes = name.as_bytes();
         let max_len = addr.sun_path.len() - 1; // -1 for leading NUL
         if name_bytes.len() > max_len {

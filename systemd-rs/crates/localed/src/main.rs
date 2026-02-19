@@ -55,7 +55,7 @@ const LOCALE_VARIABLES: &[&str] = &[
 // ---------------------------------------------------------------------------
 
 /// All locale and keymap state held by the daemon.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct LocaleState {
     /// Locale variables from /etc/locale.conf (LANG, LC_*, etc.)
     pub locale: BTreeMap<String, String>,
@@ -71,20 +71,6 @@ pub struct LocaleState {
     pub x11_variant: String,
     /// X11 keyboard options
     pub x11_options: String,
-}
-
-impl Default for LocaleState {
-    fn default() -> Self {
-        Self {
-            locale: BTreeMap::new(),
-            vconsole_keymap: String::new(),
-            vconsole_keymap_toggle: String::new(),
-            x11_layout: String::new(),
-            x11_model: String::new(),
-            x11_variant: String::new(),
-            x11_options: String::new(),
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -104,10 +90,10 @@ impl LocaleState {
         // Load locale
         let locale_entries = parse_env_file(locale_conf_path);
         for var in LOCALE_VARIABLES {
-            if let Some(val) = locale_entries.get(*var) {
-                if !val.is_empty() {
-                    state.locale.insert(var.to_string(), val.clone());
-                }
+            if let Some(val) = locale_entries.get(*var)
+                && !val.is_empty()
+            {
+                state.locale.insert(var.to_string(), val.clone());
             }
         }
 
@@ -381,10 +367,10 @@ pub fn list_keymaps() -> Vec<String> {
     ];
 
     for dir in &keymap_dirs {
-        if let Ok(()) = collect_keymaps_recursive(Path::new(dir), &mut keymaps) {
-            if !keymaps.is_empty() {
-                break;
-            }
+        if let Ok(()) = collect_keymaps_recursive(Path::new(dir), &mut keymaps)
+            && !keymaps.is_empty()
+        {
+            break;
         }
     }
 
@@ -408,10 +394,9 @@ fn collect_keymaps_recursive(dir: &Path, keymaps: &mut Vec<String>) -> io::Resul
             // Keymap files typically end in .map or .map.gz
             let keymap_name = if let Some(stripped) = name.strip_suffix(".map.gz") {
                 Some(stripped.to_string())
-            } else if let Some(stripped) = name.strip_suffix(".map") {
-                Some(stripped.to_string())
             } else {
-                None
+                name.strip_suffix(".map")
+                    .map(|stripped| stripped.to_string())
             };
 
             if let Some(km) = keymap_name {
@@ -432,10 +417,10 @@ pub fn list_x11_layouts() -> Vec<String> {
     ];
 
     for path in &rules_paths {
-        if let Ok(layouts) = parse_xkb_rules_layouts(path) {
-            if !layouts.is_empty() {
-                return layouts;
-            }
+        if let Ok(layouts) = parse_xkb_rules_layouts(path)
+            && !layouts.is_empty()
+        {
+            return layouts;
         }
     }
 
@@ -490,12 +475,11 @@ fn parse_env_file_content(content: &str) -> BTreeMap<String, String> {
             let key = key.trim();
             let mut value = value.trim().to_string();
             // Strip surrounding quotes
-            if (value.starts_with('"') && value.ends_with('"'))
-                || (value.starts_with('\'') && value.ends_with('\''))
+            if ((value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\'')))
+                && value.len() >= 2
             {
-                if value.len() >= 2 {
-                    value = value[1..value.len() - 1].to_string();
-                }
+                value = value[1..value.len() - 1].to_string();
             }
             // Unescape common escape sequences
             value = value.replace("\\\"", "\"").replace("\\\\", "\\");
@@ -553,7 +537,7 @@ fn handle_control_command(line: &str) -> String {
         "SET-LOCALE" | "set-locale" => {
             // Expects: SET-LOCALE LANG=en_US.UTF-8 LC_TIME=de_DE.UTF-8 ...
             let rest = if parts.len() >= 2 {
-                line.trim().splitn(2, ' ').nth(1).unwrap_or("")
+                line.trim().split_once(' ').map(|x| x.1).unwrap_or("")
             } else {
                 ""
             };
@@ -587,7 +571,7 @@ fn handle_control_command(line: &str) -> String {
         "SET-X11-KEYMAP" | "set-x11-keymap" => {
             // Expects: SET-X11-KEYMAP <layout> [model [variant [options]]]
             let rest = if parts.len() >= 2 {
-                line.trim().splitn(2, ' ').nth(1).unwrap_or("")
+                line.trim().split_once(' ').map(|x| x.1).unwrap_or("")
             } else {
                 ""
             };
@@ -652,8 +636,8 @@ fn sd_notify(msg: &str) {
         Err(_) => return,
     };
 
-    let path = if sock_path.starts_with('@') {
-        format!("\0{}", &sock_path[1..])
+    let path = if let Some(stripped) = sock_path.strip_prefix('@') {
+        format!("\0{}", stripped)
     } else {
         sock_path
     };
@@ -807,11 +791,11 @@ fn main() {
                 if SHUTDOWN.load(Ordering::SeqCst) {
                     break;
                 }
-                if let Some(ref iv) = wd_interval {
-                    if last_watchdog.elapsed() >= *iv {
-                        sd_notify("WATCHDOG=1");
-                        last_watchdog = Instant::now();
-                    }
+                if let Some(ref iv) = wd_interval
+                    && last_watchdog.elapsed() >= *iv
+                {
+                    sd_notify("WATCHDOG=1");
+                    last_watchdog = Instant::now();
                 }
                 thread::sleep(Duration::from_secs(1));
             }
@@ -844,11 +828,11 @@ fn main() {
         }
 
         // Send watchdog keepalive
-        if let Some(ref iv) = wd_interval {
-            if last_watchdog.elapsed() >= *iv {
-                sd_notify("WATCHDOG=1");
-                last_watchdog = Instant::now();
-            }
+        if let Some(ref iv) = wd_interval
+            && last_watchdog.elapsed() >= *iv
+        {
+            sd_notify("WATCHDOG=1");
+            last_watchdog = Instant::now();
         }
 
         match listener.accept() {

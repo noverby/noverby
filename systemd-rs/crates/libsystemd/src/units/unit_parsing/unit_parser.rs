@@ -1579,7 +1579,7 @@ pub fn parse_exec_section(
                     let mut chars = trimmed.chars().peekable();
                     while chars.peek().is_some() {
                         // skip whitespace
-                        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+                        while chars.peek().is_some_and(|c| c.is_whitespace()) {
                             chars.next();
                         }
                         if chars.peek().is_none() {
@@ -1697,7 +1697,7 @@ pub fn parse_exec_section(
                     let mut chars = trimmed.chars().peekable();
                     while chars.peek().is_some() {
                         // skip whitespace
-                        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+                        while chars.peek().is_some_and(|c| c.is_whitespace()) {
                             chars.next();
                         }
                         if chars.peek().is_none() {
@@ -1759,7 +1759,7 @@ pub fn parse_exec_section(
                     let mut chars = trimmed.chars().peekable();
                     while chars.peek().is_some() {
                         // skip whitespace
-                        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+                        while chars.peek().is_some_and(|c| c.is_whitespace()) {
                             chars.next();
                         }
                         if chars.peek().is_none() {
@@ -1810,7 +1810,7 @@ pub fn parse_exec_section(
                     }
                     let mut chars = trimmed.chars().peekable();
                     while chars.peek().is_some() {
-                        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+                        while chars.peek().is_some_and(|c| c.is_whitespace()) {
                             chars.next();
                         }
                         if chars.peek().is_none() {
@@ -1884,7 +1884,7 @@ pub fn parse_exec_section(
                     let mut chars = trimmed.chars().peekable();
                     while chars.peek().is_some() {
                         // skip whitespace
-                        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+                        while chars.peek().is_some_and(|c| c.is_whitespace()) {
                             chars.next();
                         }
                         if chars.peek().is_none() {
