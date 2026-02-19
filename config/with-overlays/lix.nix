@@ -1,1 +1,1 @@
-final: prev: {lix = prev.inputs.lix.packages.${prev.system}.default;}
+_: prev: {lix = prev.inputs.lix.packages.${prev.system}.default;}

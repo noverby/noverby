@@ -5,6 +5,7 @@
       denolint.enable = false;
       biome.enable = true;
       alejandra.enable = true;
+      deadnix.enable = true;
       statix.enable = true;
       typos.enable = true;
       rustfmt = {

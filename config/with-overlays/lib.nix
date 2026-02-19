@@ -1,7 +1,7 @@
 # Overlay Flake lib as lib.noverby
 # and add noverby to lib.maintainers
-(final: prev: {
-  lib = prev.lib.extend (finalLib: prevLib: {
+(_: prev: {
+  lib = prev.lib.extend (_: prevLib: {
     noverby = prev.outputs.lib;
     maintainers =
       prevLib.maintainers

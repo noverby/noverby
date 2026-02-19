@@ -8,7 +8,7 @@
   inherit (lib.types) lazyAttrsOf unspecified;
 
   # Create an extended lib with builtin functions
-  extendedLib = lib.extend (final: prev: {
+  extendedLib = lib.extend (_: _: {
     inherit (builtins) toJSON fromJSON toFile toString readDir filterSource;
   });
 in {
@@ -23,7 +23,7 @@ in {
   config = mkMerge [
     {
       perSystem = {pkgs, ...}: {
-        devShells = mapAttrs (name: cfg:
+        devShells = mapAttrs (_: cfg:
           inputs.devenv.lib.mkShell {
             inherit inputs pkgs;
             lib = extendedLib;
