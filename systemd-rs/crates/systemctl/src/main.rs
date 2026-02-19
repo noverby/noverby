@@ -19,6 +19,7 @@
 //!   is-enabled              → checks unit enablement
 //!   is-failed               → checks if unit is in failed state
 //!   list-dependencies       → show dependency tree for a unit
+//!   list-unit-files         → list all unit files on disk with their state
 //!   mask                    → symlink unit files to /dev/null
 //!   unmask                  → remove /dev/null symlinks for units
 
@@ -234,7 +235,15 @@ fn main() {
     };
 
     let method = command.clone();
-    let params = if method == "list-dependencies" {
+    let params = if method == "list-unit-files" {
+        // list-unit-files [--type=TYPE] — optional type filter extracted from -t flag
+        // Check if there's a type filter passed as a positional argument
+        if positional.len() >= 2 {
+            Some(Value::String(positional[1].clone()))
+        } else {
+            None
+        }
+    } else if method == "list-dependencies" {
         // list-dependencies <unit> [--reverse]
         if positional.len() < 2 {
             if !quiet {
@@ -424,6 +433,15 @@ fn handle_response(
                 }
             }
         }
+        "list-unit-files" => {
+            if let Some(result) = result {
+                if let Some(text) = result.get("list-unit-files").and_then(|v| v.as_str()) {
+                    if !quiet {
+                        print!("{text}");
+                    }
+                }
+            }
+        }
         "list-dependencies" => {
             if let Some(result) = result {
                 if let Some(text) = result.get("list-dependencies").and_then(|v| v.as_str()) {
@@ -488,6 +506,7 @@ path or TCP address as the first positional argument.
 
 Commands:
     list-units                  List all loaded units
+    list-unit-files [TYPE]      List all unit files on disk with their state
     list-dependencies <unit>    Show dependency tree for a unit
     status <unit>               Show status of a unit
     show <unit>                 Show properties of a unit (key=value format)
@@ -537,6 +556,8 @@ Examples:
     systemctl restart nginx.service
     systemctl --no-block try-restart nscd.service
     systemctl is-active sshd.service
+    systemctl list-unit-files
+    systemctl list-unit-files service
     systemctl list-dependencies multi-user.target
     systemctl list-dependencies --reverse sshd.service
     systemctl mask tmp.mount
