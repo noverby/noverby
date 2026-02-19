@@ -1,6 +1,6 @@
 {pkgs, ...}: let
   tspin-pager = pkgs.writeShellScriptBin "tspin-pager" ''
-    if [ -t 1 ]; then
+    if [ -t 0 ] && [ -t 1 ]; then
       exec ${pkgs.tailspin}/bin/tspin "$@"
     else
       exec ${pkgs.tailspin}/bin/tspin --print "$@"
