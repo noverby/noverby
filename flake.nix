@@ -151,6 +151,8 @@
       nixpkgs.config = {
         allowUnfree = true;
       };
+      flakelight.builtinFormatters = false;
+
       imports = [
         ./modules/flakelight/libBuiltins.nix
         ./modules/flakelight/devenvModules.nix
@@ -170,7 +172,6 @@
       ];
       nixDirAliases = {
         packages = ["pkgs"];
-        formatters = ["config/formatters"];
         flakelightModules = ["modules/flakelight"];
         nixosConfigurations = ["config/nixos"];
         nixosModules = ["modules/nixos" "modules/nixos/hardware" "modules/nixos/desktop"];
