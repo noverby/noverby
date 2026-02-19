@@ -5,7 +5,7 @@ edition = "2024"
 description = "A Rust rewrite and drop-in replacement for pkg-config/pkgconf"
 license = "ISC"
 readme = "../../README.md"
-repository = "https://github.com/noverby/pkg-config-rs"
+repository = "https://tangled.org/overby.me/overby.me/tree/main/pkg-config-rs"
 keywords = ["pkg-config", "pkgconf", "build-tools"]
 categories = ["command-line-utilities", "development-tools::build-utils"]
 

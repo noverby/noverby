@@ -332,10 +332,10 @@ fn resolve_personality(cli: &Cli) -> CrossPersonality {
     }
 
     // Try deducing from argv[0]
-    if let Some(argv0) = std::env::args().next() {
-        if let Some(p) = CrossPersonality::from_argv0(&argv0) {
-            return p;
-        }
+    if let Some(argv0) = std::env::args().next()
+        && let Some(p) = CrossPersonality::from_argv0(&argv0)
+    {
+        return p;
     }
 
     // Fall back to the default (native) personality
@@ -916,13 +916,13 @@ fn run(cli: &Cli) -> Result<()> {
         let mut libs = libpkgconf::queue::collect_libs(&cache, &client, &world);
 
         // Apply sysroot to fragments if needed
-        if let Some(ref sr) = sysroot {
-            if use_fdo_sysroot {
-                cflags.apply_sysroot_fdo(sr);
-                libs.apply_sysroot_fdo(sr);
-            }
-            // Note: non-FDO sysroot is already applied at the variable level
+        if let Some(ref sr) = sysroot
+            && use_fdo_sysroot
+        {
+            cflags.apply_sysroot_fdo(sr);
+            libs.apply_sysroot_fdo(sr);
         }
+        // Note: non-FDO sysroot is already applied at the variable level
 
         // Filter system dirs
         if !client.keep_system_cflags() {
@@ -977,10 +977,10 @@ fn run(cli: &Cli) -> Result<()> {
 
         if want_cflags {
             let mut cflags = libpkgconf::queue::collect_cflags(&cache, &client, &world);
-            if let Some(ref sr) = sysroot {
-                if use_fdo_sysroot {
-                    cflags.apply_sysroot_fdo(sr);
-                }
+            if let Some(ref sr) = sysroot
+                && use_fdo_sysroot
+            {
+                cflags.apply_sysroot_fdo(sr);
             }
             if !client.keep_system_cflags() {
                 cflags = cflags.filter_system_dirs(&system_libdirs, &system_includedirs);
@@ -991,10 +991,10 @@ fn run(cli: &Cli) -> Result<()> {
 
         if want_libs {
             let mut libs = libpkgconf::queue::collect_libs(&cache, &client, &world);
-            if let Some(ref sr) = sysroot {
-                if use_fdo_sysroot {
-                    libs.apply_sysroot_fdo(sr);
-                }
+            if let Some(ref sr) = sysroot
+                && use_fdo_sysroot
+            {
+                libs.apply_sysroot_fdo(sr);
             }
             if !client.keep_system_libs() {
                 libs = libs.filter_system_dirs(&system_libdirs, &system_includedirs);
@@ -1014,10 +1014,10 @@ fn run(cli: &Cli) -> Result<()> {
         let mut cflags = libpkgconf::queue::collect_cflags(&cache, &client, &world);
 
         // Apply FDO sysroot rules to fragments
-        if let Some(ref sr) = sysroot {
-            if use_fdo_sysroot {
-                cflags.apply_sysroot_fdo(sr);
-            }
+        if let Some(ref sr) = sysroot
+            && use_fdo_sysroot
+        {
+            cflags.apply_sysroot_fdo(sr);
         }
 
         // Filter system dirs unless --keep-system-cflags
@@ -1045,10 +1045,10 @@ fn run(cli: &Cli) -> Result<()> {
         let mut libs = libpkgconf::queue::collect_libs(&cache, &client, &world);
 
         // Apply FDO sysroot rules to fragments
-        if let Some(ref sr) = sysroot {
-            if use_fdo_sysroot {
-                libs.apply_sysroot_fdo(sr);
-            }
+        if let Some(ref sr) = sysroot
+            && use_fdo_sysroot
+        {
+            libs.apply_sysroot_fdo(sr);
         }
 
         // Filter system dirs unless --keep-system-libs
@@ -1127,5 +1127,5 @@ fn print_about() {
     println!("implied. In no event shall the authors be liable for any damages arising");
     println!("from the use of this software.");
     println!();
-    println!("Report bugs at https://github.com/noverby/pkg-config-rs/issues");
+    println!("Report bugs at https://tangled.org/overby.me/overby.me/tree/main/pkg-config-rs");
 }

@@ -466,17 +466,17 @@ impl Client {
     /// Apply environment variable overrides.
     fn apply_env(&mut self) {
         // PKG_CONFIG_SYSROOT_DIR
-        if let Ok(sysroot) = std::env::var(crate::ENV_PKG_CONFIG_SYSROOT_DIR) {
-            if !sysroot.is_empty() {
-                self.sysroot_dir = Some(sysroot);
-            }
+        if let Ok(sysroot) = std::env::var(crate::ENV_PKG_CONFIG_SYSROOT_DIR)
+            && !sysroot.is_empty()
+        {
+            self.sysroot_dir = Some(sysroot);
         }
 
         // PKG_CONFIG_TOP_BUILD_DIR
-        if let Ok(buildroot) = std::env::var(crate::ENV_PKG_CONFIG_TOP_BUILD_DIR) {
-            if !buildroot.is_empty() {
-                self.buildroot_dir = Some(buildroot);
-            }
+        if let Ok(buildroot) = std::env::var(crate::ENV_PKG_CONFIG_TOP_BUILD_DIR)
+            && !buildroot.is_empty()
+        {
+            self.buildroot_dir = Some(buildroot);
         }
 
         // PKG_CONFIG_ALLOW_SYSTEM_CFLAGS
@@ -495,10 +495,10 @@ impl Client {
         }
 
         // PKG_CONFIG_MAXIMUM_TRAVERSE_DEPTH
-        if let Ok(depth_str) = std::env::var(crate::ENV_PKG_CONFIG_MAXIMUM_TRAVERSE_DEPTH) {
-            if let Ok(depth) = depth_str.parse::<i32>() {
-                self.max_traversal_depth = depth;
-            }
+        if let Ok(depth_str) = std::env::var(crate::ENV_PKG_CONFIG_MAXIMUM_TRAVERSE_DEPTH)
+            && let Ok(depth) = depth_str.parse::<i32>()
+        {
+            self.max_traversal_depth = depth;
         }
 
         // PKG_CONFIG_IGNORE_CONFLICTS
@@ -512,10 +512,10 @@ impl Client {
         }
 
         // PKG_CONFIG_LOG
-        if let Ok(log_path) = std::env::var(crate::ENV_PKG_CONFIG_LOG) {
-            if !log_path.is_empty() {
-                self.log_file = Some(PathBuf::from(log_path));
-            }
+        if let Ok(log_path) = std::env::var(crate::ENV_PKG_CONFIG_LOG)
+            && !log_path.is_empty()
+        {
+            self.log_file = Some(PathBuf::from(log_path));
         }
 
         // PKG_CONFIG_DONT_DEFINE_PREFIX

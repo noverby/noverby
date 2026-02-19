@@ -113,6 +113,7 @@ struct LinkEntry {
 }
 
 impl LinkEntry {
+    #[allow(dead_code)]
     fn is_up(&self) -> bool {
         (self.flags & 0x1) != 0
     }

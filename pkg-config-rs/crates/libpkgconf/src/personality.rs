@@ -178,13 +178,13 @@ impl CrossPersonality {
         let mut personality = Self::parse(&content);
 
         // If no name was set, derive from filename
-        if personality.name.is_empty() || personality.name == "default" {
-            if let Some(stem) = path.file_stem() {
-                let stem_str = stem.to_string_lossy();
-                // Strip .personality extension if present in stem
-                let name = stem_str.strip_suffix(".personality").unwrap_or(&stem_str);
-                personality.name = name.to_string();
-            }
+        if (personality.name.is_empty() || personality.name == "default")
+            && let Some(stem) = path.file_stem()
+        {
+            let stem_str = stem.to_string_lossy();
+            // Strip .personality extension if present in stem
+            let name = stem_str.strip_suffix(".personality").unwrap_or(&stem_str);
+            personality.name = name.to_string();
         }
 
         Ok(personality)
@@ -368,10 +368,11 @@ pub fn deduce_triplet(argv0: &str) -> Option<String> {
     let suffixes = ["-pkg-config", "-pkgconf"];
 
     for suffix in &suffixes {
-        if let Some(triplet) = basename.strip_suffix(suffix) {
-            if !triplet.is_empty() && triplet.contains('-') {
-                return Some(triplet.to_string());
-            }
+        if let Some(triplet) = basename.strip_suffix(suffix)
+            && !triplet.is_empty()
+            && triplet.contains('-')
+        {
+            return Some(triplet.to_string());
         }
     }
 

@@ -29,15 +29,73 @@
       rustfmt = {
         enable = true;
         entry = "${pkgs.writeShellScript "rustfmt-multi-project" ''
-          pids=()
-          for manifest in $(${pkgs.findutils}/bin/find . -name Cargo.toml -not -path '*/target/*'); do
-            if ${pkgs.gnugrep}/bin/grep -q '^\[workspace\]' "$manifest" && ! ${pkgs.gnugrep}/bin/grep -q '^\[package\]' "$manifest"; then
-              echo "Skipping workspace-only $manifest"
-              continue
+          # Determine which Cargo projects contain changed .rs files.
+          # Arguments are the changed .rs file paths passed by pre-commit.
+          changed_files=("$@")
+
+          if [ ''${#changed_files[@]} -eq 0 ]; then
+            exit 0
+          fi
+
+          # Find the nearest Cargo.toml for each changed file and collect unique project roots.
+          declare -A project_roots
+          for f in "''${changed_files[@]}"; do
+            dir=$(dirname "$f")
+            while [ "$dir" != "." ] && [ "$dir" != "/" ]; do
+              if [ -f "$dir/Cargo.toml" ]; then
+                project_roots["$dir"]=1
+                break
+              fi
+              dir=$(dirname "$dir")
+            done
+            # Check current directory too
+            if [ -f "Cargo.toml" ] && [ "$dir" = "." ]; then
+              project_roots["."]=1
             fi
-            echo "Running cargo fmt for $manifest"
-            ${pkgs.cargo}/bin/cargo fmt --manifest-path "$manifest" &
-            pids+=($!)
+          done
+
+          if [ ''${#project_roots[@]} -eq 0 ]; then
+            exit 0
+          fi
+
+          # For each project root, walk up to find the workspace root (if any).
+          declare -A fmt_targets
+          for root in "''${!project_roots[@]}"; do
+            ws_root=""
+            check_dir="$root"
+            while [ "$check_dir" != "." ] && [ "$check_dir" != "/" ]; do
+              if [ -f "$check_dir/Cargo.toml" ] && ${pkgs.gnugrep}/bin/grep -q '^\[workspace\]' "$check_dir/Cargo.toml"; then
+                ws_root="$check_dir"
+              fi
+              check_dir=$(dirname "$check_dir")
+            done
+            # Also check the repo root
+            if [ -f "Cargo.toml" ] && ${pkgs.gnugrep}/bin/grep -q '^\[workspace\]' "Cargo.toml"; then
+              ws_root="."
+            fi
+
+            if [ -n "$ws_root" ]; then
+              # Use the workspace root; cargo fmt handles all members
+              fmt_targets["$ws_root"]=1
+            else
+              # Standalone package
+              fmt_targets["$root"]=1
+            fi
+          done
+
+          pids=()
+          for target in "''${!fmt_targets[@]}"; do
+            manifest="$target/Cargo.toml"
+            if ${pkgs.gnugrep}/bin/grep -q '^\[workspace\]' "$manifest"; then
+              # Workspace root: use --all to format all members
+              echo "Running cargo fmt --all for workspace $manifest"
+              ${pkgs.cargo}/bin/cargo fmt --manifest-path "$manifest" --all &
+              pids+=($!)
+            else
+              echo "Running cargo fmt for $manifest"
+              ${pkgs.cargo}/bin/cargo fmt --manifest-path "$manifest" &
+              pids+=($!)
+            fi
           done
           exit_code=0
           for pid in "''${pids[@]}"; do
@@ -47,45 +105,84 @@
           done
           exit $exit_code
         ''}";
-        pass_filenames = false;
+        pass_filenames = true;
       };
       clippy = {
         enable = true;
         entry = "${pkgs.writeShellScript "clippy-multi-project" ''
-          pids=()
+          # Determine which Cargo projects contain changed .rs files.
+          # Arguments are the changed .rs file paths passed by pre-commit.
+          changed_files=("$@")
 
-          # Collect workspace root directories and run clippy for workspaces
-          workspace_dirs=()
-          for manifest in $(${pkgs.findutils}/bin/find . -name Cargo.toml -not -path '*/target/*'); do
-            if ${pkgs.gnugrep}/bin/grep -q '^\[workspace\]' "$manifest"; then
-              dir=$(dirname "$manifest")
-              workspace_dirs+=("$dir")
-              echo "Running cargo clippy --workspace for $manifest"
-              ${pkgs.cargo}/bin/cargo clippy --manifest-path "$manifest" --workspace -- -D warnings &
-              pids+=($!)
+          if [ ''${#changed_files[@]} -eq 0 ]; then
+            exit 0
+          fi
+
+          # Find the nearest Cargo.toml for each changed file and collect unique project roots.
+          declare -A project_roots
+          for f in "''${changed_files[@]}"; do
+            dir=$(dirname "$f")
+            while [ "$dir" != "." ] && [ "$dir" != "/" ]; do
+              if [ -f "$dir/Cargo.toml" ]; then
+                project_roots["$dir"]=1
+                break
+              fi
+              dir=$(dirname "$dir")
+            done
+            # Check current directory too
+            if [ -f "Cargo.toml" ] && [ "$dir" = "." ]; then
+              project_roots["."]=1
             fi
           done
 
-          # Run clippy for standalone packages (not part of a workspace)
-          for manifest in $(${pkgs.findutils}/bin/find . -name Cargo.toml -not -path '*/target/*'); do
-            if ${pkgs.gnugrep}/bin/grep -q '^\[workspace\]' "$manifest"; then
-              continue
+          if [ ''${#project_roots[@]} -eq 0 ]; then
+            exit 0
+          fi
+
+          # For each project root, walk up to find the workspace root (if any).
+          # Separate into workspace roots and standalone packages.
+          declare -A workspace_roots
+          declare -A standalone_roots
+          for root in "''${!project_roots[@]}"; do
+            ws_root=""
+            check_dir="$root"
+            while [ "$check_dir" != "." ] && [ "$check_dir" != "/" ]; do
+              if [ -f "$check_dir/Cargo.toml" ] && ${pkgs.gnugrep}/bin/grep -q '^\[workspace\]' "$check_dir/Cargo.toml"; then
+                ws_root="$check_dir"
+              fi
+              check_dir=$(dirname "$check_dir")
+            done
+            # Also check the repo root
+            if [ -f "Cargo.toml" ] && ${pkgs.gnugrep}/bin/grep -q '^\[workspace\]' "Cargo.toml"; then
+              ws_root="."
             fi
+
+            if [ -n "$ws_root" ]; then
+              workspace_roots["$ws_root"]=1
+            else
+              standalone_roots["$root"]=1
+            fi
+          done
+
+          pids=()
+
+          # Run clippy for affected workspaces
+          for ws_dir in "''${!workspace_roots[@]}"; do
+            manifest="$ws_dir/Cargo.toml"
+            echo "Running cargo clippy --workspace for $manifest"
+            ${pkgs.cargo}/bin/cargo clippy --manifest-path "$manifest" --workspace -- -D warnings &
+            pids+=($!)
+          done
+
+          # Run clippy for standalone packages (not part of a workspace)
+          for pkg_dir in "''${!standalone_roots[@]}"; do
+            manifest="$pkg_dir/Cargo.toml"
             if ! ${pkgs.gnugrep}/bin/grep -q '^\[package\]' "$manifest"; then
               continue
             fi
-            dir=$(dirname "$manifest")
-            is_member=false
-            for ws_dir in "''${workspace_dirs[@]}"; do
-              case "$dir" in
-                "$ws_dir"/*) is_member=true; break ;;
-              esac
-            done
-            if [ "$is_member" = false ]; then
-              echo "Running cargo clippy for $manifest"
-              ${pkgs.cargo}/bin/cargo clippy --manifest-path "$manifest" -- -D warnings &
-              pids+=($!)
-            fi
+            echo "Running cargo clippy for $manifest"
+            ${pkgs.cargo}/bin/cargo clippy --manifest-path "$manifest" -- -D warnings &
+            pids+=($!)
           done
 
           exit_code=0
@@ -96,7 +193,7 @@
           done
           exit $exit_code
         ''}";
-        pass_filenames = false;
+        pass_filenames = true;
       };
       rumdl.enable = true;
       mktoc = {

@@ -27,7 +27,7 @@
 
       meta = {
         description = "A pure Rust rewrite and drop-in replacement for pkg-config/pkgconf";
-        homepage = "https://github.com/noverby/pkg-config-rs";
+        homepage = "https://tangled.org/overby.me/overby.me/tree/main/pkg-config-rs";
         license = lib.licenses.isc;
         maintainers = with lib.maintainers; [noverby];
         mainProgram = "pkgconf";

@@ -43,6 +43,7 @@ pub enum Keyword {
 
 impl Keyword {
     /// Try to parse a keyword from a string (case-sensitive, as pkgconf does).
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "Name" => Some(Self::Name),
@@ -142,11 +143,11 @@ impl PcFile {
         pc.pc_filedir = pc_filedir.clone();
 
         // Insert the magic `pcfiledir` variable if not explicitly set.
-        if !pc.variables.iter().any(|(k, _)| k == "pcfiledir") {
-            if let Some(ref dir) = pc_filedir {
-                let dir_str = dir.to_string_lossy().to_string();
-                pc.variables.insert(0, ("pcfiledir".to_string(), dir_str));
-            }
+        if !pc.variables.iter().any(|(k, _)| k == "pcfiledir")
+            && let Some(ref dir) = pc_filedir
+        {
+            let dir_str = dir.to_string_lossy().to_string();
+            pc.variables.insert(0, ("pcfiledir".to_string(), dir_str));
         }
 
         Ok(pc)
@@ -395,20 +396,15 @@ impl<'a> Iterator for LogicalLines<'a> {
         let first = self.lines.next()?;
 
         // If the line ends with `\`, join with the next line.
-        if first.ends_with('\\') {
-            let mut buf = String::from(&first[..first.len() - 1]);
-            loop {
-                match self.lines.peek() {
-                    Some(_next_line) => {
-                        let next = self.lines.next().unwrap();
-                        if next.ends_with('\\') {
-                            buf.push_str(&next[..next.len() - 1]);
-                        } else {
-                            buf.push_str(next);
-                            break;
-                        }
-                    }
-                    None => break,
+        if let Some(stripped) = first.strip_suffix('\\') {
+            let mut buf = String::from(stripped);
+            while let Some(_next_line) = self.lines.peek() {
+                let next = self.lines.next().unwrap();
+                if let Some(stripped_next) = next.strip_suffix('\\') {
+                    buf.push_str(stripped_next);
+                } else {
+                    buf.push_str(next);
+                    break;
                 }
             }
             Some(buf)
@@ -621,15 +617,8 @@ pub fn argv_split(input: &str) -> Vec<String> {
             if c == '"' {
                 in_double_quote = false;
             } else if c == '\\' {
-                if let Some(&next) = chars.peek() {
-                    match next {
-                        '"' | '\\' | '$' | '`' => {
-                            current.push(chars.next().unwrap());
-                        }
-                        _ => {
-                            current.push('\\');
-                        }
-                    }
+                if let Some(&('"' | '\\' | '$' | '`')) = chars.peek() {
+                    current.push(chars.next().unwrap());
                 } else {
                     current.push('\\');
                 }
@@ -823,11 +812,11 @@ Name: Licensed
 Description: Has license info
 Version: 1.0
 License: MIT
-Source: https://github.com/example/project
+Source: https://example.com/project
 ";
         let pc = PcFile::from_str(content, Path::new("licensed.pc")).unwrap();
         assert_eq!(pc.license(), Some("MIT"));
-        assert_eq!(pc.source(), Some("https://github.com/example/project"));
+        assert_eq!(pc.source(), Some("https://example.com/project"));
     }
 
     #[test]
@@ -1093,7 +1082,7 @@ Version: 1.0
         // The `=` inside `${...}` should be ignored
         assert_eq!(find_delimiter("foo=${bar=baz}", '='), Some(3));
         // The `:` inside `${...}` should be ignored
-        assert_eq!(find_delimiter("${http://example}", ':'), None);
+        assert_eq!(find_delimiter("${proto://host}", ':'), None);
     }
 
     #[test]
