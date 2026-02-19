@@ -708,15 +708,8 @@ fn split_flags(input: &str) -> Vec<String> {
             if c == '"' {
                 in_double_quote = false;
             } else if c == '\\' {
-                if let Some(&next) = chars.peek() {
-                    match next {
-                        '"' | '\\' | '$' | '`' => {
-                            current.push(chars.next().unwrap());
-                        }
-                        _ => {
-                            current.push('\\');
-                        }
-                    }
+                if let Some(&('"' | '\\' | '$' | '`')) = chars.peek() {
+                    current.push(chars.next().unwrap());
                 } else {
                     current.push('\\');
                 }

@@ -160,9 +160,10 @@ fn trim_leading_zeros(s: &[u8]) -> &[u8] {
 }
 
 /// Version comparison operators, matching pkgconf's `pkgconf_pkg_comparator_t`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Comparator {
     /// Any version matches (no constraint).
+    #[default]
     Any,
     /// `=`
     Equal,
@@ -183,6 +184,7 @@ impl Comparator {
     pub const COUNT: usize = 7;
 
     /// Parse a comparator from its string representation.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self> {
         match s {
             "" => Ok(Self::Any),
@@ -230,12 +232,6 @@ impl Comparator {
 impl std::fmt::Display for Comparator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
-    }
-}
-
-impl Default for Comparator {
-    fn default() -> Self {
-        Self::Any
     }
 }
 

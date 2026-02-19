@@ -243,10 +243,9 @@ impl Package {
         // If prefix was redefined, mark it
         if client.flags().contains(ClientFlags::DEFINE_PREFIX)
             && !client.flags().contains(ClientFlags::DONT_DEFINE_PREFIX)
+            && let Some(ref _dir) = pc.pc_filedir
         {
-            if let Some(ref _dir) = pc.pc_filedir {
-                flags = flags.set(PackageFlags::PREFIX_REDEFINED);
-            }
+            flags = flags.set(PackageFlags::PREFIX_REDEFINED);
         }
 
         // Apply sysroot to resolved paths in variables
@@ -289,22 +288,22 @@ impl Package {
         // Parse dependency lists from resolved field values
         let requires = resolve_field(Keyword::Requires)?
             .as_deref()
-            .map(|s| DependencyList::parse(s))
+            .map(DependencyList::parse)
             .unwrap_or_default();
 
         let requires_private = resolve_field(Keyword::RequiresPrivate)?
             .as_deref()
-            .map(|s| DependencyList::parse(s))
+            .map(DependencyList::parse)
             .unwrap_or_default();
 
         let conflicts = resolve_field(Keyword::Conflicts)?
             .as_deref()
-            .map(|s| DependencyList::parse(s))
+            .map(DependencyList::parse)
             .unwrap_or_default();
 
         let provides = resolve_field(Keyword::Provides)?
             .as_deref()
-            .map(|s| DependencyList::parse(s))
+            .map(DependencyList::parse)
             .unwrap_or_default();
 
         // Extract metadata fields
@@ -483,14 +482,10 @@ impl Package {
     ///
     /// Returns the first conflicting dependency, if any.
     pub fn check_conflicts<'a>(&self, against: &'a DependencyList) -> Option<&'a Dependency> {
-        for conflict in against.iter() {
-            if self.id == conflict.package || self.satisfies_name(&conflict.package) {
-                if conflict.version_satisfied_by(&self.version) {
-                    return Some(conflict);
-                }
-            }
-        }
-        None
+        against.iter().find(|conflict| {
+            (self.id == conflict.package || self.satisfies_name(&conflict.package))
+                && conflict.version_satisfied_by(&self.version)
+        })
     }
 
     /// Collect all cflags fragments from this package.
@@ -571,15 +566,14 @@ fn resolve_with_prefix(client: &Client, pc: &PcFile, _id: &str) -> Result<HashMa
     // Prefix redefinition: compute prefix from the .pc file location
     if client.flags().contains(ClientFlags::DEFINE_PREFIX)
         && !client.flags().contains(ClientFlags::DONT_DEFINE_PREFIX)
+        && let Some(ref pc_filedir) = pc.pc_filedir
     {
-        if let Some(ref pc_filedir) = pc.pc_filedir {
-            let prefix_var = client.prefix_variable();
-            // Only redefine if not already overridden by --define-variable
-            if !global_vars.contains_key(prefix_var) {
-                if let Some(computed_prefix) = compute_prefix_from_pc_dir(pc, pc_filedir) {
-                    global_vars.insert(prefix_var.to_string(), computed_prefix);
-                }
-            }
+        let prefix_var = client.prefix_variable();
+        // Only redefine if not already overridden by --define-variable
+        if !global_vars.contains_key(prefix_var)
+            && let Some(computed_prefix) = compute_prefix_from_pc_dir(pc, pc_filedir)
+        {
+            global_vars.insert(prefix_var.to_string(), computed_prefix);
         }
     }
 
@@ -685,7 +679,7 @@ pub fn builtin_pkg_config(client: &Client) -> Package {
     let mut pkg = Package::new_virtual("pkg-config", crate::PKGCONFIG_COMPAT_VERSION);
     pkg.realname = Some("pkg-config".to_string());
     pkg.description = Some("Package metadata tool (compatibility shim)".to_string());
-    pkg.url = Some("https://github.com/noverby/pkg-config-rs".to_string());
+    pkg.url = Some("https://tangled.org/overby.me/overby.me/tree/main/pkg-config-rs".to_string());
 
     // Set well-known variables
     pkg.vars
@@ -713,7 +707,7 @@ pub fn builtin_pkgconf(client: &Client) -> Package {
     let mut pkg = Package::new_virtual("pkgconf", crate::VERSION);
     pkg.realname = Some("pkgconf".to_string());
     pkg.description = Some("Package metadata toolkit (Rust implementation)".to_string());
-    pkg.url = Some("https://github.com/noverby/pkg-config-rs".to_string());
+    pkg.url = Some("https://tangled.org/overby.me/overby.me/tree/main/pkg-config-rs".to_string());
 
     // Same variables as pkg-config
     pkg.vars

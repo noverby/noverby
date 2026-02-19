@@ -481,15 +481,15 @@ fn find_provider<'a>(cache: &'a mut Cache, client: &Client, name: &str) -> Resul
 
 /// Verify that a package satisfies a dependency's version constraint.
 fn verify_version(dep: &Dependency, pkg: &Package) -> Result<()> {
-    if let Some(ref required) = dep.version {
-        if !dep.compare.eval(&pkg.version, required) {
-            return Err(Error::VersionMismatch {
-                name: dep.package.clone(),
-                found: pkg.version.clone(),
-                required: required.clone(),
-                comparator: dep.compare.as_str().to_string(),
-            });
-        }
+    if let Some(ref required) = dep.version
+        && !dep.compare.eval(&pkg.version, required)
+    {
+        return Err(Error::VersionMismatch {
+            name: dep.package.clone(),
+            found: pkg.version.clone(),
+            required: required.clone(),
+            comparator: dep.compare.as_str().to_string(),
+        });
     }
     Ok(())
 }
@@ -540,13 +540,13 @@ fn verify_recursive(
     // Check conflicts
     if check_conflicts && !pkg.conflicts.is_empty() {
         for conflict in pkg.conflicts.iter() {
-            if let Some(conflicting) = find_in_cache(cache, &conflict.package) {
-                if conflict.version_satisfied_by(&conflicting.version) {
-                    errors.push(Error::PackageConflict {
-                        name: pkg.id.clone(),
-                        conflicts_with: format!("{conflict}"),
-                    });
-                }
+            if let Some(conflicting) = find_in_cache(cache, &conflict.package)
+                && conflict.version_satisfied_by(&conflicting.version)
+            {
+                errors.push(Error::PackageConflict {
+                    name: pkg.id.clone(),
+                    conflicts_with: format!("{conflict}"),
+                });
             }
         }
     }
@@ -591,10 +591,10 @@ fn verify_dep_list(
         match pkg {
             Some(pkg) => {
                 // Verify version
-                if let Err(e) = verify_version(dep, pkg) {
-                    if !client.flags().contains(ClientFlags::SKIP_ERRORS) {
-                        errors.push(e);
-                    }
+                if let Err(e) = verify_version(dep, pkg)
+                    && !client.flags().contains(ClientFlags::SKIP_ERRORS)
+                {
+                    errors.push(e);
                 }
                 // Clone the id to avoid borrow issues
                 let id = pkg.id.clone();
@@ -624,6 +624,7 @@ fn verify_dep_list(
 // ── Internal: traversal ─────────────────────────────────────────────────
 
 /// Recursive depth-first traversal with callback.
+#[allow(clippy::too_many_arguments)]
 fn apply_recursive<F>(
     cache: &Cache,
     client: &Client,
@@ -679,6 +680,7 @@ fn apply_recursive<F>(
 }
 
 /// Traverse a dependency list, looking up each package in the cache.
+#[allow(clippy::too_many_arguments)]
 fn traverse_dep_list<F>(
     cache: &Cache,
     client: &Client,

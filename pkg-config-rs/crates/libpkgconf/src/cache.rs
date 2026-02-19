@@ -200,10 +200,10 @@ impl Cache {
         // If the query name differs from the package id (e.g. a full path
         // was used), store an alias clone so the package can be found by
         // either key.
-        if name != id {
-            if let Some(pkg) = self.packages.get(&id).cloned() {
-                self.packages.insert(name.to_string(), pkg);
-            }
+        if name != id
+            && let Some(pkg) = self.packages.get(&id).cloned()
+        {
+            self.packages.insert(name.to_string(), pkg);
         }
 
         Ok(&self.packages[&id])
