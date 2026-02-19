@@ -2429,7 +2429,7 @@ runtime/
 - [x] **M0:** Arena allocator + collections + ElementId + protocol defined. All existing tests still pass.
 - [x] **M1:** `Signal[Int32]` works end-to-end: create, read, write, subscribe, notify. Tested via WASM exports.
 - [x] **M2:** Scopes created, components render VNodes, hooks work (use_signal returns stable signal across re-renders).
-- [ ] **M3:** Templates registered, Tier 1 VNode builder produces correct structures, tag helpers work.
+- [x] **M3:** Templates registered, Tier 1 VNode builder produces correct structures, tag helpers work.
 - [ ] **M4:** Diff algorithm produces correct mutations. Full mutation round-trip: Mojo diff → binary buffer → JS decode → verified.
 - [ ] **M5:** JS interpreter applies mutations to real DOM. Hand-crafted mutation buffers produce correct DOM trees.
 - [ ] **M6:** Events flow: click in DOM → JS → WASM → signal write → re-render → mutations → DOM update.
