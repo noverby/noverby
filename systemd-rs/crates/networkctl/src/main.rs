@@ -8,10 +8,7 @@
 //!   networkctl --help           # Show help
 //!   networkctl --version        # Show version
 
-use std::collections::HashMap;
-use std::fmt;
 use std::fs;
-use std::net::Ipv4Addr;
 use std::path::Path;
 
 fn main() {
@@ -116,21 +113,13 @@ struct LinkEntry {
 }
 
 impl LinkEntry {
-    fn is_up(&self) -> bool {
-        (self.flags & 0x1) != 0
-    }
-
     fn is_loopback(&self) -> bool {
         (self.flags & 0x8) != 0
     }
 
     fn state_icon(&self) -> &'static str {
-        if self.is_loopback() {
+        if self.is_loopback() || self.operstate == "up" || self.operstate == "unknown" {
             "●"
-        } else if self.operstate == "up" || self.operstate == "unknown" {
-            "●"
-        } else if self.operstate == "dormant" {
-            "○"
         } else {
             "○"
         }
@@ -188,12 +177,12 @@ fn enumerate_links() -> Vec<LinkEntry> {
         let config_file = state.get("NETWORK_FILE").cloned();
         let dns_servers: Vec<String> = state
             .iter()
-            .filter(|(k, _)| k == &"DNS")
+            .filter(|(k, _)| k == "DNS")
             .map(|(_, v)| v.clone())
             .collect();
         let search_domains: Vec<String> = state
             .iter()
-            .filter(|(k, _)| k == &"DOMAINS")
+            .filter(|(k, _)| k == "DOMAINS")
             .map(|(_, v)| v.clone())
             .collect();
 
@@ -231,7 +220,7 @@ fn enumerate_links() -> Vec<LinkEntry> {
 
 /// Get IPv4 addresses for a specific interface from /proc/net/fib_trie.
 /// Falls back to an empty list if parsing fails.
-fn get_addresses_for_link(ifname: &str, _ifindex: u32) -> Vec<String> {
+fn get_addresses_for_link(_ifname: &str, _ifindex: u32) -> Vec<String> {
     // Simple approach: parse ip addr show output equivalent from /proc.
     // For simplicity, read from the networkd state or lease files instead.
     let mut addrs = Vec::new();

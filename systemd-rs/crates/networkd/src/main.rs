@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! systemd-networkd — network link manager daemon.
 //!
 //! Manages network interfaces based on `.network` configuration files.
@@ -30,9 +32,9 @@ use manager::NetworkManager;
 /// Send an sd_notify message to the service manager.
 fn sd_notify(msg: &str) {
     if let Ok(path) = std::env::var("NOTIFY_SOCKET") {
-        let path = if path.starts_with('@') {
+        let path = if let Some(stripped) = path.strip_prefix('@') {
             // Abstract socket — replace leading '@' with '\0'.
-            format!("\0{}", &path[1..])
+            format!("\0{}", stripped)
         } else {
             path
         };
@@ -298,18 +300,17 @@ fn main() {
 
     // Send initial DHCP discovers.
     for (&ifindex, &fd) in &dhcp_sockets {
-        if let Some(managed) = mgr.links.get_mut(&ifindex) {
-            if let Some(ref mut client) = managed.dhcp_client {
-                if let Some(pkt) = client.next_packet() {
-                    log::info!(
-                        "{}: sending DHCPDISCOVER (xid={:#010x})",
-                        client.config.ifname,
-                        client.xid
-                    );
-                    if let Err(e) = send_dhcp_broadcast(fd, &pkt) {
-                        log::warn!("{}: failed to send DISCOVER: {}", client.config.ifname, e);
-                    }
-                }
+        if let Some(managed) = mgr.links.get_mut(&ifindex)
+            && let Some(ref mut client) = managed.dhcp_client
+            && let Some(pkt) = client.next_packet()
+        {
+            log::info!(
+                "{}: sending DHCPDISCOVER (xid={:#010x})",
+                client.config.ifname,
+                client.xid
+            );
+            if let Err(e) = send_dhcp_broadcast(fd, &pkt) {
+                log::warn!("{}: failed to send DISCOVER: {}", client.config.ifname, e);
             }
         }
     }
@@ -349,97 +350,89 @@ fn main() {
         for (&ifindex, &fd) in &dhcp_sockets {
             // Try to receive a DHCP reply.
             while let Some(reply) = recv_dhcp_packet(fd) {
-                if let Some(managed) = mgr.links.get_mut(&ifindex) {
-                    if let Some(ref mut client) = managed.dhcp_client {
-                        if let Some(lease) = client.process_reply(&reply) {
-                            // Lease obtained or renewed — apply it.
-                            drop(client); // Release borrow.
-                            if let Err(e) = mgr.apply_lease(ifindex, &lease) {
-                                log::warn!("Failed to apply DHCP lease on idx={}: {}", ifindex, e);
-                            }
-                            mgr.write_state_files();
-                            sd_notify(&format!("STATUS={}", mgr.overall_state()));
-                            break;
+                if let Some(managed) = mgr.links.get_mut(&ifindex)
+                    && let Some(ref mut client) = managed.dhcp_client
+                {
+                    if let Some(lease) = client.process_reply(&reply) {
+                        // Lease obtained or renewed — apply it.
+                        let _ = client; // Release borrow.
+                        if let Err(e) = mgr.apply_lease(ifindex, &lease) {
+                            log::warn!("Failed to apply DHCP lease on idx={}: {}", ifindex, e);
                         }
+                        mgr.write_state_files();
+                        sd_notify(&format!("STATUS={}", mgr.overall_state()));
+                        break;
+                    }
 
-                        // If the client moved to REQUESTING after an OFFER,
-                        // immediately send the REQUEST.
-                        if client.state == dhcp::DhcpState::Requesting {
-                            if let Some(request_pkt) = client.next_packet() {
-                                log::info!(
-                                    "{}: sending DHCPREQUEST for {}",
-                                    client.config.ifname,
-                                    client
-                                        .last_offer
-                                        .as_ref()
-                                        .map(|o| o.yiaddr.to_string())
-                                        .unwrap_or_default()
-                                );
-                                if let Err(e) = send_dhcp_broadcast(fd, &request_pkt) {
-                                    log::warn!(
-                                        "{}: failed to send REQUEST: {}",
-                                        client.config.ifname,
-                                        e
-                                    );
-                                }
-                            }
+                    // If the client moved to REQUESTING after an OFFER,
+                    // immediately send the REQUEST.
+                    if client.state == dhcp::DhcpState::Requesting
+                        && let Some(request_pkt) = client.next_packet()
+                    {
+                        log::info!(
+                            "{}: sending DHCPREQUEST for {}",
+                            client.config.ifname,
+                            client
+                                .last_offer
+                                .as_ref()
+                                .map(|o| o.yiaddr.to_string())
+                                .unwrap_or_default()
+                        );
+                        if let Err(e) = send_dhcp_broadcast(fd, &request_pkt) {
+                            log::warn!("{}: failed to send REQUEST: {}", client.config.ifname, e);
                         }
                     }
                 }
             }
 
             // Check for retransmission timeouts.
-            if let Some(managed) = mgr.links.get_mut(&ifindex) {
-                if let Some(ref mut client) = managed.dhcp_client {
-                    let should_retransmit = match client.last_send {
-                        Some(last) => last.elapsed() >= client.retransmit_timeout(),
-                        None => true,
-                    };
+            if let Some(managed) = mgr.links.get_mut(&ifindex)
+                && let Some(ref mut client) = managed.dhcp_client
+            {
+                let should_retransmit = match client.last_send {
+                    Some(last) => last.elapsed() >= client.retransmit_timeout(),
+                    None => true,
+                };
 
-                    if should_retransmit
-                        && !client.max_attempts_reached()
-                        && client.state != dhcp::DhcpState::Bound
-                    {
-                        if let Some(pkt) = client.next_packet() {
-                            let msg_type = pkt
-                                .message_type()
-                                .map(dhcp::dhcp_message_type_name)
-                                .unwrap_or("UNKNOWN");
-                            log::debug!(
-                                "{}: retransmitting DHCP{} (attempt {})",
-                                client.config.ifname,
-                                msg_type,
-                                client.attempts
-                            );
-                            if let Err(e) = send_dhcp_broadcast(fd, &pkt) {
-                                log::warn!("{}: failed to retransmit: {}", client.config.ifname, e);
-                            }
-                        }
+                if should_retransmit
+                    && !client.max_attempts_reached()
+                    && client.state != dhcp::DhcpState::Bound
+                    && let Some(pkt) = client.next_packet()
+                {
+                    let msg_type = pkt
+                        .message_type()
+                        .map(dhcp::dhcp_message_type_name)
+                        .unwrap_or("UNKNOWN");
+                    log::debug!(
+                        "{}: retransmitting DHCP{} (attempt {})",
+                        client.config.ifname,
+                        msg_type,
+                        client.attempts
+                    );
+                    if let Err(e) = send_dhcp_broadcast(fd, &pkt) {
+                        log::warn!("{}: failed to retransmit: {}", client.config.ifname, e);
                     }
+                }
 
-                    // Check for lease renewal / rebinding.
-                    if client.state == dhcp::DhcpState::Bound {
-                        if let Some(ref lease) = client.lease {
-                            if lease.is_expired() {
-                                log::warn!("{}: DHCP lease expired", client.config.ifname);
-                                let ifname = client.config.ifname.clone();
-                                client.state = dhcp::DhcpState::Init;
-                                client.lease = None;
-                                drop(client);
-                                if let Err(e) = mgr.remove_lease(ifindex) {
-                                    log::warn!("{}: failed to remove expired lease: {}", ifname, e);
-                                }
-                                mgr.write_state_files();
-                            } else if lease.needs_renewal() {
-                                // Transition to renewing and send a request.
-                                if let Some(pkt) = client.next_packet() {
-                                    log::info!(
-                                        "{}: DHCP lease renewal (T1 reached)",
-                                        client.config.ifname
-                                    );
-                                    let _ = send_dhcp_broadcast(fd, &pkt);
-                                }
-                            }
+                // Check for lease renewal / rebinding.
+                if client.state == dhcp::DhcpState::Bound
+                    && let Some(ref lease) = client.lease
+                {
+                    if lease.is_expired() {
+                        log::warn!("{}: DHCP lease expired", client.config.ifname);
+                        let ifname = client.config.ifname.clone();
+                        client.state = dhcp::DhcpState::Init;
+                        client.lease = None;
+                        let _ = client;
+                        if let Err(e) = mgr.remove_lease(ifindex) {
+                            log::warn!("{}: failed to remove expired lease: {}", ifname, e);
+                        }
+                        mgr.write_state_files();
+                    } else if lease.needs_renewal() {
+                        // Transition to renewing and send a request.
+                        if let Some(pkt) = client.next_packet() {
+                            log::info!("{}: DHCP lease renewal (T1 reached)", client.config.ifname);
+                            let _ = send_dhcp_broadcast(fd, &pkt);
                         }
                     }
                 }
@@ -447,11 +440,11 @@ fn main() {
         }
 
         // Watchdog keepalive.
-        if let Some(interval) = watchdog {
-            if last_watchdog.elapsed() >= interval {
-                sd_notify("WATCHDOG=1");
-                last_watchdog = Instant::now();
-            }
+        if let Some(interval) = watchdog
+            && last_watchdog.elapsed() >= interval
+        {
+            sd_notify("WATCHDOG=1");
+            last_watchdog = Instant::now();
         }
 
         // Sleep until next poll.
@@ -464,13 +457,12 @@ fn main() {
 
     // Release all DHCP leases.
     for (&ifindex, &fd) in &dhcp_sockets {
-        if let Some(managed) = mgr.links.get(&ifindex) {
-            if let Some(ref client) = managed.dhcp_client {
-                if let Some(release_pkt) = client.build_release() {
-                    log::info!("{}: sending DHCPRELEASE", managed.link.name);
-                    let _ = send_dhcp_broadcast(fd, &release_pkt);
-                }
-            }
+        if let Some(managed) = mgr.links.get(&ifindex)
+            && let Some(ref client) = managed.dhcp_client
+            && let Some(release_pkt) = client.build_release()
+        {
+            log::info!("{}: sending DHCPRELEASE", managed.link.name);
+            let _ = send_dhcp_broadcast(fd, &release_pkt);
         }
     }
 

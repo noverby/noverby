@@ -66,13 +66,11 @@ struct HostnameState {
 
 impl HostnameState {
     fn load() -> Self {
-        let mut state = Self::default();
-
-        // Static hostname
-        state.static_hostname = read_trimmed(HOSTNAME_PATH).unwrap_or_default();
-
-        // Transient (kernel) hostname
-        state.transient_hostname = get_kernel_hostname();
+        let mut state = Self {
+            static_hostname: read_trimmed(HOSTNAME_PATH).unwrap_or_default(),
+            transient_hostname: get_kernel_hostname(),
+            ..Default::default()
+        };
 
         // Machine-info
         let mi = parse_env_file(MACHINE_INFO_PATH);
@@ -288,8 +286,7 @@ fn set_static_hostname(hostname: &str) -> io::Result<()> {
 }
 
 fn set_transient_hostname(hostname: &str) -> io::Result<()> {
-    nix::unistd::sethostname(hostname)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+    nix::unistd::sethostname(hostname).map_err(|e| io::Error::other(e.to_string()))
 }
 
 fn set_machine_info_key(key: &str, value: &str) -> io::Result<()> {
@@ -313,7 +310,7 @@ fn cmd_status() {
     let label_width = 21;
 
     if state.static_hostname.is_empty() {
-        println!("{:>label_width$}: {}", "Static hostname", "(unset)");
+        println!("{:>label_width$}: (unset)", "Static hostname");
     } else {
         println!(
             "{:>label_width$}: {}",
@@ -443,34 +440,26 @@ fn cmd_show(properties: &[String]) {
 fn cmd_set_hostname(hostname: &str, transient_only: bool, static_only: bool) {
     if hostname.is_empty() {
         // Unset: clear static hostname, set transient to localhost
-        if !transient_only {
-            if let Err(e) = set_static_hostname("") {
-                eprintln!("Failed to clear static hostname: {}", e);
-                process::exit(1);
-            }
+        if !transient_only && let Err(e) = set_static_hostname("") {
+            eprintln!("Failed to clear static hostname: {}", e);
+            process::exit(1);
         }
-        if !static_only {
-            if let Err(e) = set_transient_hostname("localhost") {
-                eprintln!("Failed to set transient hostname: {}", e);
-                process::exit(1);
-            }
+        if !static_only && let Err(e) = set_transient_hostname("localhost") {
+            eprintln!("Failed to set transient hostname: {}", e);
+            process::exit(1);
         }
     } else {
         if !is_valid_hostname(hostname) {
             eprintln!("Invalid hostname: {}", hostname);
             process::exit(1);
         }
-        if !transient_only {
-            if let Err(e) = set_static_hostname(hostname) {
-                eprintln!("Failed to set static hostname: {}", e);
-                process::exit(1);
-            }
+        if !transient_only && let Err(e) = set_static_hostname(hostname) {
+            eprintln!("Failed to set static hostname: {}", e);
+            process::exit(1);
         }
-        if !static_only {
-            if let Err(e) = set_transient_hostname(hostname) {
-                eprintln!("Failed to set transient hostname: {}", e);
-                process::exit(1);
-            }
+        if !static_only && let Err(e) = set_transient_hostname(hostname) {
+            eprintln!("Failed to set transient hostname: {}", e);
+            process::exit(1);
         }
     }
 }
@@ -751,7 +740,7 @@ fn main() {
         }
         "set-location" => {
             let value = if rest.is_empty() { "" } else { &rest.join(" ") };
-            cmd_set_location(&value);
+            cmd_set_location(value);
         }
         other => {
             eprintln!("Unknown command: {}", other);

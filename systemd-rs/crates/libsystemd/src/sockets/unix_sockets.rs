@@ -64,13 +64,12 @@ impl UnixSocketConfig {
                     std::fs::remove_file(spath).unwrap();
                 }
 
-                if let Some(parent) = spath.parent() {
-                    if !parent.exists() {
+                if let Some(parent) = spath.parent()
+                    && !parent.exists() {
                         std::fs::create_dir_all(parent).map_err(|e| {
                             format!("Error creating UnixSocket directory {parent:?} : {e}")
                         })?;
                     }
-                }
 
                 trace!("opening streaming unix socket: {path:?}");
                 // Bind to socket
@@ -88,13 +87,12 @@ impl UnixSocketConfig {
                     std::fs::remove_file(spath).unwrap();
                 }
 
-                if let Some(parent) = spath.parent() {
-                    if !parent.exists() {
+                if let Some(parent) = spath.parent()
+                    && !parent.exists() {
                         std::fs::create_dir_all(parent).map_err(|e| {
                             format!("Error creating UnixSocket directory {parent:?} : {e}")
                         })?;
                     }
-                }
 
                 trace!("opening datagram unix socket: {path:?}");
                 // Bind to socket
@@ -112,13 +110,12 @@ impl UnixSocketConfig {
                     std::fs::remove_file(spath).unwrap();
                 }
 
-                if let Some(parent) = spath.parent() {
-                    if !parent.exists() {
+                if let Some(parent) = spath.parent()
+                    && !parent.exists() {
                         std::fs::create_dir_all(parent).map_err(|e| {
                             format!("Error creating UnixSocket directory {parent:?} : {e}")
                         })?;
                     }
-                }
 
                 let path = std::path::PathBuf::from(&path);
                 trace!("opening datagram unix socket: {path:?}");

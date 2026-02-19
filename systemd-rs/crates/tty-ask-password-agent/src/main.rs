@@ -10,9 +10,9 @@
 //!
 //! - `--query`  — Process all pending password questions once, then exit.
 //! - `--watch`  — Continuously watch for new questions (using inotify) and
-//!                process them as they appear.
+//!   process them as they appear.
 //! - `--wall`   — Send wall messages for pending password questions instead
-//!                of querying on the TTY.
+//!   of querying on the TTY.
 //! - `--list`   — List all currently pending password questions, then exit.
 //!
 //! The password query protocol:

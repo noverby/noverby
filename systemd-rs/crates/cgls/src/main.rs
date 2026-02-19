@@ -149,8 +149,8 @@ fn build_cgroup_tree(
     node.processes.sort_by_key(|p| p.pid);
 
     // Recurse into child cgroups (if within depth limit)
-    if max_depth.is_none_or(|d| current_depth < d) {
-        if let Ok(entries) = fs::read_dir(path) {
+    if max_depth.is_none_or(|d| current_depth < d)
+        && let Ok(entries) = fs::read_dir(path) {
             let mut dirs: Vec<_> = entries
                 .flatten()
                 .filter(|e| e.path().is_dir())
@@ -176,7 +176,6 @@ fn build_cgroup_tree(
                 node.children.insert(child_name, child);
             }
         }
-    }
 
     node
 }
@@ -203,11 +202,10 @@ fn is_kernel_thread(pid: u32) -> bool {
 
         // Another heuristic: kernel threads have empty /proc/PID/cmdline
         let cmdline_path = format!("/proc/{}/cmdline", pid);
-        if let Ok(cmdline) = fs::read_to_string(&cmdline_path) {
-            if cmdline.is_empty() && ppid != 1 {
+        if let Ok(cmdline) = fs::read_to_string(&cmdline_path)
+            && cmdline.is_empty() && ppid != 1 {
                 return true;
             }
-        }
     }
 
     false

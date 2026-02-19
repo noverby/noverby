@@ -180,8 +180,8 @@ impl QuestionFile {
                 // success or '-' for failure/cancellation.
                 let response = std::str::from_utf8(&buf[..n])
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-                if response.starts_with('+') {
-                    Ok(Some(response[1..].to_string()))
+                if let Some(stripped) = response.strip_prefix('+') {
+                    Ok(Some(stripped.to_string()))
                 } else {
                     Ok(None)
                 }
@@ -312,14 +312,14 @@ fn main() {
     let deadline = Instant::now() + timeout;
 
     // Try credential lookup first
-    if let Some(ref cred_name) = cli.credential {
-        if let Some(password) = try_credential(cred_name) {
-            print!("{password}");
-            if !cli.no_newline {
-                println!();
-            }
-            process::exit(0);
+    if let Some(ref cred_name) = cli.credential
+        && let Some(password) = try_credential(cred_name)
+    {
+        print!("{password}");
+        if !cli.no_newline {
+            println!();
         }
+        process::exit(0);
     }
 
     let can_tty = !cli.no_tty && stdin_is_tty();

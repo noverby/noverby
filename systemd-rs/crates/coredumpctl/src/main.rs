@@ -247,11 +247,10 @@ fn json_unescape(s: &str) -> String {
                 Some('/') => out.push('/'),
                 Some('u') => {
                     let hex: String = chars.by_ref().take(4).collect();
-                    if let Ok(n) = u32::from_str_radix(&hex, 16) {
-                        if let Some(ch) = char::from_u32(n) {
+                    if let Ok(n) = u32::from_str_radix(&hex, 16)
+                        && let Some(ch) = char::from_u32(n) {
                             out.push(ch);
                         }
-                    }
                 }
                 Some(other) => {
                     out.push('\\');
@@ -334,11 +333,10 @@ fn matches_filters(meta: &CoreDumpMeta, patterns: &[String]) -> bool {
     }
 
     for pattern in patterns {
-        if let Ok(pid) = pattern.parse::<u64>() {
-            if meta.pid == pid {
+        if let Ok(pid) = pattern.parse::<u64>()
+            && meta.pid == pid {
                 return true;
             }
-        }
 
         if pattern.contains('/') {
             // Match executable path.
@@ -358,16 +356,14 @@ fn matches_filters(meta: &CoreDumpMeta, patterns: &[String]) -> bool {
 
 /// Apply time-based filters (--since / --until).
 fn matches_time_range(meta: &CoreDumpMeta, since: Option<u64>, until: Option<u64>) -> bool {
-    if let Some(s) = since {
-        if meta.timestamp < s {
+    if let Some(s) = since
+        && meta.timestamp < s {
             return false;
         }
-    }
-    if let Some(u) = until {
-        if meta.timestamp > u {
+    if let Some(u) = until
+        && meta.timestamp > u {
             return false;
         }
-    }
     true
 }
 
@@ -434,7 +430,7 @@ fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
 }
 
 fn is_leap_year(y: u64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+    (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
 }
 
 fn format_bytes(bytes: u64) -> String {
@@ -454,13 +450,11 @@ fn uid_to_name(uid: u64) -> String {
     if let Ok(contents) = fs::read_to_string("/etc/passwd") {
         for line in contents.lines() {
             let fields: Vec<&str> = line.split(':').collect();
-            if fields.len() >= 3 {
-                if let Ok(file_uid) = fields[2].parse::<u64>() {
-                    if file_uid == uid {
+            if fields.len() >= 3
+                && let Ok(file_uid) = fields[2].parse::<u64>()
+                    && file_uid == uid {
                         return fields[0].to_owned();
                     }
-                }
-            }
         }
     }
     uid.to_string()
@@ -471,13 +465,11 @@ fn gid_to_name(gid: u64) -> String {
     if let Ok(contents) = fs::read_to_string("/etc/group") {
         for line in contents.lines() {
             let fields: Vec<&str> = line.split(':').collect();
-            if fields.len() >= 3 {
-                if let Ok(file_gid) = fields[2].parse::<u64>() {
-                    if file_gid == gid {
+            if fields.len() >= 3
+                && let Ok(file_gid) = fields[2].parse::<u64>()
+                    && file_gid == gid {
                         return fields[0].to_owned();
                     }
-                }
-            }
         }
     }
     gid.to_string()
@@ -507,17 +499,16 @@ fn cmd_list(entries: &[CoreDumpEntry], patterns: &[String], cli: &Cli) -> i32 {
         filtered
     };
 
-    if let Some(n) = cli.lines {
-        if display.len() > n {
+    if let Some(n) = cli.lines
+        && display.len() > n {
             let start = display.len() - n;
             display = display[start..].to_vec();
         }
-    }
 
     if !cli.no_legend {
         println!(
-            "{:<19}  {:>7}  {:>7}  {:>6}  {:>9}  {:>12}  {}",
-            "TIME", "PID", "UID", "GID", "SIG", "COREFILE", "EXE/COMM"
+            "{:<19}  {:>7}  {:>7}  {:>6}  {:>9}  {:>12}  EXE/COMM",
+            "TIME", "PID", "UID", "GID", "SIG", "COREFILE"
         );
     }
 

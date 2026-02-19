@@ -447,22 +447,12 @@ fn lookup_gid(name: &str) -> Option<u32> {
 
 /// Find an available UID in the system range.
 fn find_available_uid(reserved: &BTreeSet<u32>) -> Option<u32> {
-    for uid in SYSTEM_UID_MIN..=SYSTEM_UID_MAX {
-        if !uid_exists(uid) && !reserved.contains(&uid) {
-            return Some(uid);
-        }
-    }
-    None
+    (SYSTEM_UID_MIN..=SYSTEM_UID_MAX).find(|&uid| !uid_exists(uid) && !reserved.contains(&uid))
 }
 
 /// Find an available GID in the system range.
 fn find_available_gid(reserved: &BTreeSet<u32>) -> Option<u32> {
-    for gid in SYSTEM_UID_MIN..=SYSTEM_UID_MAX {
-        if !gid_exists(gid) && !reserved.contains(&gid) {
-            return Some(gid);
-        }
-    }
-    None
+    (SYSTEM_UID_MIN..=SYSTEM_UID_MAX).find(|&gid| !gid_exists(gid) && !reserved.contains(&gid))
 }
 
 /// Get the UID of a file's owner.
@@ -893,11 +883,10 @@ fn process_membership_entry(
     // it as an IdSpec, we need to recover the raw group name.
     // For 'm' entries, the third field is actually a group name, not a numeric ID.
     // We handle this by checking if the user:group was in the name field first.
-    if user.contains(':') {
-        if let Some((u, g)) = user.split_once(':') {
+    if user.contains(':')
+        && let Some((u, g)) = user.split_once(':') {
             return add_user_to_group(u, g, root, dry_run, verbose);
         }
-    }
 
     // Otherwise, the group name was parsed as an ID. Since IdSpec::Automatic
     // means "-", and anything else means we couldn't parse it as ID,
@@ -994,8 +983,8 @@ fn run() -> u8 {
 
     // Phase 1: Reserve ranges
     for entry in &all_entries {
-        if entry.entry_type == EntryType::ReserveRange {
-            if !process_entry(
+        if entry.entry_type == EntryType::ReserveRange
+            && !process_entry(
                 entry,
                 &mut reserved_uids,
                 &mut reserved_gids,
@@ -1005,13 +994,12 @@ fn run() -> u8 {
             ) {
                 any_failed = true;
             }
-        }
     }
 
     // Phase 2: Create groups
     for entry in &all_entries {
-        if entry.entry_type == EntryType::CreateGroup {
-            if !process_entry(
+        if entry.entry_type == EntryType::CreateGroup
+            && !process_entry(
                 entry,
                 &mut reserved_uids,
                 &mut reserved_gids,
@@ -1021,13 +1009,12 @@ fn run() -> u8 {
             ) {
                 any_failed = true;
             }
-        }
     }
 
     // Phase 3: Create users (and their primary groups)
     for entry in &all_entries {
-        if entry.entry_type == EntryType::CreateUser {
-            if !process_entry(
+        if entry.entry_type == EntryType::CreateUser
+            && !process_entry(
                 entry,
                 &mut reserved_uids,
                 &mut reserved_gids,
@@ -1037,16 +1024,14 @@ fn run() -> u8 {
             ) {
                 any_failed = true;
             }
-        }
     }
 
     // Phase 4: Add memberships
     for entry in &all_entries {
-        if entry.entry_type == EntryType::AddToGroup {
-            if !process_membership_entry(entry, &cli.root, cli.dry_run, verbose) {
+        if entry.entry_type == EntryType::AddToGroup
+            && !process_membership_entry(entry, &cli.root, cli.dry_run, verbose) {
                 any_failed = true;
             }
-        }
     }
 
     if any_failed {

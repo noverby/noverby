@@ -192,11 +192,10 @@ fn detect_vm_cpuid() -> Option<&'static str> {
     }
 
     // Try to read the hypervisor_vendor from /sys/hypervisor/type
-    if let Some(hv_type) = read_trimmed("/sys/hypervisor/type") {
-        match hv_type.as_str() {
-            "xen" => return Some("xen"),
-            _ => {}
-        }
+    if let Some(hv_type) = read_trimmed("/sys/hypervisor/type")
+        && hv_type.as_str() == "xen"
+    {
+        return Some("xen");
     }
 
     // Check model name for hints
@@ -250,21 +249,20 @@ fn detect_vm_device_tree() -> Option<&'static str> {
 
 /// Detect User-Mode Linux.
 fn detect_vm_uml() -> Option<&'static str> {
-    if let Some(cpuinfo) = read_trimmed("/proc/cpuinfo") {
-        if cpuinfo.contains("User Mode Linux") {
-            return Some("uml");
-        }
+    if let Some(cpuinfo) = read_trimmed("/proc/cpuinfo")
+        && cpuinfo.contains("User Mode Linux")
+    {
+        return Some("uml");
     }
     None
 }
 
 /// Detect VM via /sys/hypervisor/type.
 fn detect_vm_hypervisor() -> Option<&'static str> {
-    if let Some(hv_type) = read_trimmed("/sys/hypervisor/type") {
-        match hv_type.as_str() {
-            "xen" => return Some("xen"),
-            _ => {}
-        }
+    if let Some(hv_type) = read_trimmed("/sys/hypervisor/type")
+        && hv_type.as_str() == "xen"
+    {
+        return Some("xen");
     }
     None
 }
@@ -318,24 +316,24 @@ fn detect_container() -> Option<&'static str> {
     }
 
     // 2. Check the container= environment variable of PID 1
-    if let Some(environ) = fs::read("/proc/1/environ").ok() {
+    if let Ok(environ) = fs::read("/proc/1/environ") {
         // environ is NUL-separated
         for entry in environ.split(|&b| b == 0) {
-            if let Ok(s) = std::str::from_utf8(entry) {
-                if let Some(val) = s.strip_prefix("container=") {
-                    return match val {
-                        "systemd-nspawn" => Some("systemd-nspawn"),
-                        "docker" => Some("docker"),
-                        "podman" => Some("podman"),
-                        "lxc" => Some("lxc"),
-                        "lxc-libvirt" => Some("lxc-libvirt"),
-                        "rkt" => Some("rkt"),
-                        "wsl" | "wsl2" => Some("wsl"),
-                        "proot" => Some("proot"),
-                        "pouch" => Some("pouch"),
-                        _ => Some("container-other"),
-                    };
-                }
+            if let Ok(s) = std::str::from_utf8(entry)
+                && let Some(val) = s.strip_prefix("container=")
+            {
+                return match val {
+                    "systemd-nspawn" => Some("systemd-nspawn"),
+                    "docker" => Some("docker"),
+                    "podman" => Some("podman"),
+                    "lxc" => Some("lxc"),
+                    "lxc-libvirt" => Some("lxc-libvirt"),
+                    "rkt" => Some("rkt"),
+                    "wsl" | "wsl2" => Some("wsl"),
+                    "proot" => Some("proot"),
+                    "pouch" => Some("pouch"),
+                    _ => Some("container-other"),
+                };
             }
         }
     }
@@ -374,21 +372,20 @@ fn detect_container() -> Option<&'static str> {
 
     // 7. Check /proc/1/sched — in some containers PID 1 in /proc/1/sched
     //    shows a different PID
-    if let Some(sched) = read_trimmed("/proc/1/sched") {
-        if let Some(first_line) = sched.lines().next() {
-            // In containers the first line is often "bash (PID)" where PID != 1
-            // But this is unreliable, so we only use it as a last resort
-            if first_line.contains("(") {
-                // Parse the PID from the first line
-                if let Some(start) = first_line.rfind('(') {
-                    let rest = &first_line[start + 1..];
-                    if let Some(end) = rest.find(')') {
-                        if let Ok(pid) = rest[..end].trim().parse::<u64>() {
-                            if pid != 1 {
-                                return Some("container-other");
-                            }
-                        }
-                    }
+    if let Some(sched) = read_trimmed("/proc/1/sched")
+        && let Some(first_line) = sched.lines().next()
+    {
+        // In containers the first line is often "bash (PID)" where PID != 1
+        // But this is unreliable, so we only use it as a last resort
+        if first_line.contains("(") {
+            // Parse the PID from the first line
+            if let Some(start) = first_line.rfind('(') {
+                let rest = &first_line[start + 1..];
+                if let Some(end) = rest.find(')')
+                    && let Ok(pid) = rest[..end].trim().parse::<u64>()
+                    && pid != 1
+                {
+                    return Some("container-other");
                 }
             }
         }
@@ -432,12 +429,12 @@ fn detect_private_users() -> bool {
         let parts: Vec<&str> = uid_map.split_whitespace().collect();
         if parts.len() >= 3 {
             // Identity mapping: "0 0 4294967295" (or the 32-bit max)
-            if parts[0] == "0" && parts[1] == "0" {
-                if let Ok(count) = parts[2].parse::<u64>() {
-                    if count >= 4_294_967_295 {
-                        return false; // Full identity mapping, not in a user ns
-                    }
-                }
+            if parts[0] == "0"
+                && parts[1] == "0"
+                && let Ok(count) = parts[2].parse::<u64>()
+                && count >= 4_294_967_295
+            {
+                return false; // Full identity mapping, not in a user ns
             }
             return true;
         }
@@ -491,8 +488,8 @@ fn main() {
     }
 
     // Default: detect VM and/or container
-    let detect_vm_flag = cli.vm || (!cli.vm && !cli.container);
-    let detect_container_flag = cli.container || (!cli.vm && !cli.container);
+    let detect_vm_flag = cli.vm || !cli.container;
+    let detect_container_flag = cli.container || !cli.vm;
 
     let mut result: Option<&str> = None;
 

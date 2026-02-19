@@ -844,7 +844,7 @@ fn main() {
             let idx = if offset >= 0 {
                 offset as usize
             } else {
-                boots.len().checked_sub((-offset) as usize).unwrap_or(0)
+                boots.len().saturating_sub((-offset) as usize)
             };
             boots.get(idx).map(|b| b.boot_id.clone())
         } else {
@@ -853,7 +853,7 @@ fn main() {
         };
 
         if let Some(boot_id) = target_boot_id {
-            filtered.retain(|e| e.boot_id().map_or(false, |b| b == boot_id));
+            filtered.retain(|e| e.boot_id().is_some_and(|b| b == boot_id));
         } else {
             eprintln!("journalctl: No boot matching '{}' found.", boot_spec);
             process::exit(1);
@@ -867,7 +867,7 @@ fn main() {
         } else {
             format!("{}.service", unit)
         };
-        filtered.retain(|e| e.systemd_unit().map_or(false, |u| u == unit_name));
+        filtered.retain(|e| e.systemd_unit().is_some_and(|u| u == unit_name));
     }
 
     // User unit filter
@@ -879,8 +879,8 @@ fn main() {
         };
         filtered.retain(|e| {
             e.field("_SYSTEMD_USER_UNIT")
-                .map_or(false, |u| u == unit_name)
-                || e.field("USER_UNIT").map_or(false, |u| u == unit_name)
+                .is_some_and(|u| u == unit_name)
+                || e.field("USER_UNIT").is_some_and(|u| u == unit_name)
         });
     }
 
@@ -891,35 +891,35 @@ fn main() {
         cli.identifier.clone()
     };
     if let Some(ref ident) = effective_identifier {
-        filtered.retain(|e| e.syslog_identifier().map_or(false, |i| i == *ident));
+        filtered.retain(|e| e.syslog_identifier().is_some_and(|i| i == *ident));
     }
 
     // PID filter
-    if let Some(ref pid_str) = cli.pid {
-        if let Ok(pid) = pid_str.parse::<u32>() {
-            filtered.retain(|e| e.pid() == Some(pid));
-        }
+    if let Some(ref pid_str) = cli.pid
+        && let Ok(pid) = pid_str.parse::<u32>()
+    {
+        filtered.retain(|e| e.pid() == Some(pid));
     }
 
     // UID filter
-    if let Some(ref uid_str) = cli.uid {
-        if let Ok(uid) = uid_str.parse::<u32>() {
-            filtered.retain(|e| e.uid() == Some(uid));
-        }
+    if let Some(ref uid_str) = cli.uid
+        && let Ok(uid) = uid_str.parse::<u32>()
+    {
+        filtered.retain(|e| e.uid() == Some(uid));
     }
 
     // GID filter
-    if let Some(ref gid_str) = cli.gid {
-        if let Ok(gid) = gid_str.parse::<u32>() {
-            filtered.retain(|e| e.gid() == Some(gid));
-        }
+    if let Some(ref gid_str) = cli.gid
+        && let Ok(gid) = gid_str.parse::<u32>()
+    {
+        filtered.retain(|e| e.gid() == Some(gid));
     }
 
     // Priority filter
     if let Some(ref priority_spec) = cli.priority {
         match parse_priority_filter(priority_spec) {
             Ok((min_pri, max_pri)) => {
-                filtered.retain(|e| e.priority().map_or(true, |p| p >= min_pri && p <= max_pri));
+                filtered.retain(|e| e.priority().is_none_or(|p| p >= min_pri && p <= max_pri));
             }
             Err(e) => {
                 eprintln!("journalctl: {}", e);
@@ -954,23 +954,23 @@ fn main() {
     }
 
     // Cursor filter
-    if let Some(ref cursor_str) = cli.cursor {
-        if let Some((seqnum, _realtime)) = parse_cursor(cursor_str) {
-            filtered.retain(|e| e.seqnum >= seqnum);
-        }
+    if let Some(ref cursor_str) = cli.cursor
+        && let Some((seqnum, _realtime)) = parse_cursor(cursor_str)
+    {
+        filtered.retain(|e| e.seqnum >= seqnum);
     }
 
-    if let Some(ref cursor_str) = cli.after_cursor {
-        if let Some((seqnum, _realtime)) = parse_cursor(cursor_str) {
-            filtered.retain(|e| e.seqnum > seqnum);
-        }
+    if let Some(ref cursor_str) = cli.after_cursor
+        && let Some((seqnum, _realtime)) = parse_cursor(cursor_str)
+    {
+        filtered.retain(|e| e.seqnum > seqnum);
     }
 
     // Free-form match expressions: FIELD=VALUE
     for m in &cli.matches {
         if let Some((key, value)) = parse_match(m) {
             let key_upper = key.to_uppercase();
-            filtered.retain(|e| e.field(&key_upper).map_or(false, |v| v == value));
+            filtered.retain(|e| e.field(&key_upper).is_some_and(|v| v == value));
         }
     }
 
@@ -984,7 +984,7 @@ fn main() {
 
         match regex {
             Ok(re) => {
-                filtered.retain(|e| e.message().map_or(false, |msg| re.is_match(&msg)));
+                filtered.retain(|e| e.message().is_some_and(|msg| re.is_match(&msg)));
             }
             Err(e) => {
                 eprintln!("journalctl: Invalid grep pattern '{}': {}", pattern, e);
@@ -1037,17 +1037,17 @@ fn main() {
     }
 
     // Show cursor after last entry if requested
-    if cli.show_cursor {
-        if let Some(last) = filtered.last() {
-            let cursor = format!(
-                "s=0;i={:x};b={};m={:x};t={:x};x=0",
-                last.seqnum,
-                last.boot_id().unwrap_or_default(),
-                last.monotonic_usec,
-                last.realtime_usec,
-            );
-            let _ = writeln!(writer, "-- cursor: {}", cursor);
-        }
+    if cli.show_cursor
+        && let Some(last) = filtered.last()
+    {
+        let cursor = format!(
+            "s=0;i={:x};b={};m={:x};t={:x};x=0",
+            last.seqnum,
+            last.boot_id().unwrap_or_default(),
+            last.monotonic_usec,
+            last.realtime_usec,
+        );
+        let _ = writeln!(writer, "-- cursor: {}", cursor);
     }
 
     let _ = writer.flush();
@@ -1121,7 +1121,7 @@ fn matches_follow_filters(entry: &JournalEntry, cli: &Cli) -> bool {
         } else {
             format!("{}.service", unit)
         };
-        if !entry.systemd_unit().map_or(false, |u| u == unit_name) {
+        if entry.systemd_unit().is_none_or(|u| u != unit_name) {
             return false;
         }
     }
@@ -1132,30 +1132,27 @@ fn matches_follow_filters(entry: &JournalEntry, cli: &Cli) -> bool {
     } else {
         cli.identifier.clone()
     };
-    if let Some(ref ident) = effective_identifier {
-        if !entry.syslog_identifier().map_or(false, |i| i == *ident) {
-            return false;
-        }
+    if let Some(ref ident) = effective_identifier
+        && entry.syslog_identifier().is_none_or(|i| i != *ident)
+    {
+        return false;
     }
 
     // Priority filter
-    if let Some(ref priority_spec) = cli.priority {
-        if let Ok((min_pri, max_pri)) = parse_priority_filter(priority_spec) {
-            if let Some(p) = entry.priority() {
-                if p < min_pri || p > max_pri {
-                    return false;
-                }
-            }
-        }
+    if let Some(ref priority_spec) = cli.priority
+        && let Ok((min_pri, max_pri)) = parse_priority_filter(priority_spec)
+        && let Some(p) = entry.priority()
+        && (p < min_pri || p > max_pri)
+    {
+        return false;
     }
 
     // PID filter
-    if let Some(ref pid_str) = cli.pid {
-        if let Ok(pid) = pid_str.parse::<u32>() {
-            if entry.pid() != Some(pid) {
-                return false;
-            }
-        }
+    if let Some(ref pid_str) = cli.pid
+        && let Ok(pid) = pid_str.parse::<u32>()
+        && entry.pid() != Some(pid)
+    {
+        return false;
     }
 
     // Grep filter
@@ -1165,10 +1162,10 @@ fn matches_follow_filters(entry: &JournalEntry, cli: &Cli) -> bool {
         } else {
             Regex::new(&format!("(?i){}", pattern))
         };
-        if let Ok(re) = regex {
-            if !entry.message().map_or(false, |msg| re.is_match(&msg)) {
-                return false;
-            }
+        if let Ok(re) = regex
+            && !entry.message().is_some_and(|msg| re.is_match(&msg))
+        {
+            return false;
         }
     }
 
@@ -1198,13 +1195,13 @@ fn send_signal_to_journald(signal: libc::c_int) {
     let pid_files = ["/run/systemd/journal/pid", "/run/systemd/journald.pid"];
 
     for pid_file in &pid_files {
-        if let Ok(contents) = fs::read_to_string(pid_file) {
-            if let Ok(pid) = contents.trim().parse::<i32>() {
-                unsafe {
-                    libc::kill(pid, signal);
-                }
-                return;
+        if let Ok(contents) = fs::read_to_string(pid_file)
+            && let Ok(pid) = contents.trim().parse::<i32>()
+        {
+            unsafe {
+                libc::kill(pid, signal);
             }
+            return;
         }
     }
 
@@ -1219,13 +1216,13 @@ fn send_signal_to_journald(signal: libc::c_int) {
             };
 
             let comm_path = format!("/proc/{}/comm", pid);
-            if let Ok(comm) = fs::read_to_string(&comm_path) {
-                if comm.trim() == "systemd-journald" || comm.trim() == "systemd-journal" {
-                    unsafe {
-                        libc::kill(pid, signal);
-                    }
-                    return;
+            if let Ok(comm) = fs::read_to_string(&comm_path)
+                && (comm.trim() == "systemd-journald" || comm.trim() == "systemd-journal")
+            {
+                unsafe {
+                    libc::kill(pid, signal);
                 }
+                return;
             }
         }
     }

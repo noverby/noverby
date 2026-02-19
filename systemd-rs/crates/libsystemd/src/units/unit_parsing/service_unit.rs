@@ -98,7 +98,7 @@ fn parse_signal_to_raw(s: &str) -> Option<i32> {
     if let Some(offset_str) = name.strip_prefix("RTMIN+") {
         if let Ok(offset) = offset_str.trim().parse::<i32>() {
             let sig = SIGRTMIN_RAW + offset;
-            if sig >= SIGRTMIN_RAW && sig <= SIGRTMAX_RAW {
+            if (SIGRTMIN_RAW..=SIGRTMAX_RAW).contains(&sig) {
                 return Some(sig);
             }
         }
@@ -107,7 +107,7 @@ fn parse_signal_to_raw(s: &str) -> Option<i32> {
     if let Some(offset_str) = name.strip_prefix("RTMAX-") {
         if let Ok(offset) = offset_str.trim().parse::<i32>() {
             let sig = SIGRTMAX_RAW - offset;
-            if sig >= SIGRTMIN_RAW && sig <= SIGRTMAX_RAW {
+            if (SIGRTMIN_RAW..=SIGRTMAX_RAW).contains(&sig) {
                 return Some(sig);
             }
         }

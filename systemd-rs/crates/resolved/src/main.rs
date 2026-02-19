@@ -87,8 +87,8 @@ fn setup_logging() {
 
 fn sd_notify(msg: &str) {
     if let Ok(path) = std::env::var("NOTIFY_SOCKET") {
-        let path = if path.starts_with('@') {
-            format!("\0{}", &path[1..])
+        let path = if let Some(stripped) = path.strip_prefix('@') {
+            format!("\0{}", stripped)
         } else {
             path
         };
@@ -287,7 +287,7 @@ fn handle_tcp_connection(
     }
     let msg_len = u16::from_be_bytes(len_buf) as usize;
 
-    if msg_len < HEADER_SIZE || msg_len > MAX_TCP_SIZE {
+    if !(HEADER_SIZE..=MAX_TCP_SIZE).contains(&msg_len) {
         return;
     }
 
@@ -650,23 +650,23 @@ fn main() {
                 .map(|s| s.socket_addr())
                 .collect();
 
-            if let Ok(mut list) = upstreams.write() {
-                if *list != new_upstreams {
-                    log::info!("Link DNS updated: {} upstream servers", new_upstreams.len());
-                    *list = new_upstreams;
-                    write_resolv_conf_files(&refresh_config);
-                }
+            if let Ok(mut list) = upstreams.write()
+                && *list != new_upstreams
+            {
+                log::info!("Link DNS updated: {} upstream servers", new_upstreams.len());
+                *list = new_upstreams;
+                write_resolv_conf_files(&refresh_config);
             }
 
             last_link_refresh = Instant::now();
         }
 
         // Watchdog
-        if let Some(interval) = watchdog_interval {
-            if last_watchdog.elapsed() >= interval {
-                sd_notify_watchdog();
-                last_watchdog = Instant::now();
-            }
+        if let Some(interval) = watchdog_interval
+            && last_watchdog.elapsed() >= interval
+        {
+            sd_notify_watchdog();
+            last_watchdog = Instant::now();
         }
 
         thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));

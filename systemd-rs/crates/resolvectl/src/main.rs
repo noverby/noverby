@@ -780,11 +780,8 @@ fn get_current_dns_servers() -> Vec<String> {
             .lines()
             .filter_map(|line| {
                 let line = line.trim();
-                if line.starts_with("nameserver ") {
-                    Some(line["nameserver ".len()..].trim().to_string())
-                } else {
-                    None
-                }
+                line.strip_prefix("nameserver ")
+                    .map(|stripped| stripped.trim().to_string())
             })
             .collect();
 
@@ -807,11 +804,8 @@ fn get_search_domains() -> Vec<String> {
     if let Ok(content) = fs::read_to_string(STUB_RESOLV_CONF) {
         for line in content.lines() {
             let line = line.trim();
-            if line.starts_with("search ") {
-                return line["search ".len()..]
-                    .split_whitespace()
-                    .map(|s| s.to_string())
-                    .collect();
+            if let Some(stripped) = line.strip_prefix("search ") {
+                return stripped.split_whitespace().map(|s| s.to_string()).collect();
             }
         }
     }
@@ -861,10 +855,10 @@ fn discover_links() -> Vec<(u32, String)> {
 
             // Read ifindex
             let ifindex_path = entry.path().join("ifindex");
-            if let Ok(content) = fs::read_to_string(&ifindex_path) {
-                if let Ok(idx) = content.trim().parse::<u32>() {
-                    links.push((idx, ifname));
-                }
+            if let Ok(content) = fs::read_to_string(&ifindex_path)
+                && let Ok(idx) = content.trim().parse::<u32>()
+            {
+                links.push((idx, ifname));
             }
         }
     }
@@ -874,14 +868,14 @@ fn discover_links() -> Vec<(u32, String)> {
         for entry in entries.flatten() {
             if let Ok(idx) = entry.file_name().to_string_lossy().parse::<u32>() {
                 // Check if we already have this index
-                if !links.iter().any(|(i, _)| *i == idx) {
-                    if let Ok(content) = fs::read_to_string(entry.path()) {
-                        let ifname = extract_key(&content, "IFNAME");
-                        if !ifname.is_empty() {
-                            links.push((idx, ifname));
-                        } else {
-                            links.push((idx, format!("if{}", idx)));
-                        }
+                if !links.iter().any(|(i, _)| *i == idx)
+                    && let Ok(content) = fs::read_to_string(entry.path())
+                {
+                    let ifname = extract_key(&content, "IFNAME");
+                    if !ifname.is_empty() {
+                        links.push((idx, ifname));
+                    } else {
+                        links.push((idx, format!("if{}", idx)));
                     }
                 }
             }
@@ -895,10 +889,10 @@ fn discover_links() -> Vec<(u32, String)> {
 fn extract_key(content: &str, key: &str) -> String {
     for line in content.lines() {
         let line = line.trim();
-        if let Some(rest) = line.strip_prefix(key) {
-            if let Some(rest) = rest.strip_prefix('=') {
-                return rest.trim().to_string();
-            }
+        if let Some(rest) = line.strip_prefix(key)
+            && let Some(rest) = rest.strip_prefix('=')
+        {
+            return rest.trim().to_string();
         }
     }
     String::new()
@@ -908,12 +902,11 @@ fn extract_key(content: &str, key: &str) -> String {
 
 fn find_resolved_pid() -> Option<i32> {
     // Try PID file first
-    if let Ok(content) = fs::read_to_string(RESOLVED_PID_FILE) {
-        if let Ok(pid) = content.trim().parse::<i32>() {
-            if pid > 0 {
-                return Some(pid);
-            }
-        }
+    if let Ok(content) = fs::read_to_string(RESOLVED_PID_FILE)
+        && let Ok(pid) = content.trim().parse::<i32>()
+        && pid > 0
+    {
+        return Some(pid);
     }
 
     // Fall back to scanning /proc for systemd-resolved
@@ -923,10 +916,10 @@ fn find_resolved_pid() -> Option<i32> {
             let name = name.to_string_lossy();
             if let Ok(pid) = name.parse::<i32>() {
                 let comm_path = format!("/proc/{}/comm", pid);
-                if let Ok(comm) = fs::read_to_string(&comm_path) {
-                    if comm.trim() == "systemd-resolve" || comm.trim() == "systemd-resolved" {
-                        return Some(pid);
-                    }
+                if let Ok(comm) = fs::read_to_string(&comm_path)
+                    && (comm.trim() == "systemd-resolve" || comm.trim() == "systemd-resolved")
+                {
+                    return Some(pid);
                 }
             }
         }

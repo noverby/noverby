@@ -327,11 +327,10 @@ fn find_generators(unit_dirs: &[PathBuf]) -> Vec<PathBuf> {
     // On NixOS the package has lib/systemd/system-generators/ but no
     // lib/systemd/system/ (unit files are in /etc/systemd/system/ instead),
     // so the unit-dir-based derivation above won't find them.
-    if let Some(pkg_gen_dir) = package_generator_dir() {
-        if !search_dirs.contains(&pkg_gen_dir) {
+    if let Some(pkg_gen_dir) = package_generator_dir()
+        && !search_dirs.contains(&pkg_gen_dir) {
             search_dirs.push(pkg_gen_dir);
         }
-    }
 
     for dir in &search_dirs {
         if !dir.is_dir() {
@@ -498,7 +497,7 @@ fn wait_with_timeout(
 
 /// Check whether a generator name matches a built-in generator.
 fn is_builtin_generator(name: &str) -> bool {
-    BUILTIN_GENERATORS.iter().any(|&builtin| name == builtin)
+    BUILTIN_GENERATORS.contains(&name)
 }
 
 /// Check whether a path is an executable file.

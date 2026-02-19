@@ -113,9 +113,11 @@ struct Args {
 // ---------------------------------------------------------------------------
 
 fn parse_args(args: &[String]) -> Result<Args, String> {
-    let mut parsed = Args::default();
-    parsed.root = PathBuf::from("/");
-    parsed.welcome = true;
+    let mut parsed = Args {
+        root: PathBuf::from("/"),
+        welcome: true,
+        ..Default::default()
+    };
 
     let mut i = 0;
     while i < args.len() {
@@ -138,60 +140,60 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
                 process::exit(0);
             }
             "--root" => {
-                let v = value_or_next(&args, &mut i, value, "--root")?;
+                let v = value_or_next(args, &mut i, value, "--root")?;
                 parsed.root = PathBuf::from(v);
             }
             "--image" => {
-                let v = value_or_next(&args, &mut i, value, "--image")?;
+                let v = value_or_next(args, &mut i, value, "--image")?;
                 parsed.image = Some(v);
             }
             "--locale" => {
-                let v = value_or_next(&args, &mut i, value, "--locale")?;
+                let v = value_or_next(args, &mut i, value, "--locale")?;
                 parsed.settings.locale = Some(v);
             }
             "--locale-messages" => {
-                let v = value_or_next(&args, &mut i, value, "--locale-messages")?;
+                let v = value_or_next(args, &mut i, value, "--locale-messages")?;
                 parsed.settings.locale_messages = Some(v);
             }
             "--keymap" => {
-                let v = value_or_next(&args, &mut i, value, "--keymap")?;
+                let v = value_or_next(args, &mut i, value, "--keymap")?;
                 parsed.settings.keymap = Some(v);
             }
             "--timezone" => {
-                let v = value_or_next(&args, &mut i, value, "--timezone")?;
+                let v = value_or_next(args, &mut i, value, "--timezone")?;
                 parsed.settings.timezone = Some(v);
             }
             "--hostname" => {
-                let v = value_or_next(&args, &mut i, value, "--hostname")?;
+                let v = value_or_next(args, &mut i, value, "--hostname")?;
                 parsed.settings.hostname = Some(v);
             }
             "--machine-id" => {
-                let v = value_or_next(&args, &mut i, value, "--machine-id")?;
+                let v = value_or_next(args, &mut i, value, "--machine-id")?;
                 parsed.settings.machine_id = Some(v);
             }
             "--root-password" => {
-                let v = value_or_next(&args, &mut i, value, "--root-password")?;
+                let v = value_or_next(args, &mut i, value, "--root-password")?;
                 parsed.settings.root_password = Some(v);
                 parsed.settings.root_password_hashed = Some(false);
             }
             "--root-password-hashed" => {
-                let v = value_or_next(&args, &mut i, value, "--root-password-hashed")?;
+                let v = value_or_next(args, &mut i, value, "--root-password-hashed")?;
                 parsed.settings.root_password = Some(v);
                 parsed.settings.root_password_hashed = Some(true);
             }
             "--root-password-file" => {
-                let v = value_or_next(&args, &mut i, value, "--root-password-file")?;
+                let v = value_or_next(args, &mut i, value, "--root-password-file")?;
                 let content = fs::read_to_string(&v)
                     .map_err(|e| format!("Failed to read password file {}: {}", v, e))?;
                 parsed.settings.root_password = Some(content.trim().to_string());
                 parsed.settings.root_password_hashed = Some(false);
             }
             "--root-shell" => {
-                let v = value_or_next(&args, &mut i, value, "--root-shell")?;
+                let v = value_or_next(args, &mut i, value, "--root-shell")?;
                 parsed.settings.root_shell = Some(v);
             }
             "--kernel-command-line" => {
-                let v = value_or_next(&args, &mut i, value, "--kernel-command-line")?;
+                let v = value_or_next(args, &mut i, value, "--kernel-command-line")?;
                 parsed.settings.kernel_cmdline = Some(v);
             }
             "--force" => parsed.force = true,
@@ -540,10 +542,10 @@ fn copy_locale_from_host(settings: &mut Settings) {
         if let Some(v) = vars.get("LANG") {
             settings.locale = Some(v.clone());
         }
-        if settings.locale_messages.is_none() {
-            if let Some(v) = vars.get("LC_MESSAGES") {
-                settings.locale_messages = Some(v.clone());
-            }
+        if settings.locale_messages.is_none()
+            && let Some(v) = vars.get("LC_MESSAGES")
+        {
+            settings.locale_messages = Some(v.clone());
         }
     }
 }
@@ -688,12 +690,11 @@ fn hash_password(password: &str) -> String {
             }
             child.wait_with_output()
         })
+        && output.status.success()
     {
-        if output.status.success() {
-            let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if hash.starts_with("$6$") {
-                return hash;
-            }
+        let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if hash.starts_with("$6$") {
+            return hash;
         }
     }
 
@@ -710,12 +711,11 @@ fn hash_password(password: &str) -> String {
             }
             child.wait_with_output()
         })
+        && output.status.success()
     {
-        if output.status.success() {
-            let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if hash.starts_with("$") {
-                return hash;
-            }
+        let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if hash.starts_with("$") {
+            return hash;
         }
     }
 
@@ -1106,10 +1106,10 @@ fn reset_file(root: &Path, relative: &str) -> io::Result<bool> {
 // ---------------------------------------------------------------------------
 
 fn ensure_parent_dir(path: &Path) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
-            fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.exists()
+    {
+        fs::create_dir_all(parent)?;
     }
     Ok(())
 }

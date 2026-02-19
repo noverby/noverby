@@ -127,11 +127,10 @@ fn is_module_loaded(module_name: &str) -> bool {
     match fs::read_to_string("/proc/modules") {
         Ok(contents) => {
             for line in contents.lines() {
-                if let Some(name) = line.split_whitespace().next() {
-                    if name == normalized {
+                if let Some(name) = line.split_whitespace().next()
+                    && name == normalized {
                         return true;
                     }
-                }
             }
             false
         }

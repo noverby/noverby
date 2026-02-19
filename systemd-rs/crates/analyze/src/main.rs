@@ -578,7 +578,7 @@ fn parse_timestamp(input: &str) -> Result<SystemTime, String> {
 }
 
 fn try_parse_datetime(input: &str) -> Option<SystemTime> {
-    let parts: Vec<&str> = input.splitn(2, |c| c == ' ' || c == 'T').collect();
+    let parts: Vec<&str> = input.splitn(2, [' ', 'T']).collect();
 
     let date_str = parts.first()?;
     let time_str = parts.get(1).copied().unwrap_or("00:00:00");
@@ -647,7 +647,7 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
 
 /// Day of week from days since epoch (0=Thu, 1=Fri, ..., 6=Wed).
 fn weekday_from_days(days: i64) -> u32 {
-    ((days % 7 + 7) % 7) as u32
+    days.rem_euclid(7) as u32
 }
 
 /// Format a SystemTime as a human-readable timestamp.
@@ -696,17 +696,16 @@ fn read_boot_timing() -> BootTiming {
         }
     }
     // Try /proc/stat for kernel boot time as fallback
-    if bt.kernel_us.is_none() {
-        if let Ok(content) = fs::read_to_string("/proc/stat") {
-            for line in content.lines() {
-                if let Some(rest) = line.strip_prefix("btime ") {
-                    if let Ok(btime) = rest.trim().parse::<u64>() {
-                        if let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) {
-                            let uptime_s = now.as_secs().saturating_sub(btime);
-                            bt.kernel_us = Some(uptime_s * USEC_PER_SEC);
-                        }
-                    }
-                }
+    if bt.kernel_us.is_none()
+        && let Ok(content) = fs::read_to_string("/proc/stat")
+    {
+        for line in content.lines() {
+            if let Some(rest) = line.strip_prefix("btime ")
+                && let Ok(btime) = rest.trim().parse::<u64>()
+                && let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH)
+            {
+                let uptime_s = now.as_secs().saturating_sub(btime);
+                bt.kernel_us = Some(uptime_s * USEC_PER_SEC);
             }
         }
     }
@@ -858,27 +857,27 @@ fn evaluate_condition(expr: &str) -> (bool, &'static str) {
 
 fn detect_virtualization() -> Option<String> {
     // Check /proc/cpuinfo for hypervisor flag
-    if let Ok(cpuinfo) = fs::read_to_string("/proc/cpuinfo") {
-        if cpuinfo.contains("hypervisor") {
-            // Try to identify the specific hypervisor
-            if let Ok(dmi) = fs::read_to_string("/sys/class/dmi/id/product_name") {
-                let name = dmi.trim().to_lowercase();
-                if name.contains("kvm") || name.contains("qemu") {
-                    return Some("kvm".to_string());
-                }
-                if name.contains("virtualbox") {
-                    return Some("oracle".to_string());
-                }
-                if name.contains("vmware") {
-                    return Some("vmware".to_string());
-                }
-                if name.contains("cloud hypervisor") {
-                    return Some("kvm".to_string());
-                }
-                return Some("vm".to_string());
+    if let Ok(cpuinfo) = fs::read_to_string("/proc/cpuinfo")
+        && cpuinfo.contains("hypervisor")
+    {
+        // Try to identify the specific hypervisor
+        if let Ok(dmi) = fs::read_to_string("/sys/class/dmi/id/product_name") {
+            let name = dmi.trim().to_lowercase();
+            if name.contains("kvm") || name.contains("qemu") {
+                return Some("kvm".to_string());
+            }
+            if name.contains("virtualbox") {
+                return Some("oracle".to_string());
+            }
+            if name.contains("vmware") {
+                return Some("vmware".to_string());
+            }
+            if name.contains("cloud hypervisor") {
+                return Some("kvm".to_string());
             }
             return Some("vm".to_string());
         }
+        return Some("vm".to_string());
     }
     // Check for container
     if Path::new("/run/.containerenv").exists() {
@@ -887,10 +886,10 @@ fn detect_virtualization() -> Option<String> {
     if Path::new("/.dockerenv").exists() {
         return Some("docker".to_string());
     }
-    if let Ok(content) = fs::read_to_string("/proc/1/environ") {
-        if content.contains("container=") {
-            return Some("container-other".to_string());
-        }
+    if let Ok(content) = fs::read_to_string("/proc/1/environ")
+        && content.contains("container=")
+    {
+        return Some("container-other".to_string());
     }
     None
 }
@@ -1009,16 +1008,13 @@ fn verify_unit_file(path: &str) -> Vec<String> {
 
         if let Some((key, _val)) = line.split_once('=') {
             let key = key.trim();
-            match current_section.as_str() {
-                "Service" => {
-                    if key == "ExecStart" {
-                        has_exec_start = true;
-                    }
-                    if key == "Type" {
-                        has_type = true;
-                    }
+            if current_section.as_str() == "Service" {
+                if key == "ExecStart" {
+                    has_exec_start = true;
                 }
-                _ => {}
+                if key == "Type" {
+                    has_type = true;
+                }
             }
         }
     }
@@ -1091,18 +1087,18 @@ fn cmd_time() {
     }
 
     // If we have nothing from our timing file, try /proc/uptime
-    if bt.kernel_us.is_none() && bt.initrd_us.is_none() && bt.userspace_us.is_none() {
-        if let Ok(content) = fs::read_to_string("/proc/uptime") {
-            if let Some(uptime_str) = content.split_whitespace().next() {
-                if let Ok(uptime_s) = uptime_str.parse::<f64>() {
-                    let uptime_us = (uptime_s * USEC_PER_SEC as f64) as u64;
-                    println!(
-                        "  (system running for {}; no detailed timing available)",
-                        format_usec(uptime_us)
-                    );
-                }
-            }
-        }
+    if bt.kernel_us.is_none()
+        && bt.initrd_us.is_none()
+        && bt.userspace_us.is_none()
+        && let Ok(content) = fs::read_to_string("/proc/uptime")
+        && let Some(uptime_str) = content.split_whitespace().next()
+        && let Ok(uptime_s) = uptime_str.parse::<f64>()
+    {
+        let uptime_us = (uptime_s * USEC_PER_SEC as f64) as u64;
+        println!(
+            "  (system running for {}; no detailed timing available)",
+            format_usec(uptime_us)
+        );
     }
 
     if let Some(t) = bt.total_us {
@@ -1120,7 +1116,7 @@ fn cmd_blame() {
         return;
     }
 
-    timings.sort_by(|a, b| b.duration_us().cmp(&a.duration_us()));
+    timings.sort_by_key(|b| std::cmp::Reverse(b.duration_us()));
 
     for t in &timings {
         let dur = t.duration_us();

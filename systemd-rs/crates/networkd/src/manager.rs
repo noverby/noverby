@@ -13,10 +13,9 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::net::Ipv4Addr;
-use std::time::{Duration, Instant};
 
 use crate::config::{self, DhcpMode, NetworkConfig};
-use crate::dhcp::{self, DhcpClient, DhcpClientConfig, DhcpLease, DhcpPacket, DhcpState};
+use crate::dhcp::{self, DhcpClient, DhcpClientConfig, DhcpLease, DhcpState};
 use crate::link::{self, LinkInfo};
 
 // ---------------------------------------------------------------------------
@@ -511,21 +510,18 @@ impl NetworkManager {
         }
 
         // 4. Update MTU if offered and enabled.
-        if use_mtu {
-            if let Some(mtu) = lease.mtu {
-                if mtu >= 576 {
-                    log::info!("{link_name}: DHCP MTU {mtu}");
-                    let _ = link::set_link_mtu(ifindex, u32::from(mtu));
-                }
-            }
+        if use_mtu
+            && let Some(mtu) = lease.mtu
+            && mtu >= 576
+        {
+            log::info!("{link_name}: DHCP MTU {mtu}");
+            let _ = link::set_link_mtu(ifindex, u32::from(mtu));
         }
 
         // 5. Update hostname if offered and enabled.
-        if use_hostname {
-            if let Some(ref hostname) = lease.hostname {
-                log::info!("{link_name}: DHCP hostname '{hostname}'");
-                let _ = nix::unistd::sethostname(hostname);
-            }
+        if use_hostname && let Some(ref hostname) = lease.hostname {
+            log::info!("{link_name}: DHCP hostname '{hostname}'");
+            let _ = nix::unistd::sethostname(hostname);
         }
 
         // 6. Update DNS / domains on the managed link.
@@ -694,7 +690,7 @@ impl NetworkManager {
             // Write link state file.
             let link_file = state_dir.join(managed.link.index.to_string());
             let mut content = String::new();
-            content.push_str(&format!("# systemd-networkd state file\n"));
+            content.push_str("# systemd-networkd state file\n");
             content.push_str(&format!("ADMIN_STATE={}\n", managed.admin_state));
             content.push_str(&format!("OPER_STATE={}\n", managed.oper_state()));
             if let Some(ref cfg) = managed.config {
@@ -737,7 +733,7 @@ impl NetworkManager {
         // Write overall state.
         let state_file = std::path::Path::new("/run/systemd/netif/state");
         let mut content = String::new();
-        content.push_str(&format!("# systemd-networkd overall state\n"));
+        content.push_str("# systemd-networkd overall state\n");
         content.push_str(&format!("OPER_STATE={}\n", self.overall_state()));
         for dns in &self.dns_servers {
             content.push_str(&format!("DNS={dns}\n"));
@@ -777,23 +773,22 @@ impl NetworkManager {
     pub fn release_all(&mut self) {
         let indices: Vec<u32> = self.dhcp_active_links();
         for ifindex in indices {
-            if let Some(managed) = self.links.get(&ifindex) {
-                if let Some(ref client) = managed.dhcp_client {
-                    if let Some(release_pkt) = client.build_release() {
-                        log::info!(
-                            "{}: sending DHCPRELEASE for {}",
-                            managed.link.name,
-                            client
-                                .lease
-                                .as_ref()
-                                .map(|l| l.address.to_string())
-                                .unwrap_or_default(),
-                        );
-                        // In a real implementation, we'd send this packet.
-                        // For now we just log it.
-                        let _ = release_pkt;
-                    }
-                }
+            if let Some(managed) = self.links.get(&ifindex)
+                && let Some(ref client) = managed.dhcp_client
+                && let Some(release_pkt) = client.build_release()
+            {
+                log::info!(
+                    "{}: sending DHCPRELEASE for {}",
+                    managed.link.name,
+                    client
+                        .lease
+                        .as_ref()
+                        .map(|l| l.address.to_string())
+                        .unwrap_or_default(),
+                );
+                // In a real implementation, we'd send this packet.
+                // For now we just log it.
+                let _ = release_pkt;
             }
             let _ = self.remove_lease(ifindex);
         }

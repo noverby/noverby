@@ -827,8 +827,8 @@ fn analyze_image(path: &Path) -> Result<ImageInfo, String> {
         fs::File::open(path).map_err(|e| format!("Cannot open {}: {}", path.display(), e))?;
 
     // Try GPT first
-    if size >= 2 * SECTOR_SIZE + GPT_HEADER_MIN_SIZE {
-        if let Ok(Some(header)) = read_gpt_header(&mut file) {
+    if size >= 2 * SECTOR_SIZE + GPT_HEADER_MIN_SIZE
+        && let Ok(Some(header)) = read_gpt_header(&mut file) {
             let partitions = read_gpt_partitions(&mut file, &header)
                 .map_err(|e| format!("Failed to read GPT partitions: {}", e))?;
 
@@ -841,11 +841,10 @@ fn analyze_image(path: &Path) -> Result<ImageInfo, String> {
                 mbr_partitions: Vec::new(),
             });
         }
-    }
 
     // Try MBR
-    if size >= SECTOR_SIZE {
-        if let Ok(Some(partitions)) = read_mbr_partitions(&mut file) {
+    if size >= SECTOR_SIZE
+        && let Ok(Some(partitions)) = read_mbr_partitions(&mut file) {
             // Check if MBR is just a protective MBR for GPT
             let is_protective = partitions.len() == 1 && partitions[0].partition_type == 0xEE;
             if !is_protective {
@@ -859,7 +858,6 @@ fn analyze_image(path: &Path) -> Result<ImageInfo, String> {
                 });
             }
         }
-    }
 
     Ok(ImageInfo {
         path: path.to_path_buf(),
@@ -932,8 +930,8 @@ fn cmd_show(info: &ImageInfo, json_mode: JsonMode, no_legend: bool) {
         PartitionTableType::Gpt => {
             if !no_legend {
                 println!(
-                    "{:<5} {:<36} {:<10} {:<28} {}",
-                    "IDX", "TYPE-UUID", "SIZE", "TYPE", "NAME"
+                    "{:<5} {:<36} {:<10} {:<28} NAME",
+                    "IDX", "TYPE-UUID", "SIZE", "TYPE"
                 );
             }
 
@@ -961,8 +959,8 @@ fn cmd_show(info: &ImageInfo, json_mode: JsonMode, no_legend: bool) {
         PartitionTableType::Mbr => {
             if !no_legend {
                 println!(
-                    "{:<5} {:<6} {:<10} {:<10} {:<20} {}",
-                    "IDX", "BOOT", "TYPE", "SIZE", "TYPE NAME", "START LBA"
+                    "{:<5} {:<6} {:<10} {:<10} {:<20} START LBA",
+                    "IDX", "BOOT", "TYPE", "SIZE", "TYPE NAME"
                 );
             }
 
@@ -1140,7 +1138,7 @@ fn json_escape(s: &str) -> String {
 
 fn cmd_discover(no_legend: bool) {
     if !no_legend {
-        println!("{:<12} {:<10} {:<40} {}", "TYPE", "SIZE", "NAME", "PATH");
+        println!("{:<12} {:<10} {:<40} PATH", "TYPE", "SIZE", "NAME");
     }
 
     let mut found = 0;
@@ -1298,10 +1296,10 @@ fn cmd_mount(image: &Path, mount_path: &Path) -> Result<(), String> {
         }
 
         let err = io::Error::last_os_error();
-        return Err(format!(
+        Err(format!(
             "Mount failed: {}. Note: mounting partitioned images requires loopback device setup (not yet fully implemented).",
             err
-        ));
+        ))
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -1349,8 +1347,8 @@ fn cmd_list(info: &ImageInfo, no_legend: bool) -> Result<(), String> {
 
     if !no_legend {
         println!(
-            "{:<5} {:<28} {:<10} {}",
-            "IDX", "TYPE", "SIZE", "MOUNT POINT"
+            "{:<5} {:<28} {:<10} MOUNT POINT",
+            "IDX", "TYPE", "SIZE"
         );
     }
 

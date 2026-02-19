@@ -91,18 +91,18 @@ impl OomdConfig {
                 if let Ok(contents) = fs::read_to_string(p) {
                     cfg.parse_config(&contents);
                 }
-            } else if p.is_dir() {
-                if let Ok(entries) = fs::read_dir(p) {
-                    let mut files: Vec<PathBuf> = entries
-                        .filter_map(|e| e.ok())
-                        .map(|e| e.path())
-                        .filter(|p| p.extension().is_some_and(|ext| ext == "conf"))
-                        .collect();
-                    files.sort();
-                    for file in files {
-                        if let Ok(contents) = fs::read_to_string(&file) {
-                            cfg.parse_config(&contents);
-                        }
+            } else if p.is_dir()
+                && let Ok(entries) = fs::read_dir(p)
+            {
+                let mut files: Vec<PathBuf> = entries
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.path())
+                    .filter(|p| p.extension().is_some_and(|ext| ext == "conf"))
+                    .collect();
+                files.sort();
+                for file in files {
+                    if let Ok(contents) = fs::read_to_string(&file) {
+                        cfg.parse_config(&contents);
                     }
                 }
             }
@@ -728,10 +728,10 @@ impl MonitorState {
             }
 
             // Check cooldown
-            if let Some(last) = self.last_kill.get(&policy.cgroup_path) {
-                if last.elapsed() < Duration::from_secs(KILL_COOLDOWN_SECS) {
-                    continue;
-                }
+            if let Some(last) = self.last_kill.get(&policy.cgroup_path)
+                && last.elapsed() < Duration::from_secs(KILL_COOLDOWN_SECS)
+            {
+                continue;
             }
 
             let mut should_kill = false;
@@ -747,21 +747,20 @@ impl MonitorState {
             }
 
             // Check memory pressure-based killing
-            if policy.memory_pressure_action == ManagedOOMAction::Kill {
-                if let Some(psi) = read_cgroup_memory_pressure(&policy.cgroup_path) {
-                    let limit = policy
-                        .memory_pressure_limit_percent
-                        .unwrap_or(self.config.default_memory_pressure_limit_percent);
-                    let pressure =
-                        psi.effective_pressure(self.config.default_memory_pressure_duration);
+            if policy.memory_pressure_action == ManagedOOMAction::Kill
+                && let Some(psi) = read_cgroup_memory_pressure(&policy.cgroup_path)
+            {
+                let limit = policy
+                    .memory_pressure_limit_percent
+                    .unwrap_or(self.config.default_memory_pressure_limit_percent);
+                let pressure = psi.effective_pressure(self.config.default_memory_pressure_duration);
 
-                    if pressure >= limit as f64 {
-                        should_kill = true;
-                        reason = format!(
-                            "memory pressure {pressure:.1}% >= {limit}% in {}",
-                            policy.cgroup_path.display()
-                        );
-                    }
+                if pressure >= limit as f64 {
+                    should_kill = true;
+                    reason = format!(
+                        "memory pressure {pressure:.1}% >= {limit}% in {}",
+                        policy.cgroup_path.display()
+                    );
                 }
             }
 
@@ -821,8 +820,8 @@ impl MonitorState {
 
 fn sd_notify(msg: &str) {
     if let Ok(socket_path) = std::env::var("NOTIFY_SOCKET") {
-        let path = if socket_path.starts_with('@') {
-            format!("\0{}", &socket_path[1..])
+        let path = if let Some(stripped) = socket_path.strip_prefix('@') {
+            format!("\0{}", stripped)
         } else {
             socket_path.clone()
         };
@@ -973,11 +972,11 @@ fn check_cgroup_v2_memory() -> bool {
     }
 
     // Check memory controller is available
-    if let Ok(controllers) = fs::read_to_string(cgroup_root.join("cgroup.controllers")) {
-        if !controllers.split_whitespace().any(|c| c == "memory") {
-            warn!("oomd: memory controller not available in cgroup v2");
-            return false;
-        }
+    if let Ok(controllers) = fs::read_to_string(cgroup_root.join("cgroup.controllers"))
+        && !controllers.split_whitespace().any(|c| c == "memory")
+    {
+        warn!("oomd: memory controller not available in cgroup v2");
+        return false;
     }
 
     true
@@ -1077,11 +1076,11 @@ fn main() {
         state.monitor_cycle();
 
         // Watchdog keepalive
-        if let Some(interval) = watchdog_interval {
-            if last_watchdog.elapsed() >= interval {
-                sd_notify("WATCHDOG=1");
-                last_watchdog = Instant::now();
-            }
+        if let Some(interval) = watchdog_interval
+            && last_watchdog.elapsed() >= interval
+        {
+            sd_notify("WATCHDOG=1");
+            last_watchdog = Instant::now();
         }
 
         // Sleep until next cycle

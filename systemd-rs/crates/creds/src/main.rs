@@ -355,7 +355,7 @@ fn hex_encode(data: &[u8]) -> String {
 }
 
 fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err("Hex string has odd length".to_string());
     }
     (0..s.len())
@@ -442,7 +442,7 @@ fn decrypt_credential(
     }
 
     // Parse header.
-    if &blob[0..4] != &CRED_MAGIC {
+    if blob[0..4] != CRED_MAGIC {
         return Err("Invalid credential magic — not an encrypted credential".to_string());
     }
 
@@ -461,13 +461,15 @@ fn decrypt_credential(
         .to_string();
 
     // Validate credential name if requested.
-    if let Some(expected) = expected_name {
-        if !expected.is_empty() && !cred_name.is_empty() && expected != cred_name {
-            return Err(format!(
-                "Credential name mismatch: expected {expected:?}, got {:?}",
-                cred_name
-            ));
-        }
+    if let Some(expected) = expected_name
+        && !expected.is_empty()
+        && !cred_name.is_empty()
+        && expected != cred_name
+    {
+        return Err(format!(
+            "Credential name mismatch: expected {expected:?}, got {:?}",
+            cred_name
+        ));
     }
 
     // Check expiry.
@@ -601,7 +603,7 @@ fn cmd_list(system: bool, quiet: bool, no_legend: bool) {
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 
     if !no_legend && !entries.is_empty() {
-        println!("{:<40} {:>10} {}", "NAME", "SIZE", "SECURE");
+        println!("{:<40} {:>10} SECURE", "NAME", "SIZE");
     }
 
     for (name, size, security) in &entries {
@@ -707,11 +709,11 @@ fn cmd_setup(quiet: bool) {
     }
 
     // Ensure parent directory exists.
-    if let Some(parent) = path.parent() {
-        if let Err(e) = fs::create_dir_all(parent) {
-            eprintln!("Failed to create directory {parent:?}: {e}");
-            process::exit(1);
-        }
+    if let Some(parent) = path.parent()
+        && let Err(e) = fs::create_dir_all(parent)
+    {
+        eprintln!("Failed to create directory {parent:?}: {e}");
+        process::exit(1);
     }
 
     // Generate random key.
@@ -744,6 +746,7 @@ fn cmd_setup(quiet: bool) {
 }
 
 /// `systemd-creds encrypt`
+#[allow(clippy::too_many_arguments)]
 fn cmd_encrypt(
     input: &str,
     output: &str,
@@ -813,7 +816,7 @@ fn cmd_encrypt(
 
     if pretty && output == "-" {
         // Output as a unit-file–pasteable SetCredentialEncrypted= line.
-        print!("SetCredentialEncrypted={cred_name}: \\\n");
+        println!("SetCredentialEncrypted={cred_name}: \\");
         // Wrap at 80 chars with continuation backslashes.
         let indent = "        ";
         let wrap_width = 80 - indent.len() - 2; // -2 for " \"
@@ -1042,10 +1045,10 @@ fn parse_timestamp_usec(s: &str) -> u64 {
     if s.eq_ignore_ascii_case("now") {
         return now_usec();
     }
-    if let Some(secs_str) = s.strip_suffix('s') {
-        if let Ok(secs) = secs_str.parse::<u64>() {
-            return secs * 1_000_000;
-        }
+    if let Some(secs_str) = s.strip_suffix('s')
+        && let Ok(secs) = secs_str.parse::<u64>()
+    {
+        return secs * 1_000_000;
     }
     s.parse::<u64>().unwrap_or_else(|_| {
         eprintln!("Failed to parse timestamp: {s:?}");

@@ -38,8 +38,8 @@ pub fn prune_units(
     // table so the socket activation handler can find and start them.
     let mut socket_activation_services = Vec::new();
     for id in &ids_to_keep {
-        if let Some(unit) = unit_table.get(id) {
-            if let Specific::Socket(sock) = &unit.specific {
+        if let Some(unit) = unit_table.get(id)
+            && let Specific::Socket(sock) = &unit.specific {
                 for srvc_id in &sock.conf.services {
                     if !ids_to_keep.contains(srvc_id) {
                         trace!(
@@ -50,7 +50,6 @@ pub fn prune_units(
                     }
                 }
             }
-        }
     }
     ids_to_keep.extend(socket_activation_services);
 

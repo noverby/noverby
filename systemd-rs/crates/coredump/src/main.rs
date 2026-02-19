@@ -322,7 +322,7 @@ impl CoreDumpMeta {
             json_escape(&self.filename)
         ));
         json.push_str(&format!("  \"BACKTRACE\": {}\n", self.backtrace));
-        json.push_str("}");
+        json.push('}');
         json
     }
 
@@ -344,7 +344,7 @@ impl CoreDumpMeta {
             hostname: map.get("HOSTNAME").cloned().unwrap_or_default(),
             comm: map.get("COMM").cloned().unwrap_or_default(),
             exe: map.get("EXE").cloned().unwrap_or_default(),
-            backtrace: map.get("BACKTRACE").map_or(false, |v| v.trim() == "true"),
+            backtrace: map.get("BACKTRACE").is_some_and(|v| v.trim() == "true"),
             core_size: map
                 .get("CORE_SIZE")
                 .and_then(|v| v.trim().parse().ok())
@@ -427,10 +427,10 @@ fn json_unescape(s: &str) -> String {
                 Some('/') => out.push('/'),
                 Some('u') => {
                     let hex: String = chars.by_ref().take(4).collect();
-                    if let Ok(n) = u32::from_str_radix(&hex, 16) {
-                        if let Some(c) = char::from_u32(n) {
-                            out.push(c);
-                        }
+                    if let Ok(n) = u32::from_str_radix(&hex, 16)
+                        && let Some(c) = char::from_u32(n)
+                    {
+                        out.push(c);
                     }
                 }
                 Some(other) => {
@@ -599,10 +599,7 @@ fn list_stored_coredumps(coredump_dir: &Path) -> Vec<(PathBuf, PathBuf, u64)> {
         let mtime = path
             .metadata()
             .and_then(|m| m.modified())
-            .and_then(|t| {
-                t.duration_since(UNIX_EPOCH)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
-            })
+            .and_then(|t| t.duration_since(UNIX_EPOCH).map_err(io::Error::other))
             .map(|d| d.as_secs())
             .unwrap_or(0);
 
@@ -651,15 +648,14 @@ fn vacuum(coredump_dir: &Path, config: &Config) {
     }
 
     // Check keep-free against available disk space.
-    if config.keep_free > 0 {
-        if let Some(avail) = available_disk_space(coredump_dir) {
-            while avail + freed_so_far(&entries, coredump_dir) < config.keep_free
-                && !entries.is_empty()
-            {
-                let (core_path, meta_path, _) = entries.remove(0);
-                let _ = fs::remove_file(&core_path);
-                let _ = fs::remove_file(&meta_path);
-            }
+    if config.keep_free > 0
+        && let Some(avail) = available_disk_space(coredump_dir)
+    {
+        while avail + freed_so_far(&entries, coredump_dir) < config.keep_free && !entries.is_empty()
+        {
+            let (core_path, meta_path, _) = entries.remove(0);
+            let _ = fs::remove_file(&core_path);
+            let _ = fs::remove_file(&meta_path);
         }
     }
 }
@@ -677,7 +673,7 @@ fn available_disk_space(path: &Path) -> Option<u64> {
         unsafe {
             let mut stat: libc::statvfs = std::mem::zeroed();
             if libc::statvfs(c_path.as_ptr(), &mut stat) == 0 {
-                Some(stat.f_bavail as u64 * stat.f_frsize as u64)
+                Some(stat.f_bavail * stat.f_frsize)
             } else {
                 None
             }

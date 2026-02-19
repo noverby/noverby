@@ -486,7 +486,7 @@ fn step_clock(offset_usec: i64) -> io::Result<()> {
     }
 
     let new_secs = new_usec / 1_000_000;
-    let new_nsecs = ((new_usec % 1_000_000) * 1000) as i64;
+    let new_nsecs = (new_usec % 1_000_000) * 1000;
 
     unsafe {
         let ts = libc::timespec {
@@ -713,9 +713,9 @@ fn load_clock_state() {
 
 fn sd_notify(state: &str) {
     if let Ok(path) = std::env::var("NOTIFY_SOCKET") {
-        let path = if path.starts_with('@') {
+        let path = if let Some(stripped) = path.strip_prefix('@') {
             // Abstract socket
-            format!("\0{}", &path[1..])
+            format!("\0{}", stripped)
         } else {
             path
         };
@@ -822,35 +822,35 @@ fn parse_duration_value(s: &str) -> Result<f64, String> {
     }
 
     // Try with suffix
-    if let Some(num) = s.strip_suffix("sec") {
-        if let Ok(v) = num.trim().parse::<f64>() {
-            return Ok(v);
-        }
+    if let Some(num) = s.strip_suffix("sec")
+        && let Ok(v) = num.trim().parse::<f64>()
+    {
+        return Ok(v);
     }
-    if let Some(num) = s.strip_suffix("min") {
-        if let Ok(v) = num.trim().parse::<f64>() {
-            return Ok(v * 60.0);
-        }
+    if let Some(num) = s.strip_suffix("min")
+        && let Ok(v) = num.trim().parse::<f64>()
+    {
+        return Ok(v * 60.0);
     }
-    if let Some(num) = s.strip_suffix("ms") {
-        if let Ok(v) = num.trim().parse::<f64>() {
-            return Ok(v / 1000.0);
-        }
+    if let Some(num) = s.strip_suffix("ms")
+        && let Ok(v) = num.trim().parse::<f64>()
+    {
+        return Ok(v / 1000.0);
     }
-    if let Some(num) = s.strip_suffix('s') {
-        if let Ok(v) = num.trim().parse::<f64>() {
-            return Ok(v);
-        }
+    if let Some(num) = s.strip_suffix('s')
+        && let Ok(v) = num.trim().parse::<f64>()
+    {
+        return Ok(v);
     }
-    if let Some(num) = s.strip_suffix('m') {
-        if let Ok(v) = num.trim().parse::<f64>() {
-            return Ok(v * 60.0);
-        }
+    if let Some(num) = s.strip_suffix('m')
+        && let Ok(v) = num.trim().parse::<f64>()
+    {
+        return Ok(v * 60.0);
     }
-    if let Some(num) = s.strip_suffix('h') {
-        if let Ok(v) = num.trim().parse::<f64>() {
-            return Ok(v * 3600.0);
-        }
+    if let Some(num) = s.strip_suffix('h')
+        && let Ok(v) = num.trim().parse::<f64>()
+    {
+        return Ok(v * 3600.0);
     }
 
     Err(format!("cannot parse duration: {s}"))
@@ -939,10 +939,7 @@ impl TimesyncDaemon {
         }
 
         let servers = self.config.effective_servers();
-        log::info!(
-            "Using NTP server(s): {}",
-            servers.iter().map(|s| *s).collect::<Vec<_>>().join(", ")
-        );
+        log::info!("Using NTP server(s): {}", servers.to_vec().join(", "));
 
         sd_notify_status("Initializing...");
         sd_notify_ready();
@@ -1095,10 +1092,7 @@ impl TimesyncDaemon {
         self.poll_interval = self.config.poll_interval_min_sec;
 
         let servers = self.config.effective_servers();
-        log::info!(
-            "Using NTP server(s): {}",
-            servers.iter().map(|s| *s).collect::<Vec<_>>().join(", ")
-        );
+        log::info!("Using NTP server(s): {}", servers.to_vec().join(", "));
     }
 }
 

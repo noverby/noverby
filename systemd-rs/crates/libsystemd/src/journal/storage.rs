@@ -210,7 +210,7 @@ impl JournalFile {
         let writer = self
             .writer
             .as_mut()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "journal file not writable"))?;
+            .ok_or_else(|| io::Error::other("journal file not writable"))?;
 
         let frame = serialize_entry(entry, seqnum);
         writer.write_all(&frame)?;
@@ -479,11 +479,10 @@ impl JournalStorage {
     /// too large.  Returns the assigned sequence number.
     pub fn append(&mut self, entry: &JournalEntry) -> io::Result<u64> {
         // Check if we need to rotate
-        if let Some(ref file) = self.active_file {
-            if file.size() >= self.config.max_file_size {
+        if let Some(ref file) = self.active_file
+            && file.size() >= self.config.max_file_size {
                 self.rotate()?;
             }
-        }
 
         // Ensure we have an active file
         if self.active_file.is_none() {
@@ -576,11 +575,10 @@ impl JournalStorage {
 
     /// Flush any buffered writes to disk.
     pub fn flush(&mut self) -> io::Result<()> {
-        if let Some(ref mut file) = self.active_file {
-            if let Some(ref mut writer) = file.writer {
+        if let Some(ref mut file) = self.active_file
+            && let Some(ref mut writer) = file.writer {
                 writer.flush()?;
             }
-        }
         Ok(())
     }
 
@@ -725,7 +723,7 @@ fn list_journal_files(dir: &Path) -> io::Result<Vec<PathBuf>> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().map_or(false, |ext| ext == "journal") && path.is_file() {
+        if path.extension().is_some_and(|ext| ext == "journal") && path.is_file() {
             files.push(path);
         }
     }
@@ -744,11 +742,10 @@ fn read_machine_id() -> String {
 /// Generate a random u128 using `/dev/urandom`.
 fn generate_random_u128() -> u128 {
     let mut buf = [0u8; 16];
-    if let Ok(mut f) = File::open("/dev/urandom") {
-        if f.read_exact(&mut buf).is_ok() {
+    if let Ok(mut f) = File::open("/dev/urandom")
+        && f.read_exact(&mut buf).is_ok() {
             return u128::from_le_bytes(buf);
         }
-    }
     // Fallback: use the current time as a poor man's random
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -19,13 +19,11 @@ fn read_pid_file(path: &std::path::Path) -> Option<nix::unistd::Pid> {
         if attempt > 0 {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        if let Ok(contents) = std::fs::read_to_string(path) {
-            if let Ok(pid) = contents.trim().parse::<i32>() {
-                if pid > 0 {
+        if let Ok(contents) = std::fs::read_to_string(path)
+            && let Ok(pid) = contents.trim().parse::<i32>()
+                && pid > 0 {
                     return Some(nix::unistd::Pid::from_raw(pid));
                 }
-            }
-        }
     }
     None
 }
@@ -168,9 +166,9 @@ pub fn wait_for_service(
             std::thread::sleep(exec_check_delay);
             {
                 let mut pid_table_locked = pid_table.lock_poisoned();
-                if let Some(PidEntry::ServiceExited(code)) = pid_table_locked.get(&pid) {
-                    if !conf.success_exit_status.is_success(code) {
-                        let code = code.clone();
+                if let Some(PidEntry::ServiceExited(code)) = pid_table_locked.get(&pid)
+                    && !conf.success_exit_status.is_success(code) {
+                        let code = *code;
                         pid_table_locked.remove(&pid);
                         return Err(RunCmdError::BadExitCode(
                             conf.exec
@@ -180,7 +178,6 @@ pub fn wait_for_service(
                             code,
                         ));
                     }
-                }
             }
             trace!("[FORK_PARENT] exec check passed for service {name}");
         }
@@ -189,8 +186,8 @@ pub fn wait_for_service(
             let mut counter = 1u64;
             let pid = srvc.pid.unwrap();
             loop {
-                if let Some(time_out) = duration_timeout {
-                    if start_time.elapsed() >= time_out {
+                if let Some(time_out) = duration_timeout
+                    && start_time.elapsed() >= time_out {
                         error!("oneshot service {name} reached timeout");
                         return Err(RunCmdError::Timeout(
                             conf.exec
@@ -200,7 +197,6 @@ pub fn wait_for_service(
                             format!("{duration_timeout:?}"),
                         ));
                     }
-                }
                 {
                     let mut pid_table_locked = pid_table.lock_poisoned();
                     match pid_table_locked.get(&pid) {
@@ -212,8 +208,8 @@ pub fn wait_for_service(
                                 PidEntry::ServiceExited(_) => {
                                     trace!("End wait for {name}");
                                     let entry_owned = pid_table_locked.remove(&pid).unwrap();
-                                    if let PidEntry::ServiceExited(code) = entry_owned {
-                                        if !conf.success_exit_status.is_success(&code)
+                                    if let PidEntry::ServiceExited(code) = entry_owned
+                                        && !conf.success_exit_status.is_success(&code)
                                             && !conf
                                                 .exec
                                                 .as_ref()
@@ -230,7 +226,6 @@ pub fn wait_for_service(
                                                 code,
                                             ));
                                         }
-                                    }
                                     break;
                                 }
                                 PidEntry::Helper(_, _) => {
@@ -272,8 +267,8 @@ pub fn wait_for_service(
             let mut counter = 1u64;
             let pid = srvc.pid.unwrap();
             loop {
-                if let Some(time_out) = duration_timeout {
-                    if start_time.elapsed() >= time_out {
+                if let Some(time_out) = duration_timeout
+                    && start_time.elapsed() >= time_out {
                         error!("forking service {name} reached timeout waiting for parent to exit");
                         return Err(RunCmdError::Timeout(
                             conf.exec
@@ -283,7 +278,6 @@ pub fn wait_for_service(
                             format!("{duration_timeout:?}"),
                         ));
                     }
-                }
                 {
                     let mut pid_table_locked = pid_table.lock_poisoned();
                     match pid_table_locked.get(&pid) {
@@ -293,8 +287,8 @@ pub fn wait_for_service(
                         Some(PidEntry::ServiceExited(_)) => {
                             trace!("[FORK_PARENT] Forking parent exited for {name}");
                             let entry_owned = pid_table_locked.remove(&pid).unwrap();
-                            if let PidEntry::ServiceExited(code) = entry_owned {
-                                if !conf.success_exit_status.is_success(&code)
+                            if let PidEntry::ServiceExited(code) = entry_owned
+                                && !conf.success_exit_status.is_success(&code)
                                     && !conf
                                         .exec
                                         .as_ref()
@@ -309,7 +303,6 @@ pub fn wait_for_service(
                                         code,
                                     ));
                                 }
-                            }
                             // Parent exited successfully — the daemon should be
                             // running now. Try to pick up its PID from PIDFile.
                             if let Some(ref pid_file_path) = conf.pid_file {

@@ -123,7 +123,7 @@ fn get_tz_abbr(tm: &libc::tm) -> String {
 
 /// Get the UTC offset in seconds from a tm struct
 fn get_utc_offset(tm: &libc::tm) -> i64 {
-    tm.tm_gmtoff as i64
+    tm.tm_gmtoff
 }
 
 /// Format UTC offset as "+HHMM" or "-HHMM"
@@ -258,8 +258,8 @@ fn read_ntp_servers() -> (Vec<String>, Vec<String>) {
             if let Ok(contents) = fs::read_to_string(path) {
                 parse_ntp_config(&contents, &mut ntp, &mut fallback);
             }
-        } else if path.is_dir() {
-            if let Ok(mut entries) = fs::read_dir(path) {
+        } else if path.is_dir()
+            && let Ok(mut entries) = fs::read_dir(path) {
                 let mut files: Vec<PathBuf> = Vec::new();
                 while let Some(Ok(entry)) = entries.next() {
                     let p = entry.path();
@@ -274,7 +274,6 @@ fn read_ntp_servers() -> (Vec<String>, Vec<String>) {
                     }
                 }
             }
-        }
     }
 
     if fallback.is_empty() {
@@ -743,9 +742,9 @@ fn cmd_timesync_status() {
 
     // Check for saved clock state
     let clock_state = Path::new(TIMESYNCD_STATE_DIR).join("clock");
-    if clock_state.exists() {
-        if let Ok(contents) = fs::read_to_string(&clock_state) {
-            if let Ok(saved) = contents.trim().parse::<u64>() {
+    if clock_state.exists()
+        && let Ok(contents) = fs::read_to_string(&clock_state)
+            && let Ok(saved) = contents.trim().parse::<u64>() {
                 let (now_secs, _) = get_unix_timestamp();
                 let age = now_secs as u64 - saved;
                 let age_str = if age < 60 {
@@ -759,8 +758,6 @@ fn cmd_timesync_status() {
                 };
                 println!("   Last sync: {}", age_str);
             }
-        }
-    }
 
     if !ntp_synced {
         println!();

@@ -39,11 +39,10 @@ fn find_new_unit_path(unit_dirs: &[PathBuf], find_name: &str) -> Result<Option<P
             if symlink_meta.file_type().is_file() && entry_name == find_name {
                 return Ok(Some(entry.path()));
             }
-            if symlink_meta.file_type().is_dir() {
-                if let Some(p) = find_new_unit_path(&[entry.path()], find_name)? {
+            if symlink_meta.file_type().is_dir()
+                && let Some(p) = find_new_unit_path(&[entry.path()], find_name)? {
                     return Ok(Some(p));
                 }
-            }
         }
     }
 

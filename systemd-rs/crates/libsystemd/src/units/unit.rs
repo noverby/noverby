@@ -206,12 +206,11 @@ impl ServiceState {
                 }
                 // tell socket activation to listen to these sockets again
                 for socket_id in &conf.sockets {
-                    if let Some(unit) = run_info.unit_table.get(socket_id) {
-                        if let Specific::Socket(sock) = &unit.specific {
+                    if let Some(unit) = run_info.unit_table.get(socket_id)
+                        && let Specific::Socket(sock) = &unit.specific {
                             let mut_state = &mut *sock.state.write_poisoned();
                             mut_state.sock.activated = false;
                         }
-                    }
                 }
                 run_info.notify_eventfds();
                 Ok(UnitStatus::Started(StatusStarted::WaitingForSocket))
@@ -300,12 +299,11 @@ impl ServiceState {
                 }
                 // tell socket activation to listen to these sockets again
                 for socket_id in &conf.sockets {
-                    if let Some(unit) = run_info.unit_table.get(socket_id) {
-                        if let Specific::Socket(sock) = &unit.specific {
+                    if let Some(unit) = run_info.unit_table.get(socket_id)
+                        && let Specific::Socket(sock) = &unit.specific {
                             let mut_state = &mut *sock.state.write_poisoned();
                             mut_state.sock.activated = false;
                         }
-                    }
                 }
                 run_info.notify_eventfds();
                 Ok(())
@@ -1162,15 +1160,14 @@ fn is_already_mounted(path: &str) -> bool {
             for line in contents.lines() {
                 // /proc/mounts format: device mountpoint fstype options dump pass
                 let mut fields = line.split_whitespace();
-                if let Some(_device) = fields.next() {
-                    if let Some(mountpoint) = fields.next() {
+                if let Some(_device) = fields.next()
+                    && let Some(mountpoint) = fields.next() {
                         let mp = mountpoint.trim_end_matches('/');
                         let mp = if mp.is_empty() { "/" } else { mp };
                         if mp == check_path {
                             return true;
                         }
                     }
-                }
             }
             false
         }

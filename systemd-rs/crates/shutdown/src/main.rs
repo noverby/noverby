@@ -166,15 +166,14 @@ fn unescape_mountinfo_path(s: &str) -> String {
             let d0 = bytes[i + 1];
             let d1 = bytes[i + 2];
             let d2 = bytes[i + 3];
-            if d0.is_ascii_digit() && d1.is_ascii_digit() && d2.is_ascii_digit() {
-                if let Ok(val) =
+            if d0.is_ascii_digit() && d1.is_ascii_digit() && d2.is_ascii_digit()
+                && let Ok(val) =
                     u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 4]).unwrap_or(""), 8)
                 {
                     result.push(val);
                     i += 4;
                     continue;
                 }
-            }
         }
         result.push(bytes[i]);
         i += 1;
@@ -598,14 +597,11 @@ fn do_final_action(action: ShutdownAction) -> ! {
     );
 
     // As a fallback, try the fallback action
-    match action {
-        ShutdownAction::Kexec => {
-            eprintln!("systemd-shutdown: kexec failed, falling back to reboot");
-            unsafe {
-                libc::reboot(libc::RB_AUTOBOOT);
-            }
+    if action == ShutdownAction::Kexec {
+        eprintln!("systemd-shutdown: kexec failed, falling back to reboot");
+        unsafe {
+            libc::reboot(libc::RB_AUTOBOOT);
         }
-        _ => {}
     }
 
     // If we somehow get here, just halt

@@ -149,6 +149,7 @@ impl fmt::Display for Rcode {
 
 /// Common DNS record types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum RecordType {
     A,
     AAAA,
@@ -223,6 +224,7 @@ impl fmt::Display for RecordType {
 
 /// DNS record classes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum RecordClass {
     IN,
     CH,
@@ -744,7 +746,7 @@ pub fn forward_tcp(
     stream.read_exact(&mut len_buf)?;
     let resp_len = u16::from_be_bytes(len_buf) as usize;
 
-    if resp_len < HEADER_SIZE || resp_len > MAX_TCP_SIZE {
+    if !(HEADER_SIZE..=MAX_TCP_SIZE).contains(&resp_len) {
         return Err(DnsError::TooShort);
     }
 
