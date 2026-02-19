@@ -169,7 +169,7 @@
         ./slides
       ];
       nixDirAliases = {
-        packages = ["config/packages"];
+        packages = ["pkgs"];
         flakelightModules = ["config/modules/flakelight"];
         nixosConfigurations = ["config/configurations/nixos"];
         nixosModules = ["config/modules/nixos" "config/modules/nixos/hardware" "config/modules/nixos/desktop"];
