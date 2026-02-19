@@ -23,7 +23,7 @@
   - [📚 Libraries](#-libraries)
   - [🏗️ Infrastructure](#-infrastructure)
 - [🛠️ Development](#-development)
-  - [❄️ Nix](#-nix)
+  - [❄️ Configuration](#-configuration)
   - [🦀 Systems](#-systems)
   - [🌐 Web](#-web)
   - [🐍 Scripting](#-scripting)
@@ -480,7 +480,7 @@
 
 </details>
 
-### ❄️ Nix
+### ❄️ Configuration
 
 [⬆](#toc)
 
