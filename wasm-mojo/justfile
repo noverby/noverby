@@ -6,4 +6,4 @@ build:
   wasm-ld --no-entry --export-all --allow-undefined -mwasm64 -o build/out.wasm build/out.o
 
 test: build
-  deno run --allow-read test.ts
+  deno run --allow-read test/run.ts
