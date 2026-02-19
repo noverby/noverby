@@ -25,6 +25,43 @@
         ''}";
         pass_filenames = false;
       };
+      clippy = {
+        enable = true;
+        entry = "${pkgs.writeShellScript "clippy-multi-project" ''
+          # Collect workspace root directories
+          workspace_dirs=()
+          for manifest in $(${pkgs.findutils}/bin/find . -name Cargo.toml -not -path '*/target/*'); do
+            if ${pkgs.gnugrep}/bin/grep -q '^\[workspace\]' "$manifest"; then
+              dir=$(dirname "$manifest")
+              workspace_dirs+=("$dir")
+              echo "Running cargo clippy --workspace for $manifest"
+              ${pkgs.cargo}/bin/cargo clippy --manifest-path "$manifest" --workspace -- -D warnings
+            fi
+          done
+
+          # Run clippy for standalone packages (not part of a workspace)
+          for manifest in $(${pkgs.findutils}/bin/find . -name Cargo.toml -not -path '*/target/*'); do
+            if ${pkgs.gnugrep}/bin/grep -q '^\[workspace\]' "$manifest"; then
+              continue
+            fi
+            if ! ${pkgs.gnugrep}/bin/grep -q '^\[package\]' "$manifest"; then
+              continue
+            fi
+            dir=$(dirname "$manifest")
+            is_member=false
+            for ws_dir in "''${workspace_dirs[@]}"; do
+              case "$dir" in
+                "$ws_dir"/*) is_member=true; break ;;
+              esac
+            done
+            if [ "$is_member" = false ]; then
+              echo "Running cargo clippy for $manifest"
+              ${pkgs.cargo}/bin/cargo clippy --manifest-path "$manifest" -- -D warnings
+            fi
+          done
+        ''}";
+        pass_filenames = false;
+      };
       rumdl.enable = true;
       mktoc = {
         enable = false;
