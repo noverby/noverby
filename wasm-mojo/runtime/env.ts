@@ -66,9 +66,45 @@ const KGEN_CompilerRT_fprintf = (
 
 // --- Env object ---
 
+// --- Compiler-rt arithmetic stubs ---
+
+/**
+ * __multi3: 128-bit integer multiply (i64 × i64 → i128).
+ *
+ * wasm64 ABI: the result is returned via a pointer (first arg).
+ * Signature: (result_ptr: i64, a_lo: i64, a_hi: i64, b_lo: i64, b_hi: i64) → void
+ *
+ * We only need the low 128 bits of the product.  For the hashing use-case
+ * (Dict/Set) the high halves are typically zero, so the fast path is just
+ * BigInt multiply truncated to 128 bits.
+ */
+const __multi3 = (
+	resultPtr: bigint,
+	aLo: bigint,
+	aHi: bigint,
+	bLo: bigint,
+	bHi: bigint,
+): void => {
+	if (!memory) return;
+
+	// Treat (aHi:aLo) and (bHi:bLo) as unsigned 128-bit integers.
+	const mask64 = 0xffffffffffffffffn;
+	const a = ((aHi & mask64) << 64n) | (aLo & mask64);
+	const b = ((bHi & mask64) << 64n) | (bLo & mask64);
+	const product = a * b;
+
+	const lo = product & mask64;
+	const hi = (product >> 64n) & mask64;
+
+	const view = new DataView(memory.buffer);
+	const ptr = Number(resultPtr);
+	view.setBigInt64(ptr, lo, true);
+	view.setBigInt64(ptr + 8, hi, true);
+};
+
 /** WebAssembly import object providing the environment the Mojo WASM module expects. */
 export const env: WebAssembly.ModuleImports = {
-	memory: new WebAssembly.Memory({ initial: 2 }),
+	memory: new WebAssembly.Memory({ initial: 256 }),
 
 	// libc / runtime stubs
 	__cxa_atexit: (_func: bigint, _obj: bigint, _dso: bigint): number => 0,
@@ -82,6 +118,9 @@ export const env: WebAssembly.ModuleImports = {
 	fdopen: (_fd: bigint, _modePtr: bigint): number => 1,
 	fflush: (_stream: bigint): number => 1,
 	fclose: (_stream: bigint): number => 1,
+
+	// compiler-rt arithmetic builtins (used by Dict/Set hashing)
+	__multi3,
 
 	// math builtins
 	fmaf: (x: number, y: number, z: number): number =>

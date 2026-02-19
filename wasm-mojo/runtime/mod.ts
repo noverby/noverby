@@ -7,6 +7,8 @@ export {
 	getView,
 	initialize,
 } from "./memory.ts";
+export type { Mutation } from "./protocol.ts";
+export { MutationReader, Op } from "./protocol.ts";
 export {
 	allocStringStruct,
 	readStringStruct,
