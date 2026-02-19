@@ -173,11 +173,11 @@
         formatters = ["config/formatters"];
         lib = ["config/lib"];
         flakelightModules = ["config/modules/flakelight"];
-        nixosConfigurations = ["config/configurations/nixos"];
+        nixosConfigurations = ["config/nixos"];
         nixosModules = ["config/modules/nixos" "config/modules/nixos/hardware" "config/modules/nixos/desktop"];
-        homeConfigurations = ["config/configurations/home-manager"];
+        homeConfigurations = ["config/home-manager"];
         homeModules = ["config/modules/home-manager" "config/modules/home-manager/users" "config/modules/home-manager/desktop"];
-        devenvConfigurations = ["config/configurations/devenv"];
+        devenvConfigurations = ["config/devenv"];
         devenvModules = ["config/modules/devenv"];
         withOverlays = ["config/with-overlays"];
       };
