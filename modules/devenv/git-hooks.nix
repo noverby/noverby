@@ -11,16 +11,19 @@
       statix.enable = true;
       taplo.enable = true;
       typos.enable = true;
-      lychee = {
-        enable = true;
-        entry = "${pkgs.writeShellScript "lychee-with-github-token" ''
+      lychee = let
+        lychee = pkgs.writeShellScriptBin "lychee" ''
           token=$(${pkgs.gh}/bin/gh auth token 2>/dev/null || true)
           if [ -n "$token" ]; then
             ${pkgs.lychee}/bin/lychee --github-token "$token" "$@"
           else
             ${pkgs.lychee}/bin/lychee "$@"
           fi
-        ''}";
+        '';
+      in {
+        enable = true;
+        package = lychee;
+        entry = "${lychee}/bin/lychee";
       };
       rustfmt = {
         enable = true;
