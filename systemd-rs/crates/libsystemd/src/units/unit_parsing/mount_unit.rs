@@ -131,6 +131,7 @@ pub fn parse_mount(
             name: unit_name,
             unit: unit_config.unwrap_or_default(),
             install: install_config.unwrap_or_default(),
+            fragment_path: Some(path.clone()),
         },
         mount: mount_section,
     })

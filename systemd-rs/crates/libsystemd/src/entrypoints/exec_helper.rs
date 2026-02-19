@@ -1,5 +1,11 @@
 use std::path::{Path, PathBuf};
 
+use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm::{Aes256Gcm, Nonce};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use sha2::{Digest, Sha256};
+
 use crate::units::{
     PlatformSpecificServiceFields, RLimitValue, ResourceLimit, StandardInput, UtmpMode,
 };
@@ -1016,6 +1022,113 @@ const CREDENTIAL_STORES: &[&str] = &[
     "/etc/credstore",
 ];
 
+/// Path to the host encryption key used for credential encryption/decryption.
+const HOST_KEY_PATH: &str = "/var/lib/systemd/credential.secret";
+
+/// Magic bytes identifying an encrypted credential blob: "sHc\0".
+const CRED_MAGIC: [u8; 4] = [0x73, 0x48, 0x63, 0x00];
+
+/// Fixed header size: magic(4) + seal_type(4) + timestamp(8) + not_after(8) + name_len(4) = 28.
+const CRED_HEADER_FIXED_SIZE: usize = 28;
+
+/// AES-256-GCM nonce size.
+const CRED_AES_IV_SIZE: usize = 12;
+
+/// Seal type: null key (SHA-256 of credential name only).
+const CRED_SEAL_NULL: u32 = 0;
+/// Seal type: host key (SHA-256 of host_key || credential_name).
+const CRED_SEAL_HOST: u32 = 1;
+
+/// Attempt to decrypt an encrypted credential blob.
+///
+/// The blob may be either raw binary (the wire format produced by
+/// `systemd-creds encrypt`) or Base64-encoded. This function tries
+/// Base64 decoding first; if that fails it treats the input as raw.
+///
+/// Returns `Ok(plaintext_bytes)` on success, or `Err(message)` on failure.
+/// On any error the caller should fall back to writing the data as-is
+/// (matching the previous behaviour) so that services which do their own
+/// decryption still work.
+fn try_decrypt_credential(data: &[u8], cred_name: &str) -> Result<Vec<u8>, String> {
+    // Try Base64 decode first (systemd-creds output is always Base64).
+    let blob = {
+        let as_str = String::from_utf8_lossy(data);
+        let cleaned: String = as_str.chars().filter(|c| !c.is_whitespace()).collect();
+        BASE64.decode(&cleaned).unwrap_or_else(|_| data.to_vec())
+    };
+
+    if blob.len() < CRED_HEADER_FIXED_SIZE {
+        return Err("blob too short for credential header".into());
+    }
+
+    // Validate magic.
+    if blob[0..4] != CRED_MAGIC {
+        return Err("invalid credential magic".into());
+    }
+
+    let seal_type = u32::from_le_bytes(blob[4..8].try_into().unwrap());
+    let _timestamp = u64::from_le_bytes(blob[8..16].try_into().unwrap());
+    let not_after = u64::from_le_bytes(blob[16..24].try_into().unwrap());
+    let name_len = u32::from_le_bytes(blob[24..28].try_into().unwrap()) as usize;
+
+    let name_end = CRED_HEADER_FIXED_SIZE + name_len;
+    if blob.len() < name_end + CRED_AES_IV_SIZE {
+        return Err("blob too short for name + IV".into());
+    }
+
+    // Check expiry.
+    if not_after != 0 {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_micros() as u64;
+        if now > not_after {
+            return Err(format!(
+                "credential expired (not_after={not_after}, now={now})"
+            ));
+        }
+    }
+
+    // Extract IV and ciphertext.
+    let iv = &blob[name_end..name_end + CRED_AES_IV_SIZE];
+    let ciphertext = &blob[name_end + CRED_AES_IV_SIZE..];
+
+    if ciphertext.len() < 16 {
+        // AES-GCM tag is 16 bytes minimum
+        return Err("blob too short for ciphertext + GCM tag".into());
+    }
+
+    // Derive AES-256 key based on seal type.
+    let aes_key: [u8; 32] = match seal_type {
+        CRED_SEAL_NULL => {
+            let mut h = Sha256::new();
+            h.update(cred_name.as_bytes());
+            h.finalize().into()
+        }
+        CRED_SEAL_HOST => {
+            let host_key = std::fs::read(HOST_KEY_PATH)
+                .map_err(|e| format!("cannot read host key {HOST_KEY_PATH}: {e}"))?;
+            let mut h = Sha256::new();
+            h.update(&host_key);
+            h.update(cred_name.as_bytes());
+            h.finalize().into()
+        }
+        other => {
+            return Err(format!(
+                "unsupported seal type {other} (TPM2 not implemented)"
+            ));
+        }
+    };
+
+    let cipher =
+        Aes256Gcm::new_from_slice(&aes_key).map_err(|e| format!("AES init failed: {e}"))?;
+    let nonce = Nonce::from_slice(iv);
+
+    cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|_| "decryption failed (wrong key or corrupted data)".into())
+}
+
 /// Set up the per-service credential directory, processing all credential
 /// directives in the correct priority order (matching systemd):
 ///
@@ -1027,10 +1140,12 @@ const CREDENTIAL_STORES: &[&str] = &[
 ///    credential stores. Does NOT overwrite existing credentials (first match
 ///    wins across stores, but won't override LoadCredential/SetCredential).
 ///
-/// Note: Encrypted variants are parsed but decryption is not yet implemented.
-/// The encrypted content is written/loaded as-is, which means the service
-/// will see the raw (still-encrypted) bytes. This matches the principle of
-/// "parse everything, implement runtime gradually".
+/// Encrypted variants (`SetCredentialEncrypted=`, `LoadCredentialEncrypted=`)
+/// are decrypted at runtime using AES-256-GCM with a key derived from the
+/// host secret (`/var/lib/systemd/credential.secret`) or a null key. If
+/// decryption fails (e.g. no host key, wrong key, corrupted data), the
+/// encrypted content is written as-is so services that handle their own
+/// decryption still work.
 fn setup_credentials(config: &ExecHelperConfig) {
     let cred_dir = PathBuf::from(format!("/run/credentials/{}", config.name));
 
@@ -1092,7 +1207,6 @@ fn setup_credentials(config: &ExecHelperConfig) {
     }
 
     // --- Phase 1b: SetCredentialEncrypted= (same priority as SetCredential) ---
-    // NOTE: Decryption not yet implemented — data is written as-is.
     for (id, data) in &config.set_credentials_encrypted {
         let dst = cred_dir.join(id);
         // Don't overwrite a credential set by SetCredential= with the same ID
@@ -1100,7 +1214,18 @@ fn setup_credentials(config: &ExecHelperConfig) {
         if dst.exists() {
             continue;
         }
-        match std::fs::write(&dst, data.as_bytes()) {
+        // Try to decrypt; fall back to writing as-is if decryption fails.
+        let write_data = match try_decrypt_credential(data.as_bytes(), id) {
+            Ok(plaintext) => plaintext,
+            Err(e) => {
+                eprintln!(
+                    "[EXEC_HELPER {}] SetCredentialEncrypted {:?}: decryption failed ({}), writing as-is",
+                    config.name, id, e
+                );
+                data.as_bytes().to_vec()
+            }
+        };
+        match std::fs::write(&dst, &write_data) {
             Ok(()) => {
                 set_credential_perms(&dst, uid, gid);
                 _wrote += 1;
@@ -1195,7 +1320,6 @@ fn setup_credentials(config: &ExecHelperConfig) {
     }
 
     // --- Phase 2b: LoadCredentialEncrypted= (same priority as LoadCredential) ---
-    // NOTE: Decryption not yet implemented — file content is copied as-is.
     for (id, path_str) in &config.load_credentials_encrypted {
         let src = Path::new(path_str);
 
@@ -1231,14 +1355,36 @@ fn setup_credentials(config: &ExecHelperConfig) {
         }
 
         let dst = cred_dir.join(id);
-        match std::fs::copy(&resolved, &dst) {
-            Ok(_) => {
-                set_credential_perms(&dst, uid, gid);
-                _wrote += 1;
+
+        // Read the encrypted file and try to decrypt it.
+        match std::fs::read(&resolved) {
+            Ok(encrypted_data) => {
+                let write_data = match try_decrypt_credential(&encrypted_data, id) {
+                    Ok(plaintext) => plaintext,
+                    Err(e) => {
+                        eprintln!(
+                            "[EXEC_HELPER {}] LoadCredentialEncrypted {:?}: decryption failed ({}), writing as-is",
+                            config.name, id, e
+                        );
+                        encrypted_data
+                    }
+                };
+                match std::fs::write(&dst, &write_data) {
+                    Ok(()) => {
+                        set_credential_perms(&dst, uid, gid);
+                        _wrote += 1;
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "[EXEC_HELPER {}] Failed to write decrypted credential {:?}: {}",
+                            config.name, id, e
+                        );
+                    }
+                }
             }
             Err(e) => {
                 eprintln!(
-                    "[EXEC_HELPER {}] Failed to load encrypted credential {:?} from {:?}: {}",
+                    "[EXEC_HELPER {}] Failed to read encrypted credential {:?} from {:?}: {}",
                     config.name, id, resolved, e
                 );
             }
@@ -1508,5 +1654,247 @@ pub fn write_utmp_dead_record(
         }
 
         updwtmpx(WTMP_PATH.as_ptr() as *const libc::c_char, &ut);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests for credential decryption
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aes_gcm::AeadCore;
+    use aes_gcm::aead::OsRng;
+
+    /// Build an encrypted credential blob in our wire format using null-key sealing.
+    fn make_encrypted_blob(
+        plaintext: &[u8],
+        cred_name: &str,
+        seal_type: u32,
+        timestamp: u64,
+        not_after: u64,
+    ) -> Vec<u8> {
+        // Derive key
+        let aes_key: [u8; 32] = if seal_type == CRED_SEAL_NULL {
+            let mut h = Sha256::new();
+            h.update(cred_name.as_bytes());
+            h.finalize().into()
+        } else {
+            panic!("test helper only supports null seal");
+        };
+
+        let cipher = Aes256Gcm::new_from_slice(&aes_key).unwrap();
+        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let ciphertext = cipher.encrypt(&nonce, plaintext).unwrap();
+
+        let name_bytes = cred_name.as_bytes();
+        let name_len = name_bytes.len() as u32;
+
+        let mut blob = Vec::new();
+        blob.extend_from_slice(&CRED_MAGIC);
+        blob.extend_from_slice(&seal_type.to_le_bytes());
+        blob.extend_from_slice(&timestamp.to_le_bytes());
+        blob.extend_from_slice(&not_after.to_le_bytes());
+        blob.extend_from_slice(&name_len.to_le_bytes());
+        blob.extend_from_slice(name_bytes);
+        blob.extend_from_slice(nonce.as_slice());
+        blob.extend_from_slice(&ciphertext);
+        blob
+    }
+
+    fn now_usec() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_micros() as u64
+    }
+
+    #[test]
+    fn test_try_decrypt_null_key_roundtrip() {
+        let plaintext = b"super-secret-password";
+        let cred_name = "db-pass";
+        let blob = make_encrypted_blob(plaintext, cred_name, CRED_SEAL_NULL, now_usec(), 0);
+
+        let result = try_decrypt_credential(&blob, cred_name);
+        assert!(result.is_ok(), "decryption failed: {:?}", result.err());
+        assert_eq!(result.unwrap(), plaintext);
+    }
+
+    #[test]
+    fn test_try_decrypt_base64_encoded_roundtrip() {
+        let plaintext = b"hello-credential";
+        let cred_name = "test-cred";
+        let blob = make_encrypted_blob(plaintext, cred_name, CRED_SEAL_NULL, now_usec(), 0);
+
+        // Base64-encode the blob (as systemd-creds would output).
+        let b64 = BASE64.encode(&blob);
+
+        let result = try_decrypt_credential(b64.as_bytes(), cred_name);
+        assert!(
+            result.is_ok(),
+            "base64 decryption failed: {:?}",
+            result.err()
+        );
+        assert_eq!(result.unwrap(), plaintext);
+    }
+
+    #[test]
+    fn test_try_decrypt_bad_magic() {
+        let mut blob = vec![0u8; 100];
+        blob[0] = 0xFF; // corrupt magic
+        let result = try_decrypt_credential(&blob, "test");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("magic"));
+    }
+
+    #[test]
+    fn test_try_decrypt_truncated_header() {
+        let blob = vec![0x73, 0x48, 0x63, 0x00]; // just the magic, no more
+        let result = try_decrypt_credential(&blob, "test");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("too short"));
+    }
+
+    #[test]
+    fn test_try_decrypt_expired_credential() {
+        let plaintext = b"expired-data";
+        let cred_name = "expiring";
+        // not_after = 1 µs after epoch → already expired
+        let blob = make_encrypted_blob(plaintext, cred_name, CRED_SEAL_NULL, 0, 1);
+
+        let result = try_decrypt_credential(&blob, cred_name);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("expired"));
+    }
+
+    #[test]
+    fn test_try_decrypt_not_expired_credential() {
+        let plaintext = b"still-valid";
+        let cred_name = "future";
+        let not_after = now_usec() + 3_600_000_000; // 1 hour from now
+        let blob = make_encrypted_blob(plaintext, cred_name, CRED_SEAL_NULL, now_usec(), not_after);
+
+        let result = try_decrypt_credential(&blob, cred_name);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), plaintext);
+    }
+
+    #[test]
+    fn test_try_decrypt_empty_plaintext() {
+        let plaintext = b"";
+        let cred_name = "empty";
+        let blob = make_encrypted_blob(plaintext, cred_name, CRED_SEAL_NULL, now_usec(), 0);
+
+        let result = try_decrypt_credential(&blob, cred_name);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), b"");
+    }
+
+    #[test]
+    fn test_try_decrypt_large_payload() {
+        let plaintext: Vec<u8> = (0..8192).map(|i| (i % 256) as u8).collect();
+        let cred_name = "big";
+        let blob = make_encrypted_blob(&plaintext, cred_name, CRED_SEAL_NULL, now_usec(), 0);
+
+        let result = try_decrypt_credential(&blob, cred_name);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), plaintext);
+    }
+
+    #[test]
+    fn test_try_decrypt_corrupted_ciphertext() {
+        let plaintext = b"important";
+        let cred_name = "test";
+        let mut blob = make_encrypted_blob(plaintext, cred_name, CRED_SEAL_NULL, now_usec(), 0);
+
+        // Corrupt the last byte (part of the GCM authentication tag).
+        let last = blob.len() - 1;
+        blob[last] ^= 0xFF;
+
+        let result = try_decrypt_credential(&blob, cred_name);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("decryption failed"));
+    }
+
+    #[test]
+    fn test_try_decrypt_wrong_credential_name() {
+        // Decrypting with the wrong name should fail because the
+        // AES key is derived from the credential name.
+        let plaintext = b"secret";
+        let cred_name = "correct-name";
+        let blob = make_encrypted_blob(plaintext, cred_name, CRED_SEAL_NULL, now_usec(), 0);
+
+        let result = try_decrypt_credential(&blob, "wrong-name");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("decryption failed"));
+    }
+
+    #[test]
+    fn test_try_decrypt_unsupported_seal_type() {
+        let plaintext = b"data";
+        let cred_name = "test";
+        // Use seal type 99 (unsupported).
+        let mut blob = make_encrypted_blob(plaintext, cred_name, CRED_SEAL_NULL, now_usec(), 0);
+        // Overwrite seal_type field at offset 4..8.
+        blob[4..8].copy_from_slice(&99u32.to_le_bytes());
+
+        let result = try_decrypt_credential(&blob, cred_name);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("unsupported seal type"));
+    }
+
+    #[test]
+    fn test_try_decrypt_not_a_credential_blob() {
+        // Plain text that isn't a credential blob at all should fail gracefully.
+        let result = try_decrypt_credential(b"just plain text data", "test");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_try_decrypt_base64_with_whitespace() {
+        let plaintext = b"whitespace-test";
+        let cred_name = "ws";
+        let blob = make_encrypted_blob(plaintext, cred_name, CRED_SEAL_NULL, now_usec(), 0);
+
+        // Base64-encode and insert whitespace/newlines (as might appear in unit files).
+        let b64 = BASE64.encode(&blob);
+        let with_ws = format!("  {}  \n  ", b64);
+
+        let result = try_decrypt_credential(with_ws.as_bytes(), cred_name);
+        assert!(
+            result.is_ok(),
+            "whitespace base64 decryption failed: {:?}",
+            result.err()
+        );
+        assert_eq!(result.unwrap(), plaintext);
+    }
+
+    #[test]
+    fn test_glob_match_exact() {
+        assert!(glob_match("hello", "hello"));
+        assert!(!glob_match("hello", "world"));
+    }
+
+    #[test]
+    fn test_glob_match_star() {
+        assert!(glob_match("*.txt", "file.txt"));
+        assert!(!glob_match("*.txt", "file.rs"));
+        assert!(glob_match("pre*suf", "pre-middle-suf"));
+        assert!(glob_match("*", "anything"));
+    }
+
+    #[test]
+    fn test_glob_match_question() {
+        assert!(glob_match("h?llo", "hello"));
+        assert!(glob_match("h?llo", "hallo"));
+        assert!(!glob_match("h?llo", "hllo"));
+    }
+
+    #[test]
+    fn test_glob_match_combined() {
+        assert!(glob_match("*.service", "sshd.service"));
+        assert!(glob_match("my-cred-?", "my-cred-a"));
+        assert!(!glob_match("my-cred-?", "my-cred-ab"));
     }
 }

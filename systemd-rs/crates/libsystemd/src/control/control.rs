@@ -1,3 +1,4 @@
+use crate::control::unit_properties;
 use crate::lock_ext::RwLockExt;
 use crate::runtime_info::{ArcMutRuntimeInfo, UnitTable};
 use crate::units::{
@@ -39,6 +40,10 @@ pub fn open_all_sockets(run_info: ArcMutRuntimeInfo, conf: &crate::config::Confi
 pub enum Command {
     ListUnits(Option<UnitIdKind>),
     Status(Option<String>),
+    /// `show <unit> [property,...]` — return all (or filtered) properties as key=value.
+    Show(String, Option<Vec<String>>),
+    /// `cat <unit>` — return the unit file source text.
+    Cat(String),
     LoadNew(Vec<String>),
     LoadAllNew,
     LoadAllNewDry,
@@ -107,6 +112,43 @@ fn parse_command(call: &super::jsonrpc2::Call) -> Result<Command, ParseError> {
                 }
             };
             Command::ReloadOrRestart(name)
+        }
+        "show" => {
+            // show <unit> [property-filter...]
+            // Params: String (unit name) or Array [unit_name, prop1, prop2, ...]
+            match &call.params {
+                Some(Value::String(s)) => Command::Show(s.clone(), None),
+                Some(Value::Array(arr)) if !arr.is_empty() => {
+                    let name = arr[0].as_str().unwrap_or("").to_owned();
+                    let filter = if arr.len() > 1 {
+                        Some(
+                            arr[1..]
+                                .iter()
+                                .filter_map(|v| v.as_str().map(|s| s.to_owned()))
+                                .collect(),
+                        )
+                    } else {
+                        None
+                    };
+                    Command::Show(name, filter)
+                }
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "show requires a unit name".to_string(),
+                    ));
+                }
+            }
+        }
+        "cat" => {
+            let name = match &call.params {
+                Some(Value::String(s)) => s.clone(),
+                Some(_) | None => {
+                    return Err(ParseError::ParamsInvalid(
+                        "Params must be a single string".to_string(),
+                    ));
+                }
+            };
+            Command::Cat(name)
         }
         "is-active" => {
             let name = match &call.params {
@@ -427,6 +469,40 @@ pub fn execute_command(
 ) -> Result<serde_json::Value, String> {
     let mut result_vec = Value::Array(Vec::new());
     match cmd {
+        Command::Show(unit_name, filter) => {
+            let ri = run_info.read_poisoned();
+            let units = find_units_with_name(&unit_name, &ri.unit_table);
+            if units.is_empty() {
+                return Err(format!("Unit {unit_name} not found."));
+            }
+            let unit = &units[0];
+            let props = unit_properties::collect_properties(unit);
+            let text = unit_properties::format_properties(&props, filter.as_deref());
+            return Ok(serde_json::json!({ "show": text }));
+        }
+        Command::Cat(unit_name) => {
+            let ri = run_info.read_poisoned();
+            let units = find_units_with_name(&unit_name, &ri.unit_table);
+            if units.is_empty() {
+                return Err(format!("Unit {unit_name} not found."));
+            }
+            let unit = &units[0];
+            let fragment_path = unit.common.unit.fragment_path.as_ref();
+            match fragment_path {
+                Some(path) => {
+                    let content = std::fs::read_to_string(path)
+                        .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+                    let mut out = format!("# {}\n", path.display());
+                    out.push_str(&content);
+                    return Ok(serde_json::json!({ "cat": out }));
+                }
+                None => {
+                    return Err(format!(
+                        "No fragment path recorded for {unit_name} (unit may have been generated at runtime)"
+                    ));
+                }
+            }
+        }
         Command::Shutdown => {
             crate::shutdown::shutdown_sequence(run_info);
         }

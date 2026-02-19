@@ -3,5 +3,6 @@
 #[allow(clippy::module_inception)]
 mod control;
 pub mod jsonrpc2;
+pub mod unit_properties;
 
 pub use control::*;

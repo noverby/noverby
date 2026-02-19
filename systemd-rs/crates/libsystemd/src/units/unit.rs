@@ -14,6 +14,7 @@ use crate::units::{
     UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode, acquire_locks,
 };
 
+use std::path::PathBuf;
 use std::sync::RwLock;
 
 /// A units has a common part that all units share, like dependencies and a description. The specific part containbs mutable state and
@@ -1106,6 +1107,11 @@ fn is_already_mounted(path: &str) -> bool {
 pub struct UnitConfig {
     pub description: String,
     pub documentation: Vec<String>,
+
+    /// The path to the unit file on disk (systemd calls this `FragmentPath`).
+    /// `None` for units synthesised at runtime (e.g. by generators) that have
+    /// no backing file, or for units whose path was not recorded at parse time.
+    pub fragment_path: Option<PathBuf>,
 
     /// This is needed for adding/removing units. All units in this set must be present
     /// or this unit is considered invalid os it has to be removed too / cannot be added.

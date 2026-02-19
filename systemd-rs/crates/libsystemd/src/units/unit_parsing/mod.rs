@@ -19,6 +19,8 @@ pub struct ParsedCommonConfig {
     pub unit: ParsedUnitSection,
     pub install: ParsedInstallSection,
     pub name: String,
+    /// The path to the unit file on disk (FragmentPath in systemd terminology).
+    pub fragment_path: Option<PathBuf>,
 }
 pub struct ParsedServiceConfig {
     pub common: ParsedCommonConfig,
