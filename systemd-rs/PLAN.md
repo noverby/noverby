@@ -322,10 +322,13 @@ just test-keep
 
 ### Workflow for testing systemd-rs changes
 
+> **⚠️ Important:** Nix flakes only see files tracked by git. When adding new crates or files, you **must** `git add` them before running `just build` or `just test`, otherwise the Nix build will fail with "No such file or directory" errors. This applies to new `crates/*/` directories, `Cargo.toml`, `Cargo.lock`, `default.nix`, and any other new files.
+
 1. Make changes to `systemd-rs` source code
-2. Run `just test` from `nixos-rs/` — this rebuilds the Nix package (picking up your source changes), rebuilds the NixOS image, boots it in cloud-hypervisor, and reports pass/fail with full boot output
-3. On failure, inspect the captured serial log for the exact point where boot diverged — kernel messages, systemd-rs unit startup output, and any panics or errors are all captured
-4. Use `just test-keep` to leave the VM running after a successful boot so you can log in and inspect the running system
+2. If you added new files or crates, run `git add` on them (e.g. `git add crates/newcomponent/ Cargo.toml Cargo.lock default.nix`)
+3. Run `just test` from `nixos-rs/` — this rebuilds the Nix package (picking up your source changes), rebuilds the NixOS image, boots it in cloud-hypervisor, and reports pass/fail with full boot output
+4. On failure, inspect the captured serial log for the exact point where boot diverged — kernel messages, systemd-rs unit startup output, and any panics or errors are all captured
+5. Use `just test-keep` to leave the VM running after a successful boot so you can log in and inspect the running system
 
 ### What the boot test validates
 
