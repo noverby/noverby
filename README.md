@@ -24,7 +24,7 @@
   - [🏗️ Infrastructure](#-infrastructure)
 - [🛠️ Development](#-development)
   - [❄️ Nix](#-nix)
-  - [🦀 Rust](#-rust)
+  - [🦀 Systems](#-systems)
   - [🌐 Web](#-web)
   - [🐍 Scripting](#-scripting)
 - [📱 Applications](#-applications)
@@ -509,7 +509,7 @@
 
 </details>
 
-### 🦀 Rust
+### 🦀 Systems
 
 [⬆](#toc)
 
