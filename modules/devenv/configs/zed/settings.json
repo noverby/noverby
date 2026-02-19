@@ -1,4 +1,5 @@
 {
+	"$comment": "After editing config files in this directory, run `direnv reload` to apply changes to the repository.",
 	"languages": {
 		"JavaScript": { "formatter": { "language_server": { "name": "biome" } } },
 		"TypeScript": { "formatter": { "language_server": { "name": "biome" } } },
