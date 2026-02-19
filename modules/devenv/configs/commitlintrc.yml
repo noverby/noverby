@@ -24,6 +24,7 @@ rules:
       - backend
       - homepage
       - config
+      - modules
       - nixos-rs
       - pkgs
       - pkg-config-rs

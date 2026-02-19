@@ -141,10 +141,10 @@
 
 | Module | Description |
 |-|-|
-| [Flakelight ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/flakelight) | Flakelight modules |
-| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/home-manager) | Home Manager modules |
-| [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/nixos) | NixOS modules |
-| [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/nix/modules/devenv) | Devenv modules |
+| [Flakelight ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/flakelight) | Flakelight modules |
+| [Home Manager ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/home-manager) | Home Manager modules |
+| [NixOS ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/nixos) | NixOS modules |
+| [Devenv ❄️](https://tangled.org/@overby.me/overby.me/tree/main/modules/devenv) | Devenv modules |
 
 </details>
 
