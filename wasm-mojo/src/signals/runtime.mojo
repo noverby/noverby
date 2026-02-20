@@ -32,6 +32,17 @@ from sys import size_of
 from memory import UnsafePointer, memcpy
 from scope import ScopeArena, ScopeState, HOOK_SIGNAL, HOOK_MEMO, HOOK_EFFECT
 from vdom import TemplateRegistry, VNodeStore
+from events import (
+    HandlerRegistry,
+    HandlerEntry,
+    ACTION_NONE,
+    ACTION_SIGNAL_SET_I32,
+    ACTION_SIGNAL_ADD_I32,
+    ACTION_SIGNAL_SUB_I32,
+    ACTION_SIGNAL_TOGGLE,
+    ACTION_SIGNAL_SET_INPUT,
+    ACTION_CUSTOM,
+)
 
 
 # ── SignalEntry ──────────────────────────────────────────────────────────────
@@ -299,6 +310,7 @@ struct Runtime(Movable):
     var scopes: ScopeArena
     var templates: TemplateRegistry
     var vnodes: VNodeStore
+    var handlers: HandlerRegistry
     var current_context: Int  # -1 = no active context
     var current_scope: Int  # -1 = no active scope (for hooks)
     var dirty_scopes: List[UInt32]
@@ -310,6 +322,7 @@ struct Runtime(Movable):
         self.scopes = ScopeArena()
         self.templates = TemplateRegistry()
         self.vnodes = VNodeStore()
+        self.handlers = HandlerRegistry()
         self.current_context = -1
         self.current_scope = -1
         self.dirty_scopes = List[UInt32]()
@@ -319,6 +332,7 @@ struct Runtime(Movable):
         self.scopes = other.scopes^
         self.templates = other.templates^
         self.vnodes = other.vnodes^
+        self.handlers = other.handlers^
         self.current_context = other.current_context
         self.current_scope = other.current_scope
         self.dirty_scopes = other.dirty_scopes^
@@ -511,6 +525,122 @@ struct Runtime(Movable):
         else:
             # Re-render — return existing signal key
             return self.scopes.next_hook(scope_id)
+
+    # ── Event handler management ─────────────────────────────────────
+
+    fn register_handler(mut self, entry: HandlerEntry) -> UInt32:
+        """Register an event handler and return its stable ID.
+
+        The handler ID is used in AVAL_EVENT attribute values and by
+        the JS EventBridge to dispatch events back to WASM.
+        """
+        return self.handlers.register(entry)
+
+    fn remove_handler(mut self, id: UInt32):
+        """Remove an event handler by ID."""
+        self.handlers.remove(id)
+
+    fn dispatch_event(mut self, handler_id: UInt32, event_type: UInt8) -> Bool:
+        """Dispatch an event to the handler at `handler_id`.
+
+        Executes the handler's action (e.g. signal write) and returns
+        True if the action was executed, False if the handler was not
+        found or is a no-op.
+
+        After dispatching, affected scopes will be in the dirty queue
+        (via signal write → subscriber notification).
+
+        Args:
+            handler_id: The handler to invoke.
+            event_type: The DOM event type tag (EVT_CLICK, etc.).
+
+        Returns:
+            True if an action was executed, False otherwise.
+        """
+        if not self.handlers.contains(handler_id):
+            return False
+
+        var entry = self.handlers.get(handler_id)
+        var action = entry.action
+
+        if action == ACTION_NONE:
+            # No-op handler — just mark the scope dirty directly
+            var found = False
+            for j in range(len(self.dirty_scopes)):
+                if self.dirty_scopes[j] == entry.scope_id:
+                    found = True
+                    break
+            if not found:
+                self.dirty_scopes.append(entry.scope_id)
+            return False
+
+        elif action == ACTION_SIGNAL_SET_I32:
+            self.write_signal[Int32](entry.signal_key, entry.operand)
+            return True
+
+        elif action == ACTION_SIGNAL_ADD_I32:
+            var current = self.peek_signal[Int32](entry.signal_key)
+            self.write_signal[Int32](entry.signal_key, current + entry.operand)
+            return True
+
+        elif action == ACTION_SIGNAL_SUB_I32:
+            var current = self.peek_signal[Int32](entry.signal_key)
+            self.write_signal[Int32](entry.signal_key, current - entry.operand)
+            return True
+
+        elif action == ACTION_SIGNAL_TOGGLE:
+            var current = self.peek_signal[Int32](entry.signal_key)
+            if current == 0:
+                self.write_signal[Int32](entry.signal_key, Int32(1))
+            else:
+                self.write_signal[Int32](entry.signal_key, Int32(0))
+            return True
+
+        elif action == ACTION_CUSTOM:
+            # Custom handlers are handled by JS — just mark scope dirty
+            var found = False
+            for j in range(len(self.dirty_scopes)):
+                if self.dirty_scopes[j] == entry.scope_id:
+                    found = True
+                    break
+            if not found:
+                self.dirty_scopes.append(entry.scope_id)
+            return False
+
+        return False
+
+    fn dispatch_event_with_i32(
+        mut self, handler_id: UInt32, event_type: UInt8, value: Int32
+    ) -> Bool:
+        """Dispatch an event with an Int32 payload (e.g. from input).
+
+        For ACTION_SIGNAL_SET_INPUT, the payload is used as the new signal
+        value instead of the handler's operand.  For other actions, this
+        falls back to the normal dispatch.
+
+        Args:
+            handler_id: The handler to invoke.
+            event_type: The DOM event type tag.
+            value: The Int32 payload from the event.
+
+        Returns:
+            True if an action was executed, False otherwise.
+        """
+        if not self.handlers.contains(handler_id):
+            return False
+
+        var entry = self.handlers.get(handler_id)
+
+        if entry.action == ACTION_SIGNAL_SET_INPUT:
+            self.write_signal[Int32](entry.signal_key, value)
+            return True
+
+        # Fall back to normal dispatch for other action types
+        return self.dispatch_event(handler_id, event_type)
+
+    fn handler_count(self) -> Int:
+        """Return the number of live event handlers."""
+        return self.handlers.count()
 
 
 # ── Heap-allocated Runtime handle ────────────────────────────────────────────

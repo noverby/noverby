@@ -484,4 +484,74 @@ export interface WasmExports extends WebAssembly.Exports {
 	vnode_dyn_attr_id_count(storePtr: bigint, index: number): number;
 	vnode_get_dyn_attr_id(storePtr: bigint, index: number, pos: number): number;
 	vnode_is_mounted(storePtr: bigint, index: number): number;
+
+	// ── Phase 6: Event Handler Registry ──────────────────────────────
+
+	// Handler registration
+	handler_register_signal_add(
+		rtPtr: bigint,
+		scopeId: number,
+		signalKey: number,
+		delta: number,
+		eventName: bigint,
+	): number;
+	handler_register_signal_sub(
+		rtPtr: bigint,
+		scopeId: number,
+		signalKey: number,
+		delta: number,
+		eventName: bigint,
+	): number;
+	handler_register_signal_set(
+		rtPtr: bigint,
+		scopeId: number,
+		signalKey: number,
+		value: number,
+		eventName: bigint,
+	): number;
+	handler_register_signal_toggle(
+		rtPtr: bigint,
+		scopeId: number,
+		signalKey: number,
+		eventName: bigint,
+	): number;
+	handler_register_signal_set_input(
+		rtPtr: bigint,
+		scopeId: number,
+		signalKey: number,
+		eventName: bigint,
+	): number;
+	handler_register_custom(
+		rtPtr: bigint,
+		scopeId: number,
+		eventName: bigint,
+	): number;
+	handler_register_noop(
+		rtPtr: bigint,
+		scopeId: number,
+		eventName: bigint,
+	): number;
+
+	// Handler management
+	handler_remove(rtPtr: bigint, handlerId: number): void;
+	handler_count(rtPtr: bigint): number;
+	handler_contains(rtPtr: bigint, handlerId: number): number;
+
+	// Handler queries
+	handler_scope_id(rtPtr: bigint, handlerId: number): number;
+	handler_action(rtPtr: bigint, handlerId: number): number;
+	handler_signal_key(rtPtr: bigint, handlerId: number): number;
+	handler_operand(rtPtr: bigint, handlerId: number): number;
+
+	// Event dispatch
+	dispatch_event(rtPtr: bigint, handlerId: number, eventType: number): number;
+	dispatch_event_with_i32(
+		rtPtr: bigint,
+		handlerId: number,
+		eventType: number,
+		value: number,
+	): number;
+
+	// Dirty scope management
+	runtime_drain_dirty(rtPtr: bigint): number;
 }

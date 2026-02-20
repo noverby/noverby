@@ -2432,7 +2432,7 @@ runtime/
 - [x] **M3:** Templates registered, Tier 1 VNode builder produces correct structures, tag helpers work.
 - [x] **M4:** Diff algorithm produces correct mutations. Full mutation round-trip: Mojo diff → binary buffer → JS decode → verified.
 - [x] **M5:** JS interpreter applies mutations to real DOM. Hand-crafted mutation buffers produce correct DOM trees.
-- [ ] **M6:** Events flow: click in DOM → JS → WASM → signal write → re-render → mutations → DOM update.
+- [x] **M6:** Events flow: click in DOM → JS → WASM → signal write → re-render → mutations → DOM update.
 - [ ] **M7:** Counter app works in a browser. Click increment, see number change. 🎉
 - [ ] **M8:** Todo list works. Conditional rendering, keyed lists, context, error boundaries.
 - [ ] **M9:** js-framework-benchmark competitive. Memory bounded. Tier 2 compile-time templates validated. Developer tools functional.
