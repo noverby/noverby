@@ -999,6 +999,24 @@ fn args_f64_f64(a: Float64, b: Float64) -> List[WasmtimeVal]:
     return v
 
 
+fn args_i32_i32_i32(a: Int32, b: Int32, c: Int32) -> List[WasmtimeVal]:
+    """Build a three-i32 argument list."""
+    var v = List[WasmtimeVal]()
+    v.append(WasmtimeVal.from_i32(a))
+    v.append(WasmtimeVal.from_i32(b))
+    v.append(WasmtimeVal.from_i32(c))
+    return v
+
+
+fn args_f64_f64_f64(a: Float64, b: Float64, c: Float64) -> List[WasmtimeVal]:
+    """Build a three-f64 argument list."""
+    var v = List[WasmtimeVal]()
+    v.append(WasmtimeVal.from_f64(a))
+    v.append(WasmtimeVal.from_f64(b))
+    v.append(WasmtimeVal.from_f64(c))
+    return v
+
+
 fn args_ptr(ptr: Int) -> List[WasmtimeVal]:
     """Build a single-pointer (i64) argument list from an Int address."""
     var v = List[WasmtimeVal]()
@@ -1011,6 +1029,57 @@ fn args_ptr_ptr(a: Int, b: Int) -> List[WasmtimeVal]:
     var v = List[WasmtimeVal]()
     v.append(WasmtimeVal.from_i64(Int64(a)))
     v.append(WasmtimeVal.from_i64(Int64(b)))
+    return v
+
+
+fn args_ptr_i32(ptr: Int, val: Int32) -> List[WasmtimeVal]:
+    """Build a (ptr, i32) argument list."""
+    var v = List[WasmtimeVal]()
+    v.append(WasmtimeVal.from_i64(Int64(ptr)))
+    v.append(WasmtimeVal.from_i32(val))
+    return v
+
+
+fn args_ptr_i32_i32(ptr: Int, a: Int32, b: Int32) -> List[WasmtimeVal]:
+    """Build a (ptr, i32, i32) argument list."""
+    var v = List[WasmtimeVal]()
+    v.append(WasmtimeVal.from_i64(Int64(ptr)))
+    v.append(WasmtimeVal.from_i32(a))
+    v.append(WasmtimeVal.from_i32(b))
+    return v
+
+
+fn args_ptr_i32_i32_i32(
+    ptr: Int, a: Int32, b: Int32, c: Int32
+) -> List[WasmtimeVal]:
+    """Build a (ptr, i32, i32, i32) argument list."""
+    var v = List[WasmtimeVal]()
+    v.append(WasmtimeVal.from_i64(Int64(ptr)))
+    v.append(WasmtimeVal.from_i32(a))
+    v.append(WasmtimeVal.from_i32(b))
+    v.append(WasmtimeVal.from_i32(c))
+    return v
+
+
+fn args_ptr_i32_i32_i32_ptr(
+    ptr: Int, a: Int32, b: Int32, c: Int32, ptr2: Int
+) -> List[WasmtimeVal]:
+    """Build a (ptr, i32, i32, i32, ptr) argument list."""
+    var v = List[WasmtimeVal]()
+    v.append(WasmtimeVal.from_i64(Int64(ptr)))
+    v.append(WasmtimeVal.from_i32(a))
+    v.append(WasmtimeVal.from_i32(b))
+    v.append(WasmtimeVal.from_i32(c))
+    v.append(WasmtimeVal.from_i64(Int64(ptr2)))
+    return v
+
+
+fn args_ptr_i32_ptr(ptr: Int, val: Int32, ptr2: Int) -> List[WasmtimeVal]:
+    """Build a (ptr, i32, ptr) argument list — i64, i32, i64."""
+    var v = List[WasmtimeVal]()
+    v.append(WasmtimeVal.from_i64(Int64(ptr)))
+    v.append(WasmtimeVal.from_i32(val))
+    v.append(WasmtimeVal.from_i64(Int64(ptr2)))
     return v
 
 
@@ -1029,6 +1098,52 @@ fn args_ptr_ptr_ptr(a: Int, b: Int, c: Int) -> List[WasmtimeVal]:
     v.append(WasmtimeVal.from_i64(Int64(a)))
     v.append(WasmtimeVal.from_i64(Int64(b)))
     v.append(WasmtimeVal.from_i64(Int64(c)))
+    return v
+
+
+fn args_ptr_ptr_i32(a: Int, b: Int, c: Int32) -> List[WasmtimeVal]:
+    """Build a (ptr, ptr, i32) argument list."""
+    var v = List[WasmtimeVal]()
+    v.append(WasmtimeVal.from_i64(Int64(a)))
+    v.append(WasmtimeVal.from_i64(Int64(b)))
+    v.append(WasmtimeVal.from_i32(c))
+    return v
+
+
+fn args_ptr_ptr_ptr_ptr(a: Int, b: Int, c: Int, d: Int) -> List[WasmtimeVal]:
+    """Build a four-pointer (i64, i64, i64, i64) argument list."""
+    var v = List[WasmtimeVal]()
+    v.append(WasmtimeVal.from_i64(Int64(a)))
+    v.append(WasmtimeVal.from_i64(Int64(b)))
+    v.append(WasmtimeVal.from_i64(Int64(c)))
+    v.append(WasmtimeVal.from_i64(Int64(d)))
+    return v
+
+
+fn args_ptr_ptr_ptr_ptr_i32(
+    a: Int, b: Int, c: Int, d: Int, e: Int32
+) -> List[WasmtimeVal]:
+    """Build a (ptr, ptr, ptr, ptr, i32) argument list."""
+    var v = List[WasmtimeVal]()
+    v.append(WasmtimeVal.from_i64(Int64(a)))
+    v.append(WasmtimeVal.from_i64(Int64(b)))
+    v.append(WasmtimeVal.from_i64(Int64(c)))
+    v.append(WasmtimeVal.from_i64(Int64(d)))
+    v.append(WasmtimeVal.from_i32(e))
+    return v
+
+
+fn args_ptr_ptr_ptr_ptr_i32_i32(
+    a: Int, b: Int, c: Int, d: Int, e: Int32, f: Int32
+) -> List[WasmtimeVal]:
+    """Build a (ptr, ptr, ptr, ptr, i32, i32) argument list."""
+    var v = List[WasmtimeVal]()
+    v.append(WasmtimeVal.from_i64(Int64(a)))
+    v.append(WasmtimeVal.from_i64(Int64(b)))
+    v.append(WasmtimeVal.from_i64(Int64(c)))
+    v.append(WasmtimeVal.from_i64(Int64(d)))
+    v.append(WasmtimeVal.from_i32(e))
+    v.append(WasmtimeVal.from_i32(f))
     return v
 
 
