@@ -1,5 +1,6 @@
 # Port of test/consistency.test.ts — cross-function consistency checks exercised
-# through the real WASM binary via wasmtime-py (called from Mojo via Python interop).
+# through the real WASM binary via wasmtime-mojo (pure Mojo FFI bindings —
+# no Python interop required).
 #
 # These tests verify that different WASM-exported functions compose correctly:
 # add/sub inverses, mul/div inverses, neg/abs relationships, min/max ordering,
@@ -9,14 +10,24 @@
 # Run with:
 #   mojo test test/test_consistency.mojo
 
-from python import Python, PythonObject
+from memory import UnsafePointer
 from testing import assert_true, assert_equal
 
+from wasm_harness import (
+    WasmInstance,
+    get_instance,
+    args_i32,
+    args_i32_i32,
+    args_i32_i32_i32,
+    args_ptr,
+    args_ptr_ptr,
+    args_ptr_ptr_ptr,
+    no_args,
+)
 
-fn _get_wasm() raises -> PythonObject:
-    Python.add_to_path("test")
-    var harness = Python.import_module("wasm_harness")
-    return harness.get_instance()
+
+fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
+    return get_instance()
 
 
 # ---------------------------------------------------------------------------
@@ -46,8 +57,12 @@ fn test_add_sub_inverse() raises:
     var w = _get_wasm()
     var x = 17
     var y = 9
-    var s = w.add_int32(x, y)
-    assert_equal(Int(w.sub_int32(s, y)), x, "sub(add(x, y), y) === x")
+    var s = Int(w[].call_i32("add_int32", args_i32_i32(x, y)))
+    assert_equal(
+        Int(w[].call_i32("sub_int32", args_i32_i32(s, y))),
+        x,
+        "sub(add(x, y), y) === x",
+    )
 
 
 fn test_mul_div_inverse() raises:
@@ -55,24 +70,32 @@ fn test_mul_div_inverse() raises:
     var w = _get_wasm()
     var x = 6
     var y = 3
-    var product = w.mul_int32(x, y)
-    assert_equal(Int(w.div_int32(product, y)), x, "div(mul(x, y), y) === x")
+    var product = Int(w[].call_i32("mul_int32", args_i32_i32(x, y)))
+    assert_equal(
+        Int(w[].call_i32("div_int32", args_i32_i32(product, y))),
+        x,
+        "div(mul(x, y), y) === x",
+    )
 
 
 fn test_neg_neg_identity() raises:
     """neg(neg(x)) === x."""
     var w = _get_wasm()
-    assert_equal(Int(w.neg_int32(w.neg_int32(42))), 42, "neg(neg(42)) === 42")
+    var inner = Int(w[].call_i32("neg_int32", args_i32(42)))
+    assert_equal(
+        Int(w[].call_i32("neg_int32", args_i32(inner))),
+        42,
+        "neg(neg(42)) === 42",
+    )
 
 
 fn test_abs_neg_eq_abs() raises:
     """abs(neg(x)) === abs(x) for positive x."""
     var w = _get_wasm()
-    assert_equal(
-        Int(w.abs_int32(w.neg_int32(7))),
-        Int(w.abs_int32(7)),
-        "abs(neg(7)) === abs(7)",
-    )
+    var neg7 = Int(w[].call_i32("neg_int32", args_i32(7)))
+    var abs_neg = Int(w[].call_i32("abs_int32", args_i32(neg7)))
+    var abs_pos = Int(w[].call_i32("abs_int32", args_i32(7)))
+    assert_equal(abs_neg, abs_pos, "abs(neg(7)) === abs(7)")
 
 
 fn test_min_le_max() raises:
@@ -80,9 +103,13 @@ fn test_min_le_max() raises:
     var w = _get_wasm()
     var a = 3
     var b = 7
-    var lo = w.min_int32(a, b)
-    var hi = w.max_int32(a, b)
-    assert_equal(Int(w.le_int32(lo, hi)), 1, "min(x,y) <= max(x,y)")
+    var lo = Int(w[].call_i32("min_int32", args_i32_i32(a, b)))
+    var hi = Int(w[].call_i32("max_int32", args_i32_i32(a, b)))
+    assert_equal(
+        Int(w[].call_i32("le_int32", args_i32_i32(lo, hi))),
+        1,
+        "min(x,y) <= max(x,y)",
+    )
 
 
 fn test_bitwise_identity_and_or_xor() raises:
@@ -90,8 +117,10 @@ fn test_bitwise_identity_and_or_xor() raises:
     var w = _get_wasm()
     var x = 0b1100
     var y = 0b1010
-    var lhs = Int(w.bitor_int32(w.bitand_int32(x, y), w.bitxor_int32(x, y)))
-    var rhs = Int(w.bitor_int32(x, y))
+    var band = Int(w[].call_i32("bitand_int32", args_i32_i32(x, y)))
+    var bxor = Int(w[].call_i32("bitxor_int32", args_i32_i32(x, y)))
+    var lhs = Int(w[].call_i32("bitor_int32", args_i32_i32(band, bxor)))
+    var rhs = Int(w[].call_i32("bitor_int32", args_i32_i32(x, y)))
     assert_equal(lhs, rhs, "(x & y) | (x ^ y) === x | y")
 
 
@@ -99,8 +128,9 @@ fn test_shl_shr_roundtrip() raises:
     """shr(shl(x, 4), 4) === x."""
     var w = _get_wasm()
     var x = 5
+    var shifted = Int(w[].call_i32("shl_int32", args_i32_i32(x, 4)))
     assert_equal(
-        Int(w.shr_int32(w.shl_int32(x, 4), 4)),
+        Int(w[].call_i32("shr_int32", args_i32_i32(shifted, 4))),
         x,
         "shr(shl(x, 4), 4) === x",
     )
@@ -111,8 +141,11 @@ fn test_de_morgan() raises:
     var w = _get_wasm()
     var a = 1
     var b = 0
-    var lhs = Int(w.bool_not(w.bool_and(a, b)))
-    var rhs = Int(w.bool_or(w.bool_not(a), w.bool_not(b)))
+    var and_ab = Int(w[].call_i32("bool_and", args_i32_i32(a, b)))
+    var lhs = Int(w[].call_i32("bool_not", args_i32(and_ab)))
+    var not_a = Int(w[].call_i32("bool_not", args_i32(a)))
+    var not_b = Int(w[].call_i32("bool_not", args_i32(b)))
+    var rhs = Int(w[].call_i32("bool_or", args_i32_i32(not_a, not_b)))
     assert_equal(lhs, rhs, "De Morgan: not(and(a,b)) === or(not(a), not(b))")
 
 
@@ -122,8 +155,11 @@ fn test_gcd_scaling() raises:
     var a = 6
     var b = 4
     var k = 5
-    var lhs = Int(w.gcd_int32(w.mul_int32(a, k), w.mul_int32(b, k)))
-    var rhs = Int(w.mul_int32(k, w.gcd_int32(a, b)))
+    var ak = Int(w[].call_i32("mul_int32", args_i32_i32(a, k)))
+    var bk = Int(w[].call_i32("mul_int32", args_i32_i32(b, k)))
+    var lhs = Int(w[].call_i32("gcd_int32", args_i32_i32(ak, bk)))
+    var gcd_ab = Int(w[].call_i32("gcd_int32", args_i32_i32(a, b)))
+    var rhs = Int(w[].call_i32("mul_int32", args_i32_i32(k, gcd_ab)))
     assert_equal(lhs, rhs, "gcd(a*k, b*k) === k * gcd(a, b)")
 
 
@@ -133,9 +169,9 @@ fn test_fibonacci_recurrence() raises:
     var ns = List[Int](5, 8, 12, 15)
     for i in range(len(ns)):
         var n = ns[i]
-        var fn2 = Int(w.fib_int32(n - 2))
-        var fn1 = Int(w.fib_int32(n - 1))
-        var fn0 = Int(w.fib_int32(n))
+        var fn2 = Int(w[].call_i32("fib_int32", args_i32(n - 2)))
+        var fn1 = Int(w[].call_i32("fib_int32", args_i32(n - 1)))
+        var fn0 = Int(w[].call_i32("fib_int32", args_i32(n)))
         assert_equal(
             fn0,
             fn1 + fn2,
@@ -149,8 +185,8 @@ fn test_factorial_recurrence() raises:
     var ns = List[Int](2, 3, 4, 5, 6, 7)
     for i in range(len(ns)):
         var n = ns[i]
-        var fn0 = Int(w.factorial_int32(n))
-        var fn1 = Int(w.factorial_int32(n - 1))
+        var fn0 = Int(w[].call_i32("factorial_int32", args_i32(n)))
+        var fn1 = Int(w[].call_i32("factorial_int32", args_i32(n - 1)))
         assert_equal(
             fn0,
             n * fn1,
@@ -161,13 +197,13 @@ fn test_factorial_recurrence() raises:
 fn test_string_concat_length() raises:
     """len(concat(a, b)) === len(a) + len(b)."""
     var w = _get_wasm()
-    var a_ptr = w.write_string_struct("foo")
-    var b_ptr = w.write_string_struct("barbaz")
-    var out_ptr = w.alloc_string_struct()
-    _ = w.string_concat(a_ptr, b_ptr, out_ptr)
-    var concat_len = Int(w.string_length(out_ptr))
-    var a_len = Int(w.string_length(a_ptr))
-    var b_len = Int(w.string_length(b_ptr))
+    var a_ptr = w[].write_string_struct("foo")
+    var b_ptr = w[].write_string_struct("barbaz")
+    var out_ptr = w[].alloc_string_struct()
+    w[].call_void("string_concat", args_ptr_ptr_ptr(a_ptr, b_ptr, out_ptr))
+    var concat_len = Int(w[].call_i64("string_length", args_ptr(out_ptr)))
+    var a_len = Int(w[].call_i64("string_length", args_ptr(a_ptr)))
+    var b_len = Int(w[].call_i64("string_length", args_ptr(b_ptr)))
     assert_equal(
         concat_len, a_len + b_len, "len(concat(a,b)) === len(a) + len(b)"
     )
@@ -181,8 +217,9 @@ fn test_clamp_eq_max_lo_min_hi_x() raises:
     var xs = List[Int](-5, 0, 5, 10, 15)
     for i in range(len(xs)):
         var x = xs[i]
-        var lhs = Int(w.clamp_int32(x, lo, hi))
-        var rhs = Int(w.max_int32(lo, w.min_int32(hi, x)))
+        var lhs = Int(w[].call_i32("clamp_int32", args_i32_i32_i32(x, lo, hi)))
+        var min_hi_x = Int(w[].call_i32("min_int32", args_i32_i32(hi, x)))
+        var rhs = Int(w[].call_i32("max_int32", args_i32_i32(lo, min_hi_x)))
         assert_equal(
             lhs,
             rhs,

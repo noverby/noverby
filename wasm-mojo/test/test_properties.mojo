@@ -1,19 +1,28 @@
 # Port of test/properties.test.ts — algebraic property tests (commutativity,
 # associativity, distributivity, identity elements, annihilators, self-inverse,
 # De Morgan's laws, comparison duality) exercised through the real WASM binary
-# via wasmtime-py (called from Mojo via Python interop).
+# via wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
 #
 # Run with:
 #   mojo test test/test_properties.mojo
 
-from python import Python, PythonObject
+from memory import UnsafePointer
 from testing import assert_true, assert_equal
 
+from wasm_harness import (
+    WasmInstance,
+    get_instance,
+    args_i32,
+    args_i32_i32,
+    args_i64_i64,
+    args_f64,
+    args_f64_f64,
+    no_args,
+)
 
-fn _get_wasm() raises -> PythonObject:
-    Python.add_to_path("test")
-    var harness = Python.import_module("wasm_harness")
-    return harness.get_instance()
+
+fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
+    return get_instance()
 
 
 # ---------------------------------------------------------------------------
@@ -29,8 +38,8 @@ fn test_add_int32_commutes() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.add_int32(a, b)),
-            Int(w.add_int32(b, a)),
+            Int(w[].call_i32("add_int32", args_i32_i32(a, b))),
+            Int(w[].call_i32("add_int32", args_i32_i32(b, a))),
             String("add_int32(") + String(a) + ", " + String(b) + ") commutes",
         )
 
@@ -43,8 +52,8 @@ fn test_add_int64_commutes() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.add_int64(a, b)),
-            Int(w.add_int64(b, a)),
+            Int(w[].call_i64("add_int64", args_i64_i64(a, b))),
+            Int(w[].call_i64("add_int64", args_i64_i64(b, a))),
             String("add_int64(") + String(a) + ", " + String(b) + ") commutes",
         )
 
@@ -57,7 +66,8 @@ fn test_add_float64_commutes() raises:
         var a = as_[i]
         var b = bs[i]
         assert_true(
-            Bool(w.add_float64(a, b) == w.add_float64(b, a)),
+            w[].call_f64("add_float64", args_f64_f64(a, b))
+            == w[].call_f64("add_float64", args_f64_f64(b, a)),
             String("add_float64(")
             + String(a)
             + ", "
@@ -79,8 +89,8 @@ fn test_mul_int32_commutes() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.mul_int32(a, b)),
-            Int(w.mul_int32(b, a)),
+            Int(w[].call_i32("mul_int32", args_i32_i32(a, b))),
+            Int(w[].call_i32("mul_int32", args_i32_i32(b, a))),
             String("mul_int32(") + String(a) + ", " + String(b) + ") commutes",
         )
 
@@ -93,8 +103,8 @@ fn test_mul_int64_commutes() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.mul_int64(a, b)),
-            Int(w.mul_int64(b, a)),
+            Int(w[].call_i64("mul_int64", args_i64_i64(a, b))),
+            Int(w[].call_i64("mul_int64", args_i64_i64(b, a))),
             String("mul_int64(") + String(a) + ", " + String(b) + ") commutes",
         )
 
@@ -107,7 +117,8 @@ fn test_mul_float64_commutes() raises:
         var a = as_[i]
         var b = bs[i]
         assert_true(
-            Bool(w.mul_float64(a, b) == w.mul_float64(b, a)),
+            w[].call_f64("mul_float64", args_f64_f64(a, b))
+            == w[].call_f64("mul_float64", args_f64_f64(b, a)),
             String("mul_float64(")
             + String(a)
             + ", "
@@ -129,8 +140,8 @@ fn test_min_int32_commutes() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.min_int32(a, b)),
-            Int(w.min_int32(b, a)),
+            Int(w[].call_i32("min_int32", args_i32_i32(a, b))),
+            Int(w[].call_i32("min_int32", args_i32_i32(b, a))),
             String("min_int32(") + String(a) + ", " + String(b) + ") commutes",
         )
 
@@ -143,8 +154,8 @@ fn test_max_int32_commutes() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.max_int32(a, b)),
-            Int(w.max_int32(b, a)),
+            Int(w[].call_i32("max_int32", args_i32_i32(a, b))),
+            Int(w[].call_i32("max_int32", args_i32_i32(b, a))),
             String("max_int32(") + String(a) + ", " + String(b) + ") commutes",
         )
 
@@ -162,8 +173,8 @@ fn test_gcd_int32_commutes() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.gcd_int32(a, b)),
-            Int(w.gcd_int32(b, a)),
+            Int(w[].call_i32("gcd_int32", args_i32_i32(a, b))),
+            Int(w[].call_i32("gcd_int32", args_i32_i32(b, a))),
             String("gcd_int32(") + String(a) + ", " + String(b) + ") commutes",
         )
 
@@ -181,8 +192,8 @@ fn test_bitand_int32_commutes() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.bitand_int32(a, b)),
-            Int(w.bitand_int32(b, a)),
+            Int(w[].call_i32("bitand_int32", args_i32_i32(a, b))),
+            Int(w[].call_i32("bitand_int32", args_i32_i32(b, a))),
             String("bitand_int32(")
             + String(a)
             + ", "
@@ -199,8 +210,8 @@ fn test_bitor_int32_commutes() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.bitor_int32(a, b)),
-            Int(w.bitor_int32(b, a)),
+            Int(w[].call_i32("bitor_int32", args_i32_i32(a, b))),
+            Int(w[].call_i32("bitor_int32", args_i32_i32(b, a))),
             String("bitor_int32(")
             + String(a)
             + ", "
@@ -217,8 +228,8 @@ fn test_bitxor_int32_commutes() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.bitxor_int32(a, b)),
-            Int(w.bitxor_int32(b, a)),
+            Int(w[].call_i32("bitxor_int32", args_i32_i32(a, b))),
+            Int(w[].call_i32("bitxor_int32", args_i32_i32(b, a))),
             String("bitxor_int32(")
             + String(a)
             + ", "
@@ -237,8 +248,8 @@ fn test_bool_and_commutes() raises:
     for a in range(2):
         for b in range(2):
             assert_equal(
-                Int(w.bool_and(a, b)),
-                Int(w.bool_and(b, a)),
+                Int(w[].call_i32("bool_and", args_i32_i32(a, b))),
+                Int(w[].call_i32("bool_and", args_i32_i32(b, a))),
                 String("bool_and(")
                 + String(a)
                 + ", "
@@ -252,8 +263,8 @@ fn test_bool_or_commutes() raises:
     for a in range(2):
         for b in range(2):
             assert_equal(
-                Int(w.bool_or(a, b)),
-                Int(w.bool_or(b, a)),
+                Int(w[].call_i32("bool_or", args_i32_i32(a, b))),
+                Int(w[].call_i32("bool_or", args_i32_i32(b, a))),
                 String("bool_or(")
                 + String(a)
                 + ", "
@@ -275,8 +286,8 @@ fn test_eq_int32_commutes() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.eq_int32(a, b)),
-            Int(w.eq_int32(b, a)),
+            Int(w[].call_i32("eq_int32", args_i32_i32(a, b))),
+            Int(w[].call_i32("eq_int32", args_i32_i32(b, a))),
             String("eq_int32(") + String(a) + ", " + String(b) + ") commutes",
         )
 
@@ -289,8 +300,8 @@ fn test_ne_int32_commutes() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.ne_int32(a, b)),
-            Int(w.ne_int32(b, a)),
+            Int(w[].call_i32("ne_int32", args_i32_i32(a, b))),
+            Int(w[].call_i32("ne_int32", args_i32_i32(b, a))),
             String("ne_int32(") + String(a) + ", " + String(b) + ") commutes",
         )
 
@@ -309,8 +320,22 @@ fn test_add_int32_associative() raises:
         var a = as_[i]
         var b = bs[i]
         var c = cs[i]
-        var lhs = Int(w.add_int32(w.add_int32(a, b), c))
-        var rhs = Int(w.add_int32(a, w.add_int32(b, c)))
+        var lhs = Int(
+            w[].call_i32(
+                "add_int32",
+                args_i32_i32(
+                    Int(w[].call_i32("add_int32", args_i32_i32(a, b))), c
+                ),
+            )
+        )
+        var rhs = Int(
+            w[].call_i32(
+                "add_int32",
+                args_i32_i32(
+                    a, Int(w[].call_i32("add_int32", args_i32_i32(b, c)))
+                ),
+            )
+        )
         assert_equal(
             lhs,
             rhs,
@@ -333,9 +358,17 @@ fn test_add_float64_associative() raises:
         var b = bs[i]
         var c = cs[i]
         assert_true(
-            Bool(
-                w.add_float64(w.add_float64(a, b), c)
-                == w.add_float64(a, w.add_float64(b, c))
+            w[].call_f64(
+                "add_float64",
+                args_f64_f64(
+                    w[].call_f64("add_float64", args_f64_f64(a, b)), c
+                ),
+            )
+            == w[].call_f64(
+                "add_float64",
+                args_f64_f64(
+                    a, w[].call_f64("add_float64", args_f64_f64(b, c))
+                ),
             ),
             String("add_float64 associative: (")
             + String(a)
@@ -360,8 +393,22 @@ fn test_mul_int32_associative() raises:
         var a = as_[i]
         var b = bs[i]
         var c = cs[i]
-        var lhs = Int(w.mul_int32(w.mul_int32(a, b), c))
-        var rhs = Int(w.mul_int32(a, w.mul_int32(b, c)))
+        var lhs = Int(
+            w[].call_i32(
+                "mul_int32",
+                args_i32_i32(
+                    Int(w[].call_i32("mul_int32", args_i32_i32(a, b))), c
+                ),
+            )
+        )
+        var rhs = Int(
+            w[].call_i32(
+                "mul_int32",
+                args_i32_i32(
+                    a, Int(w[].call_i32("mul_int32", args_i32_i32(b, c)))
+                ),
+            )
+        )
         assert_equal(
             lhs,
             rhs,
@@ -388,8 +435,22 @@ fn test_bitand_int32_associative() raises:
         var a = as_[i]
         var b = bs[i]
         var c = cs[i]
-        var lhs = Int(w.bitand_int32(w.bitand_int32(a, b), c))
-        var rhs = Int(w.bitand_int32(a, w.bitand_int32(b, c)))
+        var lhs = Int(
+            w[].call_i32(
+                "bitand_int32",
+                args_i32_i32(
+                    Int(w[].call_i32("bitand_int32", args_i32_i32(a, b))), c
+                ),
+            )
+        )
+        var rhs = Int(
+            w[].call_i32(
+                "bitand_int32",
+                args_i32_i32(
+                    a, Int(w[].call_i32("bitand_int32", args_i32_i32(b, c)))
+                ),
+            )
+        )
         assert_equal(
             lhs,
             rhs,
@@ -411,8 +472,22 @@ fn test_bitor_int32_associative() raises:
         var a = as_[i]
         var b = bs[i]
         var c = cs[i]
-        var lhs = Int(w.bitor_int32(w.bitor_int32(a, b), c))
-        var rhs = Int(w.bitor_int32(a, w.bitor_int32(b, c)))
+        var lhs = Int(
+            w[].call_i32(
+                "bitor_int32",
+                args_i32_i32(
+                    Int(w[].call_i32("bitor_int32", args_i32_i32(a, b))), c
+                ),
+            )
+        )
+        var rhs = Int(
+            w[].call_i32(
+                "bitor_int32",
+                args_i32_i32(
+                    a, Int(w[].call_i32("bitor_int32", args_i32_i32(b, c)))
+                ),
+            )
+        )
         assert_equal(
             lhs,
             rhs,
@@ -434,8 +509,22 @@ fn test_bitxor_int32_associative() raises:
         var a = as_[i]
         var b = bs[i]
         var c = cs[i]
-        var lhs = Int(w.bitxor_int32(w.bitxor_int32(a, b), c))
-        var rhs = Int(w.bitxor_int32(a, w.bitxor_int32(b, c)))
+        var lhs = Int(
+            w[].call_i32(
+                "bitxor_int32",
+                args_i32_i32(
+                    Int(w[].call_i32("bitxor_int32", args_i32_i32(a, b))), c
+                ),
+            )
+        )
+        var rhs = Int(
+            w[].call_i32(
+                "bitxor_int32",
+                args_i32_i32(
+                    a, Int(w[].call_i32("bitxor_int32", args_i32_i32(b, c)))
+                ),
+            )
+        )
         assert_equal(
             lhs,
             rhs,
@@ -462,8 +551,23 @@ fn test_mul_distributes_over_add() raises:
         var a = as_[i]
         var b = bs[i]
         var c = cs[i]
-        var lhs = Int(w.mul_int32(a, w.add_int32(b, c)))
-        var rhs = Int(w.add_int32(w.mul_int32(a, b), w.mul_int32(a, c)))
+        var lhs = Int(
+            w[].call_i32(
+                "mul_int32",
+                args_i32_i32(
+                    a, Int(w[].call_i32("add_int32", args_i32_i32(b, c)))
+                ),
+            )
+        )
+        var rhs = Int(
+            w[].call_i32(
+                "add_int32",
+                args_i32_i32(
+                    Int(w[].call_i32("mul_int32", args_i32_i32(a, b))),
+                    Int(w[].call_i32("mul_int32", args_i32_i32(a, c))),
+                ),
+            )
+        )
         assert_equal(
             lhs,
             rhs,
@@ -491,8 +595,23 @@ fn test_bitand_distributes_over_bitor() raises:
         var a = as_[i]
         var b = bs[i]
         var c = cs[i]
-        var lhs = Int(w.bitand_int32(a, w.bitor_int32(b, c)))
-        var rhs = Int(w.bitor_int32(w.bitand_int32(a, b), w.bitand_int32(a, c)))
+        var lhs = Int(
+            w[].call_i32(
+                "bitand_int32",
+                args_i32_i32(
+                    a, Int(w[].call_i32("bitor_int32", args_i32_i32(b, c)))
+                ),
+            )
+        )
+        var rhs = Int(
+            w[].call_i32(
+                "bitor_int32",
+                args_i32_i32(
+                    Int(w[].call_i32("bitand_int32", args_i32_i32(a, b))),
+                    Int(w[].call_i32("bitand_int32", args_i32_i32(a, c))),
+                ),
+            )
+        )
         assert_equal(
             lhs,
             rhs,
@@ -520,8 +639,23 @@ fn test_bitor_distributes_over_bitand() raises:
         var a = as_[i]
         var b = bs[i]
         var c = cs[i]
-        var lhs = Int(w.bitor_int32(a, w.bitand_int32(b, c)))
-        var rhs = Int(w.bitand_int32(w.bitor_int32(a, b), w.bitor_int32(a, c)))
+        var lhs = Int(
+            w[].call_i32(
+                "bitor_int32",
+                args_i32_i32(
+                    a, Int(w[].call_i32("bitand_int32", args_i32_i32(b, c)))
+                ),
+            )
+        )
+        var rhs = Int(
+            w[].call_i32(
+                "bitand_int32",
+                args_i32_i32(
+                    Int(w[].call_i32("bitor_int32", args_i32_i32(a, b))),
+                    Int(w[].call_i32("bitor_int32", args_i32_i32(a, c))),
+                ),
+            )
+        )
         assert_equal(
             lhs,
             rhs,
@@ -546,7 +680,7 @@ fn test_add_identity() raises:
     for i in range(len(xs)):
         var x = xs[i]
         assert_equal(
-            Int(w.add_int32(x, 0)),
+            Int(w[].call_i32("add_int32", args_i32_i32(x, 0))),
             x,
             String("add_int32(") + String(x) + ", 0) === " + String(x),
         )
@@ -558,7 +692,7 @@ fn test_mul_identity() raises:
     for i in range(len(xs)):
         var x = xs[i]
         assert_equal(
-            Int(w.mul_int32(x, 1)),
+            Int(w[].call_i32("mul_int32", args_i32_i32(x, 1))),
             x,
             String("mul_int32(") + String(x) + ", 1) === " + String(x),
         )
@@ -570,7 +704,7 @@ fn test_bitand_identity() raises:
     for i in range(len(xs)):
         var x = xs[i]
         assert_equal(
-            Int(w.bitand_int32(x, -1)),
+            Int(w[].call_i32("bitand_int32", args_i32_i32(x, -1))),
             x,
             String("bitand_int32(") + String(x) + ", -1) === " + String(x),
         )
@@ -582,7 +716,7 @@ fn test_bitor_identity() raises:
     for i in range(len(xs)):
         var x = xs[i]
         assert_equal(
-            Int(w.bitor_int32(x, 0)),
+            Int(w[].call_i32("bitor_int32", args_i32_i32(x, 0))),
             x,
             String("bitor_int32(") + String(x) + ", 0) === " + String(x),
         )
@@ -594,7 +728,7 @@ fn test_bitxor_identity() raises:
     for i in range(len(xs)):
         var x = xs[i]
         assert_equal(
-            Int(w.bitxor_int32(x, 0)),
+            Int(w[].call_i32("bitxor_int32", args_i32_i32(x, 0))),
             x,
             String("bitxor_int32(") + String(x) + ", 0) === " + String(x),
         )
@@ -611,7 +745,7 @@ fn test_mul_zero() raises:
     for i in range(len(xs)):
         var x = xs[i]
         assert_equal(
-            Int(w.mul_int32(x, 0)),
+            Int(w[].call_i32("mul_int32", args_i32_i32(x, 0))),
             0,
             String("mul_int32(") + String(x) + ", 0) === 0",
         )
@@ -623,7 +757,7 @@ fn test_bitand_zero() raises:
     for i in range(len(xs)):
         var x = xs[i]
         assert_equal(
-            Int(w.bitand_int32(x, 0)),
+            Int(w[].call_i32("bitand_int32", args_i32_i32(x, 0))),
             0,
             String("bitand_int32(") + String(x) + ", 0) === 0",
         )
@@ -635,7 +769,7 @@ fn test_bitor_all_ones() raises:
     for i in range(len(xs)):
         var x = xs[i]
         assert_equal(
-            Int(w.bitor_int32(x, -1)),
+            Int(w[].call_i32("bitor_int32", args_i32_i32(x, -1))),
             -1,
             String("bitor_int32(") + String(x) + ", -1) === -1",
         )
@@ -652,7 +786,12 @@ fn test_neg_neg() raises:
     for i in range(len(xs)):
         var x = xs[i]
         assert_equal(
-            Int(w.neg_int32(w.neg_int32(x))),
+            Int(
+                w[].call_i32(
+                    "neg_int32",
+                    args_i32(Int(w[].call_i32("neg_int32", args_i32(x)))),
+                )
+            ),
             x,
             String("neg_int32(neg_int32(") + String(x) + ")) === " + String(x),
         )
@@ -664,7 +803,12 @@ fn test_bitnot_bitnot() raises:
     for i in range(len(xs)):
         var x = xs[i]
         assert_equal(
-            Int(w.bitnot_int32(w.bitnot_int32(x))),
+            Int(
+                w[].call_i32(
+                    "bitnot_int32",
+                    args_i32(Int(w[].call_i32("bitnot_int32", args_i32(x)))),
+                )
+            ),
             x,
             String("bitnot_int32(bitnot_int32(")
             + String(x)
@@ -677,7 +821,12 @@ fn test_bool_not_not() raises:
     var w = _get_wasm()
     for x in range(2):
         assert_equal(
-            Int(w.bool_not(w.bool_not(x))),
+            Int(
+                w[].call_i32(
+                    "bool_not",
+                    args_i32(Int(w[].call_i32("bool_not", args_i32(x)))),
+                )
+            ),
             x,
             String("bool_not(bool_not(") + String(x) + ")) === " + String(x),
         )
@@ -691,7 +840,15 @@ fn test_bitxor_self_inverse() raises:
         var x = xs[i]
         var y = ys[i]
         assert_equal(
-            Int(w.bitxor_int32(w.bitxor_int32(x, y), y)),
+            Int(
+                w[].call_i32(
+                    "bitxor_int32",
+                    args_i32_i32(
+                        Int(w[].call_i32("bitxor_int32", args_i32_i32(x, y))),
+                        y,
+                    ),
+                )
+            ),
             x,
             String("bitxor(bitxor(")
             + String(x)
@@ -714,8 +871,21 @@ fn test_de_morgan_not_and_eq_or_not() raises:
     var w = _get_wasm()
     for a in range(2):
         for b in range(2):
-            var lhs = Int(w.bool_not(w.bool_and(a, b)))
-            var rhs = Int(w.bool_or(w.bool_not(a), w.bool_not(b)))
+            var lhs = Int(
+                w[].call_i32(
+                    "bool_not",
+                    args_i32(Int(w[].call_i32("bool_and", args_i32_i32(a, b)))),
+                )
+            )
+            var rhs = Int(
+                w[].call_i32(
+                    "bool_or",
+                    args_i32_i32(
+                        Int(w[].call_i32("bool_not", args_i32(a))),
+                        Int(w[].call_i32("bool_not", args_i32(b))),
+                    ),
+                )
+            )
             assert_equal(
                 lhs,
                 rhs,
@@ -736,8 +906,21 @@ fn test_de_morgan_not_or_eq_and_not() raises:
     var w = _get_wasm()
     for a in range(2):
         for b in range(2):
-            var lhs = Int(w.bool_not(w.bool_or(a, b)))
-            var rhs = Int(w.bool_and(w.bool_not(a), w.bool_not(b)))
+            var lhs = Int(
+                w[].call_i32(
+                    "bool_not",
+                    args_i32(Int(w[].call_i32("bool_or", args_i32_i32(a, b)))),
+                )
+            )
+            var rhs = Int(
+                w[].call_i32(
+                    "bool_and",
+                    args_i32_i32(
+                        Int(w[].call_i32("bool_not", args_i32(a))),
+                        Int(w[].call_i32("bool_not", args_i32(b))),
+                    ),
+                )
+            )
             assert_equal(
                 lhs,
                 rhs,
@@ -766,8 +949,21 @@ fn test_bitnot_and_eq_or_bitnot() raises:
     for i in range(len(as_)):
         var a = as_[i]
         var b = bs[i]
-        var lhs = Int(w.bitnot_int32(w.bitand_int32(a, b)))
-        var rhs = Int(w.bitor_int32(w.bitnot_int32(a), w.bitnot_int32(b)))
+        var lhs = Int(
+            w[].call_i32(
+                "bitnot_int32",
+                args_i32(Int(w[].call_i32("bitand_int32", args_i32_i32(a, b)))),
+            )
+        )
+        var rhs = Int(
+            w[].call_i32(
+                "bitor_int32",
+                args_i32_i32(
+                    Int(w[].call_i32("bitnot_int32", args_i32(a))),
+                    Int(w[].call_i32("bitnot_int32", args_i32(b))),
+                ),
+            )
+        )
         assert_equal(
             lhs,
             rhs,
@@ -790,8 +986,21 @@ fn test_bitnot_or_eq_and_bitnot() raises:
     for i in range(len(as_)):
         var a = as_[i]
         var b = bs[i]
-        var lhs = Int(w.bitnot_int32(w.bitor_int32(a, b)))
-        var rhs = Int(w.bitand_int32(w.bitnot_int32(a), w.bitnot_int32(b)))
+        var lhs = Int(
+            w[].call_i32(
+                "bitnot_int32",
+                args_i32(Int(w[].call_i32("bitor_int32", args_i32_i32(a, b)))),
+            )
+        )
+        var rhs = Int(
+            w[].call_i32(
+                "bitand_int32",
+                args_i32_i32(
+                    Int(w[].call_i32("bitnot_int32", args_i32(a))),
+                    Int(w[].call_i32("bitnot_int32", args_i32(b))),
+                ),
+            )
+        )
         assert_equal(
             lhs,
             rhs,
@@ -819,8 +1028,13 @@ fn test_lt_eq_not_ge() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.lt_int32(a, b)),
-            Int(w.bool_not(w.ge_int32(a, b))),
+            Int(w[].call_i32("lt_int32", args_i32_i32(a, b))),
+            Int(
+                w[].call_i32(
+                    "bool_not",
+                    args_i32(Int(w[].call_i32("ge_int32", args_i32_i32(a, b)))),
+                )
+            ),
             String("lt(")
             + String(a)
             + ", "
@@ -841,8 +1055,13 @@ fn test_le_eq_not_gt() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.le_int32(a, b)),
-            Int(w.bool_not(w.gt_int32(a, b))),
+            Int(w[].call_i32("le_int32", args_i32_i32(a, b))),
+            Int(
+                w[].call_i32(
+                    "bool_not",
+                    args_i32(Int(w[].call_i32("gt_int32", args_i32_i32(a, b)))),
+                )
+            ),
             String("le(")
             + String(a)
             + ", "
@@ -863,8 +1082,16 @@ fn test_eq_iff_le_and_ge() raises:
         var a = as_[i]
         var b = bs[i]
         assert_equal(
-            Int(w.eq_int32(a, b)),
-            Int(w.bool_and(w.le_int32(a, b), w.ge_int32(a, b))),
+            Int(w[].call_i32("eq_int32", args_i32_i32(a, b))),
+            Int(
+                w[].call_i32(
+                    "bool_and",
+                    args_i32_i32(
+                        Int(w[].call_i32("le_int32", args_i32_i32(a, b))),
+                        Int(w[].call_i32("ge_int32", args_i32_i32(a, b))),
+                    ),
+                )
+            ),
             String("eq(")
             + String(a)
             + ", "
