@@ -13,7 +13,10 @@ a typed Nushell value; pipes operate locally; `tramp save` writes back remotely.
 - **Full `~/.ssh/config` support** — host aliases, keys, jump hosts all work
 - **SSH agent forwarding** — no extra configuration needed
 - **ControlMaster multiplexing** — fast subsequent operations on the same host
-- **Connection pooling** — sessions are reused across commands within the plugin lifetime
+- **Connection pooling with health-checks** — sessions are reused across commands; stale connections are detected and transparently reconnected
+- **Stat & directory listing cache** — metadata is cached with a short TTL to avoid redundant remote round-trips
+- **Remote working directory** — `tramp cd` lets you navigate remote hosts with relative paths
+- **Cross-host copy** — `tramp cp` transfers files between any combination of local and remote paths
 - **Binary-safe writes** — uses base64 encoding to safely transfer arbitrary file content
 
 ## Installation
@@ -86,6 +89,63 @@ open local-file.bin | tramp save /ssh:myvm:/tmp/remote-file.bin
 tramp rm /ssh:myvm:/tmp/stale.lock
 ```
 
+### Copy files
+
+```nushell
+# Remote → Local
+tramp cp /ssh:myvm:/etc/hostname ./hostname
+
+# Local → Remote
+tramp cp ./config.toml /ssh:myvm:/app/config.toml
+
+# Remote → Remote (even across different hosts)
+tramp cp /ssh:vm1:/etc/config /ssh:vm2:/etc/config
+```
+
+### Remote working directory
+
+Set a remote CWD so that subsequent commands can use relative paths:
+
+```nushell
+# Set the remote working directory
+tramp cd /ssh:myvm:/app
+
+# Now use relative paths — resolves to /ssh:myvm:/app/config.toml
+tramp open config.toml
+
+# List the current remote directory
+tramp ls
+
+# Navigate relatively
+tramp cd subdir
+tramp cd ..
+
+# Show the current remote CWD
+tramp pwd
+
+# Clear the remote CWD
+tramp cd --reset
+```
+
+Non-TRAMP commands (e.g. `git`) receive `$env.PWD` as-is and are unaffected —
+only `tramp` subcommands participate in remote CWD resolution.
+
+### Connection management
+
+```nushell
+# Test connectivity to a remote host (reports timing)
+tramp ping /ssh:myvm:/
+
+# List all active pooled connections
+tramp connections
+
+# Disconnect a specific host
+tramp disconnect myvm
+
+# Disconnect everything
+tramp disconnect --all
+```
+
 ## Path Format
 
 ```text
@@ -108,7 +168,7 @@ tramp rm /ssh:myvm:/tmp/stale.lock
 /ssh:admin@myvm#2222:/etc/config
 ```
 
-### Chained paths (Phase 2+)
+### Chained paths (Phase 3)
 
 Multi-hop paths are parsed but not yet executed:
 
@@ -119,13 +179,19 @@ Multi-hop paths are parsed but not yet executed:
 
 ## Commands
 
-| Command      | Description                                    |
-|--------------|------------------------------------------------|
-| `tramp`      | Show help and usage information                |
-| `tramp open` | Read a remote file and return as Nushell value |
-| `tramp ls`   | List a remote directory as a table             |
-| `tramp save` | Write piped data to a remote file              |
-| `tramp rm`   | Delete a remote file                           |
+| Command               | Description                                        |
+|-----------------------|----------------------------------------------------|
+| `tramp`               | Show help and usage information                    |
+| `tramp open`          | Read a remote file and return as Nushell value     |
+| `tramp ls`            | List a remote directory as a table                 |
+| `tramp save`          | Write piped data to a remote file                  |
+| `tramp rm`            | Delete a remote file                               |
+| `tramp cp`            | Copy files between local/remote locations          |
+| `tramp cd`            | Set the remote working directory                   |
+| `tramp pwd`           | Show the current remote working directory          |
+| `tramp ping`          | Test connectivity to a remote host                 |
+| `tramp connections`   | List active pooled connections                     |
+| `tramp disconnect`    | Close connections (by host or `--all`)             |
 
 ## Requirements
 
@@ -148,6 +214,10 @@ Nushell command
 │                            │            │
 │                   ┌────────▼────────┐   │
 │                   │   VFS Layer     │   │
+│                   │  ┌───────────┐  │   │
+│                   │  │ Stat/List │  │   │
+│                   │  │  Cache    │  │   │
+│                   │  └───────────┘  │   │
 │                   └────────┬────────┘   │
 │                            │            │
 │              ┌─────────────┼──────┐     │
@@ -160,9 +230,9 @@ Nushell command
 
 ### Layers
 
-1. **Path Parser** (`src/protocol.rs`) — Parses TRAMP URIs into structured types with round-trip fidelity
-2. **Backend Trait** (`src/backend/mod.rs`) — Async trait defining `read`, `write`, `list`, `stat`, `exec`, `delete`
-3. **VFS** (`src/vfs.rs`) — Resolves paths to backends, manages connection pooling, bridges async↔sync
+1. **Path Parser** (`src/protocol.rs`) — Parses TRAMP URIs into structured types with round-trip fidelity; supports relative path resolution against a remote CWD
+2. **Backend Trait** (`src/backend/mod.rs`) — Async trait defining `read`, `write`, `list`, `stat`, `exec`, `delete`, and `check` (health-check)
+3. **VFS** (`src/vfs.rs`) — Resolves paths to backends, manages connection pooling with health-checks, provides stat/list caching with TTL, bridges async↔sync
 4. **SSH Backend** (`src/backend/ssh.rs`) — Implements all operations via remote command execution over OpenSSH
 
 ## Roadmap
@@ -176,15 +246,14 @@ Nushell command
 - [x] README with install + usage
 - [x] Nix package derivation
 
-### Phase 2 — Daily Driver
+### Phase 2 — Daily Driver ✅
 
-- [ ] SFTP fast-path for large/binary file transfers
-- [ ] Connection pooling + keepalive
-- [ ] `cd` with relative path resolution
-- [ ] Stat + small file cache (with TTL)
-- [ ] Streaming for large files
-- [ ] `cp` between remotes
-- [ ] `tramp ping`, `tramp connections`, `tramp disconnect`
+- [x] Connection pooling with health-checks + automatic reconnection
+- [x] `tramp cd` / `tramp pwd` with relative path resolution
+- [x] Stat + directory listing cache (with 5s TTL)
+- [x] `tramp cp` between local/remote/remote
+- [x] `tramp ping`, `tramp connections`, `tramp disconnect` commands
+- [ ] Streaming for large files (SFTP fast-path)
 
 ### Phase 3 — Power Features
 
@@ -192,6 +261,7 @@ Nushell command
 - [ ] Docker backend (`docker exec`)
 - [ ] Kubernetes backend (`kubectl exec`)
 - [ ] `sudo` backend
+- [ ] Push execution model (run commands natively on remote)
 - [ ] Home Manager module for auto-registration
 
 ## License

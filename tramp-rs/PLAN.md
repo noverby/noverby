@@ -336,12 +336,12 @@ programs.nushell.plugins = [ pkgs.nu_plugin_tramp ];
 
 ### Phase 2 — Daily Driver
 
-- [ ] Connection pooling + keepalive
-- [ ] `cd` with relative path resolution
-- [ ] Stat + small file cache (with TTL)
+- [x] Connection pooling + keepalive
+- [x] `cd` with relative path resolution
+- [x] Stat + small file cache (with TTL)
 - [ ] Streaming for large files
-- [ ] `cp` between remotes
-- [ ] `tramp ping/connections/disconnect` commands
+- [x] `cp` between remotes
+- [x] `tramp ping/connections/disconnect` commands
 
 ### Phase 3 — Power Features
 
