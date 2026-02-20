@@ -768,6 +768,31 @@ fn tmpl_node_first_attr(
     )
 
 
+@export
+fn tmpl_node_text(rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32) -> String:
+    """Return the static text content of a Text node in the template."""
+    var rt = _get_runtime(rt_ptr)
+    var tmpl_ptr = rt[0].templates.get_ptr(UInt32(tmpl_id))
+    var node_ptr = tmpl_ptr[0].get_node_ptr(Int(node_idx))
+    return node_ptr[0].text
+
+
+@export
+fn tmpl_attr_name(rt_ptr: Int64, tmpl_id: Int32, attr_idx: Int32) -> String:
+    """Return the name of the attribute at attr_idx in the template."""
+    var rt = _get_runtime(rt_ptr)
+    var tmpl_ptr = rt[0].templates.get_ptr(UInt32(tmpl_id))
+    return tmpl_ptr[0].attrs[Int(attr_idx)].name
+
+
+@export
+fn tmpl_attr_value(rt_ptr: Int64, tmpl_id: Int32, attr_idx: Int32) -> String:
+    """Return the value of the attribute at attr_idx in the template."""
+    var rt = _get_runtime(rt_ptr)
+    var tmpl_ptr = rt[0].templates.get_ptr(UInt32(tmpl_id))
+    return tmpl_ptr[0].attrs[Int(attr_idx)].value
+
+
 # ── VNode Store Exports ──────────────────────────────────────────────────────
 #
 # VNodes are stored in a VNodeStore (heap-allocated separately or embedded

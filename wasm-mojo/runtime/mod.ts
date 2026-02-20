@@ -1,4 +1,5 @@
 export { env, setMemory } from "./env.ts";
+export { Interpreter, MutationBuilder } from "./interpreter.ts";
 export {
 	alignedAlloc,
 	alignedFree,
@@ -14,6 +15,10 @@ export {
 	readStringStruct,
 	writeStringStruct,
 } from "./strings.ts";
+export type { TagId } from "./tags.ts";
+export { TAG_COUNT, Tag, tagName } from "./tags.ts";
+export type { WasmTemplateExports } from "./templates.ts";
+export { TemplateCache } from "./templates.ts";
 export type { WasmExports } from "./types.ts";
 
 import { env, setMemory } from "./env.ts";
