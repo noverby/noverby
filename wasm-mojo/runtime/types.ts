@@ -443,4 +443,40 @@ export interface WasmExports extends WebAssembly.Exports {
 		attrIndex: number,
 	): number;
 	vnode_store_clear(storePtr: bigint): void;
+
+	// ── Phase 4: Create & Diff Engine ────────────────────────────────
+
+	// MutationWriter lifecycle
+	writer_create(bufPtr: bigint, capacity: number): bigint;
+	writer_destroy(writerPtr: bigint): void;
+	writer_offset(writerPtr: bigint): number;
+	writer_finalize(writerPtr: bigint): number;
+
+	// Create engine
+	create_vnode(
+		writerPtr: bigint,
+		eidPtr: bigint,
+		rtPtr: bigint,
+		storePtr: bigint,
+		vnodeIndex: number,
+	): number;
+
+	// Diff engine
+	diff_vnodes(
+		writerPtr: bigint,
+		eidPtr: bigint,
+		rtPtr: bigint,
+		storePtr: bigint,
+		oldIndex: number,
+		newIndex: number,
+	): number;
+
+	// VNode mount state queries
+	vnode_root_id_count(storePtr: bigint, index: number): number;
+	vnode_get_root_id(storePtr: bigint, index: number, pos: number): number;
+	vnode_dyn_node_id_count(storePtr: bigint, index: number): number;
+	vnode_get_dyn_node_id(storePtr: bigint, index: number, pos: number): number;
+	vnode_dyn_attr_id_count(storePtr: bigint, index: number): number;
+	vnode_get_dyn_attr_id(storePtr: bigint, index: number, pos: number): number;
+	vnode_is_mounted(storePtr: bigint, index: number): number;
 }

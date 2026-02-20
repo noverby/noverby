@@ -2430,7 +2430,7 @@ runtime/
 - [x] **M1:** `Signal[Int32]` works end-to-end: create, read, write, subscribe, notify. Tested via WASM exports.
 - [x] **M2:** Scopes created, components render VNodes, hooks work (use_signal returns stable signal across re-renders).
 - [x] **M3:** Templates registered, Tier 1 VNode builder produces correct structures, tag helpers work.
-- [ ] **M4:** Diff algorithm produces correct mutations. Full mutation round-trip: Mojo diff → binary buffer → JS decode → verified.
+- [x] **M4:** Diff algorithm produces correct mutations. Full mutation round-trip: Mojo diff → binary buffer → JS decode → verified.
 - [ ] **M5:** JS interpreter applies mutations to real DOM. Hand-crafted mutation buffers produce correct DOM trees.
 - [ ] **M6:** Events flow: click in DOM → JS → WASM → signal write → re-render → mutations → DOM update.
 - [ ] **M7:** Counter app works in a browser. Click increment, see number change. 🎉

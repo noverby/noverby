@@ -1,6 +1,7 @@
 from bridge import MutationWriter
 from arena import ElementId, ElementIdAllocator
 from signals import Runtime, create_runtime, destroy_runtime, HOOK_SIGNAL
+from mutations import CreateEngine, DiffEngine
 from vdom import (
     TemplateBuilder,
     create_builder,
@@ -1059,6 +1060,195 @@ fn signal_isub_i32(rt_ptr: Int64, key: Int32, rhs: Int32):
     var rt = _get_runtime(rt_ptr)
     var current = rt[0].peek_signal[Int32](UInt32(key))
     rt[0].write_signal[Int32](UInt32(key), current - rhs)
+
+
+# ── Phase 4: Create & Diff Engine Exports ────────────────────────────────────
+#
+# These exports exercise the CreateEngine and DiffEngine for Phase 4 testing.
+# The test harness creates templates and VNodes via existing exports, then
+# calls these functions to emit mutations into a buffer.  The JS side reads
+# the buffer via MutationReader and verifies the mutation sequence.
+#
+# Workflow:
+#   1. Create runtime, register templates, build VNodes in a VNodeStore
+#   2. Allocate a mutation buffer and an ElementIdAllocator
+#   3. Call create_vnode → emits create mutations, populates mount state
+#   4. Call diff_vnodes → emits diff mutations, transfers mount state
+#   5. Read mutations from buffer on JS side
+#   6. Clean up
+
+
+@always_inline
+fn _int_to_eid_alloc_ptr(addr: Int) -> UnsafePointer[ElementIdAllocator]:
+    """Reinterpret an integer address as an UnsafePointer[ElementIdAllocator].
+    """
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[ElementIdAllocator]]()[0]
+    slot.free()
+    return result
+
+
+@always_inline
+fn _int_to_writer_ptr(addr: Int) -> UnsafePointer[MutationWriter]:
+    """Reinterpret an integer address as an UnsafePointer[MutationWriter]."""
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[MutationWriter]]()[0]
+    slot.free()
+    return result
+
+
+@export
+fn writer_create(buf_ptr: Int64, capacity: Int32) -> Int64:
+    """Create a heap-allocated MutationWriter.  Returns its pointer.
+
+    The writer writes to the buffer at buf_ptr with the given capacity.
+    """
+    var ptr = UnsafePointer[MutationWriter].alloc(1)
+    ptr.init_pointee_move(
+        MutationWriter(_int_to_ptr(Int(buf_ptr)), Int(capacity))
+    )
+    return Int64(Int(ptr))
+
+
+@export
+fn writer_destroy(writer_ptr: Int64):
+    """Destroy and free a heap-allocated MutationWriter."""
+    var ptr = _int_to_writer_ptr(Int(writer_ptr))
+    ptr.destroy_pointee()
+    ptr.free()
+
+
+@export
+fn writer_offset(writer_ptr: Int64) -> Int32:
+    """Return the current write offset of the MutationWriter."""
+    var ptr = _int_to_writer_ptr(Int(writer_ptr))
+    return Int32(ptr[0].offset)
+
+
+@export
+fn writer_finalize(writer_ptr: Int64) -> Int32:
+    """Write the End sentinel and return the final offset."""
+    var ptr = _int_to_writer_ptr(Int(writer_ptr))
+    ptr[0].finalize()
+    return Int32(ptr[0].offset)
+
+
+@export
+fn create_vnode(
+    writer_ptr: Int64,
+    eid_ptr: Int64,
+    rt_ptr: Int64,
+    store_ptr: Int64,
+    vnode_index: Int32,
+) -> Int32:
+    """Create mutations for the VNode at vnode_index.
+
+    Emits mutations to the writer and populates the VNode's mount state.
+    Returns the number of root elements placed on the stack.
+
+    Args:
+        writer_ptr: Pointer to a heap-allocated MutationWriter.
+        eid_ptr: Pointer to a heap-allocated ElementIdAllocator.
+        rt_ptr: Pointer to a Runtime (for template registry access).
+        store_ptr: Pointer to a VNodeStore containing the VNode.
+        vnode_index: Index of the VNode in the store.
+    """
+    var w = _int_to_writer_ptr(Int(writer_ptr))
+    var e = _int_to_eid_alloc_ptr(Int(eid_ptr))
+    var rt = _int_to_runtime_ptr(Int(rt_ptr))
+    var s = _int_to_vnode_store_ptr(Int(store_ptr))
+
+    var engine = CreateEngine(w, e, rt, s)
+    return Int32(engine.create_node(UInt32(vnode_index)))
+
+
+@export
+fn diff_vnodes(
+    writer_ptr: Int64,
+    eid_ptr: Int64,
+    rt_ptr: Int64,
+    store_ptr: Int64,
+    old_index: Int32,
+    new_index: Int32,
+) -> Int32:
+    """Diff old and new VNodes and emit mutations.
+
+    The old VNode must have mount state populated (from a previous create
+    or diff).  The new VNode's mount state will be populated as a side effect.
+    Returns the writer offset (bytes written) after diffing.
+
+    Args:
+        writer_ptr: Pointer to a heap-allocated MutationWriter.
+        eid_ptr: Pointer to a heap-allocated ElementIdAllocator.
+        rt_ptr: Pointer to a Runtime (for template registry access).
+        store_ptr: Pointer to a VNodeStore containing both VNodes.
+        old_index: Index of the old VNode in the store.
+        new_index: Index of the new VNode in the store.
+    """
+    var w = _int_to_writer_ptr(Int(writer_ptr))
+    var e = _int_to_eid_alloc_ptr(Int(eid_ptr))
+    var rt = _int_to_runtime_ptr(Int(rt_ptr))
+    var s = _int_to_vnode_store_ptr(Int(store_ptr))
+
+    var engine = DiffEngine(w, e, rt, s)
+    engine.diff_node(UInt32(old_index), UInt32(new_index))
+    return Int32(w[0].offset)
+
+
+# ── VNode mount state query exports ──────────────────────────────────────────
+
+
+@export
+fn vnode_root_id_count(store_ptr: Int64, index: Int32) -> Int32:
+    """Return the number of root ElementIds assigned to this VNode."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].get_ptr(UInt32(index))[0].root_id_count())
+
+
+@export
+fn vnode_get_root_id(store_ptr: Int64, index: Int32, pos: Int32) -> Int32:
+    """Return the root ElementId at position `pos`."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].get_ptr(UInt32(index))[0].get_root_id(Int(pos)))
+
+
+@export
+fn vnode_dyn_node_id_count(store_ptr: Int64, index: Int32) -> Int32:
+    """Return the number of dynamic node ElementIds."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].get_ptr(UInt32(index))[0].dyn_node_id_count())
+
+
+@export
+fn vnode_get_dyn_node_id(store_ptr: Int64, index: Int32, pos: Int32) -> Int32:
+    """Return the dynamic node ElementId at position `pos`."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].get_ptr(UInt32(index))[0].get_dyn_node_id(Int(pos)))
+
+
+@export
+fn vnode_dyn_attr_id_count(store_ptr: Int64, index: Int32) -> Int32:
+    """Return the number of dynamic attribute target ElementIds."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].get_ptr(UInt32(index))[0].dyn_attr_id_count())
+
+
+@export
+fn vnode_get_dyn_attr_id(store_ptr: Int64, index: Int32, pos: Int32) -> Int32:
+    """Return the dynamic attribute target ElementId at position `pos`."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].get_ptr(UInt32(index))[0].get_dyn_attr_id(Int(pos)))
+
+
+@export
+fn vnode_is_mounted(store_ptr: Int64, index: Int32) -> Int32:
+    """Check whether the VNode has been mounted.  Returns 1 or 0."""
+    var s = _get_vnode_store(store_ptr)
+    if s[0].get_ptr(UInt32(index))[0].is_mounted():
+        return 1
+    return 0
 
 
 # ── Mutation Protocol Test Exports ───────────────────────────────────────────

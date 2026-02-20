@@ -373,7 +373,7 @@ struct Template(Copyable, Movable):
 
     fn get_attr(self, index: Int) -> TemplateAttribute:
         """Return a copy of the attribute at the given index."""
-        return self.attrs[index]
+        return self.attrs[index].copy()
 
     # ── Node queries (convenience) ───────────────────────────────────
 

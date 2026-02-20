@@ -30,7 +30,7 @@ alias OP_PUSH_ROOT = UInt8(0x0F)
 # ── MutationWriter ───────────────────────────────────────────────────────────
 
 
-struct MutationWriter:
+struct MutationWriter(Movable):
     """Writes binary-encoded DOM mutations to a pre-allocated buffer.
 
     The buffer must be allocated in WASM linear memory so the JS interpreter
@@ -42,6 +42,11 @@ struct MutationWriter:
     var buf: UnsafePointer[UInt8]
     var offset: Int
     var capacity: Int
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.buf = other.buf
+        self.offset = other.offset
+        self.capacity = other.capacity
 
     # ── Construction ─────────────────────────────────────────────────────
 
