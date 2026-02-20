@@ -9,6 +9,7 @@ import { testElementId } from "./element_id.test.ts";
 import { testFloats } from "./floats.test.ts";
 import { summary } from "./harness.ts";
 import { testIdentity } from "./identity.test.ts";
+import { testInterpreter } from "./interpreter.test.ts";
 import { testMinMax } from "./minmax.test.ts";
 import { testMutations } from "./mutations.test.ts";
 import { testPrint } from "./print.test.ts";
@@ -51,6 +52,7 @@ async function run(): Promise<void> {
 	testScopes(fns);
 	testTemplates(fns);
 	testMutations(fns);
+	testInterpreter(fns);
 
 	summary();
 }

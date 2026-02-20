@@ -356,6 +356,11 @@ export interface WasmExports extends WebAssembly.Exports {
 	tmpl_find_by_name(rtPtr: bigint, name: bigint): number;
 	tmpl_node_first_attr(rtPtr: bigint, tmplId: number, nodeIdx: number): number;
 
+	// Template string queries (Phase 5)
+	tmpl_node_text(rtPtr: bigint, tmplId: number, nodeIdx: number): string;
+	tmpl_attr_name(rtPtr: bigint, tmplId: number, attrIdx: number): string;
+	tmpl_attr_value(rtPtr: bigint, tmplId: number, attrIdx: number): string;
+
 	// ── VNode Store ──────────────────────────────────────────────────
 
 	vnode_store_create(): bigint;
