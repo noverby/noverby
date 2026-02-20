@@ -34,6 +34,15 @@
 		"JavaScript": {
 			"language_servers": ["vtsls", "color-lsp"]
 		},
+		"Mojo": {
+			"formatter": {
+				"external": {
+					"command": "mojo",
+					"arguments": ["format", "-q", "-"]
+				}
+			},
+			"format_on_save": "on"
+		},
 		"Nix": {
 			"formatter": {
 				"external": {
