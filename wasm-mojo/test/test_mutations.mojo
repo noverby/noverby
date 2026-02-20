@@ -123,7 +123,7 @@ struct MutationInfo(Copyable, Movable):
         self.ns = other.ns
         self.path_len = other.path_len
 
-    fn __moveinit__(out self, owned other: Self):
+    fn __moveinit__(out self, deinit other: Self):
         self.op = other.op
         self.id = other.id
         self.id2 = other.id2
@@ -287,7 +287,7 @@ struct WasmTestContext(Movable):
             w[].call_i64("writer_create", args_ptr_i32(self.buf, BUF_CAP))
         )
 
-    fn __moveinit__(out self, owned other: Self):
+    fn __moveinit__(out self, deinit other: Self):
         self.w = other.w
         self.rt = other.rt
         self.eid = other.eid

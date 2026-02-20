@@ -20,6 +20,7 @@ from wasm_harness import (
     args_ptr_i32_i32_i32,
     args_ptr_i32_ptr,
     args_ptr_i32_ptr_ptr,
+    args_ptr_i32_ptr_ptr_i32,
     args_ptr_i32_ptr_i32_i32,
     args_ptr_i32_ptr_i32,
     args_ptr_ptr,

@@ -92,7 +92,7 @@ alias WASM_PATH = "build/out.wasm"
 # ---------------------------------------------------------------------------
 
 
-struct SharedState:
+struct SharedState(Movable):
     """Mutable state shared across all WASM import callbacks.
 
     Allocated on the heap so a stable pointer can be passed as the
@@ -111,6 +111,13 @@ struct SharedState:
         self.memory = WasmtimeMemory()
         self.captured_stdout = List[String]()
         self.has_memory = False
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.bump_ptr = other.bump_ptr
+        self.context = other.context
+        self.memory = other.memory
+        self.captured_stdout = other.captured_stdout^
+        self.has_memory = other.has_memory
 
     fn aligned_alloc(mut self, align: Int, size: Int) -> Int:
         """Bump-allocate *size* bytes with the given alignment."""
@@ -416,17 +423,20 @@ fn _cb_write(
 
     if fd == 1:
         # stdout — capture the written text
-        var bytes = memory_read_bytes(
-            state[].context, state[].memory, ptr, length
-        )
-        # Build a String from the raw bytes
-        var buf = List[UInt8](capacity=length + 1)
-        for i in range(length):
-            buf.append(bytes[i])
-        buf.append(0)  # null-terminate
-        var text = String(buf)
-        state[].captured_stdout.append(text)
-        results[0] = WasmtimeVal.from_i32(Int32(length))
+        try:
+            var bytes = memory_read_bytes(
+                state[].context, state[].memory, ptr, length
+            )
+            # Build a String from the raw bytes (no null — String(bytes=)
+            # treats every byte as content in Mojo 0.25.6)
+            var buf = List[UInt8](capacity=length)
+            for i in range(length):
+                buf.append(bytes[i])
+            var text = String(bytes=buf)
+            state[].captured_stdout.append(text)
+            results[0] = WasmtimeVal.from_i32(Int32(length))
+        except:
+            results[0] = WasmtimeVal.from_i32(-1)
     elif fd == 2:
         # stderr — just report length, don't capture
         results[0] = WasmtimeVal.from_i32(Int32(length))
@@ -441,7 +451,7 @@ fn _cb_write(
 # ---------------------------------------------------------------------------
 
 
-struct WasmInstance:
+struct WasmInstance(Movable):
     """Wraps a Wasmtime instance with helper methods mirroring the Python harness.
 
     Provides:
@@ -466,17 +476,11 @@ struct WasmInstance:
             wasm_path: Path to the .wasm binary file.
         """
         # Read the WASM binary
-        var wasm_bytes: List[UInt8]
-        with open(wasm_path, "rb") as f:
-            var data = f.read_bytes()
-            wasm_bytes = List[UInt8](capacity=len(data))
-            for i in range(len(data)):
-                wasm_bytes.append(data[i])
+        var wasm_bytes = Path(wasm_path).read_bytes()
 
         # Allocate shared state on the heap
         self._state_ptr = UnsafePointer[SharedState].alloc(1)
-        self._state_ptr[] = SharedState()
-
+        self._state_ptr.init_pointee_move(SharedState())
         var env = self._state_ptr.bitcast[NoneType]()
         var no_fin = UnsafePointer[NoneType]()
 
@@ -678,6 +682,7 @@ struct WasmInstance:
     fn __del__(deinit self):
         """Clean up: free the heap-allocated shared state."""
         if self._state_ptr:
+            self._state_ptr.destroy_pointee()
             self._state_ptr.free()
 
     fn __moveinit__(out self, deinit other: Self):
@@ -798,11 +803,10 @@ struct WasmInstance:
             return String("")
 
         var raw = self.read_bytes(data_ptr, length)
-        var buf = List[UInt8](capacity=length + 1)
+        var buf = List[UInt8](capacity=length)
         for i in range(length):
             buf.append(raw[i])
-        buf.append(0)  # null-terminate
-        return String(buf)
+        return String(bytes=buf)
 
     # ------------------------------------------------------------------
     # Captured stdout access
@@ -943,7 +947,7 @@ fn args_i32(a: Int32) -> List[WasmtimeVal]:
     """Build a single-i32 argument list."""
     var v = List[WasmtimeVal]()
     v.append(WasmtimeVal.from_i32(a))
-    return v
+    return v^
 
 
 fn args_i32_i32(a: Int32, b: Int32) -> List[WasmtimeVal]:
@@ -951,14 +955,14 @@ fn args_i32_i32(a: Int32, b: Int32) -> List[WasmtimeVal]:
     var v = List[WasmtimeVal]()
     v.append(WasmtimeVal.from_i32(a))
     v.append(WasmtimeVal.from_i32(b))
-    return v
+    return v^
 
 
 fn args_i64(a: Int64) -> List[WasmtimeVal]:
     """Build a single-i64 argument list."""
     var v = List[WasmtimeVal]()
     v.append(WasmtimeVal.from_i64(a))
-    return v
+    return v^
 
 
 fn args_i64_i64(a: Int64, b: Int64) -> List[WasmtimeVal]:
@@ -966,14 +970,14 @@ fn args_i64_i64(a: Int64, b: Int64) -> List[WasmtimeVal]:
     var v = List[WasmtimeVal]()
     v.append(WasmtimeVal.from_i64(a))
     v.append(WasmtimeVal.from_i64(b))
-    return v
+    return v^
 
 
 fn args_f32(a: Float32) -> List[WasmtimeVal]:
     """Build a single-f32 argument list."""
     var v = List[WasmtimeVal]()
     v.append(WasmtimeVal.from_f32(a))
-    return v
+    return v^
 
 
 fn args_f32_f32(a: Float32, b: Float32) -> List[WasmtimeVal]:
@@ -981,14 +985,14 @@ fn args_f32_f32(a: Float32, b: Float32) -> List[WasmtimeVal]:
     var v = List[WasmtimeVal]()
     v.append(WasmtimeVal.from_f32(a))
     v.append(WasmtimeVal.from_f32(b))
-    return v
+    return v^
 
 
 fn args_f64(a: Float64) -> List[WasmtimeVal]:
     """Build a single-f64 argument list."""
     var v = List[WasmtimeVal]()
     v.append(WasmtimeVal.from_f64(a))
-    return v
+    return v^
 
 
 fn args_f64_f64(a: Float64, b: Float64) -> List[WasmtimeVal]:
@@ -996,7 +1000,7 @@ fn args_f64_f64(a: Float64, b: Float64) -> List[WasmtimeVal]:
     var v = List[WasmtimeVal]()
     v.append(WasmtimeVal.from_f64(a))
     v.append(WasmtimeVal.from_f64(b))
-    return v
+    return v^
 
 
 fn args_i32_i32_i32(a: Int32, b: Int32, c: Int32) -> List[WasmtimeVal]:
@@ -1005,7 +1009,7 @@ fn args_i32_i32_i32(a: Int32, b: Int32, c: Int32) -> List[WasmtimeVal]:
     v.append(WasmtimeVal.from_i32(a))
     v.append(WasmtimeVal.from_i32(b))
     v.append(WasmtimeVal.from_i32(c))
-    return v
+    return v^
 
 
 fn args_f64_f64_f64(a: Float64, b: Float64, c: Float64) -> List[WasmtimeVal]:
@@ -1014,14 +1018,14 @@ fn args_f64_f64_f64(a: Float64, b: Float64, c: Float64) -> List[WasmtimeVal]:
     v.append(WasmtimeVal.from_f64(a))
     v.append(WasmtimeVal.from_f64(b))
     v.append(WasmtimeVal.from_f64(c))
-    return v
+    return v^
 
 
 fn args_ptr(ptr: Int) -> List[WasmtimeVal]:
     """Build a single-pointer (i64) argument list from an Int address."""
     var v = List[WasmtimeVal]()
     v.append(WasmtimeVal.from_i64(Int64(ptr)))
-    return v
+    return v^
 
 
 fn args_ptr_ptr(a: Int, b: Int) -> List[WasmtimeVal]:
@@ -1029,7 +1033,7 @@ fn args_ptr_ptr(a: Int, b: Int) -> List[WasmtimeVal]:
     var v = List[WasmtimeVal]()
     v.append(WasmtimeVal.from_i64(Int64(a)))
     v.append(WasmtimeVal.from_i64(Int64(b)))
-    return v
+    return v^
 
 
 fn args_ptr_i32(ptr: Int, val: Int32) -> List[WasmtimeVal]:
@@ -1037,7 +1041,7 @@ fn args_ptr_i32(ptr: Int, val: Int32) -> List[WasmtimeVal]:
     var v = List[WasmtimeVal]()
     v.append(WasmtimeVal.from_i64(Int64(ptr)))
     v.append(WasmtimeVal.from_i32(val))
-    return v
+    return v^
 
 
 fn args_ptr_i32_i32(ptr: Int, a: Int32, b: Int32) -> List[WasmtimeVal]:
@@ -1046,7 +1050,7 @@ fn args_ptr_i32_i32(ptr: Int, a: Int32, b: Int32) -> List[WasmtimeVal]:
     v.append(WasmtimeVal.from_i64(Int64(ptr)))
     v.append(WasmtimeVal.from_i32(a))
     v.append(WasmtimeVal.from_i32(b))
-    return v
+    return v^
 
 
 fn args_ptr_i32_i32_i32(
@@ -1058,7 +1062,7 @@ fn args_ptr_i32_i32_i32(
     v.append(WasmtimeVal.from_i32(a))
     v.append(WasmtimeVal.from_i32(b))
     v.append(WasmtimeVal.from_i32(c))
-    return v
+    return v^
 
 
 fn args_ptr_i32_i32_i32_ptr(
@@ -1071,7 +1075,7 @@ fn args_ptr_i32_i32_i32_ptr(
     v.append(WasmtimeVal.from_i32(b))
     v.append(WasmtimeVal.from_i32(c))
     v.append(WasmtimeVal.from_i64(Int64(ptr2)))
-    return v
+    return v^
 
 
 fn args_ptr_i32_ptr(ptr: Int, val: Int32, ptr2: Int) -> List[WasmtimeVal]:
@@ -1080,7 +1084,7 @@ fn args_ptr_i32_ptr(ptr: Int, val: Int32, ptr2: Int) -> List[WasmtimeVal]:
     v.append(WasmtimeVal.from_i64(Int64(ptr)))
     v.append(WasmtimeVal.from_i32(val))
     v.append(WasmtimeVal.from_i64(Int64(ptr2)))
-    return v
+    return v^
 
 
 fn args_ptr_i64_ptr(a: Int, b: Int64, c: Int) -> List[WasmtimeVal]:
@@ -1089,7 +1093,7 @@ fn args_ptr_i64_ptr(a: Int, b: Int64, c: Int) -> List[WasmtimeVal]:
     v.append(WasmtimeVal.from_i64(Int64(a)))
     v.append(WasmtimeVal.from_i64(b))
     v.append(WasmtimeVal.from_i64(Int64(c)))
-    return v
+    return v^
 
 
 fn args_ptr_ptr_ptr(a: Int, b: Int, c: Int) -> List[WasmtimeVal]:
@@ -1098,7 +1102,7 @@ fn args_ptr_ptr_ptr(a: Int, b: Int, c: Int) -> List[WasmtimeVal]:
     v.append(WasmtimeVal.from_i64(Int64(a)))
     v.append(WasmtimeVal.from_i64(Int64(b)))
     v.append(WasmtimeVal.from_i64(Int64(c)))
-    return v
+    return v^
 
 
 fn args_ptr_ptr_i32(a: Int, b: Int, c: Int32) -> List[WasmtimeVal]:
@@ -1107,7 +1111,7 @@ fn args_ptr_ptr_i32(a: Int, b: Int, c: Int32) -> List[WasmtimeVal]:
     v.append(WasmtimeVal.from_i64(Int64(a)))
     v.append(WasmtimeVal.from_i64(Int64(b)))
     v.append(WasmtimeVal.from_i32(c))
-    return v
+    return v^
 
 
 fn args_ptr_ptr_ptr_ptr(a: Int, b: Int, c: Int, d: Int) -> List[WasmtimeVal]:
@@ -1117,7 +1121,7 @@ fn args_ptr_ptr_ptr_ptr(a: Int, b: Int, c: Int, d: Int) -> List[WasmtimeVal]:
     v.append(WasmtimeVal.from_i64(Int64(b)))
     v.append(WasmtimeVal.from_i64(Int64(c)))
     v.append(WasmtimeVal.from_i64(Int64(d)))
-    return v
+    return v^
 
 
 fn args_ptr_ptr_ptr_ptr_i32(
@@ -1130,7 +1134,7 @@ fn args_ptr_ptr_ptr_ptr_i32(
     v.append(WasmtimeVal.from_i64(Int64(c)))
     v.append(WasmtimeVal.from_i64(Int64(d)))
     v.append(WasmtimeVal.from_i32(e))
-    return v
+    return v^
 
 
 fn args_ptr_ptr_ptr_ptr_i32_i32(
@@ -1144,7 +1148,7 @@ fn args_ptr_ptr_ptr_ptr_i32_i32(
     v.append(WasmtimeVal.from_i64(Int64(d)))
     v.append(WasmtimeVal.from_i32(e))
     v.append(WasmtimeVal.from_i32(f))
-    return v
+    return v^
 
 
 fn args_ptr_i32_i32_ptr(
@@ -1156,7 +1160,7 @@ fn args_ptr_i32_i32_ptr(
     v.append(WasmtimeVal.from_i32(a))
     v.append(WasmtimeVal.from_i32(b))
     v.append(WasmtimeVal.from_i64(Int64(ptr2)))
-    return v
+    return v^
 
 
 fn args_ptr_i32_i32_i32_i32(
@@ -1169,7 +1173,7 @@ fn args_ptr_i32_i32_i32_i32(
     v.append(WasmtimeVal.from_i32(b))
     v.append(WasmtimeVal.from_i32(c))
     v.append(WasmtimeVal.from_i32(d))
-    return v
+    return v^
 
 
 fn args_ptr_i32_i32_i32_ptr_ptr(
@@ -1183,7 +1187,7 @@ fn args_ptr_i32_i32_i32_ptr_ptr(
     v.append(WasmtimeVal.from_i32(c))
     v.append(WasmtimeVal.from_i64(Int64(ptr2)))
     v.append(WasmtimeVal.from_i64(Int64(ptr3)))
-    return v
+    return v^
 
 
 fn args_ptr_i32_ptr_ptr(
@@ -1195,7 +1199,7 @@ fn args_ptr_i32_ptr_ptr(
     v.append(WasmtimeVal.from_i32(val))
     v.append(WasmtimeVal.from_i64(Int64(ptr2)))
     v.append(WasmtimeVal.from_i64(Int64(ptr3)))
-    return v
+    return v^
 
 
 fn args_ptr_i32_ptr_i32(
@@ -1207,7 +1211,7 @@ fn args_ptr_i32_ptr_i32(
     v.append(WasmtimeVal.from_i32(a))
     v.append(WasmtimeVal.from_i64(Int64(ptr2)))
     v.append(WasmtimeVal.from_i32(b))
-    return v
+    return v^
 
 
 fn args_ptr_i32_ptr_i32_i32(
@@ -1221,7 +1225,7 @@ fn args_ptr_i32_ptr_i32_i32(
     v.append(WasmtimeVal.from_i64(Int64(ptr2)))
     v.append(WasmtimeVal.from_i32(b))
     v.append(WasmtimeVal.from_i32(c))
-    return v
+    return v^
 
 
 fn args_ptr_i32_ptr_ptr_i32(
@@ -1235,7 +1239,7 @@ fn args_ptr_i32_ptr_ptr_i32(
     v.append(WasmtimeVal.from_i64(Int64(ptr2)))
     v.append(WasmtimeVal.from_i64(Int64(ptr3)))
     v.append(WasmtimeVal.from_i32(b))
-    return v
+    return v^
 
 
 fn no_args() -> List[WasmtimeVal]:
@@ -1244,30 +1248,25 @@ fn no_args() -> List[WasmtimeVal]:
 
 
 # ---------------------------------------------------------------------------
-# Singleton instance — reuse a single instance across all Mojo test
-# invocations within a process, matching the Python harness behavior.
+# Instance factory — create a fresh instance for each caller.
+#
+# Module-level `var` is not supported in Mojo 0.25.6, so we cannot
+# keep a cached singleton.  Each call allocates a new WasmInstance on
+# the heap and returns a pointer to it.  The caller is responsible for
+# the lifetime (in practice test processes are short-lived, so the
+# leak is acceptable).
 # ---------------------------------------------------------------------------
-
-var _cached_instance: UnsafePointer[WasmInstance] = UnsafePointer[
-    WasmInstance
-]()
-var _cached_initialized: Bool = False
 
 
 fn get_instance() raises -> UnsafePointer[WasmInstance]:
-    """Return a pointer to a cached WasmInstance, creating it on first call.
-
-    The instance is allocated on the heap and lives for the duration of
-    the process.  All test functions share the same instance.
+    """Create a new WasmInstance and return a heap pointer to it.
 
     Returns:
-        UnsafePointer to the singleton WasmInstance.
+        UnsafePointer to a freshly allocated WasmInstance.
 
     Raises:
         Error: If the WASM binary cannot be loaded or instantiated.
     """
-    if not _cached_initialized:
-        _cached_instance = UnsafePointer[WasmInstance].alloc(1)
-        _cached_instance[] = WasmInstance(WASM_PATH)
-        _cached_initialized = True
-    return _cached_instance
+    var ptr = UnsafePointer[WasmInstance].alloc(1)
+    ptr.init_pointee_move(WasmInstance(WASM_PATH))
+    return ptr
