@@ -168,6 +168,7 @@
         ./nixos-rs
         ./systemd-rs
         ./pkg-config-rs
+        ./tramp-rs
 
         ./slides
       ];
