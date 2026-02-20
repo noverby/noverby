@@ -7,7 +7,9 @@
       wabt
       llvmPackages_latest.llvm
       llvmPackages_latest.lld
-      uv
+      (python3.withPackages (_: [
+        wasmtime-py
+      ]))
     ];
   };
 }
