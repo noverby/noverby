@@ -1,9 +1,16 @@
 """
 WASM test harness using wasmtime-py.
 
-Provides fixtures for loading the Mojo WASM binary and interacting with
+Provides a WasmInstance for loading the Mojo WASM binary and interacting with
 its exported functions, including string struct read/write operations
 that mirror the TypeScript runtime/strings.ts and runtime/memory.ts.
+
+This module is designed to be imported from Mojo via Python interop:
+
+    from python import Python
+    Python.add_to_path("test-wasm")
+    var harness = Python.import_module("wasm_harness")
+    var w = harness.get_instance()
 
 Import signatures are derived from `wasm-objdump -j Import -x build/out.wasm`:
 
@@ -27,11 +34,9 @@ Import signatures are derived from `wasm-objdump -j Import -x build/out.wasm`:
 """
 
 import ctypes
-import math
 import struct
 from pathlib import Path
 
-import pytest
 import wasmtime
 
 # ---------------------------------------------------------------------------
@@ -206,13 +211,6 @@ class WasmInstance:
 # ---------------------------------------------------------------------------
 
 
-def _to_signed_64(v: int) -> int:
-    """Convert an unsigned 64-bit int to signed (for struct packing)."""
-    if v >= (1 << 63):
-        v -= 1 << 64
-    return v
-
-
 def _f32(x: float) -> float:
     """Truncate to float32 precision."""
     return struct.unpack("f", struct.pack("f", x))[0]
@@ -248,9 +246,6 @@ def _create_instance() -> WasmInstance:
     alloc = BumpAllocator(0)  # updated after instantiation
     captured_stdout: list[str] = []
     _inst_wrapper: list[WasmInstance | None] = [None]
-
-    # NOTE: The WASM module defines its own memory (not imported).
-    # We do NOT call linker.define for "env" "memory".
 
     # ======================================================================
     # Import definitions — signatures MUST match the WASM binary exactly.
@@ -553,13 +548,15 @@ def _create_instance() -> WasmInstance:
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Singleton — reuse a single instance across all Mojo test invocations
 # ---------------------------------------------------------------------------
 
+_cached_instance: WasmInstance | None = None
 
-# Session-scoped fixture: a single WASM instance shared across ALL tests
-# in the session. This is efficient since instantiation is expensive.
-@pytest.fixture(scope="session")
-def w() -> WasmInstance:
-    """Session-scoped WASM instance fixture."""
-    return _create_instance()
+
+def get_instance() -> WasmInstance:
+    """Return a cached WasmInstance, creating it on first call."""
+    global _cached_instance
+    if _cached_instance is None:
+        _cached_instance = _create_instance()
+    return _cached_instance

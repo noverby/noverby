@@ -12,7 +12,7 @@ mojo-test:
   mojo test -I src test-mojo/
 
 wasm-test: build
-  uv run --with wasmtime --with pytest pytest test-wasm/ -v
+  mojo test test-wasm/
 
 test-all: mojo-test test wasm-test
 
