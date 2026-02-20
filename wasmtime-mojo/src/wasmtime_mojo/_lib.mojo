@@ -6,6 +6,7 @@ wrappers around the C API functions needed by wasmtime-mojo.
 The DLHandle is loaded lazily on first use via `get_lib()`.
 """
 
+from os import getenv
 from sys.ffi import DLHandle
 from memory import UnsafePointer
 
@@ -37,6 +38,24 @@ from ._types import (
 # ---------------------------------------------------------------------------
 
 
+fn _find_lib_in_nix_ldflags() raises -> DLHandle:
+    """Search NIX_LDFLAGS for a -L directory containing libwasmtime.so."""
+    var flags = getenv("NIX_LDFLAGS", "")
+    if not flags:
+        raise Error("NIX_LDFLAGS not set")
+    var parts = flags.split(" ")
+    for i in range(len(parts)):
+        var part = parts[i]
+        if part.startswith("-L") and "wasmtime" in part:
+            var dir_path = part[2:]
+            var full = dir_path + "/libwasmtime.so"
+            try:
+                return DLHandle(full)
+            except:
+                pass
+    raise Error("libwasmtime.so not found in NIX_LDFLAGS")
+
+
 @always_inline
 fn get_lib() raises -> DLHandle:
     """Return a handle to the wasmtime shared library.
@@ -44,8 +63,14 @@ fn get_lib() raises -> DLHandle:
     Creates a new DLHandle each call.  On Linux the underlying dlopen(3)
     caches library handles, so repeated calls are cheap and always return
     the same loaded library.
+
+    Falls back to searching NIX_LDFLAGS (Nix environments) when the
+    library is not on the default search path.
     """
-    return DLHandle("libwasmtime.so")
+    try:
+        return DLHandle("libwasmtime.so")
+    except:
+        return _find_lib_in_nix_ldflags()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
