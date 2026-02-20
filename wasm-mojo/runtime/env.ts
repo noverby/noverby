@@ -104,7 +104,7 @@ const __multi3 = (
 
 /** WebAssembly import object providing the environment the Mojo WASM module expects. */
 export const env: WebAssembly.ModuleImports = {
-	memory: new WebAssembly.Memory({ initial: 256 }),
+	memory: new WebAssembly.Memory({ initial: 4096 }),
 
 	// libc / runtime stubs
 	__cxa_atexit: (_func: bigint, _obj: bigint, _dso: bigint): number => 0,

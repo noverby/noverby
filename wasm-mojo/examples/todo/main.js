@@ -286,7 +286,7 @@ class Interpreter {
 // ── WASM environment (import object) ────────────────────────────────────────
 
 const env = {
-  memory: new WebAssembly.Memory({ initial: 256 }),
+  memory: new WebAssembly.Memory({ initial: 4096 }),
   __cxa_atexit: () => 0,
   KGEN_CompilerRT_AlignedAlloc: alignedAlloc,
   KGEN_CompilerRT_AlignedFree: () => 1,

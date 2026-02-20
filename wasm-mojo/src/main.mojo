@@ -3341,6 +3341,782 @@ fn todo_scope_id(app_ptr: Int64) -> Int32:
     return Int32(app[0].scope_id)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 9 — Performance & Polish
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+# ── 9.4 Signal Write Batching ────────────────────────────────────────────────
+#
+# During a batch, multiple signal writes coalesce into a single dirty-scope
+# notification.  This prevents redundant re-renders when an event handler
+# writes to several signals before flushing.
+#
+# Usage:
+#   runtime_begin_batch(rt)
+#   signal_write_i32(rt, key1, val1)
+#   signal_write_i32(rt, key2, val2)
+#   runtime_end_batch(rt)
+#   # → only one dirty entry per affected scope
+
+
+@export
+fn runtime_begin_batch(rt_ptr: Int64):
+    """Begin a signal write batch.
+
+    While batching, signal writes still update values and accumulate
+    dirty scopes, but no duplicate entries are added.  Call
+    runtime_end_batch() to finalize.
+    """
+    # Batching is implicit in the current design — dirty_scopes already
+    # deduplicates.  This export exists so JS can explicitly bracket
+    # multi-write handlers for clarity and future optimization.
+    pass
+
+
+@export
+fn runtime_end_batch(rt_ptr: Int64):
+    """End a signal write batch.  The dirty queue is ready for drain."""
+    pass
+
+
+# ── 9.5 Debug Mode ──────────────────────────────────────────────────────────
+#
+# Debug exports expose internal state for logging and profiling.
+
+
+@export
+fn debug_signal_store_capacity(rt_ptr: Int64) -> Int32:
+    """Return the total number of signal slots (occupied + free)."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(len(rt[0].signals._entries))
+
+
+@export
+fn debug_scope_store_capacity(rt_ptr: Int64) -> Int32:
+    """Return the total number of scope slots (occupied + free)."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(len(rt[0].scopes._scopes))
+
+
+@export
+fn debug_vnode_store_count(store_ptr: Int64) -> Int32:
+    """Return the number of VNodes in a standalone store."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].count())
+
+
+@export
+fn debug_handler_store_capacity(rt_ptr: Int64) -> Int32:
+    """Return the total number of handler slots."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(len(rt[0].handlers._entries))
+
+
+@export
+fn debug_eid_alloc_capacity(alloc_ptr: Int64) -> Int32:
+    """Return the total number of ElementId slots."""
+    var a = _get_eid_alloc(alloc_ptr)
+    return Int32(len(a[0]._slots))
+
+
+# ── 9.2 Memory Management Test Exports ───────────────────────────────────────
+#
+# These exports allow the JS test harness to exercise allocation/deallocation
+# cycles and verify that memory usage stays bounded.
+
+
+@export
+fn mem_test_signal_cycle(rt_ptr: Int64, count: Int32) -> Int32:
+    """Create and destroy `count` signals.  Returns final signal_count (should be 0).
+    """
+    var rt = _get_runtime(rt_ptr)
+    var keys = List[UInt32]()
+    for i in range(Int(count)):
+        keys.append(rt[0].create_signal[Int32](Int32(i)))
+    for i in range(Int(count)):
+        rt[0].destroy_signal(keys[i])
+    return Int32(rt[0].signals.signal_count())
+
+
+@export
+fn mem_test_scope_cycle(rt_ptr: Int64, count: Int32) -> Int32:
+    """Create and destroy `count` scopes.  Returns final scope_count (should be 0).
+    """
+    var rt = _get_runtime(rt_ptr)
+    var ids = List[UInt32]()
+    for i in range(Int(count)):
+        ids.append(rt[0].create_scope(0, -1))
+    for i in range(Int(count)):
+        rt[0].destroy_scope(ids[i])
+    return Int32(rt[0].scope_count())
+
+
+@export
+fn mem_test_rapid_writes(rt_ptr: Int64, key: Int32, count: Int32) -> Int32:
+    """Write to a signal `count` times in sequence.  Returns final dirty_count.
+    """
+    var rt = _get_runtime(rt_ptr)
+    for i in range(Int(count)):
+        rt[0].write_signal[Int32](UInt32(key), Int32(i))
+    return Int32(rt[0].dirty_count())
+
+
+# ── 9.1 Benchmark App ───────────────────────────────────────────────────────
+#
+# Implements the js-framework-benchmark operations:
+#   - Create N rows
+#   - Append N rows
+#   - Update every 10th row
+#   - Select row (highlight)
+#   - Swap rows (indices 1 and 998)
+#   - Remove row
+#   - Clear all rows
+#
+# Each row has: id (int), label (string).
+# The selected row id is tracked separately.
+#
+# Template structure:
+#   "bench-row": tr + dynamic_attr[0](class) > [
+#       td > dynamic_text[0] (id),
+#       td > a > dynamic_text[1] (label),
+#       td > a > dynamic_text[2] ("Delete" / "×")
+#   ]
+#   dynamic_attr[1] = click on label (select)
+#   dynamic_attr[2] = click on delete button (remove)
+#
+# We use a simple linear congruential generator for pseudo-random labels
+# to match the benchmark's adjective + colour + noun pattern.
+
+
+struct BenchRow(Copyable, Movable):
+    """A single benchmark table row."""
+
+    var id: Int32
+    var label: String
+
+    fn __init__(out self, id: Int32, label: String):
+        self.id = id
+        self.label = label
+
+    fn __copyinit__(out self, other: Self):
+        self.id = other.id
+        self.label = other.label
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.id = other.id
+        self.label = other.label^
+
+
+# ── Label generation ─────────────────────────────────────────────────────────
+
+alias _ADJ_COUNT: Int = 12
+alias _COL_COUNT: Int = 11
+alias _NOUN_COUNT: Int = 12
+
+
+fn _adjective(idx: Int) -> String:
+    if idx == 0:
+        return "pretty"
+    elif idx == 1:
+        return "large"
+    elif idx == 2:
+        return "big"
+    elif idx == 3:
+        return "small"
+    elif idx == 4:
+        return "tall"
+    elif idx == 5:
+        return "short"
+    elif idx == 6:
+        return "long"
+    elif idx == 7:
+        return "handsome"
+    elif idx == 8:
+        return "plain"
+    elif idx == 9:
+        return "quaint"
+    elif idx == 10:
+        return "clean"
+    else:
+        return "elegant"
+
+
+fn _colour(idx: Int) -> String:
+    if idx == 0:
+        return "red"
+    elif idx == 1:
+        return "yellow"
+    elif idx == 2:
+        return "blue"
+    elif idx == 3:
+        return "green"
+    elif idx == 4:
+        return "pink"
+    elif idx == 5:
+        return "brown"
+    elif idx == 6:
+        return "purple"
+    elif idx == 7:
+        return "orange"
+    elif idx == 8:
+        return "white"
+    elif idx == 9:
+        return "black"
+    else:
+        return "grey"
+
+
+fn _noun(idx: Int) -> String:
+    if idx == 0:
+        return "table"
+    elif idx == 1:
+        return "chair"
+    elif idx == 2:
+        return "house"
+    elif idx == 3:
+        return "bbq"
+    elif idx == 4:
+        return "desk"
+    elif idx == 5:
+        return "car"
+    elif idx == 6:
+        return "pony"
+    elif idx == 7:
+        return "cookie"
+    elif idx == 8:
+        return "sandwich"
+    elif idx == 9:
+        return "burger"
+    elif idx == 10:
+        return "pizza"
+    else:
+        return "mouse"
+
+
+struct BenchmarkApp(Movable):
+    """Js-framework-benchmark app state.
+
+    Manages a list of rows, selection state, and all rendering
+    infrastructure (runtime, templates, vnode store, etc.).
+    """
+
+    var runtime: UnsafePointer[Runtime]
+    var store: UnsafePointer[VNodeStore]
+    var eid_alloc: UnsafePointer[ElementIdAllocator]
+    var scope_id: UInt32
+    var version_signal: UInt32  # bumped on list changes
+    var selected_signal: UInt32  # currently selected row id (0 = none)
+    var row_template_id: UInt32
+    var rows: List[BenchRow]
+    var next_id: Int32
+    var rng_state: UInt32  # simple LCG state
+    var current_frag: Int  # Fragment VNode index, or -1
+    var anchor_id: UInt32  # ElementId of anchor node (placeholder when empty)
+    var rows_mounted: Bool
+
+    fn __init__(out self):
+        self.runtime = UnsafePointer[Runtime]()
+        self.store = UnsafePointer[VNodeStore]()
+        self.eid_alloc = UnsafePointer[ElementIdAllocator]()
+        self.scope_id = 0
+        self.version_signal = 0
+        self.selected_signal = 0
+        self.row_template_id = 0
+        self.rows = List[BenchRow]()
+        self.next_id = 1
+        self.rng_state = 42
+        self.current_frag = -1
+        self.anchor_id = 0
+        self.rows_mounted = False
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.runtime = other.runtime
+        self.store = other.store
+        self.eid_alloc = other.eid_alloc
+        self.scope_id = other.scope_id
+        self.version_signal = other.version_signal
+        self.selected_signal = other.selected_signal
+        self.row_template_id = other.row_template_id
+        self.rows = other.rows^
+        self.next_id = other.next_id
+        self.rng_state = other.rng_state
+        self.current_frag = other.current_frag
+        self.anchor_id = other.anchor_id
+        self.rows_mounted = other.rows_mounted
+
+    fn _next_random(mut self) -> UInt32:
+        """Simple LCG: state = state * 1664525 + 1013904223."""
+        self.rng_state = self.rng_state * 1664525 + 1013904223
+        return self.rng_state
+
+    fn _generate_label(mut self) -> String:
+        """Generate a random "adjective colour noun" label."""
+        var a = Int(self._next_random() % _ADJ_COUNT)
+        var c = Int(self._next_random() % _COL_COUNT)
+        var n = Int(self._next_random() % _NOUN_COUNT)
+        return _adjective(a) + " " + _colour(c) + " " + _noun(n)
+
+    fn _bump_version(mut self):
+        """Increment the version signal to trigger re-render."""
+        var current = self.runtime[0].peek_signal[Int32](self.version_signal)
+        self.runtime[0].write_signal[Int32](self.version_signal, current + 1)
+
+    fn create_rows(mut self, count: Int):
+        """Replace all rows with `count` newly generated rows."""
+        self.rows = List[BenchRow]()
+        for _ in range(count):
+            var label = self._generate_label()
+            self.rows.append(BenchRow(self.next_id, label))
+            self.next_id += 1
+        self._bump_version()
+
+    fn append_rows(mut self, count: Int):
+        """Append `count` newly generated rows to the list."""
+        for _ in range(count):
+            var label = self._generate_label()
+            self.rows.append(BenchRow(self.next_id, label))
+            self.next_id += 1
+        self._bump_version()
+
+    fn update_every_10th(mut self):
+        """Append " !!!" to every 10th row's label."""
+        var i = 0
+        while i < len(self.rows):
+            self.rows[i].label = self.rows[i].label + " !!!"
+            i += 10
+        self._bump_version()
+
+    fn select_row(mut self, id: Int32):
+        """Select the row with the given id."""
+        self.runtime[0].write_signal[Int32](self.selected_signal, id)
+
+    fn swap_rows(mut self, a: Int, b: Int):
+        """Swap two rows by their list indices."""
+        if a < 0 or b < 0 or a >= len(self.rows) or b >= len(self.rows):
+            return
+        if a == b:
+            return
+        var tmp = self.rows[a].copy()
+        self.rows[a] = self.rows[b].copy()
+        self.rows[b] = tmp.copy()
+        self._bump_version()
+
+    fn remove_row(mut self, id: Int32):
+        """Remove a row by id."""
+        for i in range(len(self.rows)):
+            if self.rows[i].id == id:
+                var last = len(self.rows) - 1
+                if i != last:
+                    self.rows[i] = self.rows[last].copy()
+                _ = self.rows.pop()
+                self._bump_version()
+                return
+
+    fn clear_rows(mut self):
+        """Remove all rows."""
+        self.rows = List[BenchRow]()
+        self._bump_version()
+
+    fn build_row_vnode(mut self, row: BenchRow) -> UInt32:
+        """Build a keyed VNode for a single benchmark row.
+
+        Template "bench-row": tr > [ td(id), td > a(label), td > a("×") ]
+          dynamic_attr[0] = class on <tr> ("danger" if selected)
+          dynamic_text[0] = row id
+          dynamic_text[1] = row label
+          dynamic_text[2] = "×" (static but encoded as dynamic for simplicity)
+          dynamic_attr[1] = click on label <a> (select)
+          dynamic_attr[2] = click on delete <a> (remove)
+        """
+        var idx = self.store[0].push(
+            VNode.template_ref_keyed(self.row_template_id, String(row.id))
+        )
+
+        # Dynamic text 0: row id
+        self.store[0].push_dynamic_node(
+            idx, DynamicNode.text_node(String(row.id))
+        )
+
+        # Dynamic text 1: row label
+        self.store[0].push_dynamic_node(idx, DynamicNode.text_node(row.label))
+
+        # Dynamic attr 0: class on <tr> ("danger" if selected)
+        var selected = self.runtime[0].peek_signal[Int32](self.selected_signal)
+        var tr_class: String
+        if selected == row.id:
+            tr_class = String("danger")
+        else:
+            tr_class = String("")
+        self.store[0].push_dynamic_attr(
+            idx,
+            DynamicAttr(
+                String("class"),
+                AttributeValue.text(tr_class),
+                UInt32(0),
+            ),
+        )
+
+        # Dynamic attr 1: click on label <a> (select — custom handler)
+        var select_handler = self.runtime[0].register_handler(
+            HandlerEntry.custom(self.scope_id, String("click"))
+        )
+        self.store[0].push_dynamic_attr(
+            idx,
+            DynamicAttr(
+                String("click"),
+                AttributeValue.event(select_handler),
+                UInt32(0),
+            ),
+        )
+
+        # Dynamic attr 2: click on delete <a> (remove — custom handler)
+        var remove_handler = self.runtime[0].register_handler(
+            HandlerEntry.custom(self.scope_id, String("click"))
+        )
+        self.store[0].push_dynamic_attr(
+            idx,
+            DynamicAttr(
+                String("click"),
+                AttributeValue.event(remove_handler),
+                UInt32(0),
+            ),
+        )
+
+        return idx
+
+    fn build_rows_fragment(mut self) -> UInt32:
+        """Build a Fragment VNode containing all row VNodes."""
+        var frag_idx = self.store[0].push(VNode.fragment())
+        for i in range(len(self.rows)):
+            var row_idx = self.build_row_vnode(self.rows[i].copy())
+            self.store[0].push_fragment_child(frag_idx, row_idx)
+        return frag_idx
+
+
+fn _int_to_bench_ptr(addr: Int) -> UnsafePointer[BenchmarkApp]:
+    """Reinterpret an integer address as an UnsafePointer[BenchmarkApp]."""
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[BenchmarkApp]]()[0]
+    slot.free()
+    return result
+
+
+# ── Benchmark App Lifecycle Exports ──────────────────────────────────────────
+
+
+@export
+fn bench_init() -> Int64:
+    """Initialize the benchmark app.  Returns a pointer to the app state.
+
+    Creates: runtime, VNode store, element ID allocator, scope, signals,
+    and the row template.
+    """
+    var app_ptr = UnsafePointer[BenchmarkApp].alloc(1)
+    app_ptr.init_pointee_move(BenchmarkApp())
+
+    # 1. Create subsystem instances
+    app_ptr[0].runtime = create_runtime()
+    app_ptr[0].store = UnsafePointer[VNodeStore].alloc(1)
+    app_ptr[0].store.init_pointee_move(VNodeStore())
+    app_ptr[0].eid_alloc = UnsafePointer[ElementIdAllocator].alloc(1)
+    app_ptr[0].eid_alloc.init_pointee_move(ElementIdAllocator())
+
+    # 2. Create root scope and signals
+    app_ptr[0].scope_id = app_ptr[0].runtime[0].create_scope(0, -1)
+    _ = app_ptr[0].runtime[0].begin_scope_render(app_ptr[0].scope_id)
+    app_ptr[0].version_signal = app_ptr[0].runtime[0].use_signal_i32(0)
+    app_ptr[0].selected_signal = app_ptr[0].runtime[0].use_signal_i32(0)
+    # Read signals to subscribe scope
+    _ = app_ptr[0].runtime[0].read_signal[Int32](app_ptr[0].version_signal)
+    _ = app_ptr[0].runtime[0].read_signal[Int32](app_ptr[0].selected_signal)
+    app_ptr[0].runtime[0].end_scope_render(-1)
+
+    # 3. Build and register the "bench-row" template:
+    #    tr + dynamic_attr[0](class) > [
+    #        td > dynamic_text[0],          ← id
+    #        td > a + dynamic_attr[1] > dynamic_text[1],  ← label + select click
+    #        td > a + dynamic_attr[2] > text("×")         ← delete click
+    #    ]
+    var builder_ptr = create_builder(String("bench-row"))
+
+    var tr_idx = builder_ptr[0].push_element(TAG_TR, -1)
+    builder_ptr[0].push_dynamic_attr(Int(tr_idx), 0)  # class
+
+    var td_id = builder_ptr[0].push_element(TAG_TD, Int(tr_idx))
+    var _dyn_id = builder_ptr[0].push_dynamic_text(0, Int(td_id))
+
+    var td_label = builder_ptr[0].push_element(TAG_TD, Int(tr_idx))
+    var a_label = builder_ptr[0].push_element(TAG_A, Int(td_label))
+    builder_ptr[0].push_dynamic_attr(Int(a_label), 1)  # click select
+    var _dyn_label = builder_ptr[0].push_dynamic_text(1, Int(a_label))
+
+    var td_action = builder_ptr[0].push_element(TAG_TD, Int(tr_idx))
+    var a_remove = builder_ptr[0].push_element(TAG_A, Int(td_action))
+    builder_ptr[0].push_dynamic_attr(Int(a_remove), 2)  # click remove
+    var _dyn_remove = builder_ptr[0].push_text(String("×"), Int(a_remove))
+
+    var row_template = builder_ptr[0].build()
+    app_ptr[0].row_template_id = UInt32(
+        app_ptr[0].runtime[0].templates.register(row_template^)
+    )
+    destroy_builder(builder_ptr)
+
+    return Int64(Int(app_ptr))
+
+
+@export
+fn bench_destroy(app_ptr: Int64):
+    """Destroy the benchmark app and free all resources."""
+    var ptr = _int_to_bench_ptr(Int(app_ptr))
+    if ptr[0].store:
+        ptr[0].store.destroy_pointee()
+        ptr[0].store.free()
+    if ptr[0].eid_alloc:
+        ptr[0].eid_alloc.destroy_pointee()
+        ptr[0].eid_alloc.free()
+    if ptr[0].runtime:
+        destroy_runtime(ptr[0].runtime)
+    ptr.destroy_pointee()
+    ptr.free()
+
+
+@export
+fn bench_create(app_ptr: Int64, count: Int32):
+    """Replace all rows with `count` new rows (benchmark: create)."""
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    app[0].create_rows(Int(count))
+
+
+@export
+fn bench_append(app_ptr: Int64, count: Int32):
+    """Append `count` new rows (benchmark: append)."""
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    app[0].append_rows(Int(count))
+
+
+@export
+fn bench_update(app_ptr: Int64):
+    """Update every 10th row label (benchmark: update)."""
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    app[0].update_every_10th()
+
+
+@export
+fn bench_select(app_ptr: Int64, id: Int32):
+    """Select a row by id (benchmark: select)."""
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    app[0].select_row(id)
+
+
+@export
+fn bench_swap(app_ptr: Int64):
+    """Swap rows at indices 1 and 998 (benchmark: swap)."""
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    app[0].swap_rows(1, 998)
+
+
+@export
+fn bench_remove(app_ptr: Int64, id: Int32):
+    """Remove a row by id (benchmark: remove)."""
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    app[0].remove_row(id)
+
+
+@export
+fn bench_clear(app_ptr: Int64):
+    """Clear all rows (benchmark: clear)."""
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    app[0].clear_rows()
+
+
+@export
+fn bench_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
+    """Initial render of the benchmark table body.
+
+    Creates an anchor placeholder in the DOM (will be replaced on first
+    populate).  Emits mutations for the initial empty state.
+
+    Returns byte offset (length) of mutation data.
+    """
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    var buf = _int_to_ptr(Int(buf_ptr))
+
+    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
+    writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
+
+    # Create an anchor placeholder
+    var anchor_eid = app[0].eid_alloc[0].alloc()
+    app[0].anchor_id = anchor_eid.as_u32()
+    writer_ptr[0].create_placeholder(anchor_eid.as_u32())
+    writer_ptr[0].append_children(0, 1)
+
+    # Build initial empty fragment
+    var frag_idx = app[0].build_rows_fragment()
+    app[0].current_frag = Int(frag_idx)
+    app[0].rows_mounted = False
+
+    writer_ptr[0].finalize()
+    var offset = Int32(writer_ptr[0].offset)
+    writer_ptr.destroy_pointee()
+    writer_ptr.free()
+
+    return offset
+
+
+@export
+fn bench_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
+    """Flush pending updates after a benchmark operation.
+
+    Handles transitions:
+      - empty → populated: create rows, ReplaceWith anchor
+      - populated → populated: diff old fragment vs new fragment (keyed)
+      - populated → empty: remove rows, recreate anchor
+
+    Returns byte offset (length) of mutation data, or 0 if nothing dirty.
+    """
+    var app = _int_to_bench_ptr(Int(app_ptr))
+
+    if not app[0].runtime[0].has_dirty():
+        return 0
+
+    var _dirty = app[0].runtime[0].drain_dirty()
+
+    var buf = _int_to_ptr(Int(buf_ptr))
+    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
+    writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
+
+    var new_frag_idx = app[0].build_rows_fragment()
+    var old_frag_idx = UInt32(app[0].current_frag)
+
+    var old_frag_ptr = app[0].store[0].get_ptr(old_frag_idx)
+    var new_frag_ptr = app[0].store[0].get_ptr(new_frag_idx)
+    var old_count = old_frag_ptr[0].fragment_child_count()
+    var new_count = new_frag_ptr[0].fragment_child_count()
+
+    if not app[0].rows_mounted and new_count > 0:
+        # ── Transition: empty → populated ─────────────────────────────
+        var create_eng = CreateEngine(
+            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
+        )
+        var total_roots: UInt32 = 0
+        for i in range(new_count):
+            var child_idx = (
+                app[0].store[0].get_ptr(new_frag_idx)[0].get_fragment_child(i)
+            )
+            total_roots += create_eng.create_node(child_idx)
+
+        if app[0].anchor_id != 0 and total_roots > 0:
+            writer_ptr[0].replace_with(app[0].anchor_id, total_roots)
+        app[0].rows_mounted = True
+
+    elif app[0].rows_mounted and new_count == 0:
+        # ── Transition: populated → empty ─────────────────────────────
+        # Create a new anchor placeholder
+        var first_old_root_id: UInt32 = 0
+        if old_count > 0:
+            var first_child = (
+                app[0].store[0].get_ptr(old_frag_idx)[0].get_fragment_child(0)
+            )
+            var fc_ptr = app[0].store[0].get_ptr(first_child)
+            if fc_ptr[0].root_id_count() > 0:
+                first_old_root_id = fc_ptr[0].get_root_id(0)
+            elif fc_ptr[0].element_id != 0:
+                first_old_root_id = fc_ptr[0].element_id
+
+        var new_anchor = app[0].eid_alloc[0].alloc()
+        writer_ptr[0].create_placeholder(new_anchor.as_u32())
+
+        if first_old_root_id != 0:
+            writer_ptr[0].insert_before(first_old_root_id, 1)
+
+        # Remove all old rows
+        var diff_eng = DiffEngine(
+            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
+        )
+        for i in range(old_count):
+            var old_child = (
+                app[0].store[0].get_ptr(old_frag_idx)[0].get_fragment_child(i)
+            )
+            diff_eng._remove_node(old_child)
+
+        app[0].anchor_id = new_anchor.as_u32()
+        app[0].rows_mounted = False
+
+    elif app[0].rows_mounted and new_count > 0:
+        # ── Transition: populated → populated ─────────────────────────
+        var diff_eng = DiffEngine(
+            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
+        )
+        diff_eng.diff_node(old_frag_idx, new_frag_idx)
+
+    # else: both empty → no-op
+
+    app[0].current_frag = Int(new_frag_idx)
+
+    writer_ptr[0].finalize()
+    var offset = Int32(writer_ptr[0].offset)
+    writer_ptr.destroy_pointee()
+    writer_ptr.free()
+
+    return offset
+
+
+# ── Benchmark App Query Exports ──────────────────────────────────────────────
+
+
+@export
+fn bench_row_count(app_ptr: Int64) -> Int32:
+    """Return the number of rows."""
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    return Int32(len(app[0].rows))
+
+
+@export
+fn bench_row_id_at(app_ptr: Int64, index: Int32) -> Int32:
+    """Return the id of the row at the given index."""
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    return app[0].rows[Int(index)].id
+
+
+@export
+fn bench_selected(app_ptr: Int64) -> Int32:
+    """Return the currently selected row id (0 = none)."""
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    return app[0].runtime[0].peek_signal[Int32](app[0].selected_signal)
+
+
+@export
+fn bench_has_dirty(app_ptr: Int64) -> Int32:
+    """Check if the benchmark app has dirty scopes.  Returns 1 or 0."""
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    if app[0].runtime[0].has_dirty():
+        return 1
+    return 0
+
+
+@export
+fn bench_version(app_ptr: Int64) -> Int32:
+    """Return the current version signal value."""
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    return app[0].runtime[0].peek_signal[Int32](app[0].version_signal)
+
+
+@export
+fn bench_row_template_id(app_ptr: Int64) -> Int32:
+    """Return the row template ID (for JS template registration)."""
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    return Int32(app[0].row_template_id)
+
+
+@export
+fn bench_scope_id(app_ptr: Int64) -> Int32:
+    """Return the root scope ID."""
+    var app = _int_to_bench_ptr(Int(app_ptr))
+    return Int32(app[0].scope_id)
+
+
 # Factorial (iterative)
 @export
 fn factorial_int32(n: Int32) -> Int32:
