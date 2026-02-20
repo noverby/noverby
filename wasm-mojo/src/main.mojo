@@ -2100,6 +2100,229 @@ fn fib_int64(n: Int64) -> Int64:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Phase 8.3 — Context (Dependency Injection) Exports
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Context allows parent scopes to provide key→value pairs that any descendant
+# scope can consume without prop drilling.  Lookups walk up the parent chain.
+# Keys are UInt32 identifiers; values are Int32 (sufficient for signal keys,
+# enum values, flags, etc.).
+
+
+@export
+fn ctx_provide(rt_ptr: Int64, scope_id: Int32, key: Int32, value: Int32):
+    """Provide a context value at the given scope.
+
+    If the key already exists, the value is updated.
+    """
+    var rt = _get_runtime(rt_ptr)
+    rt[0].scopes.provide_context(UInt32(scope_id), UInt32(key), value)
+
+
+@export
+fn ctx_consume(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
+    """Look up a context value by walking up the scope tree.
+
+    Returns the value if found, or 0 if not found.
+    Use ctx_consume_found() to distinguish "not found" from "value is 0".
+    """
+    var rt = _get_runtime(rt_ptr)
+    var result = rt[0].scopes.consume_context(UInt32(scope_id), UInt32(key))
+    return result[1]
+
+
+@export
+fn ctx_consume_found(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
+    """Check whether a context value exists for `key` in the scope's ancestry.
+
+    Returns 1 if found, 0 if not.
+    """
+    var rt = _get_runtime(rt_ptr)
+    var result = rt[0].scopes.consume_context(UInt32(scope_id), UInt32(key))
+    if result[0]:
+        return 1
+    return 0
+
+
+@export
+fn ctx_has_local(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
+    """Check whether the scope itself provides a context for `key`.
+
+    Does NOT walk up the parent chain.  Returns 1 or 0.
+    """
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].scopes.has_context_local(UInt32(scope_id), UInt32(key)):
+        return 1
+    return 0
+
+
+@export
+fn ctx_count(rt_ptr: Int64, scope_id: Int32) -> Int32:
+    """Return the number of context entries provided by this scope."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].scopes.context_count(UInt32(scope_id)))
+
+
+@export
+fn ctx_remove(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
+    """Remove a context entry from the scope.  Returns 1 if removed, 0 if not found.
+    """
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].scopes.remove_context(UInt32(scope_id), UInt32(key)):
+        return 1
+    return 0
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 8.4 — Error Boundaries Exports
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# A scope marked as an error boundary catches errors from descendant scopes.
+# When a child reports an error, the nearest ancestor boundary captures it
+# and can render a fallback UI.  Clearing the error allows recovery.
+
+
+@export
+fn err_set_boundary(rt_ptr: Int64, scope_id: Int32, enabled: Int32):
+    """Mark or unmark a scope as an error boundary.
+
+    enabled=1 marks as boundary, enabled=0 unmarks.
+    """
+    var rt = _get_runtime(rt_ptr)
+    rt[0].scopes.set_error_boundary(UInt32(scope_id), enabled != 0)
+
+
+@export
+fn err_is_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
+    """Check whether the scope is an error boundary.  Returns 1 or 0."""
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].scopes.is_error_boundary(UInt32(scope_id)):
+        return 1
+    return 0
+
+
+@export
+fn err_set_error(rt_ptr: Int64, scope_id: Int32, message: String):
+    """Set an error directly on the scope."""
+    var rt = _get_runtime(rt_ptr)
+    rt[0].scopes.set_error(UInt32(scope_id), message)
+
+
+@export
+fn err_clear(rt_ptr: Int64, scope_id: Int32):
+    """Clear the error state on the scope."""
+    var rt = _get_runtime(rt_ptr)
+    rt[0].scopes.clear_error(UInt32(scope_id))
+
+
+@export
+fn err_has_error(rt_ptr: Int64, scope_id: Int32) -> Int32:
+    """Check whether the scope has a captured error.  Returns 1 or 0."""
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].scopes.has_error(UInt32(scope_id)):
+        return 1
+    return 0
+
+
+@export
+fn err_find_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
+    """Walk up from `scope_id` to find the nearest error boundary ancestor.
+
+    Returns the boundary scope ID, or -1 if none found.
+    """
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].scopes.find_error_boundary(UInt32(scope_id)))
+
+
+@export
+fn err_propagate(rt_ptr: Int64, scope_id: Int32, message: String) -> Int32:
+    """Propagate an error from `scope_id` to its nearest error boundary.
+
+    Sets the error on the boundary and returns its scope ID.
+    Returns -1 if no boundary found (error is unhandled).
+    """
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].scopes.propagate_error(UInt32(scope_id), message))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 8.5 — Suspense Exports
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# A scope marked as a suspense boundary shows a fallback while any descendant
+# scope is in a "pending" state (waiting for async data).  When the pending
+# scope resolves, the boundary re-renders with actual content.
+
+
+@export
+fn suspense_set_boundary(rt_ptr: Int64, scope_id: Int32, enabled: Int32):
+    """Mark or unmark a scope as a suspense boundary.
+
+    enabled=1 marks as boundary, enabled=0 unmarks.
+    """
+    var rt = _get_runtime(rt_ptr)
+    rt[0].scopes.set_suspense_boundary(UInt32(scope_id), enabled != 0)
+
+
+@export
+fn suspense_is_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
+    """Check whether the scope is a suspense boundary.  Returns 1 or 0."""
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].scopes.is_suspense_boundary(UInt32(scope_id)):
+        return 1
+    return 0
+
+
+@export
+fn suspense_set_pending(rt_ptr: Int64, scope_id: Int32, pending: Int32):
+    """Set the pending (async loading) state on a scope.
+
+    pending=1 marks as pending, pending=0 marks as resolved.
+    """
+    var rt = _get_runtime(rt_ptr)
+    rt[0].scopes.set_pending(UInt32(scope_id), pending != 0)
+
+
+@export
+fn suspense_is_pending(rt_ptr: Int64, scope_id: Int32) -> Int32:
+    """Check whether the scope is in a pending state.  Returns 1 or 0."""
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].scopes.is_pending(UInt32(scope_id)):
+        return 1
+    return 0
+
+
+@export
+fn suspense_find_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
+    """Walk up from `scope_id` to find the nearest suspense boundary ancestor.
+
+    Returns the boundary scope ID, or -1 if none found.
+    """
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].scopes.find_suspense_boundary(UInt32(scope_id)))
+
+
+@export
+fn suspense_has_pending(rt_ptr: Int64, scope_id: Int32) -> Int32:
+    """Check if any descendant of `scope_id` is pending.  Returns 1 or 0."""
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].scopes.has_pending_descendant(UInt32(scope_id)):
+        return 1
+    return 0
+
+
+@export
+fn suspense_resolve(rt_ptr: Int64, scope_id: Int32) -> Int32:
+    """Mark a scope as no longer pending and return its suspense boundary.
+
+    Clears the pending flag.  Returns the nearest suspense boundary
+    scope ID, or -1 if none.
+    """
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].scopes.resolve_pending(UInt32(scope_id)))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Phase 7 — Counter App (End-to-End)
 # ══════════════════════════════════════════════════════════════════════════════
 #
@@ -2463,6 +2686,659 @@ fn counter_count_signal(app_ptr: Int64) -> Int32:
     """Return the counter app's count signal key."""
     var app = _int_to_counter_ptr(Int(app_ptr))
     return Int32(app[0].count_signal)
+
+
+# ── Todo App ─────────────────────────────────────────────────────────────────
+#
+# Phase 8 — A todo list application demonstrating:
+#   - Dynamic keyed lists (add, remove, toggle items)
+#   - Conditional rendering (show/hide completed indicator)
+#   - Fragment VNodes with keyed children
+#   - String data flow (input text from JS → WASM)
+#
+# Architecture:
+#   - TodoApp struct holds all state: items list, input text, signals, handlers
+#   - Items are stored as a flat list of TodoItem structs (not signals)
+#   - A "list_version" signal is bumped on every list mutation to trigger re-render
+#   - JS calls specific exports (todo_add_item, todo_remove_item, etc.)
+#     then calls todo_flush() to get mutation bytes
+#
+# Templates:
+#   - "todo-app": The app shell with input field + item list container
+#       div > [ input + button("Add") + ul > dynamic[0] ]
+#   - "todo-item": A single list item
+#       li > [ span > dynamic_text[0], button("✓") + button("✕") ]
+#       dynamic_attr[0] = click handler for toggle
+#       dynamic_attr[1] = click handler for remove
+#       dynamic_attr[2] = class on the li (for completed styling)
+
+
+struct TodoItem(Copyable, Movable):
+    """A single todo list item."""
+
+    var id: Int32
+    var text: String
+    var completed: Bool
+
+    fn __init__(out self, id: Int32, text: String, completed: Bool):
+        self.id = id
+        self.text = text
+        self.completed = completed
+
+    fn __copyinit__(out self, other: Self):
+        self.id = other.id
+        self.text = other.text
+        self.completed = other.completed
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.id = other.id
+        self.text = other.text^
+        self.completed = other.completed
+
+
+struct TodoApp(Movable):
+    """Self-contained todo list application state.
+
+    The item list lives inside the <ul> element of the app template.
+    On initial mount, a placeholder comment node occupies the <ul>.
+    We track that placeholder's ElementId so we can replace it with
+    item nodes, and later manage item-to-item diffs via a Fragment
+    VNode that mirrors the <ul>'s children.
+
+    State tracking:
+      - ul_placeholder_id: ElementId of the placeholder inside <ul>.
+        Non-zero when the list is empty (placeholder is in the DOM).
+        Zero when items are present (placeholder was replaced).
+      - current_frag: VNode index of the current items Fragment.
+        -1 before first render.
+      - items_mounted: True once items have replaced the placeholder.
+    """
+
+    var runtime: UnsafePointer[Runtime]
+    var store: UnsafePointer[VNodeStore]
+    var eid_alloc: UnsafePointer[ElementIdAllocator]
+    var scope_id: UInt32
+    var list_version_signal: UInt32  # bumped on every list mutation
+    var app_template_id: UInt32  # "todo-app" template
+    var item_template_id: UInt32  # "todo-item" template
+    var items: List[TodoItem]
+    var next_id: Int32
+    var input_text: String
+    var current_vnode: Int  # index in store, or -1 if not yet rendered
+    var current_frag: Int  # Fragment VNode index, or -1
+    var ul_placeholder_id: UInt32  # ElementId of placeholder in <ul>
+    var items_mounted: Bool  # True when items are in DOM (placeholder removed)
+    # Handler IDs for the app-level controls
+    var add_handler: UInt32
+
+    fn __init__(out self):
+        self.runtime = UnsafePointer[Runtime]()
+        self.store = UnsafePointer[VNodeStore]()
+        self.eid_alloc = UnsafePointer[ElementIdAllocator]()
+        self.scope_id = 0
+        self.list_version_signal = 0
+        self.app_template_id = 0
+        self.item_template_id = 0
+        self.items = List[TodoItem]()
+        self.next_id = 1
+        self.input_text = String("")
+        self.current_vnode = -1
+        self.current_frag = -1
+        self.ul_placeholder_id = 0
+        self.items_mounted = False
+        self.add_handler = 0
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.runtime = other.runtime
+        self.store = other.store
+        self.eid_alloc = other.eid_alloc
+        self.scope_id = other.scope_id
+        self.list_version_signal = other.list_version_signal
+        self.app_template_id = other.app_template_id
+        self.item_template_id = other.item_template_id
+        self.items = other.items^
+        self.next_id = other.next_id
+        self.input_text = other.input_text^
+        self.current_vnode = other.current_vnode
+        self.current_frag = other.current_frag
+        self.ul_placeholder_id = other.ul_placeholder_id
+        self.items_mounted = other.items_mounted
+        self.add_handler = other.add_handler
+
+    fn add_item(mut self, text: String):
+        """Add a new item and bump the list version signal."""
+        if len(text) == 0:
+            return
+        self.items.append(TodoItem(self.next_id, text, False))
+        self.next_id += 1
+        self._bump_version()
+
+    fn remove_item(mut self, item_id: Int32):
+        """Remove an item by ID and bump the list version signal."""
+        for i in range(len(self.items)):
+            if self.items[i].id == item_id:
+                # Swap-remove for O(1)
+                var last = len(self.items) - 1
+                if i != last:
+                    self.items[i] = self.items[last].copy()
+                _ = self.items.pop()
+                self._bump_version()
+                return
+
+    fn toggle_item(mut self, item_id: Int32):
+        """Toggle an item's completed status and bump the list version signal.
+        """
+        for i in range(len(self.items)):
+            if self.items[i].id == item_id:
+                self.items[i].completed = not self.items[i].completed
+                self._bump_version()
+                return
+
+    fn _bump_version(mut self):
+        """Increment the list version signal to trigger re-render."""
+        var current = self.runtime[0].peek_signal[Int32](
+            self.list_version_signal
+        )
+        self.runtime[0].write_signal[Int32](
+            self.list_version_signal, current + 1
+        )
+
+    fn build_item_vnode(mut self, item: TodoItem) -> UInt32:
+        """Build a keyed VNode for a single todo item.
+
+        Template "todo-item": li > [ span > dynamic_text[0], button("✓"), button("✕") ]
+          dynamic_text[0] = item text (possibly with strikethrough indicator)
+          dynamic_attr[0] = click on toggle button
+          dynamic_attr[1] = click on remove button
+          dynamic_attr[2] = class on the li element
+        """
+        var idx = self.store[0].push(
+            VNode.template_ref_keyed(self.item_template_id, String(item.id))
+        )
+
+        # Dynamic text: item text with completion indicator
+        var display_text: String
+        if item.completed:
+            display_text = String("✓ ") + item.text
+        else:
+            display_text = item.text
+
+        self.store[0].push_dynamic_node(
+            idx, DynamicNode.text_node(display_text)
+        )
+
+        # Dynamic attr 0: toggle handler (click on ✓ button)
+        var toggle_handler = self.runtime[0].register_handler(
+            HandlerEntry.custom(self.scope_id, String("click"))
+        )
+        self.store[0].push_dynamic_attr(
+            idx,
+            DynamicAttr(
+                String("click"),
+                AttributeValue.event(toggle_handler),
+                UInt32(0),
+            ),
+        )
+
+        # Dynamic attr 1: remove handler (click on ✕ button)
+        var remove_handler = self.runtime[0].register_handler(
+            HandlerEntry.custom(self.scope_id, String("click"))
+        )
+        self.store[0].push_dynamic_attr(
+            idx,
+            DynamicAttr(
+                String("click"),
+                AttributeValue.event(remove_handler),
+                UInt32(0),
+            ),
+        )
+
+        # Dynamic attr 2: class on the li element
+        var li_class: String
+        if item.completed:
+            li_class = String("completed")
+        else:
+            li_class = String("")
+        self.store[0].push_dynamic_attr(
+            idx,
+            DynamicAttr(
+                String("class"),
+                AttributeValue.text(li_class),
+                UInt32(0),
+            ),
+        )
+
+        return idx
+
+    fn build_items_fragment(mut self) -> UInt32:
+        """Build a Fragment VNode containing keyed item children."""
+        var frag_idx = self.store[0].push(VNode.fragment())
+        for i in range(len(self.items)):
+            var item_idx = self.build_item_vnode(self.items[i].copy())
+            self.store[0].push_fragment_child(frag_idx, item_idx)
+        return frag_idx
+
+    fn build_app_vnode(mut self) -> UInt32:
+        """Build the app shell VNode (TemplateRef for todo-app).
+
+        Template "todo-app": div > [ input, button("Add") + dynamic_attr[0], ul > dynamic[0] ]
+          dynamic_attr[0] = click on Add button
+          dynamic[0] = placeholder (item list managed separately)
+        """
+        var app_idx = self.store[0].push(
+            VNode.template_ref(self.app_template_id)
+        )
+
+        # Dynamic node 0: placeholder in the <ul>
+        self.store[0].push_dynamic_node(app_idx, DynamicNode.placeholder())
+
+        # Dynamic attr 0: click on Add button
+        self.store[0].push_dynamic_attr(
+            app_idx,
+            DynamicAttr(
+                String("click"),
+                AttributeValue.event(self.add_handler),
+                UInt32(0),
+            ),
+        )
+
+        return app_idx
+
+
+fn _int_to_todo_ptr(addr: Int) -> UnsafePointer[TodoApp]:
+    """Reinterpret an integer address as an UnsafePointer[TodoApp]."""
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[TodoApp]]()[0]
+    slot.free()
+    return result
+
+
+# ── Todo App Lifecycle Exports ───────────────────────────────────────────────
+
+
+@export
+fn todo_init() -> Int64:
+    """Initialize the todo app.  Returns a pointer to the app state.
+
+    Creates: runtime, VNode store, element ID allocator, scope, signals,
+    templates, and event handlers.
+    """
+    var app_ptr = UnsafePointer[TodoApp].alloc(1)
+    app_ptr.init_pointee_move(TodoApp())
+
+    # 1. Create subsystem instances
+    app_ptr[0].runtime = create_runtime()
+    app_ptr[0].store = UnsafePointer[VNodeStore].alloc(1)
+    app_ptr[0].store.init_pointee_move(VNodeStore())
+    app_ptr[0].eid_alloc = UnsafePointer[ElementIdAllocator].alloc(1)
+    app_ptr[0].eid_alloc.init_pointee_move(ElementIdAllocator())
+
+    # 2. Create root scope and list_version signal
+    app_ptr[0].scope_id = app_ptr[0].runtime[0].create_scope(0, -1)
+    _ = app_ptr[0].runtime[0].begin_scope_render(app_ptr[0].scope_id)
+    app_ptr[0].list_version_signal = app_ptr[0].runtime[0].use_signal_i32(0)
+    # Read the signal to subscribe the scope
+    _ = app_ptr[0].runtime[0].read_signal[Int32](app_ptr[0].list_version_signal)
+    app_ptr[0].runtime[0].end_scope_render(-1)
+
+    # 3. Build and register the "todo-app" template:
+    #    div > [ input (placeholder), button("Add") + dynamic_attr[0], ul > dynamic[0] ]
+    var app_builder_ptr = create_builder(String("todo-app"))
+
+    var div_idx = app_builder_ptr[0].push_element(TAG_DIV, -1)
+
+    # Input field (static in template, JS handles the value)
+    var input_idx = app_builder_ptr[0].push_element(TAG_INPUT, Int(div_idx))
+    app_builder_ptr[0].push_static_attr(
+        Int(input_idx), String("type"), String("text")
+    )
+    app_builder_ptr[0].push_static_attr(
+        Int(input_idx), String("placeholder"), String("What needs to be done?")
+    )
+
+    # Add button with dynamic click handler
+    var btn_add = app_builder_ptr[0].push_element(TAG_BUTTON, Int(div_idx))
+    var _text_add = app_builder_ptr[0].push_text(String("Add"), Int(btn_add))
+    app_builder_ptr[0].push_dynamic_attr(Int(btn_add), 0)
+
+    # ul container with dynamic[0] for the item list
+    var ul_idx = app_builder_ptr[0].push_element(TAG_UL, Int(div_idx))
+    var _dyn_list = app_builder_ptr[0].push_dynamic(0, Int(ul_idx))
+
+    var app_template = app_builder_ptr[0].build()
+    app_ptr[0].app_template_id = UInt32(
+        app_ptr[0].runtime[0].templates.register(app_template^)
+    )
+    destroy_builder(app_builder_ptr)
+
+    # 4. Build and register the "todo-item" template:
+    #    li + dynamic_attr[2] > [ span > dynamic_text[0],
+    #                             button("✓") + dynamic_attr[0],
+    #                             button("✕") + dynamic_attr[1] ]
+    var item_builder_ptr = create_builder(String("todo-item"))
+
+    var li_idx = item_builder_ptr[0].push_element(TAG_LI, -1)
+    item_builder_ptr[0].push_dynamic_attr(Int(li_idx), 2)  # class attr
+
+    var span_idx = item_builder_ptr[0].push_element(TAG_SPAN, Int(li_idx))
+    var _dyn_text = item_builder_ptr[0].push_dynamic_text(0, Int(span_idx))
+
+    var btn_toggle = item_builder_ptr[0].push_element(TAG_BUTTON, Int(li_idx))
+    var _text_toggle = item_builder_ptr[0].push_text(
+        String("✓"), Int(btn_toggle)
+    )
+    item_builder_ptr[0].push_dynamic_attr(Int(btn_toggle), 0)  # click
+
+    var btn_remove = item_builder_ptr[0].push_element(TAG_BUTTON, Int(li_idx))
+    var _text_remove = item_builder_ptr[0].push_text(
+        String("✕"), Int(btn_remove)
+    )
+    item_builder_ptr[0].push_dynamic_attr(Int(btn_remove), 1)  # click
+
+    var item_template = item_builder_ptr[0].build()
+    app_ptr[0].item_template_id = UInt32(
+        app_ptr[0].runtime[0].templates.register(item_template^)
+    )
+    destroy_builder(item_builder_ptr)
+
+    # 5. Register the Add button handler (custom — JS calls todo_add_item)
+    app_ptr[0].add_handler = (
+        app_ptr[0]
+        .runtime[0]
+        .register_handler(
+            HandlerEntry.custom(app_ptr[0].scope_id, String("click"))
+        )
+    )
+
+    return Int64(Int(app_ptr))
+
+
+@export
+fn todo_destroy(app_ptr: Int64):
+    """Destroy the todo app and free all resources."""
+    var ptr = _int_to_todo_ptr(Int(app_ptr))
+
+    if ptr[0].store:
+        ptr[0].store.destroy_pointee()
+        ptr[0].store.free()
+    if ptr[0].eid_alloc:
+        ptr[0].eid_alloc.destroy_pointee()
+        ptr[0].eid_alloc.free()
+    if ptr[0].runtime:
+        destroy_runtime(ptr[0].runtime)
+
+    ptr.destroy_pointee()
+    ptr.free()
+
+
+@export
+fn todo_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
+    """Initial render (mount) of the todo app.
+
+    Builds the app shell VNode and mounts it.  The <ul> starts with a
+    placeholder comment node whose ElementId we save for later use.
+
+    Returns the byte offset (length) of the mutation data written.
+    """
+    var app = _int_to_todo_ptr(Int(app_ptr))
+    var buf = _int_to_ptr(Int(buf_ptr))
+
+    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
+    writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
+
+    # Build the app shell VNode (no items yet — just the template)
+    var app_vnode_idx = app[0].build_app_vnode()
+    app[0].current_vnode = Int(app_vnode_idx)
+
+    # Build an empty items fragment and store it
+    var frag_idx = app[0].build_items_fragment()
+    app[0].current_frag = Int(frag_idx)
+
+    # Create the app template via CreateEngine.
+    # This emits LoadTemplate, AssignId, NewEventListener, and
+    # CreatePlaceholder + ReplacePlaceholder for dynamic[0].
+    var engine = CreateEngine(
+        writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
+    )
+    var num_roots = engine.create_node(app_vnode_idx)
+
+    # After CreateEngine, dynamic[0]'s placeholder has an ElementId.
+    # Save it so we can replace it with items later.
+    var app_vnode_ptr = app[0].store[0].get_ptr(app_vnode_idx)
+    if app_vnode_ptr[0].dyn_node_id_count() > 0:
+        app[0].ul_placeholder_id = app_vnode_ptr[0].get_dyn_node_id(0)
+    app[0].items_mounted = False
+
+    # Append the app shell to root element (id 0)
+    writer_ptr[0].append_children(0, num_roots)
+
+    writer_ptr[0].finalize()
+    var offset = Int32(writer_ptr[0].offset)
+
+    writer_ptr.destroy_pointee()
+    writer_ptr.free()
+
+    return offset
+
+
+@export
+fn todo_add_item(app_ptr: Int64, text: String):
+    """Add a new item to the todo list.
+
+    The text comes from JS (the input field value).
+    This bumps the list version signal, marking the scope dirty.
+    """
+    var app = _int_to_todo_ptr(Int(app_ptr))
+    app[0].add_item(text)
+
+
+@export
+fn todo_remove_item(app_ptr: Int64, item_id: Int32):
+    """Remove an item by its ID."""
+    var app = _int_to_todo_ptr(Int(app_ptr))
+    app[0].remove_item(item_id)
+
+
+@export
+fn todo_toggle_item(app_ptr: Int64, item_id: Int32):
+    """Toggle an item's completed status."""
+    var app = _int_to_todo_ptr(Int(app_ptr))
+    app[0].toggle_item(item_id)
+
+
+@export
+fn todo_set_input(app_ptr: Int64, text: String):
+    """Update the input text (stored in app state, no re-render)."""
+    var app = _int_to_todo_ptr(Int(app_ptr))
+    app[0].input_text = text
+
+
+@export
+fn todo_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
+    """Flush pending updates after a list mutation.
+
+    Handles three transitions for the item list inside the <ul>:
+      1. empty → populated: create items, ReplaceWith placeholder
+      2. populated → populated: diff old fragment vs new fragment (keyed)
+      3. populated → empty: remove all items, CreatePlaceholder to restore anchor
+
+    Returns the byte offset (length) of mutation data, or 0 if nothing dirty.
+    """
+    var app = _int_to_todo_ptr(Int(app_ptr))
+
+    if not app[0].runtime[0].has_dirty():
+        return 0
+
+    var _dirty = app[0].runtime[0].drain_dirty()
+
+    var buf = _int_to_ptr(Int(buf_ptr))
+    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
+    writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
+
+    # Build a new items fragment from the current item list
+    var new_frag_idx = app[0].build_items_fragment()
+    var old_frag_idx = UInt32(app[0].current_frag)
+
+    var old_frag_ptr = app[0].store[0].get_ptr(old_frag_idx)
+    var new_frag_ptr = app[0].store[0].get_ptr(new_frag_idx)
+    var old_count = old_frag_ptr[0].fragment_child_count()
+    var new_count = new_frag_ptr[0].fragment_child_count()
+
+    if not app[0].items_mounted and new_count > 0:
+        # ── Transition: empty → populated ─────────────────────────────
+        # The <ul> currently has a placeholder comment node.  Create item
+        # VNodes, push them on the stack, and ReplaceWith the placeholder.
+        var create_eng = CreateEngine(
+            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
+        )
+        var total_roots: UInt32 = 0
+        for i in range(new_count):
+            var child_idx = (
+                app[0].store[0].get_ptr(new_frag_idx)[0].get_fragment_child(i)
+            )
+            total_roots += create_eng.create_node(child_idx)
+
+        if app[0].ul_placeholder_id != 0 and total_roots > 0:
+            writer_ptr[0].replace_with(app[0].ul_placeholder_id, total_roots)
+        app[0].items_mounted = True
+
+    elif app[0].items_mounted and new_count == 0:
+        # ── Transition: populated → empty ─────────────────────────────
+        # Handled after this if-elif chain (needs careful ordering:
+        # create placeholder, insert before first item, then remove items).
+        pass  # fall through — handled below
+
+    elif app[0].items_mounted and new_count > 0:
+        # ── Transition: populated → populated ─────────────────────────
+        # Both old and new have items.  Use the keyed diff engine.
+        var diff_eng = DiffEngine(
+            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
+        )
+        diff_eng.diff_node(old_frag_idx, new_frag_idx)
+
+    # else: both empty → no-op
+
+    # Handle the populated → empty case properly (we skipped above).
+    if app[0].items_mounted and new_count == 0:
+        # Reset writer (it has nothing from the pass above)
+        # We need to:
+        #   1. Find the first old item's root ElementId
+        #   2. Create a new placeholder
+        #   3. InsertBefore the first old item
+        #   4. Remove all old items
+        var first_old_root_id: UInt32 = 0
+        if old_count > 0:
+            var first_child = (
+                app[0].store[0].get_ptr(old_frag_idx)[0].get_fragment_child(0)
+            )
+            var fc_ptr = app[0].store[0].get_ptr(first_child)
+            if fc_ptr[0].root_id_count() > 0:
+                first_old_root_id = fc_ptr[0].get_root_id(0)
+            elif fc_ptr[0].element_id != 0:
+                first_old_root_id = fc_ptr[0].element_id
+
+        # Create a new placeholder
+        var new_ph_eid = app[0].eid_alloc[0].alloc()
+        writer_ptr[0].create_placeholder(new_ph_eid.as_u32())
+
+        # Insert before the first item (which is still in DOM at this point)
+        if first_old_root_id != 0:
+            writer_ptr[0].insert_before(first_old_root_id, 1)
+
+        # Now remove all old items
+        var diff_eng2 = DiffEngine(
+            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
+        )
+        for i in range(old_count):
+            var old_child = (
+                app[0].store[0].get_ptr(old_frag_idx)[0].get_fragment_child(i)
+            )
+            diff_eng2._remove_node(old_child)
+
+        app[0].ul_placeholder_id = new_ph_eid.as_u32()
+        app[0].items_mounted = False
+
+    # Update current fragment
+    app[0].current_frag = Int(new_frag_idx)
+
+    writer_ptr[0].finalize()
+    var offset = Int32(writer_ptr[0].offset)
+
+    writer_ptr.destroy_pointee()
+    writer_ptr.free()
+
+    return offset
+
+
+# ── Todo App Query Exports ───────────────────────────────────────────────────
+
+
+@export
+fn todo_app_template_id(app_ptr: Int64) -> Int32:
+    """Return the app template ID (for JS template registration)."""
+    var app = _int_to_todo_ptr(Int(app_ptr))
+    return Int32(app[0].app_template_id)
+
+
+@export
+fn todo_item_template_id(app_ptr: Int64) -> Int32:
+    """Return the item template ID (for JS template registration)."""
+    var app = _int_to_todo_ptr(Int(app_ptr))
+    return Int32(app[0].item_template_id)
+
+
+@export
+fn todo_add_handler(app_ptr: Int64) -> Int32:
+    """Return the Add button handler ID."""
+    var app = _int_to_todo_ptr(Int(app_ptr))
+    return Int32(app[0].add_handler)
+
+
+@export
+fn todo_item_count(app_ptr: Int64) -> Int32:
+    """Return the number of items in the list."""
+    var app = _int_to_todo_ptr(Int(app_ptr))
+    return Int32(len(app[0].items))
+
+
+@export
+fn todo_item_id_at(app_ptr: Int64, index: Int32) -> Int32:
+    """Return the ID of the item at the given index."""
+    var app = _int_to_todo_ptr(Int(app_ptr))
+    return app[0].items[Int(index)].id
+
+
+@export
+fn todo_item_completed_at(app_ptr: Int64, index: Int32) -> Int32:
+    """Return 1 if the item at index is completed, 0 otherwise."""
+    var app = _int_to_todo_ptr(Int(app_ptr))
+    if app[0].items[Int(index)].completed:
+        return 1
+    return 0
+
+
+@export
+fn todo_has_dirty(app_ptr: Int64) -> Int32:
+    """Check if the todo app has dirty scopes.  Returns 1 or 0."""
+    var app = _int_to_todo_ptr(Int(app_ptr))
+    if app[0].runtime[0].has_dirty():
+        return 1
+    return 0
+
+
+@export
+fn todo_list_version(app_ptr: Int64) -> Int32:
+    """Return the current list version signal value."""
+    var app = _int_to_todo_ptr(Int(app_ptr))
+    return app[0].runtime[0].peek_signal[Int32](app[0].list_version_signal)
+
+
+@export
+fn todo_scope_id(app_ptr: Int64) -> Int32:
+    """Return the root scope ID."""
+    var app = _int_to_todo_ptr(Int(app_ptr))
+    return Int32(app[0].scope_id)
 
 
 # Factorial (iterative)

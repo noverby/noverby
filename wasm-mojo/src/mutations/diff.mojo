@@ -356,7 +356,39 @@ struct DiffEngine:
         new_ptr[0].root_ids = old_ptr[0].root_ids.copy()
 
     fn _diff_fragment(mut self, old_index: UInt32, new_index: UInt32):
-        """Diff two Fragment VNodes.  Reconciles children (unkeyed)."""
+        """Diff two Fragment VNodes.  Dispatches to keyed or unkeyed."""
+        var old_ptr = self.store[0].get_ptr(old_index)
+        var new_ptr = self.store[0].get_ptr(new_index)
+
+        var old_child_count = old_ptr[0].fragment_child_count()
+        var new_child_count = new_ptr[0].fragment_child_count()
+
+        # Determine whether to use keyed or unkeyed reconciliation.
+        # If any child in either list has a key, use keyed diffing.
+        var has_keys = False
+        for i in range(old_child_count):
+            var child_idx = (
+                self.store[0].get_ptr(old_index)[0].get_fragment_child(i)
+            )
+            if self.store[0].get_ptr(child_idx)[0].has_key():
+                has_keys = True
+                break
+        if not has_keys:
+            for i in range(new_child_count):
+                var child_idx = (
+                    self.store[0].get_ptr(new_index)[0].get_fragment_child(i)
+                )
+                if self.store[0].get_ptr(child_idx)[0].has_key():
+                    has_keys = True
+                    break
+
+        if has_keys:
+            self._diff_fragment_keyed(old_index, new_index)
+        else:
+            self._diff_fragment_unkeyed(old_index, new_index)
+
+    fn _diff_fragment_unkeyed(mut self, old_index: UInt32, new_index: UInt32):
+        """Diff two Fragment VNodes with unkeyed children (pairwise)."""
         var old_ptr = self.store[0].get_ptr(old_index)
         var new_ptr = self.store[0].get_ptr(new_index)
 
@@ -418,6 +450,345 @@ struct DiffEngine:
                     self.store[0].get_ptr(old_index)[0].get_fragment_child(i)
                 )
                 self._remove_node(old_child)
+
+    fn _diff_fragment_keyed(mut self, old_index: UInt32, new_index: UInt32):
+        """Diff two Fragment VNodes using key-based reconciliation.
+
+        Algorithm (simplified LIS-based, following Dioxus/Ivi):
+          1. Build a map from key → old child index.
+          2. Match new children to old children by key.
+          3. Identify the longest increasing subsequence (LIS) of matched
+             old indices — these nodes are already in the correct relative
+             order and don't need to be moved.
+          4. For each new child NOT in the LIS, either move (if it existed
+             in old) or create (if it's new).
+          5. Remove any old children not present in the new list.
+
+        This produces minimal DOM mutations: only nodes that actually moved
+        or changed are touched.
+        """
+        var old_child_count = (
+            self.store[0].get_ptr(old_index)[0].fragment_child_count()
+        )
+        var new_child_count = (
+            self.store[0].get_ptr(new_index)[0].fragment_child_count()
+        )
+
+        # Handle trivial cases
+        if old_child_count == 0 and new_child_count == 0:
+            return
+
+        if old_child_count == 0:
+            # All new — create them all and insert
+            self._keyed_create_all(old_index, new_index)
+            return
+
+        if new_child_count == 0:
+            # All removed — remove them all
+            for i in range(old_child_count):
+                var old_child = (
+                    self.store[0].get_ptr(old_index)[0].get_fragment_child(i)
+                )
+                self._remove_node(old_child)
+            return
+
+        # ── Step 1: Skip matching prefix ──────────────────────────────
+        var prefix_len = 0
+        while prefix_len < old_child_count and prefix_len < new_child_count:
+            var old_child = (
+                self.store[0]
+                .get_ptr(old_index)[0]
+                .get_fragment_child(prefix_len)
+            )
+            var new_child = (
+                self.store[0]
+                .get_ptr(new_index)[0]
+                .get_fragment_child(prefix_len)
+            )
+            var old_key = self.store[0].get_ptr(old_child)[0].key
+            var new_key = self.store[0].get_ptr(new_child)[0].key
+            if old_key != new_key:
+                break
+            self.diff_node(old_child, new_child)
+            prefix_len += 1
+
+        # ── Step 2: Skip matching suffix ──────────────────────────────
+        var suffix_len = 0
+        while (
+            prefix_len + suffix_len < old_child_count
+            and prefix_len + suffix_len < new_child_count
+        ):
+            var old_i = old_child_count - 1 - suffix_len
+            var new_i = new_child_count - 1 - suffix_len
+            var old_child = (
+                self.store[0].get_ptr(old_index)[0].get_fragment_child(old_i)
+            )
+            var new_child = (
+                self.store[0].get_ptr(new_index)[0].get_fragment_child(new_i)
+            )
+            var old_key = self.store[0].get_ptr(old_child)[0].key
+            var new_key = self.store[0].get_ptr(new_child)[0].key
+            if old_key != new_key:
+                break
+            suffix_len += 1
+
+        # Diff the matching suffix items (they're in the right place)
+        for s in range(suffix_len):
+            var old_i = old_child_count - suffix_len + s
+            var new_i = new_child_count - suffix_len + s
+            var old_child = (
+                self.store[0].get_ptr(old_index)[0].get_fragment_child(old_i)
+            )
+            var new_child = (
+                self.store[0].get_ptr(new_index)[0].get_fragment_child(new_i)
+            )
+            self.diff_node(old_child, new_child)
+
+        # ── Step 3: Process the middle segment ────────────────────────
+        var old_start = prefix_len
+        var old_end = old_child_count - suffix_len
+        var new_start = prefix_len
+        var new_end = new_child_count - suffix_len
+
+        var old_mid_len = old_end - old_start
+        var new_mid_len = new_end - new_start
+
+        if old_mid_len == 0 and new_mid_len == 0:
+            return
+
+        if old_mid_len == 0:
+            # Only insertions in the middle
+            self._keyed_create_range(old_index, new_index, new_start, new_end)
+            return
+
+        if new_mid_len == 0:
+            # Only removals in the middle
+            for i in range(old_start, old_end):
+                var old_child = (
+                    self.store[0].get_ptr(old_index)[0].get_fragment_child(i)
+                )
+                self._remove_node(old_child)
+            return
+
+        # ── Step 4: Build old-key → position map ─────────────────────
+        # We use parallel lists as a simple hash map (linear scan).
+        var old_keys = List[String]()
+        var old_positions = List[Int]()
+        for i in range(old_start, old_end):
+            var old_child = (
+                self.store[0].get_ptr(old_index)[0].get_fragment_child(i)
+            )
+            var key = self.store[0].get_ptr(old_child)[0].key
+            old_keys.append(key)
+            old_positions.append(i)
+
+        # ── Step 5: Match new children to old positions ───────────────
+        # new_to_old[j] = old position for new child at new_start+j, or -1
+        var new_to_old = List[Int]()
+        var old_matched = List[Bool]()
+        for _ in range(old_mid_len):
+            old_matched.append(False)
+        for j in range(new_mid_len):
+            var new_child = (
+                self.store[0]
+                .get_ptr(new_index)[0]
+                .get_fragment_child(new_start + j)
+            )
+            var new_key = self.store[0].get_ptr(new_child)[0].key
+            var found_pos = -1
+            for k in range(len(old_keys)):
+                if old_keys[k] == new_key:
+                    found_pos = k
+                    break
+            if found_pos != -1:
+                new_to_old.append(found_pos)
+                old_matched[found_pos] = True
+            else:
+                new_to_old.append(-1)
+
+        # ── Step 6: Remove old children not in the new list ───────────
+        for k in range(old_mid_len):
+            if not old_matched[k]:
+                var old_child = (
+                    self.store[0]
+                    .get_ptr(old_index)[0]
+                    .get_fragment_child(old_start + k)
+                )
+                self._remove_node(old_child)
+
+        # ── Step 7: Compute LIS of matched old positions ─────────────
+        # The LIS tells us which matched nodes are already in correct
+        # relative order and don't need to be moved.
+        var lis_indices = _compute_lis(new_to_old)
+
+        # Build a set of new-child indices that are in the LIS
+        var in_lis = List[Bool]()
+        for _ in range(new_mid_len):
+            in_lis.append(False)
+        for i in range(len(lis_indices)):
+            in_lis[lis_indices[i]] = True
+
+        # ── Step 8: Diff matched nodes, create/move as needed ─────────
+        # Process from right to left so we always know the "next sibling"
+        # reference point for InsertBefore.
+        #
+        # `next_ref_id` tracks the ElementId of the node that should come
+        # after the current node. We use InsertBefore(next_ref_id) for
+        # moved/created nodes.
+        var next_ref_id: UInt32 = 0
+
+        # If there's a suffix, the first suffix child is the reference
+        if suffix_len > 0:
+            var first_suffix_old = (
+                self.store[0].get_ptr(old_index)[0].get_fragment_child(old_end)
+            )
+            var suf_ptr = self.store[0].get_ptr(first_suffix_old)
+            if suf_ptr[0].root_id_count() > 0:
+                next_ref_id = suf_ptr[0].get_root_id(0)
+            elif suf_ptr[0].element_id != 0:
+                next_ref_id = suf_ptr[0].element_id
+
+        for j_rev in range(new_mid_len):
+            var j = new_mid_len - 1 - j_rev
+            var new_child_idx = (
+                self.store[0]
+                .get_ptr(new_index)[0]
+                .get_fragment_child(new_start + j)
+            )
+            var old_pos = new_to_old[j]
+
+            if old_pos == -1:
+                # ── New node: create and insert before next_ref ───────
+                var create_engine = CreateEngine(
+                    self.writer, self.eid_alloc, self.runtime, self.store
+                )
+                var num_roots = create_engine.create_node(new_child_idx)
+                if next_ref_id != 0 and num_roots > 0:
+                    self.writer[0].insert_before(next_ref_id, num_roots)
+            else:
+                # ── Existing node: diff content first ─────────────────
+                var old_child_idx = (
+                    self.store[0]
+                    .get_ptr(old_index)[0]
+                    .get_fragment_child(old_start + old_pos)
+                )
+                self.diff_node(old_child_idx, new_child_idx)
+
+                if not in_lis[j]:
+                    # ── Not in LIS: needs to be moved ─────────────────
+                    var new_child_ptr = self.store[0].get_ptr(new_child_idx)
+                    if new_child_ptr[0].root_id_count() > 0:
+                        var move_id = new_child_ptr[0].get_root_id(0)
+                        # Push the node onto the stack, then insert before ref
+                        self.writer[0].push_root(move_id)
+                        if next_ref_id != 0:
+                            self.writer[0].insert_before(next_ref_id, 1)
+
+            # Update next_ref_id to this node's first root
+            var placed_ptr = self.store[0].get_ptr(new_child_idx)
+            if placed_ptr[0].root_id_count() > 0:
+                next_ref_id = placed_ptr[0].get_root_id(0)
+            elif placed_ptr[0].element_id != 0:
+                next_ref_id = placed_ptr[0].element_id
+
+    fn _keyed_create_all(mut self, old_index: UInt32, new_index: UInt32):
+        """Create all children of a new fragment (old was empty).
+
+        Finds a reference point from the parent context and inserts
+        all new children.
+        """
+        var new_child_count = (
+            self.store[0].get_ptr(new_index)[0].fragment_child_count()
+        )
+        var create_engine = CreateEngine(
+            self.writer, self.eid_alloc, self.runtime, self.store
+        )
+        var total_roots: UInt32 = 0
+        for i in range(new_child_count):
+            var new_child = (
+                self.store[0].get_ptr(new_index)[0].get_fragment_child(i)
+            )
+            total_roots += create_engine.create_node(new_child)
+        # The created nodes are on the stack; the caller is responsible
+        # for appending them (usually via AppendChildren or InsertAfter).
+
+    fn _keyed_create_range(
+        mut self,
+        old_index: UInt32,
+        new_index: UInt32,
+        new_start: Int,
+        new_end: Int,
+    ):
+        """Create a range of new children and insert them.
+
+        Used when only insertions happen in the middle of a keyed list.
+        Inserts before the first element after the range, or after
+        the last element before the range.
+        """
+        # Find reference point: the first node after the insertion point
+        # (which is the first suffix-matched node, if any, or the end)
+        var ref_id: UInt32 = 0
+        var new_child_count = (
+            self.store[0].get_ptr(new_index)[0].fragment_child_count()
+        )
+        # Check if there's a node after new_end that's already mounted
+        # (it would have been diff'd in the suffix pass)
+        if new_end < new_child_count:
+            var after_child = (
+                self.store[0].get_ptr(new_index)[0].get_fragment_child(new_end)
+            )
+            var after_ptr = self.store[0].get_ptr(after_child)
+            if after_ptr[0].root_id_count() > 0:
+                ref_id = after_ptr[0].get_root_id(0)
+            elif after_ptr[0].element_id != 0:
+                ref_id = after_ptr[0].element_id
+
+        # If no ref from suffix, try the node just before new_start
+        if ref_id == 0 and new_start > 0:
+            var before_child = (
+                self.store[0]
+                .get_ptr(new_index)[0]
+                .get_fragment_child(new_start - 1)
+            )
+            var before_ptr = self.store[0].get_ptr(before_child)
+            var before_ref: UInt32 = 0
+            if before_ptr[0].root_id_count() > 0:
+                before_ref = before_ptr[0].get_root_id(
+                    before_ptr[0].root_id_count() - 1
+                )
+            elif before_ptr[0].element_id != 0:
+                before_ref = before_ptr[0].element_id
+
+            if before_ref != 0:
+                # Create all new nodes
+                var create_engine = CreateEngine(
+                    self.writer, self.eid_alloc, self.runtime, self.store
+                )
+                var total: UInt32 = 0
+                for i in range(new_start, new_end):
+                    var new_child = (
+                        self.store[0]
+                        .get_ptr(new_index)[0]
+                        .get_fragment_child(i)
+                    )
+                    total += create_engine.create_node(new_child)
+                if total > 0:
+                    self.writer[0].insert_after(before_ref, total)
+                return
+
+        # Create all new nodes
+        var create_engine = CreateEngine(
+            self.writer, self.eid_alloc, self.runtime, self.store
+        )
+        var total: UInt32 = 0
+        for i in range(new_start, new_end):
+            var new_child = (
+                self.store[0].get_ptr(new_index)[0].get_fragment_child(i)
+            )
+            total += create_engine.create_node(new_child)
+
+        if ref_id != 0 and total > 0:
+            self.writer[0].insert_before(ref_id, total)
 
     fn _replace_node(mut self, old_index: UInt32, new_index: UInt32):
         """Replace the old VNode entirely with the new one.
@@ -486,6 +857,25 @@ struct DiffEngine:
         # Free the ElementIds
         self._free_mount_ids(vnode_index)
 
+    fn _get_first_root_id(self, vnode_index: UInt32) -> UInt32:
+        """Get the first root ElementId of a VNode, or 0 if none."""
+        var node_ptr = self.store[0].get_ptr(vnode_index)
+        if node_ptr[0].root_id_count() > 0:
+            return node_ptr[0].get_root_id(0)
+        if node_ptr[0].element_id != 0:
+            return node_ptr[0].element_id
+        return 0
+
+    fn _get_last_root_id(self, vnode_index: UInt32) -> UInt32:
+        """Get the last root ElementId of a VNode, or 0 if none."""
+        var node_ptr = self.store[0].get_ptr(vnode_index)
+        var rc = node_ptr[0].root_id_count()
+        if rc > 0:
+            return node_ptr[0].get_root_id(rc - 1)
+        if node_ptr[0].element_id != 0:
+            return node_ptr[0].element_id
+        return 0
+
     fn _free_mount_ids(mut self, vnode_index: UInt32):
         """Free all ElementIds associated with a VNode's mount state."""
         var node_ptr = self.store[0].get_ptr(vnode_index)
@@ -507,3 +897,83 @@ struct DiffEngine:
 
         # Clear mount state
         self.store[0].get_ptr(vnode_index)[0].clear_mount_state()
+
+
+# ── Longest Increasing Subsequence ───────────────────────────────────────────
+#
+# Computes the indices of the longest increasing subsequence (LIS) of the
+# matched old-positions array.  Entries with value -1 (unmatched / new nodes)
+# are skipped.
+#
+# The result tells the keyed diff which nodes are already in correct
+# relative order and don't need to be moved.  Only nodes NOT in the LIS
+# require Move mutations.
+#
+# Algorithm: patience-sort / binary-search based O(n log n).
+
+
+fn _compute_lis(seq: List[Int]) -> List[Int]:
+    """Compute indices of the longest increasing subsequence.
+
+    Args:
+        seq: The sequence of old positions (-1 means unmatched/skip).
+
+    Returns:
+        A list of indices into `seq` forming the LIS (in order).
+    """
+    var n = len(seq)
+    if n == 0:
+        return List[Int]()
+
+    # tails[i] = smallest tail element of all increasing subsequences of length i+1
+    # tails_idx[i] = index in seq of tails[i]
+    var tails = List[Int]()
+    var tails_idx = List[Int]()
+    # predecessor[i] = index in seq of the element before seq[i] in the LIS
+    var predecessor = List[Int]()
+    for _ in range(n):
+        predecessor.append(-1)
+
+    for i in range(n):
+        var val = seq[i]
+        if val == -1:
+            continue  # skip unmatched entries
+
+        # Binary search for the leftmost tail >= val
+        var lo = 0
+        var hi = len(tails)
+        while lo < hi:
+            var mid = (lo + hi) // 2
+            if tails[mid] < val:
+                lo = mid + 1
+            else:
+                hi = mid
+
+        if lo == len(tails):
+            # Extend the LIS
+            tails.append(val)
+            tails_idx.append(i)
+        else:
+            # Replace to keep tails as small as possible
+            tails[lo] = val
+            tails_idx[lo] = i
+
+        if lo > 0:
+            predecessor[i] = tails_idx[lo - 1]
+
+    # Reconstruct the LIS by following predecessors from the last element
+    var lis_len = len(tails)
+    if lis_len == 0:
+        return List[Int]()
+
+    var result = List[Int](capacity=lis_len)
+    for _ in range(lis_len):
+        result.append(0)
+
+    var k = tails_idx[lis_len - 1]
+    for i_rev in range(lis_len):
+        var i = lis_len - 1 - i_rev
+        result[i] = k
+        k = predecessor[k]
+
+    return result^

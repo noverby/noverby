@@ -19,4 +19,5 @@ test-all: test test-js
 
 serve: build
   @echo "Open http://localhost:4507/examples/counter/"
+  @echo "Open http://localhost:4507/examples/todo/"
   deno run --allow-net --allow-read jsr:@std/http/file-server
