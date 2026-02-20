@@ -5,6 +5,7 @@ import { testBitwise } from "./bitwise.test.ts";
 import { testBoundaries } from "./boundaries.test.ts";
 import { testComparison } from "./comparison.test.ts";
 import { testConsistency } from "./consistency.test.ts";
+import { testCounter } from "./counter.test.ts";
 import { testElementId } from "./element_id.test.ts";
 import { testEvents } from "./events.test.ts";
 import { testFloats } from "./floats.test.ts";
@@ -55,6 +56,7 @@ async function run(): Promise<void> {
 	testMutations(fns);
 	testInterpreter(fns);
 	testEvents(fns);
+	testCounter(fns);
 
 	summary();
 }

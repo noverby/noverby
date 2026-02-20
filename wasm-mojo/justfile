@@ -7,3 +7,7 @@ build:
 
 test: build
   deno run --allow-read test/run.ts
+
+serve: build
+  @echo "Open http://localhost:4507/examples/counter/"
+  deno run --allow-net --allow-read jsr:@std/http/file-server

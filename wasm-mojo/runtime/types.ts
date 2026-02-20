@@ -554,4 +554,27 @@ export interface WasmExports extends WebAssembly.Exports {
 
 	// Dirty scope management
 	runtime_drain_dirty(rtPtr: bigint): number;
+
+	// ── Phase 7: Counter App ─────────────────────────────────────────
+
+	// App lifecycle
+	counter_init(): bigint;
+	counter_destroy(appPtr: bigint): void;
+	counter_rebuild(appPtr: bigint, bufPtr: bigint, capacity: number): number;
+	counter_handle_event(
+		appPtr: bigint,
+		handlerId: number,
+		eventType: number,
+	): number;
+	counter_flush(appPtr: bigint, bufPtr: bigint, capacity: number): number;
+
+	// App queries
+	counter_rt_ptr(appPtr: bigint): bigint;
+	counter_tmpl_id(appPtr: bigint): number;
+	counter_incr_handler(appPtr: bigint): number;
+	counter_decr_handler(appPtr: bigint): number;
+	counter_count_value(appPtr: bigint): number;
+	counter_has_dirty(appPtr: bigint): number;
+	counter_scope_id(appPtr: bigint): number;
+	counter_count_signal(appPtr: bigint): number;
 }

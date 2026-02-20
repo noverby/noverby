@@ -2099,6 +2099,372 @@ fn fib_int64(n: Int64) -> Int64:
     return b
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 7 — Counter App (End-to-End)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Self-contained counter application that orchestrates all subsystems:
+#   Runtime (signals, scopes, handlers) + Templates + VNodes + Create/Diff
+#
+# The counter app state is heap-allocated and accessed via an Int64 pointer.
+# JS calls the exported functions to init, mount, handle events, and flush.
+#
+# Template structure:
+#   div
+#     span
+#       dynamic_text[0]      ← "Count: N"
+#     button  (text: "+")
+#       dynamic_attr[0]      ← onclick → increment handler
+#     button  (text: "−")
+#       dynamic_attr[1]      ← onclick → decrement handler
+
+
+struct CounterApp(Movable):
+    """Self-contained counter application state."""
+
+    var runtime: UnsafePointer[Runtime]
+    var store: UnsafePointer[VNodeStore]
+    var eid_alloc: UnsafePointer[ElementIdAllocator]
+    var scope_id: UInt32
+    var count_signal: UInt32
+    var template_id: UInt32
+    var incr_handler: UInt32
+    var decr_handler: UInt32
+    var current_vnode: Int  # index in store, or -1 if not yet rendered
+
+    fn __init__(out self):
+        self.runtime = UnsafePointer[Runtime]()
+        self.store = UnsafePointer[VNodeStore]()
+        self.eid_alloc = UnsafePointer[ElementIdAllocator]()
+        self.scope_id = 0
+        self.count_signal = 0
+        self.template_id = 0
+        self.incr_handler = 0
+        self.decr_handler = 0
+        self.current_vnode = -1
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.runtime = other.runtime
+        self.store = other.store
+        self.eid_alloc = other.eid_alloc
+        self.scope_id = other.scope_id
+        self.count_signal = other.count_signal
+        self.template_id = other.template_id
+        self.incr_handler = other.incr_handler
+        self.decr_handler = other.decr_handler
+        self.current_vnode = other.current_vnode
+
+    fn build_count_text(self) -> String:
+        """Build the display string "Count: N" from the current signal value."""
+        var val = self.runtime[0].peek_signal[Int32](self.count_signal)
+        return String("Count: ") + String(val)
+
+    fn build_vnode(mut self) -> UInt32:
+        """Build a fresh VNode for the counter component.
+
+        Creates a TemplateRef VNode with:
+          - dynamic_text[0] = "Count: N"
+          - dynamic_attr[0] = onclick → incr_handler
+          - dynamic_attr[1] = onclick → decr_handler
+
+        Returns the VNode index in the store.
+        """
+        var idx = self.store[0].push(VNode.template_ref(self.template_id))
+        # Dynamic text node: "Count: N"
+        self.store[0].push_dynamic_node(
+            idx, DynamicNode.text_node(self.build_count_text())
+        )
+        # Dynamic attr 0: onclick on the "+" button
+        self.store[0].push_dynamic_attr(
+            idx,
+            DynamicAttr(
+                String("click"),
+                AttributeValue.event(self.incr_handler),
+                UInt32(0),
+            ),
+        )
+        # Dynamic attr 1: onclick on the "−" button
+        self.store[0].push_dynamic_attr(
+            idx,
+            DynamicAttr(
+                String("click"),
+                AttributeValue.event(self.decr_handler),
+                UInt32(0),
+            ),
+        )
+        return idx
+
+
+fn _int_to_counter_ptr(addr: Int) -> UnsafePointer[CounterApp]:
+    """Reinterpret an integer address as an UnsafePointer[CounterApp]."""
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[CounterApp]]()[0]
+    slot.free()
+    return result
+
+
+# ── Counter App Lifecycle Exports ────────────────────────────────────────────
+
+
+@export
+fn counter_init() -> Int64:
+    """Initialize the counter app.  Returns a pointer to the app state.
+
+    Creates: runtime, VNode store, element ID allocator, scope, signal,
+    template, and event handlers.
+    """
+    var app_ptr = UnsafePointer[CounterApp].alloc(1)
+    app_ptr.init_pointee_move(CounterApp())
+
+    # 1. Create subsystem instances
+    app_ptr[0].runtime = create_runtime()
+    app_ptr[0].store = UnsafePointer[VNodeStore].alloc(1)
+    app_ptr[0].store.init_pointee_move(VNodeStore())
+    app_ptr[0].eid_alloc = UnsafePointer[ElementIdAllocator].alloc(1)
+    app_ptr[0].eid_alloc.init_pointee_move(ElementIdAllocator())
+
+    # 2. Create root scope and signal via hooks
+    app_ptr[0].scope_id = app_ptr[0].runtime[0].create_scope(0, -1)
+    _ = app_ptr[0].runtime[0].begin_scope_render(app_ptr[0].scope_id)
+    app_ptr[0].count_signal = app_ptr[0].runtime[0].use_signal_i32(0)
+    # Read the signal during render to subscribe the scope to changes
+    _ = app_ptr[0].runtime[0].read_signal[Int32](app_ptr[0].count_signal)
+    app_ptr[0].runtime[0].end_scope_render(-1)
+
+    # 3. Build and register the counter template:
+    #    div > [ span > dynamic_text[0],
+    #            button > text("+") + dynamic_attr[0],
+    #            button > text("−") + dynamic_attr[1] ]
+    var builder_ptr = create_builder(String("counter"))
+    var div_idx = builder_ptr[0].push_element(TAG_DIV, -1)
+    var span_idx = builder_ptr[0].push_element(TAG_SPAN, Int(div_idx))
+    var _dyn_text = builder_ptr[0].push_dynamic_text(0, Int(span_idx))
+
+    var btn_incr = builder_ptr[0].push_element(TAG_BUTTON, Int(div_idx))
+    var _text_plus = builder_ptr[0].push_text(String("+"), Int(btn_incr))
+    builder_ptr[0].push_dynamic_attr(Int(btn_incr), 0)
+
+    var btn_decr = builder_ptr[0].push_element(TAG_BUTTON, Int(div_idx))
+    var _text_minus = builder_ptr[0].push_text(String("-"), Int(btn_decr))
+    builder_ptr[0].push_dynamic_attr(Int(btn_decr), 1)
+
+    var template = builder_ptr[0].build()
+    app_ptr[0].template_id = UInt32(
+        app_ptr[0].runtime[0].templates.register(template^)
+    )
+    destroy_builder(builder_ptr)
+
+    # 4. Register event handlers
+    app_ptr[0].incr_handler = UInt32(
+        app_ptr[0]
+        .runtime[0]
+        .register_handler(
+            HandlerEntry.signal_add(
+                app_ptr[0].scope_id,
+                app_ptr[0].count_signal,
+                1,
+                String("click"),
+            )
+        )
+    )
+    app_ptr[0].decr_handler = UInt32(
+        app_ptr[0]
+        .runtime[0]
+        .register_handler(
+            HandlerEntry.signal_sub(
+                app_ptr[0].scope_id,
+                app_ptr[0].count_signal,
+                1,
+                String("click"),
+            )
+        )
+    )
+
+    return Int64(Int(app_ptr))
+
+
+@export
+fn counter_destroy(app_ptr: Int64):
+    """Destroy the counter app and free all resources."""
+    var ptr = _int_to_counter_ptr(Int(app_ptr))
+
+    # Destroy subsystems
+    if ptr[0].store:
+        ptr[0].store.destroy_pointee()
+        ptr[0].store.free()
+    if ptr[0].eid_alloc:
+        ptr[0].eid_alloc.destroy_pointee()
+        ptr[0].eid_alloc.free()
+    if ptr[0].runtime:
+        destroy_runtime(ptr[0].runtime)
+
+    ptr.destroy_pointee()
+    ptr.free()
+
+
+@export
+fn counter_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
+    """Initial render (mount) of the counter app.
+
+    Builds the VNode tree, runs CreateEngine, emits AppendChildren to
+    mount to root (id 0), and finalizes the mutation buffer.
+
+    Returns the byte offset (length) of the mutation data written.
+    """
+    var app = _int_to_counter_ptr(Int(app_ptr))
+    var buf = _int_to_ptr(Int(buf_ptr))
+
+    # Build a MutationWriter
+    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
+    writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
+
+    # Build the initial VNode
+    var vnode_idx = app[0].build_vnode()
+    app[0].current_vnode = Int(vnode_idx)
+
+    # Run CreateEngine to emit mount mutations
+    var engine = CreateEngine(
+        writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
+    )
+    var num_roots = engine.create_node(vnode_idx)
+
+    # Append to root element (id 0)
+    writer_ptr[0].append_children(0, num_roots)
+
+    # Finalize
+    writer_ptr[0].finalize()
+    var offset = Int32(writer_ptr[0].offset)
+
+    writer_ptr.destroy_pointee()
+    writer_ptr.free()
+
+    return offset
+
+
+@export
+fn counter_handle_event(
+    app_ptr: Int64, handler_id: Int32, event_type: Int32
+) -> Int32:
+    """Dispatch an event to the counter app.
+
+    Returns 1 if an action was executed, 0 otherwise.
+    """
+    var app = _int_to_counter_ptr(Int(app_ptr))
+    if app[0].runtime[0].dispatch_event(UInt32(handler_id), UInt8(event_type)):
+        return 1
+    return 0
+
+
+@export
+fn counter_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
+    """Flush pending updates after event dispatch.
+
+    If dirty scopes exist, re-renders the counter component, diffs the
+    old and new VNode trees, and writes mutations to the buffer.
+
+    Returns the byte offset (length) of the mutation data written,
+    or 0 if there was nothing to update.
+    """
+    var app = _int_to_counter_ptr(Int(app_ptr))
+
+    # Check for dirty scopes
+    if not app[0].runtime[0].has_dirty():
+        return 0
+
+    # Drain dirty scopes (we only have one scope, so just drain)
+    var _dirty = app[0].runtime[0].drain_dirty()
+
+    var buf = _int_to_ptr(Int(buf_ptr))
+
+    # Build a MutationWriter
+    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
+    writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
+
+    # Build a new VNode with updated state
+    var new_idx = app[0].build_vnode()
+    var old_idx = UInt32(app[0].current_vnode)
+
+    # Diff old → new
+    var engine = DiffEngine(
+        writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
+    )
+    engine.diff_node(old_idx, UInt32(new_idx))
+
+    # Update current vnode
+    app[0].current_vnode = Int(new_idx)
+
+    # Finalize
+    writer_ptr[0].finalize()
+    var offset = Int32(writer_ptr[0].offset)
+
+    writer_ptr.destroy_pointee()
+    writer_ptr.free()
+
+    return offset
+
+
+# ── Counter App Query Exports ────────────────────────────────────────────────
+
+
+@export
+fn counter_rt_ptr(app_ptr: Int64) -> Int64:
+    """Return the runtime pointer for JS template registration."""
+    var app = _int_to_counter_ptr(Int(app_ptr))
+    return _runtime_ptr_to_i64(app[0].runtime)
+
+
+@export
+fn counter_tmpl_id(app_ptr: Int64) -> Int32:
+    """Return the counter template ID."""
+    var app = _int_to_counter_ptr(Int(app_ptr))
+    return Int32(app[0].template_id)
+
+
+@export
+fn counter_incr_handler(app_ptr: Int64) -> Int32:
+    """Return the increment handler ID."""
+    var app = _int_to_counter_ptr(Int(app_ptr))
+    return Int32(app[0].incr_handler)
+
+
+@export
+fn counter_decr_handler(app_ptr: Int64) -> Int32:
+    """Return the decrement handler ID."""
+    var app = _int_to_counter_ptr(Int(app_ptr))
+    return Int32(app[0].decr_handler)
+
+
+@export
+fn counter_count_value(app_ptr: Int64) -> Int32:
+    """Peek the current count signal value (without subscribing)."""
+    var app = _int_to_counter_ptr(Int(app_ptr))
+    return app[0].runtime[0].peek_signal[Int32](app[0].count_signal)
+
+
+@export
+fn counter_has_dirty(app_ptr: Int64) -> Int32:
+    """Check if the counter app has dirty scopes.  Returns 1 or 0."""
+    var app = _int_to_counter_ptr(Int(app_ptr))
+    if app[0].runtime[0].has_dirty():
+        return 1
+    return 0
+
+
+@export
+fn counter_scope_id(app_ptr: Int64) -> Int32:
+    """Return the counter app's root scope ID."""
+    var app = _int_to_counter_ptr(Int(app_ptr))
+    return Int32(app[0].scope_id)
+
+
+@export
+fn counter_count_signal(app_ptr: Int64) -> Int32:
+    """Return the counter app's count signal key."""
+    var app = _int_to_counter_ptr(Int(app_ptr))
+    return Int32(app[0].count_signal)
+
+
 # Factorial (iterative)
 @export
 fn factorial_int32(n: Int32) -> Int32:
