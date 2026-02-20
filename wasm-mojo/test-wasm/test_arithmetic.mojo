@@ -1,5 +1,5 @@
-# Port of test-mojo/test_arithmetic.mojo — arithmetic operations exercised
-# through the real WASM binary via wasmtime-py (called from Mojo via Python interop).
+# Arithmetic operations exercised through the real WASM binary via wasmtime-py
+# (called from Mojo via Python interop).
 #
 # These tests verify that add, sub, mul, div, mod, and pow operations work
 # correctly when compiled to WASM and executed via the Wasmtime runtime.

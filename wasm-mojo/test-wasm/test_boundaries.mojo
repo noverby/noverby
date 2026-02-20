@@ -1,6 +1,5 @@
-# Port of test-mojo/test_boundaries.mojo — integer boundary and overflow tests
-# exercised through the real WASM binary via wasmtime-py (called from Mojo via
-# Python interop).
+# Integer boundary and overflow tests exercised through the real WASM binary
+# via wasmtime-py (called from Mojo via Python interop).
 #
 # These tests are especially critical to run through the actual WASM binary,
 # because integer overflow/wrapping behavior could differ between native Mojo

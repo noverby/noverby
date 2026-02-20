@@ -1,6 +1,5 @@
-# Port of test-mojo/test_algorithms.mojo — algorithm tests (fib, factorial, gcd)
-# exercised through the real WASM binary via wasmtime-py (called from Mojo via
-# Python interop).
+# Algorithm tests (fib, factorial, gcd) exercised through the real WASM binary
+# via wasmtime-py (called from Mojo via Python interop).
 #
 # These tests verify that fibonacci, factorial, and GCD algorithms work correctly
 # when compiled to WASM and executed via the Wasmtime runtime.

@@ -1,5 +1,5 @@
-# Port of test-mojo/test_minmax.mojo — min, max, and clamp operations exercised
-# through the real WASM binary via wasmtime-py (called from Mojo via Python interop).
+# Min, max, and clamp operations exercised through the real WASM binary via
+# wasmtime-py (called from Mojo via Python interop).
 #
 # These tests verify that min, max, and clamp operations work correctly
 # when compiled to WASM and executed via the Wasmtime runtime.

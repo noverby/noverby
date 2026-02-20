@@ -1,5 +1,5 @@
-# Port of test-mojo/test_bitwise.mojo — bitwise operations exercised
-# through the real WASM binary via wasmtime-py (called from Mojo via Python interop).
+# Bitwise operations exercised through the real WASM binary via wasmtime-py
+# (called from Mojo via Python interop).
 #
 # These tests verify that bitand, bitor, bitxor, bitnot, shl, and shr operations
 # work correctly when compiled to WASM and executed via the Wasmtime runtime.

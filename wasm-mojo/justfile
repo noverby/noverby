@@ -8,13 +8,10 @@ build:
 test: build
   deno run --allow-read test/run.ts
 
-mojo-test:
-  mojo test -I src test-mojo/
-
 wasm-test: build
   mojo test test-wasm/
 
-test-all: mojo-test test wasm-test
+test-all: test wasm-test
 
 serve: build
   @echo "Open http://localhost:4507/examples/counter/"

@@ -1,5 +1,5 @@
-# Port of test-mojo/test_identity.mojo — identity/passthrough operations exercised
-# through the real WASM binary via wasmtime-py (called from Mojo via Python interop).
+# Identity/passthrough operations exercised through the real WASM binary via
+# wasmtime-py (called from Mojo via Python interop).
 #
 # These tests verify that identity functions correctly pass through values
 # when compiled to WASM and executed via the Wasmtime runtime.
