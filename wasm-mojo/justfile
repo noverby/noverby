@@ -1,11 +1,15 @@
 build:
   mkdir -p build
+  rm -f build/out.cwasm
   mojo build --emit llvm --target-features "none" -o build/out.ll src/main.mojo
   sed -i '/call void @llvm\.lifetime\.\(start\|end\)/d' build/out.ll
   llc --mtriple=wasm64-wasi -filetype=obj build/out.ll
   wasm-ld --no-entry --export-all --allow-undefined -mwasm64 --initial-memory=16777216 -o build/out.wasm build/out.o
 
-test: build
+precompile: build
+  mojo run -I ../wasmtime-mojo/src scripts/precompile.mojo
+
+test: precompile
   mojo test -I ../wasmtime-mojo/src test/
 
 test-js: build

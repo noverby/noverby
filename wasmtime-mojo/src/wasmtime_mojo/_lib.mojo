@@ -93,6 +93,56 @@ fn wasm_engine_delete(engine: EnginePtr) raises:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Config (for cache support)
+# ═══════════════════════════════════════════════════════════════════════════
+
+alias ConfigPtr = UnsafePointer[NoneType]
+
+
+fn wasm_config_new() raises -> ConfigPtr:
+    """Create a new wasm config."""
+    var lib = get_lib()
+    var f = lib.get_function[fn () -> ConfigPtr]("wasm_config_new")
+    return f()
+
+
+fn wasm_config_delete(config: ConfigPtr) raises:
+    """Delete a wasm config."""
+    var lib = get_lib()
+    var f = lib.get_function[fn (ConfigPtr) -> None]("wasm_config_delete")
+    f(config)
+
+
+fn wasmtime_config_cache_config_load(
+    config: ConfigPtr,
+    path: UnsafePointer[UInt8],
+) raises -> ErrorPtr:
+    """Load cache configuration.
+
+    Pass a null pointer for *path* to use the default cache location
+    (~/.cache/wasmtime or equivalent).
+    """
+    var lib = get_lib()
+    var f = lib.get_function[fn (ConfigPtr, UnsafePointer[UInt8]) -> ErrorPtr](
+        "wasmtime_config_cache_config_load"
+    )
+    return f(config, path)
+
+
+fn wasm_engine_new_with_config(config: ConfigPtr) raises -> EnginePtr:
+    """Create a new wasm engine with the given configuration.
+
+    Note: this takes ownership of the config — do NOT delete it after
+    calling this function.
+    """
+    var lib = get_lib()
+    var f = lib.get_function[fn (ConfigPtr) -> EnginePtr](
+        "wasm_engine_new_with_config"
+    )
+    return f(config)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Store / Context
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -154,6 +204,40 @@ fn wasmtime_module_delete(module: ModulePtr) raises:
     var lib = get_lib()
     var f = lib.get_function[fn (ModulePtr) -> None]("wasmtime_module_delete")
     f(module)
+
+
+fn wasmtime_module_serialize(
+    module: ModulePtr,
+    ret: UnsafePointer[WasmByteVec],
+) raises -> ErrorPtr:
+    """Serialize a compiled module to bytes.
+
+    The caller must free *ret* with wasm_byte_vec_delete when done.
+    """
+    var lib = get_lib()
+    var f = lib.get_function[
+        fn (ModulePtr, UnsafePointer[WasmByteVec]) -> ErrorPtr
+    ]("wasmtime_module_serialize")
+    return f(module, ret)
+
+
+fn wasmtime_module_deserialize_file(
+    engine: EnginePtr,
+    path: UnsafePointer[UInt8],
+    ret: UnsafePointer[ModulePtr],
+) raises -> ErrorPtr:
+    """Deserialize a pre-compiled module directly from a file.
+
+    This can mmap the file for very fast loading.  The file must have been
+    produced by wasmtime_module_serialize with a compatible engine.
+    """
+    var lib = get_lib()
+    var f = lib.get_function[
+        fn (
+            EnginePtr, UnsafePointer[UInt8], UnsafePointer[ModulePtr]
+        ) -> ErrorPtr
+    ]("wasmtime_module_deserialize_file")
+    return f(engine, path, ret)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

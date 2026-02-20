@@ -11,14 +11,24 @@ Usage:
     var wasm_bytes = read_wasm_file("module.wasm")
     var module = Module(engine.ptr(), wasm_bytes)
     # ... use module with a Linker to create instances ...
+
+    # Serialize a compiled module to disk for fast reloading:
+    module.serialize("module.cwasm")
+
+    # Deserialize a pre-compiled module (very fast — can mmap the file):
+    var fast_module = Module.deserialize_file(engine.ptr(), "module.cwasm")
 """
 
 from memory import UnsafePointer
+from pathlib import Path
 
-from ._types import EnginePtr, ModulePtr, ErrorPtr
+from ._types import EnginePtr, ModulePtr, ErrorPtr, WasmByteVec
 from ._lib import (
     wasmtime_module_new,
     wasmtime_module_delete,
+    wasmtime_module_serialize,
+    wasmtime_module_deserialize_file,
+    wasm_byte_vec_delete,
     error_message,
 )
 
@@ -88,3 +98,83 @@ struct Module:
     fn ptr(self) -> ModulePtr:
         """Return the raw module pointer for FFI calls."""
         return self._ptr
+
+    # ------------------------------------------------------------------
+    # Serialization
+    # ------------------------------------------------------------------
+
+    fn serialize(self, path: String) raises:
+        """Serialize the compiled module to a file.
+
+        The resulting file can be loaded later with `Module.deserialize_file`
+        for very fast instantiation (skips compilation entirely).
+
+        The file is only valid for the same version of wasmtime and the
+        same engine configuration that produced it.
+
+        Args:
+            path: Filesystem path to write the serialized module to.
+
+        Raises:
+            Error: If serialization fails.
+        """
+        var byte_vec = WasmByteVec()
+        var byte_vec_ptr = UnsafePointer(to=byte_vec)
+        var err = wasmtime_module_serialize(self._ptr, byte_vec_ptr)
+        if err:
+            var msg = error_message(err)
+            raise Error("Failed to serialize module: " + msg)
+
+        # Write the serialized bytes to a file
+        var data = List[UInt8](capacity=byte_vec.size)
+        for i in range(byte_vec.size):
+            data.append(byte_vec.data[i])
+        wasm_byte_vec_delete(byte_vec_ptr)
+
+        Path(path).write_bytes(data)
+
+    @staticmethod
+    fn deserialize_file(engine_ptr: EnginePtr, path: String) raises -> Module:
+        """Deserialize a pre-compiled module from a file.
+
+        This is much faster than compiling from WASM bytes because the
+        runtime can mmap the file directly.  The file must have been
+        produced by `Module.serialize` with a compatible engine.
+
+        Args:
+            engine_ptr: Raw pointer to the wasm_engine_t. Must use the
+                same configuration as the engine that serialized the module.
+            path: Filesystem path to the serialized module (.cwasm).
+
+        Returns:
+            A Module wrapping the deserialized compiled code.
+
+        Raises:
+            Error: If the file cannot be read or deserialization fails
+                (e.g. engine version / config mismatch).
+        """
+        # Build a null-terminated C string for the path
+        var path_bytes = path.as_bytes()
+        var c_path = UnsafePointer[UInt8].alloc(len(path_bytes) + 1)
+        for i in range(len(path_bytes)):
+            c_path[i] = path_bytes[i]
+        c_path[len(path_bytes)] = 0  # null terminator
+
+        var module_out = UnsafePointer[ModulePtr].alloc(1)
+        module_out[] = ModulePtr()
+
+        var err = wasmtime_module_deserialize_file(
+            engine_ptr, c_path, module_out
+        )
+        c_path.free()
+
+        if err:
+            var msg = error_message(err)
+            module_out.free()
+            raise Error(
+                "Failed to deserialize module from '" + path + "': " + msg
+            )
+
+        var ptr = module_out[]
+        module_out.free()
+        return Module(_ptr=ptr)

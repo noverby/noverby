@@ -49,6 +49,7 @@ from ._types import (
     FuncTypePtr,
     ValTypePtr,
     CallerPtr,
+    # Config pointer (re-exported from _lib)
     # Value / extern structs
     WasmtimeVal,
     WasmtimeFunc,
@@ -115,4 +116,11 @@ from ._lib import (
     make_functype,
     error_message,
     trap_message,
+    ConfigPtr,
+    wasm_config_new,
+    wasm_config_delete,
+    wasm_engine_new_with_config,
+    wasmtime_config_cache_config_load,
+    wasmtime_module_serialize,
+    wasmtime_module_deserialize_file,
 )
