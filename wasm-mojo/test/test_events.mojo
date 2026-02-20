@@ -1,5 +1,5 @@
 # HandlerRegistry and event dispatch exercised through the real WASM binary
-# via wasmtime-py (called from Mojo via Python interop).
+# via wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
 #
 # These tests verify that the event handler registry and dispatch system work
 # correctly when compiled to WASM and executed via the Wasmtime runtime.
@@ -11,27 +11,38 @@
 # Run with:
 #   mojo test test/test_events.mojo
 
-from python import Python, PythonObject
+from memory import UnsafePointer
 from testing import assert_equal, assert_true, assert_false
 
+from wasm_harness import (
+    WasmInstance,
+    get_instance,
+    args_ptr,
+    args_ptr_i32,
+    args_ptr_i32_i32,
+    args_ptr_i32_i32_i32,
+    args_ptr_i32_ptr,
+    args_ptr_i32_i32_ptr,
+    args_ptr_i32_i32_i32_ptr,
+    no_args,
+)
 
-fn _get_wasm() raises -> PythonObject:
-    Python.add_to_path("test")
-    var harness = Python.import_module("wasm_harness")
-    return harness.get_instance()
+
+fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
+    return get_instance()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-fn _create_runtime(w: PythonObject) raises -> PythonObject:
+fn _create_runtime(w: UnsafePointer[WasmInstance]) raises -> Int:
     """Create a heap-allocated Runtime via WASM."""
-    return w.runtime_create()
+    return Int(w[].call_i64("runtime_create", no_args()))
 
 
-fn _destroy_runtime(w: PythonObject, rt: PythonObject) raises:
+fn _destroy_runtime(w: UnsafePointer[WasmInstance], rt: Int) raises:
     """Destroy a heap-allocated Runtime via WASM."""
-    w.runtime_destroy(rt)
+    w[].call_void("runtime_destroy", args_ptr(rt))
 
 
 # ── Registry — initial state ─────────────────────────────────────────────────
@@ -41,7 +52,11 @@ fn test_registry_initial_state() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    assert_equal(Int(w.handler_count(rt)), 0, "new registry has 0 handlers")
+    assert_equal(
+        Int(w[].call_i32("handler_count", args_ptr(rt))),
+        0,
+        "new registry has 0 handlers",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -53,18 +68,27 @@ fn test_register_single_handler() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
     var id = Int(
-        w.handler_register_signal_add(
-            rt, s, sig, 1, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_add",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig, 1, w[].write_string_struct("click")
+            ),
         )
     )
 
     assert_equal(id, 0, "first handler gets id 0")
-    assert_equal(Int(w.handler_count(rt)), 1, "count is 1 after register")
     assert_equal(
-        Int(w.handler_contains(rt, id)), 1, "registry contains the handler"
+        Int(w[].call_i32("handler_count", args_ptr(rt))),
+        1,
+        "count is 1 after register",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_contains", args_ptr_i32(rt, id))),
+        1,
+        "registry contains the handler",
     )
 
     _destroy_runtime(w, rt)
@@ -74,35 +98,60 @@ fn test_register_multiple_handlers() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s0 = Int(w.scope_create(rt, 0, -1))
-    var s1 = Int(w.scope_create(rt, 0, -1))
-    var sig0 = Int(w.signal_create_i32(rt, 0))
-    var sig1 = Int(w.signal_create_i32(rt, 0))
-    var sig2 = Int(w.signal_create_i32(rt, 0))
+    var s0 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var s1 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig0 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
+    var sig1 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
+    var sig2 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     var id0 = Int(
-        w.handler_register_signal_set(
-            rt, s0, sig0, 42, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_set",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s0, sig0, 42, w[].write_string_struct("click")
+            ),
         )
     )
     var id1 = Int(
-        w.handler_register_signal_add(
-            rt, s0, sig1, 1, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_add",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s0, sig1, 1, w[].write_string_struct("click")
+            ),
         )
     )
     var id2 = Int(
-        w.handler_register_signal_sub(
-            rt, s1, sig2, 5, w.write_string_struct("input")
+        w[].call_i32(
+            "handler_register_signal_sub",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s1, sig2, 5, w[].write_string_struct("input")
+            ),
         )
     )
 
-    assert_equal(Int(w.handler_count(rt)), 3, "count is 3 after 3 registers")
+    assert_equal(
+        Int(w[].call_i32("handler_count", args_ptr(rt))),
+        3,
+        "count is 3 after 3 registers",
+    )
     assert_true(id0 != id1, "id0 != id1")
     assert_true(id1 != id2, "id1 != id2")
     assert_true(id0 != id2, "id0 != id2")
-    assert_equal(Int(w.handler_contains(rt, id0)), 1, "contains id0")
-    assert_equal(Int(w.handler_contains(rt, id1)), 1, "contains id1")
-    assert_equal(Int(w.handler_contains(rt, id2)), 1, "contains id2")
+    assert_equal(
+        Int(w[].call_i32("handler_contains", args_ptr_i32(rt, id0))),
+        1,
+        "contains id0",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_contains", args_ptr_i32(rt, id1))),
+        1,
+        "contains id1",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_contains", args_ptr_i32(rt, id2))),
+        1,
+        "contains id2",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -114,20 +163,39 @@ fn test_query_signal_add_fields() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     # ACTION_SIGNAL_ADD_I32 = 2
     var id = Int(
-        w.handler_register_signal_add(
-            rt, s, sig, 10, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_add",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig, 10, w[].write_string_struct("click")
+            ),
         )
     )
 
-    assert_equal(Int(w.handler_scope_id(rt, id)), s, "scope_id matches")
-    assert_equal(Int(w.handler_action(rt, id)), 2, "action is ADD (2)")
-    assert_equal(Int(w.handler_signal_key(rt, id)), sig, "signal_key matches")
-    assert_equal(Int(w.handler_operand(rt, id)), 10, "operand is 10")
+    assert_equal(
+        Int(w[].call_i32("handler_scope_id", args_ptr_i32(rt, id))),
+        s,
+        "scope_id matches",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_action", args_ptr_i32(rt, id))),
+        2,
+        "action is ADD (2)",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_signal_key", args_ptr_i32(rt, id))),
+        sig,
+        "signal_key matches",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_operand", args_ptr_i32(rt, id))),
+        10,
+        "operand is 10",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -136,19 +204,34 @@ fn test_query_signal_set_fields() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     # ACTION_SIGNAL_SET_I32 = 1
     var id = Int(
-        w.handler_register_signal_set(
-            rt, s, sig, 99, w.write_string_struct("submit")
+        w[].call_i32(
+            "handler_register_signal_set",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig, 99, w[].write_string_struct("submit")
+            ),
         )
     )
 
-    assert_equal(Int(w.handler_action(rt, id)), 1, "action is SET (1)")
-    assert_equal(Int(w.handler_signal_key(rt, id)), sig, "signal_key matches")
-    assert_equal(Int(w.handler_operand(rt, id)), 99, "operand is 99")
+    assert_equal(
+        Int(w[].call_i32("handler_action", args_ptr_i32(rt, id))),
+        1,
+        "action is SET (1)",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_signal_key", args_ptr_i32(rt, id))),
+        sig,
+        "signal_key matches",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_operand", args_ptr_i32(rt, id))),
+        99,
+        "operand is 99",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -157,18 +240,29 @@ fn test_query_signal_sub_fields() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     # ACTION_SIGNAL_SUB_I32 = 3
     var id = Int(
-        w.handler_register_signal_sub(
-            rt, s, sig, 7, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_sub",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig, 7, w[].write_string_struct("click")
+            ),
         )
     )
 
-    assert_equal(Int(w.handler_action(rt, id)), 3, "action is SUB (3)")
-    assert_equal(Int(w.handler_operand(rt, id)), 7, "operand (delta) is 7")
+    assert_equal(
+        Int(w[].call_i32("handler_action", args_ptr_i32(rt, id))),
+        3,
+        "action is SUB (3)",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_operand", args_ptr_i32(rt, id))),
+        7,
+        "operand (delta) is 7",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -177,19 +271,32 @@ fn test_query_signal_toggle_fields() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     # ACTION_SIGNAL_TOGGLE = 4
     var id = Int(
-        w.handler_register_signal_toggle(
-            rt, s, sig, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_toggle",
+            args_ptr_i32_i32_ptr(rt, s, sig, w[].write_string_struct("click")),
         )
     )
 
-    assert_equal(Int(w.handler_action(rt, id)), 4, "action is TOGGLE (4)")
-    assert_equal(Int(w.handler_signal_key(rt, id)), sig, "signal_key matches")
-    assert_equal(Int(w.handler_operand(rt, id)), 0, "operand is 0 for toggle")
+    assert_equal(
+        Int(w[].call_i32("handler_action", args_ptr_i32(rt, id))),
+        4,
+        "action is TOGGLE (4)",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_signal_key", args_ptr_i32(rt, id))),
+        sig,
+        "signal_key matches",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_operand", args_ptr_i32(rt, id))),
+        0,
+        "operand is 0 for toggle",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -198,18 +305,27 @@ fn test_query_signal_set_input_fields() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     # ACTION_SIGNAL_SET_INPUT = 5
     var id = Int(
-        w.handler_register_signal_set_input(
-            rt, s, sig, w.write_string_struct("input")
+        w[].call_i32(
+            "handler_register_signal_set_input",
+            args_ptr_i32_i32_ptr(rt, s, sig, w[].write_string_struct("input")),
         )
     )
 
-    assert_equal(Int(w.handler_action(rt, id)), 5, "action is SET_INPUT (5)")
-    assert_equal(Int(w.handler_signal_key(rt, id)), sig, "signal_key matches")
+    assert_equal(
+        Int(w[].call_i32("handler_action", args_ptr_i32(rt, id))),
+        5,
+        "action is SET_INPUT (5)",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_signal_key", args_ptr_i32(rt, id))),
+        sig,
+        "signal_key matches",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -218,18 +334,31 @@ fn test_query_custom_handler_fields() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
     # ACTION_CUSTOM = 255
     var id = Int(
-        w.handler_register_custom(rt, s, w.write_string_struct("custom-event"))
+        w[].call_i32(
+            "handler_register_custom",
+            args_ptr_i32_ptr(rt, s, w[].write_string_struct("custom-event")),
+        )
     )
 
-    assert_equal(Int(w.handler_action(rt, id)), 255, "action is CUSTOM (255)")
     assert_equal(
-        Int(w.handler_signal_key(rt, id)), 0, "signal_key is 0 for custom"
+        Int(w[].call_i32("handler_action", args_ptr_i32(rt, id))),
+        255,
+        "action is CUSTOM (255)",
     )
-    assert_equal(Int(w.handler_operand(rt, id)), 0, "operand is 0 for custom")
+    assert_equal(
+        Int(w[].call_i32("handler_signal_key", args_ptr_i32(rt, id))),
+        0,
+        "signal_key is 0 for custom",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_operand", args_ptr_i32(rt, id))),
+        0,
+        "operand is 0 for custom",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -238,13 +367,26 @@ fn test_query_noop_handler_fields() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
     # ACTION_NONE = 0
-    var id = Int(w.handler_register_noop(rt, s, w.write_string_struct("blur")))
+    var id = Int(
+        w[].call_i32(
+            "handler_register_noop",
+            args_ptr_i32_ptr(rt, s, w[].write_string_struct("blur")),
+        )
+    )
 
-    assert_equal(Int(w.handler_action(rt, id)), 0, "action is NONE (0)")
-    assert_equal(Int(w.handler_scope_id(rt, id)), s, "scope_id matches")
+    assert_equal(
+        Int(w[].call_i32("handler_action", args_ptr_i32(rt, id))),
+        0,
+        "action is NONE (0)",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_scope_id", args_ptr_i32(rt, id))),
+        s,
+        "scope_id matches",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -256,31 +398,49 @@ fn test_remove_handler() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig0 = Int(w.signal_create_i32(rt, 0))
-    var sig1 = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig0 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
+    var sig1 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     var id0 = Int(
-        w.handler_register_signal_add(
-            rt, s, sig0, 1, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_add",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig0, 1, w[].write_string_struct("click")
+            ),
         )
     )
     var id1 = Int(
-        w.handler_register_signal_set(
-            rt, s, sig1, 42, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_set",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig1, 42, w[].write_string_struct("click")
+            ),
         )
     )
 
-    assert_equal(Int(w.handler_count(rt)), 2, "2 handlers before remove")
-
-    w.handler_remove(rt, id0)
-
-    assert_equal(Int(w.handler_count(rt)), 1, "1 handler after remove")
     assert_equal(
-        Int(w.handler_contains(rt, id0)), 0, "removed handler not found"
+        Int(w[].call_i32("handler_count", args_ptr(rt))),
+        2,
+        "2 handlers before remove",
+    )
+
+    w[].call_void("handler_remove", args_ptr_i32(rt, id0))
+
+    assert_equal(
+        Int(w[].call_i32("handler_count", args_ptr(rt))),
+        1,
+        "1 handler after remove",
     )
     assert_equal(
-        Int(w.handler_contains(rt, id1)), 1, "other handler still exists"
+        Int(w[].call_i32("handler_contains", args_ptr_i32(rt, id0))),
+        0,
+        "removed handler not found",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_contains", args_ptr_i32(rt, id1))),
+        1,
+        "other handler still exists",
     )
 
     _destroy_runtime(w, rt)
@@ -290,14 +450,17 @@ fn test_remove_nonexistent_is_noop() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    _ = w.handler_register_noop(rt, s, w.write_string_struct("click"))
-    assert_equal(Int(w.handler_count(rt)), 1)
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    _ = w[].call_i32(
+        "handler_register_noop",
+        args_ptr_i32_ptr(rt, s, w[].write_string_struct("click")),
+    )
+    assert_equal(Int(w[].call_i32("handler_count", args_ptr(rt))), 1)
 
     # Remove an ID that was never registered
-    w.handler_remove(rt, 99)
+    w[].call_void("handler_remove", args_ptr_i32(rt, 99))
     assert_equal(
-        Int(w.handler_count(rt)),
+        Int(w[].call_i32("handler_count", args_ptr(rt))),
         1,
         "count unchanged after removing nonexistent",
     )
@@ -309,14 +472,25 @@ fn test_double_remove_is_noop() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var id = Int(w.handler_register_noop(rt, s, w.write_string_struct("click")))
-    w.handler_remove(rt, id)
-    assert_equal(Int(w.handler_count(rt)), 0, "count is 0 after remove")
-
-    w.handler_remove(rt, id)  # double remove
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var id = Int(
+        w[].call_i32(
+            "handler_register_noop",
+            args_ptr_i32_ptr(rt, s, w[].write_string_struct("click")),
+        )
+    )
+    w[].call_void("handler_remove", args_ptr_i32(rt, id))
     assert_equal(
-        Int(w.handler_count(rt)), 0, "count still 0 after double remove"
+        Int(w[].call_i32("handler_count", args_ptr(rt))),
+        0,
+        "count is 0 after remove",
+    )
+
+    w[].call_void("handler_remove", args_ptr_i32(rt, id))  # double remove
+    assert_equal(
+        Int(w[].call_i32("handler_count", args_ptr(rt))),
+        0,
+        "count still 0 after double remove",
     )
 
     _destroy_runtime(w, rt)
@@ -329,44 +503,75 @@ fn test_slot_reuse_after_remove() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s0 = Int(w.scope_create(rt, 0, -1))
-    var s1 = Int(w.scope_create(rt, 0, -1))
-    var sig0 = Int(w.signal_create_i32(rt, 0))
-    var sig1 = Int(w.signal_create_i32(rt, 0))
-    var sig3 = Int(w.signal_create_i32(rt, 0))
+    var s0 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var s1 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig0 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
+    var sig1 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
+    var sig3 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     var id0 = Int(
-        w.handler_register_signal_set(
-            rt, s0, sig0, 1, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_set",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s0, sig0, 1, w[].write_string_struct("click")
+            ),
         )
     )
     var id1 = Int(
-        w.handler_register_signal_set(
-            rt, s0, sig1, 2, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_set",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s0, sig1, 2, w[].write_string_struct("click")
+            ),
         )
     )
 
-    w.handler_remove(rt, id0)
+    w[].call_void("handler_remove", args_ptr_i32(rt, id0))
 
     # New registration should reuse the freed slot
     var id2 = Int(
-        w.handler_register_signal_add(
-            rt, s1, sig3, 99, w.write_string_struct("input")
+        w[].call_i32(
+            "handler_register_signal_add",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s1, sig3, 99, w[].write_string_struct("input")
+            ),
         )
     )
 
     assert_equal(id2, id0, "new handler reuses freed slot")
-    assert_equal(Int(w.handler_count(rt)), 2, "count is 2")
-    assert_equal(Int(w.handler_contains(rt, id2)), 1, "reused slot is alive")
+    assert_equal(
+        Int(w[].call_i32("handler_count", args_ptr(rt))), 2, "count is 2"
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_contains", args_ptr_i32(rt, id2))),
+        1,
+        "reused slot is alive",
+    )
 
     # Verify the new handler's data
-    assert_equal(Int(w.handler_action(rt, id2)), 2, "action is ADD (2)")
-    assert_equal(Int(w.handler_signal_key(rt, id2)), sig3)
-    assert_equal(Int(w.handler_operand(rt, id2)), 99)
+    assert_equal(
+        Int(w[].call_i32("handler_action", args_ptr_i32(rt, id2))),
+        2,
+        "action is ADD (2)",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_signal_key", args_ptr_i32(rt, id2))), sig3
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_operand", args_ptr_i32(rt, id2))), 99
+    )
 
     # Original id1 should be unchanged
-    assert_equal(Int(w.handler_contains(rt, id1)), 1, "id1 still exists")
-    assert_equal(Int(w.handler_operand(rt, id1)), 2, "id1 operand unchanged")
+    assert_equal(
+        Int(w[].call_i32("handler_contains", args_ptr_i32(rt, id1))),
+        1,
+        "id1 still exists",
+    )
+    assert_equal(
+        Int(w[].call_i32("handler_operand", args_ptr_i32(rt, id1))),
+        2,
+        "id1 operand unchanged",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -377,41 +582,53 @@ fn test_multiple_slot_reuse() raises:
 
     var scopes = List[Int]()
     for i in range(5):
-        scopes.append(Int(w.scope_create(rt, 0, -1)))
+        scopes.append(
+            Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+        )
 
     var ids = List[Int]()
     for i in range(5):
         ids.append(
             Int(
-                w.handler_register_noop(
-                    rt, scopes[i], w.write_string_struct("click")
+                w[].call_i32(
+                    "handler_register_noop",
+                    args_ptr_i32_ptr(
+                        rt, scopes[i], w[].write_string_struct("click")
+                    ),
                 )
             )
         )
-    assert_equal(Int(w.handler_count(rt)), 5)
+    assert_equal(Int(w[].call_i32("handler_count", args_ptr(rt))), 5)
 
     # Remove all even-indexed
-    w.handler_remove(rt, ids[0])
-    w.handler_remove(rt, ids[2])
-    w.handler_remove(rt, ids[4])
-    assert_equal(Int(w.handler_count(rt)), 2)
+    w[].call_void("handler_remove", args_ptr_i32(rt, ids[0]))
+    w[].call_void("handler_remove", args_ptr_i32(rt, ids[2]))
+    w[].call_void("handler_remove", args_ptr_i32(rt, ids[4]))
+    assert_equal(Int(w[].call_i32("handler_count", args_ptr(rt))), 2)
 
     # Re-register 3 more — should reuse freed slots
     var new_ids = List[Int]()
     for i in range(3):
-        var sig = Int(w.signal_create_i32(rt, 0))
+        var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
         new_ids.append(
             Int(
-                w.handler_register_signal_set(
-                    rt,
-                    scopes[0],
-                    sig,
-                    i * 10,
-                    w.write_string_struct("input"),
+                w[].call_i32(
+                    "handler_register_signal_set",
+                    args_ptr_i32_i32_i32_ptr(
+                        rt,
+                        scopes[0],
+                        sig,
+                        i * 10,
+                        w[].write_string_struct("input"),
+                    ),
                 )
             )
         )
-    assert_equal(Int(w.handler_count(rt)), 5, "back to 5 after reuse")
+    assert_equal(
+        Int(w[].call_i32("handler_count", args_ptr(rt))),
+        5,
+        "back to 5 after reuse",
+    )
 
     # All new IDs should be from the set {ids[0], ids[2], ids[4]}
     for i in range(3):
@@ -432,12 +649,12 @@ fn test_contains_out_of_bounds() raises:
     var rt = _create_runtime(w)
 
     assert_equal(
-        Int(w.handler_contains(rt, 0)),
+        Int(w[].call_i32("handler_contains", args_ptr_i32(rt, 0))),
         0,
         "empty registry: contains(0) is false",
     )
     assert_equal(
-        Int(w.handler_contains(rt, 100)),
+        Int(w[].call_i32("handler_contains", args_ptr_i32(rt, 100))),
         0,
         "empty registry: contains(100) is false",
     )
@@ -452,22 +669,27 @@ fn test_dispatch_signal_add() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 10))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 10)))
 
     var id = Int(
-        w.handler_register_signal_add(
-            rt, s, sig, 5, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_add",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig, 5, w[].write_string_struct("click")
+            ),
         )
     )
 
     # EVT_CLICK = 0
-    var result = Int(w.dispatch_event(rt, id, 0))
+    var result = Int(
+        w[].call_i32("dispatch_event", args_ptr_i32_i32(rt, id, 0))
+    )
     assert_equal(result, 1, "dispatch returns 1 (action executed)")
 
     # Signal should have been incremented by 5
     assert_equal(
-        Int(w.signal_peek_i32(rt, sig)),
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, sig))),
         15,
         "signal is 15 after adding 5 to 10",
     )
@@ -482,18 +704,21 @@ fn test_dispatch_signal_sub() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 100))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 100)))
 
     var id = Int(
-        w.handler_register_signal_sub(
-            rt, s, sig, 30, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_sub",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig, 30, w[].write_string_struct("click")
+            ),
         )
     )
 
-    _ = w.dispatch_event(rt, id, 0)
+    _ = w[].call_i32("dispatch_event", args_ptr_i32_i32(rt, id, 0))
     assert_equal(
-        Int(w.signal_peek_i32(rt, sig)),
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, sig))),
         70,
         "signal is 70 after subtracting 30 from 100",
     )
@@ -508,17 +733,24 @@ fn test_dispatch_signal_set() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     var id = Int(
-        w.handler_register_signal_set(
-            rt, s, sig, 42, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_set",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig, 42, w[].write_string_struct("click")
+            ),
         )
     )
 
-    _ = w.dispatch_event(rt, id, 0)
-    assert_equal(Int(w.signal_peek_i32(rt, sig)), 42, "signal is 42 after set")
+    _ = w[].call_i32("dispatch_event", args_ptr_i32_i32(rt, id, 0))
+    assert_equal(
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, sig))),
+        42,
+        "signal is 42 after set",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -530,25 +762,30 @@ fn test_dispatch_signal_toggle() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     var id = Int(
-        w.handler_register_signal_toggle(
-            rt, s, sig, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_toggle",
+            args_ptr_i32_i32_ptr(rt, s, sig, w[].write_string_struct("click")),
         )
     )
 
     # Toggle 0 → 1
-    _ = w.dispatch_event(rt, id, 0)
+    _ = w[].call_i32("dispatch_event", args_ptr_i32_i32(rt, id, 0))
     assert_equal(
-        Int(w.signal_peek_i32(rt, sig)), 1, "signal toggled from 0 to 1"
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, sig))),
+        1,
+        "signal toggled from 0 to 1",
     )
 
     # Toggle 1 → 0
-    _ = w.dispatch_event(rt, id, 0)
+    _ = w[].call_i32("dispatch_event", args_ptr_i32_i32(rt, id, 0))
     assert_equal(
-        Int(w.signal_peek_i32(rt, sig)), 0, "signal toggled from 1 to 0"
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, sig))),
+        0,
+        "signal toggled from 1 to 0",
     )
 
     _destroy_runtime(w, rt)
@@ -561,20 +798,27 @@ fn test_dispatch_signal_set_input() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     var id = Int(
-        w.handler_register_signal_set_input(
-            rt, s, sig, w.write_string_struct("input")
+        w[].call_i32(
+            "handler_register_signal_set_input",
+            args_ptr_i32_i32_ptr(rt, s, sig, w[].write_string_struct("input")),
         )
     )
 
     # EVT_INPUT = 1, payload = 77
-    var result = Int(w.dispatch_event_with_i32(rt, id, 1, 77))
+    var result = Int(
+        w[].call_i32(
+            "dispatch_event_with_i32", args_ptr_i32_i32_i32(rt, id, 1, 77)
+        )
+    )
     assert_equal(result, 1, "dispatch returns 1")
     assert_equal(
-        Int(w.signal_peek_i32(rt, sig)), 77, "signal set to input value 77"
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, sig))),
+        77,
+        "signal set to input value 77",
     )
 
     _destroy_runtime(w, rt)
@@ -587,25 +831,34 @@ fn test_dispatch_marks_scope_dirty() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     # Subscribe the scope to the signal (via render + read)
-    var prev = Int(w.scope_begin_render(rt, s))
-    _ = w.signal_read_i32(rt, sig)
-    w.scope_end_render(rt, prev)
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    _ = w[].call_i32("signal_read_i32", args_ptr_i32(rt, sig))
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
-    assert_equal(Int(w.runtime_has_dirty(rt)), 0, "no dirty scopes initially")
+    assert_equal(
+        Int(w[].call_i32("runtime_has_dirty", args_ptr(rt))),
+        0,
+        "no dirty scopes initially",
+    )
 
     var id = Int(
-        w.handler_register_signal_add(
-            rt, s, sig, 1, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_add",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig, 1, w[].write_string_struct("click")
+            ),
         )
     )
 
-    _ = w.dispatch_event(rt, id, 0)
+    _ = w[].call_i32("dispatch_event", args_ptr_i32_i32(rt, id, 0))
     assert_equal(
-        Int(w.runtime_has_dirty(rt)), 1, "scope is dirty after dispatch"
+        Int(w[].call_i32("runtime_has_dirty", args_ptr(rt))),
+        1,
+        "scope is dirty after dispatch",
     )
 
     _destroy_runtime(w, rt)
@@ -618,21 +871,24 @@ fn test_dispatch_multiple_accumulate() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     var id = Int(
-        w.handler_register_signal_add(
-            rt, s, sig, 1, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_add",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig, 1, w[].write_string_struct("click")
+            ),
         )
     )
 
     # Dispatch 10 times
     for _ in range(10):
-        _ = w.dispatch_event(rt, id, 0)
+        _ = w[].call_i32("dispatch_event", args_ptr_i32_i32(rt, id, 0))
 
     assert_equal(
-        Int(w.signal_peek_i32(rt, sig)),
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, sig))),
         10,
         "signal is 10 after 10 dispatches adding 1",
     )
@@ -647,26 +903,37 @@ fn test_dispatch_and_drain_dirty() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     # Subscribe
-    var prev = Int(w.scope_begin_render(rt, s))
-    _ = w.signal_read_i32(rt, sig)
-    w.scope_end_render(rt, prev)
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    _ = w[].call_i32("signal_read_i32", args_ptr_i32(rt, sig))
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
     var id = Int(
-        w.handler_register_signal_set(
-            rt, s, sig, 42, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_set",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig, 42, w[].write_string_struct("click")
+            ),
         )
     )
 
-    _ = w.dispatch_event(rt, id, 0)
-    assert_equal(Int(w.runtime_dirty_count(rt)), 1, "1 dirty scope")
+    _ = w[].call_i32("dispatch_event", args_ptr_i32_i32(rt, id, 0))
+    assert_equal(
+        Int(w[].call_i32("runtime_dirty_count", args_ptr(rt))),
+        1,
+        "1 dirty scope",
+    )
 
-    var drained = Int(w.runtime_drain_dirty(rt))
+    var drained = Int(w[].call_i32("runtime_drain_dirty", args_ptr(rt)))
     assert_equal(drained, 1, "drained 1 dirty scope")
-    assert_equal(Int(w.runtime_has_dirty(rt)), 0, "no dirty scopes after drain")
+    assert_equal(
+        Int(w[].call_i32("runtime_has_dirty", args_ptr(rt))),
+        0,
+        "no dirty scopes after drain",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -678,23 +945,28 @@ fn test_negative_operand() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     var id = Int(
-        w.handler_register_signal_add(
-            rt, s, sig, -100, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_add",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig, -100, w[].write_string_struct("click")
+            ),
         )
     )
 
     assert_equal(
-        Int(w.handler_operand(rt, id)), -100, "negative operand preserved"
+        Int(w[].call_i32("handler_operand", args_ptr_i32(rt, id))),
+        -100,
+        "negative operand preserved",
     )
 
     # Dispatch — should add -100
-    _ = w.dispatch_event(rt, id, 0)
+    _ = w[].call_i32("dispatch_event", args_ptr_i32_i32(rt, id, 0))
     assert_equal(
-        Int(w.signal_peek_i32(rt, sig)),
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, sig))),
         -100,
         "signal is -100 after adding -100 to 0",
     )
@@ -706,26 +978,36 @@ fn test_int32_min_max_operand() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var sig0 = Int(w.signal_create_i32(rt, 0))
-    var sig1 = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig0 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
+    var sig1 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     var id_min = Int(
-        w.handler_register_signal_set(
-            rt, s, sig0, -2147483648, w.write_string_struct("a")
+        w[].call_i32(
+            "handler_register_signal_set",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig0, -2147483648, w[].write_string_struct("a")
+            ),
         )
     )
     var id_max = Int(
-        w.handler_register_signal_set(
-            rt, s, sig1, 2147483647, w.write_string_struct("b")
+        w[].call_i32(
+            "handler_register_signal_set",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig1, 2147483647, w[].write_string_struct("b")
+            ),
         )
     )
 
     assert_equal(
-        Int(w.handler_operand(rt, id_min)), -2147483648, "INT32_MIN operand"
+        Int(w[].call_i32("handler_operand", args_ptr_i32(rt, id_min))),
+        -2147483648,
+        "INT32_MIN operand",
     )
     assert_equal(
-        Int(w.handler_operand(rt, id_max)), 2147483647, "INT32_MAX operand"
+        Int(w[].call_i32("handler_operand", args_ptr_i32(rt, id_max))),
+        2147483647,
+        "INT32_MAX operand",
     )
 
     _destroy_runtime(w, rt)
@@ -740,34 +1022,43 @@ fn test_stress_100_handlers() raises:
 
     var scopes = List[Int]()
     for i in range(10):
-        scopes.append(Int(w.scope_create(rt, 0, -1)))
+        scopes.append(
+            Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+        )
 
     var ids = List[Int]()
     for i in range(100):
-        var sig = Int(w.signal_create_i32(rt, 0))
+        var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
         ids.append(
             Int(
-                w.handler_register_signal_set(
-                    rt,
-                    scopes[i % 10],
-                    sig,
-                    i * 10,
-                    w.write_string_struct("click"),
+                w[].call_i32(
+                    "handler_register_signal_set",
+                    args_ptr_i32_i32_i32_ptr(
+                        rt,
+                        scopes[i % 10],
+                        sig,
+                        i * 10,
+                        w[].write_string_struct("click"),
+                    ),
                 )
             )
         )
 
-    assert_equal(Int(w.handler_count(rt)), 100, "100 handlers registered")
+    assert_equal(
+        Int(w[].call_i32("handler_count", args_ptr(rt))),
+        100,
+        "100 handlers registered",
+    )
 
     # Verify all are alive and have correct data
     for i in range(100):
         assert_equal(
-            Int(w.handler_contains(rt, ids[i])),
+            Int(w[].call_i32("handler_contains", args_ptr_i32(rt, ids[i]))),
             1,
             "handler " + String(i) + " is alive",
         )
         assert_equal(
-            Int(w.handler_operand(rt, ids[i])),
+            Int(w[].call_i32("handler_operand", args_ptr_i32(rt, ids[i]))),
             i * 10,
             "handler " + String(i) + " operand correct",
         )
@@ -780,25 +1071,35 @@ fn test_stress_register_remove_cycle() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
     for _ in range(500):
         var id = Int(
-            w.handler_register_noop(rt, s, w.write_string_struct("click"))
+            w[].call_i32(
+                "handler_register_noop",
+                args_ptr_i32_ptr(rt, s, w[].write_string_struct("click")),
+            )
         )
-        assert_equal(Int(w.handler_contains(rt, id)), 1)
-        w.handler_remove(rt, id)
+        assert_equal(
+            Int(w[].call_i32("handler_contains", args_ptr_i32(rt, id))), 1
+        )
+        w[].call_void("handler_remove", args_ptr_i32(rt, id))
 
     assert_equal(
-        Int(w.handler_count(rt)),
+        Int(w[].call_i32("handler_count", args_ptr(rt))),
         0,
         "count is 0 after 500 register/remove cycles",
     )
 
     # The next alloc should reuse slot 0
-    var id = Int(w.handler_register_noop(rt, s, w.write_string_struct("click")))
+    var id = Int(
+        w[].call_i32(
+            "handler_register_noop",
+            args_ptr_i32_ptr(rt, s, w[].write_string_struct("click")),
+        )
+    )
     assert_equal(id, 0, "first slot reused after cycle")
-    assert_equal(Int(w.handler_count(rt)), 1)
+    assert_equal(Int(w[].call_i32("handler_count", args_ptr(rt))), 1)
 
     _destroy_runtime(w, rt)
 
@@ -812,55 +1113,69 @@ fn test_dispatch_counter_scenario() raises:
     var rt = _create_runtime(w)
 
     # Create scope and signal
-    var s = Int(w.scope_create(rt, 0, -1))
-    var count = Int(w.signal_create_i32(rt, 0))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var count = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
 
     # Render — subscribe scope to signal
-    var prev = Int(w.scope_begin_render(rt, s))
-    var key = Int(w.hook_use_signal_i32(rt, 0))
-    _ = w.signal_read_i32(rt, key)
-    w.scope_end_render(rt, prev)
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    var key = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0)))
+    _ = w[].call_i32("signal_read_i32", args_ptr_i32(rt, key))
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
     # Register increment handler
     var inc_handler = Int(
-        w.handler_register_signal_add(
-            rt, s, key, 1, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_add",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, key, 1, w[].write_string_struct("click")
+            ),
         )
     )
     # Register decrement handler
     var dec_handler = Int(
-        w.handler_register_signal_sub(
-            rt, s, key, 1, w.write_string_struct("click")
+        w[].call_i32(
+            "handler_register_signal_sub",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, key, 1, w[].write_string_struct("click")
+            ),
         )
     )
 
     # Click + 3 times
     for _ in range(3):
-        _ = w.dispatch_event(rt, inc_handler, 0)
+        _ = w[].call_i32("dispatch_event", args_ptr_i32_i32(rt, inc_handler, 0))
 
     assert_equal(
-        Int(w.signal_peek_i32(rt, key)),
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, key))),
         3,
         "count is 3 after 3 increments",
     )
 
     # Click - 1 time
-    _ = w.dispatch_event(rt, dec_handler, 0)
+    _ = w[].call_i32("dispatch_event", args_ptr_i32_i32(rt, dec_handler, 0))
     assert_equal(
-        Int(w.signal_peek_i32(rt, key)),
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, key))),
         2,
         "count is 2 after decrement",
     )
 
     # Verify scope was dirtied
-    assert_equal(Int(w.runtime_has_dirty(rt)), 1, "scope is dirty")
+    assert_equal(
+        Int(w[].call_i32("runtime_has_dirty", args_ptr(rt))),
+        1,
+        "scope is dirty",
+    )
 
     # Drain dirty and re-render
-    _ = w.runtime_drain_dirty(rt)
-    prev = Int(w.scope_begin_render(rt, s))
-    var key2 = Int(w.hook_use_signal_i32(rt, 0))
+    _ = w[].call_i32("runtime_drain_dirty", args_ptr(rt))
+    prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    var key2 = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0)))
     assert_equal(key2, key, "same signal key on re-render")
-    assert_equal(Int(w.signal_read_i32(rt, key2)), 2, "count is 2 on re-render")
-    w.scope_end_render(rt, prev)
+    assert_equal(
+        Int(w[].call_i32("signal_read_i32", args_ptr_i32(rt, key2))),
+        2,
+        "count is 2 on re-render",
+    )
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
     _destroy_runtime(w, rt)

@@ -1,76 +1,83 @@
 # Port of test/floats.test.ts — float NaN, Infinity, negative zero, subnormal,
 # and precision edge-case tests exercised through the real WASM binary via
-# wasmtime-py (called from Mojo via Python interop).
+# wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
 #
 # Run with:
 #   mojo test test/test_floats.mojo
 
-from python import Python, PythonObject
+from math import nan as _get_nan, inf as _get_inf, isnan, copysign
+from memory import UnsafePointer
 from testing import assert_true, assert_equal
 
-
-fn _get_wasm() raises -> PythonObject:
-    Python.add_to_path("test")
-    var harness = Python.import_module("wasm_harness")
-    return harness.get_instance()
-
-
-fn _pymath() raises -> PythonObject:
-    return Python.import_module("math")
-
-
-fn _nan() raises -> PythonObject:
-    return Python.import_module("math").nan
+from wasm_harness import (
+    WasmInstance,
+    get_instance,
+    args_f32,
+    args_f32_f32,
+    args_f64,
+    args_f64_f64,
+    args_f64_f64_f64,
+    no_args,
+)
 
 
-fn _inf() raises -> PythonObject:
-    return Python.import_module("math").inf
-
-
-fn _neg_inf() raises -> PythonObject:
-    return -Python.import_module("math").inf
+fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
+    return get_instance()
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-
-fn _assert_nan(result: PythonObject, label: String) raises:
-    var math = _pymath()
-    assert_true(Bool(math.isnan(result)), label + ": expected NaN")
-
-
-fn _is_negative_zero(x: PythonObject) raises -> Bool:
-    var math = _pymath()
-    return Bool(x == 0.0) and Bool(math.copysign(1.0, x) < 0)
+alias NaN = _get_nan[DType.float64]()
+alias Inf = _get_inf[DType.float64]()
+alias NegInf = -_get_inf[DType.float64]()
+alias NaN32 = _get_nan[DType.float32]()
+alias Inf32 = _get_inf[DType.float32]()
+alias NegInf32 = -_get_inf[DType.float32]()
 
 
-fn _assert_eq(
-    actual: PythonObject, expected: PythonObject, label: String
-) raises:
+fn _assert_nan_f64(result: Float64, label: String) raises:
+    assert_true(isnan(result), label + ": expected NaN")
+
+
+fn _assert_nan_f32(result: Float32, label: String) raises:
+    assert_true(isnan(result), label + ": expected NaN")
+
+
+fn _is_negative_zero(x: Float64) -> Bool:
+    return x == 0.0 and copysign(Float64(1.0), x) < 0
+
+
+fn _assert_eq_f64(actual: Float64, expected: Float64, label: String) raises:
     """Strict equality including sign of zero."""
-    var math = _pymath()
     # Check for expected -0.0
-    if Bool(expected == 0.0) and Bool(math.copysign(1.0, expected) < 0):
+    if expected == 0.0 and copysign(Float64(1.0), expected) < 0:
         assert_true(
             _is_negative_zero(actual),
-            label + ": expected -0.0, got " + String(actual),
+            label + ": expected -0.0",
         )
     # Check for expected +0.0
-    elif Bool(expected == 0.0) and Bool(math.copysign(1.0, expected) > 0):
+    elif expected == 0.0 and copysign(Float64(1.0), expected) > 0:
         assert_true(
-            Bool(actual == 0.0) and not _is_negative_zero(actual),
-            label + ": expected +0.0, got " + String(actual),
+            actual == 0.0 and not _is_negative_zero(actual),
+            label + ": expected +0.0",
+        )
+    # Check for expected Inf / -Inf
+    elif expected == Inf:
+        assert_true(
+            actual == Inf,
+            label + ": expected Inf",
+        )
+    elif expected == NegInf:
+        assert_true(
+            actual == NegInf,
+            label + ": expected -Inf",
         )
     else:
         assert_true(
-            Bool(actual == expected),
-            label
-            + ": expected "
-            + String(expected)
-            + ", got "
-            + String(actual),
+            actual == expected,
+            label,
         )
 
 
@@ -81,56 +88,74 @@ fn _assert_eq(
 
 fn test_add_float64_nan_1() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.add_float64(nan, 1.0), "add_float64(NaN, 1.0)")
+    _assert_nan_f64(
+        w[].call_f64("add_float64", args_f64_f64(NaN, 1.0)),
+        "add_float64(NaN, 1.0)",
+    )
 
 
 fn test_add_float64_1_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.add_float64(1.0, nan), "add_float64(1.0, NaN)")
+    _assert_nan_f64(
+        w[].call_f64("add_float64", args_f64_f64(1.0, NaN)),
+        "add_float64(1.0, NaN)",
+    )
 
 
 fn test_add_float64_nan_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.add_float64(nan, nan), "add_float64(NaN, NaN)")
+    _assert_nan_f64(
+        w[].call_f64("add_float64", args_f64_f64(NaN, NaN)),
+        "add_float64(NaN, NaN)",
+    )
 
 
 fn test_sub_float64_nan_1() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.sub_float64(nan, 1.0), "sub_float64(NaN, 1.0)")
+    _assert_nan_f64(
+        w[].call_f64("sub_float64", args_f64_f64(NaN, 1.0)),
+        "sub_float64(NaN, 1.0)",
+    )
 
 
 fn test_sub_float64_1_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.sub_float64(1.0, nan), "sub_float64(1.0, NaN)")
+    _assert_nan_f64(
+        w[].call_f64("sub_float64", args_f64_f64(1.0, NaN)),
+        "sub_float64(1.0, NaN)",
+    )
 
 
 fn test_mul_float64_nan_2() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.mul_float64(nan, 2.0), "mul_float64(NaN, 2.0)")
+    _assert_nan_f64(
+        w[].call_f64("mul_float64", args_f64_f64(NaN, 2.0)),
+        "mul_float64(NaN, 2.0)",
+    )
 
 
 fn test_mul_float64_2_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.mul_float64(2.0, nan), "mul_float64(2.0, NaN)")
+    _assert_nan_f64(
+        w[].call_f64("mul_float64", args_f64_f64(2.0, NaN)),
+        "mul_float64(2.0, NaN)",
+    )
 
 
 fn test_div_float64_nan_2() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.div_float64(nan, 2.0), "div_float64(NaN, 2.0)")
+    _assert_nan_f64(
+        w[].call_f64("div_float64", args_f64_f64(NaN, 2.0)),
+        "div_float64(NaN, 2.0)",
+    )
 
 
 fn test_div_float64_2_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.div_float64(2.0, nan), "div_float64(2.0, NaN)")
+    _assert_nan_f64(
+        w[].call_f64("div_float64", args_f64_f64(2.0, NaN)),
+        "div_float64(2.0, NaN)",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -140,26 +165,34 @@ fn test_div_float64_2_nan() raises:
 
 fn test_add_float32_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.add_float32(nan, 1.0), "add_float32(NaN, 1.0)")
+    _assert_nan_f32(
+        w[].call_f32("add_float32", args_f32_f32(NaN32, Float32(1.0))),
+        "add_float32(NaN, 1.0)",
+    )
 
 
 fn test_sub_float32_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.sub_float32(nan, 1.0), "sub_float32(NaN, 1.0)")
+    _assert_nan_f32(
+        w[].call_f32("sub_float32", args_f32_f32(NaN32, Float32(1.0))),
+        "sub_float32(NaN, 1.0)",
+    )
 
 
 fn test_mul_float32_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.mul_float32(nan, 2.0), "mul_float32(NaN, 2.0)")
+    _assert_nan_f32(
+        w[].call_f32("mul_float32", args_f32_f32(NaN32, Float32(2.0))),
+        "mul_float32(NaN, 2.0)",
+    )
 
 
 fn test_div_float32_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.div_float32(nan, 2.0), "div_float32(NaN, 2.0)")
+    _assert_nan_f32(
+        w[].call_f32("div_float32", args_f32_f32(NaN32, Float32(2.0))),
+        "div_float32(NaN, 2.0)",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -169,26 +202,34 @@ fn test_div_float32_nan() raises:
 
 fn test_add_inf_neg_inf() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    var neg_inf = _neg_inf()
-    _assert_nan(w.add_float64(inf, neg_inf), "add_float64(Inf, -Inf)")
+    _assert_nan_f64(
+        w[].call_f64("add_float64", args_f64_f64(Inf, NegInf)),
+        "add_float64(Inf, -Inf)",
+    )
 
 
 fn test_sub_inf_inf() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    _assert_nan(w.sub_float64(inf, inf), "sub_float64(Inf, Inf)")
+    _assert_nan_f64(
+        w[].call_f64("sub_float64", args_f64_f64(Inf, Inf)),
+        "sub_float64(Inf, Inf)",
+    )
 
 
 fn test_mul_0_inf() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    _assert_nan(w.mul_float64(0.0, inf), "mul_float64(0, Inf)")
+    _assert_nan_f64(
+        w[].call_f64("mul_float64", args_f64_f64(0.0, Inf)),
+        "mul_float64(0, Inf)",
+    )
 
 
 fn test_div_0_0() raises:
     var w = _get_wasm()
-    _assert_nan(w.div_float64(0.0, 0.0), "div_float64(0, 0)")
+    _assert_nan_f64(
+        w[].call_f64("div_float64", args_f64_f64(0.0, 0.0)),
+        "div_float64(0, 0)",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -198,26 +239,34 @@ fn test_div_0_0() raises:
 
 fn test_neg_float64_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.neg_float64(nan), "neg_float64(NaN)")
+    _assert_nan_f64(
+        w[].call_f64("neg_float64", args_f64(NaN)),
+        "neg_float64(NaN)",
+    )
 
 
 fn test_neg_float32_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.neg_float32(nan), "neg_float32(NaN)")
+    _assert_nan_f32(
+        w[].call_f32("neg_float32", args_f32(NaN32)),
+        "neg_float32(NaN)",
+    )
 
 
 fn test_abs_float64_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.abs_float64(nan), "abs_float64(NaN)")
+    _assert_nan_f64(
+        w[].call_f64("abs_float64", args_f64(NaN)),
+        "abs_float64(NaN)",
+    )
 
 
 fn test_abs_float32_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.abs_float32(nan), "abs_float32(NaN)")
+    _assert_nan_f32(
+        w[].call_f32("abs_float32", args_f32(NaN32)),
+        "abs_float32(NaN)",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -227,14 +276,18 @@ fn test_abs_float32_nan() raises:
 
 fn test_identity_float64_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.identity_float64(nan), "identity_float64(NaN)")
+    _assert_nan_f64(
+        w[].call_f64("identity_float64", args_f64(NaN)),
+        "identity_float64(NaN)",
+    )
 
 
 fn test_identity_float32_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.identity_float32(nan), "identity_float32(NaN)")
+    _assert_nan_f32(
+        w[].call_f32("identity_float32", args_f32(NaN32)),
+        "identity_float32(NaN)",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -247,34 +300,36 @@ fn test_identity_float32_nan() raises:
 
 fn test_min_nan_5() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_eq(
-        w.min_float64(nan, 5.0),
-        PythonObject(5.0),
+    _assert_eq_f64(
+        w[].call_f64("min_float64", args_f64_f64(NaN, 5.0)),
+        5.0,
         "min_float64(NaN, 5.0) === 5.0",
     )
 
 
 fn test_min_5_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.min_float64(5.0, nan), "min_float64(5.0, NaN) === NaN")
+    _assert_nan_f64(
+        w[].call_f64("min_float64", args_f64_f64(5.0, NaN)),
+        "min_float64(5.0, NaN) === NaN",
+    )
 
 
 fn test_max_nan_5() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_eq(
-        w.max_float64(nan, 5.0),
-        PythonObject(5.0),
+    _assert_eq_f64(
+        w[].call_f64("max_float64", args_f64_f64(NaN, 5.0)),
+        5.0,
         "max_float64(NaN, 5.0) === 5.0",
     )
 
 
 fn test_max_5_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.max_float64(5.0, nan), "max_float64(5.0, NaN) === NaN")
+    _assert_nan_f64(
+        w[].call_f64("max_float64", args_f64_f64(5.0, NaN)),
+        "max_float64(5.0, NaN) === NaN",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -284,14 +339,18 @@ fn test_max_5_nan() raises:
 
 fn test_pow_float64_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.pow_float64(nan), "pow_float64(NaN)")
+    _assert_nan_f64(
+        w[].call_f64("pow_float64", args_f64(NaN)),
+        "pow_float64(NaN)",
+    )
 
 
 fn test_pow_float32_nan() raises:
     var w = _get_wasm()
-    var nan = _nan()
-    _assert_nan(w.pow_float32(nan), "pow_float32(NaN)")
+    _assert_nan_f32(
+        w[].call_f32("pow_float32", args_f32(NaN32)),
+        "pow_float32(NaN)",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -301,58 +360,73 @@ fn test_pow_float32_nan() raises:
 
 fn test_add_inf_1() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    _assert_eq(w.add_float64(inf, 1.0), inf, "add_float64(Inf, 1) === Inf")
+    _assert_eq_f64(
+        w[].call_f64("add_float64", args_f64_f64(Inf, 1.0)),
+        Inf,
+        "add_float64(Inf, 1) === Inf",
+    )
 
 
 fn test_add_neg_inf_neg1() raises:
     var w = _get_wasm()
-    var neg_inf = _neg_inf()
-    _assert_eq(
-        w.add_float64(neg_inf, -1.0),
-        neg_inf,
+    _assert_eq_f64(
+        w[].call_f64("add_float64", args_f64_f64(NegInf, -1.0)),
+        NegInf,
         "add_float64(-Inf, -1) === -Inf",
     )
 
 
 fn test_sub_inf_1() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    _assert_eq(w.sub_float64(inf, 1.0), inf, "sub_float64(Inf, 1) === Inf")
+    _assert_eq_f64(
+        w[].call_f64("sub_float64", args_f64_f64(Inf, 1.0)),
+        Inf,
+        "sub_float64(Inf, 1) === Inf",
+    )
 
 
 fn test_mul_inf_2() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    _assert_eq(w.mul_float64(inf, 2.0), inf, "mul_float64(Inf, 2) === Inf")
+    _assert_eq_f64(
+        w[].call_f64("mul_float64", args_f64_f64(Inf, 2.0)),
+        Inf,
+        "mul_float64(Inf, 2) === Inf",
+    )
 
 
 fn test_mul_inf_neg2() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    var neg_inf = _neg_inf()
-    _assert_eq(
-        w.mul_float64(inf, -2.0), neg_inf, "mul_float64(Inf, -2) === -Inf"
+    _assert_eq_f64(
+        w[].call_f64("mul_float64", args_f64_f64(Inf, -2.0)),
+        NegInf,
+        "mul_float64(Inf, -2) === -Inf",
     )
 
 
 fn test_div_1_0() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    _assert_eq(w.div_float64(1.0, 0.0), inf, "div_float64(1, 0) === Inf")
+    _assert_eq_f64(
+        w[].call_f64("div_float64", args_f64_f64(1.0, 0.0)),
+        Inf,
+        "div_float64(1, 0) === Inf",
+    )
 
 
 fn test_div_neg1_0() raises:
     var w = _get_wasm()
-    var neg_inf = _neg_inf()
-    _assert_eq(w.div_float64(-1.0, 0.0), neg_inf, "div_float64(-1, 0) === -Inf")
+    _assert_eq_f64(
+        w[].call_f64("div_float64", args_f64_f64(-1.0, 0.0)),
+        NegInf,
+        "div_float64(-1, 0) === -Inf",
+    )
 
 
 fn test_div_1_inf() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    _assert_eq(
-        w.div_float64(1.0, inf), PythonObject(0.0), "div_float64(1, Inf) === 0"
+    _assert_eq_f64(
+        w[].call_f64("div_float64", args_f64_f64(1.0, Inf)),
+        0.0,
+        "div_float64(1, Inf) === 0",
     )
 
 
@@ -363,20 +437,35 @@ fn test_div_1_inf() raises:
 
 fn test_add_float32_inf_1() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    _assert_eq(w.add_float32(inf, 1.0), inf, "add_float32(Inf, 1) === Inf")
+    var result = Float64(
+        w[].call_f32("add_float32", args_f32_f32(Inf32, Float32(1.0)))
+    )
+    assert_true(
+        result == Float64(Inf32),
+        "add_float32(Inf, 1) === Inf",
+    )
 
 
 fn test_div_float32_1_0() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    _assert_eq(w.div_float32(1.0, 0.0), inf, "div_float32(1, 0) === Inf")
+    var result = Float64(
+        w[].call_f32("div_float32", args_f32_f32(Float32(1.0), Float32(0.0)))
+    )
+    assert_true(
+        result == Float64(Inf32),
+        "div_float32(1, 0) === Inf",
+    )
 
 
 fn test_div_float32_neg1_0() raises:
     var w = _get_wasm()
-    var neg_inf = _neg_inf()
-    _assert_eq(w.div_float32(-1.0, 0.0), neg_inf, "div_float32(-1, 0) === -Inf")
+    var result = Float64(
+        w[].call_f32("div_float32", args_f32_f32(Float32(-1.0), Float32(0.0)))
+    )
+    assert_true(
+        result == Float64(NegInf32),
+        "div_float32(-1, 0) === -Inf",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -386,29 +475,38 @@ fn test_div_float32_neg1_0() raises:
 
 fn test_neg_inf() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    var neg_inf = _neg_inf()
-    _assert_eq(w.neg_float64(inf), neg_inf, "neg_float64(Inf) === -Inf")
+    _assert_eq_f64(
+        w[].call_f64("neg_float64", args_f64(Inf)),
+        NegInf,
+        "neg_float64(Inf) === -Inf",
+    )
 
 
 fn test_neg_neg_inf() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    var neg_inf = _neg_inf()
-    _assert_eq(w.neg_float64(neg_inf), inf, "neg_float64(-Inf) === Inf")
+    _assert_eq_f64(
+        w[].call_f64("neg_float64", args_f64(NegInf)),
+        Inf,
+        "neg_float64(-Inf) === Inf",
+    )
 
 
 fn test_abs_neg_inf() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    var neg_inf = _neg_inf()
-    _assert_eq(w.abs_float64(neg_inf), inf, "abs_float64(-Inf) === Inf")
+    _assert_eq_f64(
+        w[].call_f64("abs_float64", args_f64(NegInf)),
+        Inf,
+        "abs_float64(-Inf) === Inf",
+    )
 
 
 fn test_abs_inf() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    _assert_eq(w.abs_float64(inf), inf, "abs_float64(Inf) === Inf")
+    _assert_eq_f64(
+        w[].call_f64("abs_float64", args_f64(Inf)),
+        Inf,
+        "abs_float64(Inf) === Inf",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -418,24 +516,29 @@ fn test_abs_inf() raises:
 
 fn test_identity_float64_inf() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    _assert_eq(w.identity_float64(inf), inf, "identity_float64(Inf) === Inf")
+    _assert_eq_f64(
+        w[].call_f64("identity_float64", args_f64(Inf)),
+        Inf,
+        "identity_float64(Inf) === Inf",
+    )
 
 
 fn test_identity_float64_neg_inf() raises:
     var w = _get_wasm()
-    var neg_inf = _neg_inf()
-    _assert_eq(
-        w.identity_float64(neg_inf),
-        neg_inf,
+    _assert_eq_f64(
+        w[].call_f64("identity_float64", args_f64(NegInf)),
+        NegInf,
         "identity_float64(-Inf) === -Inf",
     )
 
 
 fn test_identity_float32_inf() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    _assert_eq(w.identity_float32(inf), inf, "identity_float32(Inf) === Inf")
+    var result = Float64(w[].call_f32("identity_float32", args_f32(Inf32)))
+    assert_true(
+        result == Float64(Inf32),
+        "identity_float32(Inf) === Inf",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -445,38 +548,38 @@ fn test_identity_float32_inf() raises:
 
 fn test_min_neg_inf_inf() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    var neg_inf = _neg_inf()
-    _assert_eq(
-        w.min_float64(neg_inf, inf),
-        neg_inf,
+    _assert_eq_f64(
+        w[].call_f64("min_float64", args_f64_f64(NegInf, Inf)),
+        NegInf,
         "min_float64(-Inf, Inf) === -Inf",
     )
 
 
 fn test_max_neg_inf_inf() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    var neg_inf = _neg_inf()
-    _assert_eq(
-        w.max_float64(neg_inf, inf), inf, "max_float64(-Inf, Inf) === Inf"
+    _assert_eq_f64(
+        w[].call_f64("max_float64", args_f64_f64(NegInf, Inf)),
+        Inf,
+        "max_float64(-Inf, Inf) === Inf",
     )
 
 
 fn test_min_42_neg_inf() raises:
     var w = _get_wasm()
-    var neg_inf = _neg_inf()
-    _assert_eq(
-        w.min_float64(42.0, neg_inf),
-        neg_inf,
+    _assert_eq_f64(
+        w[].call_f64("min_float64", args_f64_f64(42.0, NegInf)),
+        NegInf,
         "min_float64(42, -Inf) === -Inf",
     )
 
 
 fn test_max_42_inf() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    _assert_eq(w.max_float64(42.0, inf), inf, "max_float64(42, Inf) === Inf")
+    _assert_eq_f64(
+        w[].call_f64("max_float64", args_f64_f64(42.0, Inf)),
+        Inf,
+        "max_float64(42, Inf) === Inf",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -486,20 +589,18 @@ fn test_max_42_inf() raises:
 
 fn test_clamp_inf() raises:
     var w = _get_wasm()
-    var inf = _inf()
-    _assert_eq(
-        w.clamp_float64(inf, 0.0, 10.0),
-        PythonObject(10.0),
+    _assert_eq_f64(
+        w[].call_f64("clamp_float64", args_f64_f64_f64(Inf, 0.0, 10.0)),
+        10.0,
         "clamp_float64(Inf, 0, 10) === 10",
     )
 
 
 fn test_clamp_neg_inf() raises:
     var w = _get_wasm()
-    var neg_inf = _neg_inf()
-    _assert_eq(
-        w.clamp_float64(neg_inf, 0.0, 10.0),
-        PythonObject(0.0),
+    _assert_eq_f64(
+        w[].call_f64("clamp_float64", args_f64_f64_f64(NegInf, 0.0, 10.0)),
+        0.0,
         "clamp_float64(-Inf, 0, 10) === 0",
     )
 
@@ -511,60 +612,67 @@ fn test_clamp_neg_inf() raises:
 
 fn test_identity_neg_zero() raises:
     var w = _get_wasm()
-    var neg_zero = -PythonObject(0.0)
-    _assert_eq(
-        w.identity_float64(neg_zero), neg_zero, "identity_float64(-0) === -0"
+    var neg_zero = -0.0
+    _assert_eq_f64(
+        w[].call_f64("identity_float64", args_f64(neg_zero)),
+        neg_zero,
+        "identity_float64(-0) === -0",
     )
 
 
 fn test_neg_zero() raises:
     var w = _get_wasm()
-    _assert_eq(w.neg_float64(0.0), -PythonObject(0.0), "neg_float64(0) === -0")
+    _assert_eq_f64(
+        w[].call_f64("neg_float64", args_f64(0.0)),
+        -0.0,
+        "neg_float64(0) === -0",
+    )
 
 
 fn test_neg_neg_zero() raises:
     var w = _get_wasm()
-    var neg_zero = -PythonObject(0.0)
-    _assert_eq(
-        w.neg_float64(neg_zero), PythonObject(0.0), "neg_float64(-0) === 0"
+    var neg_zero = -0.0
+    _assert_eq_f64(
+        w[].call_f64("neg_float64", args_f64(neg_zero)),
+        0.0,
+        "neg_float64(-0) === 0",
     )
 
 
 fn test_add_neg_zero_zero() raises:
     var w = _get_wasm()
-    var neg_zero = -PythonObject(0.0)
-    _assert_eq(
-        w.add_float64(neg_zero, 0.0),
-        PythonObject(0.0),
+    var neg_zero = -0.0
+    _assert_eq_f64(
+        w[].call_f64("add_float64", args_f64_f64(neg_zero, 0.0)),
+        0.0,
         "add_float64(-0, 0) === 0",
     )
 
 
 fn test_mul_neg1_zero() raises:
     var w = _get_wasm()
-    _assert_eq(
-        w.mul_float64(-1.0, 0.0),
-        -PythonObject(0.0),
+    _assert_eq_f64(
+        w[].call_f64("mul_float64", args_f64_f64(-1.0, 0.0)),
+        -0.0,
         "mul_float64(-1, 0) === -0",
     )
 
 
 fn test_mul_neg_zero_neg_zero() raises:
     var w = _get_wasm()
-    var neg_zero = -PythonObject(0.0)
-    _assert_eq(
-        w.mul_float64(neg_zero, neg_zero),
-        PythonObject(0.0),
+    var neg_zero = -0.0
+    _assert_eq_f64(
+        w[].call_f64("mul_float64", args_f64_f64(neg_zero, neg_zero)),
+        0.0,
         "mul_float64(-0, -0) === 0",
     )
 
 
 fn test_div_1_neg_inf() raises:
     var w = _get_wasm()
-    var neg_inf = _neg_inf()
-    _assert_eq(
-        w.div_float64(1.0, neg_inf),
-        -PythonObject(0.0),
+    _assert_eq_f64(
+        w[].call_f64("div_float64", args_f64_f64(1.0, NegInf)),
+        -0.0,
         "div_float64(1, -Inf) === -0",
     )
 
@@ -576,9 +684,9 @@ fn test_div_1_neg_inf() raises:
 
 fn test_identity_subnormal() raises:
     var w = _get_wasm()
-    var subnormal = PythonObject(5e-324)
-    _assert_eq(
-        w.identity_float64(subnormal),
+    var subnormal = 5e-324
+    _assert_eq_f64(
+        w[].call_f64("identity_float64", args_f64(subnormal)),
         subnormal,
         "identity_float64(5e-324) roundtrips",
     )
@@ -586,9 +694,9 @@ fn test_identity_subnormal() raises:
 
 fn test_add_subnormal_zero() raises:
     var w = _get_wasm()
-    var subnormal = PythonObject(5e-324)
-    _assert_eq(
-        w.add_float64(subnormal, 0.0),
+    var subnormal = 5e-324
+    _assert_eq_f64(
+        w[].call_f64("add_float64", args_f64_f64(subnormal, 0.0)),
         subnormal,
         "add_float64(subnormal, 0) === subnormal",
     )
@@ -596,10 +704,10 @@ fn test_add_subnormal_zero() raises:
 
 fn test_neg_subnormal() raises:
     var w = _get_wasm()
-    var subnormal = PythonObject(5e-324)
-    var neg_subnormal = PythonObject(-5e-324)
-    _assert_eq(
-        w.neg_float64(subnormal),
+    var subnormal = 5e-324
+    var neg_subnormal = -5e-324
+    _assert_eq_f64(
+        w[].call_f64("neg_float64", args_f64(subnormal)),
         neg_subnormal,
         "neg_float64(subnormal) === -subnormal",
     )
@@ -607,10 +715,10 @@ fn test_neg_subnormal() raises:
 
 fn test_abs_neg_subnormal() raises:
     var w = _get_wasm()
-    var subnormal = PythonObject(5e-324)
-    var neg_subnormal = PythonObject(-5e-324)
-    _assert_eq(
-        w.abs_float64(neg_subnormal),
+    var subnormal = 5e-324
+    var neg_subnormal = -5e-324
+    _assert_eq_f64(
+        w[].call_f64("abs_float64", args_f64(neg_subnormal)),
         subnormal,
         "abs_float64(-subnormal) === subnormal",
     )
@@ -618,10 +726,10 @@ fn test_abs_neg_subnormal() raises:
 
 fn test_mul_subnormal_2() raises:
     var w = _get_wasm()
-    var subnormal = PythonObject(5e-324)
-    var expected = PythonObject(5e-324) * PythonObject(2.0)
-    _assert_eq(
-        w.mul_float64(subnormal, 2.0),
+    var subnormal = 5e-324
+    var expected = subnormal * 2.0
+    _assert_eq_f64(
+        w[].call_f64("mul_float64", args_f64_f64(subnormal, 2.0)),
         expected,
         "mul_float64(subnormal, 2) === subnormal * 2",
     )
@@ -633,43 +741,43 @@ fn test_mul_subnormal_2() raises:
 
 
 fn test_0_1_plus_0_2() raises:
-    """Classic IEEE 754: 0.1 + 0.2 matches Python's result."""
+    """Classic IEEE 754: 0.1 + 0.2 matches native Mojo result."""
     var w = _get_wasm()
-    var expected = PythonObject(0.1) + PythonObject(0.2)
-    _assert_eq(
-        w.add_float64(0.1, 0.2),
+    var expected = 0.1 + 0.2
+    _assert_eq_f64(
+        w[].call_f64("add_float64", args_f64_f64(0.1, 0.2)),
         expected,
-        "add_float64(0.1, 0.2) matches Python 0.1+0.2",
+        "add_float64(0.1, 0.2) matches Mojo 0.1+0.2",
     )
 
 
 fn test_0_1_plus_0_2_not_0_3() raises:
     """The WASM result also differs from 0.3 (IEEE 754 precision)."""
     var w = _get_wasm()
-    var result = w.add_float64(0.1, 0.2)
+    var result = w[].call_f64("add_float64", args_f64_f64(0.1, 0.2))
     assert_true(
-        Bool(result != PythonObject(0.3)),
+        result != 0.3,
         "add_float64(0.1, 0.2) !== 0.3 (IEEE 754 precision)",
     )
 
 
 fn test_large_plus_small() raises:
     var w = _get_wasm()
-    var expected = PythonObject(1e16) + PythonObject(1.0)
-    _assert_eq(
-        w.add_float64(1e16, 1.0),
+    var expected = 1e16 + 1.0
+    _assert_eq_f64(
+        w[].call_f64("add_float64", args_f64_f64(1e16, 1.0)),
         expected,
-        "add_float64(1e16, 1) matches Python precision",
+        "add_float64(1e16, 1) matches native precision",
     )
 
 
 fn test_catastrophic_cancellation() raises:
     var w = _get_wasm()
-    var a = PythonObject(1e16) + PythonObject(2.0)
-    var b = PythonObject(1e16)
+    var a = 1e16 + 2.0
+    var b = 1e16
     var expected = a - b
-    _assert_eq(
-        w.sub_float64(a, b),
+    _assert_eq_f64(
+        w[].call_f64("sub_float64", args_f64_f64(a, b)),
         expected,
-        "sub_float64(1e16+2, 1e16) matches Python precision",
+        "sub_float64(1e16+2, 1e16) matches native precision",
     )

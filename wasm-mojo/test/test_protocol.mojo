@@ -1,5 +1,5 @@
 # MutationWriter binary encoding exercised through the real WASM binary
-# via wasmtime-py (called from Mojo via Python interop).
+# via wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
 #
 # These tests verify that the binary encoding of DOM mutations works correctly
 # when compiled to WASM and executed via the Wasmtime runtime.  Each test
@@ -10,14 +10,27 @@
 # Run with:
 #   mojo test test/test_protocol.mojo
 
-from python import Python, PythonObject
+from memory import UnsafePointer
 from testing import assert_equal, assert_true
 
+from wasm_harness import (
+    WasmInstance,
+    get_instance,
+    args_i32,
+    args_ptr,
+    args_ptr_i32,
+    args_ptr_i32_i32,
+    args_ptr_i32_i32_i32,
+    args_ptr_i32_i32_ptr,
+    args_ptr_i32_i32_i32_i32,
+    args_ptr_i32_i32_i32_ptr_ptr,
+    args_ptr_i32_ptr_i32_i32,
+    no_args,
+)
 
-fn _get_wasm() raises -> PythonObject:
-    Python.add_to_path("test")
-    var harness = Python.import_module("wasm_harness")
-    return harness.get_instance()
+
+fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
+    return get_instance()
 
 
 # ── Constants (matching bridge/protocol) ─────────────────────────────────────
@@ -45,29 +58,35 @@ alias BUF_CAP = 4096
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-fn _alloc_buf(w: PythonObject) raises -> PythonObject:
+fn _alloc_buf(w: UnsafePointer[WasmInstance]) raises -> Int:
     """Allocate a mutation buffer in WASM linear memory."""
-    return w.mutation_buf_alloc(BUF_CAP)
+    return Int(w[].call_i64("mutation_buf_alloc", args_i32(BUF_CAP)))
 
 
-fn _free_buf(w: PythonObject, buf: PythonObject) raises:
+fn _free_buf(w: UnsafePointer[WasmInstance], buf: Int) raises:
     """Free a mutation buffer."""
-    w.mutation_buf_free(buf)
+    w[].call_void("mutation_buf_free", args_ptr(buf))
 
 
-fn _read_u8(w: PythonObject, buf: PythonObject, offset: Int) raises -> Int:
+fn _read_u8(
+    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
+) raises -> Int:
     """Read a single byte from WASM memory."""
-    return Int(w.debug_read_byte(buf, offset))
+    return Int(w[].call_i32("debug_read_byte", args_ptr_i32(buf, offset)))
 
 
-fn _read_u16_le(w: PythonObject, buf: PythonObject, offset: Int) raises -> Int:
+fn _read_u16_le(
+    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
+) raises -> Int:
     """Read a little-endian u16 from WASM memory."""
     var lo = _read_u8(w, buf, offset)
     var hi = _read_u8(w, buf, offset + 1)
     return lo | (hi << 8)
 
 
-fn _read_u32_le(w: PythonObject, buf: PythonObject, offset: Int) raises -> Int:
+fn _read_u32_le(
+    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
+) raises -> Int:
     """Read a little-endian u32 from WASM memory."""
     var b0 = _read_u8(w, buf, offset)
     var b1 = _read_u8(w, buf, offset + 1)
@@ -83,7 +102,7 @@ fn test_end_sentinel() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var off = Int(w.write_op_end(buf, 0))
+    var off = Int(w[].call_i32("write_op_end", args_ptr_i32(buf, 0)))
 
     assert_equal(_read_u8(w, buf, 0), OP_END, "end writes 0x00")
     assert_equal(off, 1, "offset advances by 1")
@@ -106,7 +125,7 @@ fn test_writer_with_initial_offset() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var off = Int(w.write_op_end(buf, 10))
+    var off = Int(w[].call_i32("write_op_end", args_ptr_i32(buf, 10)))
     assert_equal(off, 11, "after end at offset 10, offset is 11")
     assert_equal(_read_u8(w, buf, 10), OP_END, "end at offset 10")
 
@@ -120,8 +139,12 @@ fn test_append_children() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var off = Int(w.write_op_append_children(buf, 0, 7, 3))
-    var final_off = Int(w.write_op_end(buf, off))
+    var off = Int(
+        w[].call_i32(
+            "write_op_append_children", args_ptr_i32_i32_i32(buf, 0, 7, 3)
+        )
+    )
+    var final_off = Int(w[].call_i32("write_op_end", args_ptr_i32(buf, off)))
 
     assert_equal(
         _read_u8(w, buf, 0), OP_APPEND_CHILDREN, "opcode is APPEND_CHILDREN"
@@ -138,8 +161,10 @@ fn test_append_children_zero() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    _ = w.write_op_append_children(buf, 0, 1, 0)
-    _ = w.write_op_end(buf, 9)
+    _ = w[].call_i32(
+        "write_op_append_children", args_ptr_i32_i32_i32(buf, 0, 1, 0)
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, 9))
 
     assert_equal(_read_u8(w, buf, 0), OP_APPEND_CHILDREN)
     assert_equal(_read_u32_le(w, buf, 1), 1, "id is 1")
@@ -155,8 +180,12 @@ fn test_create_placeholder() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var off = Int(w.write_op_create_placeholder(buf, 0, 42))
-    var final_off = Int(w.write_op_end(buf, off))
+    var off = Int(
+        w[].call_i32(
+            "write_op_create_placeholder", args_ptr_i32_i32(buf, 0, 42)
+        )
+    )
+    var final_off = Int(w[].call_i32("write_op_end", args_ptr_i32(buf, off)))
 
     assert_equal(
         _read_u8(w, buf, 0),
@@ -177,10 +206,14 @@ fn test_create_text_node() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
+    var text_ptr = w[].write_string_struct("hello")
     var off = Int(
-        w.write_op_create_text_node(buf, 0, 5, w.write_string_struct("hello"))
+        w[].call_i32(
+            "write_op_create_text_node",
+            args_ptr_i32_i32_ptr(buf, 0, 5, text_ptr),
+        )
     )
-    _ = w.write_op_end(buf, off)
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     assert_equal(
         _read_u8(w, buf, 0), OP_CREATE_TEXT_NODE, "opcode is CREATE_TEXT_NODE"
@@ -203,10 +236,14 @@ fn test_create_text_node_empty_string() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
+    var text_ptr = w[].write_string_struct("")
     var off = Int(
-        w.write_op_create_text_node(buf, 0, 1, w.write_string_struct(""))
+        w[].call_i32(
+            "write_op_create_text_node",
+            args_ptr_i32_i32_ptr(buf, 0, 1, text_ptr),
+        )
     )
-    _ = w.write_op_end(buf, off)
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     assert_equal(_read_u8(w, buf, 0), OP_CREATE_TEXT_NODE)
     assert_equal(_read_u32_le(w, buf, 1), 1, "id is 1")
@@ -222,10 +259,14 @@ fn test_create_text_node_unicode() raises:
 
     var text = String("héllo")
     var text_len = len(text)
+    var text_ptr = w[].write_string_struct(text)
     var off = Int(
-        w.write_op_create_text_node(buf, 0, 2, w.write_string_struct(text))
+        w[].call_i32(
+            "write_op_create_text_node",
+            args_ptr_i32_i32_ptr(buf, 0, 2, text_ptr),
+        )
     )
-    _ = w.write_op_end(buf, off)
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     assert_equal(_read_u8(w, buf, 0), OP_CREATE_TEXT_NODE)
     assert_equal(_read_u32_le(w, buf, 1), 2, "id is 2")
@@ -243,8 +284,13 @@ fn test_load_template() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var off = Int(w.write_op_load_template(buf, 0, 10, 0, 100))
-    _ = w.write_op_end(buf, off)
+    var off = Int(
+        w[].call_i32(
+            "write_op_load_template",
+            args_ptr_i32_i32_i32_i32(buf, 0, 10, 0, 100),
+        )
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     assert_equal(
         _read_u8(w, buf, 0), OP_LOAD_TEMPLATE, "opcode is LOAD_TEMPLATE"
@@ -265,8 +311,12 @@ fn test_replace_with() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var off = Int(w.write_op_replace_with(buf, 0, 5, 2))
-    _ = w.write_op_end(buf, off)
+    var off = Int(
+        w[].call_i32(
+            "write_op_replace_with", args_ptr_i32_i32_i32(buf, 0, 5, 2)
+        )
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     assert_equal(_read_u8(w, buf, 0), OP_REPLACE_WITH, "opcode is REPLACE_WITH")
     assert_equal(_read_u32_le(w, buf, 1), 5, "id is 5")
@@ -283,8 +333,12 @@ fn test_insert_after() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var off = Int(w.write_op_insert_after(buf, 0, 8, 1))
-    _ = w.write_op_end(buf, off)
+    var off = Int(
+        w[].call_i32(
+            "write_op_insert_after", args_ptr_i32_i32_i32(buf, 0, 8, 1)
+        )
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     assert_equal(_read_u8(w, buf, 0), OP_INSERT_AFTER, "opcode is INSERT_AFTER")
     assert_equal(_read_u32_le(w, buf, 1), 8, "id is 8")
@@ -301,8 +355,12 @@ fn test_insert_before() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var off = Int(w.write_op_insert_before(buf, 0, 9, 4))
-    _ = w.write_op_end(buf, off)
+    var off = Int(
+        w[].call_i32(
+            "write_op_insert_before", args_ptr_i32_i32_i32(buf, 0, 9, 4)
+        )
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     assert_equal(
         _read_u8(w, buf, 0), OP_INSERT_BEFORE, "opcode is INSERT_BEFORE"
@@ -321,8 +379,8 @@ fn test_remove() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var off = Int(w.write_op_remove(buf, 0, 15))
-    var final_off = Int(w.write_op_end(buf, off))
+    var off = Int(w[].call_i32("write_op_remove", args_ptr_i32_i32(buf, 0, 15)))
+    var final_off = Int(w[].call_i32("write_op_end", args_ptr_i32(buf, off)))
 
     assert_equal(_read_u8(w, buf, 0), OP_REMOVE, "opcode is REMOVE")
     assert_equal(_read_u32_le(w, buf, 1), 15, "id is 15")
@@ -339,8 +397,10 @@ fn test_push_root() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var off = Int(w.write_op_push_root(buf, 0, 20))
-    _ = w.write_op_end(buf, off)
+    var off = Int(
+        w[].call_i32("write_op_push_root", args_ptr_i32_i32(buf, 0, 20))
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     assert_equal(_read_u8(w, buf, 0), OP_PUSH_ROOT, "opcode is PUSH_ROOT")
     assert_equal(_read_u32_le(w, buf, 1), 20, "id is 20")
@@ -356,10 +416,13 @@ fn test_set_text() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
+    var text_ptr = w[].write_string_struct("world")
     var off = Int(
-        w.write_op_set_text(buf, 0, 3, w.write_string_struct("world"))
+        w[].call_i32(
+            "write_op_set_text", args_ptr_i32_i32_ptr(buf, 0, 3, text_ptr)
+        )
     )
-    _ = w.write_op_end(buf, off)
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     assert_equal(_read_u8(w, buf, 0), OP_SET_TEXT, "opcode is SET_TEXT")
     assert_equal(_read_u32_le(w, buf, 1), 3, "id is 3")
@@ -381,17 +444,15 @@ fn test_set_attribute() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
+    var name_ptr = w[].write_string_struct("class")
+    var val_ptr = w[].write_string_struct("active")
     var off = Int(
-        w.write_op_set_attribute(
-            buf,
-            0,
-            7,
-            0,
-            w.write_string_struct("class"),
-            w.write_string_struct("active"),
+        w[].call_i32(
+            "write_op_set_attribute",
+            args_ptr_i32_i32_i32_ptr_ptr(buf, 0, 7, 0, name_ptr, val_ptr),
         )
     )
-    _ = w.write_op_end(buf, off)
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     var pos = 0
     assert_equal(
@@ -435,13 +496,11 @@ fn test_set_attribute_with_namespace() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    _ = w.write_op_set_attribute(
-        buf,
-        0,
-        1,
-        1,
-        w.write_string_struct("href"),
-        w.write_string_struct("url"),
+    var name_ptr = w[].write_string_struct("href")
+    var val_ptr = w[].write_string_struct("url")
+    _ = w[].call_i32(
+        "write_op_set_attribute",
+        args_ptr_i32_i32_i32_ptr_ptr(buf, 0, 1, 1, name_ptr, val_ptr),
     )
 
     assert_equal(_read_u8(w, buf, 0), OP_SET_ATTRIBUTE)
@@ -455,13 +514,11 @@ fn test_set_attribute_empty_value() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    _ = w.write_op_set_attribute(
-        buf,
-        0,
-        1,
-        0,
-        w.write_string_struct("disabled"),
-        w.write_string_struct(""),
+    var name_ptr = w[].write_string_struct("disabled")
+    var val_ptr = w[].write_string_struct("")
+    _ = w[].call_i32(
+        "write_op_set_attribute",
+        args_ptr_i32_i32_i32_ptr_ptr(buf, 0, 1, 0, name_ptr, val_ptr),
     )
 
     var pos = 0
@@ -488,12 +545,14 @@ fn test_new_event_listener() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
+    var name_ptr = w[].write_string_struct("click")
     var off = Int(
-        w.write_op_new_event_listener(
-            buf, 0, 11, w.write_string_struct("click")
+        w[].call_i32(
+            "write_op_new_event_listener",
+            args_ptr_i32_i32_ptr(buf, 0, 11, name_ptr),
         )
     )
-    _ = w.write_op_end(buf, off)
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     var pos = 0
     assert_equal(
@@ -528,12 +587,14 @@ fn test_remove_event_listener() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
+    var name_ptr = w[].write_string_struct("click")
     var off = Int(
-        w.write_op_remove_event_listener(
-            buf, 0, 11, w.write_string_struct("click")
+        w[].call_i32(
+            "write_op_remove_event_listener",
+            args_ptr_i32_i32_ptr(buf, 0, 11, name_ptr),
         )
     )
-    _ = w.write_op_end(buf, off)
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     var pos = 0
     assert_equal(
@@ -562,13 +623,18 @@ fn test_assign_id() raises:
     var buf = _alloc_buf(w)
 
     # Build a path in WASM memory: [0, 1, 2]
-    var path_ptr = Int(w.mutation_buf_alloc(3))
-    _ = w.debug_write_byte(path_ptr, 0, 0)
-    _ = w.debug_write_byte(path_ptr, 1, 1)
-    _ = w.debug_write_byte(path_ptr, 2, 2)
+    var path_ptr = Int(w[].call_i64("mutation_buf_alloc", args_i32(3)))
+    _ = w[].call_i32("debug_write_byte", args_ptr_i32_i32(path_ptr, 0, 0))
+    _ = w[].call_i32("debug_write_byte", args_ptr_i32_i32(path_ptr, 1, 1))
+    _ = w[].call_i32("debug_write_byte", args_ptr_i32_i32(path_ptr, 2, 2))
 
-    var off = Int(w.write_op_assign_id(buf, 0, path_ptr, 3, 50))
-    _ = w.write_op_end(buf, off)
+    var off = Int(
+        w[].call_i32(
+            "write_op_assign_id",
+            args_ptr_i32_ptr_i32_i32(buf, 0, path_ptr, 3, 50),
+        )
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     var pos = 0
     assert_equal(_read_u8(w, buf, pos), OP_ASSIGN_ID, "opcode is ASSIGN_ID")
@@ -590,7 +656,7 @@ fn test_assign_id() raises:
 
     assert_equal(_read_u8(w, buf, pos), OP_END)
 
-    w.mutation_buf_free(path_ptr)
+    w[].call_void("mutation_buf_free", args_ptr(path_ptr))
     _free_buf(w, buf)
 
 
@@ -598,16 +664,21 @@ fn test_assign_id_empty_path() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var path_ptr = Int(w.mutation_buf_alloc(1))
-    var off = Int(w.write_op_assign_id(buf, 0, path_ptr, 0, 1))
-    _ = w.write_op_end(buf, off)
+    var path_ptr = Int(w[].call_i64("mutation_buf_alloc", args_i32(1)))
+    var off = Int(
+        w[].call_i32(
+            "write_op_assign_id",
+            args_ptr_i32_ptr_i32_i32(buf, 0, path_ptr, 0, 1),
+        )
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     assert_equal(_read_u8(w, buf, 0), OP_ASSIGN_ID)
     assert_equal(_read_u8(w, buf, 1), 0, "path_len is 0")
     assert_equal(_read_u32_le(w, buf, 2), 1, "id is 1")
     assert_equal(_read_u8(w, buf, 6), OP_END)
 
-    w.mutation_buf_free(path_ptr)
+    w[].call_void("mutation_buf_free", args_ptr(path_ptr))
     _free_buf(w, buf)
 
 
@@ -615,11 +686,16 @@ fn test_assign_id_single_element_path() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var path_ptr = Int(w.mutation_buf_alloc(1))
-    _ = w.debug_write_byte(path_ptr, 0, 5)
+    var path_ptr = Int(w[].call_i64("mutation_buf_alloc", args_i32(1)))
+    _ = w[].call_i32("debug_write_byte", args_ptr_i32_i32(path_ptr, 0, 5))
 
-    var off = Int(w.write_op_assign_id(buf, 0, path_ptr, 1, 99))
-    _ = w.write_op_end(buf, off)
+    var off = Int(
+        w[].call_i32(
+            "write_op_assign_id",
+            args_ptr_i32_ptr_i32_i32(buf, 0, path_ptr, 1, 99),
+        )
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     assert_equal(_read_u8(w, buf, 0), OP_ASSIGN_ID)
     assert_equal(_read_u8(w, buf, 1), 1, "path_len is 1")
@@ -627,7 +703,7 @@ fn test_assign_id_single_element_path() raises:
     assert_equal(_read_u32_le(w, buf, 3), 99, "id is 99")
     assert_equal(_read_u8(w, buf, 7), OP_END)
 
-    w.mutation_buf_free(path_ptr)
+    w[].call_void("mutation_buf_free", args_ptr(path_ptr))
     _free_buf(w, buf)
 
 
@@ -638,12 +714,17 @@ fn test_replace_placeholder() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var path_ptr = Int(w.mutation_buf_alloc(2))
-    _ = w.debug_write_byte(path_ptr, 0, 0)
-    _ = w.debug_write_byte(path_ptr, 1, 3)
+    var path_ptr = Int(w[].call_i64("mutation_buf_alloc", args_i32(2)))
+    _ = w[].call_i32("debug_write_byte", args_ptr_i32_i32(path_ptr, 0, 0))
+    _ = w[].call_i32("debug_write_byte", args_ptr_i32_i32(path_ptr, 1, 3))
 
-    var off = Int(w.write_op_replace_placeholder(buf, 0, path_ptr, 2, 1))
-    _ = w.write_op_end(buf, off)
+    var off = Int(
+        w[].call_i32(
+            "write_op_replace_placeholder",
+            args_ptr_i32_ptr_i32_i32(buf, 0, path_ptr, 2, 1),
+        )
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     var pos = 0
     assert_equal(
@@ -665,7 +746,7 @@ fn test_replace_placeholder() raises:
 
     assert_equal(_read_u8(w, buf, pos), OP_END)
 
-    w.mutation_buf_free(path_ptr)
+    w[].call_void("mutation_buf_free", args_ptr(path_ptr))
     _free_buf(w, buf)
 
 
@@ -676,10 +757,17 @@ fn test_multiple_mutations_in_sequence() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var off = Int(w.write_op_create_placeholder(buf, 0, 1))
-    off = Int(w.write_op_push_root(buf, off, 2))
-    off = Int(w.write_op_append_children(buf, off, 0, 2))
-    _ = w.write_op_end(buf, off)
+    var off = Int(
+        w[].call_i32("write_op_create_placeholder", args_ptr_i32_i32(buf, 0, 1))
+    )
+    off = Int(w[].call_i32("write_op_push_root", args_ptr_i32_i32(buf, off, 2)))
+    off = Int(
+        w[].call_i32(
+            "write_op_append_children",
+            args_ptr_i32_i32_i32(buf, off, 0, 2),
+        )
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     var pos = 0
 
@@ -716,17 +804,33 @@ fn test_mixed_mutations_with_strings() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var off = Int(w.write_op_load_template(buf, 0, 0, 0, 1))
-    off = Int(
-        w.write_op_create_text_node(buf, off, 2, w.write_string_struct("hi"))
-    )
-    off = Int(w.write_op_append_children(buf, off, 1, 1))
-    off = Int(
-        w.write_op_new_event_listener(
-            buf, off, 1, w.write_string_struct("click")
+    var off = Int(
+        w[].call_i32(
+            "write_op_load_template",
+            args_ptr_i32_i32_i32_i32(buf, 0, 0, 0, 1),
         )
     )
-    _ = w.write_op_end(buf, off)
+    var hi_ptr = w[].write_string_struct("hi")
+    off = Int(
+        w[].call_i32(
+            "write_op_create_text_node",
+            args_ptr_i32_i32_ptr(buf, off, 2, hi_ptr),
+        )
+    )
+    off = Int(
+        w[].call_i32(
+            "write_op_append_children",
+            args_ptr_i32_i32_i32(buf, off, 1, 1),
+        )
+    )
+    var click_ptr = w[].write_string_struct("click")
+    off = Int(
+        w[].call_i32(
+            "write_op_new_event_listener",
+            args_ptr_i32_i32_ptr(buf, off, 1, click_ptr),
+        )
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     var pos = 0
 
@@ -772,8 +876,10 @@ fn test_max_u32_values() raises:
     var buf = _alloc_buf(w)
 
     # 0xFFFFFFFF = 4294967295
-    var off = Int(w.write_op_push_root(buf, 0, 4294967295))
-    _ = w.write_op_end(buf, off)
+    var off = Int(
+        w[].call_i32("write_op_push_root", args_ptr_i32_i32(buf, 0, -1))
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     assert_equal(_read_u8(w, buf, 0), OP_PUSH_ROOT)
     assert_equal(
@@ -787,8 +893,10 @@ fn test_zero_ids() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var off = Int(w.write_op_push_root(buf, 0, 0))
-    _ = w.write_op_end(buf, off)
+    var off = Int(
+        w[].call_i32("write_op_push_root", args_ptr_i32_i32(buf, 0, 0))
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     assert_equal(_read_u8(w, buf, 0), OP_PUSH_ROOT)
     assert_equal(_read_u32_le(w, buf, 1), 0, "zero id encodes correctly")
@@ -802,17 +910,21 @@ fn test_zero_ids() raises:
 fn test_long_string_payload() raises:
     """Test encoding a 1KB string in a text node."""
     var w = _get_wasm()
-    var buf = Int(w.mutation_buf_alloc(8192))
+    var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(8192)))
 
     # Build a 1024-char string
     var long_str = String("")
     for _ in range(1024):
         long_str += "x"
 
+    var text_ptr = w[].write_string_struct(long_str)
     var off = Int(
-        w.write_op_create_text_node(buf, 0, 1, w.write_string_struct(long_str))
+        w[].call_i32(
+            "write_op_create_text_node",
+            args_ptr_i32_i32_ptr(buf, 0, 1, text_ptr),
+        )
     )
-    _ = w.write_op_end(buf, off)
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     assert_equal(_read_u8(w, buf, 0), OP_CREATE_TEXT_NODE)
     assert_equal(_read_u32_le(w, buf, 1), 1, "id is 1")
@@ -830,7 +942,7 @@ fn test_long_string_payload() raises:
     # End sentinel
     assert_equal(_read_u8(w, buf, 9 + 1024), OP_END)
 
-    w.mutation_buf_free(buf)
+    w[].call_void("mutation_buf_free", args_ptr(buf))
 
 
 # ── Test sequence (composite integration test) ───────────────────────────────
@@ -841,7 +953,7 @@ fn test_write_test_sequence() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var total = Int(w.write_test_sequence(buf))
+    var total = Int(w[].call_i32("write_test_sequence", args_ptr(buf)))
     assert_true(total > 0, "write_test_sequence wrote some bytes")
 
     # Sequence:
@@ -905,8 +1017,8 @@ fn test_debug_ptr_roundtrip() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var result = Int(w.debug_ptr_roundtrip(buf))
-    assert_equal(result, Int(buf), "pointer round-trips correctly")
+    var result = Int(w[].call_i64("debug_ptr_roundtrip", args_ptr(buf)))
+    assert_equal(result, buf, "pointer round-trips correctly")
 
     _free_buf(w, buf)
 
@@ -919,9 +1031,9 @@ fn test_debug_read_write_byte() raises:
     var buf = _alloc_buf(w)
 
     # Write various bytes and read them back
-    _ = w.debug_write_byte(buf, 0, 0xAB)
-    _ = w.debug_write_byte(buf, 1, 0x00)
-    _ = w.debug_write_byte(buf, 2, 0xFF)
+    _ = w[].call_i32("debug_write_byte", args_ptr_i32_i32(buf, 0, 0xAB))
+    _ = w[].call_i32("debug_write_byte", args_ptr_i32_i32(buf, 1, 0x00))
+    _ = w[].call_i32("debug_write_byte", args_ptr_i32_i32(buf, 2, 0xFF))
 
     assert_equal(_read_u8(w, buf, 0), 0xAB, "byte 0 is 0xAB")
     assert_equal(_read_u8(w, buf, 1), 0x00, "byte 1 is 0x00")
@@ -939,44 +1051,95 @@ fn test_all_opcodes_in_one_buffer() raises:
     var w = _get_wasm()
     var buf = _alloc_buf(w)
 
-    var path_ptr = Int(w.mutation_buf_alloc(1))
-    _ = w.debug_write_byte(path_ptr, 0, 0)
+    var path_ptr = Int(w[].call_i64("mutation_buf_alloc", args_i32(1)))
+    _ = w[].call_i32("debug_write_byte", args_ptr_i32_i32(path_ptr, 0, 0))
 
     var off = 0
     # Write one of each mutation type
-    off = Int(w.write_op_append_children(buf, off, 1, 1))
-    off = Int(w.write_op_assign_id(buf, off, path_ptr, 1, 2))
-    off = Int(w.write_op_create_placeholder(buf, off, 3))
     off = Int(
-        w.write_op_create_text_node(buf, off, 4, w.write_string_struct("t"))
-    )
-    off = Int(w.write_op_load_template(buf, off, 5, 0, 6))
-    off = Int(w.write_op_replace_with(buf, off, 7, 1))
-    off = Int(w.write_op_replace_placeholder(buf, off, path_ptr, 1, 1))
-    off = Int(w.write_op_insert_after(buf, off, 8, 1))
-    off = Int(w.write_op_insert_before(buf, off, 9, 1))
-    off = Int(
-        w.write_op_set_attribute(
-            buf,
-            off,
-            10,
-            0,
-            w.write_string_struct("a"),
-            w.write_string_struct("b"),
+        w[].call_i32(
+            "write_op_append_children",
+            args_ptr_i32_i32_i32(buf, off, 1, 1),
         )
     )
-    off = Int(w.write_op_set_text(buf, off, 11, w.write_string_struct("x")))
     off = Int(
-        w.write_op_new_event_listener(buf, off, 12, w.write_string_struct("e"))
-    )
-    off = Int(
-        w.write_op_remove_event_listener(
-            buf, off, 13, w.write_string_struct("e")
+        w[].call_i32(
+            "write_op_assign_id",
+            args_ptr_i32_ptr_i32_i32(buf, off, path_ptr, 1, 2),
         )
     )
-    off = Int(w.write_op_remove(buf, off, 14))
-    off = Int(w.write_op_push_root(buf, off, 15))
-    _ = w.write_op_end(buf, off)
+    off = Int(
+        w[].call_i32(
+            "write_op_create_placeholder", args_ptr_i32_i32(buf, off, 3)
+        )
+    )
+    var t_ptr = w[].write_string_struct("t")
+    off = Int(
+        w[].call_i32(
+            "write_op_create_text_node",
+            args_ptr_i32_i32_ptr(buf, off, 4, t_ptr),
+        )
+    )
+    off = Int(
+        w[].call_i32(
+            "write_op_load_template",
+            args_ptr_i32_i32_i32_i32(buf, off, 5, 0, 6),
+        )
+    )
+    off = Int(
+        w[].call_i32(
+            "write_op_replace_with", args_ptr_i32_i32_i32(buf, off, 7, 1)
+        )
+    )
+    off = Int(
+        w[].call_i32(
+            "write_op_replace_placeholder",
+            args_ptr_i32_ptr_i32_i32(buf, off, path_ptr, 1, 1),
+        )
+    )
+    off = Int(
+        w[].call_i32(
+            "write_op_insert_after", args_ptr_i32_i32_i32(buf, off, 8, 1)
+        )
+    )
+    off = Int(
+        w[].call_i32(
+            "write_op_insert_before", args_ptr_i32_i32_i32(buf, off, 9, 1)
+        )
+    )
+    var a_name = w[].write_string_struct("a")
+    var b_val = w[].write_string_struct("b")
+    off = Int(
+        w[].call_i32(
+            "write_op_set_attribute",
+            args_ptr_i32_i32_i32_ptr_ptr(buf, off, 10, 0, a_name, b_val),
+        )
+    )
+    var x_ptr = w[].write_string_struct("x")
+    off = Int(
+        w[].call_i32(
+            "write_op_set_text", args_ptr_i32_i32_ptr(buf, off, 11, x_ptr)
+        )
+    )
+    var e_ptr = w[].write_string_struct("e")
+    off = Int(
+        w[].call_i32(
+            "write_op_new_event_listener",
+            args_ptr_i32_i32_ptr(buf, off, 12, e_ptr),
+        )
+    )
+    var e_ptr2 = w[].write_string_struct("e")
+    off = Int(
+        w[].call_i32(
+            "write_op_remove_event_listener",
+            args_ptr_i32_i32_ptr(buf, off, 13, e_ptr2),
+        )
+    )
+    off = Int(w[].call_i32("write_op_remove", args_ptr_i32_i32(buf, off, 14)))
+    off = Int(
+        w[].call_i32("write_op_push_root", args_ptr_i32_i32(buf, off, 15))
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     # Walk through and extract just the opcodes
     var pos = 0
@@ -1044,5 +1207,5 @@ fn test_all_opcodes_in_one_buffer() raises:
     # END
     assert_equal(_read_u8(w, buf, pos), OP_END)
 
-    w.mutation_buf_free(path_ptr)
+    w[].call_void("mutation_buf_free", args_ptr(path_ptr))
     _free_buf(w, buf)

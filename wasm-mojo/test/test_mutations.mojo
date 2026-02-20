@@ -1,5 +1,5 @@
 # CreateEngine and DiffEngine exercised through the real WASM binary via
-# wasmtime-py (called from Mojo via Python interop).
+# wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
 #
 # These tests verify that the create and diff engines work correctly when
 # compiled to WASM and executed via the Wasmtime runtime.  Each test creates
@@ -9,14 +9,32 @@
 # Run with:
 #   mojo test test/test_mutations.mojo
 
-from python import Python, PythonObject
+from memory import UnsafePointer
 from testing import assert_equal, assert_true, assert_false
 
+from wasm_harness import (
+    WasmInstance,
+    get_instance,
+    args_i32,
+    args_ptr,
+    args_ptr_i32,
+    args_ptr_i32_i32,
+    args_ptr_i32_i32_i32,
+    args_ptr_i32_ptr,
+    args_ptr_i32_ptr_ptr,
+    args_ptr_i32_ptr_ptr_i32,
+    args_ptr_i32_ptr_i32,
+    args_ptr_i32_ptr_i32_i32,
+    args_ptr_ptr,
+    args_ptr_ptr_i32,
+    args_ptr_ptr_ptr_ptr_i32,
+    args_ptr_ptr_ptr_ptr_i32_i32,
+    no_args,
+)
 
-fn _get_wasm() raises -> PythonObject:
-    Python.add_to_path("test")
-    var harness = Python.import_module("wasm_harness")
-    return harness.get_instance()
+
+fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
+    return get_instance()
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -51,11 +69,15 @@ alias BUF_CAP = 8192
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-fn _read_u8(w: PythonObject, buf: PythonObject, offset: Int) raises -> Int:
-    return Int(w.debug_read_byte(buf, offset))
+fn _read_u8(
+    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
+) raises -> Int:
+    return Int(w[].call_i32("debug_read_byte", args_ptr_i32(buf, offset)))
 
 
-fn _read_u32_le(w: PythonObject, buf: PythonObject, offset: Int) raises -> Int:
+fn _read_u32_le(
+    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
+) raises -> Int:
     var b0 = _read_u8(w, buf, offset)
     var b1 = _read_u8(w, buf, offset + 1)
     var b2 = _read_u8(w, buf, offset + 2)
@@ -63,7 +85,9 @@ fn _read_u32_le(w: PythonObject, buf: PythonObject, offset: Int) raises -> Int:
     return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
 
 
-fn _read_u16_le(w: PythonObject, buf: PythonObject, offset: Int) raises -> Int:
+fn _read_u16_le(
+    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
+) raises -> Int:
     var lo = _read_u8(w, buf, offset)
     var hi = _read_u8(w, buf, offset + 1)
     return lo | (hi << 8)
@@ -111,7 +135,7 @@ struct MutationInfo(Copyable, Movable):
 
 
 fn _read_mutations(
-    w: PythonObject, buf: PythonObject, length: Int
+    w: UnsafePointer[WasmInstance], buf: Int, length: Int
 ) raises -> List[MutationInfo]:
     """Decode all mutations from the WASM buffer up to the End sentinel."""
     var result = List[MutationInfo]()
@@ -246,20 +270,22 @@ fn _find_first(mutations: List[MutationInfo], op: Int) -> Int:
 struct WasmTestContext(Movable):
     """Manages WASM resources for a create/diff engine test."""
 
-    var w: PythonObject
-    var rt: PythonObject
-    var eid: PythonObject
-    var store: PythonObject
-    var buf: PythonObject
-    var writer: PythonObject
+    var w: UnsafePointer[WasmInstance]
+    var rt: Int
+    var eid: Int
+    var store: Int
+    var buf: Int
+    var writer: Int
 
-    fn __init__(out self, w: PythonObject) raises:
+    fn __init__(out self, w: UnsafePointer[WasmInstance]) raises:
         self.w = w
-        self.rt = w.runtime_create()
-        self.eid = w.eid_alloc_create()
-        self.store = w.vnode_store_create()
-        self.buf = w.mutation_buf_alloc(BUF_CAP)
-        self.writer = w.writer_create(self.buf, BUF_CAP)
+        self.rt = Int(w[].call_i64("runtime_create", no_args()))
+        self.eid = Int(w[].call_i64("eid_alloc_create", no_args()))
+        self.store = Int(w[].call_i64("vnode_store_create", no_args()))
+        self.buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(BUF_CAP)))
+        self.writer = Int(
+            w[].call_i64("writer_create", args_ptr_i32(self.buf, BUF_CAP))
+        )
 
     fn __moveinit__(out self, owned other: Self):
         self.w = other.w
@@ -271,23 +297,29 @@ struct WasmTestContext(Movable):
 
     fn finalize_and_read(mut self) raises -> List[MutationInfo]:
         """Finalize the writer and read back all mutations."""
-        var offset = Int(self.w.writer_finalize(self.writer))
+        var offset = Int(
+            self.w[].call_i32("writer_finalize", args_ptr(self.writer))
+        )
         return _read_mutations(self.w, self.buf, offset)
 
     fn reset_writer(mut self) raises:
         """Reset the writer for a new mutation sequence."""
-        self.w.writer_destroy(self.writer)
+        self.w[].call_void("writer_destroy", args_ptr(self.writer))
         # Zero out the buffer
         for i in range(BUF_CAP):
-            _ = self.w.debug_write_byte(self.buf, i, 0)
-        self.writer = self.w.writer_create(self.buf, BUF_CAP)
+            _ = self.w[].call_i32(
+                "debug_write_byte", args_ptr_i32_i32(self.buf, i, 0)
+            )
+        self.writer = Int(
+            self.w[].call_i64("writer_create", args_ptr_i32(self.buf, BUF_CAP))
+        )
 
     fn destroy(mut self) raises:
-        self.w.writer_destroy(self.writer)
-        self.w.mutation_buf_free(self.buf)
-        self.w.vnode_store_destroy(self.store)
-        self.w.eid_alloc_destroy(self.eid)
-        self.w.runtime_destroy(self.rt)
+        self.w[].call_void("writer_destroy", args_ptr(self.writer))
+        self.w[].call_void("mutation_buf_free", args_ptr(self.buf))
+        self.w[].call_void("vnode_store_destroy", args_ptr(self.store))
+        self.w[].call_void("eid_alloc_destroy", args_ptr(self.eid))
+        self.w[].call_void("runtime_destroy", args_ptr(self.rt))
 
 
 # ── Template registration helpers ────────────────────────────────────────────
@@ -295,10 +327,19 @@ struct WasmTestContext(Movable):
 
 fn _register_div_template(mut ctx: WasmTestContext, name: String) raises -> Int:
     """Register a simple <div></div> template, return ID."""
-    var b = ctx.w.tmpl_builder_create(ctx.w.write_string_struct(name))
-    _ = ctx.w.tmpl_builder_push_element(b, TAG_DIV, -1)
-    var tmpl_id = Int(ctx.w.tmpl_builder_register(ctx.rt, b))
-    ctx.w.tmpl_builder_destroy(b)
+    var b = Int(
+        ctx.w[].call_i64(
+            "tmpl_builder_create",
+            args_ptr(ctx.w[].write_string_struct(name)),
+        )
+    )
+    _ = ctx.w[].call_i32(
+        "tmpl_builder_push_element", args_ptr_i32_i32(b, TAG_DIV, -1)
+    )
+    var tmpl_id = Int(
+        ctx.w[].call_i32("tmpl_builder_register", args_ptr_ptr(ctx.rt, b))
+    )
+    ctx.w[].call_void("tmpl_builder_destroy", args_ptr(b))
     return tmpl_id
 
 
@@ -306,11 +347,24 @@ fn _register_div_with_dyn_text(
     mut ctx: WasmTestContext, name: String
 ) raises -> Int:
     """Register <div>{dyntext_0}</div>, return ID."""
-    var b = ctx.w.tmpl_builder_create(ctx.w.write_string_struct(name))
-    var div_idx = Int(ctx.w.tmpl_builder_push_element(b, TAG_DIV, -1))
-    _ = ctx.w.tmpl_builder_push_dynamic_text(b, 0, div_idx)
-    var tmpl_id = Int(ctx.w.tmpl_builder_register(ctx.rt, b))
-    ctx.w.tmpl_builder_destroy(b)
+    var b = Int(
+        ctx.w[].call_i64(
+            "tmpl_builder_create",
+            args_ptr(ctx.w[].write_string_struct(name)),
+        )
+    )
+    var div_idx = Int(
+        ctx.w[].call_i32(
+            "tmpl_builder_push_element", args_ptr_i32_i32(b, TAG_DIV, -1)
+        )
+    )
+    _ = ctx.w[].call_i32(
+        "tmpl_builder_push_dynamic_text", args_ptr_i32_i32(b, 0, div_idx)
+    )
+    var tmpl_id = Int(
+        ctx.w[].call_i32("tmpl_builder_register", args_ptr_ptr(ctx.rt, b))
+    )
+    ctx.w[].call_void("tmpl_builder_destroy", args_ptr(b))
     return tmpl_id
 
 
@@ -318,11 +372,24 @@ fn _register_div_with_dyn_attr(
     mut ctx: WasmTestContext, name: String
 ) raises -> Int:
     """Register <div {dynattr_0}></div>, return ID."""
-    var b = ctx.w.tmpl_builder_create(ctx.w.write_string_struct(name))
-    var div_idx = Int(ctx.w.tmpl_builder_push_element(b, TAG_DIV, -1))
-    ctx.w.tmpl_builder_push_dynamic_attr(b, div_idx, 0)
-    var tmpl_id = Int(ctx.w.tmpl_builder_register(ctx.rt, b))
-    ctx.w.tmpl_builder_destroy(b)
+    var b = Int(
+        ctx.w[].call_i64(
+            "tmpl_builder_create",
+            args_ptr(ctx.w[].write_string_struct(name)),
+        )
+    )
+    var div_idx = Int(
+        ctx.w[].call_i32(
+            "tmpl_builder_push_element", args_ptr_i32_i32(b, TAG_DIV, -1)
+        )
+    )
+    ctx.w[].call_void(
+        "tmpl_builder_push_dynamic_attr", args_ptr_i32_i32(b, div_idx, 0)
+    )
+    var tmpl_id = Int(
+        ctx.w[].call_i32("tmpl_builder_register", args_ptr_ptr(ctx.rt, b))
+    )
+    ctx.w[].call_void("tmpl_builder_destroy", args_ptr(b))
     return tmpl_id
 
 
@@ -330,11 +397,24 @@ fn _register_div_with_dyn_node(
     mut ctx: WasmTestContext, name: String
 ) raises -> Int:
     """Register <div>{dyn_node_0}</div>, return ID."""
-    var b = ctx.w.tmpl_builder_create(ctx.w.write_string_struct(name))
-    var div_idx = Int(ctx.w.tmpl_builder_push_element(b, TAG_DIV, -1))
-    _ = ctx.w.tmpl_builder_push_dynamic(b, 0, div_idx)
-    var tmpl_id = Int(ctx.w.tmpl_builder_register(ctx.rt, b))
-    ctx.w.tmpl_builder_destroy(b)
+    var b = Int(
+        ctx.w[].call_i64(
+            "tmpl_builder_create",
+            args_ptr(ctx.w[].write_string_struct(name)),
+        )
+    )
+    var div_idx = Int(
+        ctx.w[].call_i32(
+            "tmpl_builder_push_element", args_ptr_i32_i32(b, TAG_DIV, -1)
+        )
+    )
+    _ = ctx.w[].call_i32(
+        "tmpl_builder_push_dynamic", args_ptr_i32_i32(b, 0, div_idx)
+    )
+    var tmpl_id = Int(
+        ctx.w[].call_i32("tmpl_builder_register", args_ptr_ptr(ctx.rt, b))
+    )
+    ctx.w[].call_void("tmpl_builder_destroy", args_ptr(b))
     return tmpl_id
 
 
@@ -348,29 +428,64 @@ fn _register_complex_template(
       <button {dynattr_0}>{dyntext_1}</button>
     </div>
     """
-    var b = ctx.w.tmpl_builder_create(ctx.w.write_string_struct(name))
-    var div_idx = Int(ctx.w.tmpl_builder_push_element(b, TAG_DIV, -1))
-    ctx.w.tmpl_builder_push_static_attr(
-        b,
-        div_idx,
-        ctx.w.write_string_struct("class"),
-        ctx.w.write_string_struct("container"),
+    var w = ctx.w
+    var b = Int(
+        w[].call_i64(
+            "tmpl_builder_create",
+            args_ptr(w[].write_string_struct(name)),
+        )
+    )
+    var div_idx = Int(
+        w[].call_i32(
+            "tmpl_builder_push_element", args_ptr_i32_i32(b, TAG_DIV, -1)
+        )
+    )
+    w[].call_void(
+        "tmpl_builder_push_static_attr",
+        args_ptr_i32_ptr_ptr(
+            b,
+            div_idx,
+            w[].write_string_struct("class"),
+            w[].write_string_struct("container"),
+        ),
     )
 
-    var h1_idx = Int(ctx.w.tmpl_builder_push_element(b, TAG_H1, div_idx))
-    _ = ctx.w.tmpl_builder_push_text(
-        b, ctx.w.write_string_struct("Title"), h1_idx
+    var h1_idx = Int(
+        w[].call_i32(
+            "tmpl_builder_push_element", args_ptr_i32_i32(b, TAG_H1, div_idx)
+        )
+    )
+    _ = w[].call_i32(
+        "tmpl_builder_push_text",
+        args_ptr_ptr_i32(b, w[].write_string_struct("Title"), h1_idx),
     )
 
-    var p_idx = Int(ctx.w.tmpl_builder_push_element(b, TAG_P, div_idx))
-    _ = ctx.w.tmpl_builder_push_dynamic_text(b, 0, p_idx)
+    var p_idx = Int(
+        w[].call_i32(
+            "tmpl_builder_push_element", args_ptr_i32_i32(b, TAG_P, div_idx)
+        )
+    )
+    _ = w[].call_i32(
+        "tmpl_builder_push_dynamic_text", args_ptr_i32_i32(b, 0, p_idx)
+    )
 
-    var btn_idx = Int(ctx.w.tmpl_builder_push_element(b, TAG_BUTTON, div_idx))
-    ctx.w.tmpl_builder_push_dynamic_attr(b, btn_idx, 0)
-    _ = ctx.w.tmpl_builder_push_dynamic_text(b, 1, btn_idx)
+    var btn_idx = Int(
+        w[].call_i32(
+            "tmpl_builder_push_element",
+            args_ptr_i32_i32(b, TAG_BUTTON, div_idx),
+        )
+    )
+    w[].call_void(
+        "tmpl_builder_push_dynamic_attr", args_ptr_i32_i32(b, btn_idx, 0)
+    )
+    _ = w[].call_i32(
+        "tmpl_builder_push_dynamic_text", args_ptr_i32_i32(b, 1, btn_idx)
+    )
 
-    var tmpl_id = Int(ctx.w.tmpl_builder_register(ctx.rt, b))
-    ctx.w.tmpl_builder_destroy(b)
+    var tmpl_id = Int(
+        w[].call_i32("tmpl_builder_register", args_ptr_ptr(ctx.rt, b))
+    )
+    w[].call_void("tmpl_builder_destroy", args_ptr(b))
     return tmpl_id
 
 
@@ -384,11 +499,19 @@ fn test_create_text_vnode() raises:
     var ctx = WasmTestContext(w)
 
     var vn_idx = Int(
-        w.vnode_push_text(ctx.store, w.write_string_struct("hello world"))
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("hello world")),
+        )
     )
 
     var num_roots = Int(
-        w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx)
+        w[].call_i32(
+            "create_vnode",
+            args_ptr_ptr_ptr_ptr_i32(
+                ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx
+            ),
+        )
     )
     assert_equal(num_roots, 1, "text vnode creates 1 root")
 
@@ -404,15 +527,24 @@ fn test_create_text_vnode() raises:
 
     # Check mount state
     assert_equal(
-        Int(w.vnode_is_mounted(ctx.store, vn_idx)), 1, "text vnode is mounted"
+        Int(w[].call_i32("vnode_is_mounted", args_ptr_i32(ctx.store, vn_idx))),
+        1,
+        "text vnode is mounted",
     )
     assert_equal(
-        Int(w.vnode_root_id_count(ctx.store, vn_idx)),
+        Int(
+            w[].call_i32("vnode_root_id_count", args_ptr_i32(ctx.store, vn_idx))
+        ),
         1,
         "text vnode has 1 root id",
     )
     assert_true(
-        Int(w.vnode_get_root_id(ctx.store, vn_idx, 0)) > 0,
+        Int(
+            w[].call_i32(
+                "vnode_get_root_id", args_ptr_i32_i32(ctx.store, vn_idx, 0)
+            )
+        )
+        > 0,
         "root id is non-zero",
     )
 
@@ -423,10 +555,17 @@ fn test_create_placeholder_vnode() raises:
     var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
-    var vn_idx = Int(w.vnode_push_placeholder(ctx.store, 0))
+    var vn_idx = Int(
+        w[].call_i32("vnode_push_placeholder", args_ptr_i32(ctx.store, 0))
+    )
 
     var num_roots = Int(
-        w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx)
+        w[].call_i32(
+            "create_vnode",
+            args_ptr_ptr_ptr_ptr_i32(
+                ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx
+            ),
+        )
     )
     assert_equal(num_roots, 1, "placeholder creates 1 root")
 
@@ -440,12 +579,14 @@ fn test_create_placeholder_vnode() raises:
     )
 
     assert_equal(
-        Int(w.vnode_is_mounted(ctx.store, vn_idx)),
+        Int(w[].call_i32("vnode_is_mounted", args_ptr_i32(ctx.store, vn_idx))),
         1,
         "placeholder is mounted",
     )
     assert_equal(
-        Int(w.vnode_root_id_count(ctx.store, vn_idx)),
+        Int(
+            w[].call_i32("vnode_root_id_count", args_ptr_i32(ctx.store, vn_idx))
+        ),
         1,
         "placeholder has 1 root id",
     )
@@ -459,10 +600,19 @@ fn test_create_simple_template_ref() raises:
 
     var tmpl_id = _register_div_template(ctx, "simple-div-mut")
 
-    var vn_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
+    var vn_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
 
     var num_roots = Int(
-        w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx)
+        w[].call_i32(
+            "create_vnode",
+            args_ptr_ptr_ptr_ptr_i32(
+                ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx
+            ),
+        )
     )
     assert_equal(num_roots, 1, "template ref creates 1 root (div)")
 
@@ -482,12 +632,14 @@ fn test_create_simple_template_ref() raises:
 
     # Check mount state
     assert_equal(
-        Int(w.vnode_is_mounted(ctx.store, vn_idx)),
+        Int(w[].call_i32("vnode_is_mounted", args_ptr_i32(ctx.store, vn_idx))),
         1,
         "template ref is mounted",
     )
     assert_equal(
-        Int(w.vnode_root_id_count(ctx.store, vn_idx)),
+        Int(
+            w[].call_i32("vnode_root_id_count", args_ptr_i32(ctx.store, vn_idx))
+        ),
         1,
         "template ref has 1 root id",
     )
@@ -501,13 +653,25 @@ fn test_create_template_ref_with_dyn_text() raises:
 
     var tmpl_id = _register_div_with_dyn_text(ctx, "dyn-text-div-mut")
 
-    var vn_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_text_node(
-        ctx.store, vn_idx, w.write_string_struct("Count: 42")
+    var vn_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(
+            ctx.store, vn_idx, w[].write_string_struct("Count: 42")
+        ),
     )
 
     var num_roots = Int(
-        w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx)
+        w[].call_i32(
+            "create_vnode",
+            args_ptr_ptr_ptr_ptr_i32(
+                ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx
+            ),
+        )
     )
     assert_equal(num_roots, 1, "template with dyntext creates 1 root")
 
@@ -527,7 +691,12 @@ fn test_create_template_ref_with_dyn_text() raises:
 
     # Check mount state: should have dynamic node IDs
     assert_true(
-        Int(w.vnode_dyn_node_id_count(ctx.store, vn_idx)) > 0,
+        Int(
+            w[].call_i32(
+                "vnode_dyn_node_id_count", args_ptr_i32(ctx.store, vn_idx)
+            )
+        )
+        > 0,
         "has dynamic node IDs",
     )
 
@@ -540,17 +709,29 @@ fn test_create_template_ref_with_dyn_attr() raises:
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "dyn-attr-div-mut")
 
-    var vn_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_text(
-        ctx.store,
-        vn_idx,
-        w.write_string_struct("class"),
-        w.write_string_struct("active"),
-        0,
+    var vn_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_text",
+        args_ptr_i32_ptr_ptr_i32(
+            ctx.store,
+            vn_idx,
+            w[].write_string_struct("class"),
+            w[].write_string_struct("active"),
+            0,
+        ),
     )
 
     var num_roots = Int(
-        w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx)
+        w[].call_i32(
+            "create_vnode",
+            args_ptr_ptr_ptr_ptr_i32(
+                ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx
+            ),
+        )
     )
     assert_equal(num_roots, 1, "template with dynattr creates 1 root")
 
@@ -565,7 +746,12 @@ fn test_create_template_ref_with_dyn_attr() raises:
 
     # Check mount state: should have dynamic attr IDs
     assert_true(
-        Int(w.vnode_dyn_attr_id_count(ctx.store, vn_idx)) > 0,
+        Int(
+            w[].call_i32(
+                "vnode_dyn_attr_id_count", args_ptr_i32(ctx.store, vn_idx)
+            )
+        )
+        > 0,
         "has dynamic attr IDs",
     )
 
@@ -578,12 +764,24 @@ fn test_create_template_ref_with_event() raises:
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "event-div-mut")
 
-    var vn_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_event(
-        ctx.store, vn_idx, w.write_string_struct("onclick"), 1, 0
+    var vn_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_event",
+        args_ptr_i32_ptr_i32_i32(
+            ctx.store, vn_idx, w[].write_string_struct("onclick"), 1, 0
+        ),
     )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
 
@@ -605,13 +803,25 @@ fn test_create_template_ref_with_dyn_text_node() raises:
 
     var tmpl_id = _register_div_with_dyn_node(ctx, "dyn-node-div-mut")
 
-    var vn_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_text_node(
-        ctx.store, vn_idx, w.write_string_struct("dynamic text")
+    var vn_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(
+            ctx.store, vn_idx, w[].write_string_struct("dynamic text")
+        ),
     )
 
     var num_roots = Int(
-        w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx)
+        w[].call_i32(
+            "create_vnode",
+            args_ptr_ptr_ptr_ptr_i32(
+                ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx
+            ),
+        )
     )
     assert_equal(num_roots, 1, "creates 1 root")
 
@@ -642,10 +852,21 @@ fn test_create_template_ref_with_dyn_placeholder() raises:
 
     var tmpl_id = _register_div_with_dyn_node(ctx, "dyn-ph-div-mut")
 
-    var vn_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_placeholder(ctx.store, vn_idx)
+    var vn_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_placeholder", args_ptr_i32(ctx.store, vn_idx)
+    )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
 
@@ -671,18 +892,44 @@ fn test_create_fragment_vnode() raises:
     var ctx = WasmTestContext(w)
 
     # Create 3 text children
-    var c1 = Int(w.vnode_push_text(ctx.store, w.write_string_struct("A")))
-    var c2 = Int(w.vnode_push_text(ctx.store, w.write_string_struct("B")))
-    var c3 = Int(w.vnode_push_text(ctx.store, w.write_string_struct("C")))
+    var c1 = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("A")),
+        )
+    )
+    var c2 = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("B")),
+        )
+    )
+    var c3 = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("C")),
+        )
+    )
 
     # Create fragment
-    var frag_idx = Int(w.vnode_push_fragment(ctx.store))
-    w.vnode_push_fragment_child(ctx.store, frag_idx, c1)
-    w.vnode_push_fragment_child(ctx.store, frag_idx, c2)
-    w.vnode_push_fragment_child(ctx.store, frag_idx, c3)
+    var frag_idx = Int(w[].call_i32("vnode_push_fragment", args_ptr(ctx.store)))
+    w[].call_void(
+        "vnode_push_fragment_child", args_ptr_i32_i32(ctx.store, frag_idx, c1)
+    )
+    w[].call_void(
+        "vnode_push_fragment_child", args_ptr_i32_i32(ctx.store, frag_idx, c2)
+    )
+    w[].call_void(
+        "vnode_push_fragment_child", args_ptr_i32_i32(ctx.store, frag_idx, c3)
+    )
 
     var num_roots = Int(
-        w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, frag_idx)
+        w[].call_i32(
+            "create_vnode",
+            args_ptr_ptr_ptr_ptr_i32(
+                ctx.writer, ctx.eid, ctx.rt, ctx.store, frag_idx
+            ),
+        )
     )
     assert_equal(num_roots, 3, "fragment creates 3 roots (one per child)")
 
@@ -702,17 +949,44 @@ fn test_create_element_id_uniqueness() raises:
 
     var tmpl_id = _register_div_template(ctx, "unique-div-mut")
 
-    var vn1 = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    var vn2 = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    var vn3 = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
+    var vn1 = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    var vn2 = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    var vn3 = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn1)
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn2)
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn3)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn1),
+    )
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn2),
+    )
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn3),
+    )
 
-    var id1 = Int(w.vnode_get_root_id(ctx.store, vn1, 0))
-    var id2 = Int(w.vnode_get_root_id(ctx.store, vn2, 0))
-    var id3 = Int(w.vnode_get_root_id(ctx.store, vn3, 0))
+    var id1 = Int(
+        w[].call_i32("vnode_get_root_id", args_ptr_i32_i32(ctx.store, vn1, 0))
+    )
+    var id2 = Int(
+        w[].call_i32("vnode_get_root_id", args_ptr_i32_i32(ctx.store, vn2, 0))
+    )
+    var id3 = Int(
+        w[].call_i32("vnode_get_root_id", args_ptr_i32_i32(ctx.store, vn3, 0))
+    )
 
     assert_true(id1 != id2, "id1 != id2")
     assert_true(id2 != id3, "id2 != id3")
@@ -726,10 +1000,15 @@ fn test_create_empty_fragment() raises:
     var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
-    var frag_idx = Int(w.vnode_push_fragment(ctx.store))
+    var frag_idx = Int(w[].call_i32("vnode_push_fragment", args_ptr(ctx.store)))
 
     var num_roots = Int(
-        w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, frag_idx)
+        w[].call_i32(
+            "create_vnode",
+            args_ptr_ptr_ptr_ptr_i32(
+                ctx.writer, ctx.eid, ctx.rt, ctx.store, frag_idx
+            ),
+        )
     )
     assert_equal(num_roots, 0, "empty fragment creates 0 roots")
 
@@ -746,22 +1025,40 @@ fn test_create_complex_template_multi_slots() raises:
 
     var tmpl_id = _register_complex_template(ctx, "complex-mut")
 
-    var vn_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
+    var vn_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
     # dyntext_0 -> "Description"
-    w.vnode_push_dynamic_text_node(
-        ctx.store, vn_idx, w.write_string_struct("Description")
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(
+            ctx.store, vn_idx, w[].write_string_struct("Description")
+        ),
     )
     # dyntext_1 -> "Click me"
-    w.vnode_push_dynamic_text_node(
-        ctx.store, vn_idx, w.write_string_struct("Click me")
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(
+            ctx.store, vn_idx, w[].write_string_struct("Click me")
+        ),
     )
     # dynattr_0 -> onclick event
-    w.vnode_push_dynamic_attr_event(
-        ctx.store, vn_idx, w.write_string_struct("onclick"), 42, 0
+    w[].call_void(
+        "vnode_push_dynamic_attr_event",
+        args_ptr_i32_ptr_i32_i32(
+            ctx.store, vn_idx, w[].write_string_struct("onclick"), 42, 0
+        ),
     )
 
     var num_roots = Int(
-        w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx)
+        w[].call_i32(
+            "create_vnode",
+            args_ptr_ptr_ptr_ptr_i32(
+                ctx.writer, ctx.eid, ctx.rt, ctx.store, vn_idx
+            ),
+        )
     )
     assert_equal(num_roots, 1, "complex template creates 1 root")
 
@@ -798,19 +1095,35 @@ fn test_diff_same_text_zero_mutations() raises:
 
     # Create old text vnode and mount it
     var old_idx = Int(
-        w.vnode_push_text(ctx.store, w.write_string_struct("hello"))
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("hello")),
+        )
     )
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
 
     # Reset writer for diff
     ctx.reset_writer()
 
     # Create new text vnode with same text
     var new_idx = Int(
-        w.vnode_push_text(ctx.store, w.write_string_struct("hello"))
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("hello")),
+        )
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
     assert_equal(len(mutations), 0, "same text produces 0 mutations")
@@ -825,22 +1138,42 @@ fn test_diff_text_changed_produces_set_text() raises:
 
     # Create old text vnode and mount it
     var old_idx = Int(
-        w.vnode_push_text(ctx.store, w.write_string_struct("hello"))
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("hello")),
+        )
     )
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
 
     # Remember the old root id
-    var old_root_id = Int(w.vnode_get_root_id(ctx.store, old_idx, 0))
+    var old_root_id = Int(
+        w[].call_i32(
+            "vnode_get_root_id", args_ptr_i32_i32(ctx.store, old_idx, 0)
+        )
+    )
 
     # Reset writer for diff
     ctx.reset_writer()
 
     # Create new text vnode with different text
     var new_idx = Int(
-        w.vnode_push_text(ctx.store, w.write_string_struct("world"))
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("world")),
+        )
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
     assert_true(len(mutations) > 0, "text change produces mutations")
@@ -865,14 +1198,32 @@ fn test_diff_text_empty_to_content() raises:
     var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
-    var old_idx = Int(w.vnode_push_text(ctx.store, w.write_string_struct("")))
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("")),
+        )
+    )
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
     ctx.reset_writer()
 
     var new_idx = Int(
-        w.vnode_push_text(ctx.store, w.write_string_struct("hello"))
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("hello")),
+        )
     )
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
 
@@ -887,12 +1238,26 @@ fn test_diff_placeholder_to_placeholder_zero_mutations() raises:
     var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
-    var old_idx = Int(w.vnode_push_placeholder(ctx.store, 0))
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    var old_idx = Int(
+        w[].call_i32("vnode_push_placeholder", args_ptr_i32(ctx.store, 0))
+    )
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
     ctx.reset_writer()
 
-    var new_idx = Int(w.vnode_push_placeholder(ctx.store, 0))
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    var new_idx = Int(
+        w[].call_i32("vnode_push_placeholder", args_ptr_i32(ctx.store, 0))
+    )
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
     assert_equal(
@@ -910,21 +1275,45 @@ fn test_diff_same_template_same_dyn_values_zero_mutations() raises:
     var tmpl_id = _register_div_with_dyn_text(ctx, "same-dyn-mut")
 
     # Old VNode
-    var old_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_text_node(
-        ctx.store, old_idx, w.write_string_struct("Count: 5")
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(
+            ctx.store, old_idx, w[].write_string_struct("Count: 5")
+        ),
     )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
     ctx.reset_writer()
 
     # New VNode with same dynamic text
-    var new_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_text_node(
-        ctx.store, new_idx, w.write_string_struct("Count: 5")
+    var new_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(
+            ctx.store, new_idx, w[].write_string_struct("Count: 5")
+        ),
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
     assert_equal(
@@ -944,25 +1333,53 @@ fn test_diff_same_template_dyn_text_changed() raises:
     var tmpl_id = _register_div_with_dyn_text(ctx, "changed-dyn-mut")
 
     # Old VNode
-    var old_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_text_node(
-        ctx.store, old_idx, w.write_string_struct("Count: 5")
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(
+            ctx.store, old_idx, w[].write_string_struct("Count: 5")
+        ),
     )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
 
     # Get the dynamic node ID assigned during create
-    var old_dyn_id = Int(w.vnode_get_dyn_node_id(ctx.store, old_idx, 0))
+    var old_dyn_id = Int(
+        w[].call_i32(
+            "vnode_get_dyn_node_id", args_ptr_i32_i32(ctx.store, old_idx, 0)
+        )
+    )
 
     ctx.reset_writer()
 
     # New VNode with different dynamic text
-    var new_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_text_node(
-        ctx.store, new_idx, w.write_string_struct("Count: 10")
+    var new_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(
+            ctx.store, new_idx, w[].write_string_struct("Count: 10")
+        ),
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
 
@@ -989,29 +1406,53 @@ fn test_diff_same_template_attr_changed() raises:
     var tmpl_id = _register_div_with_dyn_attr(ctx, "attr-changed-mut")
 
     # Old VNode
-    var old_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_text(
-        ctx.store,
-        old_idx,
-        w.write_string_struct("class"),
-        w.write_string_struct("old-class"),
-        0,
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_text",
+        args_ptr_i32_ptr_ptr_i32(
+            ctx.store,
+            old_idx,
+            w[].write_string_struct("class"),
+            w[].write_string_struct("old-class"),
+            0,
+        ),
     )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
     ctx.reset_writer()
 
     # New VNode with different attr value
-    var new_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_text(
-        ctx.store,
-        new_idx,
-        w.write_string_struct("class"),
-        w.write_string_struct("new-class"),
-        0,
+    var new_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_text",
+        args_ptr_i32_ptr_ptr_i32(
+            ctx.store,
+            new_idx,
+            w[].write_string_struct("class"),
+            w[].write_string_struct("new-class"),
+            0,
+        ),
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
 
@@ -1029,29 +1470,53 @@ fn test_diff_same_template_attr_unchanged_zero_mutations() raises:
     var tmpl_id = _register_div_with_dyn_attr(ctx, "attr-same-mut")
 
     # Old VNode
-    var old_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_text(
-        ctx.store,
-        old_idx,
-        w.write_string_struct("class"),
-        w.write_string_struct("same"),
-        0,
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_text",
+        args_ptr_i32_ptr_ptr_i32(
+            ctx.store,
+            old_idx,
+            w[].write_string_struct("class"),
+            w[].write_string_struct("same"),
+            0,
+        ),
     )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
     ctx.reset_writer()
 
     # New VNode with same attr value
-    var new_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_text(
-        ctx.store,
-        new_idx,
-        w.write_string_struct("class"),
-        w.write_string_struct("same"),
-        0,
+    var new_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_text",
+        args_ptr_i32_ptr_ptr_i32(
+            ctx.store,
+            new_idx,
+            w[].write_string_struct("class"),
+            w[].write_string_struct("same"),
+            0,
+        ),
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
     assert_equal(len(mutations), 0, "same attr value produces 0 mutations")
@@ -1066,20 +1531,44 @@ fn test_diff_bool_attr_changed() raises:
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "bool-attr-mut")
 
-    var old_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_bool(
-        ctx.store, old_idx, w.write_string_struct("disabled"), 0, 0
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_bool",
+        args_ptr_i32_ptr_i32_i32(
+            ctx.store, old_idx, w[].write_string_struct("disabled"), 0, 0
+        ),
     )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
     ctx.reset_writer()
 
-    var new_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_bool(
-        ctx.store, new_idx, w.write_string_struct("disabled"), 1, 0
+    var new_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_bool",
+        args_ptr_i32_ptr_i32_i32(
+            ctx.store, new_idx, w[].write_string_struct("disabled"), 1, 0
+        ),
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
 
@@ -1095,13 +1584,28 @@ fn test_diff_text_to_placeholder_replacement() raises:
     var ctx = WasmTestContext(w)
 
     var old_idx = Int(
-        w.vnode_push_text(ctx.store, w.write_string_struct("hello"))
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("hello")),
+        )
     )
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
     ctx.reset_writer()
 
-    var new_idx = Int(w.vnode_push_placeholder(ctx.store, 0))
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    var new_idx = Int(
+        w[].call_i32("vnode_push_placeholder", args_ptr_i32(ctx.store, 0))
+    )
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
 
@@ -1125,13 +1629,27 @@ fn test_diff_different_templates_replacement() raises:
     var tmpl_a = _register_div_template(ctx, "tmpl-a-mut")
     var tmpl_b = _register_div_template(ctx, "tmpl-b-mut")
 
-    var old_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_a))
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    var old_idx = Int(
+        w[].call_i32("vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_a))
+    )
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
     ctx.reset_writer()
 
-    var new_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_b))
+    var new_idx = Int(
+        w[].call_i32("vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_b))
+    )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
 
@@ -1150,24 +1668,68 @@ fn test_diff_fragment_children_text_changed() raises:
     var ctx = WasmTestContext(w)
 
     # Old fragment: [A, B]
-    var oa = Int(w.vnode_push_text(ctx.store, w.write_string_struct("A")))
-    var ob = Int(w.vnode_push_text(ctx.store, w.write_string_struct("B")))
-    var old_frag_idx = Int(w.vnode_push_fragment(ctx.store))
-    w.vnode_push_fragment_child(ctx.store, old_frag_idx, oa)
-    w.vnode_push_fragment_child(ctx.store, old_frag_idx, ob)
+    var oa = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("A")),
+        )
+    )
+    var ob = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("B")),
+        )
+    )
+    var old_frag_idx = Int(
+        w[].call_i32("vnode_push_fragment", args_ptr(ctx.store))
+    )
+    w[].call_void(
+        "vnode_push_fragment_child",
+        args_ptr_i32_i32(ctx.store, old_frag_idx, oa),
+    )
+    w[].call_void(
+        "vnode_push_fragment_child",
+        args_ptr_i32_i32(ctx.store, old_frag_idx, ob),
+    )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_frag_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_frag_idx
+        ),
+    )
     ctx.reset_writer()
 
     # New fragment: [A, C] (B -> C)
-    var na = Int(w.vnode_push_text(ctx.store, w.write_string_struct("A")))
-    var nc = Int(w.vnode_push_text(ctx.store, w.write_string_struct("C")))
-    var new_frag_idx = Int(w.vnode_push_fragment(ctx.store))
-    w.vnode_push_fragment_child(ctx.store, new_frag_idx, na)
-    w.vnode_push_fragment_child(ctx.store, new_frag_idx, nc)
+    var na = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("A")),
+        )
+    )
+    var nc = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("C")),
+        )
+    )
+    var new_frag_idx = Int(
+        w[].call_i32("vnode_push_fragment", args_ptr(ctx.store))
+    )
+    w[].call_void(
+        "vnode_push_fragment_child",
+        args_ptr_i32_i32(ctx.store, new_frag_idx, na),
+    )
+    w[].call_void(
+        "vnode_push_fragment_child",
+        args_ptr_i32_i32(ctx.store, new_frag_idx, nc),
+    )
 
-    _ = w.diff_vnodes(
-        ctx.writer, ctx.eid, ctx.rt, ctx.store, old_frag_idx, new_frag_idx
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_frag_idx, new_frag_idx
+        ),
     )
 
     var mutations = ctx.finalize_and_read()
@@ -1185,24 +1747,68 @@ fn test_diff_fragment_children_removed() raises:
     var ctx = WasmTestContext(w)
 
     # Old fragment: [A, B, C]
-    var oa = Int(w.vnode_push_text(ctx.store, w.write_string_struct("A")))
-    var ob = Int(w.vnode_push_text(ctx.store, w.write_string_struct("B")))
-    var oc = Int(w.vnode_push_text(ctx.store, w.write_string_struct("C")))
-    var old_frag_idx = Int(w.vnode_push_fragment(ctx.store))
-    w.vnode_push_fragment_child(ctx.store, old_frag_idx, oa)
-    w.vnode_push_fragment_child(ctx.store, old_frag_idx, ob)
-    w.vnode_push_fragment_child(ctx.store, old_frag_idx, oc)
+    var oa = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("A")),
+        )
+    )
+    var ob = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("B")),
+        )
+    )
+    var oc = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("C")),
+        )
+    )
+    var old_frag_idx = Int(
+        w[].call_i32("vnode_push_fragment", args_ptr(ctx.store))
+    )
+    w[].call_void(
+        "vnode_push_fragment_child",
+        args_ptr_i32_i32(ctx.store, old_frag_idx, oa),
+    )
+    w[].call_void(
+        "vnode_push_fragment_child",
+        args_ptr_i32_i32(ctx.store, old_frag_idx, ob),
+    )
+    w[].call_void(
+        "vnode_push_fragment_child",
+        args_ptr_i32_i32(ctx.store, old_frag_idx, oc),
+    )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_frag_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_frag_idx
+        ),
+    )
     ctx.reset_writer()
 
     # New fragment: [A] (B, C removed)
-    var na = Int(w.vnode_push_text(ctx.store, w.write_string_struct("A")))
-    var new_frag_idx = Int(w.vnode_push_fragment(ctx.store))
-    w.vnode_push_fragment_child(ctx.store, new_frag_idx, na)
+    var na = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("A")),
+        )
+    )
+    var new_frag_idx = Int(
+        w[].call_i32("vnode_push_fragment", args_ptr(ctx.store))
+    )
+    w[].call_void(
+        "vnode_push_fragment_child",
+        args_ptr_i32_i32(ctx.store, new_frag_idx, na),
+    )
 
-    _ = w.diff_vnodes(
-        ctx.writer, ctx.eid, ctx.rt, ctx.store, old_frag_idx, new_frag_idx
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_frag_idx, new_frag_idx
+        ),
     )
 
     var mutations = ctx.finalize_and_read()
@@ -1220,24 +1826,68 @@ fn test_diff_fragment_children_added() raises:
     var ctx = WasmTestContext(w)
 
     # Old fragment: [A]
-    var oa = Int(w.vnode_push_text(ctx.store, w.write_string_struct("A")))
-    var old_frag_idx = Int(w.vnode_push_fragment(ctx.store))
-    w.vnode_push_fragment_child(ctx.store, old_frag_idx, oa)
+    var oa = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("A")),
+        )
+    )
+    var old_frag_idx = Int(
+        w[].call_i32("vnode_push_fragment", args_ptr(ctx.store))
+    )
+    w[].call_void(
+        "vnode_push_fragment_child",
+        args_ptr_i32_i32(ctx.store, old_frag_idx, oa),
+    )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_frag_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_frag_idx
+        ),
+    )
     ctx.reset_writer()
 
     # New fragment: [A, B, C]
-    var na = Int(w.vnode_push_text(ctx.store, w.write_string_struct("A")))
-    var nb = Int(w.vnode_push_text(ctx.store, w.write_string_struct("B")))
-    var nc = Int(w.vnode_push_text(ctx.store, w.write_string_struct("C")))
-    var new_frag_idx = Int(w.vnode_push_fragment(ctx.store))
-    w.vnode_push_fragment_child(ctx.store, new_frag_idx, na)
-    w.vnode_push_fragment_child(ctx.store, new_frag_idx, nb)
-    w.vnode_push_fragment_child(ctx.store, new_frag_idx, nc)
+    var na = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("A")),
+        )
+    )
+    var nb = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("B")),
+        )
+    )
+    var nc = Int(
+        w[].call_i32(
+            "vnode_push_text",
+            args_ptr_ptr(ctx.store, w[].write_string_struct("C")),
+        )
+    )
+    var new_frag_idx = Int(
+        w[].call_i32("vnode_push_fragment", args_ptr(ctx.store))
+    )
+    w[].call_void(
+        "vnode_push_fragment_child",
+        args_ptr_i32_i32(ctx.store, new_frag_idx, na),
+    )
+    w[].call_void(
+        "vnode_push_fragment_child",
+        args_ptr_i32_i32(ctx.store, new_frag_idx, nb),
+    )
+    w[].call_void(
+        "vnode_push_fragment_child",
+        args_ptr_i32_i32(ctx.store, new_frag_idx, nc),
+    )
 
-    _ = w.diff_vnodes(
-        ctx.writer, ctx.eid, ctx.rt, ctx.store, old_frag_idx, new_frag_idx
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_frag_idx, new_frag_idx
+        ),
     )
 
     var mutations = ctx.finalize_and_read()
@@ -1260,20 +1910,44 @@ fn test_diff_event_listener_changed() raises:
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "event-change-mut")
 
-    var old_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_event(
-        ctx.store, old_idx, w.write_string_struct("onclick"), 1, 0
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_event",
+        args_ptr_i32_ptr_i32_i32(
+            ctx.store, old_idx, w[].write_string_struct("onclick"), 1, 0
+        ),
     )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
     ctx.reset_writer()
 
-    var new_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_event(
-        ctx.store, new_idx, w.write_string_struct("onclick"), 2, 0
+    var new_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_event",
+        args_ptr_i32_ptr_i32_i32(
+            ctx.store, new_idx, w[].write_string_struct("onclick"), 2, 0
+        ),
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
 
@@ -1292,20 +1966,44 @@ fn test_diff_same_event_listener_zero_mutations() raises:
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "event-same-mut")
 
-    var old_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_event(
-        ctx.store, old_idx, w.write_string_struct("onclick"), 1, 0
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_event",
+        args_ptr_i32_ptr_i32_i32(
+            ctx.store, old_idx, w[].write_string_struct("onclick"), 1, 0
+        ),
     )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
     ctx.reset_writer()
 
-    var new_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_event(
-        ctx.store, new_idx, w.write_string_struct("onclick"), 1, 0
+    var new_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_event",
+        args_ptr_i32_ptr_i32_i32(
+            ctx.store, new_idx, w[].write_string_struct("onclick"), 1, 0
+        ),
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
     assert_equal(len(mutations), 0, "same event listener produces 0 mutations")
@@ -1320,24 +2018,48 @@ fn test_diff_attr_type_changed_text_to_bool() raises:
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "type-change-mut")
 
-    var old_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_text(
-        ctx.store,
-        old_idx,
-        w.write_string_struct("disabled"),
-        w.write_string_struct("yes"),
-        0,
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_text",
+        args_ptr_i32_ptr_ptr_i32(
+            ctx.store,
+            old_idx,
+            w[].write_string_struct("disabled"),
+            w[].write_string_struct("yes"),
+            0,
+        ),
     )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
     ctx.reset_writer()
 
-    var new_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_bool(
-        ctx.store, new_idx, w.write_string_struct("disabled"), 1, 0
+    var new_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_bool",
+        args_ptr_i32_ptr_i32_i32(
+            ctx.store, new_idx, w[].write_string_struct("disabled"), 1, 0
+        ),
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
 
@@ -1354,24 +2076,48 @@ fn test_diff_attr_removed_text_to_none() raises:
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "attr-remove-mut")
 
-    var old_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_text(
-        ctx.store,
-        old_idx,
-        w.write_string_struct("class"),
-        w.write_string_struct("active"),
-        0,
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_text",
+        args_ptr_i32_ptr_ptr_i32(
+            ctx.store,
+            old_idx,
+            w[].write_string_struct("class"),
+            w[].write_string_struct("active"),
+            0,
+        ),
     )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
     ctx.reset_writer()
 
-    var new_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_none(
-        ctx.store, new_idx, w.write_string_struct("class"), 0
+    var new_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_none",
+        args_ptr_i32_ptr_i32(
+            ctx.store, new_idx, w[].write_string_struct("class"), 0
+        ),
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
 
@@ -1388,20 +2134,44 @@ fn test_diff_int_attr_changed() raises:
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "int-attr-mut")
 
-    var old_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_int(
-        ctx.store, old_idx, w.write_string_struct("tabindex"), 1, 0
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_int",
+        args_ptr_i32_ptr_i32_i32(
+            ctx.store, old_idx, w[].write_string_struct("tabindex"), 1, 0
+        ),
     )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
     ctx.reset_writer()
 
-    var new_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_attr_int(
-        ctx.store, new_idx, w.write_string_struct("tabindex"), 5, 0
+    var new_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_int",
+        args_ptr_i32_ptr_i32_i32(
+            ctx.store, new_idx, w[].write_string_struct("tabindex"), 5, 0
+        ),
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
 
@@ -1419,29 +2189,65 @@ fn test_diff_mount_state_transfer_preserves_ids() raises:
     var tmpl_id = _register_div_with_dyn_text(ctx, "transfer-test-mut")
 
     # Old VNode
-    var old_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_text_node(
-        ctx.store, old_idx, w.write_string_struct("old")
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(ctx.store, old_idx, w[].write_string_struct("old")),
     )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
 
-    var old_root_id = Int(w.vnode_get_root_id(ctx.store, old_idx, 0))
-    var old_dyn_id = Int(w.vnode_get_dyn_node_id(ctx.store, old_idx, 0))
+    var old_root_id = Int(
+        w[].call_i32(
+            "vnode_get_root_id", args_ptr_i32_i32(ctx.store, old_idx, 0)
+        )
+    )
+    var old_dyn_id = Int(
+        w[].call_i32(
+            "vnode_get_dyn_node_id", args_ptr_i32_i32(ctx.store, old_idx, 0)
+        )
+    )
 
     ctx.reset_writer()
 
     # New VNode
-    var new_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_text_node(
-        ctx.store, new_idx, w.write_string_struct("new")
+    var new_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(ctx.store, new_idx, w[].write_string_struct("new")),
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     # Check that new VNode got the same ElementIds
-    var new_root_id = Int(w.vnode_get_root_id(ctx.store, new_idx, 0))
-    var new_dyn_id = Int(w.vnode_get_dyn_node_id(ctx.store, new_idx, 0))
+    var new_root_id = Int(
+        w[].call_i32(
+            "vnode_get_root_id", args_ptr_i32_i32(ctx.store, new_idx, 0)
+        )
+    )
+    var new_dyn_id = Int(
+        w[].call_i32(
+            "vnode_get_dyn_node_id", args_ptr_i32_i32(ctx.store, new_idx, 0)
+        )
+    )
 
     assert_equal(new_root_id, old_root_id, "root ID transferred to new VNode")
     assert_equal(
@@ -1459,21 +2265,41 @@ fn test_diff_sequential_diffs_state_chain() raises:
     var tmpl_id = _register_div_with_dyn_text(ctx, "chain-test-mut")
 
     # v0: initial
-    var v0_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_text_node(
-        ctx.store, v0_idx, w.write_string_struct("state-0")
+    var v0_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(ctx.store, v0_idx, w[].write_string_struct("state-0")),
     )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, v0_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, v0_idx
+        ),
+    )
     ctx.reset_writer()
 
     # v0 -> v1
-    var v1_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_text_node(
-        ctx.store, v1_idx, w.write_string_struct("state-1")
+    var v1_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(ctx.store, v1_idx, w[].write_string_struct("state-1")),
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, v0_idx, v1_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, v0_idx, v1_idx
+        ),
+    )
 
     var muts1 = ctx.finalize_and_read()
     var st1 = _count_op(muts1, OP_SET_TEXT)
@@ -1482,12 +2308,22 @@ fn test_diff_sequential_diffs_state_chain() raises:
     ctx.reset_writer()
 
     # v1 -> v2
-    var v2_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_text_node(
-        ctx.store, v2_idx, w.write_string_struct("state-2")
+    var v2_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(ctx.store, v2_idx, w[].write_string_struct("state-2")),
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, v1_idx, v2_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, v1_idx, v2_idx
+        ),
+    )
 
     var muts2 = ctx.finalize_and_read()
     var st2 = _count_op(muts2, OP_SET_TEXT)
@@ -1496,12 +2332,22 @@ fn test_diff_sequential_diffs_state_chain() raises:
     ctx.reset_writer()
 
     # v2 -> v3 (same text -> 0)
-    var v3_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_text_node(
-        ctx.store, v3_idx, w.write_string_struct("state-2")
+    var v3_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(ctx.store, v3_idx, w[].write_string_struct("state-2")),
     )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, v2_idx, v3_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, v2_idx, v3_idx
+        ),
+    )
 
     var muts3 = ctx.finalize_and_read()
     assert_equal(len(muts3), 0, "v2 -> v3 same text: 0 mutations")
@@ -1516,18 +2362,41 @@ fn test_diff_dyn_node_text_to_placeholder() raises:
 
     var tmpl_id = _register_div_with_dyn_node(ctx, "dyn-text-to-ph-mut")
 
-    var old_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_text_node(
-        ctx.store, old_idx, w.write_string_struct("some text")
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_text_node",
+        args_ptr_i32_ptr(
+            ctx.store, old_idx, w[].write_string_struct("some text")
+        ),
     )
 
-    _ = w.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx)
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
     ctx.reset_writer()
 
-    var new_idx = Int(w.vnode_push_template_ref(ctx.store, tmpl_id))
-    w.vnode_push_dynamic_placeholder(ctx.store, new_idx)
+    var new_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_placeholder", args_ptr_i32(ctx.store, new_idx)
+    )
 
-    _ = w.diff_vnodes(ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx)
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
 
     var mutations = ctx.finalize_and_read()
 

@@ -1,5 +1,5 @@
 # ScopeArena and scope/hook lifecycle exercised through the real WASM binary
-# via wasmtime-py (called from Mojo via Python interop).
+# via wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
 #
 # These tests verify that the scope arena, hook system, and rendering lifecycle
 # work correctly when compiled to WASM and executed via the Wasmtime runtime.
@@ -7,27 +7,34 @@
 # Run with:
 #   mojo test test/test_scopes.mojo
 
-from python import Python, PythonObject
+from memory import UnsafePointer
 from testing import assert_equal, assert_true, assert_false
 
+from wasm_harness import (
+    WasmInstance,
+    get_instance,
+    args_ptr,
+    args_ptr_i32,
+    args_ptr_i32_i32,
+    no_args,
+)
 
-fn _get_wasm() raises -> PythonObject:
-    Python.add_to_path("test")
-    var harness = Python.import_module("wasm_harness")
-    return harness.get_instance()
+
+fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
+    return get_instance()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-fn _create_runtime(w: PythonObject) raises -> PythonObject:
+fn _create_runtime(w: UnsafePointer[WasmInstance]) raises -> Int:
     """Create a heap-allocated Runtime via WASM."""
-    return w.runtime_create()
+    return Int(w[].call_i64("runtime_create", no_args()))
 
 
-fn _destroy_runtime(w: PythonObject, rt: PythonObject) raises:
+fn _destroy_runtime(w: UnsafePointer[WasmInstance], rt: Int) raises:
     """Destroy a heap-allocated Runtime via WASM."""
-    w.runtime_destroy(rt)
+    w[].call_void("runtime_destroy", args_ptr(rt))
 
 
 # ── Scope lifecycle ──────────────────────────────────────────────────────────
@@ -37,15 +44,35 @@ fn test_scope_create_and_destroy() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    assert_equal(Int(w.scope_count(rt)), 0, "new runtime has 0 scopes")
+    assert_equal(
+        Int(w[].call_i32("scope_count", args_ptr(rt))),
+        0,
+        "new runtime has 0 scopes",
+    )
 
-    var s0 = Int(w.scope_create(rt, 0, -1))
-    assert_equal(Int(w.scope_count(rt)), 1, "1 scope after create")
-    assert_equal(Int(w.scope_contains(rt, s0)), 1, "scope exists")
+    var s0 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    assert_equal(
+        Int(w[].call_i32("scope_count", args_ptr(rt))),
+        1,
+        "1 scope after create",
+    )
+    assert_equal(
+        Int(w[].call_i32("scope_contains", args_ptr_i32(rt, s0))),
+        1,
+        "scope exists",
+    )
 
-    w.scope_destroy(rt, s0)
-    assert_equal(Int(w.scope_count(rt)), 0, "0 scopes after destroy")
-    assert_equal(Int(w.scope_contains(rt, s0)), 0, "scope no longer exists")
+    w[].call_void("scope_destroy", args_ptr_i32(rt, s0))
+    assert_equal(
+        Int(w[].call_i32("scope_count", args_ptr(rt))),
+        0,
+        "0 scopes after destroy",
+    )
+    assert_equal(
+        Int(w[].call_i32("scope_contains", args_ptr_i32(rt, s0))),
+        0,
+        "scope no longer exists",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -54,14 +81,18 @@ fn test_scope_sequential_ids() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s0 = Int(w.scope_create(rt, 0, -1))
-    var s1 = Int(w.scope_create(rt, 0, -1))
-    var s2 = Int(w.scope_create(rt, 0, -1))
+    var s0 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var s1 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var s2 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
     assert_equal(s0, 0, "first scope gets ID 0")
     assert_equal(s1, 1, "second scope gets ID 1")
     assert_equal(s2, 2, "third scope gets ID 2")
-    assert_equal(Int(w.scope_count(rt)), 3, "3 scopes created")
+    assert_equal(
+        Int(w[].call_i32("scope_count", args_ptr(rt))),
+        3,
+        "3 scopes created",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -70,13 +101,17 @@ fn test_scope_slot_reuse_after_destroy() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s0 = Int(w.scope_create(rt, 0, -1))
-    _ = w.scope_create(rt, 0, -1)
-    w.scope_destroy(rt, s0)
+    var s0 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    _ = w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1))
+    w[].call_void("scope_destroy", args_ptr_i32(rt, s0))
 
-    var s2 = Int(w.scope_create(rt, 0, -1))
+    var s2 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
     assert_equal(s2, s0, "new scope reuses destroyed slot")
-    assert_equal(Int(w.scope_count(rt)), 2, "2 scopes after reuse")
+    assert_equal(
+        Int(w[].call_i32("scope_count", args_ptr(rt))),
+        2,
+        "2 scopes after reuse",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -85,11 +120,13 @@ fn test_scope_double_destroy_is_noop() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s0 = Int(w.scope_create(rt, 0, -1))
-    w.scope_destroy(rt, s0)
-    w.scope_destroy(rt, s0)  # should not crash
+    var s0 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    w[].call_void("scope_destroy", args_ptr_i32(rt, s0))
+    w[].call_void("scope_destroy", args_ptr_i32(rt, s0))  # should not crash
     assert_equal(
-        Int(w.scope_count(rt)), 0, "still 0 scopes after double destroy"
+        Int(w[].call_i32("scope_count", args_ptr(rt))),
+        0,
+        "still 0 scopes after double destroy",
     )
 
     _destroy_runtime(w, rt)
@@ -102,20 +139,42 @@ fn test_scope_height_and_parent_tracking() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var root = Int(w.scope_create(rt, 0, -1))
-    assert_equal(Int(w.scope_height(rt, root)), 0, "root height is 0")
-    assert_equal(Int(w.scope_parent(rt, root)), -1, "root has no parent (-1)")
-
-    var child = Int(w.scope_create(rt, 1, root))
-    assert_equal(Int(w.scope_height(rt, child)), 1, "child height is 1")
-    assert_equal(Int(w.scope_parent(rt, child)), root, "child parent is root")
-
-    var grandchild = Int(w.scope_create(rt, 2, child))
+    var root = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
     assert_equal(
-        Int(w.scope_height(rt, grandchild)), 2, "grandchild height is 2"
+        Int(w[].call_i32("scope_height", args_ptr_i32(rt, root))),
+        0,
+        "root height is 0",
     )
     assert_equal(
-        Int(w.scope_parent(rt, grandchild)), child, "grandchild parent is child"
+        Int(w[].call_i32("scope_parent", args_ptr_i32(rt, root))),
+        -1,
+        "root has no parent (-1)",
+    )
+
+    var child = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 1, root)))
+    assert_equal(
+        Int(w[].call_i32("scope_height", args_ptr_i32(rt, child))),
+        1,
+        "child height is 1",
+    )
+    assert_equal(
+        Int(w[].call_i32("scope_parent", args_ptr_i32(rt, child))),
+        root,
+        "child parent is root",
+    )
+
+    var grandchild = Int(
+        w[].call_i32("scope_create", args_ptr_i32_i32(rt, 2, child))
+    )
+    assert_equal(
+        Int(w[].call_i32("scope_height", args_ptr_i32(rt, grandchild))),
+        2,
+        "grandchild height is 2",
+    )
+    assert_equal(
+        Int(w[].call_i32("scope_parent", args_ptr_i32(rt, grandchild))),
+        child,
+        "grandchild parent is child",
     )
 
     _destroy_runtime(w, rt)
@@ -125,21 +184,29 @@ fn test_scope_create_child_auto_computes_height() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var root = Int(w.scope_create(rt, 0, -1))
-    var child = Int(w.scope_create_child(rt, root))
-    var grandchild = Int(w.scope_create_child(rt, child))
+    var root = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var child = Int(w[].call_i32("scope_create_child", args_ptr_i32(rt, root)))
+    var grandchild = Int(
+        w[].call_i32("scope_create_child", args_ptr_i32(rt, child))
+    )
 
     assert_equal(
-        Int(w.scope_height(rt, child)), 1, "child height auto-computed to 1"
+        Int(w[].call_i32("scope_height", args_ptr_i32(rt, child))),
+        1,
+        "child height auto-computed to 1",
     )
-    assert_equal(Int(w.scope_parent(rt, child)), root, "child parent is root")
     assert_equal(
-        Int(w.scope_height(rt, grandchild)),
+        Int(w[].call_i32("scope_parent", args_ptr_i32(rt, child))),
+        root,
+        "child parent is root",
+    )
+    assert_equal(
+        Int(w[].call_i32("scope_height", args_ptr_i32(rt, grandchild))),
         2,
         "grandchild height auto-computed to 2",
     )
     assert_equal(
-        Int(w.scope_parent(rt, grandchild)),
+        Int(w[].call_i32("scope_parent", args_ptr_i32(rt, grandchild))),
         child,
         "grandchild parent is child",
     )
@@ -154,15 +221,25 @@ fn test_scope_dirty_flag() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    assert_equal(Int(w.scope_is_dirty(rt, s)), 0, "not dirty initially")
-
-    w.scope_set_dirty(rt, s, 1)
-    assert_equal(Int(w.scope_is_dirty(rt, s)), 1, "dirty after set_dirty(True)")
-
-    w.scope_set_dirty(rt, s, 0)
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
     assert_equal(
-        Int(w.scope_is_dirty(rt, s)), 0, "clean after set_dirty(False)"
+        Int(w[].call_i32("scope_is_dirty", args_ptr_i32(rt, s))),
+        0,
+        "not dirty initially",
+    )
+
+    w[].call_void("scope_set_dirty", args_ptr_i32_i32(rt, s, 1))
+    assert_equal(
+        Int(w[].call_i32("scope_is_dirty", args_ptr_i32(rt, s))),
+        1,
+        "dirty after set_dirty(True)",
+    )
+
+    w[].call_void("scope_set_dirty", args_ptr_i32_i32(rt, s, 0))
+    assert_equal(
+        Int(w[].call_i32("scope_is_dirty", args_ptr_i32(rt, s))),
+        0,
+        "clean after set_dirty(False)",
     )
 
     _destroy_runtime(w, rt)
@@ -175,26 +252,28 @@ fn test_scope_render_count() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
     assert_equal(
-        Int(w.scope_render_count(rt, s)), 0, "render_count starts at 0"
+        Int(w[].call_i32("scope_render_count", args_ptr_i32(rt, s))),
+        0,
+        "render_count starts at 0",
     )
 
-    var prev = Int(w.scope_begin_render(rt, s))
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
     assert_equal(
-        Int(w.scope_render_count(rt, s)),
+        Int(w[].call_i32("scope_render_count", args_ptr_i32(rt, s))),
         1,
         "render_count is 1 after first begin_render",
     )
-    w.scope_end_render(rt, prev)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
-    var prev2 = Int(w.scope_begin_render(rt, s))
+    var prev2 = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
     assert_equal(
-        Int(w.scope_render_count(rt, s)),
+        Int(w[].call_i32("scope_render_count", args_ptr_i32(rt, s))),
         2,
         "render_count is 2 after second begin_render",
     )
-    w.scope_end_render(rt, prev2)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev2))
 
     _destroy_runtime(w, rt)
 
@@ -206,13 +285,21 @@ fn test_scope_begin_render_clears_dirty() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    w.scope_set_dirty(rt, s, 1)
-    assert_equal(Int(w.scope_is_dirty(rt, s)), 1, "dirty before render")
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    w[].call_void("scope_set_dirty", args_ptr_i32_i32(rt, s, 1))
+    assert_equal(
+        Int(w[].call_i32("scope_is_dirty", args_ptr_i32(rt, s))),
+        1,
+        "dirty before render",
+    )
 
-    var prev = Int(w.scope_begin_render(rt, s))
-    assert_equal(Int(w.scope_is_dirty(rt, s)), 0, "clean after begin_render")
-    w.scope_end_render(rt, prev)
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    assert_equal(
+        Int(w[].call_i32("scope_is_dirty", args_ptr_i32(rt, s))),
+        0,
+        "clean after begin_render",
+    )
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
     _destroy_runtime(w, rt)
 
@@ -224,23 +311,41 @@ fn test_scope_begin_end_render_manages_current() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    assert_equal(Int(w.scope_has_scope(rt)), 0, "no scope initially")
     assert_equal(
-        Int(w.scope_get_current(rt)), -1, "current scope is -1 initially"
+        Int(w[].call_i32("scope_has_scope", args_ptr(rt))),
+        0,
+        "no scope initially",
+    )
+    assert_equal(
+        Int(w[].call_i32("scope_get_current", args_ptr(rt))),
+        -1,
+        "current scope is -1 initially",
     )
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var prev = Int(w.scope_begin_render(rt, s))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
     assert_equal(prev, -1, "previous scope is -1 (was no scope)")
-    assert_equal(Int(w.scope_has_scope(rt)), 1, "scope active during render")
     assert_equal(
-        Int(w.scope_get_current(rt)), s, "current scope is the rendering scope"
+        Int(w[].call_i32("scope_has_scope", args_ptr(rt))),
+        1,
+        "scope active during render",
+    )
+    assert_equal(
+        Int(w[].call_i32("scope_get_current", args_ptr(rt))),
+        s,
+        "current scope is the rendering scope",
     )
 
-    w.scope_end_render(rt, prev)
-    assert_equal(Int(w.scope_has_scope(rt)), 0, "no scope after end_render")
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
     assert_equal(
-        Int(w.scope_get_current(rt)), -1, "current scope is -1 after end_render"
+        Int(w[].call_i32("scope_has_scope", args_ptr(rt))),
+        0,
+        "no scope after end_render",
+    )
+    assert_equal(
+        Int(w[].call_i32("scope_get_current", args_ptr(rt))),
+        -1,
+        "current scope is -1 after end_render",
     )
 
     _destroy_runtime(w, rt)
@@ -253,17 +358,25 @@ fn test_scope_begin_render_sets_reactive_context() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    assert_equal(Int(w.runtime_has_context(rt)), 0, "no context initially")
-
-    var prev = Int(w.scope_begin_render(rt, s))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
     assert_equal(
-        Int(w.runtime_has_context(rt)), 1, "context active during render"
+        Int(w[].call_i32("runtime_has_context", args_ptr(rt))),
+        0,
+        "no context initially",
     )
 
-    w.scope_end_render(rt, prev)
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
     assert_equal(
-        Int(w.runtime_has_context(rt)), 0, "context cleared after end_render"
+        Int(w[].call_i32("runtime_has_context", args_ptr(rt))),
+        1,
+        "context active during render",
+    )
+
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
+    assert_equal(
+        Int(w[].call_i32("runtime_has_context", args_ptr(rt))),
+        0,
+        "context cleared after end_render",
     )
 
     _destroy_runtime(w, rt)
@@ -276,27 +389,41 @@ fn test_scope_nested_rendering() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var root = Int(w.scope_create(rt, 0, -1))
-    var child = Int(w.scope_create_child(rt, root))
+    var root = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var child = Int(w[].call_i32("scope_create_child", args_ptr_i32(rt, root)))
 
     # Begin rendering root
-    var prev1 = Int(w.scope_begin_render(rt, root))
-    assert_equal(Int(w.scope_get_current(rt)), root, "current scope is root")
+    var prev1 = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, root)))
+    assert_equal(
+        Int(w[].call_i32("scope_get_current", args_ptr(rt))),
+        root,
+        "current scope is root",
+    )
 
     # Nest: begin rendering child
-    var prev2 = Int(w.scope_begin_render(rt, child))
+    var prev2 = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, child)))
     assert_equal(prev2, root, "previous scope was root")
-    assert_equal(Int(w.scope_get_current(rt)), child, "current scope is child")
+    assert_equal(
+        Int(w[].call_i32("scope_get_current", args_ptr(rt))),
+        child,
+        "current scope is child",
+    )
 
     # End child rendering
-    w.scope_end_render(rt, prev2)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev2))
     assert_equal(
-        Int(w.scope_get_current(rt)), root, "current scope restored to root"
+        Int(w[].call_i32("scope_get_current", args_ptr(rt))),
+        root,
+        "current scope restored to root",
     )
 
     # End root rendering
-    w.scope_end_render(rt, prev1)
-    assert_equal(Int(w.scope_get_current(rt)), -1, "current scope cleared")
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev1))
+    assert_equal(
+        Int(w[].call_i32("scope_get_current", args_ptr(rt))),
+        -1,
+        "current scope cleared",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -308,28 +435,28 @@ fn test_scope_is_first_render() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
     assert_equal(
-        Int(w.scope_is_first_render(rt, s)),
+        Int(w[].call_i32("scope_is_first_render", args_ptr_i32(rt, s))),
         1,
         "first render before any rendering",
     )
 
-    var prev = Int(w.scope_begin_render(rt, s))
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
     assert_equal(
-        Int(w.scope_is_first_render(rt, s)),
+        Int(w[].call_i32("scope_is_first_render", args_ptr_i32(rt, s))),
         1,
         "first render during first render pass",
     )
-    w.scope_end_render(rt, prev)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
-    var prev2 = Int(w.scope_begin_render(rt, s))
+    var prev2 = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
     assert_equal(
-        Int(w.scope_is_first_render(rt, s)),
+        Int(w[].call_i32("scope_is_first_render", args_ptr_i32(rt, s))),
         0,
         "not first render on second pass",
     )
-    w.scope_end_render(rt, prev2)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev2))
 
     _destroy_runtime(w, rt)
 
@@ -341,8 +468,12 @@ fn test_scope_hooks_start_empty() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    assert_equal(Int(w.scope_hook_count(rt, s)), 0, "no hooks initially")
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    assert_equal(
+        Int(w[].call_i32("scope_hook_count", args_ptr_i32(rt, s))),
+        0,
+        "no hooks initially",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -354,29 +485,33 @@ fn test_hook_use_signal_creates_on_first_render() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
-    var prev = Int(w.scope_begin_render(rt, s))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
 
-    var key = Int(w.hook_use_signal_i32(rt, 42))
+    var key = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 42)))
     assert_equal(
-        Int(w.signal_read_i32(rt, key)),
+        Int(w[].call_i32("signal_read_i32", args_ptr_i32(rt, key))),
         42,
         "signal created with initial value 42",
     )
-    assert_equal(Int(w.scope_hook_count(rt, s)), 1, "1 hook after use_signal")
     assert_equal(
-        Int(w.scope_hook_value_at(rt, s, 0)),
+        Int(w[].call_i32("scope_hook_count", args_ptr_i32(rt, s))),
+        1,
+        "1 hook after use_signal",
+    )
+    assert_equal(
+        Int(w[].call_i32("scope_hook_value_at", args_ptr_i32_i32(rt, s, 0))),
         key,
         "hook[0] stores the signal key",
     )
     # HOOK_SIGNAL tag is 0
     assert_equal(
-        Int(w.scope_hook_tag_at(rt, s, 0)),
+        Int(w[].call_i32("scope_hook_tag_at", args_ptr_i32_i32(rt, s, 0))),
         0,
         "hook[0] tag is HOOK_SIGNAL (0)",
     )
 
-    w.scope_end_render(rt, prev)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
     _destroy_runtime(w, rt)
 
 
@@ -387,34 +522,36 @@ fn test_hook_use_signal_same_on_rerender() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
     # First render: create signal
-    var prev1 = Int(w.scope_begin_render(rt, s))
-    var key1 = Int(w.hook_use_signal_i32(rt, 100))
+    var prev1 = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    var key1 = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 100)))
     assert_equal(
-        Int(w.signal_read_i32(rt, key1)),
+        Int(w[].call_i32("signal_read_i32", args_ptr_i32(rt, key1))),
         100,
         "first render: signal value is 100",
     )
-    w.scope_end_render(rt, prev1)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev1))
 
     # Modify signal between renders
-    w.signal_write_i32(rt, key1, 200)
+    w[].call_void("signal_write_i32", args_ptr_i32_i32(rt, key1, 200))
 
     # Second render: retrieve same signal (initial value ignored)
-    var prev2 = Int(w.scope_begin_render(rt, s))
-    var key2 = Int(w.hook_use_signal_i32(rt, 999))
+    var prev2 = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    var key2 = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 999)))
     assert_equal(key2, key1, "re-render returns same signal key")
     assert_equal(
-        Int(w.signal_read_i32(rt, key2)),
+        Int(w[].call_i32("signal_read_i32", args_ptr_i32(rt, key2))),
         200,
         "signal retains modified value, not initial",
     )
     assert_equal(
-        Int(w.scope_hook_count(rt, s)), 1, "still 1 hook (no new hook created)"
+        Int(w[].call_i32("scope_hook_count", args_ptr_i32(rt, s))),
+        1,
+        "still 1 hook (no new hook created)",
     )
-    w.scope_end_render(rt, prev2)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev2))
 
     _destroy_runtime(w, rt)
 
@@ -426,34 +563,52 @@ fn test_hook_multiple_signals_same_scope() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
     # First render: create 3 signals
-    var prev1 = Int(w.scope_begin_render(rt, s))
-    var k1 = Int(w.hook_use_signal_i32(rt, 10))
-    var k2 = Int(w.hook_use_signal_i32(rt, 20))
-    var k3 = Int(w.hook_use_signal_i32(rt, 30))
+    var prev1 = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    var k1 = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 10)))
+    var k2 = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 20)))
+    var k3 = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 30)))
     assert_equal(
-        Int(w.scope_hook_count(rt, s)), 3, "3 hooks after first render"
+        Int(w[].call_i32("scope_hook_count", args_ptr_i32(rt, s))),
+        3,
+        "3 hooks after first render",
     )
     assert_true(k1 != k2 and k2 != k3, "all signal keys distinct")
-    w.scope_end_render(rt, prev1)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev1))
 
     # Second render: same order returns same keys
-    var prev2 = Int(w.scope_begin_render(rt, s))
-    var k1b = Int(w.hook_use_signal_i32(rt, 0))
-    var k2b = Int(w.hook_use_signal_i32(rt, 0))
-    var k3b = Int(w.hook_use_signal_i32(rt, 0))
+    var prev2 = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    var k1b = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0)))
+    var k2b = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0)))
+    var k3b = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0)))
     assert_equal(k1b, k1, "re-render hook 0 returns same key")
     assert_equal(k2b, k2, "re-render hook 1 returns same key")
     assert_equal(k3b, k3, "re-render hook 2 returns same key")
-    assert_equal(Int(w.scope_hook_count(rt, s)), 3, "still 3 hooks")
-    w.scope_end_render(rt, prev2)
+    assert_equal(
+        Int(w[].call_i32("scope_hook_count", args_ptr_i32(rt, s))),
+        3,
+        "still 3 hooks",
+    )
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev2))
 
     # Values are independent
-    assert_equal(Int(w.signal_peek_i32(rt, k1)), 10, "signal 1 has value 10")
-    assert_equal(Int(w.signal_peek_i32(rt, k2)), 20, "signal 2 has value 20")
-    assert_equal(Int(w.signal_peek_i32(rt, k3)), 30, "signal 3 has value 30")
+    assert_equal(
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, k1))),
+        10,
+        "signal 1 has value 10",
+    )
+    assert_equal(
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, k2))),
+        20,
+        "signal 2 has value 20",
+    )
+    assert_equal(
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, k3))),
+        30,
+        "signal 3 has value 30",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -465,28 +620,42 @@ fn test_hook_signals_in_different_scopes_independent() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s1 = Int(w.scope_create(rt, 0, -1))
-    var s2 = Int(w.scope_create(rt, 0, -1))
+    var s1 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var s2 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
     # Render scope 1
-    var prev1 = Int(w.scope_begin_render(rt, s1))
-    var k1 = Int(w.hook_use_signal_i32(rt, 100))
-    w.scope_end_render(rt, prev1)
+    var prev1 = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s1)))
+    var k1 = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 100)))
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev1))
 
     # Render scope 2
-    var prev2 = Int(w.scope_begin_render(rt, s2))
-    var k2 = Int(w.hook_use_signal_i32(rt, 200))
-    w.scope_end_render(rt, prev2)
+    var prev2 = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s2)))
+    var k2 = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 200)))
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev2))
 
     assert_true(k1 != k2, "different scopes get different signal keys")
-    assert_equal(Int(w.signal_peek_i32(rt, k1)), 100, "scope 1 signal is 100")
-    assert_equal(Int(w.signal_peek_i32(rt, k2)), 200, "scope 2 signal is 200")
+    assert_equal(
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, k1))),
+        100,
+        "scope 1 signal is 100",
+    )
+    assert_equal(
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, k2))),
+        200,
+        "scope 2 signal is 200",
+    )
 
     # Modify one, other unchanged
-    w.signal_write_i32(rt, k1, 999)
-    assert_equal(Int(w.signal_peek_i32(rt, k1)), 999, "scope 1 signal updated")
+    w[].call_void("signal_write_i32", args_ptr_i32_i32(rt, k1, 999))
     assert_equal(
-        Int(w.signal_peek_i32(rt, k2)), 200, "scope 2 signal unchanged"
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, k1))),
+        999,
+        "scope 1 signal updated",
+    )
+    assert_equal(
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, k2))),
+        200,
+        "scope 2 signal unchanged",
     )
 
     _destroy_runtime(w, rt)
@@ -499,26 +668,34 @@ fn test_hook_signal_read_subscribes_scope() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
     # First render
-    var prev = Int(w.scope_begin_render(rt, s))
-    var key = Int(w.hook_use_signal_i32(rt, 0))
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    var key = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0)))
 
     # Read the signal during render — should subscribe this scope
-    _ = w.signal_read_i32(rt, key)
+    _ = w[].call_i32("signal_read_i32", args_ptr_i32(rt, key))
     assert_equal(
-        Int(w.signal_subscriber_count(rt, key)),
+        Int(w[].call_i32("signal_subscriber_count", args_ptr_i32(rt, key))),
         1,
         "scope subscribed after read during render",
     )
 
-    w.scope_end_render(rt, prev)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
     # Write should mark scope dirty
-    w.signal_write_i32(rt, key, 42)
-    assert_equal(Int(w.runtime_has_dirty(rt)), 1, "dirty after signal write")
-    assert_equal(Int(w.runtime_dirty_count(rt)), 1, "1 dirty scope")
+    w[].call_void("signal_write_i32", args_ptr_i32_i32(rt, key, 42))
+    assert_equal(
+        Int(w[].call_i32("runtime_has_dirty", args_ptr(rt))),
+        1,
+        "dirty after signal write",
+    )
+    assert_equal(
+        Int(w[].call_i32("runtime_dirty_count", args_ptr(rt))),
+        1,
+        "1 dirty scope",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -530,18 +707,20 @@ fn test_hook_peek_does_not_subscribe() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
-    var prev = Int(w.scope_begin_render(rt, s))
-    var key = Int(w.hook_use_signal_i32(rt, 0))
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    var key = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0)))
 
     # Peek should NOT subscribe
-    _ = w.signal_peek_i32(rt, key)
+    _ = w[].call_i32("signal_peek_i32", args_ptr_i32(rt, key))
     assert_equal(
-        Int(w.signal_subscriber_count(rt, key)), 0, "peek does not subscribe"
+        Int(w[].call_i32("signal_subscriber_count", args_ptr_i32(rt, key))),
+        0,
+        "peek does not subscribe",
     )
 
-    w.scope_end_render(rt, prev)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
     _destroy_runtime(w, rt)
 
@@ -553,43 +732,59 @@ fn test_hook_nested_rendering_subscribes_correct_scope() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var root = Int(w.scope_create(rt, 0, -1))
-    var child = Int(w.scope_create_child(rt, root))
+    var root = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var child = Int(w[].call_i32("scope_create_child", args_ptr_i32(rt, root)))
 
     # Begin root render
-    var prev_root = Int(w.scope_begin_render(rt, root))
-    var root_signal = Int(w.hook_use_signal_i32(rt, 10))
-    _ = w.signal_read_i32(rt, root_signal)
+    var prev_root = Int(
+        w[].call_i32("scope_begin_render", args_ptr_i32(rt, root))
+    )
+    var root_signal = Int(
+        w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 10))
+    )
+    _ = w[].call_i32("signal_read_i32", args_ptr_i32(rt, root_signal))
 
     # Begin child render (nested)
-    var prev_child = Int(w.scope_begin_render(rt, child))
-    var child_signal = Int(w.hook_use_signal_i32(rt, 20))
-    _ = w.signal_read_i32(rt, child_signal)
+    var prev_child = Int(
+        w[].call_i32("scope_begin_render", args_ptr_i32(rt, child))
+    )
+    var child_signal = Int(
+        w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 20))
+    )
+    _ = w[].call_i32("signal_read_i32", args_ptr_i32(rt, child_signal))
 
     # Child signal should have child as subscriber, not root
     assert_equal(
-        Int(w.signal_subscriber_count(rt, child_signal)),
+        Int(
+            w[].call_i32(
+                "signal_subscriber_count", args_ptr_i32(rt, child_signal)
+            )
+        ),
         1,
         "child signal has 1 subscriber",
     )
 
     # End child render
-    w.scope_end_render(rt, prev_child)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev_child))
 
     # Root signal should still have root subscribed
     assert_equal(
-        Int(w.signal_subscriber_count(rt, root_signal)),
+        Int(
+            w[].call_i32(
+                "signal_subscriber_count", args_ptr_i32(rt, root_signal)
+            )
+        ),
         1,
         "root signal has 1 subscriber",
     )
 
     # End root render
-    w.scope_end_render(rt, prev_root)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev_root))
 
     # Write to child signal should only mark child dirty
-    w.signal_write_i32(rt, child_signal, 99)
+    w[].call_void("signal_write_i32", args_ptr_i32_i32(rt, child_signal, 99))
     assert_equal(
-        Int(w.runtime_dirty_count(rt)),
+        Int(w[].call_i32("runtime_dirty_count", args_ptr(rt))),
         1,
         "only 1 dirty scope from child signal write",
     )
@@ -606,24 +801,40 @@ fn test_scope_stress_100_scopes() raises:
 
     var ids = List[Int]()
     for i in range(100):
-        ids.append(Int(w.scope_create(rt, 0, -1)))
-    assert_equal(Int(w.scope_count(rt)), 100, "100 scopes created")
+        ids.append(
+            Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+        )
+    assert_equal(
+        Int(w[].call_i32("scope_count", args_ptr(rt))),
+        100,
+        "100 scopes created",
+    )
 
     # Destroy half (even indices)
     for i in range(0, 100, 2):
-        w.scope_destroy(rt, ids[i])
-    assert_equal(Int(w.scope_count(rt)), 50, "50 scopes after destroying half")
+        w[].call_void("scope_destroy", args_ptr_i32(rt, ids[i]))
+    assert_equal(
+        Int(w[].call_i32("scope_count", args_ptr(rt))),
+        50,
+        "50 scopes after destroying half",
+    )
 
     # Create 50 more (reuse freed slots)
     var new_ids = List[Int]()
     for i in range(50):
-        new_ids.append(Int(w.scope_create(rt, 0, -1)))
-    assert_equal(Int(w.scope_count(rt)), 100, "100 scopes after refill")
+        new_ids.append(
+            Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+        )
+    assert_equal(
+        Int(w[].call_i32("scope_count", args_ptr(rt))),
+        100,
+        "100 scopes after refill",
+    )
 
     # Verify all odd-indexed original scopes still exist
     var all_exist = True
     for i in range(1, 100, 2):
-        if Int(w.scope_contains(rt, ids[i])) != 1:
+        if Int(w[].call_i32("scope_contains", args_ptr_i32(rt, ids[i]))) != 1:
             all_exist = False
             break
     assert_true(all_exist, "all odd-indexed original scopes still exist")
@@ -638,33 +849,37 @@ fn test_hook_signal_stable_across_many_rerenders() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
     # First render
-    var prev = Int(w.scope_begin_render(rt, s))
-    var key = Int(w.hook_use_signal_i32(rt, 0))
-    w.scope_end_render(rt, prev)
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    var key = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0)))
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
     # Increment signal and re-render 50 times
     for i in range(1, 51):
-        w.signal_write_i32(rt, key, i)
+        w[].call_void("signal_write_i32", args_ptr_i32_i32(rt, key, i))
 
-        prev = Int(w.scope_begin_render(rt, s))
-        var k = Int(w.hook_use_signal_i32(rt, 999))
+        prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+        var k = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 999)))
         assert_equal(k, key, "re-render: same key")
-        w.scope_end_render(rt, prev)
+        w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
     assert_equal(
-        Int(w.signal_peek_i32(rt, key)),
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, key))),
         50,
         "signal holds value 50 after 50 writes",
     )
     assert_equal(
-        Int(w.scope_render_count(rt, s)),
+        Int(w[].call_i32("scope_render_count", args_ptr_i32(rt, s))),
         51,
         "render_count is 51 after 1 + 50 re-renders",
     )
-    assert_equal(Int(w.scope_hook_count(rt, s)), 1, "still just 1 hook")
+    assert_equal(
+        Int(w[].call_i32("scope_hook_count", args_ptr_i32(rt, s))),
+        1,
+        "still just 1 hook",
+    )
 
     _destroy_runtime(w, rt)
 
@@ -675,42 +890,56 @@ fn test_hook_signal_stable_across_many_rerenders() raises:
 fn test_hook_simulated_counter_component() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
-    var s = Int(w.scope_create(rt, 0, -1))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
     # First render
-    var prev = Int(w.scope_begin_render(rt, s))
-    var count_key = Int(w.hook_use_signal_i32(rt, 0))
-    var count_val = Int(w.signal_read_i32(rt, count_key))
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    var count_key = Int(
+        w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0))
+    )
+    var count_val = Int(
+        w[].call_i32("signal_read_i32", args_ptr_i32(rt, count_key))
+    )
     assert_equal(count_val, 0, "initial count is 0")
-    w.scope_end_render(rt, prev)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
     # Simulate click: count += 1
-    var current = Int(w.signal_peek_i32(rt, count_key))
-    w.signal_write_i32(rt, count_key, current + 1)
+    var current = Int(
+        w[].call_i32("signal_peek_i32", args_ptr_i32(rt, count_key))
+    )
+    w[].call_void(
+        "signal_write_i32", args_ptr_i32_i32(rt, count_key, current + 1)
+    )
     assert_equal(
-        Int(w.signal_peek_i32(rt, count_key)),
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, count_key))),
         1,
         "count is 1 after increment",
     )
     assert_equal(
-        Int(w.runtime_has_dirty(rt)),
+        Int(w[].call_i32("runtime_has_dirty", args_ptr(rt))),
         1,
         "scope marked dirty after signal write",
     )
 
     # Re-render (triggered by dirty)
-    prev = Int(w.scope_begin_render(rt, s))
-    var count_key2 = Int(w.hook_use_signal_i32(rt, 0))
+    prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    var count_key2 = Int(
+        w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0))
+    )
     assert_equal(count_key2, count_key, "same signal key on re-render")
-    var count_val2 = Int(w.signal_read_i32(rt, count_key2))
+    var count_val2 = Int(
+        w[].call_i32("signal_read_i32", args_ptr_i32(rt, count_key2))
+    )
     assert_equal(count_val2, 1, "count reads 1 on re-render")
-    w.scope_end_render(rt, prev)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
     # Another click
-    current = Int(w.signal_peek_i32(rt, count_key))
-    w.signal_write_i32(rt, count_key, current + 1)
+    current = Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, count_key)))
+    w[].call_void(
+        "signal_write_i32", args_ptr_i32_i32(rt, count_key, current + 1)
+    )
     assert_equal(
-        Int(w.signal_peek_i32(rt, count_key)),
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, count_key))),
         2,
         "count is 2 after second increment",
     )
@@ -724,36 +953,54 @@ fn test_hook_simulated_counter_component() raises:
 fn test_hook_simulated_multi_state_component() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
-    var s = Int(w.scope_create(rt, 0, -1))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
     # First render: 3 signals (name as i32=0, age=0, submitted=0)
-    var prev = Int(w.scope_begin_render(rt, s))
-    var name_key = Int(w.hook_use_signal_i32(rt, 0))
-    var age_key = Int(w.hook_use_signal_i32(rt, 0))
-    var submitted_key = Int(w.hook_use_signal_i32(rt, 0))
-    assert_equal(Int(w.scope_hook_count(rt, s)), 3, "3 hooks for 3 signals")
-    w.scope_end_render(rt, prev)
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    var name_key = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0)))
+    var age_key = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0)))
+    var submitted_key = Int(
+        w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0))
+    )
+    assert_equal(
+        Int(w[].call_i32("scope_hook_count", args_ptr_i32(rt, s))),
+        3,
+        "3 hooks for 3 signals",
+    )
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
     # Simulate user interaction
-    w.signal_write_i32(rt, name_key, 42)
-    w.signal_write_i32(rt, age_key, 25)
+    w[].call_void("signal_write_i32", args_ptr_i32_i32(rt, name_key, 42))
+    w[].call_void("signal_write_i32", args_ptr_i32_i32(rt, age_key, 25))
 
     # Re-render
-    prev = Int(w.scope_begin_render(rt, s))
-    var name_key2 = Int(w.hook_use_signal_i32(rt, 0))
-    var age_key2 = Int(w.hook_use_signal_i32(rt, 0))
-    var submitted_key2 = Int(w.hook_use_signal_i32(rt, 0))
+    prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    var name_key2 = Int(
+        w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0))
+    )
+    var age_key2 = Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0)))
+    var submitted_key2 = Int(
+        w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0))
+    )
     assert_equal(name_key2, name_key, "name signal stable")
     assert_equal(age_key2, age_key, "age signal stable")
     assert_equal(submitted_key2, submitted_key, "submitted signal stable")
     assert_equal(
-        Int(w.signal_peek_i32(rt, name_key2)), 42, "name retains value"
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, name_key2))),
+        42,
+        "name retains value",
     )
-    assert_equal(Int(w.signal_peek_i32(rt, age_key2)), 25, "age retains value")
     assert_equal(
-        Int(w.signal_peek_i32(rt, submitted_key2)), 0, "submitted still false"
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, age_key2))),
+        25,
+        "age retains value",
     )
-    w.scope_end_render(rt, prev)
+    assert_equal(
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, submitted_key2))),
+        0,
+        "submitted still false",
+    )
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
     _destroy_runtime(w, rt)
 
@@ -765,54 +1012,88 @@ fn test_hook_simulated_parent_child_tree() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var parent = Int(w.scope_create(rt, 0, -1))
-    var child1 = Int(w.scope_create_child(rt, parent))
-    var child2 = Int(w.scope_create_child(rt, parent))
+    var parent = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var child1 = Int(
+        w[].call_i32("scope_create_child", args_ptr_i32(rt, parent))
+    )
+    var child2 = Int(
+        w[].call_i32("scope_create_child", args_ptr_i32(rt, parent))
+    )
 
     # Render parent
-    var prev_p = Int(w.scope_begin_render(rt, parent))
-    var parent_count = Int(w.hook_use_signal_i32(rt, 0))
-    _ = w.signal_read_i32(rt, parent_count)  # subscribe parent
+    var prev_p = Int(
+        w[].call_i32("scope_begin_render", args_ptr_i32(rt, parent))
+    )
+    var parent_count = Int(
+        w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 0))
+    )
+    _ = w[].call_i32(
+        "signal_read_i32", args_ptr_i32(rt, parent_count)
+    )  # subscribe parent
 
     # Render child1 (nested)
-    var prev_c1 = Int(w.scope_begin_render(rt, child1))
-    var child1_local = Int(w.hook_use_signal_i32(rt, 10))
-    _ = w.signal_read_i32(rt, child1_local)  # subscribe child1
+    var prev_c1 = Int(
+        w[].call_i32("scope_begin_render", args_ptr_i32(rt, child1))
+    )
+    var child1_local = Int(
+        w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 10))
+    )
+    _ = w[].call_i32(
+        "signal_read_i32", args_ptr_i32(rt, child1_local)
+    )  # subscribe child1
     # Also read parent's signal from child1
-    _ = w.signal_read_i32(
-        rt, parent_count
+    _ = w[].call_i32(
+        "signal_read_i32", args_ptr_i32(rt, parent_count)
     )  # child1 subscribes to parent signal
-    w.scope_end_render(rt, prev_c1)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev_c1))
 
     # Render child2 (nested)
-    var prev_c2 = Int(w.scope_begin_render(rt, child2))
-    var child2_local = Int(w.hook_use_signal_i32(rt, 20))
-    _ = w.signal_read_i32(rt, child2_local)  # subscribe child2
-    w.scope_end_render(rt, prev_c2)
+    var prev_c2 = Int(
+        w[].call_i32("scope_begin_render", args_ptr_i32(rt, child2))
+    )
+    var child2_local = Int(
+        w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, 20))
+    )
+    _ = w[].call_i32(
+        "signal_read_i32", args_ptr_i32(rt, child2_local)
+    )  # subscribe child2
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev_c2))
 
-    w.scope_end_render(rt, prev_p)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev_p))
 
     # parentCount has 2 subscribers: parent + child1
     assert_equal(
-        Int(w.signal_subscriber_count(rt, parent_count)),
+        Int(
+            w[].call_i32(
+                "signal_subscriber_count", args_ptr_i32(rt, parent_count)
+            )
+        ),
         2,
         "parent signal has 2 subscribers (parent + child1)",
     )
     assert_equal(
-        Int(w.signal_subscriber_count(rt, child1_local)),
+        Int(
+            w[].call_i32(
+                "signal_subscriber_count", args_ptr_i32(rt, child1_local)
+            )
+        ),
         1,
         "child1 signal has 1 subscriber",
     )
     assert_equal(
-        Int(w.signal_subscriber_count(rt, child2_local)),
+        Int(
+            w[].call_i32(
+                "signal_subscriber_count", args_ptr_i32(rt, child2_local)
+            )
+        ),
         1,
         "child2 signal has 1 subscriber",
     )
 
     # Write to parent signal → parent and child1 dirty
-    w.signal_write_i32(rt, parent_count, 5)
+    w[].call_void("signal_write_i32", args_ptr_i32_i32(rt, parent_count, 5))
     assert_equal(
-        Int(w.runtime_dirty_count(rt)),
+        Int(w[].call_i32("runtime_dirty_count", args_ptr(rt))),
         2,
         "2 dirty scopes from parent signal write",
     )
@@ -827,22 +1108,32 @@ fn test_scope_render_with_no_hooks() raises:
     var w = _get_wasm()
     var rt = _create_runtime(w)
 
-    var s = Int(w.scope_create(rt, 0, -1))
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
     # Render with no hook calls (static component)
-    var prev = Int(w.scope_begin_render(rt, s))
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
     # No hook calls — just render static content
-    w.scope_end_render(rt, prev)
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
 
-    assert_equal(Int(w.scope_render_count(rt, s)), 1, "render_count is 1")
     assert_equal(
-        Int(w.scope_hook_count(rt, s)), 0, "0 hooks for static component"
+        Int(w[].call_i32("scope_render_count", args_ptr_i32(rt, s))),
+        1,
+        "render_count is 1",
+    )
+    assert_equal(
+        Int(w[].call_i32("scope_hook_count", args_ptr_i32(rt, s))),
+        0,
+        "0 hooks for static component",
     )
 
     # Re-render
-    var prev2 = Int(w.scope_begin_render(rt, s))
-    w.scope_end_render(rt, prev2)
+    var prev2 = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev2))
 
-    assert_equal(Int(w.scope_render_count(rt, s)), 2, "render_count is 2")
+    assert_equal(
+        Int(w[].call_i32("scope_render_count", args_ptr_i32(rt, s))),
+        2,
+        "render_count is 2",
+    )
 
     _destroy_runtime(w, rt)
