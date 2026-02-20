@@ -1,6 +1,5 @@
-# Port of test-mojo/test_comparison.mojo — comparison and boolean logic operations
-# exercised through the real WASM binary via wasmtime-py (called from Mojo via
-# Python interop).
+# Comparison and boolean logic operations exercised through the real WASM binary
+# via wasmtime-py (called from Mojo via Python interop).
 #
 # These tests verify that eq, ne, lt, le, gt, ge, bool_and, bool_or, and bool_not
 # work correctly when compiled to WASM and executed via the Wasmtime runtime.

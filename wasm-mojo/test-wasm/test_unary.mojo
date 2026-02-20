@@ -1,5 +1,5 @@
-# Port of test-mojo/test_unary.mojo — unary operations (neg, abs) exercised
-# through the real WASM binary via wasmtime-py (called from Mojo via Python interop).
+# Unary operations (neg, abs) exercised through the real WASM binary via
+# wasmtime-py (called from Mojo via Python interop).
 #
 # These tests verify that negation and absolute value operations work correctly
 # when compiled to WASM and executed via the Wasmtime runtime.

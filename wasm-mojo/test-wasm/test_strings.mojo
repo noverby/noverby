@@ -1,5 +1,5 @@
-# Port of test-mojo/test_strings.mojo — string operations exercised through
-# the real WASM binary via wasmtime-py (called from Mojo via Python interop).
+# String operations exercised through the real WASM binary via wasmtime-py
+# (called from Mojo via Python interop).
 #
 # These tests verify that string identity, length, concatenation, repeat, and
 # equality operations work correctly when compiled to WASM and executed via
