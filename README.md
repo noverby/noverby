@@ -60,6 +60,7 @@
 | [Homepage 🐒➡️🦀](https://tangled.org/@overby.me/overby.me/tree/main/homepage) | Personal website and portfolio |
 | [Wiki 🐒➡️🦀🌀](https://tangled.org/@overby.me/overby.me/tree/main/wiki) | Platform for political conference & beyond |
 | [Wasm-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/wasm-mojo) | WebAssembly interop layer for Mojo |
+| [Wasmtime-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/wasmtime-mojo) | Mojo FFI bindings for the Wasmtime WebAssembly runtime |
 | [Zed-mojo 🔥](https://tangled.org/@overby.me/overby.me/tree/main/zed-mojo) | Mojo language extension for Zed |
 | [NixOS-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos-rs) | NixOS with Rust user space |
 | [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | A Systemd replacement in Rust |
