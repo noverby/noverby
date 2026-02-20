@@ -3,7 +3,9 @@ import { testCounter } from "./counter.test.ts";
 import { summary } from "./harness.ts";
 import { testInterpreter } from "./interpreter.test.ts";
 import { testMutations } from "./mutations.test.ts";
+import { testPhase8 } from "./phase8.test.ts";
 import { testProtocol } from "./protocol.test.ts";
+import { testTodo } from "./todo.test.ts";
 
 async function run(): Promise<void> {
 	const wasmPath = new URL("../build/out.wasm", import.meta.url);
@@ -15,6 +17,8 @@ async function run(): Promise<void> {
 	testMutations(fns);
 	testInterpreter(fns);
 	testCounter(fns);
+	testTodo(fns);
+	testPhase8(fns);
 
 	summary();
 }

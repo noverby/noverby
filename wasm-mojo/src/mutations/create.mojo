@@ -233,9 +233,18 @@ struct CreateEngine:
         # 2. Process dynamic attributes
         #    Walk all nodes in the template looking for dynamic attributes.
         #    For each, compute path to the owning element and assign an ID.
+        #
+        #    IMPORTANT: dyn_attr_ids must be indexed by dynamic_index (dyn_idx)
+        #    so that dyn_attr_ids[i] corresponds to dynamic_attrs[i].
+        #    Template traversal order may differ from dynamic_index order,
+        #    so we pre-allocate the array and assign by dyn_idx.
         var num_dyn_attrs = (
             self.store[0].get_ptr(vnode_index)[0].dynamic_attr_count()
         )
+        # Pre-allocate dyn_attr_ids with zeros so we can index by dyn_idx
+        for _ in range(num_dyn_attrs):
+            self.store[0].get_ptr(vnode_index)[0].push_dyn_attr_id(0)
+
         # Build a mapping: dynamic_attr_index → (node_index in template)
         # by scanning template nodes for dynamic attrs
         for node_i in range(tmpl_ptr[0].node_count()):
@@ -258,10 +267,10 @@ struct CreateEngine:
                         self.writer[0].assign_id(
                             path_ptr, len(path), elem_eid.as_u32()
                         )
-                        # Store the element ID on the VNode for this dynamic attr
-                        self.store[0].get_ptr(vnode_index)[0].push_dyn_attr_id(
-                            elem_eid.as_u32()
-                        )
+                        # Store the element ID indexed by dyn_idx (not push order)
+                        self.store[0].get_ptr(vnode_index)[0].dyn_attr_ids[
+                            dyn_idx
+                        ] = elem_eid.as_u32()
                         # Now emit the attribute mutation
                         var vnode_ptr2 = self.store[0].get_ptr(vnode_index)
                         var dyn_attr = (

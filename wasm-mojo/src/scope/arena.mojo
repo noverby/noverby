@@ -222,3 +222,201 @@ struct ScopeArena(Movable):
         self._states.clear()
         self._free_head = -1
         self._count = 0
+
+    # ── Context (Dependency Injection) ───────────────────────────────
+
+    fn provide_context(mut self, scope_id: UInt32, key: UInt32, value: Int32):
+        """Provide a context value at the given scope.
+
+        If the key already exists in the scope's context map, the value
+        is updated.  Otherwise, a new entry is appended.
+
+        Args:
+            scope_id: The scope to provide the context on.
+            key: A unique identifier for the context type.
+            value: The Int32 value to provide.
+        """
+        self._scopes[Int(scope_id)].provide_context(key, value)
+
+    fn consume_context(self, scope_id: UInt32, key: UInt32) -> (Bool, Int32):
+        """Look up a context value by walking up the scope tree.
+
+        Starts at `scope_id` and checks each ancestor scope until a
+        matching key is found or the root is reached.
+
+        Args:
+            scope_id: The scope to start searching from.
+            key: The context key to look up.
+
+        Returns:
+            A tuple of (found: Bool, value: Int32).
+        """
+        var current = Int(scope_id)
+        while current != -1:
+            var idx = current
+            if idx < 0 or idx >= len(self._scopes):
+                break
+            if not self._states[idx].occupied:
+                break
+            var result = self._scopes[idx].get_context(key)
+            if result[0]:
+                return result
+            current = self._scopes[idx].parent_id
+        return (False, Int32(0))
+
+    fn has_context_local(self, scope_id: UInt32, key: UInt32) -> Bool:
+        """Check whether the scope itself provides a context for `key`.
+
+        Does NOT walk up the parent chain.
+        """
+        return self._scopes[Int(scope_id)].has_context(key)
+
+    fn context_count(self, scope_id: UInt32) -> Int:
+        """Return the number of context entries in the given scope."""
+        return self._scopes[Int(scope_id)].context_count()
+
+    fn remove_context(mut self, scope_id: UInt32, key: UInt32) -> Bool:
+        """Remove a context entry from the given scope.
+
+        Returns True if the entry was found and removed.
+        """
+        return self._scopes[Int(scope_id)].remove_context(key)
+
+    # ── Error Boundaries ─────────────────────────────────────────────
+
+    fn set_error_boundary(mut self, scope_id: UInt32, enabled: Bool):
+        """Mark or unmark a scope as an error boundary.
+
+        An error boundary catches errors from descendant scopes.
+        """
+        self._scopes[Int(scope_id)].set_error_boundary(enabled)
+
+    fn is_error_boundary(self, scope_id: UInt32) -> Bool:
+        """Check whether the scope is an error boundary."""
+        return self._scopes[Int(scope_id)].is_error_boundary
+
+    fn set_error(mut self, scope_id: UInt32, message: String):
+        """Set an error on the scope (marks it as having an error)."""
+        self._scopes[Int(scope_id)].set_error(message)
+
+    fn clear_error(mut self, scope_id: UInt32):
+        """Clear the error state on the scope."""
+        self._scopes[Int(scope_id)].clear_error()
+
+    fn has_error(self, scope_id: UInt32) -> Bool:
+        """Check whether the scope has a captured error."""
+        return self._scopes[Int(scope_id)].has_error
+
+    fn get_error_message(self, scope_id: UInt32) -> String:
+        """Return the error message on the scope, or empty string."""
+        return self._scopes[Int(scope_id)].get_error_message()
+
+    fn find_error_boundary(self, scope_id: UInt32) -> Int:
+        """Walk up from `scope_id` to find the nearest error boundary.
+
+        Returns the boundary scope's ID as Int, or -1 if none found.
+        Does NOT check `scope_id` itself — only ancestors.
+        """
+        var current = self._scopes[Int(scope_id)].parent_id
+        while current != -1:
+            var idx = current
+            if idx < 0 or idx >= len(self._scopes):
+                break
+            if not self._states[idx].occupied:
+                break
+            if self._scopes[idx].is_error_boundary:
+                return current
+            current = self._scopes[idx].parent_id
+        return -1
+
+    fn propagate_error(mut self, scope_id: UInt32, message: String) -> Int:
+        """Propagate an error from `scope_id` to its nearest error boundary.
+
+        Sets the error on the boundary scope and returns its ID.
+        If no boundary is found, returns -1 (error is unhandled).
+
+        Args:
+            scope_id: The scope where the error originated.
+            message: Description of the error.
+
+        Returns:
+            The boundary scope ID as Int, or -1 if unhandled.
+        """
+        var boundary = self.find_error_boundary(scope_id)
+        if boundary != -1:
+            self._scopes[boundary].set_error(message)
+        return boundary
+
+    # ── Suspense ─────────────────────────────────────────────────────
+
+    fn set_suspense_boundary(mut self, scope_id: UInt32, enabled: Bool):
+        """Mark or unmark a scope as a suspense boundary.
+
+        A suspense boundary shows a fallback while any descendant
+        scope is in a pending state.
+        """
+        self._scopes[Int(scope_id)].set_suspense_boundary(enabled)
+
+    fn is_suspense_boundary(self, scope_id: UInt32) -> Bool:
+        """Check whether the scope is a suspense boundary."""
+        return self._scopes[Int(scope_id)].is_suspense_boundary
+
+    fn set_pending(mut self, scope_id: UInt32, pending: Bool):
+        """Set the pending (async loading) state on a scope."""
+        self._scopes[Int(scope_id)].set_pending(pending)
+
+    fn is_pending(self, scope_id: UInt32) -> Bool:
+        """Check whether the scope is in a pending state."""
+        return self._scopes[Int(scope_id)].is_pending
+
+    fn find_suspense_boundary(self, scope_id: UInt32) -> Int:
+        """Walk up from `scope_id` to find the nearest suspense boundary.
+
+        Returns the boundary scope's ID as Int, or -1 if none found.
+        Does NOT check `scope_id` itself — only ancestors.
+        """
+        var current = self._scopes[Int(scope_id)].parent_id
+        while current != -1:
+            var idx = current
+            if idx < 0 or idx >= len(self._scopes):
+                break
+            if not self._states[idx].occupied:
+                break
+            if self._scopes[idx].is_suspense_boundary:
+                return current
+            current = self._scopes[idx].parent_id
+        return -1
+
+    fn has_pending_descendant(self, scope_id: UInt32) -> Bool:
+        """Check if any live scope has `scope_id` as an ancestor and is pending.
+
+        This is an O(n) scan over all live scopes.  For small trees
+        this is fine; a future optimisation could maintain a pending-count
+        per suspense boundary.
+        """
+        for i in range(len(self._scopes)):
+            if not self._states[i].occupied:
+                continue
+            if not self._scopes[i].is_pending:
+                continue
+            # Walk up from this pending scope to see if scope_id is an ancestor
+            var current = self._scopes[i].parent_id
+            while current != -1:
+                if current == Int(scope_id):
+                    return True
+                if current < 0 or current >= len(self._scopes):
+                    break
+                if not self._states[current].occupied:
+                    break
+                current = self._scopes[current].parent_id
+        return False
+
+    fn resolve_pending(mut self, scope_id: UInt32) -> Int:
+        """Mark a scope as no longer pending and return its suspense boundary.
+
+        Clears the pending flag and returns the nearest suspense boundary
+        scope ID (as Int), or -1 if none.  The caller should re-render
+        the boundary to replace the fallback with actual content.
+        """
+        self._scopes[Int(scope_id)].set_pending(False)
+        return self.find_suspense_boundary(scope_id)

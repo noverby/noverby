@@ -2436,5 +2436,5 @@ runtime/
 - [x] **M5:** JS interpreter applies mutations to real DOM. Hand-crafted mutation buffers produce correct DOM trees.
 - [x] **M6:** Events flow: click in DOM → JS → WASM → signal write → re-render → mutations → DOM update.
 - [x] **M7:** Counter app works in a browser. Click increment, see number change. 🎉
-- [ ] **M8:** Todo list works. Conditional rendering, keyed lists, context, error boundaries.
+- [x] **M8:** Todo list works. Conditional rendering, keyed lists, context, error boundaries, suspense.
 - [ ] **M9:** js-framework-benchmark competitive. Memory bounded. Tier 2 compile-time templates validated. Developer tools functional.
