@@ -743,7 +743,11 @@ fn test_mul_subnormal_2() raises:
 fn test_0_1_plus_0_2() raises:
     """Classic IEEE 754: 0.1 + 0.2 matches native Mojo result."""
     var w = _get_wasm()
-    var expected = 0.1 + 0.2
+    # Use separate variables to prevent the compiler from constant-folding
+    # 0.1 + 0.2 to exactly 0.3 (which loses the IEEE 754 precision bit).
+    var a: Float64 = 0.1
+    var b: Float64 = 0.2
+    var expected = a + b
     _assert_eq_f64(
         w[].call_f64("add_float64", args_f64_f64(0.1, 0.2)),
         expected,
