@@ -7,6 +7,13 @@
   programs.zed-editor = {
     enable = true;
     package = pkgs.pkgsUnstable.zed-editor;
+    # Rust toolchain for compiling WASM dev extensions
+    extraPackages = with pkgs; [
+      (rust-bin.stable.latest.default.override {
+        targets = ["wasm32-wasip2"];
+      })
+      clang
+    ];
     extensions = [
       "biome"
       "nix"
@@ -24,6 +31,7 @@
     ];
   };
   home = {
+    # Jupyter Notebook
     sessionVariables = {
       LOCAL_NOTEBOOK_DEV = 1;
     };
@@ -46,6 +54,16 @@
         cat ${pkgs.writeText "zed-settings" userSettings} > "${settingsPath}"
         cat ${pkgs.writeText "zed-keymaps" userKeymaps} > "${keymapPath}"
         cat ${pkgs.writeText "zed-tasks" userTasks} > "${tasksPath}"
+      '';
+
+      # Dev Extensions - copied (not symlinked) so Zed can write build artifacts
+      installZedDevExtensions = lib.hm.dag.entryAfter ["linkGeneration"] ''
+        dev_ext_dir="$HOME/.local/share/zed/dev_extensions"
+        mkdir -p "$dev_ext_dir"
+
+        rm -rf "$dev_ext_dir/mojo"
+        cp -rL ${pkgs.zed-mojo} "$dev_ext_dir/mojo"
+        chmod -R u+w "$dev_ext_dir/mojo"
       '';
     };
   };
