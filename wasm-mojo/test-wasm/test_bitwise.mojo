@@ -1,65 +1,48 @@
-# Tests for bitwise operations — native Mojo tests run with `mojo test`.
+# Port of test-mojo/test_bitwise.mojo — bitwise operations exercised
+# through the real WASM binary via wasmtime-py (called from Mojo via Python interop).
 #
-# These tests are a direct port of test/bitwise.test.ts, exercising
-# the same scenarios without the WASM/JS round-trip.  The functions
-# under test are defined inline here (matching main.mojo's @export fns).
+# These tests verify that bitand, bitor, bitxor, bitnot, shl, and shr operations
+# work correctly when compiled to WASM and executed via the Wasmtime runtime.
 #
 # Run with:
-#   mojo test -I src test-mojo/test_bitwise.mojo
+#   mojo test test-wasm/test_bitwise.mojo
 
+from python import Python, PythonObject
 from testing import assert_equal
 
 
-# ── Functions under test (mirrors of main.mojo @export fns) ──────────────────
-
-
-fn bitand_int32(x: Int32, y: Int32) -> Int32:
-    return x & y
-
-
-fn bitor_int32(x: Int32, y: Int32) -> Int32:
-    return x | y
-
-
-fn bitxor_int32(x: Int32, y: Int32) -> Int32:
-    return x ^ y
-
-
-fn bitnot_int32(x: Int32) -> Int32:
-    return ~x
-
-
-fn shl_int32(x: Int32, y: Int32) -> Int32:
-    return x << y
-
-
-fn shr_int32(x: Int32, y: Int32) -> Int32:
-    return x >> y
+fn _get_wasm() raises -> PythonObject:
+    Python.add_to_path("test-wasm")
+    var harness = Python.import_module("wasm_harness")
+    return harness.get_instance()
 
 
 # ── Bitwise AND ──────────────────────────────────────────────────────────────
 
 
 fn test_bitand_basic() raises:
+    var w = _get_wasm()
     assert_equal(
-        bitand_int32(0b1100, 0b1010),
-        Int32(0b1000),
+        Int(w.bitand_int32(0b1100, 0b1010)),
+        0b1000,
         "bitand_int32(0b1100, 0b1010) === 0b1000",
     )
 
 
 fn test_bitand_mask() raises:
+    var w = _get_wasm()
     assert_equal(
-        bitand_int32(0xFF, 0x0F),
-        Int32(0x0F),
+        Int(w.bitand_int32(0xFF, 0x0F)),
+        0x0F,
         "bitand_int32(0xFF, 0x0F) === 0x0F",
     )
 
 
 fn test_bitand_zero() raises:
+    var w = _get_wasm()
     assert_equal(
-        bitand_int32(0, 0xFFFF),
-        Int32(0),
+        Int(w.bitand_int32(0, 0xFFFF)),
+        0,
         "bitand_int32(0, 0xFFFF) === 0",
     )
 
@@ -68,17 +51,19 @@ fn test_bitand_zero() raises:
 
 
 fn test_bitor_basic() raises:
+    var w = _get_wasm()
     assert_equal(
-        bitor_int32(0b1100, 0b1010),
-        Int32(0b1110),
+        Int(w.bitor_int32(0b1100, 0b1010)),
+        0b1110,
         "bitor_int32(0b1100, 0b1010) === 0b1110",
     )
 
 
 fn test_bitor_zero() raises:
+    var w = _get_wasm()
     assert_equal(
-        bitor_int32(0, 0),
-        Int32(0),
+        Int(w.bitor_int32(0, 0)),
+        0,
         "bitor_int32(0, 0) === 0",
     )
 
@@ -87,25 +72,28 @@ fn test_bitor_zero() raises:
 
 
 fn test_bitxor_basic() raises:
+    var w = _get_wasm()
     assert_equal(
-        bitxor_int32(0b1100, 0b1010),
-        Int32(0b0110),
+        Int(w.bitxor_int32(0b1100, 0b1010)),
+        0b0110,
         "bitxor_int32(0b1100, 0b1010) === 0b0110",
     )
 
 
 fn test_bitxor_self_is_zero() raises:
+    var w = _get_wasm()
     assert_equal(
-        bitxor_int32(42, 42),
-        Int32(0),
+        Int(w.bitxor_int32(42, 42)),
+        0,
         "bitxor_int32(42, 42) === 0",
     )
 
 
 fn test_bitxor_with_zero_is_identity() raises:
+    var w = _get_wasm()
     assert_equal(
-        bitxor_int32(42, 0),
-        Int32(42),
+        Int(w.bitxor_int32(42, 0)),
+        42,
         "bitxor_int32(42, 0) === 42",
     )
 
@@ -114,17 +102,19 @@ fn test_bitxor_with_zero_is_identity() raises:
 
 
 fn test_bitnot_zero() raises:
+    var w = _get_wasm()
     assert_equal(
-        bitnot_int32(0),
-        ~Int32(0),
+        Int(w.bitnot_int32(0)),
+        Int(~Int32(0)),
         "bitnot_int32(0) === ~0",
     )
 
 
 fn test_bitnot_one() raises:
+    var w = _get_wasm()
     assert_equal(
-        bitnot_int32(1),
-        ~Int32(1),
+        Int(w.bitnot_int32(1)),
+        Int(~Int32(1)),
         "bitnot_int32(1) === ~1",
     )
 
@@ -133,56 +123,63 @@ fn test_bitnot_one() raises:
 
 
 fn test_shl_by_zero() raises:
+    var w = _get_wasm()
     assert_equal(
-        shl_int32(1, 0),
-        Int32(1),
+        Int(w.shl_int32(1, 0)),
+        1,
         "shl_int32(1, 0) === 1",
     )
 
 
 fn test_shl_by_one() raises:
+    var w = _get_wasm()
     assert_equal(
-        shl_int32(1, 1),
-        Int32(2),
+        Int(w.shl_int32(1, 1)),
+        2,
         "shl_int32(1, 1) === 2",
     )
 
 
 fn test_shl_by_four() raises:
+    var w = _get_wasm()
     assert_equal(
-        shl_int32(1, 4),
-        Int32(16),
+        Int(w.shl_int32(1, 4)),
+        16,
         "shl_int32(1, 4) === 16",
     )
 
 
 fn test_shl_three_by_three() raises:
+    var w = _get_wasm()
     assert_equal(
-        shl_int32(3, 3),
-        Int32(24),
+        Int(w.shl_int32(3, 3)),
+        24,
         "shl_int32(3, 3) === 24",
     )
 
 
 fn test_shr_sixteen_by_four() raises:
+    var w = _get_wasm()
     assert_equal(
-        shr_int32(16, 4),
-        Int32(1),
+        Int(w.shr_int32(16, 4)),
+        1,
         "shr_int32(16, 4) === 1",
     )
 
 
 fn test_shr_twentyfour_by_three() raises:
+    var w = _get_wasm()
     assert_equal(
-        shr_int32(24, 3),
-        Int32(3),
+        Int(w.shr_int32(24, 3)),
+        3,
         "shr_int32(24, 3) === 3",
     )
 
 
 fn test_shr_255_by_one() raises:
+    var w = _get_wasm()
     assert_equal(
-        shr_int32(255, 1),
-        Int32(127),
+        Int(w.shr_int32(255, 1)),
+        127,
         "shr_int32(255, 1) === 127",
     )
