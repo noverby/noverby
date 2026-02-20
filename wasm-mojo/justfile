@@ -6,7 +6,7 @@ build:
   wasm-ld --no-entry --export-all --allow-undefined -mwasm64 --initial-memory=16777216 -o build/out.wasm build/out.o
 
 test: build
-  mojo test test/
+  mojo test -I ../wasmtime-mojo/src test/
 
 test-js: build
   deno run --allow-read test-js/run.ts
