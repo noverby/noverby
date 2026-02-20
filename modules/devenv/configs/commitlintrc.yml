@@ -34,5 +34,6 @@ rules:
       - systemd-rs
       - tangled
       - wasm-mojo
+      - wasmtime-mojo
       - zed-mojo
       - wiki
