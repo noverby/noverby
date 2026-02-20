@@ -2,6 +2,31 @@ from bridge import MutationWriter
 from arena import ElementId, ElementIdAllocator
 from signals import Runtime, create_runtime, destroy_runtime, HOOK_SIGNAL
 from mutations import CreateEngine, DiffEngine
+from events import (
+    HandlerRegistry,
+    HandlerEntry,
+    EVT_CLICK,
+    EVT_INPUT,
+    EVT_KEY_DOWN,
+    EVT_KEY_UP,
+    EVT_MOUSE_MOVE,
+    EVT_FOCUS,
+    EVT_BLUR,
+    EVT_SUBMIT,
+    EVT_CHANGE,
+    EVT_MOUSE_DOWN,
+    EVT_MOUSE_UP,
+    EVT_MOUSE_ENTER,
+    EVT_MOUSE_LEAVE,
+    EVT_CUSTOM,
+    ACTION_NONE,
+    ACTION_SIGNAL_SET_I32,
+    ACTION_SIGNAL_ADD_I32,
+    ACTION_SIGNAL_SUB_I32,
+    ACTION_SIGNAL_TOGGLE,
+    ACTION_SIGNAL_SET_INPUT,
+    ACTION_CUSTOM,
+)
 from vdom import (
     TemplateBuilder,
     create_builder,
@@ -1493,6 +1518,246 @@ fn write_test_sequence(buf: Int64) -> Int32:
     w.push_root(10)
     w.end()
     return Int32(w.offset)
+
+
+# ── Phase 6: Event Handler Registry Exports ──────────────────────────────────
+#
+# These exports exercise the event handler registry and event dispatch.
+# Handlers map handler IDs → (scope_id, action, signal_key, operand).
+# When an event fires, JS calls dispatch_event which executes the action
+# (e.g. signal write) and marks scopes dirty.
+
+
+@export
+fn handler_register_signal_add(
+    rt_ptr: Int64,
+    scope_id: Int32,
+    signal_key: Int32,
+    delta: Int32,
+    event_name: String,
+) -> Int32:
+    """Register a handler that adds `delta` to `signal_key` on event.
+
+    Returns the handler ID.
+    """
+    var rt = _get_runtime(rt_ptr)
+    return Int32(
+        rt[0].register_handler(
+            HandlerEntry.signal_add(
+                UInt32(scope_id), UInt32(signal_key), delta, event_name
+            )
+        )
+    )
+
+
+@export
+fn handler_register_signal_sub(
+    rt_ptr: Int64,
+    scope_id: Int32,
+    signal_key: Int32,
+    delta: Int32,
+    event_name: String,
+) -> Int32:
+    """Register a handler that subtracts `delta` from `signal_key` on event.
+
+    Returns the handler ID.
+    """
+    var rt = _get_runtime(rt_ptr)
+    return Int32(
+        rt[0].register_handler(
+            HandlerEntry.signal_sub(
+                UInt32(scope_id), UInt32(signal_key), delta, event_name
+            )
+        )
+    )
+
+
+@export
+fn handler_register_signal_set(
+    rt_ptr: Int64,
+    scope_id: Int32,
+    signal_key: Int32,
+    value: Int32,
+    event_name: String,
+) -> Int32:
+    """Register a handler that sets `signal_key` to `value` on event.
+
+    Returns the handler ID.
+    """
+    var rt = _get_runtime(rt_ptr)
+    return Int32(
+        rt[0].register_handler(
+            HandlerEntry.signal_set(
+                UInt32(scope_id), UInt32(signal_key), value, event_name
+            )
+        )
+    )
+
+
+@export
+fn handler_register_signal_toggle(
+    rt_ptr: Int64,
+    scope_id: Int32,
+    signal_key: Int32,
+    event_name: String,
+) -> Int32:
+    """Register a handler that toggles `signal_key` (0↔1) on event.
+
+    Returns the handler ID.
+    """
+    var rt = _get_runtime(rt_ptr)
+    return Int32(
+        rt[0].register_handler(
+            HandlerEntry.signal_toggle(
+                UInt32(scope_id), UInt32(signal_key), event_name
+            )
+        )
+    )
+
+
+@export
+fn handler_register_signal_set_input(
+    rt_ptr: Int64,
+    scope_id: Int32,
+    signal_key: Int32,
+    event_name: String,
+) -> Int32:
+    """Register a handler that sets `signal_key` from event input value.
+
+    Returns the handler ID.
+    """
+    var rt = _get_runtime(rt_ptr)
+    return Int32(
+        rt[0].register_handler(
+            HandlerEntry.signal_set_input(
+                UInt32(scope_id), UInt32(signal_key), event_name
+            )
+        )
+    )
+
+
+@export
+fn handler_register_custom(
+    rt_ptr: Int64, scope_id: Int32, event_name: String
+) -> Int32:
+    """Register a custom handler (JS handles the side effect).
+
+    Returns the handler ID.
+    """
+    var rt = _get_runtime(rt_ptr)
+    return Int32(
+        rt[0].register_handler(
+            HandlerEntry.custom(UInt32(scope_id), event_name)
+        )
+    )
+
+
+@export
+fn handler_register_noop(
+    rt_ptr: Int64, scope_id: Int32, event_name: String
+) -> Int32:
+    """Register a no-op handler (marks scope dirty, does nothing else).
+
+    Returns the handler ID.
+    """
+    var rt = _get_runtime(rt_ptr)
+    return Int32(
+        rt[0].register_handler(HandlerEntry.noop(UInt32(scope_id), event_name))
+    )
+
+
+@export
+fn handler_remove(rt_ptr: Int64, handler_id: Int32):
+    """Remove an event handler by ID."""
+    var rt = _get_runtime(rt_ptr)
+    rt[0].remove_handler(UInt32(handler_id))
+
+
+@export
+fn handler_count(rt_ptr: Int64) -> Int32:
+    """Return the number of live event handlers."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].handler_count())
+
+
+@export
+fn handler_contains(rt_ptr: Int64, handler_id: Int32) -> Int32:
+    """Check whether a handler ID is live.  Returns 1 or 0."""
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].handlers.contains(UInt32(handler_id)):
+        return 1
+    return 0
+
+
+@export
+fn handler_scope_id(rt_ptr: Int64, handler_id: Int32) -> Int32:
+    """Return the scope_id of the handler."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].handlers.scope_id(UInt32(handler_id)))
+
+
+@export
+fn handler_action(rt_ptr: Int64, handler_id: Int32) -> Int32:
+    """Return the action tag of the handler."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].handlers.action(UInt32(handler_id)))
+
+
+@export
+fn handler_signal_key(rt_ptr: Int64, handler_id: Int32) -> Int32:
+    """Return the signal_key of the handler."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].handlers.signal_key(UInt32(handler_id)))
+
+
+@export
+fn handler_operand(rt_ptr: Int64, handler_id: Int32) -> Int32:
+    """Return the operand of the handler."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(rt[0].handlers.operand(UInt32(handler_id)))
+
+
+@export
+fn dispatch_event(rt_ptr: Int64, handler_id: Int32, event_type: Int32) -> Int32:
+    """Dispatch an event to a handler.
+
+    Executes the handler's action (e.g. signal write) and marks
+    affected scopes dirty.  Returns 1 if an action was executed, 0 otherwise.
+    """
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].dispatch_event(UInt32(handler_id), UInt8(event_type)):
+        return 1
+    return 0
+
+
+@export
+fn dispatch_event_with_i32(
+    rt_ptr: Int64, handler_id: Int32, event_type: Int32, value: Int32
+) -> Int32:
+    """Dispatch an event with an Int32 payload (e.g. parsed input value).
+
+    For ACTION_SIGNAL_SET_INPUT, the payload is used as the new signal value.
+    Returns 1 if an action was executed, 0 otherwise.
+    """
+    var rt = _get_runtime(rt_ptr)
+    if rt[0].dispatch_event_with_i32(
+        UInt32(handler_id), UInt8(event_type), value
+    ):
+        return 1
+    return 0
+
+
+@export
+fn runtime_drain_dirty(rt_ptr: Int64) -> Int32:
+    """Drain the dirty scope queue.  Returns the number of dirty scopes.
+
+    After calling, the dirty queue is empty.  The caller should re-render
+    each returned scope ID.  (For now, just returns the count — the actual
+    scope IDs are consumed internally.)
+    """
+    var rt = _get_runtime(rt_ptr)
+    var dirty = rt[0].drain_dirty()
+    return Int32(len(dirty))
 
 
 # ── Original wasm-mojo PoC exports ──────────────────────────────────────────

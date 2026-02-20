@@ -1,4 +1,10 @@
 export { env, setMemory } from "./env.ts";
+export type {
+	DispatchFn,
+	DispatchWithValueFn,
+	EventTypeName,
+} from "./events.ts";
+export { EventBridge, EventType } from "./events.ts";
 export { Interpreter, MutationBuilder } from "./interpreter.ts";
 export {
 	alignedAlloc,

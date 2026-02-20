@@ -6,6 +6,7 @@ import { testBoundaries } from "./boundaries.test.ts";
 import { testComparison } from "./comparison.test.ts";
 import { testConsistency } from "./consistency.test.ts";
 import { testElementId } from "./element_id.test.ts";
+import { testEvents } from "./events.test.ts";
 import { testFloats } from "./floats.test.ts";
 import { summary } from "./harness.ts";
 import { testIdentity } from "./identity.test.ts";
@@ -53,6 +54,7 @@ async function run(): Promise<void> {
 	testTemplates(fns);
 	testMutations(fns);
 	testInterpreter(fns);
+	testEvents(fns);
 
 	summary();
 }
