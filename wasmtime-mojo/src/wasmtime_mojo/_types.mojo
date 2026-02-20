@@ -12,6 +12,13 @@ Layout reference (64-bit Linux):
   wasmtime_memory_t: 24 bytes (store_id:8 + u32:4 + pad:4 + u32:4 + pad:4)
   wasm_valtype_vec_t: 16 bytes (size:8 + data:8)
   wasm_byte_vec_t:   16 bytes (size:8 + data:8)
+
+IMPORTANT: All struct storage uses UInt64 fields instead of SIMD vectors.
+SIMD[DType.uint8, N] has N-byte alignment (e.g. 32-byte for N=32), but
+the C wasmtime structs are only 8-byte aligned.  When wasmtime passes
+callback args/results as pointers to its own stack-allocated arrays,
+the 8-byte-aligned addresses cause SIGSEGV on SIMD-aligned loads/stores.
+Using UInt64 fields gives correct 8-byte alignment matching C.
 """
 
 from memory import UnsafePointer, memset_zero, memcpy
@@ -95,76 +102,79 @@ alias ExternTypePtr = UnsafePointer[NoneType]
 #
 # The union's largest members are anyref/externref at 24 bytes.
 # For our purposes we only need i32/i64/f32/f64 access.
+#
+# Storage: 4 × UInt64 = 32 bytes, 8-byte aligned (matches C).
 # ---------------------------------------------------------------------------
 
 
 @register_passable("trivial")
 struct WasmtimeVal:
-    """Mirrors wasmtime_val_t (32 bytes)."""
+    """Mirrors wasmtime_val_t (32 bytes, 8-byte aligned)."""
 
-    var _storage: SIMD[DType.uint8, WASMTIME_VAL_SIZE]
+    var _w0: UInt64  # kind (byte 0) + 7 bytes padding
+    var _w1: UInt64  # value union bytes 0-7 (offset 8)
+    var _w2: UInt64  # value union bytes 8-15 (offset 16)
+    var _w3: UInt64  # value union bytes 16-23 (offset 24)
 
     @always_inline
     fn __init__(out self):
-        self._storage = SIMD[DType.uint8, WASMTIME_VAL_SIZE](0)
+        self._w0 = 0
+        self._w1 = 0
+        self._w2 = 0
+        self._w3 = 0
 
-    # -- Kind accessor (offset 0) --
+    # -- Kind accessor (offset 0, lowest byte of _w0) --
 
     @always_inline
     fn get_kind(self) -> UInt8:
-        return self._storage[0]
+        return UInt8(self._w0 & 0xFF)
 
     @always_inline
     fn set_kind(mut self, kind: UInt8):
-        self._storage[0] = kind
+        self._w0 = (self._w0 & ~UInt64(0xFF)) | UInt64(kind)
 
-    # -- i32 accessor (offset 8, 4 bytes, little-endian) --
+    # -- i32 accessor (offset 8, stored in _w1 low 32 bits) --
 
     @always_inline
     fn get_i32(self) -> Int32:
-        var ptr = UnsafePointer(to=self._storage).bitcast[UInt8]()
-        return (ptr + 8).bitcast[Int32]()[]
+        return Int32(Int(self._w1) & 0xFFFFFFFF)
 
     @always_inline
     fn set_i32(mut self, value: Int32):
-        var ptr = UnsafePointer(to=self._storage).bitcast[UInt8]()
-        (ptr + 8).bitcast[Int32]()[] = value
+        self._w1 = UInt64(Int64(value) & 0xFFFFFFFF)
 
-    # -- i64 accessor (offset 8, 8 bytes) --
+    # -- i64 accessor (offset 8, stored in _w1) --
 
     @always_inline
     fn get_i64(self) -> Int64:
-        var ptr = UnsafePointer(to=self._storage).bitcast[UInt8]()
-        return (ptr + 8).bitcast[Int64]()[]
+        return Int64(self._w1)
 
     @always_inline
     fn set_i64(mut self, value: Int64):
-        var ptr = UnsafePointer(to=self._storage).bitcast[UInt8]()
-        (ptr + 8).bitcast[Int64]()[] = value
+        self._w1 = UInt64(value)
 
-    # -- f32 accessor (offset 8, 4 bytes) --
+    # -- f32 accessor (offset 8, stored in _w1 low 32 bits) --
 
     @always_inline
     fn get_f32(self) -> Float32:
-        var ptr = UnsafePointer(to=self._storage).bitcast[UInt8]()
-        return (ptr + 8).bitcast[Float32]()[]
+        var bits = Int32(Int(self._w1) & 0xFFFFFFFF)
+        return UnsafePointer(to=bits).bitcast[Float32]()[]
 
     @always_inline
     fn set_f32(mut self, value: Float32):
-        var ptr = UnsafePointer(to=self._storage).bitcast[UInt8]()
-        (ptr + 8).bitcast[Float32]()[] = value
+        var bits = UnsafePointer(to=value).bitcast[Int32]()[]
+        self._w1 = UInt64(Int64(bits) & 0xFFFFFFFF)
 
-    # -- f64 accessor (offset 8, 8 bytes) --
+    # -- f64 accessor (offset 8, stored in _w1) --
 
     @always_inline
     fn get_f64(self) -> Float64:
-        var ptr = UnsafePointer(to=self._storage).bitcast[UInt8]()
-        return (ptr + 8).bitcast[Float64]()[]
+        var w = self._w1
+        return UnsafePointer(to=w).bitcast[Float64]()[]
 
     @always_inline
     fn set_f64(mut self, value: Float64):
-        var ptr = UnsafePointer(to=self._storage).bitcast[UInt8]()
-        (ptr + 8).bitcast[Float64]()[] = value
+        self._w1 = UnsafePointer(to=value).bitcast[UInt64]()[]
 
     # -- Convenience constructors --
 
@@ -205,18 +215,22 @@ struct WasmtimeVal:
 #       uint64_t store_id;   // offset 0
 #       size_t   __private;  // offset 8
 #   };
+#
+# Storage: 2 × UInt64 = 16 bytes, 8-byte aligned.
 # ---------------------------------------------------------------------------
 
 
 @register_passable("trivial")
 struct WasmtimeFunc:
-    """Mirrors wasmtime_func_t (16 bytes)."""
+    """Mirrors wasmtime_func_t (16 bytes, 8-byte aligned)."""
 
-    var _storage: SIMD[DType.uint8, WASMTIME_FUNC_SIZE]
+    var _w0: UInt64
+    var _w1: UInt64
 
     @always_inline
     fn __init__(out self):
-        self._storage = SIMD[DType.uint8, WASMTIME_FUNC_SIZE](0)
+        self._w0 = 0
+        self._w1 = 0
 
 
 # ---------------------------------------------------------------------------
@@ -227,18 +241,22 @@ struct WasmtimeFunc:
 #       uint64_t store_id;   // offset 0
 #       size_t   __private;  // offset 8
 #   };
+#
+# Storage: 2 × UInt64 = 16 bytes, 8-byte aligned.
 # ---------------------------------------------------------------------------
 
 
 @register_passable("trivial")
 struct WasmtimeInstance:
-    """Mirrors wasmtime_instance_t (16 bytes)."""
+    """Mirrors wasmtime_instance_t (16 bytes, 8-byte aligned)."""
 
-    var _storage: SIMD[DType.uint8, WASMTIME_INSTANCE_SIZE]
+    var _w0: UInt64
+    var _w1: UInt64
 
     @always_inline
     fn __init__(out self):
-        self._storage = SIMD[DType.uint8, WASMTIME_INSTANCE_SIZE](0)
+        self._w0 = 0
+        self._w1 = 0
 
 
 # ---------------------------------------------------------------------------
@@ -252,18 +270,24 @@ struct WasmtimeInstance:
 #       uint32_t __private3;    // offset 16
 #       // 4 bytes padding to align to 8
 #   };
+#
+# Storage: 3 × UInt64 = 24 bytes, 8-byte aligned.
 # ---------------------------------------------------------------------------
 
 
 @register_passable("trivial")
 struct WasmtimeGlobal:
-    """Mirrors wasmtime_global_t (24 bytes)."""
+    """Mirrors wasmtime_global_t (24 bytes, 8-byte aligned)."""
 
-    var _storage: SIMD[DType.uint8, WASMTIME_GLOBAL_SIZE]
+    var _w0: UInt64
+    var _w1: UInt64
+    var _w2: UInt64
 
     @always_inline
     fn __init__(out self):
-        self._storage = SIMD[DType.uint8, WASMTIME_GLOBAL_SIZE](0)
+        self._w0 = 0
+        self._w1 = 0
+        self._w2 = 0
 
 
 # ---------------------------------------------------------------------------
@@ -274,18 +298,24 @@ struct WasmtimeGlobal:
 #   struct wasmtime_memory_t { _anon; uint32_t __private2; };
 #
 # Total: 8 + 4 + (4 pad) + 4 + (4 pad) = 24 bytes
+#
+# Storage: 3 × UInt64 = 24 bytes, 8-byte aligned.
 # ---------------------------------------------------------------------------
 
 
 @register_passable("trivial")
 struct WasmtimeMemory:
-    """Mirrors wasmtime_memory_t (24 bytes)."""
+    """Mirrors wasmtime_memory_t (24 bytes, 8-byte aligned)."""
 
-    var _storage: SIMD[DType.uint8, WASMTIME_MEMORY_SIZE]
+    var _w0: UInt64
+    var _w1: UInt64
+    var _w2: UInt64
 
     @always_inline
     fn __init__(out self):
-        self._storage = SIMD[DType.uint8, WASMTIME_MEMORY_SIZE](0)
+        self._w0 = 0
+        self._w1 = 0
+        self._w2 = 0
 
 
 # ---------------------------------------------------------------------------
@@ -299,31 +329,39 @@ struct WasmtimeMemory:
 #   };
 #
 # The union holds func/global/table/memory/sharedmemory.
+#
+# Storage: 4 × UInt64 = 32 bytes, 8-byte aligned.
 # ---------------------------------------------------------------------------
 
 
 @register_passable("trivial")
 struct WasmtimeExtern:
-    """Mirrors wasmtime_extern_t (32 bytes)."""
+    """Mirrors wasmtime_extern_t (32 bytes, 8-byte aligned)."""
 
-    var _storage: SIMD[DType.uint8, WASMTIME_EXTERN_SIZE]
+    var _w0: UInt64  # kind (byte 0) + 7 bytes padding
+    var _w1: UInt64  # union bytes 0-7 (offset 8)
+    var _w2: UInt64  # union bytes 8-15 (offset 16)
+    var _w3: UInt64  # union bytes 16-23 (offset 24)
 
     @always_inline
     fn __init__(out self):
-        self._storage = SIMD[DType.uint8, WASMTIME_EXTERN_SIZE](0)
+        self._w0 = 0
+        self._w1 = 0
+        self._w2 = 0
+        self._w3 = 0
 
     @always_inline
     fn get_kind(self) -> UInt8:
-        return self._storage[0]
+        return UInt8(self._w0 & 0xFF)
 
     @always_inline
     fn get_func(self) -> WasmtimeFunc:
         """Extract the func from the union (valid when kind == WASMTIME_EXTERN_FUNC).
         """
         var f = WasmtimeFunc()
-        var src = UnsafePointer(to=self._storage).bitcast[UInt8]() + 8
-        var dst = UnsafePointer(to=f._storage).bitcast[UInt8]()
-        memcpy(dst, src, WASMTIME_FUNC_SIZE)
+        # Union starts at offset 8, func is 16 bytes (2 × UInt64)
+        f._w0 = self._w1
+        f._w1 = self._w2
         return f
 
     @always_inline
@@ -331,9 +369,10 @@ struct WasmtimeExtern:
         """Extract the global from the union (valid when kind == WASMTIME_EXTERN_GLOBAL).
         """
         var g = WasmtimeGlobal()
-        var src = UnsafePointer(to=self._storage).bitcast[UInt8]() + 8
-        var dst = UnsafePointer(to=g._storage).bitcast[UInt8]()
-        memcpy(dst, src, WASMTIME_GLOBAL_SIZE)
+        # Union starts at offset 8, global is 24 bytes (3 × UInt64)
+        g._w0 = self._w1
+        g._w1 = self._w2
+        g._w2 = self._w3
         return g
 
     @always_inline
@@ -341,9 +380,10 @@ struct WasmtimeExtern:
         """Extract the memory from the union (valid when kind == WASMTIME_EXTERN_MEMORY).
         """
         var m = WasmtimeMemory()
-        var src = UnsafePointer(to=self._storage).bitcast[UInt8]() + 8
-        var dst = UnsafePointer(to=m._storage).bitcast[UInt8]()
-        memcpy(dst, src, WASMTIME_MEMORY_SIZE)
+        # Union starts at offset 8, memory is 24 bytes (3 × UInt64)
+        m._w0 = self._w1
+        m._w1 = self._w2
+        m._w2 = self._w3
         return m
 
 
