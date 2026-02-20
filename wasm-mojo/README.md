@@ -34,19 +34,33 @@ wasm-mojo/
 │   ├── memory.ts              # Bump allocator and WASM memory state
 │   ├── env.ts                 # Environment imports (I/O, math, libc stubs)
 │   └── strings.ts             # Mojo String ABI helpers (read/write/alloc)
-├── test/
-│   ├── run.ts                 # Test entry point — loads WASM, runs all suites
-│   ├── harness.ts             # Test harness (suite, assert, assertClose, summary)
-│   ├── arithmetic.test.ts     # add, sub, mul, div, mod, pow
-│   ├── unary.test.ts          # neg, abs
-│   ├── minmax.test.ts         # min, max, clamp
-│   ├── bitwise.test.ts        # bitand, bitor, bitxor, bitnot, shl, shr
-│   ├── comparison.test.ts     # eq, ne, lt, le, gt, ge, boolean logic
-│   ├── algorithms.test.ts     # fib, factorial, gcd
-│   ├── identity.test.ts       # identity / passthrough
-│   ├── print.test.ts          # print functions
-│   ├── strings.test.ts        # string I/O and operations
-│   └── consistency.test.ts    # cross-function consistency checks
+├── test/                      # Primary test suite — WASM via wasmtime (Mojo)
+│   ├── wasm_harness.py        # wasmtime-py harness for loading WASM binary
+│   ├── test_arithmetic.mojo   # add, sub, mul, div, mod, pow
+│   ├── test_unary.mojo        # neg, abs
+│   ├── test_minmax.mojo       # min, max, clamp
+│   ├── test_bitwise.mojo      # bitand, bitor, bitxor, bitnot, shl, shr
+│   ├── test_comparison.mojo   # eq, ne, lt, le, gt, ge, boolean logic
+│   ├── test_algorithms.mojo   # fib, factorial, gcd
+│   ├── test_identity.mojo     # identity / passthrough
+│   ├── test_print.mojo        # print functions
+│   ├── test_strings.mojo      # string I/O and operations
+│   ├── test_signals.mojo      # reactive signals
+│   ├── test_scopes.mojo       # scope arena and hooks
+│   ├── test_templates.mojo    # template builder, registry, VNode store
+│   ├── test_mutations.mojo    # create/diff engines
+│   ├── test_events.mojo       # event handler registry
+│   ├── test_protocol.mojo     # binary mutation encoding
+│   └── ...                    # + boundaries, consistency, floats, sso, etc.
+├── test-js/                   # JS runtime integration tests (Deno + linkedom)
+│   ├── run.ts                 # Test entry point
+│   ├── harness.ts             # Test harness (suite, assert, summary)
+│   ├── counter.test.ts        # Full counter app lifecycle with DOM
+│   ├── interpreter.test.ts    # DOM interpreter + template cache
+│   ├── mutations.test.ts      # JS-side MutationReader + memory
+│   ├── protocol.test.ts       # JS-side binary protocol parsing
+│   ├── templates.test.ts      # JS-side template + VNode interactions
+│   └── events.test.ts         # JS-side event handler bridge
 ├── build/                     # Build output (generated)
 ├── justfile                   # Build and test commands
 └── default.nix                # Nix dev shell definition
@@ -97,8 +111,20 @@ Build the WASM binary:
 just build
 ```
 
-Run the tests:
+Run the WASM tests (primary suite, via wasmtime):
 
 ```sh
 just test
+```
+
+Run the JS runtime integration tests (DOM interpreter, app lifecycle):
+
+```sh
+just test-js
+```
+
+Run all tests:
+
+```sh
+just test-all
 ```

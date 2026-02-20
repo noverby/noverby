@@ -2208,16 +2208,18 @@ Upgrade the builder to support `comptime` templates (see [rsx! vs Mojo Parameter
 
 **Existing (keep):**
 
-- `test/harness.ts` — assert, assertClose, assertNaN, suite, summary
-- `test/run.ts` — test runner entry point
-- All existing tests in `test/` — regression suite for low-level WASM interop
+- `test/wasm_harness.py` — wasmtime-py harness for loading WASM binary
+- `test/test_*.mojo` — primary WASM test suite (arithmetic, signals, templates, etc.)
+- `test-js/harness.ts` — assert, assertClose, assertNaN, suite, summary
+- `test-js/run.ts` — JS test runner entry point
+- `test-js/` — JS runtime integration tests (DOM interpreter, counter app, protocol)
 
 **New additions:**
 
-- `test/helpers/dom.ts` — `deno-dom` based DOM creation and assertion
-- `test/helpers/signals.ts` — helpers to create/read/write signals via WASM exports
-- `test/helpers/mutations.ts` — helpers to read and assert on mutation buffers
-- `test/helpers/events.ts` — helpers to simulate events and verify dispatch
+- `test-js/helpers/dom.ts` — `deno-dom` based DOM creation and assertion
+- `test-js/helpers/signals.ts` — helpers to create/read/write signals via WASM exports
+- `test-js/helpers/mutations.ts` — helpers to read and assert on mutation buffers
+- `test-js/helpers/events.ts` — helpers to simulate events and verify dispatch
 
 ### Test Directory Structure
 
