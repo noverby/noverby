@@ -36,4 +36,5 @@ rules:
       - wasm-mojo
       - wasmtime-mojo
       - zed-mojo
+      - tramp-rs
       - wiki
