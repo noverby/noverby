@@ -11,7 +11,10 @@ test: build
 mojo-test:
   mojo test -I src test-mojo/
 
-test-all: mojo-test test
+wasm-test: build
+  uv run --with wasmtime --with pytest pytest test-wasm/ -v
+
+test-all: mojo-test test wasm-test
 
 serve: build
   @echo "Open http://localhost:4507/examples/counter/"
