@@ -58,9 +58,7 @@ wasm-mojo/
 │   ├── counter.test.ts        # Full counter app lifecycle with DOM
 │   ├── interpreter.test.ts    # DOM interpreter + template cache
 │   ├── mutations.test.ts      # JS-side MutationReader + memory
-│   ├── protocol.test.ts       # JS-side binary protocol parsing
-│   ├── templates.test.ts      # JS-side template + VNode interactions
-│   └── events.test.ts         # JS-side event handler bridge
+│   └── protocol.test.ts       # JS-side binary protocol parsing
 ├── build/                     # Build output (generated)
 ├── justfile                   # Build and test commands
 └── default.nix                # Nix dev shell definition
