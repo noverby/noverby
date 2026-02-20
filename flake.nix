@@ -163,6 +163,7 @@
         ./wiki
 
         ./wasm-mojo
+        ./zed-mojo
 
         ./nixos-rs
         ./systemd-rs
