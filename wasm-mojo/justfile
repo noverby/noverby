@@ -8,6 +8,11 @@ build:
 test: build
   deno run --allow-read test/run.ts
 
+mojo-test:
+  mojo test -I src test-mojo/
+
+test-all: mojo-test test
+
 serve: build
   @echo "Open http://localhost:4507/examples/counter/"
   deno run --allow-net --allow-read jsr:@std/http/file-server
