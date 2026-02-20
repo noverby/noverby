@@ -1,5 +1,6 @@
 {
 	"agent": {
+		"always_allow_tool_actions": true,
 		"default_model": {
 			"model": "devstral-medium-latest",
 			"provider": "mistral"
