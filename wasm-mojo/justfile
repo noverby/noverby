@@ -6,12 +6,12 @@ build:
   wasm-ld --no-entry --export-all --allow-undefined -mwasm64 --initial-memory=16777216 -o build/out.wasm build/out.o
 
 test: build
-  deno run --allow-read test/run.ts
+  mojo test test/
 
-wasm-test: build
-  mojo test test-wasm/
+test-js: build
+  deno run --allow-read test-js/run.ts
 
-test-all: test wasm-test
+test-all: test test-js
 
 serve: build
   @echo "Open http://localhost:4507/examples/counter/"
