@@ -81,4 +81,18 @@ pub trait Backend: Send + Sync {
 
     /// Delete a remote file (or empty directory).
     async fn delete(&self, path: &str) -> Result<(), crate::errors::TrampError>;
+
+    /// Check whether the connection is still alive.
+    ///
+    /// Implementations should run a cheap no-op command (e.g. `true` or
+    /// `echo ok`) and return `Ok(())` if the remote responds, or an `Err`
+    /// if the connection appears dead or unresponsive.
+    ///
+    /// The VFS layer calls this before reusing a pooled connection; on
+    /// failure it will drop the stale backend and open a fresh one.
+    async fn check(&self) -> Result<(), crate::errors::TrampError>;
+
+    /// A human-readable description of this backend connection, used for
+    /// display in `tramp connections` and diagnostics.
+    fn description(&self) -> String;
 }

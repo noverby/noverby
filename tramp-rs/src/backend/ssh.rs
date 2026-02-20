@@ -281,6 +281,22 @@ done"#
         Self::check_result(&result, path, &self.host)?;
         Ok(())
     }
+
+    async fn check(&self) -> TrampResult<()> {
+        let result = self.run("true", &[]).await?;
+        if result.exit_code == 0 {
+            Ok(())
+        } else {
+            Err(TrampError::ConnectionFailed {
+                host: self.host.clone(),
+                reason: "health check failed: `true` returned non-zero".to_string(),
+            })
+        }
+    }
+
+    fn description(&self) -> String {
+        format!("ssh:{}", self.host)
+    }
 }
 
 // ---------------------------------------------------------------------------
