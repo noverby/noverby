@@ -85,6 +85,7 @@ alias SSO_FLAG: UInt64 = 0x8000_0000_0000_0000
 alias SSO_LEN_MASK: UInt64 = 0x1F00_0000_0000_0000
 
 alias WASM_PATH = "build/out.wasm"
+alias CWASM_PATH = "build/out.cwasm"
 
 
 # ---------------------------------------------------------------------------
@@ -484,8 +485,12 @@ struct WasmInstance(Movable):
         var env = self._state_ptr.bitcast[NoneType]()
         var no_fin = UnsafePointer[NoneType]()
 
-        # Create engine, store, linker
-        self._engine = Engine()
+        # Create engine with module caching enabled.
+        # Each mojo-test function runs in a separate process, so in-memory
+        # sharing is impossible.  Wasmtime's file-based module cache
+        # persists the compiled machine code to disk (~/.cache/wasmtime),
+        # letting subsequent processes skip the expensive WASM compilation.
+        self._engine = Engine(cache=True)
         self._store = Store(self._engine.ptr())
         self._linker = Linker(self._engine.ptr())
 
@@ -654,10 +659,17 @@ struct WasmInstance(Movable):
         )
 
         # ──────────────────────────────────────────────────────────────
-        # Compile and instantiate the module
+        # Load the module: prefer pre-compiled .cwasm (very fast mmap),
+        # fall back to compiling from .wasm bytes (cached by engine).
         # ──────────────────────────────────────────────────────────────
 
-        self._module = Module(self._engine.ptr(), wasm_bytes)
+        var cwasm_path = wasm_path.removesuffix(".wasm") + ".cwasm"
+        if Path(cwasm_path).exists():
+            self._module = Module.deserialize_file(
+                self._engine.ptr(), cwasm_path
+            )
+        else:
+            self._module = Module(self._engine.ptr(), wasm_bytes)
         self._instance = self._linker.instantiate(
             self._store.context(), self._module.ptr()
         )
@@ -1250,11 +1262,20 @@ fn no_args() -> List[WasmtimeVal]:
 # ---------------------------------------------------------------------------
 # Instance factory — create a fresh instance for each caller.
 #
-# Module-level `var` is not supported in Mojo 0.25.6, so we cannot
-# keep a cached singleton.  Each call allocates a new WasmInstance on
-# the heap and returns a pointer to it.  The caller is responsible for
-# the lifetime (in practice test processes are short-lived, so the
-# leak is acceptable).
+# Module-level `var` is not supported in Mojo 0.25.6 and `mojo test`
+# runs every test function in a separate process, so in-memory singleton
+# caching is impossible.
+#
+# Instead we rely on two layers of on-disk caching to avoid recompiling
+# the WASM module from scratch on every test invocation:
+#
+#   1. Pre-compiled `.cwasm` — `just build` serializes the compiled
+#      module to `build/out.cwasm`.  The harness loads it via
+#      `Module.deserialize_file` (essentially an mmap, very fast).
+#
+#   2. Wasmtime engine cache — `Engine(cache=True)` enables wasmtime's
+#      built-in file-based cache (~/.cache/wasmtime) as a fallback when
+#      no `.cwasm` file is present.
 # ---------------------------------------------------------------------------
 
 
