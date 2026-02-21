@@ -164,6 +164,32 @@ struct AppShell(Movable):
         """Hook: create or retrieve an Int32 signal for the current scope."""
         return self.runtime[0].use_signal_i32(initial)
 
+    # ── Memo helpers ─────────────────────────────────────────────────
+
+    fn create_memo_i32(mut self, scope_id: UInt32, initial: Int32) -> UInt32:
+        """Create an Int32 memo.  Returns its ID."""
+        return self.runtime[0].create_memo_i32(scope_id, initial)
+
+    fn memo_begin_compute(mut self, memo_id: UInt32):
+        """Begin memo computation (sets memo's context as current)."""
+        self.runtime[0].memo_begin_compute(memo_id)
+
+    fn memo_end_compute_i32(mut self, memo_id: UInt32, value: Int32):
+        """End memo computation and cache the result."""
+        self.runtime[0].memo_end_compute_i32(memo_id, value)
+
+    fn memo_read_i32(mut self, memo_id: UInt32) -> Int32:
+        """Read a memo's cached value (with context tracking)."""
+        return self.runtime[0].memo_read_i32(memo_id)
+
+    fn memo_is_dirty(self, memo_id: UInt32) -> Bool:
+        """Check whether the memo needs recomputation."""
+        return self.runtime[0].memo_is_dirty(memo_id)
+
+    fn use_memo_i32(mut self, initial: Int32) -> UInt32:
+        """Hook: create or retrieve an Int32 memo for the current scope."""
+        return self.runtime[0].use_memo_i32(initial)
+
     # ── Mount lifecycle ──────────────────────────────────────────────
 
     fn mount(

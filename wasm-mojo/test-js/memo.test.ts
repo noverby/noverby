@@ -538,4 +538,157 @@ export function testMemo(fns: WasmExports): void {
 		fns.scope_destroy(rt, scopeId);
 		destroyRt(fns, rt);
 	}
+
+	// ── Shell memo helpers (M13.5) ──────────────────────────────────
+
+	suite("Shell memo — create and read initial value");
+	{
+		const shell = fns.shell_create();
+		const scopeId = fns.shell_create_root_scope(shell);
+		const m0 = fns.shell_memo_create_i32(shell, scopeId, 42);
+		assert(m0 >= 0, true, "shell memo ID is non-negative");
+		assert(
+			fns.shell_memo_read_i32(shell, m0),
+			42,
+			"shell memo initial value is 42",
+		);
+		fns.shell_destroy(shell);
+	}
+
+	suite("Shell memo — starts dirty, compute clears dirty");
+	{
+		const shell = fns.shell_create();
+		const scopeId = fns.shell_create_root_scope(shell);
+		const m0 = fns.shell_memo_create_i32(shell, scopeId, 0);
+
+		assert(fns.shell_memo_is_dirty(shell, m0), 1, "shell memo starts dirty");
+
+		fns.shell_memo_begin_compute(shell, m0);
+		fns.shell_memo_end_compute_i32(shell, m0, 99);
+
+		assert(
+			fns.shell_memo_is_dirty(shell, m0),
+			0,
+			"shell memo clean after compute",
+		);
+		assert(
+			fns.shell_memo_read_i32(shell, m0),
+			99,
+			"shell memo value updated to 99",
+		);
+		fns.shell_destroy(shell);
+	}
+
+	suite("Shell memo — signal write marks memo dirty and propagates to scope");
+	{
+		const shell = fns.shell_create();
+		const scopeId = fns.shell_create_root_scope(shell);
+		const sig = fns.shell_create_signal_i32(shell, 10);
+		const m0 = fns.shell_memo_create_i32(shell, scopeId, 0);
+
+		// First compute: read signal to establish dependency
+		fns.shell_memo_begin_compute(shell, m0);
+		const rt = fns.shell_rt_ptr(shell);
+		fns.signal_read_i32(rt, sig); // subscribe memo context to signal
+		fns.shell_memo_end_compute_i32(shell, m0, 10);
+
+		assert(
+			fns.shell_memo_is_dirty(shell, m0),
+			0,
+			"memo clean after first compute",
+		);
+
+		// Subscribe scope to memo output by reading memo inside scope context
+		fns.shell_begin_render(shell, scopeId);
+		fns.shell_memo_read_i32(shell, m0);
+		fns.shell_end_render(shell, -1);
+
+		// Write to input signal — should dirty memo + scope
+		fns.shell_write_signal_i32(shell, sig, 20);
+
+		assert(
+			fns.shell_memo_is_dirty(shell, m0),
+			1,
+			"memo dirty after signal write",
+		);
+		assert(
+			fns.shell_has_dirty(shell),
+			1,
+			"shell has dirty scopes after propagation",
+		);
+		fns.shell_destroy(shell);
+	}
+
+	suite("Shell memo — multiple memos have distinct IDs and independent values");
+	{
+		const shell = fns.shell_create();
+		const scopeId = fns.shell_create_root_scope(shell);
+		const m0 = fns.shell_memo_create_i32(shell, scopeId, 10);
+		const m1 = fns.shell_memo_create_i32(shell, scopeId, 20);
+		const m2 = fns.shell_memo_create_i32(shell, scopeId, 30);
+
+		assert(m0 !== m1, true, "m0 !== m1");
+		assert(m1 !== m2, true, "m1 !== m2");
+		assert(m0 !== m2, true, "m0 !== m2");
+
+		assert(fns.shell_memo_read_i32(shell, m0), 10, "m0 value is 10");
+		assert(fns.shell_memo_read_i32(shell, m1), 20, "m1 value is 20");
+		assert(fns.shell_memo_read_i32(shell, m2), 30, "m2 value is 30");
+		fns.shell_destroy(shell);
+	}
+
+	suite("Shell memo — use_memo_i32 hook creates on first render");
+	{
+		const shell = fns.shell_create();
+		const scopeId = fns.shell_create_root_scope(shell);
+
+		// First render — creates memo
+		const prev = fns.shell_begin_render(shell, scopeId);
+		const m0 = fns.shell_use_memo_i32(shell, 0);
+		assert(m0 >= 0, true, "hook memo ID is non-negative");
+		fns.shell_end_render(shell, prev);
+
+		// Re-render — returns the same ID
+		const prev2 = fns.shell_begin_render(shell, scopeId);
+		const m1 = fns.shell_use_memo_i32(shell, 999);
+		assert(m1, m0, "same memo ID on re-render");
+		fns.shell_end_render(shell, prev2);
+
+		fns.shell_destroy(shell);
+	}
+
+	suite("Shell memo — parity with raw Runtime methods");
+	{
+		const shell = fns.shell_create();
+		const rt = fns.shell_rt_ptr(shell);
+		const scopeId = fns.shell_create_root_scope(shell);
+
+		const m0 = fns.shell_memo_create_i32(shell, scopeId, 50);
+
+		// Read via shell and via raw runtime — should match
+		const shellVal = fns.shell_memo_read_i32(shell, m0);
+		const rtVal = fns.memo_read_i32(rt, m0);
+		assert(shellVal, rtVal, "shell read == runtime read");
+		assert(shellVal, 50, "initial value is 50");
+
+		// Dirty check parity
+		const shellDirty = fns.shell_memo_is_dirty(shell, m0);
+		const rtDirty = fns.memo_is_dirty(rt, m0);
+		assert(shellDirty, rtDirty, "shell dirty == runtime dirty");
+
+		// Compute via shell, verify via runtime
+		fns.shell_memo_begin_compute(shell, m0);
+		fns.shell_memo_end_compute_i32(shell, m0, 100);
+
+		const shellVal2 = fns.shell_memo_read_i32(shell, m0);
+		const rtVal2 = fns.memo_read_i32(rt, m0);
+		assert(shellVal2, 100, "post-compute shell value is 100");
+		assert(rtVal2, 100, "post-compute runtime value is 100");
+		assert(shellVal2, rtVal2, "post-compute: shell == runtime");
+
+		assert(fns.shell_memo_is_dirty(shell, m0), 0, "shell: clean after compute");
+		assert(fns.memo_is_dirty(rt, m0), 0, "runtime: clean after compute");
+
+		fns.shell_destroy(shell);
+	}
 }

@@ -641,6 +641,224 @@ def test_shell_independent_instances(w: UnsafePointer[WasmInstance]):
     w[].call_void("shell_destroy", args_ptr(shell_b))
 
 
+# ── Shell memo helpers (M13.5) ───────────────────────────────────────────────
+
+
+def test_shell_memo_create_returns_valid_id(w: UnsafePointer[WasmInstance]):
+    """shell_memo_create_i32 returns a non-negative memo ID."""
+    var shell = Int(w[].call_i64("shell_create", no_args()))
+    var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
+    var memo = w[].call_i32(
+        "shell_memo_create_i32", args_ptr_i32_i32(shell, scope, 42)
+    )
+    assert_true(memo >= 0, "memo ID should be non-negative")
+    w[].call_void("shell_destroy", args_ptr(shell))
+
+
+def test_shell_memo_initial_value_readable(w: UnsafePointer[WasmInstance]):
+    """Memo's initial cached value is readable via shell helper."""
+    var shell = Int(w[].call_i64("shell_create", no_args()))
+    var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
+    var memo = w[].call_i32(
+        "shell_memo_create_i32", args_ptr_i32_i32(shell, scope, 77)
+    )
+    var val = w[].call_i32("shell_memo_read_i32", args_ptr_i32(shell, memo))
+    assert_equal(val, 77)
+    w[].call_void("shell_destroy", args_ptr(shell))
+
+
+def test_shell_memo_starts_dirty(w: UnsafePointer[WasmInstance]):
+    """Newly created memo starts dirty (needs first computation)."""
+    var shell = Int(w[].call_i64("shell_create", no_args()))
+    var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
+    var memo = w[].call_i32(
+        "shell_memo_create_i32", args_ptr_i32_i32(shell, scope, 0)
+    )
+    assert_equal(
+        w[].call_i32("shell_memo_is_dirty", args_ptr_i32(shell, memo)), 1
+    )
+    w[].call_void("shell_destroy", args_ptr(shell))
+
+
+def test_shell_memo_compute_clears_dirty(w: UnsafePointer[WasmInstance]):
+    """begin_compute + end_compute clears the dirty flag."""
+    var shell = Int(w[].call_i64("shell_create", no_args()))
+    var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
+    var memo = w[].call_i32(
+        "shell_memo_create_i32", args_ptr_i32_i32(shell, scope, 0)
+    )
+
+    # Starts dirty
+    assert_equal(
+        w[].call_i32("shell_memo_is_dirty", args_ptr_i32(shell, memo)), 1
+    )
+
+    # Compute: begin, read inputs, end with result
+    w[].call_void("shell_memo_begin_compute", args_ptr_i32(shell, memo))
+    w[].call_void(
+        "shell_memo_end_compute_i32", args_ptr_i32_i32(shell, memo, 99)
+    )
+
+    # Now clean
+    assert_equal(
+        w[].call_i32("shell_memo_is_dirty", args_ptr_i32(shell, memo)), 0
+    )
+
+    # Value updated
+    var val = w[].call_i32("shell_memo_read_i32", args_ptr_i32(shell, memo))
+    assert_equal(val, 99)
+
+    w[].call_void("shell_destroy", args_ptr(shell))
+
+
+def test_shell_memo_signal_write_marks_dirty(w: UnsafePointer[WasmInstance]):
+    """Writing an input signal marks the memo dirty and propagates to scope."""
+    var shell = Int(w[].call_i64("shell_create", no_args()))
+    var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
+    var sig = w[].call_i32("shell_create_signal_i32", args_ptr_i32(shell, 10))
+    var memo = w[].call_i32(
+        "shell_memo_create_i32", args_ptr_i32_i32(shell, scope, 0)
+    )
+
+    # First compute: read the signal to establish dependency
+    w[].call_void("shell_memo_begin_compute", args_ptr_i32(shell, memo))
+    # Read the signal inside the memo's reactive context to subscribe
+    var rt = Int(w[].call_i64("shell_rt_ptr", args_ptr(shell)))
+    _ = w[].call_i32("signal_read_i32", args_ptr_i32(rt, sig))
+    w[].call_void(
+        "shell_memo_end_compute_i32", args_ptr_i32_i32(shell, memo, 10)
+    )
+
+    # Memo is now clean
+    assert_equal(
+        w[].call_i32("shell_memo_is_dirty", args_ptr_i32(shell, memo)), 0
+    )
+
+    # Subscribe the scope to the memo's output signal by reading memo inside scope context
+    _ = w[].call_i32("shell_begin_render", args_ptr_i32(shell, scope))
+    _ = w[].call_i32("shell_memo_read_i32", args_ptr_i32(shell, memo))
+    w[].call_void("shell_end_render", args_ptr_i32(shell, -1))
+
+    # Write to the input signal — should mark memo dirty + scope dirty
+    w[].call_void("shell_write_signal_i32", args_ptr_i32_i32(shell, sig, 20))
+
+    # Memo should be dirty
+    assert_equal(
+        w[].call_i32("shell_memo_is_dirty", args_ptr_i32(shell, memo)), 1
+    )
+
+    # Shell should have dirty scopes
+    assert_equal(w[].call_i32("shell_has_dirty", args_ptr(shell)), 1)
+
+    w[].call_void("shell_destroy", args_ptr(shell))
+
+
+def test_shell_use_memo_hook(w: UnsafePointer[WasmInstance]):
+    """shell_use_memo_i32 creates on first render, returns same ID on re-render.
+    """
+    var shell = Int(w[].call_i64("shell_create", no_args()))
+    var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
+
+    # First render — creates memo
+    _ = w[].call_i32("shell_begin_render", args_ptr_i32(shell, scope))
+    var m0 = w[].call_i32("shell_use_memo_i32", args_ptr_i32(shell, 0))
+    assert_true(m0 >= 0, "memo ID should be non-negative")
+    w[].call_void("shell_end_render", args_ptr_i32(shell, -1))
+
+    # Re-render — returns the same ID
+    _ = w[].call_i32("shell_begin_render", args_ptr_i32(shell, scope))
+    var m1 = w[].call_i32("shell_use_memo_i32", args_ptr_i32(shell, 999))
+    assert_equal(m1, m0, "same memo ID on re-render")
+    w[].call_void("shell_end_render", args_ptr_i32(shell, -1))
+
+    w[].call_void("shell_destroy", args_ptr(shell))
+
+
+def test_shell_memo_parity_with_runtime(w: UnsafePointer[WasmInstance]):
+    """Shell memo helpers produce same results as raw Runtime methods."""
+    var shell = Int(w[].call_i64("shell_create", no_args()))
+    var rt = Int(w[].call_i64("shell_rt_ptr", args_ptr(shell)))
+    var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
+
+    # Create memo via shell
+    var shell_memo = w[].call_i32(
+        "shell_memo_create_i32", args_ptr_i32_i32(shell, scope, 50)
+    )
+
+    # Read via shell and via raw runtime — should match
+    var shell_val = w[].call_i32(
+        "shell_memo_read_i32", args_ptr_i32(shell, shell_memo)
+    )
+    var rt_val = w[].call_i32("memo_read_i32", args_ptr_i32(rt, shell_memo))
+    assert_equal(shell_val, rt_val, "shell read == runtime read")
+    assert_equal(shell_val, 50)
+
+    # Dirty check via shell and runtime — should match
+    var shell_dirty = w[].call_i32(
+        "shell_memo_is_dirty", args_ptr_i32(shell, shell_memo)
+    )
+    var rt_dirty = w[].call_i32("memo_is_dirty", args_ptr_i32(rt, shell_memo))
+    assert_equal(shell_dirty, rt_dirty, "shell dirty == runtime dirty")
+
+    # Compute via shell, then verify via runtime
+    w[].call_void("shell_memo_begin_compute", args_ptr_i32(shell, shell_memo))
+    w[].call_void(
+        "shell_memo_end_compute_i32",
+        args_ptr_i32_i32(shell, shell_memo, 100),
+    )
+
+    var shell_val2 = w[].call_i32(
+        "shell_memo_read_i32", args_ptr_i32(shell, shell_memo)
+    )
+    var rt_val2 = w[].call_i32("memo_read_i32", args_ptr_i32(rt, shell_memo))
+    assert_equal(shell_val2, 100)
+    assert_equal(rt_val2, 100)
+    assert_equal(shell_val2, rt_val2, "post-compute: shell == runtime")
+
+    # Clean after compute
+    assert_equal(
+        w[].call_i32("shell_memo_is_dirty", args_ptr_i32(shell, shell_memo)),
+        0,
+    )
+    assert_equal(w[].call_i32("memo_is_dirty", args_ptr_i32(rt, shell_memo)), 0)
+
+    w[].call_void("shell_destroy", args_ptr(shell))
+
+
+def test_shell_memo_multiple_memos(w: UnsafePointer[WasmInstance]):
+    """Multiple memos via shell have distinct IDs and independent values."""
+    var shell = Int(w[].call_i64("shell_create", no_args()))
+    var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
+
+    var m0 = w[].call_i32(
+        "shell_memo_create_i32", args_ptr_i32_i32(shell, scope, 10)
+    )
+    var m1 = w[].call_i32(
+        "shell_memo_create_i32", args_ptr_i32_i32(shell, scope, 20)
+    )
+    var m2 = w[].call_i32(
+        "shell_memo_create_i32", args_ptr_i32_i32(shell, scope, 30)
+    )
+
+    # Distinct IDs
+    assert_true(m0 != m1, "m0 != m1")
+    assert_true(m1 != m2, "m1 != m2")
+    assert_true(m0 != m2, "m0 != m2")
+
+    # Independent values
+    assert_equal(
+        w[].call_i32("shell_memo_read_i32", args_ptr_i32(shell, m0)), 10
+    )
+    assert_equal(
+        w[].call_i32("shell_memo_read_i32", args_ptr_i32(shell, m1)), 20
+    )
+    assert_equal(
+        w[].call_i32("shell_memo_read_i32", args_ptr_i32(shell, m2)), 30
+    )
+
+    w[].call_void("shell_destroy", args_ptr(shell))
+
+
 fn main() raises:
     from wasm_harness import get_instance
 
@@ -671,4 +889,13 @@ fn main() raises:
     test_shell_diff_text_changed(w)
     test_shell_full_mount_update_cycle(w)
     test_shell_independent_instances(w)
-    print("component: 26/26 passed")
+    # Shell memo helpers (M13.5)
+    test_shell_memo_create_returns_valid_id(w)
+    test_shell_memo_initial_value_readable(w)
+    test_shell_memo_starts_dirty(w)
+    test_shell_memo_compute_clears_dirty(w)
+    test_shell_memo_signal_write_marks_dirty(w)
+    test_shell_use_memo_hook(w)
+    test_shell_memo_parity_with_runtime(w)
+    test_shell_memo_multiple_memos(w)
+    print("component: 34/34 passed")

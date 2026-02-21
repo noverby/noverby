@@ -568,6 +568,46 @@ export interface WasmExports extends WebAssembly.Exports {
 	memo_output_key(rtPtr: bigint, memoId: number): number;
 	memo_context_id(rtPtr: bigint, memoId: number): number;
 
+	// ── Phase 13.5: AppShell Memo Helpers ────────────────────────────
+
+	shell_create(): bigint;
+	shell_destroy(shellPtr: bigint): void;
+	shell_is_alive(shellPtr: bigint): number;
+	shell_create_root_scope(shellPtr: bigint): number;
+	shell_create_child_scope(shellPtr: bigint, parentId: number): number;
+	shell_create_signal_i32(shellPtr: bigint, initial: number): number;
+	shell_read_signal_i32(shellPtr: bigint, key: number): number;
+	shell_peek_signal_i32(shellPtr: bigint, key: number): number;
+	shell_write_signal_i32(shellPtr: bigint, key: number, value: number): void;
+	shell_begin_render(shellPtr: bigint, scopeId: number): number;
+	shell_end_render(shellPtr: bigint, prevScope: number): void;
+	shell_has_dirty(shellPtr: bigint): number;
+	shell_collect_dirty(shellPtr: bigint): void;
+	shell_next_dirty(shellPtr: bigint): number;
+	shell_scheduler_empty(shellPtr: bigint): number;
+	shell_dispatch_event(
+		shellPtr: bigint,
+		handlerId: number,
+		eventType: number,
+	): number;
+	shell_rt_ptr(shellPtr: bigint): bigint;
+	shell_store_ptr(shellPtr: bigint): bigint;
+	shell_eid_ptr(shellPtr: bigint): bigint;
+	shell_memo_create_i32(
+		shellPtr: bigint,
+		scopeId: number,
+		initial: number,
+	): number;
+	shell_memo_begin_compute(shellPtr: bigint, memoId: number): void;
+	shell_memo_end_compute_i32(
+		shellPtr: bigint,
+		memoId: number,
+		value: number,
+	): void;
+	shell_memo_read_i32(shellPtr: bigint, memoId: number): number;
+	shell_memo_is_dirty(shellPtr: bigint, memoId: number): number;
+	shell_use_memo_i32(shellPtr: bigint, initial: number): number;
+
 	// ── Phase 7: Counter App ─────────────────────────────────────────
 
 	// App lifecycle
