@@ -24,6 +24,11 @@ a typed Nushell value; pipes operate locally; `tramp save` writes back remotely.
 - **Remote working directory** — `tramp cd` lets you navigate remote hosts with relative paths
 - **Cross-host copy** — `tramp cp` transfers files between any combination of local and remote paths
 - **Push execution** — `tramp exec` runs arbitrary commands on the remote
+- **Tab completion** — dynamic completions for TRAMP paths: backend prefixes, host names (from `~/.ssh/config`, `docker ps`, `kubectl get pods`, active connections), and remote file/directory listings
+- **Streaming large files** — files over 1 MB are read/written in chunks via the RPC agent's `file.read_range` / `file.write_range` methods, enabling `tramp open /ssh:host:/big.bin | save local.bin` without loading the entire file into memory
+- **PTY support** — the RPC agent can allocate pseudo-terminals for interactive commands via `process.start_pty` and `process.resize`, enabling proper TTY-aware behaviour (colour output, line editing, signal handling)
+- **Socket transport** — the agent supports `--listen tcp:<addr>:<port>` and `--listen unix:<path>` modes for direct TCP/Unix socket connections, bypassing `docker exec` overhead for local containers
+- **Cross-compilation** — Nix-based build matrix (`cross.nix`) produces statically-linked musl agent binaries for x86_64 and aarch64 Linux, plus native Darwin builds for Intel and Apple Silicon Macs
 - **Home Manager module** — auto-register the plugin with Nushell via `programs.nu-plugin-tramp.enable`
 
 ## Installation
@@ -361,6 +366,43 @@ $env.TRAMP_CACHE_TTL = "500ms"
 The TTL is read from the environment on each command invocation, so you can
 change it on-the-fly without restarting the plugin.
 
+### Tab completion
+
+All `tramp` commands that accept path arguments provide dynamic tab
+completion. Just press `Tab` at any point while typing a TRAMP path:
+
+```nushell
+# Complete backend prefixes
+tramp open /<Tab>
+# → /ssh:  /docker:  /k8s:  /sudo:
+
+# Complete host names (from ~/.ssh/config, active connections, docker ps, kubectl get pods)
+tramp open /ssh:<Tab>
+# → /ssh:myvm:  /ssh:webserver:  /ssh:jumpbox:
+
+tramp open /docker:<Tab>
+# → /docker:webapp:  /docker:postgres:
+
+# Start remote path after host
+tramp open /ssh:myvm:<Tab>
+# → /ssh:myvm:/
+
+# Complete remote directories and files
+tramp open /ssh:myvm:/<Tab>
+# → /ssh:myvm:/etc/  /ssh:myvm:/home/  /ssh:myvm:/var/  ...
+
+tramp open /ssh:myvm:/etc/ho<Tab>
+# → /ssh:myvm:/etc/hostname  /ssh:myvm:/etc/hosts
+
+# Relative path completion works when a remote CWD is set
+tramp cd /ssh:myvm:/app
+tramp open conf<Tab>
+# → config.toml  config.json
+```
+
+Both positional arguments of `tramp cp` support completions, so you get
+suggestions for source and destination paths independently.
+
 ## Path Format
 
 ```text
@@ -486,10 +528,15 @@ Nushell command
 ### RPC Agent architecture
 
 The `tramp-agent` binary runs on the remote host and replaces shell-command
-parsing with native syscalls over a single MsgPack-RPC pipe:
+parsing with native syscalls over a MsgPack-RPC connection. The agent
+supports three transport modes:
+
+1. **stdin/stdout** (default) — piped through an SSH session or `docker exec -i`
+2. **TCP listener** (`--listen tcp:0.0.0.0:9547`) — direct socket connection
+3. **Unix socket** (`--listen unix:/tmp/tramp-agent.sock`) — local IPC
 
 ```text
-┌──────────────────┐  SSH stdin/stdout  ┌───────────────────────────┐
+┌──────────────────┐  SSH / TCP / Unix  ┌───────────────────────────┐
 │  nu-plugin-tramp │ ◄───────────────► │      tramp-agent          │
 │  (local Nushell) │   MsgPack-RPC     │      (remote Rust)        │
 └──────────────────┘   4-byte len +    │                           │
@@ -502,17 +549,22 @@ parsing with native syscalls over a single MsgPack-RPC pipe:
                                        │  ┌──────┐ ┌─────────┐    │
                                        │  │batch │ │  watch  │    │
                                        │  └──────┘ └─────────┘    │
+                                       │  ┌──────┐                │
+                                       │  │ pty  │                │
+                                       │  └──────┘                │
                                        └───────────────────────────┘
 ```
 
 | Category   | Methods                                                        |
 |------------|----------------------------------------------------------------|
-| File       | `file.stat`, `file.stat_batch`, `file.truename`, `file.read`,  |
-|            | `file.write`, `file.copy`, `file.rename`, `file.delete`,       |
-|            | `file.set_modes`                                               |
+| File       | `file.stat`, `file.stat_batch`, `file.truename`, `file.size`,  |
+|            | `file.read`, `file.read_range`, `file.write`,                  |
+|            | `file.write_range`, `file.copy`, `file.rename`,               |
+|            | `file.delete`, `file.set_modes`                                |
 | Directory  | `dir.list`, `dir.create`, `dir.remove`                         |
 | Process    | `process.run`, `process.start`, `process.read`,               |
 |            | `process.write`, `process.kill`                               |
+| PTY        | `process.start_pty`, `process.resize`                          |
 | System     | `system.info`, `system.getenv`, `system.statvfs`              |
 | Batch      | `batch` (N ops in 1 round-trip, sequential or parallel)        |
 | Watch      | `watch.add`, `watch.remove`, `watch.list` → `fs.changed`      |
@@ -656,7 +708,7 @@ This composable design means any combination of backends can be chained (except 
 - [x] Sudo backend
 - [x] Push execution model (`tramp exec`)
 
-### Phase 4 — Polish & Usability
+### Phase 4 — Polish & Usability ✅
 
 - [x] `tramp info` command — remote system info (OS, arch, hostname, user, disk) in one round-trip
 - [x] Richer `tramp ls` metadata — owner, group, nlinks, inode, symlink targets
@@ -664,7 +716,7 @@ This composable design means any combination of backends can be chained (except 
 - [x] Configurable cache TTL via `$env.TRAMP_CACHE_TTL`
 - [x] Home Manager module for auto-registration (`hm-module.nix`)
 - [x] Glob/wildcard support for `tramp ls --glob` and `tramp cp --glob`
-- [ ] Tab completion for remote paths
+- [x] Tab completion for remote paths
 
 ### Phase 5 — RPC Agent ✅ (inspired by [emacs-tramp-rpc](https://github.com/ArthurHeymans/emacs-tramp-rpc))
 
@@ -681,13 +733,14 @@ This composable design means any combination of backends can be chained (except 
 - [x] Plugin RPC backend (switch SSH backend to use agent when available)
 - [x] Agent for exec backends (deploy inside Docker/K8s containers)
 
-### Phase 6 — Future
+### Phase 6 — Future ✅
 
-- [ ] Streaming for very large files (chunked RPC reads)
-- [ ] PTY support via agent (remote terminal emulation)
+- [x] Streaming for very large files (chunked RPC reads/writes)
+- [x] PTY support via agent (remote terminal emulation)
 - [x] `tramp watch` command — subscribe to filesystem change notifications
 - [x] Agent version management and auto-upgrade
-- [ ] TCP/Unix socket transport for agent (local Docker without SSH)
+- [x] TCP/Unix socket transport for agent (local Docker without SSH)
+- [x] Cross-compilation matrix for agent binaries (x86_64/aarch64 × Linux/macOS)
 
 ## License
 

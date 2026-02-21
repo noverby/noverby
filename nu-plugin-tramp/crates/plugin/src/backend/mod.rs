@@ -3,6 +3,10 @@
 //! Each transport (SSH, Docker, Kubernetes, sudo, …) implements the [`Backend`]
 //! trait, which provides the primitive file-system and exec operations that the
 //! VFS layer delegates to.
+//!
+//! Backends may optionally support chunked/streaming I/O via [`Backend::read_range`],
+//! [`Backend::write_range`], and [`Backend::file_size`].  The default implementations
+//! fall back to the regular whole-file [`Backend::read`] and [`Backend::write`].
 
 #![allow(dead_code)]
 
@@ -16,6 +20,7 @@ pub mod exec;
 pub mod rpc;
 pub mod rpc_client;
 pub mod runner;
+pub mod socket;
 pub mod ssh;
 
 // ---------------------------------------------------------------------------
@@ -98,6 +103,30 @@ pub struct WatchInfo {
     pub path: String,
     /// Whether the watch is recursive (includes subdirectories).
     pub recursive: bool,
+}
+
+// ---------------------------------------------------------------------------
+// PTY types
+// ---------------------------------------------------------------------------
+
+/// Handle returned by [`Backend::pty_start`] identifying a running PTY process.
+#[derive(Debug, Clone)]
+pub struct PtyHandle {
+    /// Opaque handle ID used to reference this process in subsequent calls.
+    pub handle: u64,
+    /// The PID of the child process on the remote host.
+    pub pid: u64,
+}
+
+/// Result of [`Backend::pty_read`].
+#[derive(Debug, Clone)]
+pub struct PtyReadResult {
+    /// Output data read from the PTY (combined stdout+stderr via the PTY).
+    pub data: Vec<u8>,
+    /// Whether the process is still running.
+    pub running: bool,
+    /// Exit code if the process has exited, `None` while still running.
+    pub exit_code: Option<i32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -188,6 +217,151 @@ pub trait Backend: Send + Sync {
 
     /// Whether this backend supports filesystem watching.
     fn supports_watch(&self) -> bool {
+        false
+    }
+
+    // -----------------------------------------------------------------------
+    // Chunked / streaming I/O (optional — only supported by RPC backends)
+    // -----------------------------------------------------------------------
+
+    /// Get the size of a remote file in bytes.
+    ///
+    /// This is a lightweight alternative to [`Backend::stat`] when only the
+    /// size is needed, e.g. for planning chunked reads.  The default
+    /// implementation falls back to `stat().size`.
+    async fn file_size(&self, path: &str) -> Result<u64, crate::errors::TrampError> {
+        let meta = self.stat(path).await?;
+        Ok(meta.size)
+    }
+
+    /// Read a byte range from a remote file.
+    ///
+    /// Returns `(data, eof)` where `data` contains up to `length` bytes
+    /// starting at `offset`, and `eof` is `true` when the end of the file
+    /// has been reached (i.e. fewer than `length` bytes were available).
+    ///
+    /// The default implementation reads the entire file and slices it,
+    /// which defeats the purpose of streaming.  Backends that support the
+    /// RPC agent override this with a native `file.read_range` call.
+    async fn read_range(
+        &self,
+        path: &str,
+        offset: u64,
+        length: u64,
+    ) -> Result<(Vec<u8>, bool), crate::errors::TrampError> {
+        let data = self.read(path).await?;
+        let start = (offset as usize).min(data.len());
+        let end = (start + length as usize).min(data.len());
+        let chunk = data[start..end].to_vec();
+        let eof = end >= data.len();
+        Ok((chunk, eof))
+    }
+
+    /// Write data at a specific byte offset in a remote file.
+    ///
+    /// When `truncate` is `true` the file is truncated before writing
+    /// (useful for the first chunk of a new file).  The file is created
+    /// if it does not exist.
+    ///
+    /// Returns the number of bytes written.
+    ///
+    /// The default implementation ignores the offset and writes the whole
+    /// file (only correct when called once with offset=0 and truncate=true).
+    /// RPC backends override this with a native `file.write_range` call.
+    async fn write_range(
+        &self,
+        path: &str,
+        offset: u64,
+        data: bytes::Bytes,
+        truncate: bool,
+    ) -> Result<u64, crate::errors::TrampError> {
+        if offset != 0 || !truncate {
+            return Err(crate::errors::TrampError::Internal(
+                "write_range with non-zero offset requires RPC agent support".into(),
+            ));
+        }
+        let len = data.len() as u64;
+        self.write(path, data).await?;
+        Ok(len)
+    }
+
+    /// Whether this backend supports efficient chunked I/O.
+    ///
+    /// When `true`, [`read_range`](Backend::read_range) and
+    /// [`write_range`](Backend::write_range) use native agent calls
+    /// instead of the whole-file fallback.
+    fn supports_streaming(&self) -> bool {
+        false
+    }
+
+    // -----------------------------------------------------------------------
+    // PTY operations (optional — only supported by RPC backends on Unix)
+    // -----------------------------------------------------------------------
+
+    /// Start a process with a pseudo-terminal allocated.
+    ///
+    /// Returns a [`PtyHandle`] containing the process handle and PID.
+    /// The handle can be used with [`pty_read`](Backend::pty_read),
+    /// [`pty_write`](Backend::pty_write), [`pty_resize`](Backend::pty_resize),
+    /// and [`pty_kill`](Backend::pty_kill).
+    ///
+    /// `rows` and `cols` set the initial terminal dimensions (default 24×80).
+    async fn pty_start(
+        &self,
+        _program: &str,
+        _args: &[&str],
+        _rows: u16,
+        _cols: u16,
+    ) -> Result<PtyHandle, crate::errors::TrampError> {
+        Err(crate::errors::TrampError::Internal(
+            "PTY support is not available on this backend (requires RPC agent on Unix)".into(),
+        ))
+    }
+
+    /// Read available output from a PTY process.
+    ///
+    /// Returns `(stdout_data, running, exit_code)`.  `exit_code` is `None`
+    /// while the process is still running.
+    async fn pty_read(&self, _handle: u64) -> Result<PtyReadResult, crate::errors::TrampError> {
+        Err(crate::errors::TrampError::Internal(
+            "PTY support is not available on this backend".into(),
+        ))
+    }
+
+    /// Write data to a PTY process (i.e. send it to the process's stdin).
+    async fn pty_write(
+        &self,
+        _handle: u64,
+        _data: bytes::Bytes,
+    ) -> Result<(), crate::errors::TrampError> {
+        Err(crate::errors::TrampError::Internal(
+            "PTY support is not available on this backend".into(),
+        ))
+    }
+
+    /// Resize a PTY process's terminal window.
+    ///
+    /// Sends a `SIGWINCH` to the process so it can adapt to the new size.
+    async fn pty_resize(
+        &self,
+        _handle: u64,
+        _rows: u16,
+        _cols: u16,
+    ) -> Result<(), crate::errors::TrampError> {
+        Err(crate::errors::TrampError::Internal(
+            "PTY support is not available on this backend".into(),
+        ))
+    }
+
+    /// Kill a PTY process by handle.
+    async fn pty_kill(&self, _handle: u64) -> Result<(), crate::errors::TrampError> {
+        Err(crate::errors::TrampError::Internal(
+            "PTY support is not available on this backend".into(),
+        ))
+    }
+
+    /// Whether this backend supports PTY (pseudo-terminal) operations.
+    fn supports_pty(&self) -> bool {
         false
     }
 }

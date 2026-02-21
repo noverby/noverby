@@ -47,7 +47,7 @@ const CONTAINER_AGENT_DIR: &str = "/tmp/tramp-agent-dir";
 const CONTAINER_AGENT_BIN: &str = "tramp-agent";
 
 /// Full path to the agent binary inside the container.
-const CONTAINER_AGENT_PATH: &str = "/tmp/tramp-agent-dir/tramp-agent";
+pub const CONTAINER_AGENT_PATH: &str = "/tmp/tramp-agent-dir/tramp-agent";
 
 /// Timeout for agent ping after startup.
 const AGENT_PING_TIMEOUT: Duration = Duration::from_secs(5);
