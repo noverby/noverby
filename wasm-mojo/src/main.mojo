@@ -2586,6 +2586,49 @@ fn shell_dispatch_event(
     )
 
 
+# ── Shell memo helpers (M13.5) ──────────────────────────────────────────────
+
+
+@export
+fn shell_memo_create_i32(
+    shell_ptr: Int64, scope_id: Int32, initial: Int32
+) -> Int32:
+    """Create an Int32 memo via the AppShell.  Returns memo ID."""
+    return Int32(
+        _get[AppShell](shell_ptr)[0].create_memo_i32(UInt32(scope_id), initial)
+    )
+
+
+@export
+fn shell_memo_begin_compute(shell_ptr: Int64, memo_id: Int32):
+    """Begin memo computation via the AppShell."""
+    _get[AppShell](shell_ptr)[0].memo_begin_compute(UInt32(memo_id))
+
+
+@export
+fn shell_memo_end_compute_i32(shell_ptr: Int64, memo_id: Int32, value: Int32):
+    """End memo computation and cache the result via the AppShell."""
+    _get[AppShell](shell_ptr)[0].memo_end_compute_i32(UInt32(memo_id), value)
+
+
+@export
+fn shell_memo_read_i32(shell_ptr: Int64, memo_id: Int32) -> Int32:
+    """Read a memo's cached value via the AppShell."""
+    return _get[AppShell](shell_ptr)[0].memo_read_i32(UInt32(memo_id))
+
+
+@export
+fn shell_memo_is_dirty(shell_ptr: Int64, memo_id: Int32) -> Int32:
+    """Check whether the memo needs recomputation.  Returns 1 or 0."""
+    return _b2i(_get[AppShell](shell_ptr)[0].memo_is_dirty(UInt32(memo_id)))
+
+
+@export
+fn shell_use_memo_i32(shell_ptr: Int64, initial: Int32) -> Int32:
+    """Hook: create or retrieve an Int32 memo via the AppShell."""
+    return Int32(_get[AppShell](shell_ptr)[0].use_memo_i32(initial))
+
+
 @export
 fn shell_rt_ptr(shell_ptr: Int64) -> Int64:
     """Return the runtime pointer from an AppShell (for template registration etc.).
