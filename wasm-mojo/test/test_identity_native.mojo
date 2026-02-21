@@ -1,12 +1,8 @@
 # Identity/passthrough operations exercised through the real WASM binary via
-# wasmtime-mojo (pure Mojo FFI bindings — no Python interop required).
+# wasmtime-mojo (pure Mojo FFI bindings).
 #
 # These tests verify that identity functions correctly pass through values
 # when compiled to WASM and executed via the Wasmtime runtime.
-#
-# This is the Mojo-native equivalent of test_identity.mojo, demonstrating
-# the migration from the Python-based wasm_harness.py to the pure-Mojo
-# wasm_harness.mojo.
 #
 # Run with:
 #   mojo test test/test_identity_native.mojo
