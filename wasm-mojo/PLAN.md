@@ -2521,6 +2521,23 @@ Refactored all three apps to use the `AppShell` abstraction (M10.4) instead of m
 - **Total net reduction**: 1,238 → 1,205 lines across all three apps (−33 lines).
 - **All 674 Mojo + 859 JS tests pass unchanged**, confirming that AppShell integration produces identical behavior.
 
+### 10.8 Fragment Lifecycle Helpers (✅ Done)
+
+Extracted the repeated fragment-based list flush logic from todo and bench apps into a reusable `FragmentSlot` struct and `flush_fragment()` lifecycle helper in `component/lifecycle.mojo`:
+
+- **`FragmentSlot` struct** (`component/lifecycle.mojo`): Bundles the three pieces of state every fragment-based dynamic list needs: `anchor_id` (ElementId of the placeholder when empty), `current_frag` (VNode index of the current Fragment), and `mounted` (whether items are in the DOM). Implements `Copyable` and `Movable`. Two constructors: default (uninitialized) and `(anchor_id, initial_frag)` for post-mount setup.
+- **`flush_fragment()` function** (`component/lifecycle.mojo`): Handles all three fragment transitions generically:
+  - **empty → populated**: CreateEngine creates fragment children, ReplaceWith the anchor placeholder.
+  - **populated → populated**: DiffEngine diffs old fragment vs new fragment (keyed).
+  - **populated → empty**: Creates new anchor placeholder, InsertBefore first old item, removes all old items via DiffEngine.
+  - Does NOT finalize — caller controls when to write the End sentinel (enables batching).
+  - Returns updated `FragmentSlot` with new state.
+- **Todo app** (`apps/todo.mojo`): Replaced 3 fields (`current_frag`, `ul_placeholder_id`, `items_mounted`) with single `item_slot: FragmentSlot`. Removed ~90 lines of manual transition logic from `todo_app_flush()`, replaced with single `flush_fragment()` call. Removed unused `DiffEngine` import. Net reduction: 484 → 376 lines (−108 lines).
+- **Bench app** (`apps/bench.mojo`): Replaced 3 fields (`current_frag`, `anchor_id`, `rows_mounted`) with single `row_slot: FragmentSlot`. Removed ~80 lines of manual transition logic from `bench_app_flush()`, replaced with single `flush_fragment()` call. Removed unused `CreateEngine`/`DiffEngine` imports. Net reduction: 504 → 420 lines (−84 lines).
+- **Lifecycle module growth**: `component/lifecycle.mojo` grew from 184 → 364 lines (+180 lines) to house the shared `FragmentSlot` struct and `flush_fragment()` helper with full documentation.
+- **Total app reduction**: 1,205 → 1,013 lines across all three apps (−192 lines). Net across all changed files: −10 lines (223 insertions, 233 deletions).
+- **All 674 Mojo + 859 JS tests pass unchanged**, confirming that the extracted lifecycle helper produces identical mutation sequences and DOM output.
+
 ---
 
 ## Milestone Checklist
@@ -2542,3 +2559,4 @@ Refactored all three apps to use the `AppShell` abstraction (M10.4) instead of m
 - [x] **M10.5:** Ergonomic builder API. `Node` tagged union (`vdom/dsl.mojo`), 40 tag helpers (`el_div`, `el_h1`, …), `to_template()` conversion, `VNodeBuilder` for ergonomic VNode construction, count utilities. Template equivalence verified (DSL matches manual builder). 33 new Mojo + 69 new JS tests. All 674 Mojo + 859 JS tests pass.
 - [x] **M10.6:** DSL-based app rewrite. Counter, todo, and bench apps converted from `TemplateBuilder`/manual VNode construction to `el_*`/`to_template`/`VNodeBuilder` DSL. All 674 Mojo + 859 JS tests pass unchanged.
 - [x] **M10.7:** AppShell integration. All three apps refactored from manual `Runtime`/`VNodeStore`/`ElementIdAllocator` pointer management to `AppShell` struct. Counter fully uses shell lifecycle methods (`mount`, `diff`, `finalize`, `dispatch_event`). Todo and bench use shell for init/destroy/signals, direct subsystem access for complex flush logic. 8 WASM exports updated. All 674 Mojo + 859 JS tests pass unchanged.
+- [x] **M10.8:** Fragment lifecycle helpers. `FragmentSlot` struct + `flush_fragment()` extracted to `component/lifecycle.mojo`. Todo and bench apps refactored from ~90/~80 lines of manual fragment transition logic to single `flush_fragment()` call each. Apps reduced by −192 lines total (todo: 484→376, bench: 504→420). All 674 Mojo + 859 JS tests pass unchanged.

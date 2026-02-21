@@ -6,6 +6,13 @@
 #   diff_and_finalize()  — DiffEngine → finalize
 #   flush_one_scope()    — drain dirty → rebuild → diff → finalize
 #
+# FragmentSlot + flush_fragment() encapsulate the even more common pattern
+# of managing a dynamic list of keyed VNodes inside a parent container:
+#
+#   empty → populated   — create children, ReplaceWith anchor
+#   populated → populated — diff old fragment vs new fragment (keyed)
+#   populated → empty   — create new anchor, InsertBefore first item, remove all
+#
 # They operate on raw pointers so they can be called from any app struct
 # without requiring trait conformance.  The app is responsible for:
 #
@@ -22,6 +29,19 @@
 #     # Subsequent flush
 #     var new_idx = self.build_vnode()
 #     var byte_len = diff_and_finalize(writer, eid, rt, store, old_idx, new_idx)
+#
+# Example (keyed list app using FragmentSlot):
+#
+#     # In app struct:
+#     var slot: FragmentSlot
+#
+#     # Initial setup (after mount):
+#     self.slot = FragmentSlot(anchor_eid, empty_frag_idx)
+#
+#     # Flush after list mutation:
+#     var new_frag = self.build_items_fragment()
+#     flush_fragment(writer, eid, rt, store, self.slot, new_frag)
+#     writer[0].finalize()
 
 from memory import UnsafePointer
 from bridge import MutationWriter
@@ -29,6 +49,166 @@ from arena import ElementIdAllocator
 from signals import Runtime
 from mutations import CreateEngine, DiffEngine
 from vdom import VNodeStore
+
+
+# ── FragmentSlot — State tracker for a dynamic fragment in the DOM ────────────
+
+
+struct FragmentSlot(Copyable, Movable):
+    """Tracks the state of a fragment-based dynamic list in the DOM.
+
+    A FragmentSlot manages the lifecycle of a list of keyed VNodes that
+    live inside a parent container element (e.g. a <ul> or <tbody>).
+    When the list is empty, a placeholder comment node occupies the
+    slot; when populated, the placeholder is replaced by the list items.
+
+    Fields:
+        anchor_id: ElementId of the anchor/placeholder node.  Non-zero
+            when the list is empty (placeholder is in the DOM).
+            Zero when items are present.
+        current_frag: VNode index of the current items Fragment (-1
+            before first render).
+        mounted: True when items are in the DOM (placeholder removed).
+    """
+
+    var anchor_id: UInt32
+    var current_frag: Int
+    var mounted: Bool
+
+    fn __init__(out self):
+        """Create an uninitialized slot."""
+        self.anchor_id = 0
+        self.current_frag = -1
+        self.mounted = False
+
+    fn __init__(out self, anchor_id: UInt32, initial_frag: Int):
+        """Create a slot with a known anchor and initial fragment.
+
+        Args:
+            anchor_id: ElementId of the placeholder/anchor in the DOM.
+            initial_frag: VNode index of the initial (typically empty)
+                fragment.
+        """
+        self.anchor_id = anchor_id
+        self.current_frag = initial_frag
+        self.mounted = False
+
+    fn __copyinit__(out self, other: Self):
+        self.anchor_id = other.anchor_id
+        self.current_frag = other.current_frag
+        self.mounted = other.mounted
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.anchor_id = other.anchor_id
+        self.current_frag = other.current_frag
+        self.mounted = other.mounted
+
+
+# ── Fragment flush helper ─────────────────────────────────────────────────────
+
+
+fn flush_fragment(
+    writer_ptr: UnsafePointer[MutationWriter],
+    eid_ptr: UnsafePointer[ElementIdAllocator],
+    rt_ptr: UnsafePointer[Runtime],
+    store_ptr: UnsafePointer[VNodeStore],
+    mut slot: FragmentSlot,
+    new_frag_idx: UInt32,
+) -> FragmentSlot:
+    """Flush a fragment slot: diff old vs new fragment and emit mutations.
+
+    Handles three transitions:
+      1. **empty → populated**: Create new fragment children via
+         CreateEngine, emit ReplaceWith to replace the anchor placeholder.
+      2. **populated → populated**: Diff old fragment vs new fragment
+         via DiffEngine (supports keyed children).
+      3. **populated → empty**: Create a new anchor placeholder,
+         InsertBefore the first old item, then remove all old items.
+
+    Does NOT call `writer_ptr[0].finalize()` — the caller must finalize
+    the mutation buffer after this returns.  This allows batching
+    multiple flush operations into a single mutation buffer.
+
+    Args:
+        writer_ptr: Pointer to the MutationWriter for output.
+        eid_ptr: Pointer to the ElementIdAllocator.
+        rt_ptr: Pointer to the reactive Runtime.
+        store_ptr: Pointer to the VNodeStore.
+        slot: The FragmentSlot tracking the current state.  Will be
+            updated in-place with the new fragment index and mount state.
+        new_frag_idx: Index of the new Fragment VNode in the store.
+
+    Returns:
+        Updated FragmentSlot with new state.
+    """
+    var old_frag_idx = UInt32(slot.current_frag)
+
+    var old_frag_ptr = store_ptr[0].get_ptr(old_frag_idx)
+    var new_frag_ptr = store_ptr[0].get_ptr(new_frag_idx)
+    var old_count = old_frag_ptr[0].fragment_child_count()
+    var new_count = new_frag_ptr[0].fragment_child_count()
+
+    if not slot.mounted and new_count > 0:
+        # ── Transition: empty → populated ─────────────────────────────
+        # Create fragment children and ReplaceWith the anchor placeholder.
+        var create_eng = CreateEngine(writer_ptr, eid_ptr, rt_ptr, store_ptr)
+        var total_roots: UInt32 = 0
+        for i in range(new_count):
+            var child_idx = (
+                store_ptr[0].get_ptr(new_frag_idx)[0].get_fragment_child(i)
+            )
+            total_roots += create_eng.create_node(child_idx)
+
+        if slot.anchor_id != 0 and total_roots > 0:
+            writer_ptr[0].replace_with(slot.anchor_id, total_roots)
+        slot.mounted = True
+
+    elif slot.mounted and new_count == 0:
+        # ── Transition: populated → empty ─────────────────────────────
+        # Find the first old item's root ElementId so we can InsertBefore.
+        var first_old_root_id: UInt32 = 0
+        if old_count > 0:
+            var first_child = (
+                store_ptr[0].get_ptr(old_frag_idx)[0].get_fragment_child(0)
+            )
+            var fc_ptr = store_ptr[0].get_ptr(first_child)
+            if fc_ptr[0].root_id_count() > 0:
+                first_old_root_id = fc_ptr[0].get_root_id(0)
+            elif fc_ptr[0].element_id != 0:
+                first_old_root_id = fc_ptr[0].element_id
+
+        # Create a new anchor placeholder
+        var new_anchor = eid_ptr[0].alloc()
+        writer_ptr[0].create_placeholder(new_anchor.as_u32())
+
+        # Insert the placeholder before the first old item
+        if first_old_root_id != 0:
+            writer_ptr[0].insert_before(first_old_root_id, 1)
+
+        # Remove all old items
+        var diff_eng = DiffEngine(writer_ptr, eid_ptr, rt_ptr, store_ptr)
+        for i in range(old_count):
+            var old_child = (
+                store_ptr[0].get_ptr(old_frag_idx)[0].get_fragment_child(i)
+            )
+            diff_eng._remove_node(old_child)
+
+        slot.anchor_id = new_anchor.as_u32()
+        slot.mounted = False
+
+    elif slot.mounted and new_count > 0:
+        # ── Transition: populated → populated ─────────────────────────
+        # Diff old fragment vs new fragment (keyed).
+        var diff_eng = DiffEngine(writer_ptr, eid_ptr, rt_ptr, store_ptr)
+        diff_eng.diff_node(old_frag_idx, new_frag_idx)
+
+    # else: both empty → no-op
+
+    slot.current_frag = Int(new_frag_idx)
+    return slot.copy()
+
+
+# ── Single-VNode mount / diff helpers ─────────────────────────────────────────
 
 
 fn mount_vnode(
