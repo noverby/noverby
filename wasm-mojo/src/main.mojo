@@ -2043,6 +2043,20 @@ fn counter_count_signal(app_ptr: Int64) -> Int32:
     return Int32(_get[CounterApp](app_ptr)[0].count_signal)
 
 
+@export
+fn counter_doubled_value(app_ptr: Int64) -> Int32:
+    """Read the doubled memo's cached value directly."""
+    return _get[CounterApp](app_ptr)[0].shell.memo_read_i32(
+        _get[CounterApp](app_ptr)[0].doubled_memo
+    )
+
+
+@export
+fn counter_doubled_memo(app_ptr: Int64) -> Int32:
+    """Return the counter app's doubled memo ID."""
+    return Int32(_get[CounterApp](app_ptr)[0].doubled_memo)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 8 — Todo App
 # ══════════════════════════════════════════════════════════════════════════════

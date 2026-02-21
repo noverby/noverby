@@ -334,33 +334,41 @@ export function testCounter(fns: Fns): void {
 
 		// Root has 3 children: span, button, button
 		const childCount = fns.tmpl_node_child_count(rtPtr, tmplId, rootIdx);
-		assert(childCount, 3, "root div has 3 children");
+		assert(childCount, 4, "root div has 4 children");
 
-		// First child is span (TAG_SPAN = 1)
+		// First child is span (TAG_SPAN = 1) — "Count: N"
 		const spanIdx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 0);
 		assert(fns.tmpl_node_tag(rtPtr, tmplId, spanIdx), 1, "first child is span");
 
-		// Second child is button (TAG_BUTTON = 19)
-		const btn1Idx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 1);
+		// Second child is span (TAG_SPAN = 1) — "Doubled: 2N"
+		const span2Idx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 1);
 		assert(
-			fns.tmpl_node_tag(rtPtr, tmplId, btn1Idx),
-			19,
-			"second child is button",
+			fns.tmpl_node_tag(rtPtr, tmplId, span2Idx),
+			1,
+			"second child is span",
 		);
 
-		// Third child is button
-		const btn2Idx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 2);
+		// Third child is button (TAG_BUTTON = 19)
+		const btn1Idx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 2);
 		assert(
-			fns.tmpl_node_tag(rtPtr, tmplId, btn2Idx),
+			fns.tmpl_node_tag(rtPtr, tmplId, btn1Idx),
 			19,
 			"third child is button",
 		);
 
+		// Fourth child is button
+		const btn2Idx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 3);
+		assert(
+			fns.tmpl_node_tag(rtPtr, tmplId, btn2Idx),
+			19,
+			"fourth child is button",
+		);
+
 		// Template has dynamic text nodes
 		assert(
-			fns.tmpl_dynamic_text_count(rtPtr, tmplId) >= 1,
+			fns.tmpl_dynamic_text_count(rtPtr, tmplId) >= 2,
 			true,
-			"template has at least 1 dynamic text slot",
+			"template has at least 2 dynamic text slots",
 		);
 
 		// Template has dynamic attrs
@@ -393,17 +401,24 @@ export function testCounter(fns: Fns): void {
 		const divEl = dom.root.childNodes[0] as Element;
 		assert(divEl.nodeName.toLowerCase(), "div", "first child is a div");
 
-		// Div should have 3 children: span, button, button
-		assert(divEl.childNodes.length, 3, "div has 3 children");
+		// Div should have 4 children: span, span, button, button
+		assert(divEl.childNodes.length, 4, "div has 4 children");
 
 		const spanEl = divEl.childNodes[0] as Element;
 		assert(spanEl.nodeName.toLowerCase(), "span", "first div child is span");
 
-		const btn1 = divEl.childNodes[1] as Element;
-		assert(btn1.nodeName.toLowerCase(), "button", "second div child is button");
+		const span2El = divEl.childNodes[1] as Element;
+		assert(
+			span2El.nodeName.toLowerCase(),
+			"span",
+			"second div child is span (doubled)",
+		);
 
-		const btn2 = divEl.childNodes[2] as Element;
-		assert(btn2.nodeName.toLowerCase(), "button", "third div child is button");
+		const btn1 = divEl.childNodes[2] as Element;
+		assert(btn1.nodeName.toLowerCase(), "button", "third div child is button");
+
+		const btn2 = divEl.childNodes[3] as Element;
+		assert(btn2.nodeName.toLowerCase(), "button", "fourth div child is button");
 
 		// Button text content
 		assert(btn1.textContent, "+", 'first button text is "+"');
@@ -412,8 +427,16 @@ export function testCounter(fns: Fns): void {
 		// Span should display "Count: 0"
 		assert(spanEl.textContent, "Count: 0", 'span displays "Count: 0"');
 
-		// Initial count
+		// Doubled span should display "Doubled: 0"
+		assert(
+			span2El.textContent,
+			"Doubled: 0",
+			'doubled span displays "Doubled: 0"',
+		);
+
+		// Initial count and doubled
 		assert(handle.getCount(), 0, "getCount() returns 0");
+		assert(handle.getDoubled(), 0, "getDoubled() returns 0");
 
 		handle.destroy();
 	}
@@ -541,7 +564,11 @@ export function testCounter(fns: Fns): void {
 			"flush contains only SetText mutations (minimal diff)",
 		);
 
-		assert(mutations.length, 1, "exactly 1 mutation (SetText)");
+		assert(
+			mutations.length,
+			2,
+			"exactly 2 mutations (SetText for count + doubled)",
+		);
 
 		fns.counter_destroy(app);
 	}
@@ -556,7 +583,6 @@ export function testCounter(fns: Fns): void {
 		const handle = createCounterApp(fns, dom.root, dom.document);
 
 		const divEl = dom.root.childNodes[0] as Element;
-		const spanEl = divEl.childNodes[0] as Element;
 		// Update 5 times
 		for (let i = 0; i < 5; i++) {
 			handle.increment();
@@ -564,16 +590,16 @@ export function testCounter(fns: Fns): void {
 
 		// Structure should be the same objects (no re-creation)
 		const newDiv = dom.root.childNodes[0] as Element;
-		assert(newDiv.childNodes.length, 3, "div still has 3 children");
+		assert(newDiv.childNodes.length, 4, "div still has 4 children");
 
 		// Buttons should still have their text
 		assert(
-			(newDiv.childNodes[1] as Element).textContent,
+			(newDiv.childNodes[2] as Element).textContent,
 			"+",
 			'button 1 still says "+"',
 		);
 		assert(
-			(newDiv.childNodes[2] as Element).textContent,
+			(newDiv.childNodes[3] as Element).textContent,
 			"-",
 			'button 2 still says "-"',
 		);
@@ -583,6 +609,13 @@ export function testCounter(fns: Fns): void {
 			(newDiv.childNodes[0] as Element).textContent,
 			"Count: 5",
 			'span says "Count: 5"',
+		);
+
+		// Doubled span should show updated doubled value
+		assert(
+			(newDiv.childNodes[1] as Element).textContent,
+			"Doubled: 10",
+			'doubled span says "Doubled: 10"',
 		);
 
 		handle.destroy();
@@ -644,6 +677,89 @@ export function testCounter(fns: Fns): void {
 
 	// ═════════════════════════════════════════════════════════════════════
 	// Section 18: Destroy cleans up
+	// ═════════════════════════════════════════════════════════════════════
+
+	// ═════════════════════════════════════════════════════════════════════
+	// Section 19: Memo demo — doubled value
+	// ═════════════════════════════════════════════════════════════════════
+
+	suite("Counter — initial mount: doubled text shows Doubled: 0");
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+		const divEl = dom.root.childNodes[0] as Element;
+		const doubledSpan = divEl.childNodes[1] as Element;
+		assert(
+			doubledSpan.textContent,
+			"Doubled: 0",
+			'doubled span shows "Doubled: 0"',
+		);
+		assert(handle.getDoubled(), 0, "getDoubled() is 0");
+		handle.destroy();
+	}
+
+	suite("Counter — increment updates doubled text");
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+		handle.increment();
+		const divEl = dom.root.childNodes[0] as Element;
+		const countSpan = divEl.childNodes[0] as Element;
+		const doubledSpan = divEl.childNodes[1] as Element;
+		assert(countSpan.textContent, "Count: 1", 'count is "Count: 1"');
+		assert(doubledSpan.textContent, "Doubled: 2", 'doubled is "Doubled: 2"');
+		assert(handle.getCount(), 1, "getCount() is 1");
+		assert(handle.getDoubled(), 2, "getDoubled() is 2");
+		handle.destroy();
+	}
+
+	suite("Counter — decrement updates doubled text");
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+		handle.decrement();
+		const divEl = dom.root.childNodes[0] as Element;
+		const doubledSpan = divEl.childNodes[1] as Element;
+		assert(doubledSpan.textContent, "Doubled: -2", 'doubled is "Doubled: -2"');
+		assert(handle.getDoubled(), -2, "getDoubled() is -2");
+		handle.destroy();
+	}
+
+	suite("Counter — 10 increments: doubled is 20");
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+		for (let i = 0; i < 10; i++) {
+			handle.increment();
+		}
+		const divEl = dom.root.childNodes[0] as Element;
+		const doubledSpan = divEl.childNodes[1] as Element;
+		assert(handle.getCount(), 10, "count is 10");
+		assert(handle.getDoubled(), 20, "doubled is 20");
+		assert(doubledSpan.textContent, "Doubled: 20", 'DOM shows "Doubled: 20"');
+		handle.destroy();
+	}
+
+	suite("Counter — DOM structure: second span contains doubled text");
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+		handle.increment();
+		handle.increment();
+		handle.increment();
+		const divEl = dom.root.childNodes[0] as Element;
+		const secondSpan = divEl.childNodes[1] as Element;
+		assert(secondSpan.nodeName.toLowerCase(), "span", "second child is a span");
+		assert(
+			secondSpan.textContent,
+			"Doubled: 6",
+			'second span contains "Doubled: 6"',
+		);
+		handle.destroy();
+	}
+
+	// ═════════════════════════════════════════════════════════════════════
+	// Section 20: Destroy safety
 	// ═════════════════════════════════════════════════════════════════════
 
 	suite("Counter — destroy does not crash");

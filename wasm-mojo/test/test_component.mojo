@@ -14,6 +14,8 @@ from memory import UnsafePointer
 #   - diff() produces correct mutations on state change
 #   - Pointer accessors (rt_ptr, store_ptr, eid_ptr)
 #   - Double destroy safety
+#   - Shell memo helpers (M13.5)
+#   - Counter memo demo (M13.6)
 
 from testing import assert_equal, assert_true, assert_false
 from wasm_harness import (
@@ -24,10 +26,10 @@ from wasm_harness import (
     args_ptr_i32,
     args_ptr_i32_i32,
     args_ptr_ptr,
+    args_ptr_i32_ptr,
     args_ptr_ptr_i32,
     args_ptr_ptr_i32_i32,
     args_ptr_ptr_i32_i32_i32,
-    args_ptr_i32_ptr,
     args_ptr_i32_i32_i32_ptr,
 )
 
@@ -859,6 +861,89 @@ def test_shell_memo_multiple_memos(w: UnsafePointer[WasmInstance]):
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
+# ── Counter memo demo (M13.6) ───────────────────────────────────────────────
+
+
+def test_counter_memo_starts_dirty(w: UnsafePointer[WasmInstance]):
+    """Counter memo starts dirty after init (needs first computation)."""
+    var app = Int(w[].call_i64("counter_init", no_args()))
+    var memo_id = w[].call_i32("counter_doubled_memo", args_ptr(app))
+    assert_true(memo_id >= 0, "doubled memo ID is non-negative")
+    # After init the first build_vnode hasn't run yet, but init does
+    # a begin_render/end_render cycle, so memo is created.
+    # The initial doubled value should be 0 (initial).
+    var doubled = w[].call_i32("counter_doubled_value", args_ptr(app))
+    assert_equal(doubled, 0, "doubled starts at 0")
+    w[].call_void("counter_destroy", args_ptr(app))
+
+
+def test_counter_memo_after_first_build(w: UnsafePointer[WasmInstance]):
+    """After first rebuild, memo is computed and value = count * 2 = 0."""
+    var app = Int(w[].call_i64("counter_init", no_args()))
+    var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(4096)))
+    _ = w[].call_i32("counter_rebuild", args_ptr_ptr_i32(app, buf, 4096))
+    var doubled = w[].call_i32("counter_doubled_value", args_ptr(app))
+    assert_equal(doubled, 0, "doubled is 0 after first build")
+    var count = w[].call_i32("counter_count_value", args_ptr(app))
+    assert_equal(count, 0, "count is 0")
+    w[].call_void("mutation_buf_free", args_ptr(buf))
+    w[].call_void("counter_destroy", args_ptr(app))
+
+
+def test_counter_memo_after_increment(w: UnsafePointer[WasmInstance]):
+    """After increment + flush, memo recomputes to count * 2."""
+    var app = Int(w[].call_i64("counter_init", no_args()))
+    var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(4096)))
+    # Initial mount
+    _ = w[].call_i32("counter_rebuild", args_ptr_ptr_i32(app, buf, 4096))
+    # Increment
+    var incr = w[].call_i32("counter_incr_handler", args_ptr(app))
+    _ = w[].call_i32("counter_handle_event", args_ptr_i32_i32(app, incr, 0))
+    # Flush
+    _ = w[].call_i32("counter_flush", args_ptr_ptr_i32(app, buf, 4096))
+    var count = w[].call_i32("counter_count_value", args_ptr(app))
+    assert_equal(count, 1, "count is 1 after increment")
+    var doubled = w[].call_i32("counter_doubled_value", args_ptr(app))
+    assert_equal(doubled, 2, "doubled is 2 after increment")
+    w[].call_void("mutation_buf_free", args_ptr(buf))
+    w[].call_void("counter_destroy", args_ptr(app))
+
+
+def test_counter_memo_multiple_increments(w: UnsafePointer[WasmInstance]):
+    """After 5 increments + flush, doubled = 10."""
+    var app = Int(w[].call_i64("counter_init", no_args()))
+    var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(4096)))
+    # Initial mount
+    _ = w[].call_i32("counter_rebuild", args_ptr_ptr_i32(app, buf, 4096))
+    var incr = w[].call_i32("counter_incr_handler", args_ptr(app))
+    for _ in range(5):
+        _ = w[].call_i32("counter_handle_event", args_ptr_i32_i32(app, incr, 0))
+        _ = w[].call_i32("counter_flush", args_ptr_ptr_i32(app, buf, 4096))
+    var count = w[].call_i32("counter_count_value", args_ptr(app))
+    assert_equal(count, 5, "count is 5 after 5 increments")
+    var doubled = w[].call_i32("counter_doubled_value", args_ptr(app))
+    assert_equal(doubled, 10, "doubled is 10 after 5 increments")
+    w[].call_void("mutation_buf_free", args_ptr(buf))
+    w[].call_void("counter_destroy", args_ptr(app))
+
+
+def test_counter_memo_decrement(w: UnsafePointer[WasmInstance]):
+    """After decrement, doubled = -2."""
+    var app = Int(w[].call_i64("counter_init", no_args()))
+    var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(4096)))
+    # Initial mount
+    _ = w[].call_i32("counter_rebuild", args_ptr_ptr_i32(app, buf, 4096))
+    var decr = w[].call_i32("counter_decr_handler", args_ptr(app))
+    _ = w[].call_i32("counter_handle_event", args_ptr_i32_i32(app, decr, 0))
+    _ = w[].call_i32("counter_flush", args_ptr_ptr_i32(app, buf, 4096))
+    var count = w[].call_i32("counter_count_value", args_ptr(app))
+    assert_equal(count, -1, "count is -1 after decrement")
+    var doubled = w[].call_i32("counter_doubled_value", args_ptr(app))
+    assert_equal(doubled, -2, "doubled is -2 after decrement")
+    w[].call_void("mutation_buf_free", args_ptr(buf))
+    w[].call_void("counter_destroy", args_ptr(app))
+
+
 fn main() raises:
     from wasm_harness import get_instance
 
@@ -898,4 +983,10 @@ fn main() raises:
     test_shell_use_memo_hook(w)
     test_shell_memo_parity_with_runtime(w)
     test_shell_memo_multiple_memos(w)
-    print("component: 34/34 passed")
+    # Counter memo demo (M13.6)
+    test_counter_memo_starts_dirty(w)
+    test_counter_memo_after_first_build(w)
+    test_counter_memo_after_increment(w)
+    test_counter_memo_multiple_increments(w)
+    test_counter_memo_decrement(w)
+    print("component: 39/39 passed")
