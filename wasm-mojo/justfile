@@ -6,16 +6,63 @@ build:
   llc --mtriple=wasm64-wasi -filetype=obj build/out.ll
   wasm-ld --no-entry --export-all --allow-undefined -mwasm64 --initial-memory=268435456 -o build/out.wasm build/out.o
 
+# Incremental build — skip if out.wasm is newer than all source files.
+build-if-changed:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  mkdir -p build
+  if [ -f build/out.wasm ] && [ -z "$(find src/ -name '*.mojo' -newer build/out.wasm 2>/dev/null)" ]; then
+    echo "build: out.wasm is up-to-date, skipping."
+  else
+    just build
+  fi
+
 precompile: build
   mojo run -I ../wasmtime-mojo/src scripts/precompile.mojo
 
+# Incremental precompile — skip if cwasm is newer than wasm.
+precompile-if-changed: build-if-changed
+  #!/usr/bin/env bash
+  set -euo pipefail
+  if [ -f build/out.cwasm ] && [ build/out.cwasm -nt build/out.wasm ]; then
+    echo "precompile: out.cwasm is up-to-date, skipping."
+  else
+    just precompile
+  fi
+
+# Regenerate test/test_all.mojo from all test/test_*.mojo files.
+gen-test-runner:
+  bash scripts/gen_test_runner.sh
+
+# Fast test: single-file runner (~2-3 min vs ~5-6 min for full mojo test).
+# Compiles all 26 test modules once instead of once per file.
+test-fast: precompile-if-changed gen-test-runner
+  mojo test -I ../wasmtime-mojo/src test/test_all.mojo
+
+# Full test suite via mojo test (each file compiled separately).
 test: precompile
   mojo test -I ../wasmtime-mojo/src test/
+
+# Build precompiled test binaries (parallel, incremental).
+# Depends on precompile-if-changed so .cwasm exists for fast WASM loading.
+test-build: precompile-if-changed
+  bash scripts/build_test_binaries.sh
+
+# Run precompiled test binaries (parallel, <2s).
+test-run:
+  bash scripts/run_test_binaries.sh
+
+# Build + run precompiled test binaries (fastest full Mojo test cycle).
+test-compiled: test-build test-run
 
 test-js: build
   deno run --allow-read test-js/run.ts
 
 test-all: test test-js
+
+test-all-fast: test-fast test-js
+
+test-all-compiled: test-compiled test-js
 
 serve: build
   @echo "Open http://localhost:4507/examples/counter/"

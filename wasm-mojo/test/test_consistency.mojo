@@ -52,9 +52,8 @@ fn _gcd(var a: Int, var b: Int) -> Int:
 # ---------------------------------------------------------------------------
 
 
-fn test_add_sub_inverse() raises:
+fn test_add_sub_inverse(w: UnsafePointer[WasmInstance]) raises:
     """sub(add(x, y), y) === x (add/sub inverse)."""
-    var w = _get_wasm()
     var x = 17
     var y = 9
     var s = Int(w[].call_i32("add_int32", args_i32_i32(x, y)))
@@ -65,9 +64,8 @@ fn test_add_sub_inverse() raises:
     )
 
 
-fn test_mul_div_inverse() raises:
+fn test_mul_div_inverse(w: UnsafePointer[WasmInstance]) raises:
     """div(mul(x, y), y) === x (mul/div inverse for exact division)."""
-    var w = _get_wasm()
     var x = 6
     var y = 3
     var product = Int(w[].call_i32("mul_int32", args_i32_i32(x, y)))
@@ -78,9 +76,8 @@ fn test_mul_div_inverse() raises:
     )
 
 
-fn test_neg_neg_identity() raises:
+fn test_neg_neg_identity(w: UnsafePointer[WasmInstance]) raises:
     """neg(neg(x)) === x."""
-    var w = _get_wasm()
     var inner = Int(w[].call_i32("neg_int32", args_i32(42)))
     assert_equal(
         Int(w[].call_i32("neg_int32", args_i32(inner))),
@@ -89,18 +86,16 @@ fn test_neg_neg_identity() raises:
     )
 
 
-fn test_abs_neg_eq_abs() raises:
+fn test_abs_neg_eq_abs(w: UnsafePointer[WasmInstance]) raises:
     """abs(neg(x)) === abs(x) for positive x."""
-    var w = _get_wasm()
     var neg7 = Int(w[].call_i32("neg_int32", args_i32(7)))
     var abs_neg = Int(w[].call_i32("abs_int32", args_i32(neg7)))
     var abs_pos = Int(w[].call_i32("abs_int32", args_i32(7)))
     assert_equal(abs_neg, abs_pos, "abs(neg(7)) === abs(7)")
 
 
-fn test_min_le_max() raises:
+fn test_min_le_max(w: UnsafePointer[WasmInstance]) raises:
     """min(x, y) <= max(x, y)."""
-    var w = _get_wasm()
     var a = 3
     var b = 7
     var lo = Int(w[].call_i32("min_int32", args_i32_i32(a, b)))
@@ -112,9 +107,8 @@ fn test_min_le_max() raises:
     )
 
 
-fn test_bitwise_identity_and_or_xor() raises:
+fn test_bitwise_identity_and_or_xor(w: UnsafePointer[WasmInstance]) raises:
     """(x & y) | (x ^ y) === x | y."""
-    var w = _get_wasm()
     var x = 0b1100
     var y = 0b1010
     var band = Int(w[].call_i32("bitand_int32", args_i32_i32(x, y)))
@@ -124,9 +118,8 @@ fn test_bitwise_identity_and_or_xor() raises:
     assert_equal(lhs, rhs, "(x & y) | (x ^ y) === x | y")
 
 
-fn test_shl_shr_roundtrip() raises:
+fn test_shl_shr_roundtrip(w: UnsafePointer[WasmInstance]) raises:
     """shr(shl(x, 4), 4) === x."""
-    var w = _get_wasm()
     var x = 5
     var shifted = Int(w[].call_i32("shl_int32", args_i32_i32(x, 4)))
     assert_equal(
@@ -136,9 +129,8 @@ fn test_shl_shr_roundtrip() raises:
     )
 
 
-fn test_de_morgan() raises:
+fn test_de_morgan(w: UnsafePointer[WasmInstance]) raises:
     """De Morgan: not(and(a,b)) === or(not(a), not(b))."""
-    var w = _get_wasm()
     var a = 1
     var b = 0
     var and_ab = Int(w[].call_i32("bool_and", args_i32_i32(a, b)))
@@ -149,9 +141,8 @@ fn test_de_morgan() raises:
     assert_equal(lhs, rhs, "De Morgan: not(and(a,b)) === or(not(a), not(b))")
 
 
-fn test_gcd_scaling() raises:
+fn test_gcd_scaling(w: UnsafePointer[WasmInstance]) raises:
     """gcd(a*k, b*k) === k * gcd(a, b)."""
-    var w = _get_wasm()
     var a = 6
     var b = 4
     var k = 5
@@ -163,9 +154,8 @@ fn test_gcd_scaling() raises:
     assert_equal(lhs, rhs, "gcd(a*k, b*k) === k * gcd(a, b)")
 
 
-fn test_fibonacci_recurrence() raises:
+fn test_fibonacci_recurrence(w: UnsafePointer[WasmInstance]) raises:
     """fib(n) === fib(n-1) + fib(n-2) for several values of n."""
-    var w = _get_wasm()
     var ns = List[Int](5, 8, 12, 15)
     for i in range(len(ns)):
         var n = ns[i]
@@ -179,9 +169,8 @@ fn test_fibonacci_recurrence() raises:
         )
 
 
-fn test_factorial_recurrence() raises:
+fn test_factorial_recurrence(w: UnsafePointer[WasmInstance]) raises:
     """factorial(n) === n * factorial(n-1) for n = 2..7."""
-    var w = _get_wasm()
     var ns = List[Int](2, 3, 4, 5, 6, 7)
     for i in range(len(ns)):
         var n = ns[i]
@@ -194,9 +183,8 @@ fn test_factorial_recurrence() raises:
         )
 
 
-fn test_string_concat_length() raises:
+fn test_string_concat_length(w: UnsafePointer[WasmInstance]) raises:
     """len(concat(a, b)) === len(a) + len(b)."""
-    var w = _get_wasm()
     var a_ptr = w[].write_string_struct("foo")
     var b_ptr = w[].write_string_struct("barbaz")
     var out_ptr = w[].alloc_string_struct()
@@ -209,9 +197,8 @@ fn test_string_concat_length() raises:
     )
 
 
-fn test_clamp_eq_max_lo_min_hi_x() raises:
+fn test_clamp_eq_max_lo_min_hi_x(w: UnsafePointer[WasmInstance]) raises:
     """clamp(x, lo, hi) === max(lo, min(hi, x)) for several values of x."""
-    var w = _get_wasm()
     var lo = 0
     var hi = 10
     var xs = List[Int](-5, 0, 5, 10, 15)

@@ -25,8 +25,7 @@ fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
 # ── Bitwise AND ──────────────────────────────────────────────────────────────
 
 
-fn test_bitand_basic() raises:
-    var w = _get_wasm()
+fn test_bitand_basic(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitand_int32", args_i32_i32(0b1100, 0b1010))),
         0b1000,
@@ -34,8 +33,7 @@ fn test_bitand_basic() raises:
     )
 
 
-fn test_bitand_mask() raises:
-    var w = _get_wasm()
+fn test_bitand_mask(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitand_int32", args_i32_i32(0xFF, 0x0F))),
         0x0F,
@@ -43,8 +41,7 @@ fn test_bitand_mask() raises:
     )
 
 
-fn test_bitand_zero() raises:
-    var w = _get_wasm()
+fn test_bitand_zero(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitand_int32", args_i32_i32(0, 0xFFFF))),
         0,
@@ -55,8 +52,7 @@ fn test_bitand_zero() raises:
 # ── Bitwise OR ───────────────────────────────────────────────────────────────
 
 
-fn test_bitor_basic() raises:
-    var w = _get_wasm()
+fn test_bitor_basic(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitor_int32", args_i32_i32(0b1100, 0b1010))),
         0b1110,
@@ -64,8 +60,7 @@ fn test_bitor_basic() raises:
     )
 
 
-fn test_bitor_zero() raises:
-    var w = _get_wasm()
+fn test_bitor_zero(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitor_int32", args_i32_i32(0, 0))),
         0,
@@ -76,8 +71,7 @@ fn test_bitor_zero() raises:
 # ── Bitwise XOR ──────────────────────────────────────────────────────────────
 
 
-fn test_bitxor_basic() raises:
-    var w = _get_wasm()
+fn test_bitxor_basic(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitxor_int32", args_i32_i32(0b1100, 0b1010))),
         0b0110,
@@ -85,8 +79,7 @@ fn test_bitxor_basic() raises:
     )
 
 
-fn test_bitxor_self_is_zero() raises:
-    var w = _get_wasm()
+fn test_bitxor_self_is_zero(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitxor_int32", args_i32_i32(42, 42))),
         0,
@@ -94,8 +87,7 @@ fn test_bitxor_self_is_zero() raises:
     )
 
 
-fn test_bitxor_with_zero_is_identity() raises:
-    var w = _get_wasm()
+fn test_bitxor_with_zero_is_identity(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitxor_int32", args_i32_i32(42, 0))),
         42,
@@ -106,8 +98,7 @@ fn test_bitxor_with_zero_is_identity() raises:
 # ── Bitwise NOT ──────────────────────────────────────────────────────────────
 
 
-fn test_bitnot_zero() raises:
-    var w = _get_wasm()
+fn test_bitnot_zero(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitnot_int32", args_i32(0))),
         Int(~Int32(0)),
@@ -115,8 +106,7 @@ fn test_bitnot_zero() raises:
     )
 
 
-fn test_bitnot_one() raises:
-    var w = _get_wasm()
+fn test_bitnot_one(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitnot_int32", args_i32(1))),
         Int(~Int32(1)),
@@ -127,8 +117,7 @@ fn test_bitnot_one() raises:
 # ── Shifts ───────────────────────────────────────────────────────────────────
 
 
-fn test_shl_by_zero() raises:
-    var w = _get_wasm()
+fn test_shl_by_zero(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("shl_int32", args_i32_i32(1, 0))),
         1,
@@ -136,8 +125,7 @@ fn test_shl_by_zero() raises:
     )
 
 
-fn test_shl_by_one() raises:
-    var w = _get_wasm()
+fn test_shl_by_one(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("shl_int32", args_i32_i32(1, 1))),
         2,
@@ -145,8 +133,7 @@ fn test_shl_by_one() raises:
     )
 
 
-fn test_shl_by_four() raises:
-    var w = _get_wasm()
+fn test_shl_by_four(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("shl_int32", args_i32_i32(1, 4))),
         16,
@@ -154,8 +141,7 @@ fn test_shl_by_four() raises:
     )
 
 
-fn test_shl_three_by_three() raises:
-    var w = _get_wasm()
+fn test_shl_three_by_three(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("shl_int32", args_i32_i32(3, 3))),
         24,
@@ -163,8 +149,7 @@ fn test_shl_three_by_three() raises:
     )
 
 
-fn test_shr_sixteen_by_four() raises:
-    var w = _get_wasm()
+fn test_shr_sixteen_by_four(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("shr_int32", args_i32_i32(16, 4))),
         1,
@@ -172,8 +157,7 @@ fn test_shr_sixteen_by_four() raises:
     )
 
 
-fn test_shr_twentyfour_by_three() raises:
-    var w = _get_wasm()
+fn test_shr_twentyfour_by_three(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("shr_int32", args_i32_i32(24, 3))),
         3,
@@ -181,8 +165,7 @@ fn test_shr_twentyfour_by_three() raises:
     )
 
 
-fn test_shr_255_by_one() raises:
-    var w = _get_wasm()
+fn test_shr_255_by_one(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("shr_int32", args_i32_i32(255, 1))),
         127,

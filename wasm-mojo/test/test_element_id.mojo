@@ -43,8 +43,7 @@ fn _destroy_alloc(w: UnsafePointer[WasmInstance], alloc_ptr: Int) raises:
 # ── Allocator — initial state ────────────────────────────────────────────────
 
 
-fn test_allocator_initial_state() raises:
-    var w = _get_wasm()
+fn test_allocator_initial_state(w: UnsafePointer[WasmInstance]) raises:
     var a = _create_alloc(w)
 
     # Root is pre-reserved, so count=1, user_count=0
@@ -65,8 +64,7 @@ fn test_allocator_initial_state() raises:
 # ── Allocator — first alloc returns 1 ────────────────────────────────────────
 
 
-fn test_allocator_first_alloc_returns_1() raises:
-    var w = _get_wasm()
+fn test_allocator_first_alloc_returns_1(w: UnsafePointer[WasmInstance]) raises:
     var a = _create_alloc(w)
 
     var id = Int(w[].call_i32("eid_alloc", args_ptr(a)))
@@ -80,8 +78,7 @@ fn test_allocator_first_alloc_returns_1() raises:
 # ── Allocator — sequential alloc ─────────────────────────────────────────────
 
 
-fn test_allocator_sequential_alloc() raises:
-    var w = _get_wasm()
+fn test_allocator_sequential_alloc(w: UnsafePointer[WasmInstance]) raises:
     var a = _create_alloc(w)
 
     var id1 = Int(w[].call_i32("eid_alloc", args_ptr(a)))
@@ -100,8 +97,7 @@ fn test_allocator_sequential_alloc() raises:
 # ── Allocator — is_alive ─────────────────────────────────────────────────────
 
 
-fn test_allocator_is_alive() raises:
-    var w = _get_wasm()
+fn test_allocator_is_alive(w: UnsafePointer[WasmInstance]) raises:
     var a = _create_alloc(w)
 
     var id1 = Int(w[].call_i32("eid_alloc", args_ptr(a)))
@@ -134,8 +130,7 @@ fn test_allocator_is_alive() raises:
 # ── Allocator — free decrements count ────────────────────────────────────────
 
 
-fn test_allocator_free_decrements_count() raises:
-    var w = _get_wasm()
+fn test_allocator_free_decrements_count(w: UnsafePointer[WasmInstance]) raises:
     var a = _create_alloc(w)
 
     var id1 = Int(w[].call_i32("eid_alloc", args_ptr(a)))
@@ -161,8 +156,7 @@ fn test_allocator_free_decrements_count() raises:
 # ── Allocator — free root is noop ────────────────────────────────────────────
 
 
-fn test_allocator_free_root_is_noop() raises:
-    var w = _get_wasm()
+fn test_allocator_free_root_is_noop(w: UnsafePointer[WasmInstance]) raises:
     var a = _create_alloc(w)
 
     _ = w[].call_i32("eid_alloc", args_ptr(a))
@@ -186,8 +180,7 @@ fn test_allocator_free_root_is_noop() raises:
 # ── Allocator — double free is noop ──────────────────────────────────────────
 
 
-fn test_allocator_double_free_is_noop() raises:
-    var w = _get_wasm()
+fn test_allocator_double_free_is_noop(w: UnsafePointer[WasmInstance]) raises:
     var a = _create_alloc(w)
 
     var id = Int(w[].call_i32("eid_alloc", args_ptr(a)))
@@ -207,8 +200,7 @@ fn test_allocator_double_free_is_noop() raises:
 # ── Allocator — reuse freed slot ─────────────────────────────────────────────
 
 
-fn test_allocator_reuse_freed_slot() raises:
-    var w = _get_wasm()
+fn test_allocator_reuse_freed_slot(w: UnsafePointer[WasmInstance]) raises:
     var a = _create_alloc(w)
 
     var id1 = Int(w[].call_i32("eid_alloc", args_ptr(a)))  # gets 1
@@ -235,8 +227,9 @@ fn test_allocator_reuse_freed_slot() raises:
 # ── Allocator — reuse multiple freed slots ───────────────────────────────────
 
 
-fn test_allocator_reuse_multiple_freed_slots() raises:
-    var w = _get_wasm()
+fn test_allocator_reuse_multiple_freed_slots(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var a = _create_alloc(w)
 
     var id1 = Int(w[].call_i32("eid_alloc", args_ptr(a)))  # 1
@@ -276,8 +269,7 @@ fn test_allocator_reuse_multiple_freed_slots() raises:
 # ── Stress — many allocations ────────────────────────────────────────────────
 
 
-fn test_allocator_stress_100() raises:
-    var w = _get_wasm()
+fn test_allocator_stress_100(w: UnsafePointer[WasmInstance]) raises:
     var a = _create_alloc(w)
 
     var ids = List[Int]()
@@ -301,8 +293,9 @@ fn test_allocator_stress_100() raises:
 # ── Stress — free even and realloc ───────────────────────────────────────────
 
 
-fn test_allocator_stress_free_even_realloc() raises:
-    var w = _get_wasm()
+fn test_allocator_stress_free_even_realloc(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var a = _create_alloc(w)
 
     var ids = List[Int]()
@@ -354,9 +347,10 @@ fn test_allocator_stress_free_even_realloc() raises:
 # ── Stress — alloc/free cycle ────────────────────────────────────────────────
 
 
-fn test_allocator_stress_alloc_free_cycle() raises:
+fn test_allocator_stress_alloc_free_cycle(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Allocate and free in a tight loop to exercise slot reuse."""
-    var w = _get_wasm()
     var a = _create_alloc(w)
 
     for _ in range(1000):

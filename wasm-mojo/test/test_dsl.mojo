@@ -80,74 +80,62 @@ alias TNODE_DYNAMIC_TEXT = 3
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_text_node() raises:
-    var w = _get_wasm()
+fn test_dsl_text_node(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_text_node", no_args()))
     assert_equal(result, 1, "dsl_test_text_node passed")
 
 
-fn test_dsl_dyn_text_node() raises:
-    var w = _get_wasm()
+fn test_dsl_dyn_text_node(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_dyn_text_node", no_args()))
     assert_equal(result, 1, "dsl_test_dyn_text_node passed")
 
 
-fn test_dsl_dyn_node_slot() raises:
-    var w = _get_wasm()
+fn test_dsl_dyn_node_slot(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_dyn_node_slot", no_args()))
     assert_equal(result, 1, "dsl_test_dyn_node_slot passed")
 
 
-fn test_dsl_static_attr() raises:
-    var w = _get_wasm()
+fn test_dsl_static_attr(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_static_attr", no_args()))
     assert_equal(result, 1, "dsl_test_static_attr passed")
 
 
-fn test_dsl_dyn_attr() raises:
-    var w = _get_wasm()
+fn test_dsl_dyn_attr(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_dyn_attr", no_args()))
     assert_equal(result, 1, "dsl_test_dyn_attr passed")
 
 
-fn test_dsl_empty_element() raises:
-    var w = _get_wasm()
+fn test_dsl_empty_element(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_empty_element", no_args()))
     assert_equal(result, 1, "dsl_test_empty_element passed")
 
 
-fn test_dsl_element_with_children() raises:
-    var w = _get_wasm()
+fn test_dsl_element_with_children(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_element_with_children", no_args()))
     assert_equal(result, 1, "dsl_test_element_with_children passed")
 
 
-fn test_dsl_element_with_attrs() raises:
-    var w = _get_wasm()
+fn test_dsl_element_with_attrs(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_element_with_attrs", no_args()))
     assert_equal(result, 1, "dsl_test_element_with_attrs passed")
 
 
-fn test_dsl_element_mixed() raises:
-    var w = _get_wasm()
+fn test_dsl_element_mixed(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_element_mixed", no_args()))
     assert_equal(result, 1, "dsl_test_element_mixed passed")
 
 
-fn test_dsl_nested_elements() raises:
-    var w = _get_wasm()
+fn test_dsl_nested_elements(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_nested_elements", no_args()))
     assert_equal(result, 1, "dsl_test_nested_elements passed")
 
 
-fn test_dsl_all_tag_helpers() raises:
-    var w = _get_wasm()
+fn test_dsl_all_tag_helpers(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_all_tag_helpers", no_args()))
     assert_equal(result, 1, "dsl_test_all_tag_helpers passed")
 
 
-fn test_dsl_count_utilities() raises:
-    var w = _get_wasm()
+fn test_dsl_count_utilities(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_count_utilities", no_args()))
     assert_equal(result, 1, "dsl_test_count_utilities passed")
 
@@ -157,32 +145,27 @@ fn test_dsl_count_utilities() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_to_template_simple() raises:
-    var w = _get_wasm()
+fn test_dsl_to_template_simple(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_to_template_simple", no_args()))
     assert_equal(result, 1, "dsl_test_to_template_simple passed")
 
 
-fn test_dsl_to_template_attrs() raises:
-    var w = _get_wasm()
+fn test_dsl_to_template_attrs(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_to_template_attrs", no_args()))
     assert_equal(result, 1, "dsl_test_to_template_attrs passed")
 
 
-fn test_dsl_to_template_multi_root() raises:
-    var w = _get_wasm()
+fn test_dsl_to_template_multi_root(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_to_template_multi_root", no_args()))
     assert_equal(result, 1, "dsl_test_to_template_multi_root passed")
 
 
-fn test_dsl_counter_template() raises:
-    var w = _get_wasm()
+fn test_dsl_counter_template(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_counter_template", no_args()))
     assert_equal(result, 1, "dsl_test_counter_template passed")
 
 
-fn test_dsl_template_equivalence() raises:
-    var w = _get_wasm()
+fn test_dsl_template_equivalence(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_template_equivalence", no_args()))
     assert_equal(result, 1, "dsl_test_template_equivalence passed")
 
@@ -192,14 +175,12 @@ fn test_dsl_template_equivalence() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_vnode_builder() raises:
-    var w = _get_wasm()
+fn test_dsl_vnode_builder(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_vnode_builder", no_args()))
     assert_equal(result, 1, "dsl_test_vnode_builder passed")
 
 
-fn test_dsl_vnode_builder_keyed() raises:
-    var w = _get_wasm()
+fn test_dsl_vnode_builder_keyed(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("dsl_test_vnode_builder_keyed", no_args()))
     assert_equal(result, 1, "dsl_test_vnode_builder_keyed passed")
 
@@ -209,9 +190,8 @@ fn test_dsl_vnode_builder_keyed() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_node_create_text() raises:
+fn test_dsl_node_create_text(w: UnsafePointer[WasmInstance]) raises:
     """Create a text Node via WASM, verify kind."""
-    var w = _get_wasm()
     var n = Int(
         w[].call_i64(
             "dsl_node_text", args_ptr(w[].write_string_struct("hello"))
@@ -222,9 +202,8 @@ fn test_dsl_node_create_text() raises:
     w[].call_void("dsl_node_destroy", args_ptr(n))
 
 
-fn test_dsl_node_create_dyn_text() raises:
+fn test_dsl_node_create_dyn_text(w: UnsafePointer[WasmInstance]) raises:
     """Create a dyn_text Node via WASM, verify kind and index."""
-    var w = _get_wasm()
     var n = Int(w[].call_i64("dsl_node_dyn_text", args_i32(4)))
     var kind = Int(w[].call_i32("dsl_node_kind", args_ptr(n)))
     assert_equal(kind, NODE_DYN_TEXT, "dyn_text node kind")
@@ -233,9 +212,8 @@ fn test_dsl_node_create_dyn_text() raises:
     w[].call_void("dsl_node_destroy", args_ptr(n))
 
 
-fn test_dsl_node_create_dyn_node() raises:
+fn test_dsl_node_create_dyn_node(w: UnsafePointer[WasmInstance]) raises:
     """Create a dyn_node Node via WASM, verify kind and index."""
-    var w = _get_wasm()
     var n = Int(w[].call_i64("dsl_node_dyn_node", args_i32(2)))
     var kind = Int(w[].call_i32("dsl_node_kind", args_ptr(n)))
     assert_equal(kind, NODE_DYN_NODE, "dyn_node kind")
@@ -244,9 +222,8 @@ fn test_dsl_node_create_dyn_node() raises:
     w[].call_void("dsl_node_destroy", args_ptr(n))
 
 
-fn test_dsl_node_create_attr() raises:
+fn test_dsl_node_create_attr(w: UnsafePointer[WasmInstance]) raises:
     """Create a static attr Node via WASM, verify kind."""
-    var w = _get_wasm()
     var n = Int(
         w[].call_i64(
             "dsl_node_attr",
@@ -261,9 +238,8 @@ fn test_dsl_node_create_attr() raises:
     w[].call_void("dsl_node_destroy", args_ptr(n))
 
 
-fn test_dsl_node_create_dyn_attr() raises:
+fn test_dsl_node_create_dyn_attr(w: UnsafePointer[WasmInstance]) raises:
     """Create a dyn_attr Node via WASM, verify kind and index."""
-    var w = _get_wasm()
     var n = Int(w[].call_i64("dsl_node_dyn_attr", args_i32(1)))
     var kind = Int(w[].call_i32("dsl_node_kind", args_ptr(n)))
     assert_equal(kind, NODE_DYN_ATTR, "dyn_attr kind")
@@ -272,9 +248,8 @@ fn test_dsl_node_create_dyn_attr() raises:
     w[].call_void("dsl_node_destroy", args_ptr(n))
 
 
-fn test_dsl_node_create_element() raises:
+fn test_dsl_node_create_element(w: UnsafePointer[WasmInstance]) raises:
     """Create an empty element Node via WASM, verify kind and tag."""
-    var w = _get_wasm()
     var n = Int(w[].call_i64("dsl_node_element", args_i32(TAG_DIV)))
     var kind = Int(w[].call_i32("dsl_node_kind", args_ptr(n)))
     assert_equal(kind, NODE_ELEMENT, "element kind")
@@ -285,9 +260,8 @@ fn test_dsl_node_create_element() raises:
     w[].call_void("dsl_node_destroy", args_ptr(n))
 
 
-fn test_dsl_node_add_items() raises:
+fn test_dsl_node_add_items(w: UnsafePointer[WasmInstance]) raises:
     """Add children and attrs to an element, verify counts."""
-    var w = _get_wasm()
 
     # Create div
     var div = Int(w[].call_i64("dsl_node_element", args_i32(TAG_DIV)))
@@ -324,9 +298,8 @@ fn test_dsl_node_add_items() raises:
     w[].call_void("dsl_node_destroy", args_ptr(div))
 
 
-fn test_dsl_node_nested_tree() raises:
+fn test_dsl_node_nested_tree(w: UnsafePointer[WasmInstance]) raises:
     """Build nested tree and verify recursive counts."""
-    var w = _get_wasm()
 
     # Build: div > [ span > text("inner"), button > dyn_text(0) + dyn_attr(0) ]
     var span = Int(w[].call_i64("dsl_node_element", args_i32(TAG_SPAN)))
@@ -364,9 +337,8 @@ fn test_dsl_node_nested_tree() raises:
     w[].call_void("dsl_node_destroy", args_ptr(div))
 
 
-fn test_dsl_node_to_template() raises:
+fn test_dsl_node_to_template(w: UnsafePointer[WasmInstance]) raises:
     """Build a Node tree, convert to template, verify structure."""
-    var w = _get_wasm()
     var rt = _create_runtime(w)
 
     # Build: h1 > text("Title")
@@ -401,18 +373,16 @@ fn test_dsl_node_to_template() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_dsl_vb_create_and_query() raises:
+fn test_dsl_vb_create_and_query(w: UnsafePointer[WasmInstance]) raises:
     """Create a VNodeBuilder via WASM, add dynamic content, verify."""
-    var w = _get_wasm()
 
     # Use the self-contained test which handles all the orchestration
     var result = Int(w[].call_i32("dsl_test_vnode_builder", no_args()))
     assert_equal(result, 1, "VNodeBuilder self-contained test passed")
 
 
-fn test_dsl_vb_keyed() raises:
+fn test_dsl_vb_keyed(w: UnsafePointer[WasmInstance]) raises:
     """Create a keyed VNodeBuilder via WASM."""
-    var w = _get_wasm()
     var result = Int(w[].call_i32("dsl_test_vnode_builder_keyed", no_args()))
     assert_equal(result, 1, "keyed VNodeBuilder self-contained test passed")
 
@@ -422,9 +392,10 @@ fn test_dsl_vb_keyed() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_template_equivalence_via_wasm() raises:
+fn test_dsl_template_equivalence_via_wasm(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Verify DSL-built and manually-built counter templates are equivalent."""
-    var w = _get_wasm()
     var result = Int(w[].call_i32("dsl_test_template_equivalence", no_args()))
     assert_equal(result, 1, "template equivalence test passed")
 
@@ -434,9 +405,8 @@ fn test_dsl_template_equivalence_via_wasm() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_counter_template_via_wasm() raises:
+fn test_dsl_counter_template_via_wasm(w: UnsafePointer[WasmInstance]) raises:
     """Build counter template via DSL and verify all properties."""
-    var w = _get_wasm()
     var result = Int(w[].call_i32("dsl_test_counter_template", no_args()))
     assert_equal(result, 1, "counter template test passed")
 
@@ -446,8 +416,7 @@ fn test_dsl_counter_template_via_wasm() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_multi_root_via_wasm() raises:
+fn test_dsl_multi_root_via_wasm(w: UnsafePointer[WasmInstance]) raises:
     """Multiple root nodes via to_template_multi."""
-    var w = _get_wasm()
     var result = Int(w[].call_i32("dsl_test_to_template_multi_root", no_args()))
     assert_equal(result, 1, "multi-root template test passed")

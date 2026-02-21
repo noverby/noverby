@@ -48,8 +48,7 @@ fn _destroy_runtime(w: UnsafePointer[WasmInstance], rt: Int) raises:
 # ── Registry — initial state ─────────────────────────────────────────────────
 
 
-fn test_registry_initial_state() raises:
-    var w = _get_wasm()
+fn test_registry_initial_state(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     assert_equal(
@@ -64,8 +63,7 @@ fn test_registry_initial_state() raises:
 # ── Registry — register and query ────────────────────────────────────────────
 
 
-fn test_register_single_handler() raises:
-    var w = _get_wasm()
+fn test_register_single_handler(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -94,8 +92,7 @@ fn test_register_single_handler() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_register_multiple_handlers() raises:
-    var w = _get_wasm()
+fn test_register_multiple_handlers(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s0 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -159,8 +156,7 @@ fn test_register_multiple_handlers() raises:
 # ── Registry — query fields ──────────────────────────────────────────────────
 
 
-fn test_query_signal_add_fields() raises:
-    var w = _get_wasm()
+fn test_query_signal_add_fields(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -200,8 +196,7 @@ fn test_query_signal_add_fields() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_query_signal_set_fields() raises:
-    var w = _get_wasm()
+fn test_query_signal_set_fields(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -236,8 +231,7 @@ fn test_query_signal_set_fields() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_query_signal_sub_fields() raises:
-    var w = _get_wasm()
+fn test_query_signal_sub_fields(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -267,8 +261,7 @@ fn test_query_signal_sub_fields() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_query_signal_toggle_fields() raises:
-    var w = _get_wasm()
+fn test_query_signal_toggle_fields(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -301,8 +294,7 @@ fn test_query_signal_toggle_fields() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_query_signal_set_input_fields() raises:
-    var w = _get_wasm()
+fn test_query_signal_set_input_fields(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -330,8 +322,7 @@ fn test_query_signal_set_input_fields() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_query_custom_handler_fields() raises:
-    var w = _get_wasm()
+fn test_query_custom_handler_fields(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -363,8 +354,7 @@ fn test_query_custom_handler_fields() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_query_noop_handler_fields() raises:
-    var w = _get_wasm()
+fn test_query_noop_handler_fields(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -394,8 +384,7 @@ fn test_query_noop_handler_fields() raises:
 # ── Registry — remove ────────────────────────────────────────────────────────
 
 
-fn test_remove_handler() raises:
-    var w = _get_wasm()
+fn test_remove_handler(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -446,8 +435,7 @@ fn test_remove_handler() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_remove_nonexistent_is_noop() raises:
-    var w = _get_wasm()
+fn test_remove_nonexistent_is_noop(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -468,8 +456,7 @@ fn test_remove_nonexistent_is_noop() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_double_remove_is_noop() raises:
-    var w = _get_wasm()
+fn test_double_remove_is_noop(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -499,8 +486,7 @@ fn test_double_remove_is_noop() raises:
 # ── Registry — slot reuse after remove ───────────────────────────────────────
 
 
-fn test_slot_reuse_after_remove() raises:
-    var w = _get_wasm()
+fn test_slot_reuse_after_remove(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s0 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -576,8 +562,7 @@ fn test_slot_reuse_after_remove() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_multiple_slot_reuse() raises:
-    var w = _get_wasm()
+fn test_multiple_slot_reuse(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var scopes = List[Int]()
@@ -644,8 +629,7 @@ fn test_multiple_slot_reuse() raises:
 # ── Registry — contains with out-of-bounds ID ────────────────────────────────
 
 
-fn test_contains_out_of_bounds() raises:
-    var w = _get_wasm()
+fn test_contains_out_of_bounds(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     assert_equal(
@@ -665,8 +649,7 @@ fn test_contains_out_of_bounds() raises:
 # ── Dispatch — signal_add ────────────────────────────────────────────────────
 
 
-fn test_dispatch_signal_add() raises:
-    var w = _get_wasm()
+fn test_dispatch_signal_add(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -700,8 +683,7 @@ fn test_dispatch_signal_add() raises:
 # ── Dispatch — signal_sub ────────────────────────────────────────────────────
 
 
-fn test_dispatch_signal_sub() raises:
-    var w = _get_wasm()
+fn test_dispatch_signal_sub(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -729,8 +711,7 @@ fn test_dispatch_signal_sub() raises:
 # ── Dispatch — signal_set ────────────────────────────────────────────────────
 
 
-fn test_dispatch_signal_set() raises:
-    var w = _get_wasm()
+fn test_dispatch_signal_set(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -758,8 +739,7 @@ fn test_dispatch_signal_set() raises:
 # ── Dispatch — signal_toggle ─────────────────────────────────────────────────
 
 
-fn test_dispatch_signal_toggle() raises:
-    var w = _get_wasm()
+fn test_dispatch_signal_toggle(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -794,8 +774,7 @@ fn test_dispatch_signal_toggle() raises:
 # ── Dispatch — signal_set_input (with i32 payload) ───────────────────────────
 
 
-fn test_dispatch_signal_set_input() raises:
-    var w = _get_wasm()
+fn test_dispatch_signal_set_input(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -827,8 +806,7 @@ fn test_dispatch_signal_set_input() raises:
 # ── Dispatch — marks scope dirty ─────────────────────────────────────────────
 
 
-fn test_dispatch_marks_scope_dirty() raises:
-    var w = _get_wasm()
+fn test_dispatch_marks_scope_dirty(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -867,8 +845,7 @@ fn test_dispatch_marks_scope_dirty() raises:
 # ── Dispatch — multiple dispatches accumulate ────────────────────────────────
 
 
-fn test_dispatch_multiple_accumulate() raises:
-    var w = _get_wasm()
+fn test_dispatch_multiple_accumulate(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -899,8 +876,7 @@ fn test_dispatch_multiple_accumulate() raises:
 # ── Dispatch — drain dirty ───────────────────────────────────────────────────
 
 
-fn test_dispatch_and_drain_dirty() raises:
-    var w = _get_wasm()
+fn test_dispatch_and_drain_dirty(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -941,8 +917,7 @@ fn test_dispatch_and_drain_dirty() raises:
 # ── Edge case — negative operand ─────────────────────────────────────────────
 
 
-fn test_negative_operand() raises:
-    var w = _get_wasm()
+fn test_negative_operand(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -974,8 +949,7 @@ fn test_negative_operand() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_int32_min_max_operand() raises:
-    var w = _get_wasm()
+fn test_int32_min_max_operand(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -1016,8 +990,7 @@ fn test_int32_min_max_operand() raises:
 # ── Stress — many handlers ───────────────────────────────────────────────────
 
 
-fn test_stress_100_handlers() raises:
-    var w = _get_wasm()
+fn test_stress_100_handlers(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var scopes = List[Int]()
@@ -1066,9 +1039,8 @@ fn test_stress_100_handlers() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_stress_register_remove_cycle() raises:
+fn test_stress_register_remove_cycle(w: UnsafePointer[WasmInstance]) raises:
     """Register and remove handlers in a tight loop to exercise free list."""
-    var w = _get_wasm()
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -1107,9 +1079,8 @@ fn test_stress_register_remove_cycle() raises:
 # ── Dispatch — full counter scenario ─────────────────────────────────────────
 
 
-fn test_dispatch_counter_scenario() raises:
+fn test_dispatch_counter_scenario(w: UnsafePointer[WasmInstance]) raises:
     """Simulate a counter component: scope with signal + click handler."""
-    var w = _get_wasm()
     var rt = _create_runtime(w)
 
     # Create scope and signal

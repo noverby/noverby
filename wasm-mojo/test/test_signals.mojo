@@ -44,8 +44,7 @@ fn _destroy_runtime(w: UnsafePointer[WasmInstance], rt: Int) raises:
 # ── Runtime lifecycle ────────────────────────────────────────────────────────
 
 
-fn test_runtime_create_returns_non_null() raises:
-    var w = _get_wasm()
+fn test_runtime_create_returns_non_null(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     assert_true(rt != 0, "runtime_create returns non-null pointer")
@@ -61,8 +60,7 @@ fn test_runtime_create_returns_non_null() raises:
 # ── Signal create and read ───────────────────────────────────────────────────
 
 
-fn test_signal_create_and_read() raises:
-    var w = _get_wasm()
+fn test_signal_create_and_read(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 42)))
@@ -87,8 +85,7 @@ fn test_signal_create_and_read() raises:
 # ── Signal write and read back ───────────────────────────────────────────────
 
 
-fn test_signal_write_and_read_back() raises:
-    var w = _get_wasm()
+fn test_signal_write_and_read_back(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -118,8 +115,7 @@ fn test_signal_write_and_read_back() raises:
 # ── Signal peek (no subscription) ────────────────────────────────────────────
 
 
-fn test_signal_peek() raises:
-    var w = _get_wasm()
+fn test_signal_peek(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 77)))
@@ -142,8 +138,7 @@ fn test_signal_peek() raises:
 # ── Signal version tracking ──────────────────────────────────────────────────
 
 
-fn test_signal_version_tracking() raises:
-    var w = _get_wasm()
+fn test_signal_version_tracking(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -182,8 +177,7 @@ fn test_signal_version_tracking() raises:
 # ── Multiple independent signals ─────────────────────────────────────────────
 
 
-fn test_multiple_independent_signals() raises:
-    var w = _get_wasm()
+fn test_multiple_independent_signals(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var k1 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 10)))
@@ -237,8 +231,7 @@ fn test_multiple_independent_signals() raises:
 # ── Signal destroy ───────────────────────────────────────────────────────────
 
 
-fn test_signal_destroy() raises:
-    var w = _get_wasm()
+fn test_signal_destroy(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var k1 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 10)))
@@ -272,8 +265,7 @@ fn test_signal_destroy() raises:
 # ── Signal slot reuse after destroy ──────────────────────────────────────────
 
 
-fn test_signal_slot_reuse_after_destroy() raises:
-    var w = _get_wasm()
+fn test_signal_slot_reuse_after_destroy(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var k1 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 10)))
@@ -293,8 +285,7 @@ fn test_signal_slot_reuse_after_destroy() raises:
 # ── Signal iadd (+=) via WASM export ─────────────────────────────────────────
 
 
-fn test_signal_iadd() raises:
-    var w = _get_wasm()
+fn test_signal_iadd(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 10)))
@@ -325,8 +316,7 @@ fn test_signal_iadd() raises:
 # ── Signal isub (-=) via WASM export ─────────────────────────────────────────
 
 
-fn test_signal_isub() raises:
-    var w = _get_wasm()
+fn test_signal_isub(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 100)))
@@ -350,8 +340,7 @@ fn test_signal_isub() raises:
 # ── Context: no context by default ───────────────────────────────────────────
 
 
-fn test_no_context_by_default() raises:
-    var w = _get_wasm()
+fn test_no_context_by_default(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     assert_equal(
@@ -366,8 +355,7 @@ fn test_no_context_by_default() raises:
 # ── Context: set and clear ───────────────────────────────────────────────────
 
 
-fn test_context_set_and_clear() raises:
-    var w = _get_wasm()
+fn test_context_set_and_clear(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     w[].call_void("runtime_set_context", args_ptr_i32(rt, 42))
@@ -390,8 +378,7 @@ fn test_context_set_and_clear() raises:
 # ── Subscription: read with context subscribes ───────────────────────────────
 
 
-fn test_read_with_context_subscribes() raises:
-    var w = _get_wasm()
+fn test_read_with_context_subscribes(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -433,8 +420,7 @@ fn test_read_with_context_subscribes() raises:
 # ── Subscription: peek does NOT subscribe ────────────────────────────────────
 
 
-fn test_peek_does_not_subscribe() raises:
-    var w = _get_wasm()
+fn test_peek_does_not_subscribe(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -454,8 +440,7 @@ fn test_peek_does_not_subscribe() raises:
 # ── Subscription: multiple contexts subscribe ────────────────────────────────
 
 
-fn test_multiple_contexts_subscribe() raises:
-    var w = _get_wasm()
+fn test_multiple_contexts_subscribe(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -482,8 +467,7 @@ fn test_multiple_contexts_subscribe() raises:
 # ── Dirty scopes: write with subscribers produces dirty ──────────────────────
 
 
-fn test_write_marks_subscribers_dirty() raises:
-    var w = _get_wasm()
+fn test_write_marks_subscribers_dirty(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -522,8 +506,9 @@ fn test_write_marks_subscribers_dirty() raises:
 # ── Dirty scopes: write without subscribers ──────────────────────────────────
 
 
-fn test_write_without_subscribers_is_clean() raises:
-    var w = _get_wasm()
+fn test_write_without_subscribers_is_clean(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -546,8 +531,7 @@ fn test_write_without_subscribers_is_clean() raises:
 # ── Dirty scopes: iadd marks dirty ───────────────────────────────────────────
 
 
-fn test_iadd_marks_subscribers_dirty() raises:
-    var w = _get_wasm()
+fn test_iadd_marks_subscribers_dirty(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -575,8 +559,9 @@ fn test_iadd_marks_subscribers_dirty() raises:
 # ── Multiple writes deduplicate dirty scopes ─────────────────────────────────
 
 
-fn test_multiple_writes_deduplicate_dirty_scopes() raises:
-    var w = _get_wasm()
+fn test_multiple_writes_deduplicate_dirty_scopes(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -602,8 +587,9 @@ fn test_multiple_writes_deduplicate_dirty_scopes() raises:
 # ── Read after write in same turn returns new value ──────────────────────────
 
 
-fn test_read_after_write_returns_new_value() raises:
-    var w = _get_wasm()
+fn test_read_after_write_returns_new_value(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -628,8 +614,7 @@ fn test_read_after_write_returns_new_value() raises:
 # ── Stress: create 100 signals, verify independence ──────────────────────────
 
 
-fn test_stress_100_independent_signals() raises:
-    var w = _get_wasm()
+fn test_stress_100_independent_signals(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var keys = List[Int]()
@@ -671,8 +656,9 @@ fn test_stress_100_independent_signals() raises:
 # ── Stress: create/destroy cycle reuses slots ────────────────────────────────
 
 
-fn test_stress_create_destroy_reuse_cycle() raises:
-    var w = _get_wasm()
+fn test_stress_create_destroy_reuse_cycle(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var rt = _create_runtime(w)
 
     # Create 50 signals
@@ -725,8 +711,7 @@ fn test_stress_create_destroy_reuse_cycle() raises:
 # ── Edge case: negative values ───────────────────────────────────────────────
 
 
-fn test_signal_negative_values() raises:
-    var w = _get_wasm()
+fn test_signal_negative_values(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var key = Int(
@@ -753,8 +738,7 @@ fn test_signal_negative_values() raises:
 # ── Edge case: zero initial value ────────────────────────────────────────────
 
 
-fn test_signal_zero_initial_value() raises:
-    var w = _get_wasm()
+fn test_signal_zero_initial_value(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))

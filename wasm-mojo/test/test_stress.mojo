@@ -71,9 +71,10 @@ fn _repeat_char(ch: String, n: Int) -> String:
 # ---------------------------------------------------------------------------
 
 
-fn test_200_sequential_string_allocations() raises:
+fn test_200_sequential_string_allocations(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Write 200 distinct strings and verify they all read back correctly."""
-    var w = _get_wasm()
     var ptrs = List[Int]()
     var strings = List[String]()
     for i in range(200):
@@ -96,8 +97,9 @@ fn test_200_sequential_string_allocations() raises:
 # ---------------------------------------------------------------------------
 
 
-fn test_100_return_input_string_roundtrips() raises:
-    var w = _get_wasm()
+fn test_100_return_input_string_roundtrips(
+    w: UnsafePointer[WasmInstance],
+) raises:
     for i in range(100):
         var s = "roundtrip-" + String(i)
         var in_ptr = w[].write_string_struct(s)
@@ -116,9 +118,8 @@ fn test_100_return_input_string_roundtrips() raises:
 # ---------------------------------------------------------------------------
 
 
-fn test_50_sequential_concats() raises:
+fn test_50_sequential_concats(w: UnsafePointer[WasmInstance]) raises:
     """Build a string by concatenating 'ab' 50 times through WASM."""
-    var w = _get_wasm()
     var current_ptr = w[].write_string_struct("")
     for _ in range(50):
         var append_ptr = w[].write_string_struct("ab")
@@ -147,8 +148,9 @@ fn test_50_sequential_concats() raises:
 # ---------------------------------------------------------------------------
 
 
-fn test_50_interleaved_numeric_string_ops() raises:
-    var w = _get_wasm()
+fn test_50_interleaved_numeric_string_ops(
+    w: UnsafePointer[WasmInstance],
+) raises:
     for i in range(50):
         # Do some numeric work
         var x = Int(w[].call_i32("add_int32", args_i32_i32(i, i)))
@@ -183,9 +185,10 @@ fn test_50_interleaved_numeric_string_ops() raises:
 # ---------------------------------------------------------------------------
 
 
-fn test_300_alloc_string_struct_non_overlapping() raises:
+fn test_300_alloc_string_struct_non_overlapping(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Verify no two struct pointers overlap (each struct is 24 bytes)."""
-    var w = _get_wasm()
     var ptrs = List[Int]()
     for _ in range(300):
         ptrs.append(w[].alloc_string_struct())
@@ -209,8 +212,9 @@ fn test_300_alloc_string_struct_non_overlapping() raises:
 # ---------------------------------------------------------------------------
 
 
-fn test_mixed_size_strings_report_correct_length() raises:
-    var w = _get_wasm()
+fn test_mixed_size_strings_report_correct_length(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var sizes = List[Int](0, 1, 5, 22, 23, 24, 25, 50, 100, 255, 1, 0, 23, 24)
     var ptrs = List[Int]()
 
@@ -234,9 +238,8 @@ fn test_mixed_size_strings_report_correct_length() raises:
 # ---------------------------------------------------------------------------
 
 
-fn test_fib_recurrence_2_to_40() raises:
+fn test_fib_recurrence_2_to_40(w: UnsafePointer[WasmInstance]) raises:
     """Verify fib(n) = fib(n-1) + fib(n-2) for n = 2..40."""
-    var w = _get_wasm()
     for n in range(2, 41):
         var fn0 = Int(w[].call_i32("fib_int32", args_i32(n)))
         var fn1 = Int(w[].call_i32("fib_int32", args_i32(n - 1)))
@@ -261,8 +264,7 @@ fn test_fib_recurrence_2_to_40() raises:
 # ---------------------------------------------------------------------------
 
 
-fn test_string_eq_reflexive() raises:
-    var w = _get_wasm()
+fn test_string_eq_reflexive(w: UnsafePointer[WasmInstance]) raises:
     var test_strings = List[String](
         "",
         "a",

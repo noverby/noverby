@@ -31,8 +31,7 @@ fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
 # ── Add ──────────────────────────────────────────────────────────────────────
 
 
-fn test_add_int32() raises:
-    var w = _get_wasm()
+fn test_add_int32(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("add_int32", args_i32_i32(2, 3))),
         5,
@@ -40,8 +39,7 @@ fn test_add_int32() raises:
     )
 
 
-fn test_add_int64() raises:
-    var w = _get_wasm()
+fn test_add_int64(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("add_int64", args_i64_i64(2, 3))),
         5,
@@ -49,16 +47,14 @@ fn test_add_int64() raises:
     )
 
 
-fn test_add_float32() raises:
-    var w = _get_wasm()
+fn test_add_float32(w: UnsafePointer[WasmInstance]) raises:
     var result = Float64(w[].call_f32("add_float32", args_f32_f32(2.2, 3.3)))
     # Float32 precision: compute expected in f32
     var expected = Float64(Float32(2.2) + Float32(3.3))
     assert_equal(result, expected, "add_float32(2.2, 3.3)")
 
 
-fn test_add_float64() raises:
-    var w = _get_wasm()
+fn test_add_float64(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("add_float64", args_f64_f64(2.2, 3.3)),
         2.2 + 3.3,
@@ -66,8 +62,7 @@ fn test_add_float64() raises:
     )
 
 
-fn test_add_int32_edge_cases() raises:
-    var w = _get_wasm()
+fn test_add_int32_edge_cases(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("add_int32", args_i32_i32(0, 0))),
         0,
@@ -90,8 +85,7 @@ fn test_add_int32_edge_cases() raises:
     )
 
 
-fn test_add_int64_edge_cases() raises:
-    var w = _get_wasm()
+fn test_add_int64_edge_cases(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("add_int64", args_i64_i64(0, 0))),
         0,
@@ -109,8 +103,7 @@ fn test_add_int64_edge_cases() raises:
     )
 
 
-fn test_add_float64_edge_cases() raises:
-    var w = _get_wasm()
+fn test_add_float64_edge_cases(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("add_float64", args_f64_f64(0.0, 0.0)),
         0.0,
@@ -126,8 +119,7 @@ fn test_add_float64_edge_cases() raises:
 # ── Subtract ─────────────────────────────────────────────────────────────────
 
 
-fn test_sub_int32() raises:
-    var w = _get_wasm()
+fn test_sub_int32(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("sub_int32", args_i32_i32(10, 3))),
         7,
@@ -135,8 +127,7 @@ fn test_sub_int32() raises:
     )
 
 
-fn test_sub_int64() raises:
-    var w = _get_wasm()
+fn test_sub_int64(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("sub_int64", args_i64_i64(10, 3))),
         7,
@@ -144,15 +135,13 @@ fn test_sub_int64() raises:
     )
 
 
-fn test_sub_float32() raises:
-    var w = _get_wasm()
+fn test_sub_float32(w: UnsafePointer[WasmInstance]) raises:
     var result = Float64(w[].call_f32("sub_float32", args_f32_f32(5.5, 2.2)))
     var expected = Float64(Float32(5.5) - Float32(2.2))
     assert_equal(result, expected, "sub_float32(5.5, 2.2)")
 
 
-fn test_sub_float64() raises:
-    var w = _get_wasm()
+fn test_sub_float64(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("sub_float64", args_f64_f64(5.5, 2.2)),
         5.5 - 2.2,
@@ -160,8 +149,7 @@ fn test_sub_float64() raises:
     )
 
 
-fn test_sub_int32_edge_cases() raises:
-    var w = _get_wasm()
+fn test_sub_int32_edge_cases(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("sub_int32", args_i32_i32(0, 0))),
         0,
@@ -184,8 +172,7 @@ fn test_sub_int32_edge_cases() raises:
     )
 
 
-fn test_sub_int64_edge_cases() raises:
-    var w = _get_wasm()
+fn test_sub_int64_edge_cases(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("sub_int64", args_i64_i64(0, 0))),
         0,
@@ -201,8 +188,7 @@ fn test_sub_int64_edge_cases() raises:
 # ── Multiply ─────────────────────────────────────────────────────────────────
 
 
-fn test_mul_int32() raises:
-    var w = _get_wasm()
+fn test_mul_int32(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("mul_int32", args_i32_i32(4, 5))),
         20,
@@ -210,8 +196,7 @@ fn test_mul_int32() raises:
     )
 
 
-fn test_mul_int64() raises:
-    var w = _get_wasm()
+fn test_mul_int64(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("mul_int64", args_i64_i64(4, 5))),
         20,
@@ -219,15 +204,13 @@ fn test_mul_int64() raises:
     )
 
 
-fn test_mul_float32() raises:
-    var w = _get_wasm()
+fn test_mul_float32(w: UnsafePointer[WasmInstance]) raises:
     var result = Float64(w[].call_f32("mul_float32", args_f32_f32(2.0, 3.0)))
     var expected = Float64(Float32(2.0) * Float32(3.0))
     assert_equal(result, expected, "mul_float32(2.0, 3.0)")
 
 
-fn test_mul_float64() raises:
-    var w = _get_wasm()
+fn test_mul_float64(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("mul_float64", args_f64_f64(2.5, 4.0)),
         10.0,
@@ -235,8 +218,7 @@ fn test_mul_float64() raises:
     )
 
 
-fn test_mul_int32_edge_cases() raises:
-    var w = _get_wasm()
+fn test_mul_int32_edge_cases(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("mul_int32", args_i32_i32(0, 100))),
         0,
@@ -259,8 +241,7 @@ fn test_mul_int32_edge_cases() raises:
     )
 
 
-fn test_mul_int64_edge_cases() raises:
-    var w = _get_wasm()
+fn test_mul_int64_edge_cases(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("mul_int64", args_i64_i64(0, 999))),
         0,
@@ -273,8 +254,7 @@ fn test_mul_int64_edge_cases() raises:
     )
 
 
-fn test_mul_float64_edge_cases() raises:
-    var w = _get_wasm()
+fn test_mul_float64_edge_cases(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("mul_float64", args_f64_f64(0.0, 123.456)),
         0.0,
@@ -285,8 +265,7 @@ fn test_mul_float64_edge_cases() raises:
 # ── Division ─────────────────────────────────────────────────────────────────
 
 
-fn test_div_int32() raises:
-    var w = _get_wasm()
+fn test_div_int32(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("div_int32", args_i32_i32(20, 4))),
         5,
@@ -294,8 +273,7 @@ fn test_div_int32() raises:
     )
 
 
-fn test_div_int64() raises:
-    var w = _get_wasm()
+fn test_div_int64(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("div_int64", args_i64_i64(20, 4))),
         5,
@@ -303,15 +281,13 @@ fn test_div_int64() raises:
     )
 
 
-fn test_div_float32() raises:
-    var w = _get_wasm()
+fn test_div_float32(w: UnsafePointer[WasmInstance]) raises:
     var result = Float64(w[].call_f32("div_float32", args_f32_f32(10.0, 4.0)))
     var expected = Float64(Float32(10.0) / Float32(4.0))
     assert_equal(result, expected, "div_float32(10.0, 4.0) === 2.5")
 
 
-fn test_div_float64() raises:
-    var w = _get_wasm()
+fn test_div_float64(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("div_float64", args_f64_f64(10.0, 4.0)),
         2.5,
@@ -319,8 +295,7 @@ fn test_div_float64() raises:
     )
 
 
-fn test_div_int32_edge_cases() raises:
-    var w = _get_wasm()
+fn test_div_int32_edge_cases(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("div_int32", args_i32_i32(7, 2))),
         3,
@@ -345,8 +320,7 @@ fn test_div_int32_edge_cases() raises:
     )
 
 
-fn test_div_int64_edge_cases() raises:
-    var w = _get_wasm()
+fn test_div_int64_edge_cases(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("div_int64", args_i64_i64(7, 2))),
         3,
@@ -354,8 +328,7 @@ fn test_div_int64_edge_cases() raises:
     )
 
 
-fn test_div_float64_edge_cases() raises:
-    var w = _get_wasm()
+fn test_div_float64_edge_cases(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("div_float64", args_f64_f64(1.0, 3.0)),
         1.0 / 3.0,
@@ -371,8 +344,7 @@ fn test_div_float64_edge_cases() raises:
 # ── Modulo ───────────────────────────────────────────────────────────────────
 
 
-fn test_mod_int32() raises:
-    var w = _get_wasm()
+fn test_mod_int32(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("mod_int32", args_i32_i32(10, 3))),
         1,
@@ -395,8 +367,7 @@ fn test_mod_int32() raises:
     )
 
 
-fn test_mod_int64() raises:
-    var w = _get_wasm()
+fn test_mod_int64(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("mod_int64", args_i64_i64(10, 3))),
         1,
@@ -412,8 +383,7 @@ fn test_mod_int64() raises:
 # ── Power ────────────────────────────────────────────────────────────────────
 
 
-fn test_pow_int32() raises:
-    var w = _get_wasm()
+fn test_pow_int32(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("pow_int32", args_i32(3))),
         27,
@@ -431,8 +401,7 @@ fn test_pow_int32() raises:
     )
 
 
-fn test_pow_int64() raises:
-    var w = _get_wasm()
+fn test_pow_int64(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("pow_int64", args_i64(3))),
         27,
@@ -450,8 +419,7 @@ fn test_pow_int64() raises:
     )
 
 
-fn test_pow_float64() raises:
-    var w = _get_wasm()
+fn test_pow_float64(w: UnsafePointer[WasmInstance]) raises:
     # pow_float64(3.3) = 3.3^3.3 ≈ 51.41572944937184
     var result = w[].call_f64("pow_float64", args_f64(3.3))
     assert_true(
@@ -472,8 +440,7 @@ fn test_pow_float64() raises:
     )
 
 
-fn test_pow_float32_stable() raises:
-    var w = _get_wasm()
+fn test_pow_float32_stable(w: UnsafePointer[WasmInstance]) raises:
     # Verify pow_float32 is at least stable (same input → same output)
     var a = Float64(w[].call_f32("pow_float32", args_f32(3.3)))
     var b = Float64(w[].call_f32("pow_float32", args_f32(3.3)))
