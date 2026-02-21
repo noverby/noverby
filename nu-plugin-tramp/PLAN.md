@@ -1,4 +1,4 @@
-# tramp-rs — PLAN
+# nu-plugin-tramp — PLAN
 
 > A TRAMP-inspired remote filesystem plugin for [Nushell](https://www.nushell.sh/), written in Rust.
 
@@ -6,7 +6,7 @@
 
 ## 1. Overview
 
-`tramp-rs` allows Nushell users to transparently access remote files using
+`nu-plugin-tramp` allows Nushell users to transparently access remote files using
 TRAMP-style URI paths, e.g.:
 
 ```nushell
@@ -25,7 +25,7 @@ typed Nushell value; pipes operate locally; `save` writes back remotely.
 ## 2. Repository Layout
 
 ```text
-tramp-rs/
+nu-plugin-tramp/
 ├── Cargo.toml          # workspace manifest
 ├── SPEC.md             # this document
 ├── README.md           # user-facing documentation
@@ -38,7 +38,7 @@ tramp-rs/
         └── ssh.rs      # SSH backend (v1)
 ```
 
-Placed under `tramp-rs/` in the `noverby/noverby` monorepo root, alongside
+Placed under `nu-plugin-tramp/` in the `noverby/noverby` monorepo root, alongside
 existing projects such as `nixos-rs/`, `systemd-rs/`, etc.
 
 ---
@@ -112,7 +112,7 @@ Nushell command
       │
       ▼
 ┌────────────���────────────────────────────┐
-│           tramp-rs plugin               │
+│        nu-plugin-tramp plugin           │
 │                                         │
 │  ┌─────────────┐   ┌─────────────────┐  │
 │  │ Path Parser │──▶│ Backend Resolver│  │
@@ -303,10 +303,10 @@ use. Nushell's plugin ABI is version-locked.
 
 ## 8. Nix Integration
 
-Because the monorepo uses Nix + Crane, `tramp-rs` should expose:
+Because the monorepo uses Nix + Crane, `nu-plugin-tramp` should expose:
 
 ```nix
-# flake.nix addition (tramp-rs/default.nix)
+# flake.nix addition (nu-plugin-tramp/default.nix)
 { crane, rust-overlay, ... }:
 crane.buildPackage {
   src = ./.;
@@ -332,7 +332,7 @@ programs.nushell.plugins = [ pkgs.nu_plugin_tramp ];
 - [ ] `rm` support
 - [ ] Nushell plugin compiles and registers correctly
 - [ ] README with install + usage
-- [ ] Nix package derivation (`tramp-rs/default.nix`)
+- [ ] Nix package derivation (`nu-plugin-tramp/default.nix`)
 
 ### Phase 2 — Daily Driver
 

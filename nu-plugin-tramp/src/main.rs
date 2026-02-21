@@ -262,7 +262,7 @@ impl PluginCommand for TrampMain {
 
     fn extra_description(&self) -> &str {
         r#"
-tramp-rs lets you transparently access remote files using TRAMP-style URIs:
+nu-plugin-tramp lets you transparently access remote files using TRAMP-style URIs:
 
     tramp open /ssh:myvm:/etc/hostname
     tramp ls   /ssh:myvm:/var/log
