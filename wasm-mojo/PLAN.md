@@ -2640,6 +2640,15 @@ Replaced 12 identical type-specific `_int_to_*_ptr` functions and 4 `_*_ptr_to_i
 - **New tests**: `test_debug_eid_alloc_capacity` in `test_element_id.mojo` (capacity query after allocations), `test_dsl_node_count_dyn_node_and_static_attr` in `test_dsl.mojo` (covers `dsl_node_count_all`, `dsl_node_count_dyn_node`, `dsl_node_count_static_attr`), `testBenchScopeId` in `bench.test.ts` (root scope ID validity).
 - **All 676 Mojo + 860 JS tests pass** (674→676 Mojo, 859→860 JS; +3 total new tests).
 
+### 10.15 Clean Unused Imports & Consolidate Writer Boilerplate (✅ Done)
+
+Audited all ~300 lines of imports in `main.mojo` and removed 140 symbols that became unused after earlier extractions (M10.13 DSL test extraction, M10.6 DSL-based app rewrite, etc.). Consolidated the repeated `MutationWriter` heap-allocation/cleanup pattern into two shared helpers.
+
+- **Unused import cleanup**: Removed 140 imported symbols across 8 import groups. Largest removals: 35 `TAG_*` constants, 38 `el_*` tag helpers, 18 `TNODE_`/`TATTR_`/`VNODE_`/`AVAL_`/`DNODE_` constants, 18 `EVT_`/`ACTION_` constants, 6 `NODE_*` constants, and 7 unused types/functions (`HandlerRegistry`, `SchedulerEntry`, `TodoItem`, `BenchRow`, `HOOK_SIGNAL`, `mount_vnode`, `mount_vnode_to`, `diff_and_finalize`, `diff_no_finalize`, `create_no_finalize`, `to_template_multi`, `el`). Import block reduced from ~300 → ~150 lines.
+- **Writer boilerplate consolidation**: Added `_alloc_writer(buf_ptr, capacity)` and `_free_writer(ptr)` helpers. Replaced 8 identical 7-line `UnsafePointer[MutationWriter].alloc` / `init_pointee_move` / `destroy_pointee` / `free` blocks in `counter_rebuild`, `counter_flush`, `todo_rebuild`, `todo_flush`, `bench_rebuild`, `bench_flush`, `shell_mount`, and `shell_diff` with 2-line calls.
+- **`main.mojo` reduction**: 3,601 → 3,425 lines (−176 lines, −4.9%).
+- **No behavioral change**: All 392 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
+
 ---
 
 ## Milestone Checklist
@@ -2668,3 +2677,4 @@ Replaced 12 identical type-specific `_int_to_*_ptr` functions and 4 `_*_ptr_to_i
 - [x] **M10.12:** Test filter support. Substring filter arguments added to `build_test_binaries.sh`, `run_test_binaries.sh`, and Justfile (`just test signals`, `just test-run dsl`, `just test signals mut`). Single-module runs take ~100ms vs ~10s for all 26 binaries. All 674 Mojo + 859 JS tests pass unchanged.
 - [x] **M10.13:** Extract DSL test logic from main.mojo. 19 self-contained `dsl_test_*` function bodies moved to `src/vdom/dsl_tests.mojo` (761 lines). `main.mojo` reduced from 4,282 → 3,736 lines (−546 lines, −12.7%). Inline test logic replaced with thin `@export` wrappers. All 674 Mojo + 859 JS tests pass unchanged.
 - [x] **M10.14:** Consolidate WASM ABI helpers & close test gaps. 16 type-specific pointer conversion functions replaced with 2 generic helpers (`_as_ptr[T]`, `_to_i64[T]`). `main.mojo` reduced from 3,736 → 3,601 lines (−135 lines, −3.6%). 5 untested WASM exports identified via audit; all now covered. All 676 Mojo + 860 JS tests pass.
+- [x] **M10.15:** Clean unused imports & consolidate writer boilerplate. 140 unused import symbols removed (TAG_*, el_*, EVT_*, ACTION_*, TNODE_*, etc.). 8 identical MutationWriter alloc/free blocks replaced with `_alloc_writer`/`_free_writer` helpers. `main.mojo` reduced from 3,601 → 3,425 lines (−176 lines, −4.9%). All 676 Mojo + 860 JS tests pass unchanged.

@@ -1,32 +1,8 @@
 from bridge import MutationWriter
 from arena import ElementId, ElementIdAllocator
-from signals import Runtime, create_runtime, destroy_runtime, HOOK_SIGNAL
+from signals import Runtime, create_runtime, destroy_runtime
 from mutations import CreateEngine, DiffEngine
-from events import (
-    HandlerRegistry,
-    HandlerEntry,
-    EVT_CLICK,
-    EVT_INPUT,
-    EVT_KEY_DOWN,
-    EVT_KEY_UP,
-    EVT_MOUSE_MOVE,
-    EVT_FOCUS,
-    EVT_BLUR,
-    EVT_SUBMIT,
-    EVT_CHANGE,
-    EVT_MOUSE_DOWN,
-    EVT_MOUSE_UP,
-    EVT_MOUSE_ENTER,
-    EVT_MOUSE_LEAVE,
-    EVT_CUSTOM,
-    ACTION_NONE,
-    ACTION_SIGNAL_SET_I32,
-    ACTION_SIGNAL_ADD_I32,
-    ACTION_SIGNAL_SUB_I32,
-    ACTION_SIGNAL_TOGGLE,
-    ACTION_SIGNAL_SET_INPUT,
-    ACTION_CUSTOM,
-)
+from events import HandlerEntry
 from vdom import (
     TemplateBuilder,
     create_builder,
@@ -36,122 +12,15 @@ from vdom import (
     DynamicNode,
     DynamicAttr,
     AttributeValue,
-    TNODE_ELEMENT,
-    TNODE_TEXT,
-    TNODE_DYNAMIC,
-    TNODE_DYNAMIC_TEXT,
-    TATTR_STATIC,
-    TATTR_DYNAMIC,
-    VNODE_TEMPLATE_REF,
-    VNODE_TEXT,
-    VNODE_PLACEHOLDER,
-    VNODE_FRAGMENT,
-    AVAL_TEXT,
-    AVAL_INT,
-    AVAL_FLOAT,
-    AVAL_BOOL,
-    AVAL_EVENT,
-    AVAL_NONE,
-    DNODE_TEXT,
-    DNODE_PLACEHOLDER,
-    TAG_DIV,
-    TAG_SPAN,
-    TAG_P,
-    TAG_SECTION,
-    TAG_HEADER,
-    TAG_FOOTER,
-    TAG_NAV,
-    TAG_MAIN,
-    TAG_ARTICLE,
-    TAG_ASIDE,
-    TAG_H1,
-    TAG_H2,
-    TAG_H3,
-    TAG_H4,
-    TAG_H5,
-    TAG_H6,
-    TAG_UL,
-    TAG_OL,
-    TAG_LI,
-    TAG_BUTTON,
-    TAG_INPUT,
-    TAG_FORM,
-    TAG_TEXTAREA,
-    TAG_SELECT,
-    TAG_OPTION,
-    TAG_LABEL,
-    TAG_A,
-    TAG_IMG,
-    TAG_TABLE,
-    TAG_THEAD,
-    TAG_TBODY,
-    TAG_TR,
-    TAG_TD,
-    TAG_TH,
-    TAG_STRONG,
-    TAG_EM,
-    TAG_BR,
-    TAG_HR,
-    TAG_PRE,
-    TAG_CODE,
-    TAG_UNKNOWN,
     # DSL — Ergonomic builder API (M10.5)
     Node,
-    NODE_TEXT,
-    NODE_ELEMENT,
-    NODE_DYN_TEXT,
-    NODE_DYN_NODE,
-    NODE_STATIC_ATTR,
-    NODE_DYN_ATTR,
     text,
     dyn_text,
     dyn_node,
     attr,
     dyn_attr,
-    el,
     el_empty,
-    el_div,
-    el_span,
-    el_p,
-    el_section,
-    el_header,
-    el_footer,
-    el_nav,
-    el_main,
-    el_article,
-    el_aside,
-    el_h1,
-    el_h2,
-    el_h3,
-    el_h4,
-    el_h5,
-    el_h6,
-    el_ul,
-    el_ol,
-    el_li,
-    el_button,
-    el_input,
-    el_form,
-    el_textarea,
-    el_select,
-    el_option,
-    el_label,
-    el_a,
-    el_img,
-    el_table,
-    el_thead,
-    el_tbody,
-    el_tr,
-    el_td,
-    el_th,
-    el_strong,
-    el_em,
-    el_br,
-    el_hr,
-    el_pre,
-    el_code,
     to_template,
-    to_template_multi,
     VNodeBuilder,
     count_nodes,
     count_all_items,
@@ -181,16 +50,8 @@ from vdom.dsl_tests import (
     test_count_utilities as _dsl_test_count_utilities,
     test_template_equivalence as _dsl_test_template_equivalence,
 )
-from scheduler import Scheduler, SchedulerEntry
-from component import (
-    AppShell,
-    app_shell_create,
-    mount_vnode,
-    mount_vnode_to,
-    diff_and_finalize,
-    diff_no_finalize,
-    create_no_finalize,
-)
+from scheduler import Scheduler
+from component import AppShell, app_shell_create
 from poc import (
     poc_add_int32,
     poc_add_int64,
@@ -275,13 +136,11 @@ from apps import (
     counter_app_handle_event,
     counter_app_flush,
     TodoApp,
-    TodoItem,
     todo_app_init,
     todo_app_destroy,
     todo_app_rebuild,
     todo_app_flush,
     BenchmarkApp,
-    BenchRow,
     bench_app_init,
     bench_app_destroy,
     bench_app_rebuild,
@@ -341,6 +200,29 @@ fn _get_vnode_store(store_ptr: Int64) -> UnsafePointer[VNodeStore]:
 @always_inline
 fn _writer(buf: Int64, off: Int32) -> MutationWriter:
     return MutationWriter(_as_ptr[UInt8](Int(buf)), Int(off), 0)
+
+
+# ── Helper: heap-allocated MutationWriter for app rebuild/flush ──────────────
+
+
+@always_inline
+fn _alloc_writer(
+    buf_ptr: Int64, capacity: Int32
+) -> UnsafePointer[MutationWriter]:
+    """Allocate a MutationWriter on the heap with the given buffer and capacity.
+    """
+    var ptr = UnsafePointer[MutationWriter].alloc(1)
+    ptr.init_pointee_move(
+        MutationWriter(_as_ptr[UInt8](Int(buf_ptr)), Int(capacity))
+    )
+    return ptr
+
+
+@always_inline
+fn _free_writer(ptr: UnsafePointer[MutationWriter]):
+    """Destroy and free a heap-allocated MutationWriter."""
+    ptr.destroy_pointee()
+    ptr.free()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2007,16 +1889,9 @@ fn counter_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount) of the counter app.  Returns mutation byte length.
     """
     var app = _as_ptr[CounterApp](Int(app_ptr))
-    var buf = _as_ptr[UInt8](Int(buf_ptr))
-
-    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
-    writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
-
+    var writer_ptr = _alloc_writer(buf_ptr, capacity)
     var offset = counter_app_rebuild(app, writer_ptr)
-
-    writer_ptr.destroy_pointee()
-    writer_ptr.free()
-
+    _free_writer(writer_ptr)
     return offset
 
 
@@ -2036,16 +1911,9 @@ fn counter_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
     var app = _as_ptr[CounterApp](Int(app_ptr))
-    var buf = _as_ptr[UInt8](Int(buf_ptr))
-
-    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
-    writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
-
+    var writer_ptr = _alloc_writer(buf_ptr, capacity)
     var offset = counter_app_flush(app, writer_ptr)
-
-    writer_ptr.destroy_pointee()
-    writer_ptr.free()
-
+    _free_writer(writer_ptr)
     return offset
 
 
@@ -2133,16 +2001,9 @@ fn todo_destroy(app_ptr: Int64):
 fn todo_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount) of the todo app.  Returns mutation byte length."""
     var app = _as_ptr[TodoApp](Int(app_ptr))
-    var buf = _as_ptr[UInt8](Int(buf_ptr))
-
-    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
-    writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
-
+    var writer_ptr = _alloc_writer(buf_ptr, capacity)
     var offset = todo_app_rebuild(app, writer_ptr)
-
-    writer_ptr.destroy_pointee()
-    writer_ptr.free()
-
+    _free_writer(writer_ptr)
     return offset
 
 
@@ -2179,16 +2040,9 @@ fn todo_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
     var app = _as_ptr[TodoApp](Int(app_ptr))
-    var buf = _as_ptr[UInt8](Int(buf_ptr))
-
-    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
-    writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
-
+    var writer_ptr = _alloc_writer(buf_ptr, capacity)
     var offset = todo_app_flush(app, writer_ptr)
-
-    writer_ptr.destroy_pointee()
-    writer_ptr.free()
-
+    _free_writer(writer_ptr)
     return offset
 
 
@@ -2335,16 +2189,9 @@ fn bench_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render of the benchmark table body.  Returns mutation byte length.
     """
     var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    var buf = _as_ptr[UInt8](Int(buf_ptr))
-
-    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
-    writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
-
+    var writer_ptr = _alloc_writer(buf_ptr, capacity)
     var offset = bench_app_rebuild(app, writer_ptr)
-
-    writer_ptr.destroy_pointee()
-    writer_ptr.free()
-
+    _free_writer(writer_ptr)
     return offset
 
 
@@ -2353,16 +2200,9 @@ fn bench_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
     var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    var buf = _as_ptr[UInt8](Int(buf_ptr))
-
-    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
-    writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
-
+    var writer_ptr = _alloc_writer(buf_ptr, capacity)
     var offset = bench_app_flush(app, writer_ptr)
-
-    writer_ptr.destroy_pointee()
-    writer_ptr.free()
-
+    _free_writer(writer_ptr)
     return offset
 
 
@@ -2756,17 +2596,9 @@ fn shell_mount(
 ) -> Int32:
     """Mount a VNode via the AppShell.  Returns mutation byte length."""
     var ptr = _as_ptr[AppShell](Int(shell_ptr))
-
-    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
-    writer_ptr.init_pointee_move(
-        MutationWriter(_as_ptr[UInt8](Int(buf_ptr)), Int(capacity))
-    )
-
+    var writer_ptr = _alloc_writer(buf_ptr, capacity)
     var result = ptr[0].mount(writer_ptr, UInt32(vnode_index))
-
-    writer_ptr.destroy_pointee()
-    writer_ptr.free()
-
+    _free_writer(writer_ptr)
     return result
 
 
@@ -2780,18 +2612,10 @@ fn shell_diff(
 ) -> Int32:
     """Diff two VNodes via the AppShell.  Returns mutation byte length."""
     var ptr = _as_ptr[AppShell](Int(shell_ptr))
-
-    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
-    writer_ptr.init_pointee_move(
-        MutationWriter(_as_ptr[UInt8](Int(buf_ptr)), Int(capacity))
-    )
-
+    var writer_ptr = _alloc_writer(buf_ptr, capacity)
     ptr[0].diff(writer_ptr, UInt32(old_index), UInt32(new_index))
     var result = ptr[0].finalize(writer_ptr)
-
-    writer_ptr.destroy_pointee()
-    writer_ptr.free()
-
+    _free_writer(writer_ptr)
     return result
 
 
