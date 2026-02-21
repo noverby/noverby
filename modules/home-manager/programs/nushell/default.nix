@@ -6,4 +6,6 @@
       $env.SHELL = "${pkgs.nushell}/bin/nu"
     '';
   };
+
+  programs.nu-plugin-tramp.enable = true;
 }

@@ -21,7 +21,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::backend::deploy::{self, DeployResult};
 use crate::backend::exec::ExecBackend;
+use crate::backend::rpc::RpcBackend;
+use crate::backend::rpc_client::RpcClient;
 use crate::backend::runner::CommandRunner;
 use crate::backend::runner::{LocalRunner, RemoteRunner};
 use crate::backend::ssh::SshBackend;
@@ -300,6 +303,44 @@ impl Vfs {
                     ));
                 }
                 let ssh = SshBackend::connect(&hop.host, hop.user.as_deref(), hop.port).await?;
+                let host = hop.host.clone();
+
+                // Attempt to deploy and start the RPC agent for lower-latency
+                // native operations.  On failure, fall back to the shell-parsing
+                // SshBackend transparently.
+                let session = Arc::clone(ssh.session());
+                let sftp = ssh.sftp();
+                match deploy::deploy_and_start(session, sftp).await {
+                    DeployResult::Ready(mut agent) => {
+                        let stdin = agent.take_stdin();
+                        let stdout = agent.take_stdout();
+                        if let (Some(stdin), Some(stdout)) = (stdin, stdout) {
+                            let client = RpcClient::new(stdout, stdin);
+                            // Verify the agent is alive before committing.
+                            match client.ping().await {
+                                Ok(()) => {
+                                    return Ok(Arc::new(RpcBackend::new(client, host)));
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "tramp: agent ping failed for {}, falling back to SSH: {e}",
+                                        host
+                                    );
+                                }
+                            }
+                        } else {
+                            eprintln!(
+                                "tramp: agent started but stdin/stdout not available for {}, falling back to SSH",
+                                host
+                            );
+                        }
+                    }
+                    DeployResult::Fallback(reason) => {
+                        eprintln!("tramp: agent deployment skipped for {}: {reason}", host);
+                    }
+                }
+
+                // Fallback: use the shell-parsing SSH backend.
                 Ok(Arc::new(ssh))
             }
             BackendKind::Docker => {
