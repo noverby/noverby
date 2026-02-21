@@ -2693,6 +2693,18 @@ Added generic `_heap_new[T]` and `_heap_del[T]` helpers to centralize all typed 
 - **`main.mojo` reduction**: 3,332 → 3,326 lines (−6 lines).
 - **No behavioral change**: All 397 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
 
+### 10.20 Generic Pointer Accessor & Final `_to_i64` Fixes (✅ Done)
+
+Replaced all 12 type-specific `_get_*` pointer accessor helpers with a single generic `_get[T: AnyType](ptr: Int64) -> UnsafePointer[T]`. Every WASM handle dereference now uses the same generic function, consistent with the existing `_heap_new[T]`, `_heap_del[T]`, `_as_ptr[T]`, and `_to_i64[T]` generic helpers.
+
+- **1 generic helper replaces 12 type-specific functions**: `_get[T: AnyType](ptr: Int64) -> UnsafePointer[T]` replaces `_get_eid_alloc`, `_get_runtime`, `_get_builder`, `_get_vnode_store`, `_get_counter`, `_get_todo`, `_get_bench`, `_get_shell`, `_get_scheduler`, `_get_writer`, `_get_node`, `_get_vb`. Each was a 2-line function with identical body `return _as_ptr[T](Int(ptr))`.
+- **270+ call sites updated**: All call sites changed from `_get_runtime(rt_ptr)` → `_get[Runtime](rt_ptr)`, `_get_vnode_store(store_ptr)` → `_get[VNodeStore](store_ptr)`, etc. Type is now explicit at every point of use.
+- **`_as_ptr` usage minimized**: `_as_ptr` now appears only in its own definition and inside `_get[T]` (the single caller). All other code goes through `_get[T]`.
+- **2 remaining `_to_i64` fixes**: `shell_eid_ptr` (`Int64(Int(_get_shell(...)[0].eid_alloc))` → `_to_i64(...)`) and `debug_ptr_roundtrip` (`Int64(Int(p))` → `_to_i64(p)`).
+- **Raw `UInt8` pointer access unified**: 7 `_as_ptr[UInt8](Int(ptr))` call sites in mutation/debug exports replaced with `_get[UInt8](ptr)`.
+- **`main.mojo` reduction**: 3,326 → 3,282 lines (−44 lines).
+- **No behavioral change**: All 397 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
+
 ---
 
 ## Milestone Checklist
@@ -2726,3 +2738,4 @@ Added generic `_heap_new[T]` and `_heap_del[T]` helpers to centralize all typed 
 - [x] **M10.17:** Typed pointer accessors & missed `_b2i` fixes. 5 new `_get_*` helpers (`_get_counter`, `_get_todo`, `_get_bench`, `_get_shell`, `_get_scheduler`) replace 73 `_as_ptr[T](Int(x))` call sites. 3 missed `_b2i` conversions fixed (`ctx_consume_found`, `ctx_has_local`, `suspense_has_pending`). 61 single-use pointer accesses inlined. `main.mojo` reduced from 3,378 → 3,335 lines (−43 lines, −1.3%). All 676 Mojo + 860 JS tests pass unchanged.
 - [x] **M10.18:** Complete `_as_ptr` migration & writer helper dedup. `_get_writer` added (13th typed helper). 14 remaining typed `_as_ptr` calls replaced with `_get_*` helpers across 8 exports (`runtime_destroy`, `tmpl_builder_destroy`, `vnode_store_destroy`, `writer_destroy`, `writer_offset`, `writer_finalize`, `create_vnode`, `diff_vnodes`). `writer_create`/`writer_destroy` deduplicated via `_alloc_writer`/`_free_writer`. `_as_ptr` now only used in helper definitions + raw `UInt8` buffer access. `main.mojo` reduced from 3,335 → 3,332 lines (−3 lines). All 676 Mojo + 860 JS tests pass unchanged.
 - [x] **M10.19:** Generic heap alloc/free helpers & `_to_i64` consistency. `_heap_new[T]`/`_heap_del[T]` centralize all typed struct alloc/free. `_alloc_writer`/`_free_writer`/`_alloc_node`/`_free_node` simplified to use generics. 9 inline alloc/free patterns in exports replaced with single-call expressions. 5 `Int64(Int(ptr))` unified to `_to_i64`. `alloc(1)`/`destroy_pointee`/`init_pointee_move` now appear only in helper definitions. `main.mojo` reduced from 3,332 → 3,326 lines (−6 lines). All 676 Mojo + 860 JS tests pass unchanged.
+- [x] **M10.20:** Generic pointer accessor & final `_to_i64` fixes. 12 type-specific `_get_*` helpers replaced with 1 generic `_get[T: AnyType](ptr: Int64)`. 270+ call sites updated. `_as_ptr` now only used inside `_get[T]` definition. 2 remaining `Int64(Int(...))` unified to `_to_i64`. 7 raw `_as_ptr[UInt8]` calls replaced with `_get[UInt8]`. `main.mojo` reduced from 3,326 → 3,282 lines (−44 lines). All 676 Mojo + 860 JS tests pass unchanged.
