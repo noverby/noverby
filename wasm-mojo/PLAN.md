@@ -2681,6 +2681,18 @@ Added `_get_writer` typed pointer accessor and replaced all 14 remaining typed `
 - **`main.mojo` reduction**: 3,335 → 3,332 lines (−3 lines).
 - **No behavioral change**: All 397 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
 
+### 10.19 Generic Heap Alloc/Free Helpers & `_to_i64` Consistency (✅ Done)
+
+Added generic `_heap_new[T]` and `_heap_del[T]` helpers to centralize all typed heap allocation and deallocation. Every `UnsafePointer[T].alloc(1)` / `init_pointee_move` / `destroy_pointee` / `.free()` sequence for typed structs now routes through these two functions.
+
+- **2 new generic helpers**: `_heap_new[T: Movable](var val: T) -> UnsafePointer[T]` and `_heap_del[T: Movable](ptr: UnsafePointer[T])`. Centralize the 3-line alloc+init+return and 2-line destroy+free patterns into single-call operations.
+- **Existing type-specific helpers simplified**: `_alloc_writer` body reduced from 4 → 1 line (now calls `_heap_new`), `_free_writer` body reduced from 2 → 1 line (now calls `_heap_del`), `_alloc_node` body reduced from 3 → 1 line, `_free_node` body reduced from 3 → 1 line.
+- **9 inline alloc/free patterns replaced** in `@export` functions: `eid_alloc_create`/`eid_alloc_destroy`, `vnode_store_create`/`vnode_store_destroy`, `scheduler_create`/`scheduler_destroy`, `shell_create`/`shell_destroy`, `dsl_vb_create`/`dsl_vb_create_keyed`/`dsl_vb_destroy`. Each reduced from 2–3 body lines to a single expression.
+- **`_to_i64` consistency**: 5 remaining `Int64(Int(ptr))` call sites in `scheduler_create`, `shell_create`, `_alloc_node`, `dsl_vb_create`, `dsl_vb_create_keyed` unified to `_to_i64(ptr)`.
+- **After this milestone**: `alloc(1)` appears only in `_as_ptr` (temp slot) and `_heap_new` (definition). `destroy_pointee`/`.free()` appear only in `_heap_del` (definition) and `mutation_buf_free` (raw `UInt8` buffer). `init_pointee_move` appears only in `_heap_new`. All typed struct lifecycle is fully centralized.
+- **`main.mojo` reduction**: 3,332 → 3,326 lines (−6 lines).
+- **No behavioral change**: All 397 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
+
 ---
 
 ## Milestone Checklist
@@ -2713,3 +2725,4 @@ Added `_get_writer` typed pointer accessor and replaced all 14 remaining typed `
 - [x] **M10.16:** Bool→Int32 helper & Node handle consolidation. `_b2i(Bool) -> Int32` replaces 32 identical `if X: return 1; return 0` patterns across all boolean-returning exports. `_alloc_node`/`_free_node` consolidate 6 Node alloc + 3 Node free patterns in DSL exports. `main.mojo` reduced from 3,425 → 3,378 lines (−47 lines, −1.4%). All 676 Mojo + 860 JS tests pass unchanged.
 - [x] **M10.17:** Typed pointer accessors & missed `_b2i` fixes. 5 new `_get_*` helpers (`_get_counter`, `_get_todo`, `_get_bench`, `_get_shell`, `_get_scheduler`) replace 73 `_as_ptr[T](Int(x))` call sites. 3 missed `_b2i` conversions fixed (`ctx_consume_found`, `ctx_has_local`, `suspense_has_pending`). 61 single-use pointer accesses inlined. `main.mojo` reduced from 3,378 → 3,335 lines (−43 lines, −1.3%). All 676 Mojo + 860 JS tests pass unchanged.
 - [x] **M10.18:** Complete `_as_ptr` migration & writer helper dedup. `_get_writer` added (13th typed helper). 14 remaining typed `_as_ptr` calls replaced with `_get_*` helpers across 8 exports (`runtime_destroy`, `tmpl_builder_destroy`, `vnode_store_destroy`, `writer_destroy`, `writer_offset`, `writer_finalize`, `create_vnode`, `diff_vnodes`). `writer_create`/`writer_destroy` deduplicated via `_alloc_writer`/`_free_writer`. `_as_ptr` now only used in helper definitions + raw `UInt8` buffer access. `main.mojo` reduced from 3,335 → 3,332 lines (−3 lines). All 676 Mojo + 860 JS tests pass unchanged.
+- [x] **M10.19:** Generic heap alloc/free helpers & `_to_i64` consistency. `_heap_new[T]`/`_heap_del[T]` centralize all typed struct alloc/free. `_alloc_writer`/`_free_writer`/`_alloc_node`/`_free_node` simplified to use generics. 9 inline alloc/free patterns in exports replaced with single-call expressions. 5 `Int64(Int(ptr))` unified to `_to_i64`. `alloc(1)`/`destroy_pointee`/`init_pointee_move` now appear only in helper definitions. `main.mojo` reduced from 3,332 → 3,326 lines (−6 lines). All 676 Mojo + 860 JS tests pass unchanged.
