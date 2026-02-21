@@ -170,6 +170,10 @@ export class Interpreter {
 				this.opInsertBefore(m.id, m.m);
 				break;
 
+			case Op.RegisterTemplate:
+				this.templates.registerFromMutation(m);
+				break;
+
 			default: {
 				const _exhaustive: never = m;
 				throw new Error(

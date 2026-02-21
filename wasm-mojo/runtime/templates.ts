@@ -8,12 +8,19 @@
 // The cache stores an array of root Nodes per template ID.  On
 // instantiation, the requested root is deep-cloned and returned.
 //
-// Registration can happen in three ways:
+// Registration can happen in four ways:
 //   1. `register(id, roots)` — provide pre-built DOM nodes directly.
 //   2. `registerFromHtml(id, html)` — parse an HTML string.
 //   3. `registerFromWasm(id, ...)` — query WASM template structure and
 //      build the DOM programmatically (for full-app integration).
+//   4. `registerFromMutation(m)` — build from a decoded RegisterTemplate
+//      mutation (Phase 11 automatic template serialization).
 
+import type {
+	MutationRegisterTemplate,
+	TemplateAttr,
+	TemplateNode,
+} from "./protocol.ts";
 import { tagName } from "./tags.ts";
 
 // ── Template node kind constants (must match src/vdom/template.mojo) ────────
@@ -124,6 +131,23 @@ export class TemplateCache {
 		}
 
 		this.cache.set(id, roots);
+	}
+
+	/**
+	 * Register a template from a decoded RegisterTemplate mutation.
+	 *
+	 * Builds the DOM tree purely from the serialized template data —
+	 * no WASM calls needed.  This is the primary registration path
+	 * when using automatic template serialization (Phase 11).
+	 *
+	 * @param m - The decoded MutationRegisterTemplate mutation.
+	 */
+	registerFromMutation(m: MutationRegisterTemplate): void {
+		const roots: Node[] = [];
+		for (const rootIdx of m.rootIndices) {
+			roots.push(this.buildNodeFromMutation(rootIdx, m.nodes, m.attrs));
+		}
+		this.cache.set(m.tmplId, roots);
 	}
 
 	// ── Instantiation ─────────────────────────────────────────────────
@@ -244,6 +268,61 @@ export class TemplateCache {
 
 			default:
 				throw new Error(`TemplateCache: unknown template node kind ${kind}`);
+		}
+	}
+
+	// ── Internal: build DOM from decoded mutation data ─────────────────
+
+	private buildNodeFromMutation(
+		nodeIdx: number,
+		nodes: TemplateNode[],
+		attrs: TemplateAttr[],
+	): Node {
+		const node = nodes[nodeIdx];
+
+		switch (node.kind) {
+			case 0x00: {
+				// Element
+				const tag = tagName(node.tag);
+				const el = this.doc.createElement(tag);
+
+				// Static attributes
+				for (let a = 0; a < node.attrCount; a++) {
+					const attr = attrs[node.attrFirst + a];
+					if (attr.kind === 0x00) {
+						// Static attribute
+						el.setAttribute(attr.name, attr.value);
+					}
+					// Dynamic attrs are placeholders — nothing to set now
+				}
+
+				// Children
+				for (const childIdx of node.children) {
+					el.appendChild(this.buildNodeFromMutation(childIdx, nodes, attrs));
+				}
+
+				return el;
+			}
+
+			case 0x01: {
+				// Static text node
+				return this.doc.createTextNode(node.text);
+			}
+
+			case 0x02: {
+				// Dynamic node placeholder — comment for ReplacePlaceholder
+				return this.doc.createComment("placeholder");
+			}
+
+			case 0x03: {
+				// Dynamic text placeholder — empty text node for SetText
+				return this.doc.createTextNode("");
+			}
+
+			default:
+				throw new Error(
+					`TemplateCache: unknown template node kind ${(node as TemplateNode).kind}`,
+				);
 		}
 	}
 }

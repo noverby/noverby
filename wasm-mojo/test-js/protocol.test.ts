@@ -10,6 +10,7 @@ import type {
 	MutationLoadTemplate,
 	MutationNewEventListener,
 	MutationPushRoot,
+	MutationRegisterTemplate,
 	MutationRemove,
 	MutationRemoveEventListener,
 	MutationReplacePlaceholder,
@@ -23,6 +24,7 @@ import type { WasmExports } from "../runtime/types.ts";
 import { assert, suite } from "./harness.ts";
 
 // deno-lint-ignore no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: dynamic WASM exports
 type WasmExportsExt = WasmExports & Record<string, any>;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -765,5 +767,167 @@ export function testProtocol(fns: WasmExports): void {
 		assert(all.length, 1, "readAll returns 1 mutation (stops at End)");
 		assert((all[0] as MutationPushRoot).id, 1, "only mutation has id=1");
 		freeBuf(fns, buf);
+	}
+
+	// ── RegisterTemplate: minimal (div > dyn_text[0]) ───────────────
+	suite("Protocol — RegisterTemplate: minimal template");
+	{
+		// Create a runtime and build a template: div > dyn_text[0]
+		const rt = ext.runtime_create() as bigint;
+		const namePtr = writeStringStruct("min");
+		const b = ext.tmpl_builder_create(namePtr) as bigint;
+		ext.tmpl_builder_push_element(b, 0, -1); // div, root
+		ext.tmpl_builder_push_dynamic_text(b, 0, 0); // dyn_text[0], child of div
+		const tmplId = ext.tmpl_builder_register(rt, b) as number;
+		ext.tmpl_builder_destroy(b);
+
+		const buf = allocBuf(fns);
+		const off = ext.write_op_register_template(buf, 0, rt, tmplId) as number;
+		assert(off > 0, true, "wrote bytes");
+
+		const m = readOne(buf, off) as MutationRegisterTemplate;
+		assert(m !== null, true, "decoded a mutation");
+		assert(m.op, Op.RegisterTemplate, "opcode is RegisterTemplate");
+		assert(m.tmplId, tmplId, "template ID matches");
+		assert(m.name, "min", "template name");
+		assert(m.rootCount, 1, "1 root");
+		assert(m.nodeCount, 2, "2 nodes (div + dyn_text)");
+		assert(m.attrCount, 0, "0 attributes");
+
+		// Node 0: Element(div)
+		assert(m.nodes[0].kind, 0x00, "node[0] is element");
+		const n0 = m.nodes[0] as {
+			kind: 0x00;
+			tag: number;
+			children: number[];
+			attrFirst: number;
+			attrCount: number;
+		};
+		assert(n0.tag, 0, "node[0] tag is div (0)");
+		assert(n0.children.length, 1, "node[0] has 1 child");
+		assert(n0.children[0], 1, "node[0] child is index 1");
+		assert(n0.attrCount, 0, "node[0] no attrs");
+
+		// Node 1: DynamicText(index=0)
+		assert(m.nodes[1].kind, 0x03, "node[1] is dynamic text");
+		const n1 = m.nodes[1] as { kind: 0x03; dynamicIndex: number };
+		assert(n1.dynamicIndex, 0, "node[1] dynamic index is 0");
+
+		// Root indices
+		assert(m.rootIndices.length, 1, "1 root index");
+		assert(m.rootIndices[0], 0, "root[0] is node 0");
+
+		freeBuf(fns, buf);
+		ext.runtime_destroy(rt);
+	}
+
+	// ── RegisterTemplate: with text, static attr, dynamic attr ──────
+	suite("Protocol — RegisterTemplate: text + attrs");
+	{
+		const rt = ext.runtime_create() as bigint;
+		const namePtr = writeStringStruct("ctr");
+		const b = ext.tmpl_builder_create(namePtr) as bigint;
+		// div > [span > dyn_text[0], button > text("+")]
+		ext.tmpl_builder_push_element(b, 0, -1); // 0: div
+		ext.tmpl_builder_push_element(b, 1, 0); // 1: span
+		ext.tmpl_builder_push_element(b, 19, 0); // 2: button (TAG_BUTTON=19)
+		ext.tmpl_builder_push_dynamic_text(b, 0, 1); // 3: dyn_text in span
+		const plusPtr = writeStringStruct("+");
+		ext.tmpl_builder_push_text(b, plusPtr, 2); // 4: text "+" in button
+		// static attr on button: type="submit"
+		const typePtr = writeStringStruct("type");
+		const submitPtr = writeStringStruct("submit");
+		ext.tmpl_builder_push_static_attr(b, 2, typePtr, submitPtr);
+		// dynamic attr on button: index=0
+		ext.tmpl_builder_push_dynamic_attr(b, 2, 0);
+		const tmplId = ext.tmpl_builder_register(rt, b) as number;
+		ext.tmpl_builder_destroy(b);
+
+		const buf = allocBuf(fns);
+		const off = ext.write_op_register_template(buf, 0, rt, tmplId) as number;
+
+		const m = readOne(buf, off) as MutationRegisterTemplate;
+		assert(m.op, Op.RegisterTemplate, "opcode");
+		assert(m.name, "ctr", "name");
+		assert(m.nodeCount, 5, "5 nodes");
+		assert(m.attrCount, 2, "2 attrs (1 static + 1 dynamic)");
+
+		// Node 0: div with 2 children [1, 2]
+		const n0 = m.nodes[0] as { kind: 0x00; children: number[] };
+		assert(n0.kind, 0x00, "n0 element");
+		assert(n0.children.length, 2, "n0 has 2 children");
+		assert(n0.children[0], 1, "n0 child[0] is span");
+		assert(n0.children[1], 2, "n0 child[1] is button");
+
+		// Node 3: DynamicText
+		assert(m.nodes[3].kind, 0x03, "n3 is dynamic text");
+
+		// Node 4: Text("+")
+		assert(m.nodes[4].kind, 0x01, "n4 is text");
+		const n4 = m.nodes[4] as { kind: 0x01; text: string };
+		assert(n4.text, "+", "n4 text is '+'");
+
+		// Attr 0: Static("type", "submit")
+		assert(m.attrs[0].kind, 0x00, "a0 is static");
+		const a0 = m.attrs[0] as { kind: 0x00; name: string; value: string };
+		assert(a0.name, "type", "a0 name");
+		assert(a0.value, "submit", "a0 value");
+
+		// Attr 1: Dynamic(index=0)
+		assert(m.attrs[1].kind, 0x01, "a1 is dynamic");
+		const a1 = m.attrs[1] as { kind: 0x01; dynamicIndex: number };
+		assert(a1.dynamicIndex, 0, "a1 dynamic index");
+
+		freeBuf(fns, buf);
+		ext.runtime_destroy(rt);
+	}
+
+	// ── RegisterTemplate: Dynamic node (not DynamicText) ────────────
+	suite("Protocol — RegisterTemplate: dynamic node slot");
+	{
+		const rt = ext.runtime_create() as bigint;
+		const namePtr = writeStringStruct("dyn");
+		const b = ext.tmpl_builder_create(namePtr) as bigint;
+		ext.tmpl_builder_push_element(b, 0, -1); // 0: div
+		ext.tmpl_builder_push_dynamic(b, 0, 0); // 1: dynamic[0]
+		const tmplId = ext.tmpl_builder_register(rt, b) as number;
+		ext.tmpl_builder_destroy(b);
+
+		const buf = allocBuf(fns);
+		const off = ext.write_op_register_template(buf, 0, rt, tmplId) as number;
+
+		const m = readOne(buf, off) as MutationRegisterTemplate;
+		assert(m.nodeCount, 2, "2 nodes");
+		assert(m.nodes[1].kind, 0x02, "node[1] is Dynamic");
+		const n1 = m.nodes[1] as { kind: 0x02; dynamicIndex: number };
+		assert(n1.dynamicIndex, 0, "dynamic index is 0");
+
+		freeBuf(fns, buf);
+		ext.runtime_destroy(rt);
+	}
+
+	// ── RegisterTemplate: readAll includes RegisterTemplate ─────────
+	suite("Protocol — RegisterTemplate in readAll sequence");
+	{
+		const rt = ext.runtime_create() as bigint;
+		const namePtr = writeStringStruct("seq");
+		const b = ext.tmpl_builder_create(namePtr) as bigint;
+		ext.tmpl_builder_push_element(b, 0, -1); // div
+		const tmplId = ext.tmpl_builder_register(rt, b) as number;
+		ext.tmpl_builder_destroy(b);
+
+		const buf = allocBuf(fns);
+		let off = 0;
+		off = ext.write_op_register_template(buf, off, rt, tmplId) as number;
+		off = fns.write_op_push_root(buf, off, 1);
+		off = fns.write_op_end(buf, off);
+
+		const all = readerAt(buf, off).readAll();
+		assert(all.length, 2, "readAll returns 2 mutations");
+		assert(all[0].op, Op.RegisterTemplate, "first is RegisterTemplate");
+		assert(all[1].op, Op.PushRoot, "second is PushRoot");
+
+		freeBuf(fns, buf);
+		ext.runtime_destroy(rt);
 	}
 }

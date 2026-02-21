@@ -24,6 +24,7 @@ export const Op = {
 	RemoveEventListener: 0x0d,
 	Remove: 0x0e,
 	PushRoot: 0x0f,
+	RegisterTemplate: 0x10,
 } as const;
 
 export type OpCode = (typeof Op)[keyof typeof Op];
@@ -120,6 +121,62 @@ export interface MutationPushRoot {
 	id: number;
 }
 
+/** A serialized template node (element, text, dynamic, or dynamic text). */
+export interface TemplateNodeElement {
+	kind: 0x00;
+	tag: number;
+	children: number[];
+	attrFirst: number;
+	attrCount: number;
+}
+
+export interface TemplateNodeText {
+	kind: 0x01;
+	text: string;
+}
+
+export interface TemplateNodeDynamic {
+	kind: 0x02;
+	dynamicIndex: number;
+}
+
+export interface TemplateNodeDynamicText {
+	kind: 0x03;
+	dynamicIndex: number;
+}
+
+export type TemplateNode =
+	| TemplateNodeElement
+	| TemplateNodeText
+	| TemplateNodeDynamic
+	| TemplateNodeDynamicText;
+
+/** A serialized template attribute (static or dynamic). */
+export interface TemplateAttrStatic {
+	kind: 0x00;
+	name: string;
+	value: string;
+}
+
+export interface TemplateAttrDynamic {
+	kind: 0x01;
+	dynamicIndex: number;
+}
+
+export type TemplateAttr = TemplateAttrStatic | TemplateAttrDynamic;
+
+export interface MutationRegisterTemplate {
+	op: typeof Op.RegisterTemplate;
+	tmplId: number;
+	name: string;
+	rootCount: number;
+	nodeCount: number;
+	attrCount: number;
+	nodes: TemplateNode[];
+	attrs: TemplateAttr[];
+	rootIndices: number[];
+}
+
 export type Mutation =
 	| MutationAppendChildren
 	| MutationAssignId
@@ -135,7 +192,8 @@ export type Mutation =
 	| MutationNewEventListener
 	| MutationRemoveEventListener
 	| MutationRemove
-	| MutationPushRoot;
+	| MutationPushRoot
+	| MutationRegisterTemplate;
 
 // ── MutationReader ──────────────────────────────────────────────────────────
 
@@ -288,6 +346,59 @@ export class MutationReader {
 
 			case Op.PushRoot:
 				return { op, id: this.readU32() };
+
+			case Op.RegisterTemplate: {
+				const tmplId = this.readU32();
+				const name = this.readShortStr();
+				const rootCount = this.readU16();
+				const nodeCount = this.readU16();
+				const attrCount = this.readU16();
+				const nodes: TemplateNode[] = [];
+				for (let i = 0; i < nodeCount; i++) {
+					const kind = this.readU8();
+					if (kind === 0x00) {
+						const tag = this.readU8();
+						const childCount = this.readU16();
+						const children: number[] = [];
+						for (let c = 0; c < childCount; c++) children.push(this.readU16());
+						const attrFirst = this.readU16();
+						const attrNum = this.readU16();
+						nodes.push({ kind, tag, children, attrFirst, attrCount: attrNum });
+					} else if (kind === 0x01) {
+						nodes.push({ kind, text: this.readStr() });
+					} else if (kind === 0x02) {
+						nodes.push({ kind, dynamicIndex: this.readU32() });
+					} else if (kind === 0x03) {
+						nodes.push({ kind, dynamicIndex: this.readU32() });
+					}
+				}
+				const attrs: TemplateAttr[] = [];
+				for (let i = 0; i < attrCount; i++) {
+					const akind = this.readU8();
+					if (akind === 0x00) {
+						attrs.push({
+							kind: akind,
+							name: this.readShortStr(),
+							value: this.readStr(),
+						});
+					} else if (akind === 0x01) {
+						attrs.push({ kind: akind, dynamicIndex: this.readU32() });
+					}
+				}
+				const rootIndices: number[] = [];
+				for (let i = 0; i < rootCount; i++) rootIndices.push(this.readU16());
+				return {
+					op,
+					tmplId,
+					name,
+					rootCount,
+					nodeCount,
+					attrCount,
+					nodes,
+					attrs,
+					rootIndices,
+				};
+			}
 
 			default:
 				throw new Error(

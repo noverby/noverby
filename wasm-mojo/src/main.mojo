@@ -1457,6 +1457,30 @@ fn write_op_replace_placeholder(
     return Int32(w.offset)
 
 
+@export
+fn write_op_register_template(
+    buf: Int64, off: Int32, rt_ptr: Int64, tmpl_id: Int32
+) -> Int32:
+    """Serialize a registered template into the mutation buffer.
+
+    Looks up the template by ID in the Runtime's template registry and
+    writes the full OP_REGISTER_TEMPLATE record.
+
+    Args:
+        buf: Pointer to the mutation buffer.
+        off: Current write offset in the buffer.
+        rt_ptr: Pointer to the Runtime (owns the template registry).
+        tmpl_id: Template ID to serialize.
+
+    Returns:
+        New write offset after the template record.
+    """
+    var w = _writer(buf, off)
+    var tmpl_ptr = _get[Runtime](rt_ptr)[0].templates.get_ptr(UInt32(tmpl_id))
+    w.register_template(tmpl_ptr[0].copy())
+    return Int32(w.offset)
+
+
 # ── Composite test helper ────────────────────────────────────────────────────
 
 

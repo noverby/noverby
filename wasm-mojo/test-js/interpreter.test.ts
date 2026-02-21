@@ -8,7 +8,6 @@
 import { parseHTML } from "npm:linkedom";
 import { Interpreter, MutationBuilder } from "../runtime/interpreter.ts";
 import { getMemory } from "../runtime/memory.ts";
-import type { Mutation } from "../runtime/protocol.ts";
 import { MutationReader, Op } from "../runtime/protocol.ts";
 import { writeStringStruct } from "../runtime/strings.ts";
 import { TemplateCache } from "../runtime/templates.ts";
@@ -401,7 +400,7 @@ export function testInterpreter(fns: Fns): void {
 	suite("Interpreter — SetAttribute");
 	{
 		const dom = createDOM();
-		const { interp, document, root, templates } = createInterpreter(dom);
+		const { interp, document, root: _root, templates } = createInterpreter(dom);
 
 		// Register a simple div template
 		const el = document.createElement("div");
@@ -460,7 +459,7 @@ export function testInterpreter(fns: Fns): void {
 	suite("Interpreter — Remove node with children removes subtree");
 	{
 		const dom = createDOM();
-		const { interp, document, root, templates } = createInterpreter(dom);
+		const { interp, document, root: _root, templates } = createInterpreter(dom);
 
 		// Template: <div><p>text</p></div>
 		const div = document.createElement("div");
@@ -2035,5 +2034,189 @@ export function testInterpreter(fns: Fns): void {
 
 		assert(root.childNodes.length, 1, "manual mutation applied");
 		assert(root.childNodes[0].textContent, "manual", "manual text matches");
+	}
+
+	// ═══════════════════════════════════════════════════════════════════
+	// Section: RegisterTemplate — mutation-based template registration
+	// ═══════════════════════════════════════════════════════════════════
+
+	suite("RegisterTemplate — minimal template via mutation");
+	{
+		// Build a template in WASM: div > dyn_text[0], name "rt-min"
+		const rt = ext.runtime_create() as bigint;
+		const namePtr = writeStringStruct("rt-min");
+		const b = ext.tmpl_builder_create(namePtr) as bigint;
+		ext.tmpl_builder_push_element(b, 0, -1); // div (root)
+		ext.tmpl_builder_push_dynamic_text(b, 0, 0); // dyn_text[0]
+		const tmplId = ext.tmpl_builder_register(rt, b) as number;
+		ext.tmpl_builder_destroy(b);
+
+		// Serialize via mutation buffer
+		const buf = allocBuf(fns);
+		const off = ext.write_op_register_template(buf, 0, rt, tmplId) as number;
+
+		// Decode + apply via interpreter
+		const {
+			document: _document,
+			root: _root,
+			templates,
+			interp,
+		} = createInterpreter();
+		const mem = getMemory();
+		const reader = new MutationReader(mem.buffer, Number(buf), off);
+		const m = reader.next()!;
+		interp.handleMutation(m);
+
+		assert(templates.has(tmplId), true, "template registered in cache");
+		assert(templates.rootCount(tmplId), 1, "1 root");
+
+		// Instantiate and verify DOM structure: <div><TEXT></div>
+		const clone = templates.instantiate(tmplId, 0) as Element;
+		assert(clone.nodeName.toLowerCase(), "div", "root is div");
+		assert(clone.childNodes.length, 1, "div has 1 child");
+		// DynamicText → empty text node
+		assert(clone.childNodes[0].nodeType, 3, "child is text node");
+		assert(
+			clone.childNodes[0].textContent,
+			"",
+			"dynamic text placeholder is empty",
+		);
+
+		freeBuf(fns, buf);
+		ext.runtime_destroy(rt);
+	}
+
+	suite("RegisterTemplate — with static text and attributes");
+	{
+		// div > [span > dyn_text[0], button(type="submit") > text("+") + dyn_attr[0]]
+		const rt = ext.runtime_create() as bigint;
+		const namePtr = writeStringStruct("rt-ctr");
+		const b = ext.tmpl_builder_create(namePtr) as bigint;
+		ext.tmpl_builder_push_element(b, 0, -1); // 0: div
+		ext.tmpl_builder_push_element(b, 1, 0); // 1: span
+		ext.tmpl_builder_push_element(b, 19, 0); // 2: button (TAG_BUTTON=19)
+		ext.tmpl_builder_push_dynamic_text(b, 0, 1); // 3: dyn_text in span
+		const plusPtr = writeStringStruct("+");
+		ext.tmpl_builder_push_text(b, plusPtr, 2); // 4: text "+" in button
+		const typePtr = writeStringStruct("type");
+		const submitPtr = writeStringStruct("submit");
+		ext.tmpl_builder_push_static_attr(b, 2, typePtr, submitPtr);
+		ext.tmpl_builder_push_dynamic_attr(b, 2, 0);
+		const tmplId = ext.tmpl_builder_register(rt, b) as number;
+		ext.tmpl_builder_destroy(b);
+
+		const buf = allocBuf(fns);
+		const off = ext.write_op_register_template(buf, 0, rt, tmplId) as number;
+
+		const {
+			document: _document,
+			root: _root,
+			templates,
+			interp,
+		} = createInterpreter();
+		const mem = getMemory();
+		const reader = new MutationReader(mem.buffer, Number(buf), off);
+		interp.handleMutation(reader.next()!);
+
+		assert(templates.has(tmplId), true, "template registered");
+
+		const clone = templates.instantiate(tmplId, 0) as Element;
+		assert(clone.nodeName.toLowerCase(), "div", "root is div");
+		assert(clone.childNodes.length, 2, "div has 2 children (span, button)");
+
+		// span > empty text node (dyn_text placeholder)
+		const span = clone.childNodes[0] as Element;
+		assert(span.nodeName.toLowerCase(), "span", "first child is span");
+		assert(span.childNodes.length, 1, "span has 1 child");
+		assert(span.childNodes[0].nodeType, 3, "span child is text");
+		assert(span.childNodes[0].textContent, "", "dyn_text placeholder empty");
+
+		// button with static attr type="submit" + text "+"
+		const btn = clone.childNodes[1] as Element;
+		assert(btn.nodeName.toLowerCase(), "button", "second child is button");
+		assert(btn.getAttribute("type"), "submit", "button has type=submit");
+		assert(btn.childNodes.length, 1, "button has 1 child (text)");
+		assert(btn.childNodes[0].textContent, "+", "button text is '+'");
+
+		freeBuf(fns, buf);
+		ext.runtime_destroy(rt);
+	}
+
+	suite("RegisterTemplate — dynamic node (comment placeholder)");
+	{
+		// div > dynamic[0]
+		const rt = ext.runtime_create() as bigint;
+		const namePtr = writeStringStruct("rt-dyn");
+		const b = ext.tmpl_builder_create(namePtr) as bigint;
+		ext.tmpl_builder_push_element(b, 0, -1); // div
+		ext.tmpl_builder_push_dynamic(b, 0, 0); // dynamic[0]
+		const tmplId = ext.tmpl_builder_register(rt, b) as number;
+		ext.tmpl_builder_destroy(b);
+
+		const buf = allocBuf(fns);
+		const off = ext.write_op_register_template(buf, 0, rt, tmplId) as number;
+
+		const {
+			document: _document,
+			root: _root,
+			templates,
+			interp,
+		} = createInterpreter();
+		const mem = getMemory();
+		interp.handleMutation(
+			new MutationReader(mem.buffer, Number(buf), off).next()!,
+		);
+
+		const clone = templates.instantiate(tmplId, 0) as Element;
+		assert(clone.nodeName.toLowerCase(), "div", "root is div");
+		assert(clone.childNodes.length, 1, "div has 1 child");
+		// Dynamic → comment placeholder
+		assert(clone.childNodes[0].nodeType, 8, "child is comment node");
+
+		freeBuf(fns, buf);
+		ext.runtime_destroy(rt);
+	}
+
+	suite("RegisterTemplate + LoadTemplate round-trip");
+	{
+		// Register template via mutation, then use LoadTemplate to instantiate
+		const rt = ext.runtime_create() as bigint;
+		const namePtr = writeStringStruct("rt-lt");
+		const b = ext.tmpl_builder_create(namePtr) as bigint;
+		ext.tmpl_builder_push_element(b, 0, -1); // div
+		const textPtr = writeStringStruct("hello");
+		ext.tmpl_builder_push_text(b, textPtr, 0); // text "hello"
+		const tmplId = ext.tmpl_builder_register(rt, b) as number;
+		ext.tmpl_builder_destroy(b);
+
+		const buf = allocBuf(fns);
+		// Write RegisterTemplate + LoadTemplate + AppendChildren + End
+		let off = 0;
+		off = ext.write_op_register_template(buf, off, rt, tmplId) as number;
+		off = fns.write_op_load_template(buf, off, tmplId, 0, 1);
+		off = fns.write_op_append_children(buf, off, 0, 1);
+		off = fns.write_op_end(buf, off);
+
+		const {
+			document: _document,
+			root: _root,
+			templates,
+			interp,
+		} = createInterpreter();
+		const mem = getMemory();
+		interp.applyMutations(mem.buffer, Number(buf), off);
+
+		// Template should be registered
+		assert(templates.has(tmplId), true, "template in cache after round-trip");
+
+		// LoadTemplate should have cloned it and AppendChildren mounted it
+		assert(root.childNodes.length, 1, "root has 1 child");
+		const div = root.childNodes[0] as Element;
+		assert(div.nodeName.toLowerCase(), "div", "mounted div");
+		assert(div.childNodes.length, 1, "div has text child");
+		assert(div.childNodes[0].textContent, "hello", "text is 'hello'");
+
+		freeBuf(fns, buf);
+		ext.runtime_destroy(rt);
 	}
 }

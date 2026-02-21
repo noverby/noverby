@@ -6,6 +6,18 @@
 # Strings are length-prefixed: u32 length + UTF-8 bytes (or u16 for short strings).
 # The End sentinel (0x00) marks the end of a mutation sequence.
 
+from vdom.template import (
+    Template,
+    TemplateNode,
+    TemplateAttribute,
+    TNODE_ELEMENT,
+    TNODE_TEXT,
+    TNODE_DYNAMIC,
+    TNODE_DYNAMIC_TEXT,
+    TATTR_STATIC,
+    TATTR_DYNAMIC,
+)
+
 
 # ── Opcodes ──────────────────────────────────────────────────────────────────
 
@@ -25,6 +37,7 @@ alias OP_NEW_EVENT_LISTENER = UInt8(0x0C)
 alias OP_REMOVE_EVENT_LISTENER = UInt8(0x0D)
 alias OP_REMOVE = UInt8(0x0E)
 alias OP_PUSH_ROOT = UInt8(0x0F)
+alias OP_REGISTER_TEMPLATE = UInt8(0x10)
 
 
 # ── MutationWriter ───────────────────────────────────────────────────────────
@@ -231,13 +244,19 @@ struct MutationWriter(Movable):
         self._write_u32_le(id)
         self._write_str(text)
 
-    fn new_event_listener(mut self, id: UInt32, name: String):
+    fn new_event_listener(
+        mut self, id: UInt32, handler_id: UInt32, name: String
+    ):
         """Attach an event listener to element `id`.
 
-        | op (u8) | id (u32) | name_len (u16) | name ([u8]) |
+        The handler_id identifies the WASM-side event handler so the JS
+        runtime can dispatch events back without external mapping.
+
+        | op (u8) | id (u32) | handler_id (u32) | name_len (u16) | name ([u8]) |
         """
         self._write_u8(OP_NEW_EVENT_LISTENER)
         self._write_u32_le(id)
+        self._write_u32_le(handler_id)
         self._write_short_str(name)
 
     fn remove_event_listener(mut self, id: UInt32, name: String):
@@ -264,3 +283,75 @@ struct MutationWriter(Movable):
         """
         self._write_u8(OP_PUSH_ROOT)
         self._write_u32_le(id)
+
+    # ── Template registration ────────────────────────────────────────────
+
+    fn register_template(mut self, tmpl: Template):
+        """Serialize a Template's full static structure into the buffer.
+
+        The JS interpreter uses this to build cloneable DOM template roots
+        without the app manually constructing them in JavaScript.
+
+        Wire format:
+          | op (u8)                          — OP_REGISTER_TEMPLATE
+          | tmpl_id (u32)                    — template registry ID
+          | name_len (u16) | name ([u8])     — template name
+          | root_count (u16)                 — number of root node indices
+          | node_count (u16)                 — total nodes in flat array
+          | attr_count (u16)                 — total attributes in flat array
+          | [nodes × node_count]             — serialized TemplateNodes
+          | [attrs × attr_count]             — serialized TemplateAttributes
+          | [root_indices × root_count as u16]
+
+        Node wire format (kind-tagged):
+          Element:     | 0x00 | tag (u8) | child_count (u16) | [child_indices as u16…] | attr_first (u16) | attr_count (u16) |
+          Text:        | 0x01 | text_len (u32) | text ([u8]) |
+          Dynamic:     | 0x02 | dynamic_index (u32) |
+          DynamicText: | 0x03 | dynamic_index (u32) |
+
+        Attribute wire format (kind-tagged):
+          Static:  | 0x00 | name_len (u16) | name | value_len (u32) | value |
+          Dynamic: | 0x01 | dynamic_index (u32) |
+        """
+        self._write_u8(OP_REGISTER_TEMPLATE)
+
+        # Header
+        self._write_u32_le(tmpl.id)
+        self._write_short_str(tmpl.name)
+        self._write_u16_le(UInt16(tmpl.root_count()))
+        self._write_u16_le(UInt16(tmpl.node_count()))
+        self._write_u16_le(UInt16(tmpl.attr_total_count()))
+
+        # Nodes
+        for i in range(tmpl.node_count()):
+            var node_ptr = tmpl.get_node_ptr(i)
+            var kind = node_ptr[0].kind
+            self._write_u8(kind)
+            if kind == TNODE_ELEMENT:
+                self._write_u8(node_ptr[0].html_tag)
+                var cc = node_ptr[0].child_count()
+                self._write_u16_le(UInt16(cc))
+                for c in range(cc):
+                    self._write_u16_le(UInt16(node_ptr[0].child_at(c)))
+                self._write_u16_le(UInt16(node_ptr[0].first_attr))
+                self._write_u16_le(UInt16(node_ptr[0].num_attrs))
+            elif kind == TNODE_TEXT:
+                self._write_str(node_ptr[0].text)
+            elif kind == TNODE_DYNAMIC:
+                self._write_u32_le(node_ptr[0].dynamic_index)
+            elif kind == TNODE_DYNAMIC_TEXT:
+                self._write_u32_le(node_ptr[0].dynamic_index)
+
+        # Attributes
+        for i in range(tmpl.attr_total_count()):
+            var a = tmpl.get_attr(i)
+            self._write_u8(a.kind)
+            if a.kind == TATTR_STATIC:
+                self._write_short_str(a.name)
+                self._write_str(a.value)
+            elif a.kind == TATTR_DYNAMIC:
+                self._write_u32_le(a.dynamic_index)
+
+        # Root indices
+        for i in range(tmpl.root_count()):
+            self._write_u16_le(UInt16(tmpl.get_root_index(i)))
