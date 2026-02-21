@@ -2630,6 +2630,16 @@ Moved the 19 self-contained `dsl_test_*` function bodies out of `main.mojo` into
 - **No behavioral change**: The WASM export names (`dsl_test_text_node`, etc.) are unchanged, so all JS and Mojo test harnesses work without modification.
 - **All 674 Mojo + 859 JS tests pass unchanged**, confirming that the extracted test module produces identical results.
 
+### 10.14 Consolidate WASM ABI Helpers & Close Test Gaps (✅ Done)
+
+Replaced 12 identical type-specific `_int_to_*_ptr` functions and 4 `_*_ptr_to_i64` functions with two generic helpers (`_as_ptr[T]`, `_to_i64[T]`), eliminating ~100 lines of repetitive boilerplate. Audited all 392 WASM exports for test coverage and closed the 5 identified gaps.
+
+- **Generic pointer helpers**: `_as_ptr[T](addr: Int) -> UnsafePointer[T]` replaces `_int_to_runtime_ptr`, `_int_to_builder_ptr`, `_int_to_vnode_store_ptr`, `_int_to_eid_alloc_ptr`, `_int_to_writer_ptr`, `_int_to_counter_ptr`, `_int_to_todo_ptr`, `_int_to_bench_ptr`, `_int_to_scheduler_ptr`, `_int_to_shell_ptr`, `_int_to_node_ptr`, `_int_to_vb_ptr`, and the untyped `_int_to_ptr`. `_to_i64[T](ptr: UnsafePointer[T]) -> Int64` replaces `_ptr_to_i64`, `_runtime_ptr_to_i64`, `_builder_ptr_to_i64`, `_vnode_store_ptr_to_i64`. All 80+ call sites updated.
+- **`main.mojo` reduction**: 3,736 → 3,601 lines (−135 lines, −3.6%).
+- **Test coverage audit**: Identified 5 untested WASM exports (`bench_scope_id`, `debug_eid_alloc_capacity`, `dsl_node_count_all`, `dsl_node_count_dyn_node`, `dsl_node_count_static_attr`). All 5 now have tests.
+- **New tests**: `test_debug_eid_alloc_capacity` in `test_element_id.mojo` (capacity query after allocations), `test_dsl_node_count_dyn_node_and_static_attr` in `test_dsl.mojo` (covers `dsl_node_count_all`, `dsl_node_count_dyn_node`, `dsl_node_count_static_attr`), `testBenchScopeId` in `bench.test.ts` (root scope ID validity).
+- **All 676 Mojo + 860 JS tests pass** (674→676 Mojo, 859→860 JS; +3 total new tests).
+
 ---
 
 ## Milestone Checklist
@@ -2657,3 +2667,4 @@ Moved the 19 self-contained `dsl_test_*` function bodies out of `main.mojo` into
 - [x] **M10.11:** README & documentation update. Updated test counts (790 → 1,533), added missing packages (component, scheduler, DSL, poc, examples/lib, scripts), added "Test infrastructure" and "Ergonomic DSL" sections, updated reactive model with Scheduler step, alphabetized project structure. All 674 Mojo + 859 JS tests pass unchanged.
 - [x] **M10.12:** Test filter support. Substring filter arguments added to `build_test_binaries.sh`, `run_test_binaries.sh`, and Justfile (`just test signals`, `just test-run dsl`, `just test signals mut`). Single-module runs take ~100ms vs ~10s for all 26 binaries. All 674 Mojo + 859 JS tests pass unchanged.
 - [x] **M10.13:** Extract DSL test logic from main.mojo. 19 self-contained `dsl_test_*` function bodies moved to `src/vdom/dsl_tests.mojo` (761 lines). `main.mojo` reduced from 4,282 → 3,736 lines (−546 lines, −12.7%). Inline test logic replaced with thin `@export` wrappers. All 674 Mojo + 859 JS tests pass unchanged.
+- [x] **M10.14:** Consolidate WASM ABI helpers & close test gaps. 16 type-specific pointer conversion functions replaced with 2 generic helpers (`_as_ptr[T]`, `_to_i64[T]`). `main.mojo` reduced from 3,736 → 3,601 lines (−135 lines, −3.6%). 5 untested WASM exports identified via audit; all now covered. All 676 Mojo + 860 JS tests pass.

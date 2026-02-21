@@ -334,6 +334,80 @@ fn test_dsl_node_nested_tree(w: UnsafePointer[WasmInstance]) raises:
     )
     assert_equal(dyn_attr_count, 1, "1 dyn_attr slot")
 
+    # count_all includes attrs: div + span + text + btn + dyn_text + dyn_attr = 6
+    var all_count = Int(w[].call_i32("dsl_node_count_all", args_ptr(div)))
+    assert_equal(all_count, 6, "6 total items including attrs")
+
+    # No dyn_node slots in this tree
+    var dyn_node_count = Int(
+        w[].call_i32("dsl_node_count_dyn_node", args_ptr(div))
+    )
+    assert_equal(dyn_node_count, 0, "0 dyn_node slots")
+
+    # No static attrs in this tree
+    var static_attr_count = Int(
+        w[].call_i32("dsl_node_count_static_attr", args_ptr(div))
+    )
+    assert_equal(static_attr_count, 0, "0 static_attr nodes")
+
+    w[].call_void("dsl_node_destroy", args_ptr(div))
+
+
+fn test_dsl_node_count_dyn_node_and_static_attr(
+    w: UnsafePointer[WasmInstance],
+) raises:
+    """Build a tree with dyn_node and static_attr to cover remaining count exports.
+    """
+
+    # Build: div > [ dyn_node(0), dyn_node(1), attr("class","x"), attr("id","y") ]
+    var div = Int(w[].call_i64("dsl_node_element", args_i32(TAG_DIV)))
+
+    var dn0 = Int(w[].call_i64("dsl_node_dyn_node", args_i32(0)))
+    var dn1 = Int(w[].call_i64("dsl_node_dyn_node", args_i32(1)))
+    var a0 = Int(
+        w[].call_i64(
+            "dsl_node_attr",
+            args_ptr_ptr(
+                w[].write_string_struct("class"),
+                w[].write_string_struct("x"),
+            ),
+        )
+    )
+    var a1 = Int(
+        w[].call_i64(
+            "dsl_node_attr",
+            args_ptr_ptr(
+                w[].write_string_struct("id"),
+                w[].write_string_struct("y"),
+            ),
+        )
+    )
+
+    w[].call_void("dsl_node_add_item", args_ptr_ptr(div, dn0))
+    w[].call_void("dsl_node_add_item", args_ptr_ptr(div, dn1))
+    w[].call_void("dsl_node_add_item", args_ptr_ptr(div, a0))
+    w[].call_void("dsl_node_add_item", args_ptr_ptr(div, a1))
+
+    # dyn_node slots
+    var dyn_node_count = Int(
+        w[].call_i32("dsl_node_count_dyn_node", args_ptr(div))
+    )
+    assert_equal(dyn_node_count, 2, "2 dyn_node slots")
+
+    # static_attr nodes
+    var static_attr_count = Int(
+        w[].call_i32("dsl_node_count_static_attr", args_ptr(div))
+    )
+    assert_equal(static_attr_count, 2, "2 static_attr nodes")
+
+    # count_all: div has 4 items (2 dyn_node + 2 attr), each is a leaf = 5 total
+    var all_count = Int(w[].call_i32("dsl_node_count_all", args_ptr(div)))
+    assert_equal(all_count, 5, "5 total items (div + 2 dyn_node + 2 attr)")
+
+    # count_nodes excludes attrs: div + 2 dyn_node = 3
+    var node_count = Int(w[].call_i32("dsl_node_count_nodes", args_ptr(div)))
+    assert_equal(node_count, 3, "3 tree nodes (div + 2 dyn_node)")
+
     w[].call_void("dsl_node_destroy", args_ptr(div))
 
 
@@ -453,10 +527,11 @@ fn main() raises:
     test_dsl_node_create_element(w)
     test_dsl_node_add_items(w)
     test_dsl_node_nested_tree(w)
+    test_dsl_node_count_dyn_node_and_static_attr(w)
     test_dsl_node_to_template(w)
     test_dsl_vb_create_and_query(w)
     test_dsl_vb_keyed(w)
     test_dsl_template_equivalence_via_wasm(w)
     test_dsl_counter_template_via_wasm(w)
     test_dsl_multi_root_via_wasm(w)
-    print("dsl: 33/33 passed")
+    print("dsl: 34/34 passed")

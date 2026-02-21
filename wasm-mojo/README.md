@@ -14,7 +14,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **Ergonomic DSL** — `el_div`, `el_button`, `dyn_text` tag helpers with `to_template()` conversion
 - **AppShell abstraction** — single struct bundling runtime, store, allocator, and scheduler
 - **Three working apps** — counter, todo list, and js-framework-benchmark
-- **1,533 tests** — 674 Mojo (via wasmtime) + 859 JS (via Deno), all passing
+- **1,536 tests** — 676 Mojo (via wasmtime) + 860 JS (via Deno), all passing
 
 ## How it works
 
@@ -70,7 +70,7 @@ At runtime, the TypeScript side (`runtime/`) instantiates the WASM module and pr
 ```txt
 wasm-mojo/
 ├── src/
-│   ├── main.mojo                 # @export wrappers (WASM entry point, 3,736 lines, 396 exports)
+│   ├── main.mojo                 # @export wrappers (WASM entry point, 3,601 lines, 392 exports)
 │   ├── apps/                     # Application modules
 │   │   ├── counter.mojo          # Counter app (Phase 7)
 │   │   ├── todo.mojo             # Todo list app (Phase 8)
@@ -130,7 +130,7 @@ wasm-mojo/
 │   ├── counter/                  # Counter app (browser)
 │   ├── todo/                     # Todo list app (browser)
 │   └── bench/                    # js-framework-benchmark (browser)
-├── test/                         # Mojo tests (26 modules, 674 tests via wasmtime)
+├── test/                         # Mojo tests (26 modules, 676 tests via wasmtime)
 │   ├── wasm_harness.mojo         # WasmInstance harness using wasmtime-mojo FFI
 │   ├── test_signals.mojo         # Reactive signals
 │   ├── test_scopes.mojo          # Scope arena and hooks
@@ -142,7 +142,7 @@ wasm-mojo/
 │   ├── test_component.mojo       # AppShell and lifecycle
 │   ├── test_scheduler.mojo       # Scheduler ordering and dedup
 │   └── ...                       # + arithmetic, strings, boundaries, etc.
-├── test-js/                      # JS runtime integration tests (859 tests via Deno)
+├── test-js/                      # JS runtime integration tests (860 tests via Deno)
 │   ├── harness.ts                # Shared WASM loading and test helpers
 │   ├── counter.test.ts           # Full counter app lifecycle with DOM
 │   ├── todo.test.ts              # Todo app: add, remove, toggle, clear
@@ -281,7 +281,7 @@ Adding a new test:
 
 ## Test results
 
-1,533 tests across 26 Mojo modules and 8 JS test suites:
+1,536 tests across 26 Mojo modules and 8 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense

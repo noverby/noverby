@@ -42,6 +42,18 @@ function time(fn: () => void): number {
 // 9.1 — Benchmark App: WASM-side operations
 // ══════════════════════════════════════════════════════════════════════════════
 
+function testBenchScopeId(fns: Fns): void {
+	suite("Benchmark — bench_scope_id returns valid root scope");
+	{
+		const app = fns.bench_init();
+
+		const scopeId = fns.bench_scope_id(app);
+		assert(scopeId >= 0, true, "root scope ID is non-negative");
+
+		fns.bench_destroy(app);
+	}
+}
+
 function testBenchCreate(fns: Fns): void {
 	suite("Benchmark — create 1,000 rows");
 	{
@@ -740,6 +752,9 @@ function testBenchTimings(fns: Fns): void {
 // ══════════════════════════════════════════════════════════════════════════════
 
 export function testBench(fns: Fns): void {
+	// 9.1 — Benchmark app query exports
+	testBenchScopeId(fns);
+
 	// 9.1 — Benchmark operations (state only)
 	testBenchCreate(fns);
 	testBenchAppend(fns);
