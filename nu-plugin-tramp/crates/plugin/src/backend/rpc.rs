@@ -20,9 +20,12 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use super::rpc_client::{
     RpcClient, get_array, get_bin, get_bool, get_i64, get_str, get_u64, make_params, val_bin,
-    val_bool, val_str, val_str_array,
+    val_bool, val_str, val_str_array, val_u64,
 };
-use super::{Backend, DirEntry, EntryKind, ExecResult, Metadata, WatchInfo, WatchNotification};
+use super::{
+    Backend, DirEntry, EntryKind, ExecResult, Metadata, PtyHandle, PtyReadResult, WatchInfo,
+    WatchNotification,
+};
 use crate::errors::{TrampError, TrampResult};
 
 // ---------------------------------------------------------------------------
@@ -268,6 +271,158 @@ where
     }
 
     fn supports_watch(&self) -> bool {
+        true
+    }
+
+    // -----------------------------------------------------------------------
+    // Chunked / streaming I/O
+    // -----------------------------------------------------------------------
+
+    async fn file_size(&self, path: &str) -> TrampResult<u64> {
+        let params = make_params(vec![("path", val_str(path))]);
+        let result = self.client.call("file.size", params).await?;
+
+        let map = result
+            .as_map()
+            .ok_or_else(|| TrampError::Internal("file.size: expected map result".into()))?;
+
+        let size = get_u64(map, "size").ok_or_else(|| {
+            TrampError::Internal("file.size: missing 'size' field in response".into())
+        })?;
+
+        Ok(size)
+    }
+
+    async fn read_range(
+        &self,
+        path: &str,
+        offset: u64,
+        length: u64,
+    ) -> TrampResult<(Vec<u8>, bool)> {
+        let params = make_params(vec![
+            ("path", val_str(path)),
+            ("offset", val_u64(offset)),
+            ("length", val_u64(length)),
+        ]);
+        let result = self.client.call("file.read_range", params).await?;
+
+        let map = result
+            .as_map()
+            .ok_or_else(|| TrampError::Internal("file.read_range: expected map result".into()))?;
+
+        let data = get_bin(map, "data")
+            .ok_or_else(|| {
+                TrampError::Internal("file.read_range: missing 'data' field in response".into())
+            })?
+            .to_vec();
+
+        let eof = get_bool(map, "eof").unwrap_or(true);
+
+        Ok((data, eof))
+    }
+
+    async fn write_range(
+        &self,
+        path: &str,
+        offset: u64,
+        data: Bytes,
+        truncate: bool,
+    ) -> TrampResult<u64> {
+        let mut kv = vec![
+            ("path", val_str(path)),
+            ("offset", val_u64(offset)),
+            ("data", val_bin(&data)),
+        ];
+        if truncate {
+            kv.push(("truncate", val_u64(1)));
+        }
+        let params = make_params(kv);
+        let result = self.client.call("file.write_range", params).await?;
+
+        let map = result
+            .as_map()
+            .ok_or_else(|| TrampError::Internal("file.write_range: expected map result".into()))?;
+
+        let written = get_u64(map, "written").unwrap_or(data.len() as u64);
+        Ok(written)
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+
+    // -- PTY operations ---------------------------------------------------
+
+    async fn pty_start(
+        &self,
+        program: &str,
+        args: &[&str],
+        rows: u16,
+        cols: u16,
+    ) -> TrampResult<PtyHandle> {
+        let params = make_params(vec![
+            ("program", val_str(program)),
+            ("args", val_str_array(args)),
+            ("rows", val_u64(rows as u64)),
+            ("cols", val_u64(cols as u64)),
+        ]);
+        let result = self.client.call("process.start_pty", params).await?;
+
+        let map = result
+            .as_map()
+            .ok_or_else(|| TrampError::Internal("process.start_pty: expected map result".into()))?;
+
+        let handle = get_u64(map, "handle")
+            .ok_or_else(|| TrampError::Internal("process.start_pty: missing handle".into()))?;
+        let pid = get_u64(map, "pid").unwrap_or(0);
+
+        Ok(PtyHandle { handle, pid })
+    }
+
+    async fn pty_read(&self, handle: u64) -> TrampResult<PtyReadResult> {
+        let params = make_params(vec![("handle", val_u64(handle))]);
+        let result = self.client.call("process.read", params).await?;
+
+        let map = result.as_map().ok_or_else(|| {
+            TrampError::Internal("process.read (pty): expected map result".into())
+        })?;
+
+        let data = get_bin(map, "stdout")
+            .map(|b| b.to_vec())
+            .unwrap_or_default();
+        let running = get_bool(map, "running").unwrap_or(false);
+        let exit_code = get_i64(map, "exit_code").map(|c| c as i32);
+
+        Ok(PtyReadResult {
+            data,
+            running,
+            exit_code,
+        })
+    }
+
+    async fn pty_write(&self, handle: u64, data: Bytes) -> TrampResult<()> {
+        let params = make_params(vec![("handle", val_u64(handle)), ("data", val_bin(&data))]);
+        self.client.call("process.write", params).await?;
+        Ok(())
+    }
+
+    async fn pty_resize(&self, handle: u64, rows: u16, cols: u16) -> TrampResult<()> {
+        let params = make_params(vec![
+            ("handle", val_u64(handle)),
+            ("rows", val_u64(rows as u64)),
+            ("cols", val_u64(cols as u64)),
+        ]);
+        self.client.call("process.resize", params).await?;
+        Ok(())
+    }
+
+    async fn pty_kill(&self, handle: u64) -> TrampResult<()> {
+        let params = make_params(vec![("handle", val_u64(handle))]);
+        self.client.call("process.kill", params).await?;
+        Ok(())
+    }
+
+    fn supports_pty(&self) -> bool {
         true
     }
 }

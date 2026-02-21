@@ -2,17 +2,20 @@
 //!
 //! Implements the following RPC methods:
 //!
-//! | Method            | Description                                      |
-//! |-------------------|--------------------------------------------------|
-//! | `file.stat`       | Stat a single path (lstat — doesn't follow links) |
-//! | `file.stat_batch` | Stat multiple paths in one round-trip             |
-//! | `file.truename`   | Resolve symlinks to a canonical path              |
-//! | `file.read`       | Read entire file contents (binary)                |
-//! | `file.write`      | Write data to a file (create / truncate)          |
-//! | `file.copy`       | Copy a file on the remote filesystem              |
-//! | `file.rename`     | Rename / move a file on the remote filesystem     |
-//! | `file.delete`     | Delete a file                                     |
-//! | `file.set_modes`  | Set permission bits on a file                     |
+//! | Method             | Description                                      |
+//! |--------------------|--------------------------------------------------|
+//! | `file.stat`        | Stat a single path (lstat — doesn't follow links) |
+//! | `file.stat_batch`  | Stat multiple paths in one round-trip             |
+//! | `file.truename`    | Resolve symlinks to a canonical path              |
+//! | `file.read`        | Read entire file contents (binary)                |
+//! | `file.read_range`  | Read a byte range from a file (chunked reads)     |
+//! | `file.write`       | Write data to a file (create / truncate)          |
+//! | `file.write_range` | Write data at a specific offset (chunked writes)  |
+//! | `file.size`        | Get just the file size (cheap, no full stat)      |
+//! | `file.copy`        | Copy a file on the remote filesystem              |
+//! | `file.rename`      | Rename / move a file on the remote filesystem     |
+//! | `file.delete`      | Delete a file                                     |
+//! | `file.set_modes`   | Set permission bits on a file                     |
 
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
@@ -20,6 +23,7 @@ use std::time::UNIX_EPOCH;
 
 use rmpv::Value;
 use tokio::fs;
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 use crate::rpc::{Response, error_code};
 
@@ -519,6 +523,212 @@ pub async fn set_modes(id: u64, params: &Value) -> Response {
     }
 }
 
+/// `file.size` — get the size of a file in bytes.
+///
+/// Params: `{ path: "<path>" }`
+///
+/// Result: `{ size: <u64> }`
+///
+/// This is a lightweight alternative to `file.stat` when only the size is
+/// needed (e.g. for planning chunked reads).
+pub async fn size(id: u64, params: &Value) -> Response {
+    let path = match get_str_param(params, "path") {
+        Ok(p) => p,
+        Err(mut e) => {
+            e.id = id;
+            return e;
+        }
+    };
+
+    match fs::metadata(path).await {
+        Ok(meta) => Response::ok(
+            id,
+            Value::Map(vec![(
+                Value::String("size".into()),
+                Value::Integer(meta.len().into()),
+            )]),
+        ),
+        Err(e) => io_err_to_response(id, path, e),
+    }
+}
+
+/// `file.read_range` — read a byte range from a file.
+///
+/// Params: `{ path: "<path>", offset: <u64>, length: <u64> }`
+///
+/// Result: `{ data: <binary>, eof: <bool> }`
+///
+/// Reads up to `length` bytes starting at `offset`.  If the read reaches
+/// the end of the file, `eof` is `true` and `data` may be shorter than
+/// `length`.  This enables efficient chunked / streaming reads of large
+/// files without loading the entire contents into memory at once.
+pub async fn read_range(id: u64, params: &Value) -> Response {
+    let path = match get_str_param(params, "path") {
+        Ok(p) => p,
+        Err(mut e) => {
+            e.id = id;
+            return e;
+        }
+    };
+
+    let offset = match get_u64_param(params, "offset") {
+        Some(o) => o,
+        None => {
+            return Response::err(
+                id,
+                error_code::INVALID_PARAMS,
+                "missing or invalid parameter: offset (expected u64)",
+            );
+        }
+    };
+
+    let length = match get_u64_param(params, "length") {
+        Some(l) => l,
+        None => {
+            return Response::err(
+                id,
+                error_code::INVALID_PARAMS,
+                "missing or invalid parameter: length (expected u64)",
+            );
+        }
+    };
+
+    // Cap at 16 MB per chunk to prevent excessive memory use.
+    let length = length.min(16 * 1024 * 1024);
+
+    let mut file = match fs::File::open(path).await {
+        Ok(f) => f,
+        Err(e) => return io_err_to_response(id, path, e),
+    };
+
+    if let Err(e) = file.seek(std::io::SeekFrom::Start(offset)).await {
+        return io_err_to_response(id, path, e);
+    }
+
+    let mut buf = vec![0u8; length as usize];
+    let mut total_read = 0usize;
+
+    loop {
+        match file.read(&mut buf[total_read..]).await {
+            Ok(0) => break, // EOF
+            Ok(n) => {
+                total_read += n;
+                if total_read >= length as usize {
+                    break;
+                }
+            }
+            Err(e) => return io_err_to_response(id, path, e),
+        }
+    }
+
+    buf.truncate(total_read);
+    let eof = total_read < length as usize;
+
+    Response::ok(
+        id,
+        Value::Map(vec![
+            (Value::String("data".into()), Value::Binary(buf)),
+            (Value::String("eof".into()), Value::Boolean(eof)),
+        ]),
+    )
+}
+
+/// `file.write_range` — write data at a specific offset in a file.
+///
+/// Params: `{ path: "<path>", offset: <u64>, data: <binary> }`
+///
+/// Optional params:
+/// - `create`: bool (default true) — create the file if it doesn't exist.
+/// - `truncate`: bool (default false) — truncate the file before writing
+///   (useful for the first chunk of a new file).
+///
+/// Result: `{ written: <u64> }`
+///
+/// This enables chunked / streaming writes of large files.  For a new file,
+/// send the first chunk with `truncate: true` and subsequent chunks with
+/// increasing offsets.
+pub async fn write_range(id: u64, params: &Value) -> Response {
+    let path = match get_str_param(params, "path") {
+        Ok(p) => p,
+        Err(mut e) => {
+            e.id = id;
+            return e;
+        }
+    };
+
+    let offset = match get_u64_param(params, "offset") {
+        Some(o) => o,
+        None => {
+            return Response::err(
+                id,
+                error_code::INVALID_PARAMS,
+                "missing or invalid parameter: offset (expected u64)",
+            );
+        }
+    };
+
+    let data = match get_bin_param(params, "data") {
+        Ok(d) => d,
+        Err(mut e) => {
+            e.id = id;
+            return e;
+        }
+    };
+
+    let create = get_u64_param(params, "create")
+        .map(|v| v != 0)
+        .unwrap_or(true);
+    let truncate = get_u64_param(params, "truncate")
+        .map(|v| v != 0)
+        .unwrap_or(false);
+
+    // Ensure parent directories exist when creating.
+    if create
+        && let Some(parent) = Path::new(path).parent()
+        && !parent.as_os_str().is_empty()
+        && let Err(e) = fs::create_dir_all(parent).await
+    {
+        return io_err_to_response(id, path, e);
+    }
+
+    let mut open_opts = fs::OpenOptions::new();
+    open_opts.write(true);
+    if create {
+        open_opts.create(true);
+    }
+    if truncate {
+        open_opts.truncate(true);
+    }
+
+    let mut file = match open_opts.open(path).await {
+        Ok(f) => f,
+        Err(e) => return io_err_to_response(id, path, e),
+    };
+
+    if (offset > 0 || !truncate)
+        && let Err(e) = file.seek(std::io::SeekFrom::Start(offset)).await
+    {
+        return io_err_to_response(id, path, e);
+    }
+
+    if let Err(e) = file.write_all(data).await {
+        return io_err_to_response(id, path, e);
+    }
+
+    // Flush to ensure all data reaches disk before we return success.
+    if let Err(e) = file.flush().await {
+        return io_err_to_response(id, path, e);
+    }
+
+    Response::ok(
+        id,
+        Value::Map(vec![(
+            Value::String("written".into()),
+            Value::Integer((data.len() as u64).into()),
+        )]),
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -527,6 +737,7 @@ pub async fn set_modes(id: u64, params: &Value) -> Response {
 mod tests {
     use super::*;
     use rmpv::Value;
+    use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
     use tempfile::TempDir;
 
@@ -632,6 +843,221 @@ mod tests {
         // Second entry should have "error".
         let second = arr[1].as_map().unwrap();
         assert!(second.iter().any(|(k, _)| k.as_str() == Some("error")));
+    }
+
+    #[tokio::test]
+    async fn size_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("sized.bin");
+        {
+            let mut f = std::fs::File::create(&file).unwrap();
+            f.write_all(&[0u8; 4096]).unwrap();
+        }
+        let params = make_params(vec![("path", Value::String(file.to_str().unwrap().into()))]);
+        let resp = size(1, &params).await;
+        assert!(resp.error.is_none(), "expected ok: {:?}", resp);
+        let sz = resp
+            .result
+            .as_ref()
+            .unwrap()
+            .as_map()
+            .unwrap()
+            .iter()
+            .find(|(k, _)| k.as_str() == Some("size"))
+            .unwrap()
+            .1
+            .as_u64()
+            .unwrap();
+        assert_eq!(sz, 4096);
+    }
+
+    #[tokio::test]
+    async fn size_nonexistent() {
+        let params = make_params(vec![(
+            "path",
+            Value::String("/tmp/tramp_agent_test_no_such_file_size".into()),
+        )]);
+        let resp = size(1, &params).await;
+        assert!(resp.error.is_some());
+    }
+
+    #[tokio::test]
+    async fn read_range_full() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("ranged.bin");
+        std::fs::write(&file, b"Hello, World!").unwrap();
+
+        let params = make_params(vec![
+            ("path", Value::String(file.to_str().unwrap().into())),
+            ("offset", Value::Integer(0.into())),
+            ("length", Value::Integer(1024.into())),
+        ]);
+        let resp = read_range(1, &params).await;
+        assert!(resp.error.is_none(), "expected ok: {:?}", resp);
+        let map = resp.result.as_ref().unwrap().as_map().unwrap();
+        let data = map
+            .iter()
+            .find(|(k, _)| k.as_str() == Some("data"))
+            .unwrap()
+            .1
+            .as_slice()
+            .unwrap();
+        let eof = map
+            .iter()
+            .find(|(k, _)| k.as_str() == Some("eof"))
+            .unwrap()
+            .1
+            .as_bool()
+            .unwrap();
+        assert_eq!(data, b"Hello, World!");
+        assert!(eof);
+    }
+
+    #[tokio::test]
+    async fn read_range_partial() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("ranged2.bin");
+        std::fs::write(&file, b"ABCDEFGHIJ").unwrap();
+
+        // Read bytes 3..7 (4 bytes: "DEFG")
+        let params = make_params(vec![
+            ("path", Value::String(file.to_str().unwrap().into())),
+            ("offset", Value::Integer(3.into())),
+            ("length", Value::Integer(4.into())),
+        ]);
+        let resp = read_range(1, &params).await;
+        assert!(resp.error.is_none());
+        let map = resp.result.as_ref().unwrap().as_map().unwrap();
+        let data = map
+            .iter()
+            .find(|(k, _)| k.as_str() == Some("data"))
+            .unwrap()
+            .1
+            .as_slice()
+            .unwrap();
+        let eof = map
+            .iter()
+            .find(|(k, _)| k.as_str() == Some("eof"))
+            .unwrap()
+            .1
+            .as_bool()
+            .unwrap();
+        assert_eq!(data, b"DEFG");
+        assert!(!eof); // 4 bytes requested, 4 bytes read, not at EOF
+    }
+
+    #[tokio::test]
+    async fn read_range_at_eof() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("ranged3.bin");
+        std::fs::write(&file, b"AB").unwrap();
+
+        // Read starting past the data
+        let params = make_params(vec![
+            ("path", Value::String(file.to_str().unwrap().into())),
+            ("offset", Value::Integer(10.into())),
+            ("length", Value::Integer(100.into())),
+        ]);
+        let resp = read_range(1, &params).await;
+        assert!(resp.error.is_none());
+        let map = resp.result.as_ref().unwrap().as_map().unwrap();
+        let data = map
+            .iter()
+            .find(|(k, _)| k.as_str() == Some("data"))
+            .unwrap()
+            .1
+            .as_slice()
+            .unwrap();
+        let eof = map
+            .iter()
+            .find(|(k, _)| k.as_str() == Some("eof"))
+            .unwrap()
+            .1
+            .as_bool()
+            .unwrap();
+        assert!(data.is_empty());
+        assert!(eof);
+    }
+
+    #[tokio::test]
+    async fn read_range_missing_params() {
+        let params = make_params(vec![("path", Value::String("/tmp/x".into()))]);
+        let resp = read_range(1, &params).await;
+        assert!(resp.error.is_some()); // missing offset
+    }
+
+    #[tokio::test]
+    async fn write_range_new_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("wr_new.bin");
+
+        // First chunk — truncate + create
+        let params = make_params(vec![
+            ("path", Value::String(file.to_str().unwrap().into())),
+            ("offset", Value::Integer(0.into())),
+            ("data", Value::Binary(b"Hello".to_vec())),
+            ("truncate", Value::Integer(1.into())),
+        ]);
+        let resp = write_range(1, &params).await;
+        assert!(resp.error.is_none(), "expected ok: {:?}", resp);
+
+        // Second chunk — append at offset 5
+        let params = make_params(vec![
+            ("path", Value::String(file.to_str().unwrap().into())),
+            ("offset", Value::Integer(5.into())),
+            ("data", Value::Binary(b", World!".to_vec())),
+        ]);
+        let resp = write_range(2, &params).await;
+        assert!(resp.error.is_none());
+
+        let contents = std::fs::read(&file).unwrap();
+        assert_eq!(&contents, b"Hello, World!");
+    }
+
+    #[tokio::test]
+    async fn write_range_overwrites_middle() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("wr_mid.bin");
+        std::fs::write(&file, b"AAAAAAAAAA").unwrap(); // 10 'A's
+
+        // Overwrite bytes 3..6 with "BBB"
+        let params = make_params(vec![
+            ("path", Value::String(file.to_str().unwrap().into())),
+            ("offset", Value::Integer(3.into())),
+            ("data", Value::Binary(b"BBB".to_vec())),
+        ]);
+        let resp = write_range(1, &params).await;
+        assert!(resp.error.is_none());
+
+        let contents = std::fs::read(&file).unwrap();
+        assert_eq!(&contents, b"AAABBBAAAA");
+    }
+
+    #[tokio::test]
+    async fn write_range_creates_parents() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("deep").join("nested").join("wr.bin");
+
+        let params = make_params(vec![
+            ("path", Value::String(file.to_str().unwrap().into())),
+            ("offset", Value::Integer(0.into())),
+            ("data", Value::Binary(b"data".to_vec())),
+            ("truncate", Value::Integer(1.into())),
+        ]);
+        let resp = write_range(1, &params).await;
+        assert!(resp.error.is_none());
+        assert_eq!(std::fs::read(&file).unwrap(), b"data");
+    }
+
+    #[tokio::test]
+    async fn write_range_missing_params() {
+        let params = make_params(vec![
+            ("path", Value::String("/tmp/x".into())),
+            ("offset", Value::Integer(0.into())),
+            // missing "data"
+        ]);
+        let resp = write_range(1, &params).await;
+        assert!(resp.error.is_some());
     }
 
     #[tokio::test]

@@ -28,6 +28,7 @@ use crate::backend::rpc::RpcBackend;
 use crate::backend::rpc_client::RpcClient;
 use crate::backend::runner::CommandRunner;
 use crate::backend::runner::{LocalRunner, RemoteRunner};
+use crate::backend::socket;
 use crate::backend::ssh::SshBackend;
 use crate::backend::{Backend, DirEntry, ExecResult, Metadata};
 use crate::errors::{TrampError, TrampResult};
@@ -364,6 +365,20 @@ impl Vfs {
                     match deploy_exec::deploy_and_start_in_container(runner.as_ref(), &target).await
                     {
                         ExecDeployResult::Ready(backend) => {
+                            // Agent is deployed — try upgrading to a direct
+                            // TCP socket connection for lower overhead (avoids
+                            // the `docker exec -i` process in the middle).
+                            if let Some(tcp_backend) = socket::start_docker_tcp_agent(
+                                &hop.host,
+                                deploy_exec::CONTAINER_AGENT_PATH,
+                                socket::DEFAULT_AGENT_PORT,
+                            )
+                            .await
+                            {
+                                return Ok(tcp_backend);
+                            }
+                            // TCP upgrade failed — use the pipe-based RPC
+                            // backend (still much faster than shell parsing).
                             return Ok(backend);
                         }
                         ExecDeployResult::Fallback(reason) => {
@@ -402,6 +417,21 @@ impl Vfs {
                     match deploy_exec::deploy_and_start_in_container(runner.as_ref(), &target).await
                     {
                         ExecDeployResult::Ready(backend) => {
+                            // Agent is deployed — try upgrading to a direct
+                            // TCP socket via kubectl port-forward for lower
+                            // overhead.
+                            if let Some(tcp_backend) = socket::start_k8s_tcp_agent(
+                                &hop.host,
+                                hop.user.as_deref(),
+                                deploy_exec::CONTAINER_AGENT_PATH,
+                                socket::DEFAULT_AGENT_PORT,
+                            )
+                            .await
+                            {
+                                return Ok(tcp_backend);
+                            }
+                            // TCP upgrade failed — use the pipe-based RPC
+                            // backend (still much faster than shell parsing).
                             return Ok(backend);
                         }
                         ExecDeployResult::Fallback(reason) => {
@@ -618,8 +648,67 @@ impl Vfs {
         Ok(())
     }
 
-    /// Check whether a remote host is reachable (health-check the
-    /// connection, opening one if necessary).
+    // -----------------------------------------------------------------------
+    // Chunked / streaming I/O
+    // -----------------------------------------------------------------------
+
+    /// Get the size of a remote file in bytes.
+    ///
+    /// Uses the agent's `file.size` RPC when available, otherwise falls
+    /// back to a full `stat`.
+    pub fn file_size(&self, path: &TrampPath) -> TrampResult<u64> {
+        let (_key, backend, remote_path) = self.resolve(path)?;
+        self.runtime.block_on(backend.file_size(&remote_path))
+    }
+
+    /// Read a byte range from a remote file.
+    ///
+    /// Returns `(data, eof)` where `data` contains up to `length` bytes
+    /// starting at `offset`, and `eof` is `true` when the end of file has
+    /// been reached.
+    pub fn read_range(
+        &self,
+        path: &TrampPath,
+        offset: u64,
+        length: u64,
+    ) -> TrampResult<(Vec<u8>, bool)> {
+        let (_key, backend, remote_path) = self.resolve(path)?;
+        self.runtime
+            .block_on(backend.read_range(&remote_path, offset, length))
+    }
+
+    /// Write data at a specific byte offset in a remote file.
+    ///
+    /// When `truncate` is `true` the file is truncated before writing
+    /// (use for the first chunk).  Returns the number of bytes written.
+    pub fn write_range(
+        &self,
+        path: &TrampPath,
+        offset: u64,
+        data: Bytes,
+        truncate: bool,
+    ) -> TrampResult<u64> {
+        let (key, backend, remote_path) = self.resolve(path)?;
+        let written =
+            self.runtime
+                .block_on(backend.write_range(&remote_path, offset, data, truncate))?;
+        // Invalidate caches on the first chunk (truncate) since the file
+        // is being rewritten.
+        if truncate {
+            self.invalidate_for_write(&key, &remote_path);
+        }
+        Ok(written)
+    }
+
+    /// Whether the backend for this path supports efficient chunked I/O.
+    pub fn supports_streaming(&self, path: &TrampPath) -> bool {
+        match self.resolve(path) {
+            Ok((_key, backend, _)) => backend.supports_streaming(),
+            Err(_) => false,
+        }
+    }
+
+    /// Check that the remote is reachable (used by `tramp ping`).
     pub fn ping(&self, path: &TrampPath) -> TrampResult<()> {
         let (_key, backend, _) = self.resolve(path)?;
         self.runtime.block_on(backend.check())
@@ -661,6 +750,71 @@ impl Vfs {
     ) -> TrampResult<Vec<crate::backend::WatchNotification>> {
         let (_key, backend, _) = self.resolve(path)?;
         self.runtime.block_on(backend.watch_poll())
+    }
+
+    // -----------------------------------------------------------------------
+    // PTY operations
+    // -----------------------------------------------------------------------
+
+    /// Whether the backend for the given path supports PTY (pseudo-terminal)
+    /// operations.
+    pub fn supports_pty(&self, path: &TrampPath) -> bool {
+        match self.resolve(path) {
+            Ok((_key, backend, _)) => backend.supports_pty(),
+            Err(_) => false,
+        }
+    }
+
+    /// Start a process with a pseudo-terminal on the remote host.
+    ///
+    /// Returns a [`PtyHandle`](crate::backend::PtyHandle) containing the
+    /// opaque handle ID and the remote PID.
+    pub fn pty_start(
+        &self,
+        path: &TrampPath,
+        program: &str,
+        args: &[&str],
+        rows: u16,
+        cols: u16,
+    ) -> TrampResult<crate::backend::PtyHandle> {
+        let (_key, backend, _) = self.resolve(path)?;
+        self.runtime
+            .block_on(backend.pty_start(program, args, rows, cols))
+    }
+
+    /// Read available output from a PTY process.
+    pub fn pty_read(
+        &self,
+        path: &TrampPath,
+        handle: u64,
+    ) -> TrampResult<crate::backend::PtyReadResult> {
+        let (_key, backend, _) = self.resolve(path)?;
+        self.runtime.block_on(backend.pty_read(handle))
+    }
+
+    /// Write data to a PTY process (send to its stdin via the PTY master).
+    pub fn pty_write(&self, path: &TrampPath, handle: u64, data: bytes::Bytes) -> TrampResult<()> {
+        let (_key, backend, _) = self.resolve(path)?;
+        self.runtime.block_on(backend.pty_write(handle, data))
+    }
+
+    /// Resize a PTY process's terminal window.
+    pub fn pty_resize(
+        &self,
+        path: &TrampPath,
+        handle: u64,
+        rows: u16,
+        cols: u16,
+    ) -> TrampResult<()> {
+        let (_key, backend, _) = self.resolve(path)?;
+        self.runtime
+            .block_on(backend.pty_resize(handle, rows, cols))
+    }
+
+    /// Kill a PTY process by handle.
+    pub fn pty_kill(&self, path: &TrampPath, handle: u64) -> TrampResult<()> {
+        let (_key, backend, _) = self.resolve(path)?;
+        self.runtime.block_on(backend.pty_kill(handle))
     }
 
     // -----------------------------------------------------------------------

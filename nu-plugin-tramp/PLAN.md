@@ -40,21 +40,28 @@ nu-plugin-tramp/
     │       ├── protocol.rs     # TRAMP URI parser
     │       ├── errors.rs       # error types
     │       ├── vfs.rs          # VFS layer (caching, connection pool)
+    │       ├── completion.rs   # tab completion for remote paths
     │       └── backend/
     │           ├── mod.rs      # Backend trait + registry
     │           ├── ssh.rs      # SSH backend (SFTP + exec)
     │           ├── exec.rs     # Docker / K8s / sudo backends
-    │           └── runner.rs   # CommandRunner abstraction (local/remote)
+    │           ├── runner.rs   # CommandRunner abstraction (local/remote)
+    │           ├── rpc.rs      # RPC backend (agent communication)
+    │           ├── rpc_client.rs # MsgPack-RPC client (wire protocol)
+    │           ├── deploy.rs   # Agent deployment via SSH/SFTP
+    │           ├── deploy_exec.rs # Agent deployment in containers
+    │           └── socket.rs   # TCP/Unix socket transport
     └── agent/              # tramp-agent — lightweight RPC agent
         ├── Cargo.toml
         └── src/
-            ├── main.rs         # agent entry point (stdin/stdout RPC loop)
+            ├── main.rs         # agent entry point (stdin/stdout/TCP/Unix RPC)
             ├── rpc.rs          # MsgPack-RPC framing + message types
             └── ops/
                 ├── mod.rs      # operation module index
                 ├── file.rs     # file.stat, file.read, file.write, …
                 ├── dir.rs      # dir.list, dir.create, dir.remove
                 ├── process.rs  # process.run, process.start, …
+                ├── pty.rs      # process.start_pty, process.resize (PTY)
                 ├── system.rs   # system.info, system.getenv, system.statvfs
                 ├── batch.rs    # batch (N ops in 1 round-trip)
                 └── watch.rs    # watch.add, watch.remove, watch.list
@@ -381,7 +388,7 @@ programs.nushell.plugins = [ pkgs.nu-plugin-tramp ];
 - [x] Configurable cache TTL via `$env.TRAMP_CACHE_TTL` environment variable
 - [x] Home Manager module for auto-registration (`hm-module.nix`)
 - [x] Glob/wildcard support for `tramp ls --glob` and `tramp cp --glob`
-- [ ] Tab completion for remote paths
+- [x] Tab completion for remote paths
 
 ### Phase 5 — RPC Agent (inspired by [emacs-tramp-rpc](https://github.com/ArthurHeymans/emacs-tramp-rpc))
 
@@ -407,8 +414,9 @@ RPC methods exposed by the agent:
 
 | Category   | Methods                                                        |
 |------------|----------------------------------------------------------------|
-| File       | `file.stat`, `file.stat_batch`, `file.truename`               |
-| File I/O   | `file.read`, `file.write`, `file.copy`, `file.rename`,        |
+| File       | `file.stat`, `file.stat_batch`, `file.truename`, `file.size`  |
+| File I/O   | `file.read`, `file.read_range`, `file.write`,                 |
+|            | `file.write_range`, `file.copy`, `file.rename`,               |
 |            | `file.delete`, `file.set_modes`                               |
 | Directory  | `dir.list`, `dir.create`, `dir.remove`                        |
 | Process    | `process.run`, `process.start`, `process.read`,               |
@@ -575,14 +583,107 @@ panic = "abort"
 strip = true
 ```
 
+### Phase 4.1 — Tab Completion for Remote Paths ✅
+
+Dynamic tab completion is implemented via `get_dynamic_completion` on every
+plugin command that accepts a TRAMP path argument (`src/completion.rs`).
+
+Completion stages:
+
+| User input            | Completions offered                              |
+|-----------------------|--------------------------------------------------|
+| `/`                   | Backend prefixes: `/ssh:`, `/docker:`, `/k8s:`, `/sudo:` |
+| `/ss`                 | `/ssh:`                                          |
+| `/ssh:`               | Host names from `~/.ssh/config` + active VFS connections |
+| `/docker:`            | Running container names (`docker ps`)            |
+| `/k8s:`               | Pod names (`kubectl get pods`)                   |
+| `/ssh:host:`          | Suggest `/ssh:host:/` to start remote path       |
+| `/ssh:host:/etc/`     | Remote directory listing of `/etc/`              |
+| `/ssh:host:/etc/ho`   | Filtered entries starting with `ho`              |
+| `subdir/` (with CWD)  | Relative path listing against remote CWD        |
+
+Architecture additions:
+
+- **`completion.rs`** — new module with all completion logic:
+  - `complete_tramp_path()` — main entry point, dispatches to stage-specific
+    completers based on how much of the URI has been typed
+  - `extract_positional_string()` — extracts the partial argument text from
+    the AST `Call`, handling the `strip` placeholder flag
+  - `complete_backend_prefix()` — prefix-matches known backend names
+  - `complete_host()` — gathers host suggestions from SSH config, active
+    connections, `docker ps`, and `kubectl get pods`
+  - `complete_remote_path()` — lists the parent directory via VFS and filters
+    by the partial filename; directories get a trailing `/`
+  - `complete_relative_path()` — relative path completion when a remote CWD
+    is active via `tramp cd`
+  - `parse_ssh_config_hosts()` — parses `~/.ssh/config` `Host` entries
+    (skipping wildcards)
+  - `list_docker_containers()` / `list_k8s_pods()` — best-effort subprocess
+    calls for container/pod name discovery
+- **`complete_tramp_arg()`** — shared helper in `main.rs` that extracts the
+  positional argument and calls `complete_tramp_path()`
+- **All path-accepting commands** implement `get_dynamic_completion`:
+  `tramp open`, `tramp ls`, `tramp save`, `tramp rm`, `tramp cp` (both
+  source and destination), `tramp cd`, `tramp exec`, `tramp info`,
+  `tramp ping`, `tramp watch`
+
 ### Phase 6 — Future
 
-- [ ] Streaming for very large files (chunked RPC reads)
-- [ ] PTY support via agent (remote terminal emulation)
+- [x] Streaming for very large files (chunked RPC reads/writes)
+- [x] PTY support via agent (remote terminal emulation)
 - [x] `tramp watch` command — subscribe to filesystem change notifications
 - [x] Agent version management and auto-upgrade
-- [ ] TCP/Unix socket transport for agent (local Docker without SSH)
-- [ ] Cross-compilation matrix in CI for agent binaries (x86_64/aarch64 × Linux/macOS)
+- [x] TCP/Unix socket transport for agent (local Docker without SSH)
+- [x] Cross-compilation matrix in CI for agent binaries (x86_64/aarch64 × Linux/macOS)
+
+#### Streaming for very large files ✅
+
+Chunked I/O is implemented via three new agent RPC methods and corresponding
+`Backend` trait methods, enabling streaming reads and writes of arbitrarily
+large files without loading them entirely into memory.
+
+New agent RPC methods:
+
+| Method             | Description                                      |
+|--------------------|--------------------------------------------------|
+| `file.size`        | Get file size (lightweight, no full stat)         |
+| `file.read_range`  | Read a byte range: `{ path, offset, length }`    |
+| `file.write_range` | Write at offset: `{ path, offset, data, truncate, create }` |
+
+`file.read_range` returns `{ data: <binary>, eof: <bool> }` — the client
+reads in a loop, advancing `offset` by the chunk size each iteration, until
+`eof` is `true`.
+
+`file.write_range` supports chunked uploads: send the first chunk with
+`truncate: true` to create/truncate the file, then subsequent chunks with
+increasing offsets. An explicit `flush()` after each `write_all` ensures
+data reaches disk before the success response is sent.
+
+Architecture additions:
+
+- **`Backend` trait** — new optional methods with default fallback
+  implementations:
+  - `file_size(path)` — defaults to `stat(path).size`
+  - `read_range(path, offset, length)` — defaults to reading the whole file
+    and slicing (defeats streaming, but works)
+  - `write_range(path, offset, data, truncate)` — defaults to whole-file
+    write (only correct for offset=0 + truncate)
+  - `supports_streaming()` — returns `false` by default
+- **`RpcBackend`** — implements all streaming methods natively via the agent
+  RPC calls; `supports_streaming()` returns `true`
+- **`VFS`** — new public methods: `file_size`, `read_range`, `write_range`,
+  `supports_streaming`
+- **`tramp open`** — files larger than 1 MB on streaming-capable backends
+  are returned as a `ByteStream` (via `ByteStream::from_fn`) instead of a
+  single `Value`, enabling pipelines like
+  `tramp open /ssh:host:/big.bin | save local.bin` without OOM
+- **`tramp save`** — `ByteStream` input on streaming-capable backends is
+  written in 1 MB chunks via `write_range`, avoiding buffering the entire
+  payload in memory; non-streaming backends fall back to collecting the
+  stream first
+
+Chunk size: 1 MB (read and write). Agent caps `file.read_range` at 16 MB
+per request for safety.
 
 #### `tramp watch` command ✅
 
@@ -620,6 +721,194 @@ remote agent's version by running `<agent> --version` during the
 version doesn't match the plugin's `CARGO_PKG_VERSION`, the agent is
 re-uploaded and restarted automatically — ensuring plugin and agent are
 always in sync after upgrades.
+
+---
+
+#### TCP/Unix socket transport for agent ✅
+
+The agent now supports a `--listen` flag that makes it listen on a TCP port
+or Unix domain socket instead of stdin/stdout. This enables direct socket
+connections from the plugin, bypassing the overhead of a `docker exec -i` or
+`kubectl exec -i` process sitting in the middle of every RPC exchange.
+
+Usage:
+
+```text
+# TCP listener (port 0 = ephemeral):
+tramp-agent --listen tcp:0.0.0.0:9547
+tramp-agent --listen tcp:127.0.0.1:0
+
+# Unix socket listener:
+tramp-agent --listen unix:/tmp/tramp-agent.sock
+
+# Formats also accepted without scheme prefix:
+tramp-agent --listen 127.0.0.1:9547
+tramp-agent --listen /tmp/tramp-agent.sock    # (Unix only)
+```
+
+The agent prints a machine-readable `LISTEN:tcp:<addr>` or
+`LISTEN:unix:<path>` line to stderr so the plugin can discover the actual
+bound address (especially useful with ephemeral ports).
+
+Architecture additions:
+
+- **Agent (`main.rs`)**:
+  - `parse_listen_addr()` — parses `--listen` argument into `ListenAddr::Tcp`
+    or `ListenAddr::Unix`
+  - `serve_connection()` — transport-agnostic request loop extracted from the
+    old `main()`, generic over `AsyncRead + AsyncWrite`
+  - `run_tcp_listener()` — binds a TCP listener and accepts connections
+    sequentially
+  - `run_unix_listener()` — binds a Unix domain socket listener with cleanup
+    on shutdown
+  - Default mode (no `--listen`) serves a single connection over stdin/stdout
+    as before
+
+- **Plugin (`backend/socket.rs`)** — new module:
+  - `SocketAddr` enum — parsed TCP or Unix address
+  - `parse_socket_addr()` — mirrors the agent's address parser
+  - `connect_tcp()` / `connect_unix()` — establish a connection, create an
+    `RpcClient`, verify with a ping, and return an `RpcBackend`
+  - `connect()` — generic dispatcher
+  - `start_docker_tcp_agent()` — deploys agent in a Docker container with
+    `--listen tcp:...`, discovers the container IP via `docker inspect`,
+    and connects directly via TCP
+  - `start_k8s_tcp_agent()` — deploys agent in a Kubernetes pod, sets up
+    `kubectl port-forward`, and connects via the forwarded local port
+  - `get_docker_container_ip()` — helper to query a container's network IP
+
+- **VFS (`vfs.rs`)** — `connect_hop` for standalone Docker and Kubernetes
+  now attempts a TCP socket upgrade after deploying the agent, falling back
+  to the pipe-based RPC backend if TCP is unavailable
+
+Key benefits:
+
+| Aspect               | stdin/stdout pipe       | TCP/Unix socket            |
+|----------------------|------------------------|----------------------------|
+| Intermediate process | `docker exec -i` alive | None (direct connection)   |
+| Connection lifetime  | Tied to exec process   | Independent / persistent   |
+| Reconnection         | Must restart exec      | Just reconnect the socket  |
+| Multiple clients     | One per exec process   | Sequential accept loop     |
+| Latency overhead     | Docker/kubectl proxy   | Direct TCP or Unix IPC     |
+
+#### Cross-compilation matrix for agent binaries ✅
+
+A Nix-based cross-compilation infrastructure is provided in `cross.nix` for
+building the `tramp-agent` binary for multiple target architectures from a
+single host. Linux targets are statically linked via musl for maximum
+portability — the resulting binaries can be deployed to any Linux host
+regardless of its libc.
+
+Supported targets:
+
+| Target              | Triple                        | Notes                    |
+|---------------------|-------------------------------|--------------------------|
+| x86_64-linux        | x86_64-unknown-linux-musl     | Most servers & desktops  |
+| aarch64-linux       | aarch64-unknown-linux-musl    | ARM64 (Raspberry Pi 4+) |
+| x86_64-darwin       | x86_64-apple-darwin           | Intel Mac                |
+| aarch64-darwin      | aarch64-apple-darwin          | Apple Silicon Mac        |
+
+Usage:
+
+```nix
+# Build all Linux agent binaries from an x86_64-linux host:
+cross = import ./cross.nix { inherit nixpkgs; };
+agents = cross.allLinuxFrom "x86_64-linux";
+# → agents.x86_64-linux  (statically linked musl binary)
+# → agents.aarch64-linux (cross-compiled, statically linked)
+```
+
+The `cacheLayout` helper produces a directory tree matching the plugin's
+deployment module expectations:
+
+```text
+$out/
+├── x86_64-unknown-linux-musl/
+│   └── tramp-agent
+└── aarch64-unknown-linux-musl/
+    └── tramp-agent
+```
+
+This can be copied into `~/.cache/nu-plugin-tramp/<version>/` so the
+plugin's automatic deployment picks up the correct binary for each remote
+host's architecture.
+
+Architecture additions:
+
+- **`cross.nix`** — new module:
+  - `buildAgent` / `buildAgentStatic` — derivation builders for native
+    and musl-static targets
+  - `getCrossPkgs` — helper to set up Nix cross-compilation pkgs
+  - `x86_64-linux`, `aarch64-linux`, `x86_64-darwin`, `aarch64-darwin` —
+    per-target derivations
+  - `allLinuxFrom` — build all Linux targets from a given host
+  - `matrix` — structured list of all targets for CI iteration
+  - `cacheLayout` — produces the local cache directory structure
+- **`default.nix`** — new `tramp-agent-cache` package that produces the
+  cache layout with both Linux architectures
+
+---
+
+#### PTY support via agent ✅
+
+The agent now supports pseudo-terminal (PTY) allocation for running
+interactive commands on the remote host. This enables proper TTY-aware
+behaviour (e.g. colour output, line editing, signal handling) for commands
+executed through the RPC agent.
+
+New agent RPC methods:
+
+| Method              | Description                                        |
+|---------------------|----------------------------------------------------|
+| `process.start_pty` | Start a process with a PTY, return handle + PID    |
+| `process.resize`    | Send a window size change (TIOCSWINSZ + SIGWINCH)  |
+
+PTY processes reuse the existing `process.read`, `process.write`, and
+`process.kill` methods — the dispatch layer routes to the correct table
+based on handle range (PTY handles ≥ 1,000,000).
+
+`process.start_pty` parameters:
+
+- `program` (string, required) — the program to execute
+- `args` (array of strings, optional) — command arguments
+- `cwd` (string, optional) — working directory
+- `env` (map of string→string, optional) — environment variables
+- `rows` (u16, optional, default 24) — initial terminal rows
+- `cols` (u16, optional, default 80) — initial terminal columns
+
+Architecture additions:
+
+- **Agent (`ops/pty.rs`)** — new module implementing PTY support:
+  - `openpty()` — creates a master/slave PTY pair via `libc::openpty`
+  - `set_winsize()` — sets terminal dimensions via `TIOCSWINSZ` ioctl
+  - `AsyncPtyMaster` — tokio `AsyncFd` wrapper for non-blocking I/O on
+    the PTY master fd
+  - `fork_pty()` — synchronous helper that allocates the PTY, forks, sets
+    `setsid()` + `TIOCSCTTY`, redirects stdio to the slave PTY, and execs
+    the program — all non-`Send` raw pointer work is confined here
+  - `PtyTable` — shared table of managed PTY processes (separate from the
+    regular `ProcessTable` to avoid handle collisions)
+  - `is_pty_handle()` — checks if a handle ID belongs to the PTY table
+  - Full read/write/kill/resize handlers with proper child reaping
+    (`waitpid`) and EIO handling (slave closed on child exit)
+  - Platform-gated: full implementation on Unix, stub errors on non-Unix
+
+- **Agent (`main.rs`)** — dispatch updated:
+  - `process.start_pty` → `ops::pty::start_pty`
+  - `process.resize` → `ops::pty::resize`
+  - `process.read` / `process.write` / `process.kill` auto-route to
+    `ops::pty` when the handle is in the PTY range
+
+- **Plugin (`backend/mod.rs`)** — `Backend` trait additions:
+  - `PtyHandle` and `PtyReadResult` types
+  - Optional methods: `pty_start`, `pty_read`, `pty_write`, `pty_resize`,
+    `pty_kill`, `supports_pty` (default: not supported)
+
+- **Plugin (`backend/rpc.rs`)** — `RpcBackend` implements all PTY methods
+  natively via the agent RPC calls; `supports_pty()` returns `true`
+
+- **Plugin (`vfs.rs`)** — new public methods: `supports_pty`, `pty_start`,
+  `pty_read`, `pty_write`, `pty_resize`, `pty_kill`
 
 ---
 

@@ -27,6 +27,7 @@
 //! ```
 
 mod backend;
+mod completion;
 mod errors;
 mod protocol;
 mod vfs;
@@ -34,13 +35,16 @@ mod vfs;
 use std::sync::{Arc, Mutex};
 
 use nu_plugin::{
-    EngineInterface, EvaluatedCall, MsgPackSerializer, Plugin, PluginCommand, serve_plugin,
+    DynamicCompletionCall, EngineInterface, EvaluatedCall, MsgPackSerializer, Plugin,
+    PluginCommand, serve_plugin,
 };
 use nu_protocol::{
-    Category, Example, LabeledError, PipelineData, Record, Signature, Span, SyntaxShape, Type,
-    Value,
+    ByteStreamType, Category, DynamicSuggestion, Example, LabeledError, PipelineData, Record,
+    Signature, Span, SyntaxShape, Type, Value, byte_stream::ByteStream, engine::ArgType,
 };
 use std::time::Duration;
+
+use completion::{complete_tramp_path, extract_positional_string, positional_span};
 
 use errors::TrampError;
 use protocol::TrampPath;
@@ -257,6 +261,34 @@ fn serde_like_json(text: &str, span: Span) -> Result<Value, ()> {
 /// Convert a `TrampError` into a `LabeledError` with the call's span.
 fn tramp_err(e: TrampError, span: Span) -> LabeledError {
     LabeledError::new(e.to_string()).with_label("tramp error", span)
+}
+
+// ---------------------------------------------------------------------------
+// Dynamic completion helper
+// ---------------------------------------------------------------------------
+
+/// Shared implementation of `get_dynamic_completion` for any command whose
+/// positional argument at `idx` is a TRAMP path.
+///
+/// Extracts the partial string from the AST, calls into the completion module,
+/// and returns the suggestions (or `None` to fall back to defaults).
+#[allow(deprecated)]
+fn complete_tramp_arg(
+    plugin: &TrampPlugin,
+    call: DynamicCompletionCall,
+    arg_type: ArgType,
+    idx: usize,
+) -> Option<Vec<DynamicSuggestion>> {
+    // Only handle the positional argument we care about.
+    match &arg_type {
+        ArgType::Positional(i) if *i == idx => {}
+        _ => return None,
+    }
+
+    let partial = extract_positional_string(&call.call, idx, call.strip).unwrap_or_default();
+    let span = positional_span(&call.call, idx).unwrap_or(call.call.head);
+
+    complete_tramp_path(&plugin.vfs, &plugin.remote_cwd, &partial, span)
 }
 
 /// Read `$env.TRAMP_CACHE_TTL` (in seconds) from the Nushell environment and
@@ -493,14 +525,92 @@ impl PluginCommand for TrampOpen {
     ) -> Result<PipelineData, LabeledError> {
         apply_cache_ttl(engine, &plugin.vfs);
         let path = parse_tramp_arg(call, &plugin.remote_cwd)?;
+        let span = call.head;
+        let signals = engine.signals().clone();
 
+        // Use chunked streaming when the backend supports it and the file
+        // is larger than the threshold (1 MB).  This avoids loading the
+        // entire file into a single Value, which matters for large binaries.
+        const STREAM_THRESHOLD: u64 = 1024 * 1024; // 1 MB
+        const CHUNK_SIZE: u64 = 1024 * 1024; // 1 MB per chunk
+
+        let use_streaming = plugin.vfs.supports_streaming(&path)
+            && plugin
+                .vfs
+                .file_size(&path)
+                .map(|sz| sz > STREAM_THRESHOLD)
+                .unwrap_or(false);
+
+        if use_streaming {
+            let vfs = Arc::clone(&plugin.vfs);
+            let remote_path = path.remote_path.clone();
+            let path_for_stream = path.clone();
+
+            // Determine the byte-stream type from the file extension.
+            let ext = std::path::Path::new(&remote_path)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+            let stream_type = match ext {
+                "txt" | "log" | "md" | "csv" | "tsv" | "json" | "toml" | "yaml" | "yml" | "xml"
+                | "html" | "css" | "js" | "ts" | "rs" | "py" | "sh" | "nu" | "conf" | "cfg"
+                | "ini" => ByteStreamType::String,
+                _ => ByteStreamType::Binary,
+            };
+
+            let byte_stream = ByteStream::from_fn(span, signals, stream_type, {
+                let mut offset: u64 = 0;
+                let mut done = false;
+                move |buf: &mut Vec<u8>| {
+                    if done {
+                        return Ok(false);
+                    }
+                    let (chunk, eof) = vfs
+                        .read_range(&path_for_stream, offset, CHUNK_SIZE)
+                        .map_err(|e| nu_protocol::ShellError::GenericError {
+                            error: "tramp read error".into(),
+                            msg: e.to_string(),
+                            span: Some(span),
+                            help: None,
+                            inner: vec![],
+                        })?;
+                    if chunk.is_empty() {
+                        done = true;
+                        return Ok(false);
+                    }
+                    offset += chunk.len() as u64;
+                    if eof {
+                        done = true;
+                    }
+                    buf.extend_from_slice(&chunk);
+                    Ok(true)
+                }
+            });
+
+            return Ok(PipelineData::ByteStream(byte_stream, None));
+        }
+
+        // Fallback: read the entire file into memory (small files or
+        // backends that don't support streaming).
         let data = plugin
             .vfs
             .read(&path)
             .map_err(|e| tramp_err(e, call.head))?;
 
-        let value = bytes_to_value(&data, &path.remote_path, call.head);
+        let value = bytes_to_value(&data, &path.remote_path, span);
         Ok(PipelineData::Value(value, None))
+    }
+
+    #[allow(unused_variables, deprecated)]
+    fn get_dynamic_completion(
+        &self,
+        plugin: &TrampPlugin,
+        engine: &EngineInterface,
+        call: DynamicCompletionCall,
+        arg_type: ArgType,
+        _experimental: nu_protocol::engine::ExperimentalMarker,
+    ) -> Option<Vec<DynamicSuggestion>> {
+        complete_tramp_arg(plugin, call, arg_type, 0)
     }
 }
 
@@ -570,6 +680,18 @@ impl PluginCommand for TrampLs {
                 result: None,
             },
         ]
+    }
+
+    #[allow(unused_variables, deprecated)]
+    fn get_dynamic_completion(
+        &self,
+        plugin: &TrampPlugin,
+        engine: &EngineInterface,
+        call: DynamicCompletionCall,
+        arg_type: ArgType,
+        _experimental: nu_protocol::engine::ExperimentalMarker,
+    ) -> Option<Vec<DynamicSuggestion>> {
+        complete_tramp_arg(plugin, call, arg_type, 0)
     }
 
     fn run(
@@ -761,6 +883,18 @@ impl PluginCommand for TrampSave {
         ]
     }
 
+    #[allow(unused_variables, deprecated)]
+    fn get_dynamic_completion(
+        &self,
+        plugin: &TrampPlugin,
+        engine: &EngineInterface,
+        call: DynamicCompletionCall,
+        arg_type: ArgType,
+        _experimental: nu_protocol::engine::ExperimentalMarker,
+    ) -> Option<Vec<DynamicSuggestion>> {
+        complete_tramp_arg(plugin, call, arg_type, 0)
+    }
+
     fn run(
         &self,
         plugin: &TrampPlugin,
@@ -770,17 +904,74 @@ impl PluginCommand for TrampSave {
     ) -> Result<PipelineData, LabeledError> {
         apply_cache_ttl(engine, &plugin.vfs);
         let path = parse_tramp_arg(call, &plugin.remote_cwd)?;
+        let span = call.head;
 
-        // Collect the pipeline input into bytes.
+        const CHUNK_SIZE: usize = 1024 * 1024; // 1 MB per chunk
+
+        // When the input is a ByteStream and the backend supports streaming,
+        // write in chunks to avoid buffering the entire payload in memory.
+        if let PipelineData::ByteStream(stream, _) = input {
+            if plugin.vfs.supports_streaming(&path) {
+                let mut reader = stream
+                    .reader()
+                    .ok_or_else(|| LabeledError::new("failed to get byte stream reader"))?;
+
+                let mut offset: u64 = 0;
+                let mut first = true;
+                let mut buf = vec![0u8; CHUNK_SIZE];
+
+                loop {
+                    let n = std::io::Read::read(&mut reader, &mut buf)
+                        .map_err(|e| LabeledError::new(format!("read error: {e}")))?;
+                    if n == 0 {
+                        // If we never wrote anything, create an empty file.
+                        if first {
+                            plugin
+                                .vfs
+                                .write_range(&path, 0, bytes::Bytes::new(), true)
+                                .map_err(|e| tramp_err(e, span))?;
+                        }
+                        break;
+                    }
+                    let chunk = bytes::Bytes::copy_from_slice(&buf[..n]);
+                    plugin
+                        .vfs
+                        .write_range(&path, offset, chunk, first)
+                        .map_err(|e| tramp_err(e, span))?;
+                    offset += n as u64;
+                    first = false;
+                }
+
+                return Ok(PipelineData::Empty);
+            }
+
+            // Fallback: collect the entire ByteStream into memory.
+            let collected = reader_stream_to_bytes(stream)?;
+            plugin
+                .vfs
+                .write(&path, collected)
+                .map_err(|e| tramp_err(e, span))?;
+            return Ok(PipelineData::Empty);
+        }
+
+        // Non-ByteStream input: collect into bytes and write in one shot.
         let data = pipeline_to_bytes(input)?;
 
         plugin
             .vfs
             .write(&path, data)
-            .map_err(|e| tramp_err(e, call.head))?;
+            .map_err(|e| tramp_err(e, span))?;
 
         Ok(PipelineData::Empty)
     }
+}
+
+/// Collect a ByteStream into `Bytes` (fallback when chunked write is not available).
+fn reader_stream_to_bytes(stream: ByteStream) -> Result<bytes::Bytes, LabeledError> {
+    let collected = stream
+        .into_bytes()
+        .map_err(|e| LabeledError::new(e.to_string()))?;
+    Ok(bytes::Bytes::from(collected))
 }
 
 /// Collect pipeline data into a `Bytes` value.
@@ -858,6 +1049,18 @@ impl PluginCommand for TrampRm {
             description: "Delete a remote file",
             result: None,
         }]
+    }
+
+    #[allow(unused_variables, deprecated)]
+    fn get_dynamic_completion(
+        &self,
+        plugin: &TrampPlugin,
+        engine: &EngineInterface,
+        call: DynamicCompletionCall,
+        arg_type: ArgType,
+        _experimental: nu_protocol::engine::ExperimentalMarker,
+    ) -> Option<Vec<DynamicSuggestion>> {
+        complete_tramp_arg(plugin, call, arg_type, 0)
     }
 
     fn run(
@@ -960,6 +1163,23 @@ impl PluginCommand for TrampCp {
         ]
     }
 
+    #[allow(unused_variables, deprecated)]
+    fn get_dynamic_completion(
+        &self,
+        plugin: &TrampPlugin,
+        engine: &EngineInterface,
+        call: DynamicCompletionCall,
+        arg_type: ArgType,
+        _experimental: nu_protocol::engine::ExperimentalMarker,
+    ) -> Option<Vec<DynamicSuggestion>> {
+        // Both source (pos 0) and destination (pos 1) can be TRAMP paths.
+        match &arg_type {
+            ArgType::Positional(0) => complete_tramp_arg(plugin, call, arg_type, 0),
+            ArgType::Positional(1) => complete_tramp_arg(plugin, call, arg_type, 1),
+            _ => None,
+        }
+    }
+
     fn run(
         &self,
         plugin: &TrampPlugin,
@@ -968,6 +1188,7 @@ impl PluginCommand for TrampCp {
         _input: PipelineData,
     ) -> Result<PipelineData, LabeledError> {
         apply_cache_ttl(engine, &plugin.vfs);
+
         let src_raw: String = call.req(0)?;
         let dst_raw: String = call.req(1)?;
         let glob_pattern: Option<String> = call.get_flag("glob")?;
@@ -1194,6 +1415,18 @@ impl PluginCommand for TrampCd {
         ]
     }
 
+    #[allow(unused_variables, deprecated)]
+    fn get_dynamic_completion(
+        &self,
+        plugin: &TrampPlugin,
+        engine: &EngineInterface,
+        call: DynamicCompletionCall,
+        arg_type: ArgType,
+        _experimental: nu_protocol::engine::ExperimentalMarker,
+    ) -> Option<Vec<DynamicSuggestion>> {
+        complete_tramp_arg(plugin, call, arg_type, 0)
+    }
+
     fn run(
         &self,
         plugin: &TrampPlugin,
@@ -1371,6 +1604,18 @@ impl PluginCommand for TrampPing {
             description: "Test SSH connectivity to myvm",
             result: None,
         }]
+    }
+
+    #[allow(unused_variables, deprecated)]
+    fn get_dynamic_completion(
+        &self,
+        plugin: &TrampPlugin,
+        engine: &EngineInterface,
+        call: DynamicCompletionCall,
+        arg_type: ArgType,
+        _experimental: nu_protocol::engine::ExperimentalMarker,
+    ) -> Option<Vec<DynamicSuggestion>> {
+        complete_tramp_arg(plugin, call, arg_type, 0)
     }
 
     fn run(
@@ -1684,6 +1929,18 @@ impl PluginCommand for TrampExec {
         ]
     }
 
+    #[allow(unused_variables, deprecated)]
+    fn get_dynamic_completion(
+        &self,
+        plugin: &TrampPlugin,
+        engine: &EngineInterface,
+        call: DynamicCompletionCall,
+        arg_type: ArgType,
+        _experimental: nu_protocol::engine::ExperimentalMarker,
+    ) -> Option<Vec<DynamicSuggestion>> {
+        complete_tramp_arg(plugin, call, arg_type, 0)
+    }
+
     fn run(
         &self,
         plugin: &TrampPlugin,
@@ -1791,6 +2048,18 @@ impl PluginCommand for TrampInfo {
                 result: None,
             },
         ]
+    }
+
+    #[allow(unused_variables, deprecated)]
+    fn get_dynamic_completion(
+        &self,
+        plugin: &TrampPlugin,
+        engine: &EngineInterface,
+        call: DynamicCompletionCall,
+        arg_type: ArgType,
+        _experimental: nu_protocol::engine::ExperimentalMarker,
+    ) -> Option<Vec<DynamicSuggestion>> {
+        complete_tramp_arg(plugin, call, arg_type, 0)
     }
 
     fn run(
@@ -1971,6 +2240,18 @@ impl PluginCommand for TrampWatch {
                 result: None,
             },
         ]
+    }
+
+    #[allow(unused_variables, deprecated)]
+    fn get_dynamic_completion(
+        &self,
+        plugin: &TrampPlugin,
+        engine: &EngineInterface,
+        call: DynamicCompletionCall,
+        arg_type: ArgType,
+        _experimental: nu_protocol::engine::ExperimentalMarker,
+    ) -> Option<Vec<DynamicSuggestion>> {
+        complete_tramp_arg(plugin, call, arg_type, 0)
     }
 
     fn run(
