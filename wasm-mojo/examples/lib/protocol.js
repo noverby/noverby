@@ -125,8 +125,12 @@ export class MutationReader {
       }
       case Op.SetText:
         return { op, id: this.readU32(), text: this.readStr() };
-      case Op.NewEventListener:
-        return { op, id: this.readU32(), name: this.readShortStr() };
+      case Op.NewEventListener: {
+        const id = this.readU32();
+        const handlerId = this.readU32();
+        const name = this.readShortStr();
+        return { op, id, handlerId, name };
+      }
       case Op.RemoveEventListener:
         return { op, id: this.readU32(), name: this.readShortStr() };
       case Op.Remove:

@@ -278,7 +278,9 @@ struct CreateEngine:
                         )
                         if dyn_attr.value.kind == AVAL_EVENT:
                             self.writer[0].new_event_listener(
-                                elem_eid.as_u32(), dyn_attr.name
+                                elem_eid.as_u32(),
+                                dyn_attr.value.handler_id,
+                                dyn_attr.name,
                             )
                         elif dyn_attr.value.kind != AVAL_NONE:
                             # Determine namespace byte

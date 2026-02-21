@@ -22,6 +22,7 @@ from wasm_harness import (
     args_ptr_i32_i32,
     args_ptr_i32_i32_i32,
     args_ptr_i32_i32_ptr,
+    args_ptr_i32_i32_i32_ptr,
     args_ptr_i32_i32_i32_i32,
     args_ptr_i32_i32_i32_ptr_ptr,
     args_ptr_i32_ptr_i32,
@@ -534,7 +535,7 @@ fn test_new_event_listener(w: UnsafePointer[WasmInstance]) raises:
     var off = Int(
         w[].call_i32(
             "write_op_new_event_listener",
-            args_ptr_i32_i32_ptr(buf, 0, 11, name_ptr),
+            args_ptr_i32_i32_i32_ptr(buf, 0, 11, 42, name_ptr),
         )
     )
     _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
@@ -548,6 +549,9 @@ fn test_new_event_listener(w: UnsafePointer[WasmInstance]) raises:
     pos += 1
 
     assert_equal(_read_u32_le(w, buf, pos), 11, "id is 11")
+    pos += 4
+
+    assert_equal(_read_u32_le(w, buf, pos), 42, "handler_id is 42")
     pos += 4
 
     # name is u16-length-prefixed
@@ -805,7 +809,7 @@ fn test_mixed_mutations_with_strings(w: UnsafePointer[WasmInstance]) raises:
     off = Int(
         w[].call_i32(
             "write_op_new_event_listener",
-            args_ptr_i32_i32_ptr(buf, off, 1, click_ptr),
+            args_ptr_i32_i32_i32_ptr(buf, off, 1, 99, click_ptr),
         )
     )
     _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
@@ -834,7 +838,9 @@ fn test_mixed_mutations_with_strings(w: UnsafePointer[WasmInstance]) raises:
     # NewEventListener
     assert_equal(_read_u8(w, buf, pos), OP_NEW_EVENT_LISTENER)
     pos += 1
-    assert_equal(_read_u32_le(w, buf, pos), 1)
+    assert_equal(_read_u32_le(w, buf, pos), 1, "event listener element id")
+    pos += 4
+    assert_equal(_read_u32_le(w, buf, pos), 99, "event listener handler_id")
     pos += 4
     assert_equal(_read_u16_le(w, buf, pos), 5, "event name length is 5")
     pos += 2 + 5
@@ -1096,7 +1102,7 @@ fn test_all_opcodes_in_one_buffer(w: UnsafePointer[WasmInstance]) raises:
     off = Int(
         w[].call_i32(
             "write_op_new_event_listener",
-            args_ptr_i32_i32_ptr(buf, off, 12, e_ptr),
+            args_ptr_i32_i32_i32_ptr(buf, off, 12, 0, e_ptr),
         )
     )
     var e_ptr2 = w[].write_string_struct("e")
@@ -1159,9 +1165,9 @@ fn test_all_opcodes_in_one_buffer(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(_read_u8(w, buf, pos), OP_SET_TEXT)
     pos += 10
 
-    # NEW_EVENT_LISTENER: op(1) + id(4) + name_len(2) + "e"(1) = 8
+    # NEW_EVENT_LISTENER: op(1) + id(4) + handler_id(4) + name_len(2) + "e"(1) = 12
     assert_equal(_read_u8(w, buf, pos), OP_NEW_EVENT_LISTENER)
-    pos += 8
+    pos += 12
 
     # REMOVE_EVENT_LISTENER: op(1) + id(4) + name_len(2) + "e"(1) = 8
     assert_equal(_read_u8(w, buf, pos), OP_REMOVE_EVENT_LISTENER)

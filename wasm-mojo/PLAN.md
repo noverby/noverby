@@ -2838,10 +2838,10 @@ New: `| op (u8) | id (u32) | handler_id (u32) | name_len (u16) | name ([u8]) |`
 
 **Test updates:**
 
-- [ ] All Mojo protocol tests updated for new wire format size
-- [ ] All JS protocol tests updated for new field
-- [ ] All mutation tests updated for new `new_event_listener` signature
-- [ ] Verify handler_id flows through counter create → JS decode
+- [x] All Mojo protocol tests updated for new wire format size
+- [x] All JS protocol tests updated for new field
+- [x] All mutation tests updated for new `new_event_listener` signature
+- [x] Verify handler_id flows through counter create → JS decode
 
 ### 11.4 EventBridge Auto-Dispatch
 
@@ -2989,7 +2989,7 @@ boot();
 - [x] **M10.22:** Document `@export` submodule limitation. Investigated moving `@export` to submodules to eliminate ~430 lines of thin wrappers from `main.mojo`. Mojo's DCE eliminates submodule `@export` functions before LLVM IR — only main-module `@export` reliably produces WASM exports. Imports without call sites do not anchor against DCE. Current wrapper pattern is required. No code changes; limitation documented.
 - [x] **M11.1:** Template serialization protocol. `OP_REGISTER_TEMPLATE (0x10)` opcode + `MutationWriter.register_template()` method. Full template structure (nodes, attrs, roots) serialized to binary buffer. JS `MutationReader` decodes new opcode in both `examples/lib/protocol.js` and `runtime/protocol.ts`. `write_op_register_template` WASM export added. 3 new Mojo tests + 39 new JS assertions. All 679 Mojo + 899 JS tests pass.
 - [x] **M11.2:** JS template deserializer. `TemplateCache.registerFromMutation()` builds DOM template roots from decoded `RegisterTemplate` mutations. `Interpreter.handleMutation()` routes `Op.RegisterTemplate` to the cache. Browser interpreter (`examples/lib/interpreter.js`) gains `buildTemplateNode()` with inline tag-name lookup table. 25 new JS assertions (4 test suites: minimal, text+attrs, dynamic node, LoadTemplate round-trip). All 679 Mojo + 924 JS tests pass.
-- [ ] **M11.3:** Handler-aware event mutations. `NewEventListener` wire format extended with `handler_id (u32)`. CreateEngine/DiffEngine pass handler IDs. JS `MutationReader` + `Interpreter` updated. `onNewListener` callback receives handler ID.
+- [x] **M11.3:** Handler-aware event mutations. `NewEventListener` wire format extended with `handler_id (u32)`. `MutationWriter.new_event_listener(id, handler_id, name)` already had the parameter; callers updated: `CreateEngine` passes `dyn_attr.value.handler_id`, `DiffEngine` passes `new_attr.value.handler_id`, `write_op_new_event_listener` WASM export gains `handler_id` param. JS `MutationReader` reads extra u32 field, `MutationNewEventListener` gains `handlerId`, `Interpreter.onNewListener` callback signature becomes `(elementId, eventName, handlerId)`, `MutationBuilder.newEventListener` writes handler ID. All Mojo protocol/mutation test helpers updated for new wire format. All 679 Mojo + 927 JS tests pass.
 - [ ] **M11.4:** EventBridge auto-dispatch. `examples/lib/events.js` provides `EventBridge` class. Apps supply one `dispatch(handlerId, eventName, domEvent)` callback instead of manual handler-to-element mapping.
 - [ ] **M11.5:** AppShell template emission. `emit_templates(writer)` serializes all registered templates. Prepended to mount buffer for single-pass boot. `Runtime` gains template iteration accessors.
 - [ ] **M11.6:** Example simplification. Counter/todo/bench rewritten with auto template registration + EventBridge. Counter ~80→~25 lines, todo ~170→~50 lines, bench ~150→~60 lines. All examples verified in browser.

@@ -459,7 +459,7 @@ export function testInterpreter(fns: Fns): void {
 	suite("Interpreter — Remove node with children removes subtree");
 	{
 		const dom = createDOM();
-		const { interp, document, root: _root, templates } = createInterpreter(dom);
+		const { interp, document, root, templates } = createInterpreter(dom);
 
 		// Template: <div><p>text</p></div>
 		const div = document.createElement("div");
@@ -2199,7 +2199,7 @@ export function testInterpreter(fns: Fns): void {
 
 		const {
 			document: _document,
-			root: _root,
+			root,
 			templates,
 			interp,
 		} = createInterpreter();

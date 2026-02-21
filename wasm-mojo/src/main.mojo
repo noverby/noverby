@@ -1420,10 +1420,10 @@ fn write_op_set_attribute(
 
 @export
 fn write_op_new_event_listener(
-    buf: Int64, off: Int32, id: Int32, name: String
+    buf: Int64, off: Int32, id: Int32, handler_id: Int32, name: String
 ) -> Int32:
     var w = _writer(buf, off)
-    w.new_event_listener(UInt32(id), name)
+    w.new_event_listener(UInt32(id), UInt32(handler_id), name)
     return Int32(w.offset)
 
 

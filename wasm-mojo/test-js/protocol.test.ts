@@ -380,13 +380,14 @@ export function testProtocol(fns: WasmExports): void {
 	{
 		const buf = allocBuf(fns);
 		const namePtr = writeStringStruct("click");
-		const off = fns.write_op_new_event_listener(buf, 0, 60, namePtr);
-		// 1 (op) + 4 (id) + 2 (name_len) + 5 (name) = 12
-		assert(off, 12, "NewEventListener('click') writes 12 bytes");
+		const off = fns.write_op_new_event_listener(buf, 0, 60, 77, namePtr);
+		// 1 (op) + 4 (id) + 4 (handler_id) + 2 (name_len) + 5 (name) = 16
+		assert(off, 16, "NewEventListener('click') writes 16 bytes");
 
 		const m = readOne(buf, off) as MutationNewEventListener;
 		assert(m.op, Op.NewEventListener, "op is NewEventListener");
 		assert(m.id, 60, "id is 60");
+		assert(m.handlerId, 77, "handlerId is 77");
 		assert(m.name, "click", "name is 'click'");
 		freeBuf(fns, buf);
 	}
@@ -512,7 +513,7 @@ export function testProtocol(fns: WasmExports): void {
 		off = fns.write_op_create_text_node(buf, off, 11, textPtr);
 		off = fns.write_op_append_children(buf, off, 10, 1);
 		const evtPtr = writeStringStruct("click");
-		off = fns.write_op_new_event_listener(buf, off, 10, evtPtr);
+		off = fns.write_op_new_event_listener(buf, off, 10, 0, evtPtr);
 		off = fns.write_op_push_root(buf, off, 10);
 		off = fns.write_op_end(buf, off);
 
@@ -534,6 +535,7 @@ export function testProtocol(fns: WasmExports): void {
 		const el = mutations[3] as MutationNewEventListener;
 		assert(el.op, Op.NewEventListener, "fourth op is NewEventListener");
 		assert(el.name, "click", "listener name is 'click'");
+		assert(typeof el.handlerId, "number", "handlerId is a number");
 
 		assert(mutations[4].op, Op.PushRoot, "fifth op is PushRoot");
 
@@ -680,7 +682,7 @@ export function testProtocol(fns: WasmExports): void {
 		off = fns.write_op_set_text(buf, off, 12, t2);
 		// 12. NewEventListener
 		const e1 = writeStringStruct("click");
-		off = fns.write_op_new_event_listener(buf, off, 13, e1);
+		off = fns.write_op_new_event_listener(buf, off, 13, 0, e1);
 		// 13. RemoveEventListener
 		const e2 = writeStringStruct("click");
 		off = fns.write_op_remove_event_listener(buf, off, 14, e2);
@@ -730,6 +732,11 @@ export function testProtocol(fns: WasmExports): void {
 			(all[11] as MutationNewEventListener).name,
 			"click",
 			"NewEventListener name='click'",
+		);
+		assert(
+			(all[11] as MutationNewEventListener).handlerId,
+			0,
+			"NewEventListener handlerId=0",
 		);
 
 		freeBuf(fns, buf);

@@ -57,14 +57,19 @@ export class Interpreter {
 
 	/**
 	 * Optional callback invoked when a NewEventListener mutation is
-	 * processed.  The callback receives the element ID and event name
-	 * and should return the actual EventListener to attach.
+	 * processed.  The callback receives the element ID, event name,
+	 * and handler ID and should return the actual EventListener to
+	 * attach.
 	 *
 	 * If not set, a no-op listener is attached (useful for testing
 	 * structure without event wiring).
 	 */
 	onNewListener:
-		| ((elementId: number, eventName: string) => EventListener)
+		| ((
+				elementId: number,
+				eventName: string,
+				handlerId: number,
+		  ) => EventListener)
 		| null = null;
 
 	/**
@@ -143,7 +148,7 @@ export class Interpreter {
 				break;
 
 			case Op.NewEventListener:
-				this.opNewEventListener(m.id, m.name);
+				this.opNewEventListener(m.id, m.name, m.handlerId);
 				break;
 
 			case Op.RemoveEventListener:
@@ -379,13 +384,17 @@ export class Interpreter {
 	 * The actual handler function comes from `onNewListener` if set;
 	 * otherwise a no-op handler is used.
 	 */
-	private opNewEventListener(id: number, name: string): void {
+	private opNewEventListener(
+		id: number,
+		name: string,
+		handlerId: number,
+	): void {
 		const node = this.nodes.get(id);
 		if (!node || node.nodeType !== 1) return;
 
 		const el = node as Element;
 		const listener: EventListener = this.onNewListener
-			? this.onNewListener(id, name)
+			? this.onNewListener(id, name, handlerId)
 			: () => {};
 
 		// Track the listener so we can remove it later
@@ -738,9 +747,10 @@ export class MutationBuilder {
 		return this;
 	}
 
-	newEventListener(id: number, name: string): this {
+	newEventListener(id: number, name: string, handlerId = 0): this {
 		this.writeU8(Op.NewEventListener);
 		this.writeU32(id);
+		this.writeU32(handlerId);
 		this.writeShortStr(name);
 		return this;
 	}
