@@ -1,0 +1,526 @@
+# ComponentContext — Streamlined component authoring API.
+#
+# ComponentContext wraps an AppShell and provides a high-level API for
+# component authors, dramatically reducing boilerplate compared to raw
+# AppShell + Runtime manipulation.
+#
+# Instead of:
+#
+#     var shell = app_shell_create()
+#     var scope_id = shell.create_root_scope()
+#     _ = shell.begin_render(scope_id)
+#     var count_key = shell.use_signal_i32(0)
+#     _ = shell.read_signal_i32(count_key)    # subscribe scope
+#     var memo_id = shell.use_memo_i32(0)
+#     _ = shell.memo_read_i32(memo_id)        # subscribe scope
+#     shell.end_render(-1)
+#     var tmpl_id = UInt32(shell.runtime[0].templates.register(template^))
+#     var incr = UInt32(shell.runtime[0].register_handler(
+#         HandlerEntry.signal_add(scope_id, count_key, 1, String("click"))
+#     ))
+#
+# Developers write:
+#
+#     var ctx = ComponentContext.create()
+#     var count = ctx.use_signal(0)           # → SignalI32
+#     var doubled = ctx.use_memo(0)           # → MemoI32
+#     ctx.end_setup()
+#     ctx.register_template(view, "counter")
+#     var incr = ctx.on_click_add(count, 1)   # → UInt32 handler ID
+#
+# ComponentContext manages:
+#   - AppShell creation and lifecycle
+#   - Root scope creation and render bracket
+#   - Signal/memo/effect creation with automatic scope subscription
+#   - Template registration
+#   - Handler registration with short convenience methods
+#   - VNode building via the store
+#   - Event dispatch, flush, mount, diff lifecycle
+#
+# Ownership: ComponentContext OWNS the AppShell and is responsible for
+# destroying it.  The reactive handles (SignalI32, MemoI32, EffectHandle)
+# hold non-owning pointers back to the Runtime inside the shell.
+
+from memory import UnsafePointer
+from signals import Runtime
+from signals.handle import SignalI32, MemoI32, EffectHandle
+from events import HandlerEntry
+from bridge import MutationWriter
+from .app_shell import AppShell, app_shell_create
+from vdom import (
+    Node,
+    to_template,
+    VNodeBuilder,
+    VNodeStore,
+)
+
+
+struct ComponentContext(Movable):
+    """High-level component authoring context.
+
+    Wraps an AppShell and provides ergonomic methods for creating
+    signals, memos, effects, handlers, and managing the component
+    lifecycle.
+
+    Usage:
+        var ctx = ComponentContext.create()
+        var count = ctx.use_signal(0)
+        var doubled = ctx.use_memo(0)
+        ctx.end_setup()
+
+        ctx.register_template(view, "counter")
+        var incr = ctx.on_click_add(count, 1)
+        var decr = ctx.on_click_sub(count, 1)
+    """
+
+    var shell: AppShell
+    var scope_id: UInt32
+    var template_id: UInt32
+    var current_vnode: Int
+    var _setup_done: Bool
+
+    # ── Construction ─────────────────────────────────────────────────
+
+    fn __init__(out self):
+        """Create an uninitialized context.  Call create() instead."""
+        self.shell = AppShell()
+        self.scope_id = 0
+        self.template_id = 0
+        self.current_vnode = -1
+        self._setup_done = False
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.shell = other.shell^
+        self.scope_id = other.scope_id
+        self.template_id = other.template_id
+        self.current_vnode = other.current_vnode
+        self._setup_done = other._setup_done
+
+    @staticmethod
+    fn create() -> Self:
+        """Create a fully initialized ComponentContext.
+
+        Allocates the AppShell, creates a root scope, and begins the
+        first render bracket.  Call use_signal/use_memo/use_effect
+        to create hooks, then call end_setup() before registering
+        templates and handlers.
+
+        Returns:
+            A ready-to-use ComponentContext in setup mode.
+        """
+        var ctx = ComponentContext()
+        ctx.shell = app_shell_create()
+        ctx.scope_id = ctx.shell.create_root_scope()
+        _ = ctx.shell.begin_render(ctx.scope_id)
+        ctx._setup_done = False
+        return ctx^
+
+    fn end_setup(mut self):
+        """End the initial setup (render bracket).
+
+        Must be called after all use_signal/use_memo/use_effect calls
+        and before registering templates and handlers.
+        """
+        self.shell.end_render(-1)
+        self._setup_done = True
+
+    fn destroy(mut self):
+        """Free all resources.  Safe to call multiple times."""
+        self.shell.destroy()
+
+    # ── Signal hooks ─────────────────────────────────────────────────
+
+    fn use_signal(mut self, initial: Int32) -> SignalI32:
+        """Create an Int32 signal and subscribe the root scope to it.
+
+        Must be called during setup (before end_setup).
+
+        This is the ergonomic equivalent of:
+            var key = shell.use_signal_i32(initial)
+            _ = shell.read_signal_i32(key)  # subscribe scope
+
+        Args:
+            initial: The initial Int32 value.
+
+        Returns:
+            A SignalI32 handle with operator overloading.
+        """
+        var key = self.shell.use_signal_i32(initial)
+        # Read during render to subscribe the scope
+        _ = self.shell.read_signal_i32(key)
+        return SignalI32(key, self.shell.runtime)
+
+    fn create_signal(mut self, initial: Int32) -> SignalI32:
+        """Create an Int32 signal without the hook system.
+
+        Can be called at any time (not just during setup).
+        Does NOT auto-subscribe the scope.
+
+        Args:
+            initial: The initial Int32 value.
+
+        Returns:
+            A SignalI32 handle.
+        """
+        var key = self.shell.create_signal_i32(initial)
+        return SignalI32(key, self.shell.runtime)
+
+    # ── Memo hooks ───────────────────────────────────────────────────
+
+    fn use_memo(mut self, initial: Int32) -> MemoI32:
+        """Create an Int32 memo and subscribe the root scope to it.
+
+        Must be called during setup (before end_setup).
+
+        This is the ergonomic equivalent of:
+            var memo_id = shell.use_memo_i32(initial)
+            _ = shell.memo_read_i32(memo_id)  # subscribe scope
+
+        Args:
+            initial: The initial cached Int32 value.
+
+        Returns:
+            A MemoI32 handle with read/recompute methods.
+        """
+        var memo_id = self.shell.use_memo_i32(initial)
+        # Read during render to subscribe the scope to memo output
+        _ = self.shell.memo_read_i32(memo_id)
+        return MemoI32(memo_id, self.shell.runtime)
+
+    fn create_memo(mut self, initial: Int32) -> MemoI32:
+        """Create an Int32 memo without the hook system.
+
+        Can be called at any time.  Does NOT auto-subscribe.
+
+        Args:
+            initial: The initial cached Int32 value.
+
+        Returns:
+            A MemoI32 handle.
+        """
+        var memo_id = self.shell.create_memo_i32(self.scope_id, initial)
+        return MemoI32(memo_id, self.shell.runtime)
+
+    # ── Effect hooks ─────────────────────────────────────────────────
+
+    fn use_effect(mut self) -> EffectHandle:
+        """Create an effect and register it with the hook system.
+
+        Must be called during setup (before end_setup).
+
+        Returns:
+            An EffectHandle for lifecycle management.
+        """
+        var effect_id = self.shell.use_effect()
+        return EffectHandle(effect_id, self.shell.runtime)
+
+    fn create_effect(mut self) -> EffectHandle:
+        """Create an effect without the hook system.
+
+        Can be called at any time.
+
+        Returns:
+            An EffectHandle.
+        """
+        var effect_id = self.shell.create_effect(self.scope_id)
+        return EffectHandle(effect_id, self.shell.runtime)
+
+    # ── Template registration ────────────────────────────────────────
+
+    fn register_template(mut self, view: Node, name: String):
+        """Build a template from a Node tree and register it.
+
+        Stores the template ID in `self.template_id` for later use
+        in VNode building.
+
+        Args:
+            view: The root Node of the template tree (from DSL helpers).
+            name: The template name (for deduplication).
+        """
+        var template = to_template(view, name)
+        self.template_id = UInt32(
+            self.shell.runtime[0].templates.register(template^)
+        )
+
+    # ── Handler registration — click events ──────────────────────────
+
+    fn on_click_add(self, signal: SignalI32, delta: Int32) -> UInt32:
+        """Register a click handler that adds `delta` to a signal.
+
+        Equivalent to: `onclick: move |_| signal += delta`
+
+        Args:
+            signal: The signal to modify.
+            delta: The amount to add on each click.
+
+        Returns:
+            The handler ID for use in VNode event attributes.
+        """
+        return self.shell.runtime[0].register_handler(
+            HandlerEntry.signal_add(
+                self.scope_id, signal.key, delta, String("click")
+            )
+        )
+
+    fn on_click_sub(self, signal: SignalI32, delta: Int32) -> UInt32:
+        """Register a click handler that subtracts `delta` from a signal.
+
+        Equivalent to: `onclick: move |_| signal -= delta`
+
+        Args:
+            signal: The signal to modify.
+            delta: The amount to subtract on each click.
+
+        Returns:
+            The handler ID for use in VNode event attributes.
+        """
+        return self.shell.runtime[0].register_handler(
+            HandlerEntry.signal_sub(
+                self.scope_id, signal.key, delta, String("click")
+            )
+        )
+
+    fn on_click_set(self, signal: SignalI32, value: Int32) -> UInt32:
+        """Register a click handler that sets a signal to a fixed value.
+
+        Equivalent to: `onclick: move |_| signal.set(value)`
+
+        Args:
+            signal: The signal to modify.
+            value: The value to set on each click.
+
+        Returns:
+            The handler ID.
+        """
+        return self.shell.runtime[0].register_handler(
+            HandlerEntry.signal_set(
+                self.scope_id, signal.key, value, String("click")
+            )
+        )
+
+    fn on_click_toggle(self, signal: SignalI32) -> UInt32:
+        """Register a click handler that toggles a boolean signal (0 ↔ 1).
+
+        Equivalent to: `onclick: move |_| signal.toggle()`
+
+        Args:
+            signal: The boolean signal to toggle.
+
+        Returns:
+            The handler ID.
+        """
+        return self.shell.runtime[0].register_handler(
+            HandlerEntry.signal_toggle(
+                self.scope_id, signal.key, String("click")
+            )
+        )
+
+    # ── Handler registration — generic events ────────────────────────
+
+    fn on_event_add(
+        self, event_name: String, signal: SignalI32, delta: Int32
+    ) -> UInt32:
+        """Register a handler for any event that adds `delta` to a signal.
+
+        Args:
+            event_name: The DOM event name (e.g. "click", "input").
+            signal: The signal to modify.
+            delta: The amount to add.
+
+        Returns:
+            The handler ID.
+        """
+        return self.shell.runtime[0].register_handler(
+            HandlerEntry.signal_add(
+                self.scope_id, signal.key, delta, event_name
+            )
+        )
+
+    fn on_event_sub(
+        self, event_name: String, signal: SignalI32, delta: Int32
+    ) -> UInt32:
+        """Register a handler for any event that subtracts `delta`.
+
+        Args:
+            event_name: The DOM event name.
+            signal: The signal to modify.
+            delta: The amount to subtract.
+
+        Returns:
+            The handler ID.
+        """
+        return self.shell.runtime[0].register_handler(
+            HandlerEntry.signal_sub(
+                self.scope_id, signal.key, delta, event_name
+            )
+        )
+
+    fn on_event_set(
+        self, event_name: String, signal: SignalI32, value: Int32
+    ) -> UInt32:
+        """Register a handler for any event that sets a signal.
+
+        Args:
+            event_name: The DOM event name.
+            signal: The signal to modify.
+            value: The value to set.
+
+        Returns:
+            The handler ID.
+        """
+        return self.shell.runtime[0].register_handler(
+            HandlerEntry.signal_set(
+                self.scope_id, signal.key, value, event_name
+            )
+        )
+
+    fn on_input_set(self, signal: SignalI32) -> UInt32:
+        """Register an input handler that sets a signal from event data.
+
+        Equivalent to: `oninput: move |e| signal.set(e.value)`
+
+        Args:
+            signal: The signal to update with the input value.
+
+        Returns:
+            The handler ID.
+        """
+        return self.shell.runtime[0].register_handler(
+            HandlerEntry.signal_set_input(
+                self.scope_id, signal.key, String("input")
+            )
+        )
+
+    fn register_handler(self, entry: HandlerEntry) -> UInt32:
+        """Register a raw HandlerEntry for full control.
+
+        Use this when the convenience methods don't cover your use case.
+
+        Args:
+            entry: The fully configured handler entry.
+
+        Returns:
+            The handler ID.
+        """
+        return self.shell.runtime[0].register_handler(entry)
+
+    # ── VNode building ───────────────────────────────────────────────
+
+    fn vnode_builder(self) -> VNodeBuilder:
+        """Create a VNodeBuilder for the context's registered template.
+
+        Returns:
+            A VNodeBuilder ready for add_dyn_text/add_dyn_event calls.
+        """
+        return VNodeBuilder(self.template_id, self.shell.store)
+
+    fn vnode_builder_keyed(self, key: String) -> VNodeBuilder:
+        """Create a keyed VNodeBuilder for the context's template.
+
+        Args:
+            key: The key string for keyed diffing.
+
+        Returns:
+            A keyed VNodeBuilder.
+        """
+        return VNodeBuilder(self.template_id, key, self.shell.store)
+
+    fn vnode_builder_for(self, template_id: UInt32) -> VNodeBuilder:
+        """Create a VNodeBuilder for a specific template ID.
+
+        Use this when the component has multiple templates.
+
+        Args:
+            template_id: The template to instantiate.
+
+        Returns:
+            A VNodeBuilder.
+        """
+        return VNodeBuilder(template_id, self.shell.store)
+
+    # ── Mount / Rebuild lifecycle ────────────────────────────────────
+
+    fn mount(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter],
+        vnode_idx: UInt32,
+    ) -> Int32:
+        """Initial mount: emit templates + create VNode + append to root.
+
+        Call this for the first render of the component.
+
+        Args:
+            writer_ptr: Mutation buffer.
+            vnode_idx: Index of the VNode to mount.
+
+        Returns:
+            Byte length of mutation data.
+        """
+        self.current_vnode = Int(vnode_idx)
+        return self.shell.mount_with_templates(writer_ptr, vnode_idx)
+
+    # ── Event dispatch ───────────────────────────────────────────────
+
+    fn dispatch_event(mut self, handler_id: UInt32, event_type: UInt8) -> Bool:
+        """Dispatch an event to a handler.
+
+        Args:
+            handler_id: The handler to invoke.
+            event_type: The event type tag (EVT_CLICK, etc.).
+
+        Returns:
+            True if an action was executed.
+        """
+        return self.shell.dispatch_event(handler_id, event_type)
+
+    # ── Flush lifecycle ──────────────────────────────────────────────
+
+    fn has_dirty(self) -> Bool:
+        """Check if any scopes need re-rendering."""
+        return self.shell.has_dirty()
+
+    fn consume_dirty(mut self) -> Bool:
+        """Collect and consume all dirty scopes.
+
+        Returns:
+            True if any scopes were dirty.
+        """
+        return self.shell.consume_dirty()
+
+    fn diff(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter],
+        new_vnode_idx: UInt32,
+    ):
+        """Diff the current VNode against a new one.
+
+        Updates current_vnode to the new index.
+
+        Args:
+            writer_ptr: Mutation buffer.
+            new_vnode_idx: Index of the new VNode.
+        """
+        var old_idx = UInt32(self.current_vnode)
+        self.shell.diff(writer_ptr, old_idx, new_vnode_idx)
+        self.current_vnode = Int(new_vnode_idx)
+
+    fn finalize(self, writer_ptr: UnsafePointer[MutationWriter]) -> Int32:
+        """Write the End sentinel and return byte length.
+
+        Args:
+            writer_ptr: Mutation buffer.
+
+        Returns:
+            Byte length of mutation data.
+        """
+        return self.shell.finalize(writer_ptr)
+
+    # ── Accessors for WASM exports ───────────────────────────────────
+
+    fn runtime_ptr(self) -> UnsafePointer[Runtime]:
+        """Return the runtime pointer (for WASM export helpers)."""
+        return self.shell.runtime
+
+    fn store_ptr(self) -> UnsafePointer[VNodeStore]:
+        """Return the VNode store pointer."""
+        return self.shell.store

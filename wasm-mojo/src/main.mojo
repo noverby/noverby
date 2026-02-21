@@ -2066,13 +2066,13 @@ fn counter_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 @export
 fn counter_rt_ptr(app_ptr: Int64) -> Int64:
     """Return the runtime pointer for JS template registration."""
-    return _to_i64(_get[CounterApp](app_ptr)[0].shell.runtime)
+    return _to_i64(_get[CounterApp](app_ptr)[0].ctx.shell.runtime)
 
 
 @export
 fn counter_tmpl_id(app_ptr: Int64) -> Int32:
     """Return the counter template ID."""
-    return Int32(_get[CounterApp](app_ptr)[0].template_id)
+    return Int32(_get[CounterApp](app_ptr)[0].ctx.template_id)
 
 
 @export
@@ -2090,40 +2090,37 @@ fn counter_decr_handler(app_ptr: Int64) -> Int32:
 @export
 fn counter_count_value(app_ptr: Int64) -> Int32:
     """Peek the current count signal value (without subscribing)."""
-    var app = _get[CounterApp](app_ptr)
-    return app[0].shell.peek_signal_i32(app[0].count_signal)
+    return _get[CounterApp](app_ptr)[0].count.peek()
 
 
 @export
 fn counter_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the counter app has dirty scopes.  Returns 1 or 0."""
-    return _b2i(_get[CounterApp](app_ptr)[0].shell.has_dirty())
+    return _b2i(_get[CounterApp](app_ptr)[0].ctx.has_dirty())
 
 
 @export
 fn counter_scope_id(app_ptr: Int64) -> Int32:
     """Return the counter app's root scope ID."""
-    return Int32(_get[CounterApp](app_ptr)[0].scope_id)
+    return Int32(_get[CounterApp](app_ptr)[0].ctx.scope_id)
 
 
 @export
 fn counter_count_signal(app_ptr: Int64) -> Int32:
     """Return the counter app's count signal key."""
-    return Int32(_get[CounterApp](app_ptr)[0].count_signal)
+    return Int32(_get[CounterApp](app_ptr)[0].count.key)
 
 
 @export
 fn counter_doubled_value(app_ptr: Int64) -> Int32:
     """Read the doubled memo's cached value directly."""
-    return _get[CounterApp](app_ptr)[0].shell.memo_read_i32(
-        _get[CounterApp](app_ptr)[0].doubled_memo
-    )
+    return _get[CounterApp](app_ptr)[0].doubled.read()
 
 
 @export
 fn counter_doubled_memo(app_ptr: Int64) -> Int32:
     """Return the counter app's doubled memo ID."""
-    return Int32(_get[CounterApp](app_ptr)[0].doubled_memo)
+    return Int32(_get[CounterApp](app_ptr)[0].doubled.id)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

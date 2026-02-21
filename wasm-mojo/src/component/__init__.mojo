@@ -1,4 +1,4 @@
-# Component package — re-exports AppShell and lifecycle helpers.
+# Component package — re-exports AppShell, lifecycle helpers, and ComponentContext.
 
 from .app_shell import AppShell, app_shell_create
 from .lifecycle import (
@@ -10,3 +10,4 @@ from .lifecycle import (
     diff_no_finalize,
     create_no_finalize,
 )
+from .context import ComponentContext
