@@ -2425,6 +2425,60 @@ runtime/
 
 ---
 
+## Phase 10 — Modularization & Next Steps
+
+> **Goal:** Improve codebase structure, reduce monolithic coupling, and prepare for future feature work.
+>
+> **Status:** In progress.
+
+### 10.1 Extract App Modules (✅ Done)
+
+The monolithic `src/main.mojo` (4,249 lines) has been refactored:
+
+- **`src/apps/counter.mojo`** — `CounterApp` struct + lifecycle functions (`counter_app_init`, `counter_app_destroy`, `counter_app_rebuild`, `counter_app_handle_event`, `counter_app_flush`)
+- **`src/apps/todo.mojo`** — `TodoApp` + `TodoItem` structs + lifecycle functions (`todo_app_init`, `todo_app_destroy`, `todo_app_rebuild`, `todo_app_flush`)
+- **`src/apps/bench.mojo`** — `BenchmarkApp` + `BenchRow` structs + label generation + lifecycle functions (`bench_app_init`, `bench_app_destroy`, `bench_app_rebuild`, `bench_app_flush`)
+- **`src/apps/__init__.mojo`** — Package re-exports
+
+`src/main.mojo` is now 2,930 lines of thin `@export` wrappers and PoC arithmetic/string functions. All 790 tests pass unchanged.
+
+### 10.2 Extract PoC Exports (Planned)
+
+Move the original proof-of-concept arithmetic, string, and algorithm exports into a `src/poc/` package:
+
+- `src/poc/arithmetic.mojo` — add, sub, mul, div, mod, pow, neg, abs, min, max, clamp
+- `src/poc/bitwise.mojo` — bitand, bitor, bitxor, bitnot, shl, shr
+- `src/poc/comparison.mojo` — eq, ne, lt, le, gt, ge, bool_and, bool_or, bool_not
+- `src/poc/algorithms.mojo` — fib, factorial, gcd
+- `src/poc/strings.mojo` — string_length, string_concat, string_repeat, string_eq, print, identity
+
+### 10.3 Shared JS Runtime Deduplication (Planned)
+
+The counter, todo, and bench examples each inline the full WASM environment, mutation reader, and interpreter (~300 lines each). Extract into a shared `runtime/` import:
+
+- Deduplicate `MutationReader`, `Interpreter`, `env` object across examples
+- Single `runtime/boot.ts` helper: `createApp({ wasmUrl, templateRoots, onEvent })`
+- Examples become ~50 lines each
+
+### 10.4 Component Abstraction (Planned)
+
+Currently each app is a hand-rolled struct with manual scope/signal/template wiring. Introduce a `Component` trait or helper:
+
+- `src/component/component.mojo` — `ComponentFn` type alias, `Element` alias
+- `src/component/lifecycle.mojo` — `mount`, `update`, `unmount` orchestration
+- `src/scheduler/scheduler.mojo` — dirty scope queue with height-ordered rendering
+
+### 10.5 Ergonomic Builder API (Planned)
+
+Implement the Tier 1 builder DSL from the plan's [Ergonomics-First API Design](#ergonomics-first-api-design) section:
+
+- `div(class_="counter", children=[...])` style tag helpers
+- `signal(value)` shorthand
+- `Renderable` trait for heterogeneous children (String, Signal, Element)
+- Keyword arguments for attributes and events
+
+---
+
 ## Milestone Checklist
 
 - [x] **M0:** Arena allocator + collections + ElementId + protocol defined. All existing tests still pass.
@@ -2437,3 +2491,8 @@ runtime/
 - [x] **M7:** Counter app works in a browser. Click increment, see number change. 🎉
 - [x] **M8:** Todo list works. Conditional rendering, keyed lists, context, error boundaries, suspense.
 - [x] **M9:** js-framework-benchmark competitive. Memory bounded. Tier 2 compile-time templates deferred (core template-aware diffing already in place; full `comptime` path awaits Mojo language maturation). Developer tools functional.
+- [x] **M10.1:** App modules extracted (`apps/counter.mojo`, `apps/todo.mojo`, `apps/bench.mojo`). `main.mojo` reduced from 4,249 → 2,930 lines. All 790 tests pass.
+- [ ] **M10.2:** PoC exports extracted to `poc/` package. `main.mojo` reduced to pure @export wrappers (~1,500 lines).
+- [ ] **M10.3:** Shared JS runtime. Examples deduplicated. `runtime/boot.ts` helper.
+- [ ] **M10.4:** Component abstraction. `Component` trait, scheduler, lifecycle hooks.
+- [ ] **M10.5:** Ergonomic builder API. Tag helpers, `signal()` shorthand, `Renderable` trait.
