@@ -214,6 +214,10 @@ fn _get_scheduler(sched_ptr: Int64) -> UnsafePointer[Scheduler]:
     return _as_ptr[Scheduler](Int(sched_ptr))
 
 
+fn _get_writer(writer_ptr: Int64) -> UnsafePointer[MutationWriter]:
+    return _as_ptr[MutationWriter](Int(writer_ptr))
+
+
 # ── Helper: Bool → Int32 for WASM ABI ───────────────────────────────────────
 
 
@@ -326,7 +330,7 @@ fn runtime_create() -> Int64:
 @export
 fn runtime_destroy(rt_ptr: Int64):
     """Destroy and free a heap-allocated Runtime."""
-    destroy_runtime(_as_ptr[Runtime](Int(rt_ptr)))
+    destroy_runtime(_get_runtime(rt_ptr))
 
 
 @export
@@ -594,7 +598,7 @@ fn tmpl_builder_create(name: String) -> Int64:
 @export
 fn tmpl_builder_destroy(ptr: Int64):
     """Destroy and free a heap-allocated TemplateBuilder."""
-    destroy_builder(_as_ptr[TemplateBuilder](Int(ptr)))
+    destroy_builder(_get_builder(ptr))
 
 
 @export
@@ -891,7 +895,7 @@ fn vnode_store_create() -> Int64:
 @export
 fn vnode_store_destroy(store_ptr: Int64):
     """Destroy and free a heap-allocated VNodeStore."""
-    var ptr = _as_ptr[VNodeStore](Int(store_ptr))
+    var ptr = _get_vnode_store(store_ptr)
     ptr.destroy_pointee()
     ptr.free()
 
@@ -1170,32 +1174,25 @@ fn signal_isub_i32(rt_ptr: Int64, key: Int32, rhs: Int32):
 @export
 fn writer_create(buf_ptr: Int64, capacity: Int32) -> Int64:
     """Create a heap-allocated MutationWriter.  Returns its pointer."""
-    var ptr = UnsafePointer[MutationWriter].alloc(1)
-    ptr.init_pointee_move(
-        MutationWriter(_as_ptr[UInt8](Int(buf_ptr)), Int(capacity))
-    )
-    return Int64(Int(ptr))
+    return _to_i64(_alloc_writer(buf_ptr, capacity))
 
 
 @export
 fn writer_destroy(writer_ptr: Int64):
     """Destroy and free a heap-allocated MutationWriter."""
-    var ptr = _as_ptr[MutationWriter](Int(writer_ptr))
-    ptr.destroy_pointee()
-    ptr.free()
+    _free_writer(_get_writer(writer_ptr))
 
 
 @export
 fn writer_offset(writer_ptr: Int64) -> Int32:
     """Return the current write offset of the MutationWriter."""
-    var ptr = _as_ptr[MutationWriter](Int(writer_ptr))
-    return Int32(ptr[0].offset)
+    return Int32(_get_writer(writer_ptr)[0].offset)
 
 
 @export
 fn writer_finalize(writer_ptr: Int64) -> Int32:
     """Write the End sentinel and return the final offset."""
-    var ptr = _as_ptr[MutationWriter](Int(writer_ptr))
+    var ptr = _get_writer(writer_ptr)
     ptr[0].finalize()
     return Int32(ptr[0].offset)
 
@@ -1209,10 +1206,10 @@ fn create_vnode(
     vnode_index: Int32,
 ) -> Int32:
     """Create mutations for the VNode at vnode_index.  Returns root count."""
-    var w = _as_ptr[MutationWriter](Int(writer_ptr))
-    var e = _as_ptr[ElementIdAllocator](Int(eid_ptr))
-    var rt = _as_ptr[Runtime](Int(rt_ptr))
-    var s = _as_ptr[VNodeStore](Int(store_ptr))
+    var w = _get_writer(writer_ptr)
+    var e = _get_eid_alloc(eid_ptr)
+    var rt = _get_runtime(rt_ptr)
+    var s = _get_vnode_store(store_ptr)
 
     var engine = CreateEngine(w, e, rt, s)
     return Int32(engine.create_node(UInt32(vnode_index)))
@@ -1228,10 +1225,10 @@ fn diff_vnodes(
     new_index: Int32,
 ) -> Int32:
     """Diff old and new VNodes and emit mutations.  Returns writer offset."""
-    var w = _as_ptr[MutationWriter](Int(writer_ptr))
-    var e = _as_ptr[ElementIdAllocator](Int(eid_ptr))
-    var rt = _as_ptr[Runtime](Int(rt_ptr))
-    var s = _as_ptr[VNodeStore](Int(store_ptr))
+    var w = _get_writer(writer_ptr)
+    var e = _get_eid_alloc(eid_ptr)
+    var rt = _get_runtime(rt_ptr)
+    var s = _get_vnode_store(store_ptr)
 
     var engine = DiffEngine(w, e, rt, s)
     engine.diff_node(UInt32(old_index), UInt32(new_index))
