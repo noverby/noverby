@@ -11,6 +11,7 @@
 //! - `tramp exec <path> <cmd>`  — execute a command on the remote (push execution)
 //! - `tramp info <path>`        — show remote system info (OS, arch, hostname, disk)
 //! - `tramp watch <path>`       — watch a remote path for filesystem changes (requires RPC agent)
+//! - `tramp shell <path>`       — interactive remote terminal session (requires RPC agent)
 //! - `tramp ping <path>`        — test connectivity to a remote host
 //! - `tramp connections`        — list active connections
 //! - `tramp disconnect [host]`  — close connections
@@ -32,6 +33,7 @@ mod errors;
 mod protocol;
 mod vfs;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use nu_plugin::{
@@ -95,6 +97,8 @@ impl Plugin for TrampPlugin {
             Box::new(TrampConnections),
             Box::new(TrampDisconnect),
             Box::new(TrampWatch),
+            #[cfg(unix)]
+            Box::new(TrampShell),
         ]
     }
 }
@@ -415,6 +419,13 @@ Filesystem watching (requires RPC agent):
     tramp watch /ssh:myvm:/app --recursive
     tramp watch /ssh:myvm:/ --list
     tramp watch /ssh:myvm:/app --remove
+
+Interactive remote shell (requires RPC agent):
+
+    tramp shell /ssh:myvm:/
+    tramp shell /ssh:myvm:/app --shell /bin/bash
+    tramp shell /docker:mycontainer:/
+    tramp shell /ssh:myvm|docker:ctr:/
 
 Connection management:
 
@@ -2381,6 +2392,407 @@ impl PluginCommand for TrampWatch {
 
         Ok(PipelineData::Value(Value::list(all_events, span), None))
     }
+}
+
+// ---------------------------------------------------------------------------
+// `tramp shell` — interactive remote terminal session
+// ---------------------------------------------------------------------------
+
+/// Start an interactive remote shell session using the RPC agent's PTY support.
+///
+/// Opens `/dev/tty` directly (bypassing the plugin's stdin/stdout MsgPack-RPC
+/// channel), puts it in raw mode, and relays bytes bidirectionally between the
+/// local terminal and the remote PTY.
+#[cfg(unix)]
+struct TrampShell;
+
+#[cfg(unix)]
+mod tty_raw {
+    //! Minimal terminal helpers using `libc`.
+    //!
+    //! We access the controlling terminal via `/dev/tty` so that the plugin's
+    //! stdin/stdout (used for MsgPack-RPC with Nushell) remain undisturbed.
+
+    use std::fs::{File, OpenOptions};
+    use std::io;
+    use std::os::unix::io::AsRawFd;
+
+    /// Open `/dev/tty` for read+write.
+    pub fn open_tty() -> io::Result<File> {
+        OpenOptions::new().read(true).write(true).open("/dev/tty")
+    }
+
+    /// Query the terminal dimensions of the given fd.
+    /// Returns `(cols, rows)`.  Falls back to 80×24 on failure.
+    pub fn terminal_size(fd: i32) -> (u16, u16) {
+        unsafe {
+            let mut ws: libc::winsize = std::mem::zeroed();
+            if libc::ioctl(fd, libc::TIOCGWINSZ, &mut ws) == 0 && ws.ws_col > 0 && ws.ws_row > 0 {
+                (ws.ws_col, ws.ws_row)
+            } else {
+                (80, 24)
+            }
+        }
+    }
+
+    /// Save the current termios settings and switch to raw mode.
+    /// Returns the original termios so it can be restored later.
+    pub fn enable_raw_mode(fd: i32) -> io::Result<libc::termios> {
+        unsafe {
+            let mut orig: libc::termios = std::mem::zeroed();
+            if libc::tcgetattr(fd, &mut orig) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            let mut raw = orig;
+            libc::cfmakeraw(&mut raw);
+            // Ensure we still get reads even on a single byte.
+            raw.c_cc[libc::VMIN] = 1;
+            raw.c_cc[libc::VTIME] = 0;
+            if libc::tcsetattr(fd, libc::TCSANOW, &raw) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(orig)
+        }
+    }
+
+    /// Restore previously saved termios settings.
+    pub fn restore_mode(fd: i32, orig: &libc::termios) {
+        unsafe {
+            libc::tcsetattr(fd, libc::TCSANOW, orig);
+        }
+    }
+
+    /// Non-blocking read with a timeout (via `poll`).
+    /// Returns `Some(n)` with the number of bytes read, or `None` on
+    /// timeout / error / EOF.
+    pub fn read_with_timeout(fd: i32, buf: &mut [u8], timeout_ms: i32) -> Option<usize> {
+        unsafe {
+            let mut pfd = libc::pollfd {
+                fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            let ret = libc::poll(&mut pfd, 1, timeout_ms);
+            if ret > 0 && (pfd.revents & libc::POLLIN) != 0 {
+                let n = libc::read(fd, buf.as_mut_ptr().cast(), buf.len());
+                if n > 0 { Some(n as usize) } else { None }
+            } else {
+                None
+            }
+        }
+    }
+
+    /// Write all bytes to an fd.
+    pub fn write_all(fd: i32, data: &[u8]) {
+        unsafe {
+            let mut off = 0;
+            while off < data.len() {
+                let n = libc::write(fd, data[off..].as_ptr().cast(), data.len() - off);
+                if n <= 0 {
+                    break;
+                }
+                off += n as usize;
+            }
+        }
+    }
+
+    /// A guard that restores termios on drop (panic-safe cleanup).
+    pub struct RawModeGuard {
+        fd: i32,
+        orig: libc::termios,
+    }
+
+    impl RawModeGuard {
+        pub fn new(tty: &File) -> io::Result<Self> {
+            let fd = tty.as_raw_fd();
+            let orig = enable_raw_mode(fd)?;
+            Ok(Self { fd, orig })
+        }
+
+        #[allow(dead_code)]
+        pub fn fd(&self) -> i32 {
+            self.fd
+        }
+    }
+
+    impl Drop for RawModeGuard {
+        fn drop(&mut self) {
+            restore_mode(self.fd, &self.orig);
+        }
+    }
+}
+
+#[cfg(unix)]
+impl PluginCommand for TrampShell {
+    type Plugin = TrampPlugin;
+
+    fn name(&self) -> &str {
+        "tramp shell"
+    }
+
+    fn description(&self) -> &str {
+        "Start an interactive remote shell session (requires RPC agent)"
+    }
+
+    fn extra_description(&self) -> &str {
+        "Opens a full interactive terminal on the remote host using the \
+         RPC agent's pseudo-terminal (PTY) support.  Keystrokes are forwarded \
+         to the remote shell and its output is displayed locally.\n\n\
+         The session ends when the remote shell exits (e.g. `exit`, Ctrl-D).\n\n\
+         Requires the RPC agent to be deployed on the remote host (this \
+         happens automatically for SSH and standalone Docker/K8s backends).\n\n\
+         The terminal is put in raw mode for the duration of the session so \
+         that control characters (Ctrl-C, etc.) are forwarded to the remote \
+         rather than interpreted locally."
+    }
+
+    fn signature(&self) -> Signature {
+        Signature::build(self.name())
+            .required(
+                "path",
+                SyntaxShape::String,
+                "TRAMP URI identifying the remote target (remote path is used as CWD)",
+            )
+            .named(
+                "shell",
+                SyntaxShape::String,
+                "Shell program to run (default: $SHELL or /bin/sh)",
+                Some('s'),
+            )
+            .input_output_types(vec![(Type::Nothing, Type::Nothing)])
+            .category(Category::FileSystem)
+    }
+
+    fn search_terms(&self) -> Vec<&str> {
+        vec![
+            "tramp",
+            "shell",
+            "terminal",
+            "pty",
+            "interactive",
+            "remote",
+            "ssh",
+        ]
+    }
+
+    fn examples(&self) -> Vec<Example<'_>> {
+        vec![
+            Example {
+                example: "tramp shell /ssh:myvm:/",
+                description: "Open an interactive shell on a remote host",
+                result: None,
+            },
+            Example {
+                example: "tramp shell /ssh:myvm:/app",
+                description: "Open a shell with /app as the working directory",
+                result: None,
+            },
+            Example {
+                example: "tramp shell /ssh:myvm:/ --shell /bin/bash",
+                description: "Open a bash shell on a remote host",
+                result: None,
+            },
+            Example {
+                example: "tramp shell /docker:mycontainer:/",
+                description: "Open a shell inside a local Docker container",
+                result: None,
+            },
+            Example {
+                example: "tramp shell /ssh:myvm|docker:ctr:/",
+                description: "Open a shell inside a Docker container on a remote host",
+                result: None,
+            },
+        ]
+    }
+
+    #[allow(unused_variables, deprecated)]
+    fn get_dynamic_completion(
+        &self,
+        plugin: &TrampPlugin,
+        engine: &EngineInterface,
+        call: DynamicCompletionCall,
+        arg_type: ArgType,
+        _experimental: nu_protocol::engine::ExperimentalMarker,
+    ) -> Option<Vec<DynamicSuggestion>> {
+        complete_tramp_arg(plugin, call, arg_type, 0)
+    }
+
+    fn run(
+        &self,
+        plugin: &TrampPlugin,
+        engine: &EngineInterface,
+        call: &EvaluatedCall,
+        _input: PipelineData,
+    ) -> Result<PipelineData, LabeledError> {
+        use std::os::unix::io::AsRawFd;
+
+        apply_cache_ttl(engine, &plugin.vfs);
+        let path = parse_tramp_arg(call, &plugin.remote_cwd)?;
+        let span = call.head;
+
+        // Ensure the backend supports PTY.
+        let supports = plugin.vfs.supports_pty(&path);
+        if !supports {
+            return Err(
+                LabeledError::new("PTY support is not available on this backend").with_label(
+                    "requires the RPC agent (only available for SSH and standalone Docker/K8s)",
+                    span,
+                ),
+            );
+        }
+
+        // Open /dev/tty for direct terminal access (bypasses plugin stdio).
+        let tty = tty_raw::open_tty().map_err(|e| {
+            LabeledError::new(format!("cannot open terminal (/dev/tty): {e}"))
+                .with_label("not running in an interactive terminal?", span)
+        })?;
+        let tty_fd = tty.as_raw_fd();
+
+        // Query terminal dimensions.
+        let (cols, rows) = tty_raw::terminal_size(tty_fd);
+
+        // Determine which shell to run.
+        let shell: String = call
+            .get_flag_value("shell")
+            .and_then(|v| v.as_str().ok().map(|s| s.to_string()))
+            .unwrap_or_else(|| {
+                // Try to detect the remote default shell via $SHELL.
+                if let Ok(result) = plugin.vfs.exec(&path, "sh", &["-c", "echo $SHELL"]) {
+                    let s = String::from_utf8_lossy(&result.stdout).trim().to_string();
+                    if !s.is_empty() && result.exit_code == 0 {
+                        return s;
+                    }
+                }
+                "/bin/sh".to_string()
+            });
+
+        // Build args: use -l for a login shell, and set CWD via `cd <dir> &&`.
+        // Instead of passing CWD as an arg (not all shells support it), we
+        // wrap in `sh -c 'cd <dir> && exec <shell> -l'` when CWD != "/".
+        let remote_dir = &path.remote_path;
+        let (program, args): (String, Vec<String>) = if remote_dir != "/" {
+            (
+                "sh".to_string(),
+                vec![
+                    "-c".to_string(),
+                    format!(
+                        "cd {} && exec {} -l",
+                        shell_escape(remote_dir),
+                        shell_escape(&shell)
+                    ),
+                ],
+            )
+        } else {
+            (shell.clone(), vec!["-l".to_string()])
+        };
+
+        let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+        // Start the remote PTY.
+        let pty_handle = plugin
+            .vfs
+            .pty_start(&path, &program, &arg_refs, rows, cols)
+            .map_err(|e| tramp_err(e, span))?;
+        let handle_id = pty_handle.handle;
+
+        // Switch the local terminal to raw mode.  The guard restores it on
+        // drop (including panics).
+        let _raw_guard = tty_raw::RawModeGuard::new(&tty).map_err(|e| {
+            // Kill the PTY before returning the error.
+            let _ = plugin.vfs.pty_kill(&path, handle_id);
+            LabeledError::new(format!("failed to set terminal to raw mode: {e}"))
+        })?;
+
+        // Shared flag: set to `false` when the remote process exits.
+        let running = Arc::new(AtomicBool::new(true));
+
+        // Clone what the input thread needs.
+        let vfs_in = Arc::clone(&plugin.vfs);
+        let path_in = path.clone();
+        let running_in = Arc::clone(&running);
+
+        // --- Input thread: /dev/tty → remote PTY ---
+        let input_handle = std::thread::Builder::new()
+            .name("tramp-shell-input".into())
+            .spawn(move || {
+                let mut buf = [0u8; 4096];
+                while running_in.load(Ordering::Relaxed) {
+                    // Poll the tty with a 50ms timeout so we can check the
+                    // running flag periodically.
+                    if let Some(n) = tty_raw::read_with_timeout(tty_fd, &mut buf, 50) {
+                        let data = bytes::Bytes::copy_from_slice(&buf[..n]);
+                        if vfs_in.pty_write(&path_in, handle_id, data).is_err() {
+                            break;
+                        }
+                    }
+                }
+            })
+            .map_err(|e| {
+                let _ = plugin.vfs.pty_kill(&path, handle_id);
+                LabeledError::new(format!("failed to spawn input thread: {e}"))
+            })?;
+
+        // --- Output loop (runs on the current thread): remote PTY → /dev/tty ---
+        let mut prev_cols = cols;
+        let mut prev_rows = rows;
+        // Check for terminal resize every ~20 iterations (~100ms at 5ms sleep).
+        let mut resize_counter: u32 = 0;
+
+        loop {
+            match plugin.vfs.pty_read(&path, handle_id) {
+                Ok(result) => {
+                    if !result.data.is_empty() {
+                        tty_raw::write_all(tty_fd, &result.data);
+                    }
+                    if !result.running {
+                        running.store(false, Ordering::Relaxed);
+                        break;
+                    }
+                    // If no data was available, sleep briefly to avoid busy-loop.
+                    if result.data.is_empty() {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                }
+                Err(_) => {
+                    // Communication error — treat as session end.
+                    running.store(false, Ordering::Relaxed);
+                    break;
+                }
+            }
+
+            // Periodically check for terminal resize.
+            resize_counter += 1;
+            if resize_counter >= 20 {
+                resize_counter = 0;
+                let (new_cols, new_rows) = tty_raw::terminal_size(tty_fd);
+                if new_cols != prev_cols || new_rows != prev_rows {
+                    prev_cols = new_cols;
+                    prev_rows = new_rows;
+                    let _ = plugin.vfs.pty_resize(&path, handle_id, new_rows, new_cols);
+                }
+            }
+        }
+
+        // Signal the input thread to stop and wait for it.
+        running.store(false, Ordering::Relaxed);
+        let _ = input_handle.join();
+
+        // Clean up the remote PTY (best-effort).
+        let _ = plugin.vfs.pty_kill(&path, handle_id);
+
+        // _raw_guard is dropped here, restoring the terminal.
+
+        Ok(PipelineData::Value(Value::nothing(span), None))
+    }
+}
+
+/// Escape a string for use inside a POSIX shell single-quoted argument.
+///
+/// Wraps the value in single quotes, replacing any embedded single quotes
+/// with the `'\''` idiom (end quote, escaped quote, start quote).
+#[cfg(unix)]
+fn shell_escape(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 // ---------------------------------------------------------------------------

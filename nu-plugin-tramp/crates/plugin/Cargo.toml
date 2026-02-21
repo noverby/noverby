@@ -37,6 +37,9 @@ base64 = "0.22"
 glob-match = "0.2"
 dirs = "6"
 
+# Terminal handling for `tramp shell` (raw mode, /dev/tty, winsize)
+libc = "0.2"
+
 # Pin interprocess to ~2.2 to stay compatible with nu-plugin-core's API
 # (2.3+ moved ListenerNonblockingMode out of the traits module)
 interprocess = "~2.2"

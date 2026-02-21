@@ -22,6 +22,32 @@ typed Nushell value; pipes operate locally; `save` writes back remotely.
 
 ---
 
+## 1.1 Current Status
+
+**All roadmap phases (1–6) are complete.** The project is feature-complete
+for its v1 goals:
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | MVP | ✅ Complete |
+| 2 | Daily Driver | ✅ Complete |
+| 3 | Power Features | ✅ Complete |
+| 4 | Polish & Usability | ✅ Complete |
+| 4.1 | Tab Completion | ✅ Complete |
+| 5 | RPC Agent | ✅ Complete |
+| 6 | Future / Advanced | ✅ Complete |
+
+Key metrics:
+
+- **295 tests** (175 plugin + 120 agent) — unit, integration, and PTY tests
+- **All pre-commit hooks pass** — clippy, rustfmt, statix, markdown lint
+- **Two crates** — `nu-plugin-tramp` (plugin) and `tramp-agent` (agent)
+- **4 backends** — SSH, Docker, Kubernetes, Sudo (all with RPC agent support)
+- **4 cross-compilation targets** — x86_64/aarch64 × Linux/macOS
+- **Interactive remote shell** — `tramp shell` command with full PTY support
+
+---
+
 ## 2. Repository Layout (Workspace)
 
 ```text
@@ -30,6 +56,7 @@ nu-plugin-tramp/
 ├── Cargo.lock
 ├── PLAN.md                 # this document
 ├── README.md               # user-facing documentation
+├── cross.nix               # Cross-compilation infrastructure for agent binaries
 ├── default.nix             # Nix package derivations (plugin + agent)
 ├── hm-module.nix           # Home Manager module
 └── crates/
@@ -270,6 +297,11 @@ tramp connections
 
 # Disconnect
 tramp disconnect myvm
+
+# Interactive remote shell (requires RPC agent)
+tramp shell /ssh:myvm:/
+tramp shell /ssh:myvm:/app --shell /bin/bash
+tramp shell /docker:mycontainer:/
 ```
 
 ### 5.3 `cd` Semantics
@@ -627,7 +659,7 @@ Architecture additions:
   source and destination), `tramp cd`, `tramp exec`, `tramp info`,
   `tramp ping`, `tramp watch`
 
-### Phase 6 — Future
+### Phase 6 — Future ✅
 
 - [x] Streaming for very large files (chunked RPC reads/writes)
 - [x] PTY support via agent (remote terminal emulation)
@@ -849,6 +881,67 @@ Architecture additions:
 
 ---
 
+#### `tramp shell` command ✅
+
+Interactive remote terminal session leveraging the PTY support built into
+the agent, providing a seamless shell-in-shell experience without leaving
+Nushell.
+
+```nushell
+tramp shell /ssh:myvm:/                    # default shell on remote
+tramp shell /ssh:myvm:/app --shell /bin/bash  # specific shell + CWD
+tramp shell /docker:mycontainer:/          # shell inside a container
+tramp shell /ssh:myvm|docker:ctr:/         # chained: SSH → Docker
+```
+
+The command opens `/dev/tty` directly (bypassing the plugin's stdin/stdout
+MsgPack-RPC channel) and puts it in raw mode, then relays bytes
+bidirectionally between the local terminal and the remote PTY.
+
+Architecture:
+
+- **Terminal I/O (`tty_raw` module in `main.rs`)** — minimal libc-based
+  terminal helpers:
+  - `open_tty()` — opens `/dev/tty` for read+write
+  - `terminal_size()` — queries `TIOCGWINSZ` for current cols×rows
+  - `enable_raw_mode()` / `restore_mode()` — save/restore termios,
+    `cfmakeraw` for raw mode
+  - `read_with_timeout()` — `poll(2)` + `read(2)` with millisecond timeout
+  - `write_all()` — blocking write loop via `libc::write`
+  - `RawModeGuard` — RAII guard that restores termios on drop (panic-safe)
+
+- **`TrampShell` command** (`#[cfg(unix)]`):
+  - Checks `supports_pty()` before proceeding
+  - Detects remote default shell via `echo $SHELL` (overridable with
+    `--shell` flag)
+  - Sets remote CWD from the URI's path component via `cd <dir> && exec`
+  - Starts a PTY with the detected terminal dimensions
+  - Spawns an **input thread** (`/dev/tty` → `pty_write`) with 50ms poll
+    timeout
+  - Runs an **output loop** on the main thread (`pty_read` → `/dev/tty`
+    write) with 5ms idle sleep
+  - Periodically checks for terminal resize (~every 100ms) and sends
+    `pty_resize` when dimensions change
+  - On session end (remote shell exits), signals the input thread via
+    `AtomicBool`, restores the terminal, and kills the PTY
+
+- **Dependencies** — adds `libc = "0.2"` to the plugin crate for raw
+  terminal manipulation (already used by the agent crate)
+
+Key design decisions:
+
+| Aspect                | Approach                                         |
+|-----------------------|--------------------------------------------------|
+| Terminal access       | `/dev/tty` (bypasses plugin MsgPack-RPC stdio)   |
+| Raw mode              | `cfmakeraw` + RAII guard for safe restore        |
+| Input forwarding      | Dedicated thread with `poll(2)` + 50ms timeout   |
+| Output forwarding     | Main thread loop with 5ms idle sleep             |
+| Terminal resize       | Periodic size check (~100ms) + `pty_resize` RPC  |
+| CWD support           | `cd <dir> && exec <shell>` wrapper               |
+| Platform              | Unix only (`#[cfg(unix)]`)                       |
+
+---
+
 #### PTY support via agent ✅
 
 The agent now supports pseudo-terminal (PTY) allocation for running
@@ -919,3 +1012,23 @@ Architecture additions:
 - Non-Nushell shells
 - Encrypted secrets management (delegate to `agenix`/`ragenix` already in the monorepo)
 - FUSE mount (use SSHFS if you need that separately)
+
+---
+
+## 11. Future Directions (Beyond v1)
+
+With all v1 roadmap phases complete, potential areas for future work include:
+
+- **Chained-path agent nesting** — deploy a second `tramp-agent` *inside* a
+  container reached via a chained path (e.g. `/ssh:host|docker:ctr:/path`),
+  giving full RPC performance even for the inner hop (currently the inner
+  hop falls back to shell-parsing through the outer agent)
+- **GitHub Releases CI** — automated release pipeline that builds the
+  cross-compilation matrix and publishes agent binaries to GitHub Releases
+  for automatic download during deployment
+- **FUSE integration** — optional FUSE mount mode for applications that
+  expect a real filesystem path (complementary to the current VFS approach)
+- **Windows agent support** — extend PTY and socket transport to Windows
+  targets (ConPTY, named pipes)
+- **Plugin marketplace** — package for Nushell's future plugin registry
+  once it materialises

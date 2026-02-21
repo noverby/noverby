@@ -27,6 +27,7 @@ a typed Nushell value; pipes operate locally; `tramp save` writes back remotely.
 - **Tab completion** — dynamic completions for TRAMP paths: backend prefixes, host names (from `~/.ssh/config`, `docker ps`, `kubectl get pods`, active connections), and remote file/directory listings
 - **Streaming large files** — files over 1 MB are read/written in chunks via the RPC agent's `file.read_range` / `file.write_range` methods, enabling `tramp open /ssh:host:/big.bin | save local.bin` without loading the entire file into memory
 - **PTY support** — the RPC agent can allocate pseudo-terminals for interactive commands via `process.start_pty` and `process.resize`, enabling proper TTY-aware behaviour (colour output, line editing, signal handling)
+- **Interactive remote shell** — `tramp shell` opens a full interactive terminal session on a remote host via the RPC agent's PTY support, with automatic terminal resize detection, raw mode forwarding, and CWD support
 - **Socket transport** — the agent supports `--listen tcp:<addr>:<port>` and `--listen unix:<path>` modes for direct TCP/Unix socket connections, bypassing `docker exec` overhead for local containers
 - **Cross-compilation** — Nix-based build matrix (`cross.nix`) produces statically-linked musl agent binaries for x86_64 and aarch64 Linux, plus native Darwin builds for Intel and Apple Silicon Macs
 - **Home Manager module** — auto-register the plugin with Nushell via `programs.nu-plugin-tramp.enable`
@@ -344,6 +345,36 @@ inotify/kqueue integration. Requires the RPC agent to be deployed
 > tramp watch /ssh:myvm:/app --remove
 ```
 
+### Interactive remote shell
+
+Open a full interactive terminal session on a remote host. This uses the
+RPC agent's PTY support to provide a seamless shell-in-shell experience
+without leaving Nushell. Requires the RPC agent (automatic for SSH and
+standalone Docker/K8s backends). Unix only.
+
+```nushell
+# Open a shell on a remote host (auto-detects remote $SHELL)
+> tramp shell /ssh:myvm:/
+
+# Open a shell with a specific working directory
+> tramp shell /ssh:myvm:/app
+
+# Use a specific shell program
+> tramp shell /ssh:myvm:/ --shell /bin/bash
+
+# Shell inside a Docker container
+> tramp shell /docker:mycontainer:/
+
+# Shell inside a container on a remote host (chained path)
+> tramp shell /ssh:myvm|docker:ctr:/
+```
+
+The terminal is put in raw mode for the duration of the session — control
+characters like Ctrl-C are forwarded to the remote shell rather than
+interpreted locally. The session ends when the remote shell exits (e.g.
+type `exit` or press Ctrl-D). Terminal resize events are detected
+automatically and forwarded to the remote PTY.
+
 ### Cache configuration
 
 The stat and directory listing caches default to a 5-second TTL. Override
@@ -467,6 +498,7 @@ suggestions for source and destination paths independently.
 | `tramp connections`   | List active pooled connections                     |
 | `tramp disconnect`    | Close connections (by host or `--all`)             |
 | `tramp watch`         | Watch a remote path for filesystem changes (requires RPC agent) |
+| `tramp shell`         | Interactive remote terminal session (requires RPC agent, Unix only) |
 
 ## Requirements
 

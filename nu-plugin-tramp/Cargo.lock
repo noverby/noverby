@@ -1106,6 +1106,7 @@ dependencies = [
  "dirs",
  "glob-match",
  "interprocess",
+ "libc",
  "nu-plugin",
  "nu-protocol",
  "openssh",
