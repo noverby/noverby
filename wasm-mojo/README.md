@@ -161,6 +161,10 @@ wasm-mojo/
 └── PLAN.md                       # Full development plan (Phases 0–10)
 ```
 
+## Known limitations
+
+**`@export` only works in the main module.** Mojo's compiler aggressively eliminates dead code before LLVM IR generation. An `@export` decorator on a function in a submodule (e.g., `poc/arithmetic.mojo`) does **not** prevent it from being removed — the function must be called from `main.mojo` to survive. Importing a submodule function without calling it is also insufficient as a DCE anchor. This is why `main.mojo` contains ~397 thin `@export` wrappers that forward to submodule implementations: it is the only reliable way to guarantee WASM export visibility with the current Mojo toolchain. See [PLAN.md § 10.22](PLAN.md#1022-document-export-submodule-limitation--done) for the full investigation.
+
 ## Reactive model
 
 The framework follows the same reactive model as [Dioxus](https://dioxuslabs.com/):
