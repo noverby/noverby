@@ -1,8 +1,18 @@
 //! SSH backend implementation.
 //!
 //! Uses the [`openssh`] crate (which shells out to the system's OpenSSH
-//! binary) for session management.  All file operations are implemented
-//! via remote command execution (`cat`, `stat`, `ls`, `rm`, etc.).
+//! binary) for session management and [`openssh_sftp_client`] for the SFTP
+//! subsystem when available.
+//!
+//! **SFTP fast-path** (Phase 2): file read/write/delete operations use the
+//! SFTP subsystem for efficient binary-safe transfer without base64 encoding
+//! or shell argument limits.  If the remote host does not support the SFTP
+//! subsystem, the backend falls back transparently to exec-based operations
+//! (`cat`, `base64`, `rm`, etc.).
+//!
+//! **Exec path** (always available): `list`, `stat`, `exec`, and `check`
+//! are implemented via remote command execution, which gives structured
+//! output (GNU `stat --format=…`) and works on any POSIX remote.
 //!
 //! This gives us:
 //!
@@ -10,15 +20,15 @@
 //! - SSH agent forwarding
 //! - `ControlMaster` multiplexing (fast subsequent operations)
 //! - Key management delegated entirely to the user's existing setup
-//! - Works on any remote with a POSIX shell (no SFTP subsystem required)
-//!
-//! Phase 2 will add an optional SFTP fast-path for large/binary file
-//! transfers via `openssh-sftp-client`.
+//! - Efficient binary file transfers via SFTP
+//! - Graceful fallback when SFTP is unavailable
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use openssh::{KnownHosts, Session, SessionBuilder};
+use openssh_sftp_client::{Sftp, SftpOptions};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
 use super::{Backend, DirEntry, EntryKind, ExecResult, Metadata};
@@ -28,18 +38,27 @@ use crate::errors::{TrampError, TrampResult};
 // SSH backend
 // ---------------------------------------------------------------------------
 
-/// An SSH backend backed by a live [`openssh::Session`].
+/// An SSH backend backed by a live [`openssh::Session`] and an optional
+/// [`Sftp`] channel for efficient file I/O.
 ///
-/// All file-system operations are implemented by executing remote commands
-/// over the SSH session.
+/// The session is wrapped in `Arc` so it can be shared between the exec
+/// path and the SFTP subsystem (via `Sftp::from_clonable_session`).
 pub struct SshBackend {
-    session: Session,
+    session: Arc<Session>,
+    /// SFTP channel — `None` if the remote doesn't support the SFTP
+    /// subsystem or if initialisation failed.
+    sftp: Option<Sftp>,
     host: String,
 }
 
 impl SshBackend {
     /// Open a new SSH connection to `host`, optionally as `user` and/or on a
     /// non-default `port`.
+    ///
+    /// After the SSH session is established, the backend attempts to open an
+    /// SFTP channel.  If that fails (e.g. the server has disabled the SFTP
+    /// subsystem), the backend continues with exec-only mode — no error is
+    /// raised.
     pub async fn connect(host: &str, user: Option<&str>, port: Option<u16>) -> TrampResult<Self> {
         let mut builder = SessionBuilder::default();
         builder.known_hosts_check(KnownHosts::Accept);
@@ -59,11 +78,30 @@ impl SshBackend {
                 reason: e.to_string(),
             })?;
 
+        let session = Arc::new(session);
+
+        // Try to open an SFTP channel.  This is best-effort — if it fails
+        // we fall back to exec-based file I/O.
+        let sftp = Sftp::from_clonable_session(session.clone(), SftpOptions::default())
+            .await
+            .ok();
+
         Ok(Self {
             session,
+            sftp,
             host: host.to_string(),
         })
     }
+
+    /// Whether this backend has an active SFTP channel.
+    #[allow(dead_code)]
+    pub fn has_sftp(&self) -> bool {
+        self.sftp.is_some()
+    }
+
+    // -----------------------------------------------------------------------
+    // Exec helpers (unchanged from the original implementation)
+    // -----------------------------------------------------------------------
 
     /// Run a command via the SSH session and return its collected output.
     async fn run(&self, program: &str, args: &[&str]) -> TrampResult<ExecResult> {
@@ -113,34 +151,51 @@ impl SshBackend {
             Err(TrampError::from_ssh(host, msg))
         }
     }
-}
 
-// ---------------------------------------------------------------------------
-// Backend trait implementation
-// ---------------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // SFTP helpers
+    // -----------------------------------------------------------------------
 
-#[async_trait]
-impl Backend for SshBackend {
-    async fn read(&self, path: &str) -> TrampResult<Bytes> {
+    /// Classify an SFTP error into the appropriate `TrampError`.
+    fn classify_sftp_error(err: openssh_sftp_client::Error, path: &str) -> TrampError {
+        let msg = err.to_string();
+        if msg.contains("No such file")
+            || msg.contains("not found")
+            || msg.contains("does not exist")
+            // SFTP status code 2 = SSH_FX_NO_SUCH_FILE
+            || msg.contains("SSH_FX_NO_SUCH_FILE")
+        {
+            TrampError::NotFound(path.to_string())
+        } else if msg.contains("Permission denied")
+            || msg.contains("permission denied")
+            // SFTP status code 3 = SSH_FX_PERMISSION_DENIED
+            || msg.contains("SSH_FX_PERMISSION_DENIED")
+        {
+            TrampError::PermissionDenied(path.to_string())
+        } else {
+            TrampError::SftpError(msg)
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Exec-based file operations (fallback)
+    // -----------------------------------------------------------------------
+
+    /// Read a file via `cat` over SSH exec.
+    async fn read_exec(&self, path: &str) -> TrampResult<Bytes> {
         let escaped = shell_escape(path);
         let result = self.run_sh(&format!("cat {escaped}")).await?;
         Self::check_result(&result, path, &self.host)?;
         Ok(result.stdout)
     }
 
-    async fn write(&self, path: &str, data: Bytes) -> TrampResult<()> {
-        // We use `base64` encoding to safely transport arbitrary binary data
-        // through the shell without corruption from special characters / NUL
-        // bytes.  The remote side decodes and writes the file.
-        //
-        // For small-to-medium files (< ~10 MB) this is perfectly fine.
-        // Phase 2 can add SFTP streaming for large files.
+    /// Write a file via base64 encoding over SSH exec.
+    async fn write_exec(&self, path: &str, data: Bytes) -> TrampResult<()> {
         use base64::Engine;
         let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
         let escaped = shell_escape(path);
 
-        // First check if the remote has base64(1).  GNU coreutils and busybox
-        // both ship it.  If not, fall back to a simpler (but text-only) path.
+        // Check if the remote has base64(1).
         let check = self
             .run_sh("command -v base64 >/dev/null 2>&1 && echo yes || echo no")
             .await?;
@@ -149,15 +204,12 @@ impl Backend for SshBackend {
             .eq_ignore_ascii_case("yes");
 
         if has_base64 {
-            // Pipe the base64 blob via stdin → base64 -d → file.
-            // We split into a heredoc to avoid argument-length limits.
             let script =
                 format!("base64 -d > {escaped} <<'__TRAMP_EOF__'\n{encoded}\n__TRAMP_EOF__");
             let result = self.run_sh(&script).await?;
             Self::check_result(&result, path, &self.host)?;
         } else {
-            // Fallback: plain printf.  This only works for text content
-            // (no NUL bytes) but is better than nothing.
+            // Fallback: plain printf.  Only works for text content.
             let text = String::from_utf8(data.to_vec()).map_err(|_| {
                 TrampError::RemoteError(
                     "remote host lacks base64(1) and file contains binary data".to_string(),
@@ -172,10 +224,87 @@ impl Backend for SshBackend {
         Ok(())
     }
 
+    /// Delete a file via `rm` over SSH exec.
+    async fn delete_exec(&self, path: &str) -> TrampResult<()> {
+        let escaped = shell_escape(path);
+        let result = self.run_sh(&format!("rm -f {escaped}")).await?;
+        Self::check_result(&result, path, &self.host)?;
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // SFTP-based file operations (fast path)
+    // -----------------------------------------------------------------------
+
+    /// Read a file via the SFTP subsystem.
+    async fn read_sftp(&self, sftp: &Sftp, path: &str) -> TrampResult<Bytes> {
+        let mut fs = sftp.fs();
+        let data = fs
+            .read(path)
+            .await
+            .map_err(|e| Self::classify_sftp_error(e, path))?;
+        Ok(data.freeze())
+    }
+
+    /// Write a file via the SFTP subsystem.
+    async fn write_sftp(&self, sftp: &Sftp, path: &str, data: Bytes) -> TrampResult<()> {
+        let mut fs = sftp.fs();
+        fs.write(path, &data[..])
+            .await
+            .map_err(|e| Self::classify_sftp_error(e, path))?;
+        Ok(())
+    }
+
+    /// Delete a file via the SFTP subsystem.
+    async fn delete_sftp(&self, sftp: &Sftp, path: &str) -> TrampResult<()> {
+        let mut fs = sftp.fs();
+        fs.remove_file(path)
+            .await
+            .map_err(|e| Self::classify_sftp_error(e, path))?;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Backend trait implementation
+// ---------------------------------------------------------------------------
+
+#[async_trait]
+impl Backend for SshBackend {
+    async fn read(&self, path: &str) -> TrampResult<Bytes> {
+        // Try SFTP first for efficient binary-safe reads.
+        if let Some(ref sftp) = self.sftp {
+            match self.read_sftp(sftp, path).await {
+                Ok(data) => return Ok(data),
+                Err(TrampError::SftpError(_)) => {
+                    // SFTP operation failed for a non-semantic reason
+                    // (e.g. channel issue).  Fall through to exec.
+                }
+                Err(e) => return Err(e), // NotFound, PermissionDenied, etc.
+            }
+        }
+        self.read_exec(path).await
+    }
+
+    async fn write(&self, path: &str, data: Bytes) -> TrampResult<()> {
+        // Try SFTP first — avoids base64 encoding and shell arg limits.
+        if let Some(ref sftp) = self.sftp {
+            match self.write_sftp(sftp, path, data.clone()).await {
+                Ok(()) => return Ok(()),
+                Err(TrampError::SftpError(_)) => {
+                    // Fall through to exec.
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        self.write_exec(path, data).await
+    }
+
     async fn list(&self, path: &str) -> TrampResult<Vec<DirEntry>> {
+        // Always use exec for listing — GNU stat gives us structured output
+        // with permissions in a format consistent with our data model.
         let escaped = shell_escape(path.trim_end_matches('/'));
 
-        // Use GNU stat to get structured output for each entry.
         // Format: %n\t%F\t%s\t%Y\t%a
         //   %n = filename, %F = file type string, %s = size,
         //   %Y = mtime (epoch seconds), %a = octal permissions
@@ -189,8 +318,6 @@ done"#
 
         let result = self.run_sh(&script).await?;
 
-        // A non-zero exit code with empty stdout usually means the directory
-        // doesn't exist or is empty.
         if result.exit_code != 0 && result.stdout.is_empty() {
             let stderr = String::from_utf8_lossy(&result.stderr);
             if stderr.contains("No such file")
@@ -199,7 +326,6 @@ done"#
             {
                 return Err(TrampError::NotFound(path.to_string()));
             }
-            // Empty directory — return empty vec.
         }
 
         let stdout = String::from_utf8_lossy(&result.stdout);
@@ -241,6 +367,7 @@ done"#
     }
 
     async fn stat(&self, path: &str) -> TrampResult<Metadata> {
+        // Use exec for stat — GNU stat gives consistent structured output.
         let escaped = shell_escape(path);
         let script = format!("stat --format='%F\\t%s\\t%Y\\t%a' {escaped}");
         let result = self.run_sh(&script).await?;
@@ -276,10 +403,17 @@ done"#
     }
 
     async fn delete(&self, path: &str) -> TrampResult<()> {
-        let escaped = shell_escape(path);
-        let result = self.run_sh(&format!("rm -f {escaped}")).await?;
-        Self::check_result(&result, path, &self.host)?;
-        Ok(())
+        // Try SFTP first.
+        if let Some(ref sftp) = self.sftp {
+            match self.delete_sftp(sftp, path).await {
+                Ok(()) => return Ok(()),
+                Err(TrampError::SftpError(_)) => {
+                    // Fall through to exec.
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        self.delete_exec(path).await
     }
 
     async fn check(&self) -> TrampResult<()> {
@@ -295,7 +429,11 @@ done"#
     }
 
     fn description(&self) -> String {
-        format!("ssh:{}", self.host)
+        if self.sftp.is_some() {
+            format!("ssh+sftp:{}", self.host)
+        } else {
+            format!("ssh:{}", self.host)
+        }
     }
 }
 
@@ -322,8 +460,9 @@ fn shell_escape(s: &str) -> String {
 
 impl Drop for SshBackend {
     fn drop(&mut self) {
-        // `Session::close` is async; we can't await it here.
+        // `Session::close` and `Sftp::close` are async; we can't await here.
         // The `openssh` crate cleans up the ControlMaster socket when the
-        // `Session` is dropped, so this is safe to leave as a no-op.
+        // `Session` is dropped, and `Sftp` cleans up its subsystem child.
+        // Dropping `sftp` first (before session) is the natural field order.
     }
 }
