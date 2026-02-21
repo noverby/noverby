@@ -310,14 +310,14 @@ Because the monorepo uses Nix + Crane, `nu-plugin-tramp` should expose:
 { crane, rust-overlay, ... }:
 crane.buildPackage {
   src = ./.;
-  pname = "nu_plugin_tramp";
+  pname = "nu-plugin-tramp";
 }
 ```
 
 And optionally a Home Manager module that auto-registers the plugin:
 
 ```nix
-programs.nushell.plugins = [ pkgs.nu_plugin_tramp ];
+programs.nushell.plugins = [ pkgs.nu-plugin-tramp ];
 ```
 
 ---

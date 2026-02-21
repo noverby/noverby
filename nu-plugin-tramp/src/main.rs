@@ -1,4 +1,4 @@
-//! `nu_plugin_tramp` — A TRAMP-inspired remote filesystem plugin for Nushell.
+//! `nu-plugin-tramp` — A TRAMP-inspired remote filesystem plugin for Nushell.
 //!
 //! This is the plugin entry point.  It registers the following commands:
 //!

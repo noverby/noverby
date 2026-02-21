@@ -1,11 +1,11 @@
 {
-  packages.nu_plugin_tramp = {
+  packages.nu-plugin-tramp = {
     lib,
     rustPlatform,
     openssh,
   }:
     rustPlatform.buildRustPackage {
-      pname = "nu_plugin_tramp";
+      pname = "nu-plugin-tramp";
       version = "unstable";
 
       src = lib.fileset.toSource {
