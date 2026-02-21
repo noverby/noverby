@@ -11,6 +11,7 @@ use bytes::Bytes;
 use std::time::SystemTime;
 
 pub mod deploy;
+pub mod deploy_exec;
 pub mod exec;
 pub mod rpc;
 pub mod rpc_client;
@@ -78,6 +79,28 @@ pub struct ExecResult {
 }
 
 // ---------------------------------------------------------------------------
+// Watch types
+// ---------------------------------------------------------------------------
+
+/// A single filesystem change notification received from a remote watch.
+#[derive(Debug, Clone)]
+pub struct WatchNotification {
+    /// The affected filesystem paths.
+    pub paths: Vec<String>,
+    /// The kind of change: `"create"`, `"modify"`, `"remove"`, `"access"`, etc.
+    pub kind: String,
+}
+
+/// Information about an active filesystem watch.
+#[derive(Debug, Clone)]
+pub struct WatchInfo {
+    /// The watched filesystem path.
+    pub path: String,
+    /// Whether the watch is recursive (includes subdirectories).
+    pub recursive: bool,
+}
+
+// ---------------------------------------------------------------------------
 // Backend trait
 // ---------------------------------------------------------------------------
 
@@ -121,4 +144,50 @@ pub trait Backend: Send + Sync {
     /// A human-readable description of this backend connection, used for
     /// display in `tramp connections` and diagnostics.
     fn description(&self) -> String;
+
+    // -----------------------------------------------------------------------
+    // Watch operations (optional — only supported by RPC backends)
+    // -----------------------------------------------------------------------
+
+    /// Start watching a remote path for filesystem changes.
+    ///
+    /// When `recursive` is `true`, subdirectories are also watched.
+    /// Returns `Ok(())` on success.  Backends that don't support watching
+    /// return an error.
+    async fn watch_add(
+        &self,
+        _path: &str,
+        _recursive: bool,
+    ) -> Result<(), crate::errors::TrampError> {
+        Err(crate::errors::TrampError::Internal(
+            "filesystem watching is not supported by this backend (requires RPC agent)".into(),
+        ))
+    }
+
+    /// Stop watching a previously added path.
+    async fn watch_remove(&self, _path: &str) -> Result<(), crate::errors::TrampError> {
+        Err(crate::errors::TrampError::Internal(
+            "filesystem watching is not supported by this backend (requires RPC agent)".into(),
+        ))
+    }
+
+    /// List all currently active watches.
+    async fn watch_list(&self) -> Result<Vec<WatchInfo>, crate::errors::TrampError> {
+        Err(crate::errors::TrampError::Internal(
+            "filesystem watching is not supported by this backend (requires RPC agent)".into(),
+        ))
+    }
+
+    /// Drain any pending filesystem change notifications.
+    ///
+    /// Returns all notifications that have been buffered since the last
+    /// call.  Non-blocking — returns an empty vec if nothing is pending.
+    async fn watch_poll(&self) -> Result<Vec<WatchNotification>, crate::errors::TrampError> {
+        Ok(vec![])
+    }
+
+    /// Whether this backend supports filesystem watching.
+    fn supports_watch(&self) -> bool {
+        false
+    }
 }

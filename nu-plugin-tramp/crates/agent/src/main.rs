@@ -129,6 +129,15 @@ async fn dispatch(
 
 #[tokio::main]
 async fn main() {
+    // Handle --version flag before entering the RPC loop.
+    // This is used by the deployment module to check the remote agent's
+    // version and trigger re-deployment on mismatch.
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("tramp-agent {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+
     // Log to stderr so it doesn't interfere with the MsgPack protocol on
     // stdout.  In production the plugin captures stderr for diagnostics.
     eprintln!(

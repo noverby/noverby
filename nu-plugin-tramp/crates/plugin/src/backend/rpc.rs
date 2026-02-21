@@ -19,10 +19,10 @@ use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
 use super::rpc_client::{
-    RpcClient, get_array, get_bin, get_i64, get_str, get_u64, make_params, val_bin, val_str,
-    val_str_array,
+    RpcClient, get_array, get_bin, get_bool, get_i64, get_str, get_u64, make_params, val_bin,
+    val_bool, val_str, val_str_array,
 };
-use super::{Backend, DirEntry, EntryKind, ExecResult, Metadata};
+use super::{Backend, DirEntry, EntryKind, ExecResult, Metadata, WatchInfo, WatchNotification};
 use crate::errors::{TrampError, TrampResult};
 
 // ---------------------------------------------------------------------------
@@ -196,6 +196,79 @@ where
 
     fn description(&self) -> String {
         format!("rpc:{}", self.host)
+    }
+
+    // -- Watch operations (RPC agent supports these natively) -----------------
+
+    async fn watch_add(&self, path: &str, recursive: bool) -> TrampResult<()> {
+        let params = make_params(vec![
+            ("path", val_str(path)),
+            ("recursive", val_bool(recursive)),
+        ]);
+        let _result = self.client.call("watch.add", params).await?;
+        Ok(())
+    }
+
+    async fn watch_remove(&self, path: &str) -> TrampResult<()> {
+        let params = make_params(vec![("path", val_str(path))]);
+        let _result = self.client.call("watch.remove", params).await?;
+        Ok(())
+    }
+
+    async fn watch_list(&self) -> TrampResult<Vec<WatchInfo>> {
+        let params = make_params(vec![]);
+        let result = self.client.call("watch.list", params).await?;
+
+        let map = result
+            .as_map()
+            .ok_or_else(|| TrampError::Internal("watch.list: expected map result".into()))?;
+
+        let watches_val = get_array(map, "watches").ok_or_else(|| {
+            TrampError::Internal("watch.list: missing 'watches' field in response".into())
+        })?;
+
+        let mut watches = Vec::with_capacity(watches_val.len());
+        for entry_val in watches_val {
+            let entry_map = match entry_val.as_map() {
+                Some(m) => m,
+                None => continue,
+            };
+            let path = get_str(entry_map, "path").unwrap_or("").to_string();
+            let recursive = get_bool(entry_map, "recursive").unwrap_or(false);
+            watches.push(WatchInfo { path, recursive });
+        }
+
+        Ok(watches)
+    }
+
+    async fn watch_poll(&self) -> TrampResult<Vec<WatchNotification>> {
+        let notifications = self.client.drain_notifications().await;
+
+        let mut result = Vec::with_capacity(notifications.len());
+        for notif in &notifications {
+            if notif.method != "fs.changed" {
+                continue;
+            }
+            let map = match notif.params.as_map() {
+                Some(m) => m,
+                None => continue,
+            };
+            let paths = get_array(map, "paths")
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let kind = get_str(map, "kind").unwrap_or("unknown").to_string();
+            result.push(WatchNotification { paths, kind });
+        }
+
+        Ok(result)
+    }
+
+    fn supports_watch(&self) -> bool {
+        true
     }
 }
 

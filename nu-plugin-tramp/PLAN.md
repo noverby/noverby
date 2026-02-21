@@ -503,12 +503,45 @@ The `commands.run_parallel` method runs multiple commands concurrently using
 OS threads (inspired by emacs-tramp-rpc's magit optimization that sends ~60
 git commands in a single round-trip).
 
-#### 5.5 — Agent for exec backends
+#### 5.5 — Agent for exec backends ✅
 
 The agent concept extends beyond SSH. For Docker and Kubernetes backends,
 the agent binary can be copied into containers (`docker cp` / `kubectl cp`)
 and started via `docker exec` / `kubectl exec`, giving the same RPC
 performance benefits inside containers.
+
+Implementation (`src/backend/deploy_exec.rs`):
+
+- **Architecture detection**: runs `uname -sm` inside the container via the
+  appropriate exec prefix (`docker exec` / `kubectl exec`)
+- **Upload methods**:
+  - Docker: `docker cp <local_tmp> <container>:/tmp/tramp-agent-dir/tramp-agent`
+  - Kubernetes: `kubectl cp` with base64 exec fallback (for minimal containers
+    lacking `tar`)
+  - Docker base64 fallback for remote runners
+- **Agent startup**: spawns `docker exec -i` / `kubectl exec -i` as an
+  interactive `tokio::process::Child` with piped stdin/stdout
+- **VFS integration**: `connect_hop` attempts agent deployment for standalone
+  Docker/K8s containers (no parent backend); on failure, falls back to the
+  shell-parsing `ExecBackend` transparently
+- **Chained paths**: for `/ssh:host|docker:ctr:/path`, the parent SSH hop
+  already uses the RPC agent, so Docker commands routed through it are
+  already fast; deploying a second agent inside the container through a
+  remote runner is deferred to Phase 6
+
+```text
+Standalone Docker/K8s:
+  ┌──────────────┐  docker exec -i  ┌───────────────────┐
+  │  nu-plugin-   │ ◄──────────────► │   tramp-agent     │
+  │  tramp        │   MsgPack-RPC    │   (in container)  │
+  └──────────────┘                   └───────────────────┘
+
+Chained (SSH → Docker):
+  ┌──────────────┐  SSH pipe   ┌─────────┐  docker exec  ┌───────────┐
+  │  nu-plugin-   │ ◄────────► │  agent   │ ◄──────────► │ container │
+  │  tramp        │  MsgPack   │ (remote) │  shell cmds   │           │
+  └──────────────┘             └─────────┘               └───────────┘
+```
 
 #### 5.6 — Protocol design ✅
 
@@ -546,10 +579,47 @@ strip = true
 
 - [ ] Streaming for very large files (chunked RPC reads)
 - [ ] PTY support via agent (remote terminal emulation)
-- [ ] `tramp watch` command — subscribe to filesystem change notifications
-- [ ] Agent version management and auto-upgrade
+- [x] `tramp watch` command — subscribe to filesystem change notifications
+- [x] Agent version management and auto-upgrade
 - [ ] TCP/Unix socket transport for agent (local Docker without SSH)
 - [ ] Cross-compilation matrix in CI for agent binaries (x86_64/aarch64 × Linux/macOS)
+
+#### `tramp watch` command ✅
+
+Implemented as a plugin command that leverages the RPC agent's
+`watch.add` / `watch.remove` / `watch.list` methods and `fs.changed`
+push notifications (inotify/kqueue).
+
+```text
+tramp watch /ssh:myvm:/app --duration 5000      # watch for 5 seconds
+tramp watch /ssh:myvm:/app --recursive           # include subdirectories
+tramp watch /ssh:myvm:/ --list                   # show active watches
+tramp watch /ssh:myvm:/app --remove              # stop watching
+```
+
+Architecture additions:
+
+- **`Backend` trait** — new optional methods: `watch_add`, `watch_remove`,
+  `watch_list`, `watch_poll`, `supports_watch` (default: not supported)
+- **`RpcBackend`** — implements all watch methods by calling the agent's
+  RPC endpoints and draining buffered `fs.changed` notifications
+- **`VFS`** — exposes synchronous `watch_add`, `watch_remove`, `watch_list`,
+  `watch_poll`, `supports_watch` methods
+- **`tramp watch` command** — adds a watch, polls for events over the
+  specified duration (default 10s, 250ms poll interval), returns a table
+  of `{ paths, kind, timestamp }` records, then cleans up the watch
+
+#### Agent version management ✅
+
+The agent binary now supports `--version` / `-V` flags, printing
+`tramp-agent <version>` to stdout.
+
+The deployment module (`deploy.rs` and `deploy_exec.rs`) checks the
+remote agent's version by running `<agent> --version` during the
+`is_agent_deployed` / `is_agent_deployed_in_container` checks. If the
+version doesn't match the plugin's `CARGO_PKG_VERSION`, the agent is
+re-uploaded and restarted automatically — ensuring plugin and agent are
+always in sync after upgrades.
 
 ---
 

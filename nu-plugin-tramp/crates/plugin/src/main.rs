@@ -10,6 +10,7 @@
 //! - `tramp cd <path>`          — set the remote working directory
 //! - `tramp exec <path> <cmd>`  — execute a command on the remote (push execution)
 //! - `tramp info <path>`        — show remote system info (OS, arch, hostname, disk)
+//! - `tramp watch <path>`       — watch a remote path for filesystem changes (requires RPC agent)
 //! - `tramp ping <path>`        — test connectivity to a remote host
 //! - `tramp connections`        — list active connections
 //! - `tramp disconnect [host]`  — close connections
@@ -89,6 +90,7 @@ impl Plugin for TrampPlugin {
             Box::new(TrampPing),
             Box::new(TrampConnections),
             Box::new(TrampDisconnect),
+            Box::new(TrampWatch),
         ]
     }
 }
@@ -374,6 +376,13 @@ Set a remote working directory to use relative paths:
     tramp cd /ssh:myvm:/app
     tramp open config.toml     # resolves to /ssh:myvm:/app/config.toml
     tramp ls                   # lists /app on myvm
+
+Filesystem watching (requires RPC agent):
+
+    tramp watch /ssh:myvm:/app --duration 5000
+    tramp watch /ssh:myvm:/app --recursive
+    tramp watch /ssh:myvm:/ --list
+    tramp watch /ssh:myvm:/app --remove
 
 Connection management:
 
@@ -1872,6 +1881,224 @@ df -P / 2>/dev/null | tail -1"#;
         record.push("connection", Value::string(chain, span));
 
         Ok(PipelineData::Value(Value::record(record, span), None))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Watch command
+// ---------------------------------------------------------------------------
+
+struct TrampWatch;
+
+impl PluginCommand for TrampWatch {
+    type Plugin = TrampPlugin;
+
+    fn name(&self) -> &str {
+        "tramp watch"
+    }
+
+    fn description(&self) -> &str {
+        "Watch a remote path for filesystem changes (requires RPC agent)"
+    }
+
+    fn extra_description(&self) -> &str {
+        "Subscribes to filesystem change notifications on a remote path using\n\
+         the RPC agent's inotify/kqueue integration.  The command watches for\n\
+         the specified duration (default 10s), collects all change events, and\n\
+         returns them as a table.\n\n\
+         Requires the RPC agent to be deployed on the remote host (automatic\n\
+         for SSH and standalone Docker/K8s backends).\n\n\
+         Use --recursive to also watch subdirectories.\n\
+         Use --duration to control how long to watch (in milliseconds).\n\
+         Use --list to show currently active watches instead of starting a new one.\n\
+         Use --remove to stop watching a previously added path."
+    }
+
+    fn signature(&self) -> Signature {
+        Signature::build(self.name())
+            .required(
+                "path",
+                SyntaxShape::String,
+                "TRAMP URI of the remote path to watch",
+            )
+            .switch("recursive", "Watch subdirectories recursively", Some('r'))
+            .named(
+                "duration",
+                SyntaxShape::Int,
+                "How long to watch in milliseconds (default: 10000)",
+                Some('d'),
+            )
+            .switch("list", "List currently active watches", Some('l'))
+            .switch("remove", "Remove an existing watch", None)
+            .input_output_types(vec![
+                (Type::Nothing, Type::table()),
+                (Type::Nothing, Type::String),
+            ])
+            .category(Category::FileSystem)
+    }
+
+    fn search_terms(&self) -> Vec<&str> {
+        vec![
+            "tramp",
+            "watch",
+            "notify",
+            "inotify",
+            "filesystem",
+            "changes",
+        ]
+    }
+
+    fn examples(&self) -> Vec<Example<'_>> {
+        vec![
+            Example {
+                example: "tramp watch /ssh:myvm:/app --duration 5000",
+                description: "Watch /app on a remote host for 5 seconds",
+                result: None,
+            },
+            Example {
+                example: "tramp watch /ssh:myvm:/app --recursive",
+                description: "Watch /app and all subdirectories for changes",
+                result: None,
+            },
+            Example {
+                example: "tramp watch /ssh:myvm:/ --list",
+                description: "List all active watches on the remote host",
+                result: None,
+            },
+            Example {
+                example: "tramp watch /ssh:myvm:/app --remove",
+                description: "Stop watching /app",
+                result: None,
+            },
+        ]
+    }
+
+    fn run(
+        &self,
+        plugin: &TrampPlugin,
+        engine: &EngineInterface,
+        call: &EvaluatedCall,
+        _input: PipelineData,
+    ) -> Result<PipelineData, LabeledError> {
+        apply_cache_ttl(engine, &plugin.vfs);
+        let path = parse_tramp_arg(call, &plugin.remote_cwd)?;
+        let span = call.head;
+
+        let is_list = call.has_flag("list")?;
+        let is_remove = call.has_flag("remove")?;
+
+        // Check that the backend supports watching.
+        let supports = plugin
+            .vfs
+            .supports_watch(&path)
+            .map_err(|e| tramp_err(e, span))?;
+        if !supports {
+            return Err(
+                LabeledError::new("filesystem watching is not supported by this backend")
+                    .with_label(
+                        "requires the RPC agent (only available for SSH and standalone Docker/K8s)",
+                        span,
+                    ),
+            );
+        }
+
+        // --list: show currently active watches.
+        if is_list {
+            let watches = plugin
+                .vfs
+                .watch_list(&path)
+                .map_err(|e| tramp_err(e, span))?;
+
+            let rows: Vec<Value> = watches
+                .iter()
+                .map(|w| {
+                    let mut record = Record::new();
+                    record.push("path", Value::string(&w.path, span));
+                    record.push("recursive", Value::bool(w.recursive, span));
+                    Value::record(record, span)
+                })
+                .collect();
+
+            return Ok(PipelineData::Value(Value::list(rows, span), None));
+        }
+
+        // --remove: stop watching.
+        if is_remove {
+            plugin
+                .vfs
+                .watch_remove(&path)
+                .map_err(|e| tramp_err(e, span))?;
+
+            return Ok(PipelineData::Value(
+                Value::string(format!("watch removed: {}", path.remote_path), span),
+                None,
+            ));
+        }
+
+        // Default: add a watch and poll for notifications.
+        let recursive = call.has_flag("recursive")?;
+        let duration_ms: i64 = call
+            .get_flag_value("duration")
+            .and_then(|v| v.as_int().ok())
+            .unwrap_or(10_000);
+
+        if duration_ms < 0 {
+            return Err(LabeledError::new("duration must be non-negative")
+                .with_label("invalid duration", span));
+        }
+
+        // Add the watch.
+        plugin
+            .vfs
+            .watch_add(&path, recursive)
+            .map_err(|e| tramp_err(e, span))?;
+
+        // Poll for notifications over the specified duration.
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_millis(duration_ms as u64);
+        let poll_interval = std::time::Duration::from_millis(250);
+        let mut all_events: Vec<Value> = Vec::new();
+
+        while std::time::Instant::now() < deadline {
+            match plugin.vfs.watch_poll(&path) {
+                Ok(notifications) => {
+                    for notif in &notifications {
+                        let mut record = Record::new();
+                        record.push(
+                            "paths",
+                            Value::list(
+                                notif.paths.iter().map(|p| Value::string(p, span)).collect(),
+                                span,
+                            ),
+                        );
+                        record.push("kind", Value::string(&notif.kind, span));
+                        record.push(
+                            "timestamp",
+                            Value::string(
+                                chrono::Local::now()
+                                    .format("%Y-%m-%d %H:%M:%S%.3f")
+                                    .to_string(),
+                                span,
+                            ),
+                        );
+                        all_events.push(Value::record(record, span));
+                    }
+                }
+                Err(e) => {
+                    // If polling fails, break out with what we have.
+                    eprintln!("tramp: watch poll error: {e}");
+                    break;
+                }
+            }
+
+            // Sleep briefly before the next poll.
+            std::thread::sleep(poll_interval);
+        }
+
+        // Clean up the watch.
+        let _ = plugin.vfs.watch_remove(&path);
+
+        Ok(PipelineData::Value(Value::list(all_events, span), None))
     }
 }
 
