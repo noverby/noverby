@@ -1,0 +1,32 @@
+Thread   Start(us)  B/E     Dur(us)  Name/Detail
+------  ----------  ---  ----------  ------------------------------
+1896539     4042373  BEG       11282  LowerSemanticCF
+1896539     4053656  END       11282  LowerSemanticCF
+1896539     4053667  BEG       74547  CheckLifetimes
+1896539     4058234  BEG          19  (A) SymbolTableAnalysis
+1896539     4058253  END          19  (A) SymbolTableAnalysis
+1896539     4128215  END       74547  CheckLifetimes
+1896539     4128223  BEG       12332  AnnotateKernels
+1896539     4140555  END       12332  AnnotateKernels
+1896539     4140562  BEG        4653  VerifyKernels
+1896539     4145216  END        4653  VerifyKernels
+1896539     6707533  BEG        9483  LowerSemanticCF
+1896539     6717017  END        9483  LowerSemanticCF
+1896539     6717021  BEG       86087  CheckLifetimes
+1896539     6722429  BEG          33  (A) SymbolTableAnalysis
+1896539     6722462  END          33  (A) SymbolTableAnalysis
+1896539     6803109  END       86087  CheckLifetimes
+1896539     6803116  BEG       12113  AnnotateKernels
+1896539     6815229  END       12113  AnnotateKernels
+1896539     6815236  BEG        4392  VerifyKernels
+1896539     6819628  END        4392  VerifyKernels
+1896539     9382274  BEG       13700  LowerSemanticCF
+1896539     9395974  END       13700  LowerSemanticCF
+1896539     9395980  BEG       94925  CheckLifetimes
+1896539     9401862  BEG          49  (A) SymbolTableAnalysis
+1896539     9401912  END          49  (A) SymbolTableAnalysis
+1896539     9490905  END       94925  CheckLifetimes
+1896539     9490911  BEG       12281  AnnotateKernels
+1896539     9503192  END       12281  AnnotateKernels
+1896539     9503201  BEG        3062  VerifyKernels
+1896539     9506263  END        3062  VerifyKernels

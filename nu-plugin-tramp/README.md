@@ -308,6 +308,37 @@ tramp disconnect myvm
 tramp disconnect --all
 ```
 
+### Filesystem watching
+
+Watch a remote path for filesystem changes using the RPC agent's
+inotify/kqueue integration. Requires the RPC agent to be deployed
+(automatic for SSH and standalone Docker/K8s backends).
+
+```nushell
+# Watch /app for 5 seconds and collect change events
+> tramp watch /ssh:myvm:/app --duration 5000
+╭───┬──────────────────────┬────────┬─────────────────────────╮
+│ # │        paths         │  kind  │       timestamp         │
+├───┼──────────────────────┼────────┼─────────────────────────┤
+│ 0 │ [/app/config.toml]   │ modify │ 2025-01-15 10:23:45.123 │
+│ 1 │ [/app/data/cache.db] │ create │ 2025-01-15 10:23:46.456 │
+╰───┴──────────────────────┴────────┴─────────────────────────╯
+
+# Watch recursively (include subdirectories)
+> tramp watch /ssh:myvm:/app --recursive --duration 10000
+
+# List currently active watches on the remote
+> tramp watch /ssh:myvm:/ --list
+╭───┬──────┬───────────╮
+│ # │ path │ recursive │
+├───┼──────┼───────────┤
+│ 0 │ /app │ true      │
+╰───┴──────┴───────────╯
+
+# Stop watching a path
+> tramp watch /ssh:myvm:/app --remove
+```
+
 ### Cache configuration
 
 The stat and directory listing caches default to a 5-second TTL. Override
@@ -393,6 +424,7 @@ change it on-the-fly without restarting the plugin.
 | `tramp ping`          | Test connectivity to a remote host                 |
 | `tramp connections`   | List active pooled connections                     |
 | `tramp disconnect`    | Close connections (by host or `--all`)             |
+| `tramp watch`         | Watch a remote path for filesystem changes (requires RPC agent) |
 
 ## Requirements
 
@@ -496,7 +528,7 @@ Key advantages over shell parsing:
 | Shell dependency   | Requires sh, stat, cat, etc.  | None (self-contained binary)  |
 | Cache invalidation | TTL-based (5s default)         | inotify/kqueue push events    |
 
-### Automatic agent deployment
+### Automatic agent deployment (SSH)
 
 When the plugin connects to a remote host via SSH, it attempts to deploy
 and start the `tramp-agent` binary automatically:
@@ -534,6 +566,42 @@ To pre-cache an agent binary for a target, place it at:
 Supported target triples: `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`,
 `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-unknown-freebsd`.
 
+### Container agent deployment
+
+The same agent deployment concept extends to Docker and Kubernetes backends.
+For standalone containers (not behind an SSH hop), the plugin attempts to
+copy the `tramp-agent` binary into the container and start it as an
+interactive process with piped stdin/stdout:
+
+```text
+Standalone Docker/K8s:
+  ┌──────────────────┐  docker exec -i   ┌───────────────────┐
+  │  nu-plugin-tramp  │ ◄──────────────► │   tramp-agent     │
+  │  (local Nushell)  │   MsgPack-RPC    │   (in container)  │
+  └──────────────────┘                   └───────────────────┘
+
+Chained (SSH → Docker):
+  ┌──────────────────┐  SSH pipe  ┌───────────┐ docker exec ┌───────────┐
+  │  nu-plugin-tramp  │ ◄───────► │   agent   │ ◄─────────► │ container │
+  │  (local Nushell)  │ MsgPack   │  (remote) │  shell cmds  │           │
+  └──────────────────┘            └───────────┘              └───────────┘
+```
+
+The deployment flow for containers (`crates/plugin/src/backend/deploy_exec.rs`):
+
+1. Detect container arch via `docker exec <ctr> uname -sm` / `kubectl exec <pod> -- uname -sm`
+2. Check if agent is already deployed inside the container
+3. Find cached binary locally → copy into container:
+   - Docker: `docker cp <local_tmp> <container>:/tmp/tramp-agent-dir/tramp-agent`
+   - Kubernetes: `kubectl cp` with base64 exec fallback (for minimal images lacking `tar`)
+4. Start agent: `docker exec -i <ctr> /tmp/tramp-agent-dir/tramp-agent` (or `kubectl exec -i`)
+5. Ping to verify, then switch to `RpcBackend`
+
+For chained paths (e.g. `/ssh:host|docker:ctr:/path`), the parent SSH hop
+already uses the RPC agent, so Docker/K8s commands routed through it benefit
+from the SSH agent's performance. The shell-parsing `ExecBackend` is used
+for the container hop in this case.
+
 ### Layers
 
 1. **Path Parser** (`crates/plugin/src/protocol.rs`) — Parses TRAMP URIs into structured types with round-trip fidelity; supports multi-hop chained paths
@@ -543,10 +611,11 @@ Supported target triples: `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-mu
 5. **SSH Backend** (`crates/plugin/src/backend/ssh.rs`) — Uses SFTP for file read/write/delete (fast-path) with automatic fallback to remote command execution; listing and stat use batch-stat (single remote command for all metadata including owner, group, nlinks, inode, symlink targets)
 6. **RPC Backend** (`crates/plugin/src/backend/rpc.rs`) — Implements `Backend` by sending MsgPack-RPC calls to a running `tramp-agent`; used automatically when the agent is deployed
 7. **RPC Client** (`crates/plugin/src/backend/rpc_client.rs`) — Client-side MsgPack-RPC framing (length-prefixed messages, request/response matching, notification buffering)
-8. **Agent Deployment** (`crates/plugin/src/backend/deploy.rs`) — Detects remote arch, manages local binary cache, uploads agent via SFTP or exec fallback, starts the agent process
-9. **VFS** (`crates/plugin/src/vfs.rs`) — Resolves paths to backends, builds multi-hop chains, manages connection pooling with health-checks, provides stat/list caching with TTL, bridges async↔sync; automatically attempts RPC backend for SSH hops
-10. **RPC Protocol** (`crates/agent/src/rpc.rs`) — Length-prefixed MsgPack framing with Request/Response/Notification message types
-11. **Agent Operations** (`crates/agent/src/ops/`) — Native implementations of file, directory, process, system, batch, and watch operations
+8. **SSH Agent Deployment** (`crates/plugin/src/backend/deploy.rs`) — Detects remote arch, manages local binary cache, uploads agent via SFTP or exec fallback, starts the agent process
+9. **Container Agent Deployment** (`crates/plugin/src/backend/deploy_exec.rs`) — Deploys agent into Docker/K8s containers via `docker cp`/`kubectl cp` (with base64 fallback), starts agent via interactive `docker exec -i`/`kubectl exec -i`
+10. **VFS** (`crates/plugin/src/vfs.rs`) — Resolves paths to backends, builds multi-hop chains, manages connection pooling with health-checks, provides stat/list caching with TTL, bridges async↔sync; automatically attempts RPC backend for SSH, Docker, and Kubernetes hops
+11. **RPC Protocol** (`crates/agent/src/rpc.rs`) — Length-prefixed MsgPack framing with Request/Response/Notification message types
+12. **Agent Operations** (`crates/agent/src/ops/`) — Native implementations of file, directory, process, system, batch, and watch operations
 
 ### Chaining internals
 
@@ -597,7 +666,7 @@ This composable design means any combination of backends can be chained (except 
 - [x] Glob/wildcard support for `tramp ls --glob` and `tramp cp --glob`
 - [ ] Tab completion for remote paths
 
-### Phase 5 — RPC Agent (inspired by [emacs-tramp-rpc](https://github.com/ArthurHeymans/emacs-tramp-rpc))
+### Phase 5 — RPC Agent ✅ (inspired by [emacs-tramp-rpc](https://github.com/ArthurHeymans/emacs-tramp-rpc))
 
 - [x] `tramp-agent` binary — lightweight Rust RPC server (MsgPack-RPC over stdin/stdout)
 - [x] Protocol design — 4-byte length-prefixed MessagePack framing with JSON-RPC 2.0-style messages
@@ -610,14 +679,14 @@ This composable design means any combination of backends can be chained (except 
 - [x] Cargo workspace restructure — plugin and agent as separate crates
 - [x] Automatic agent deployment (detect arch, upload, fallback to shell-parsing)
 - [x] Plugin RPC backend (switch SSH backend to use agent when available)
-- [ ] Agent for exec backends (deploy inside Docker/K8s containers)
+- [x] Agent for exec backends (deploy inside Docker/K8s containers)
 
 ### Phase 6 — Future
 
 - [ ] Streaming for very large files (chunked RPC reads)
 - [ ] PTY support via agent (remote terminal emulation)
-- [ ] `tramp watch` command — subscribe to filesystem change notifications
-- [ ] Agent version management and auto-upgrade
+- [x] `tramp watch` command — subscribe to filesystem change notifications
+- [x] Agent version management and auto-upgrade
 - [ ] TCP/Unix socket transport for agent (local Docker without SSH)
 
 ## License

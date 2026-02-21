@@ -169,10 +169,13 @@ pub fn cache_agent_binary(target: &RemoteTarget, data: &[u8]) -> TrampResult<Pat
 // Remote deployment
 // ---------------------------------------------------------------------------
 
-/// Check if the agent is already deployed and runnable on the remote host.
+/// Check if the agent is already deployed and runnable on the remote host
+/// **with the correct version**.
 ///
-/// Returns `true` if `~/.cache/tramp-agent/tramp-agent --version` exits
-/// successfully and reports the expected version.
+/// Runs `~/.cache/tramp-agent/tramp-agent --version` and checks that the
+/// output contains the expected version string (matching the plugin's
+/// `CARGO_PKG_VERSION`). Returns `true` only when the binary exists, is
+/// executable, and reports the same version as the plugin.
 pub async fn is_agent_deployed(session: &Session) -> bool {
     let remote_bin = format!("$HOME/{REMOTE_AGENT_DIR}/{REMOTE_AGENT_BIN}");
     let output = session
@@ -188,10 +191,20 @@ pub async fn is_agent_deployed(session: &Session) -> bool {
         Ok(out) => {
             let stdout = String::from_utf8_lossy(&out.stdout);
             let text = stdout.trim();
-            // The agent currently prints to stderr on startup; --version
-            // is not yet implemented.  For now, we just check if the
-            // binary exists and is executable.
-            !text.contains("MISSING") && out.status.success()
+            if text.contains("MISSING") || !out.status.success() {
+                return false;
+            }
+            // Verify the version matches. The agent prints
+            // "tramp-agent <version>" on `--version`.
+            let expected = format!("tramp-agent {AGENT_VERSION}");
+            if text == expected {
+                true
+            } else {
+                eprintln!(
+                    "tramp: remote agent version mismatch (got {text:?}, expected {expected:?}), will re-deploy"
+                );
+                false
+            }
         }
         Err(_) => false,
     }

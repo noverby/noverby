@@ -22,6 +22,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::backend::deploy::{self, DeployResult};
+use crate::backend::deploy_exec::{self, ContainerKind, ContainerTarget, ExecDeployResult};
 use crate::backend::exec::ExecBackend;
 use crate::backend::rpc::RpcBackend;
 use crate::backend::rpc_client::RpcClient;
@@ -344,10 +345,36 @@ impl Vfs {
                 Ok(Arc::new(ssh))
             }
             BackendKind::Docker => {
+                let is_standalone = parent.is_none();
                 let runner: Arc<dyn CommandRunner> = match parent {
                     None => Arc::new(LocalRunner),
                     Some(p) => Arc::new(RemoteRunner::new(Arc::clone(p))),
                 };
+
+                // For standalone Docker containers (no parent / local runner),
+                // attempt to deploy the RPC agent inside the container for
+                // lower-latency native operations.
+                if is_standalone {
+                    let target = ContainerTarget {
+                        kind: ContainerKind::Docker,
+                        name: hop.host.clone(),
+                        user: hop.user.clone(),
+                        k8s_container: None,
+                    };
+                    match deploy_exec::deploy_and_start_in_container(runner.as_ref(), &target).await
+                    {
+                        ExecDeployResult::Ready(backend) => {
+                            return Ok(backend);
+                        }
+                        ExecDeployResult::Fallback(reason) => {
+                            eprintln!(
+                                "tramp: agent deployment skipped for docker:{}: {reason}",
+                                hop.host
+                            );
+                        }
+                    }
+                }
+
                 Ok(Arc::new(ExecBackend::docker(
                     runner,
                     &hop.host,
@@ -355,10 +382,37 @@ impl Vfs {
                 )))
             }
             BackendKind::Kubernetes => {
+                let is_standalone = parent.is_none();
                 let runner: Arc<dyn CommandRunner> = match parent {
                     None => Arc::new(LocalRunner),
                     Some(p) => Arc::new(RemoteRunner::new(Arc::clone(p))),
                 };
+
+                // For standalone Kubernetes pods (no parent / local runner),
+                // attempt to deploy the RPC agent inside the pod.
+                if is_standalone {
+                    let target = ContainerTarget {
+                        kind: ContainerKind::Kubernetes,
+                        name: hop.host.clone(),
+                        user: None,
+                        // In our URI format, the user field doubles as the
+                        // container name for K8s multi-container pods.
+                        k8s_container: hop.user.clone(),
+                    };
+                    match deploy_exec::deploy_and_start_in_container(runner.as_ref(), &target).await
+                    {
+                        ExecDeployResult::Ready(backend) => {
+                            return Ok(backend);
+                        }
+                        ExecDeployResult::Fallback(reason) => {
+                            eprintln!(
+                                "tramp: agent deployment skipped for k8s:{}: {reason}",
+                                hop.host
+                            );
+                        }
+                    }
+                }
+
                 Ok(Arc::new(ExecBackend::kubernetes(
                     runner,
                     &hop.host,
@@ -569,6 +623,44 @@ impl Vfs {
     pub fn ping(&self, path: &TrampPath) -> TrampResult<()> {
         let (_key, backend, _) = self.resolve(path)?;
         self.runtime.block_on(backend.check())
+    }
+
+    // -----------------------------------------------------------------------
+    // Watch operations
+    // -----------------------------------------------------------------------
+
+    /// Whether the backend for the given path supports filesystem watching.
+    pub fn supports_watch(&self, path: &TrampPath) -> TrampResult<bool> {
+        let (_key, backend, _) = self.resolve(path)?;
+        Ok(backend.supports_watch())
+    }
+
+    /// Start watching a remote path for filesystem changes.
+    pub fn watch_add(&self, path: &TrampPath, recursive: bool) -> TrampResult<()> {
+        let (_key, backend, remote_path) = self.resolve(path)?;
+        self.runtime
+            .block_on(backend.watch_add(&remote_path, recursive))
+    }
+
+    /// Stop watching a remote path.
+    pub fn watch_remove(&self, path: &TrampPath) -> TrampResult<()> {
+        let (_key, backend, remote_path) = self.resolve(path)?;
+        self.runtime.block_on(backend.watch_remove(&remote_path))
+    }
+
+    /// List all active watches on the backend for the given path.
+    pub fn watch_list(&self, path: &TrampPath) -> TrampResult<Vec<crate::backend::WatchInfo>> {
+        let (_key, backend, _) = self.resolve(path)?;
+        self.runtime.block_on(backend.watch_list())
+    }
+
+    /// Drain pending filesystem change notifications from the backend.
+    pub fn watch_poll(
+        &self,
+        path: &TrampPath,
+    ) -> TrampResult<Vec<crate::backend::WatchNotification>> {
+        let (_key, backend, _) = self.resolve(path)?;
+        self.runtime.block_on(backend.watch_poll())
     }
 
     // -----------------------------------------------------------------------
