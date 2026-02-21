@@ -2510,6 +2510,17 @@ Converted all three apps from verbose `TemplateBuilder`/`VNodeStore` API to the 
 - **Template equivalence verified**: All existing 674 Mojo + 859 JS tests pass unchanged, confirming DSL-built apps produce identical template structures, mutation sequences, and DOM output to the original manual builder code.
 - **No new tests required**: The comprehensive existing test suites (counter: 650 lines, todo: 786 lines, bench: 769 lines of JS tests) exercise the full round-trip and implicitly validate the DSL conversion.
 
+### 10.7 AppShell Integration (✅ Done)
+
+Refactored all three apps to use the `AppShell` abstraction (M10.4) instead of manually managing `Runtime`, `VNodeStore`, and `ElementIdAllocator` pointers:
+
+- **Counter app** (`apps/counter.mojo`): Replaced 3 `UnsafePointer` fields (`runtime`, `store`, `eid_alloc`) with single `shell: AppShell` field. Init uses `app_shell_create()` instead of manual alloc/init of 3 subsystems. Destroy uses `shell.destroy()` instead of 8 lines of manual teardown. Scope/signal lifecycle uses `shell.create_root_scope()`, `shell.begin_render()`, `shell.end_render()`, `shell.use_signal_i32()`, `shell.read_signal_i32()`, `shell.peek_signal_i32()`. Mount uses `shell.mount()` replacing manual CreateEngine + append + finalize. Flush uses `shell.diff()` + `shell.finalize()` replacing manual DiffEngine + finalize. Event dispatch uses `shell.dispatch_event()`. Net reduction: 250 → 217 lines.
+- **Todo app** (`apps/todo.mojo`): Same subsystem consolidation. Init/destroy simplified via AppShell. Signal helpers (`_bump_version`, `build_item_vnode`) use `shell.peek_signal_i32()` / `shell.write_signal_i32()`. Handler registration via `shell.runtime[0]`. VNodeBuilder and fragment operations via `shell.store`. Complex flush logic (empty↔populated transitions) still uses direct `CreateEngine`/`DiffEngine` with `shell.eid_alloc`, `shell.runtime`, `shell.store`. Net reduction: 486 → 484 lines.
+- **Bench app** (`apps/bench.mojo`): Same pattern as todo. Init/destroy via AppShell. Signal/scope helpers via shell methods. Row VNode building via `shell.store`. Complex flush transitions via direct engine access through shell's subsystem pointers. Net reduction: 502 → 504 lines (formatting changes offset savings).
+- **WASM exports** (`main.mojo`): Updated 8 exports that directly accessed `app[0].runtime` to use `app[0].shell` equivalents (`shell.has_dirty()`, `shell.peek_signal_i32()`, `shell.runtime` for `counter_rt_ptr`).
+- **Total net reduction**: 1,238 → 1,205 lines across all three apps (−33 lines).
+- **All 674 Mojo + 859 JS tests pass unchanged**, confirming that AppShell integration produces identical behavior.
+
 ---
 
 ## Milestone Checklist
@@ -2530,3 +2541,4 @@ Converted all three apps from verbose `TemplateBuilder`/`VNodeStore` API to the 
 - [x] **M10.4:** Component abstraction. `AppShell` struct (`component/app_shell.mojo`), lifecycle helpers (`component/lifecycle.mojo`), height-ordered scheduler (`scheduler/scheduler.mojo`). `shell_*` and `scheduler_*` WASM exports. 37 new tests. All 641 Mojo + 790 JS tests pass.
 - [x] **M10.5:** Ergonomic builder API. `Node` tagged union (`vdom/dsl.mojo`), 40 tag helpers (`el_div`, `el_h1`, …), `to_template()` conversion, `VNodeBuilder` for ergonomic VNode construction, count utilities. Template equivalence verified (DSL matches manual builder). 33 new Mojo + 69 new JS tests. All 674 Mojo + 859 JS tests pass.
 - [x] **M10.6:** DSL-based app rewrite. Counter, todo, and bench apps converted from `TemplateBuilder`/manual VNode construction to `el_*`/`to_template`/`VNodeBuilder` DSL. All 674 Mojo + 859 JS tests pass unchanged.
+- [x] **M10.7:** AppShell integration. All three apps refactored from manual `Runtime`/`VNodeStore`/`ElementIdAllocator` pointer management to `AppShell` struct. Counter fully uses shell lifecycle methods (`mount`, `diff`, `finalize`, `dispatch_event`). Todo and bench use shell for init/destroy/signals, direct subsystem access for complex flush logic. 8 WASM exports updated. All 674 Mojo + 859 JS tests pass unchanged.

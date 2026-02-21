@@ -1,7 +1,8 @@
 # CounterApp — Self-contained counter application.
 #
-# Orchestrates all subsystems:
-#   Runtime (signals, scopes, handlers) + Templates + VNodes + Create/Diff
+# Orchestrates all subsystems via AppShell:
+#   AppShell (Runtime, VNodeStore, ElementIdAllocator, Scheduler)
+#   + Templates + VNodes + Create/Diff
 #
 # Template structure (built via DSL):
 #   div
@@ -14,10 +15,8 @@
 
 from memory import UnsafePointer
 from bridge import MutationWriter
-from arena import ElementIdAllocator
-from signals import Runtime, create_runtime, destroy_runtime
-from mutations import CreateEngine, DiffEngine
 from events import HandlerEntry
+from component import AppShell, app_shell_create
 from vdom import (
     VNode,
     VNodeStore,
@@ -36,9 +35,7 @@ from vdom import (
 struct CounterApp(Movable):
     """Self-contained counter application state."""
 
-    var runtime: UnsafePointer[Runtime]
-    var store: UnsafePointer[VNodeStore]
-    var eid_alloc: UnsafePointer[ElementIdAllocator]
+    var shell: AppShell
     var scope_id: UInt32
     var count_signal: UInt32
     var template_id: UInt32
@@ -47,9 +44,7 @@ struct CounterApp(Movable):
     var current_vnode: Int  # index in store, or -1 if not yet rendered
 
     fn __init__(out self):
-        self.runtime = UnsafePointer[Runtime]()
-        self.store = UnsafePointer[VNodeStore]()
-        self.eid_alloc = UnsafePointer[ElementIdAllocator]()
+        self.shell = AppShell()
         self.scope_id = 0
         self.count_signal = 0
         self.template_id = 0
@@ -58,9 +53,7 @@ struct CounterApp(Movable):
         self.current_vnode = -1
 
     fn __moveinit__(out self, deinit other: Self):
-        self.runtime = other.runtime
-        self.store = other.store
-        self.eid_alloc = other.eid_alloc
+        self.shell = other.shell^
         self.scope_id = other.scope_id
         self.count_signal = other.count_signal
         self.template_id = other.template_id
@@ -70,7 +63,7 @@ struct CounterApp(Movable):
 
     fn build_count_text(self) -> String:
         """Build the display string "Count: N" from the current signal value."""
-        var val = self.runtime[0].peek_signal[Int32](self.count_signal)
+        var val = self.shell.peek_signal_i32(self.count_signal)
         return String("Count: ") + String(val)
 
     fn build_vnode(mut self) -> UInt32:
@@ -83,7 +76,7 @@ struct CounterApp(Movable):
 
         Returns the VNode index in the store.
         """
-        var vb = VNodeBuilder(self.template_id, self.store)
+        var vb = VNodeBuilder(self.template_id, self.shell.store)
         vb.add_dyn_text(self.build_count_text())
         vb.add_dyn_event(String("click"), self.incr_handler)
         vb.add_dyn_event(String("click"), self.decr_handler)
@@ -93,26 +86,22 @@ struct CounterApp(Movable):
 fn counter_app_init() -> UnsafePointer[CounterApp]:
     """Initialize the counter app.  Returns a pointer to the app state.
 
-    Creates: runtime, VNode store, element ID allocator, scope, signal,
-    template, and event handlers.
+    Creates: AppShell (runtime, VNode store, element ID allocator,
+    scheduler), scope, signal, template, and event handlers.
     """
     var app_ptr = UnsafePointer[CounterApp].alloc(1)
     app_ptr.init_pointee_move(CounterApp())
 
-    # 1. Create subsystem instances
-    app_ptr[0].runtime = create_runtime()
-    app_ptr[0].store = UnsafePointer[VNodeStore].alloc(1)
-    app_ptr[0].store.init_pointee_move(VNodeStore())
-    app_ptr[0].eid_alloc = UnsafePointer[ElementIdAllocator].alloc(1)
-    app_ptr[0].eid_alloc.init_pointee_move(ElementIdAllocator())
+    # 1. Create subsystem instances via AppShell
+    app_ptr[0].shell = app_shell_create()
 
     # 2. Create root scope and signal via hooks
-    app_ptr[0].scope_id = app_ptr[0].runtime[0].create_scope(0, -1)
-    _ = app_ptr[0].runtime[0].begin_scope_render(app_ptr[0].scope_id)
-    app_ptr[0].count_signal = app_ptr[0].runtime[0].use_signal_i32(0)
+    app_ptr[0].scope_id = app_ptr[0].shell.create_root_scope()
+    _ = app_ptr[0].shell.begin_render(app_ptr[0].scope_id)
+    app_ptr[0].count_signal = app_ptr[0].shell.use_signal_i32(0)
     # Read the signal during render to subscribe the scope to changes
-    _ = app_ptr[0].runtime[0].read_signal[Int32](app_ptr[0].count_signal)
-    app_ptr[0].runtime[0].end_scope_render(-1)
+    _ = app_ptr[0].shell.read_signal_i32(app_ptr[0].count_signal)
+    app_ptr[0].shell.end_render(-1)
 
     # 3. Build and register the counter template via DSL:
     #    div > [ span > dynamic_text[0],
@@ -127,13 +116,13 @@ fn counter_app_init() -> UnsafePointer[CounterApp]:
     )
     var template = to_template(view, String("counter"))
     app_ptr[0].template_id = UInt32(
-        app_ptr[0].runtime[0].templates.register(template^)
+        app_ptr[0].shell.runtime[0].templates.register(template^)
     )
 
     # 4. Register event handlers
     app_ptr[0].incr_handler = UInt32(
         app_ptr[0]
-        .runtime[0]
+        .shell.runtime[0]
         .register_handler(
             HandlerEntry.signal_add(
                 app_ptr[0].scope_id,
@@ -145,7 +134,7 @@ fn counter_app_init() -> UnsafePointer[CounterApp]:
     )
     app_ptr[0].decr_handler = UInt32(
         app_ptr[0]
-        .runtime[0]
+        .shell.runtime[0]
         .register_handler(
             HandlerEntry.signal_sub(
                 app_ptr[0].scope_id,
@@ -161,15 +150,7 @@ fn counter_app_init() -> UnsafePointer[CounterApp]:
 
 fn counter_app_destroy(app_ptr: UnsafePointer[CounterApp]):
     """Destroy the counter app and free all resources."""
-    if app_ptr[0].store:
-        app_ptr[0].store.destroy_pointee()
-        app_ptr[0].store.free()
-    if app_ptr[0].eid_alloc:
-        app_ptr[0].eid_alloc.destroy_pointee()
-        app_ptr[0].eid_alloc.free()
-    if app_ptr[0].runtime:
-        destroy_runtime(app_ptr[0].runtime)
-
+    app_ptr[0].shell.destroy()
     app_ptr.destroy_pointee()
     app_ptr.free()
 
@@ -189,18 +170,8 @@ fn counter_app_rebuild(
     var vnode_idx = app[0].build_vnode()
     app[0].current_vnode = Int(vnode_idx)
 
-    # Run CreateEngine to emit mount mutations
-    var engine = CreateEngine(
-        writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
-    )
-    var num_roots = engine.create_node(vnode_idx)
-
-    # Append to root element (id 0)
-    writer_ptr[0].append_children(0, num_roots)
-
-    # Finalize
-    writer_ptr[0].finalize()
-    return Int32(writer_ptr[0].offset)
+    # Mount via AppShell (CreateEngine → append to root → finalize)
+    return app[0].shell.mount(writer_ptr, vnode_idx)
 
 
 fn counter_app_handle_event(
@@ -210,7 +181,7 @@ fn counter_app_handle_event(
 
     Returns True if an action was executed, False otherwise.
     """
-    return app[0].runtime[0].dispatch_event(handler_id, event_type)
+    return app[0].shell.dispatch_event(handler_id, event_type)
 
 
 fn counter_app_flush(
@@ -226,25 +197,21 @@ fn counter_app_flush(
     or 0 if there was nothing to update.
     """
     # Check for dirty scopes
-    if not app[0].runtime[0].has_dirty():
+    if not app[0].shell.has_dirty():
         return 0
 
     # Drain dirty scopes (we only have one scope, so just drain)
-    var _dirty = app[0].runtime[0].drain_dirty()
+    var _dirty = app[0].shell.runtime[0].drain_dirty()
 
     # Build a new VNode with updated state
     var new_idx = app[0].build_vnode()
     var old_idx = UInt32(app[0].current_vnode)
 
-    # Diff old → new
-    var engine = DiffEngine(
-        writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
-    )
-    engine.diff_node(old_idx, UInt32(new_idx))
+    # Diff old → new via AppShell
+    app[0].shell.diff(writer_ptr, old_idx, UInt32(new_idx))
 
     # Update current vnode
     app[0].current_vnode = Int(new_idx)
 
     # Finalize
-    writer_ptr[0].finalize()
-    return Int32(writer_ptr[0].offset)
+    return app[0].shell.finalize(writer_ptr)

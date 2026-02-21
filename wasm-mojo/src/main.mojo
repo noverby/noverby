@@ -2130,7 +2130,7 @@ fn counter_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 fn counter_rt_ptr(app_ptr: Int64) -> Int64:
     """Return the runtime pointer for JS template registration."""
     var app = _int_to_counter_ptr(Int(app_ptr))
-    return _runtime_ptr_to_i64(app[0].runtime)
+    return _runtime_ptr_to_i64(app[0].shell.runtime)
 
 
 @export
@@ -2158,14 +2158,14 @@ fn counter_decr_handler(app_ptr: Int64) -> Int32:
 fn counter_count_value(app_ptr: Int64) -> Int32:
     """Peek the current count signal value (without subscribing)."""
     var app = _int_to_counter_ptr(Int(app_ptr))
-    return app[0].runtime[0].peek_signal[Int32](app[0].count_signal)
+    return app[0].shell.peek_signal_i32(app[0].count_signal)
 
 
 @export
 fn counter_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the counter app has dirty scopes.  Returns 1 or 0."""
     var app = _int_to_counter_ptr(Int(app_ptr))
-    if app[0].runtime[0].has_dirty():
+    if app[0].shell.has_dirty():
         return 1
     return 0
 
@@ -2317,7 +2317,7 @@ fn todo_item_completed_at(app_ptr: Int64, index: Int32) -> Int32:
 fn todo_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the todo app has dirty scopes.  Returns 1 or 0."""
     var app = _int_to_todo_ptr(Int(app_ptr))
-    if app[0].runtime[0].has_dirty():
+    if app[0].shell.has_dirty():
         return 1
     return 0
 
@@ -2326,7 +2326,7 @@ fn todo_has_dirty(app_ptr: Int64) -> Int32:
 fn todo_list_version(app_ptr: Int64) -> Int32:
     """Return the current list version signal value."""
     var app = _int_to_todo_ptr(Int(app_ptr))
-    return app[0].runtime[0].peek_signal[Int32](app[0].list_version_signal)
+    return app[0].shell.peek_signal_i32(app[0].list_version_signal)
 
 
 @export
@@ -2461,14 +2461,14 @@ fn bench_row_id_at(app_ptr: Int64, index: Int32) -> Int32:
 fn bench_selected(app_ptr: Int64) -> Int32:
     """Return the currently selected row id (0 = none)."""
     var app = _int_to_bench_ptr(Int(app_ptr))
-    return app[0].runtime[0].peek_signal[Int32](app[0].selected_signal)
+    return app[0].shell.peek_signal_i32(app[0].selected_signal)
 
 
 @export
 fn bench_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the benchmark app has dirty scopes.  Returns 1 or 0."""
     var app = _int_to_bench_ptr(Int(app_ptr))
-    if app[0].runtime[0].has_dirty():
+    if app[0].shell.has_dirty():
         return 1
     return 0
 
@@ -2477,7 +2477,7 @@ fn bench_has_dirty(app_ptr: Int64) -> Int32:
 fn bench_version(app_ptr: Int64) -> Int32:
     """Return the current version signal value."""
     var app = _int_to_bench_ptr(Int(app_ptr))
-    return app[0].runtime[0].peek_signal[Int32](app[0].version_signal)
+    return app[0].shell.peek_signal_i32(app[0].version_signal)
 
 
 @export

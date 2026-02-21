@@ -26,10 +26,9 @@
 
 from memory import UnsafePointer
 from bridge import MutationWriter
-from arena import ElementIdAllocator
-from signals import Runtime, create_runtime, destroy_runtime
 from mutations import CreateEngine, DiffEngine
 from events import HandlerEntry
+from component import AppShell, app_shell_create
 from vdom import (
     VNode,
     VNodeStore,
@@ -154,12 +153,10 @@ struct BenchmarkApp(Movable):
     """Js-framework-benchmark app state.
 
     Manages a list of rows, selection state, and all rendering
-    infrastructure (runtime, templates, vnode store, etc.).
+    infrastructure via AppShell (runtime, templates, vnode store, etc.).
     """
 
-    var runtime: UnsafePointer[Runtime]
-    var store: UnsafePointer[VNodeStore]
-    var eid_alloc: UnsafePointer[ElementIdAllocator]
+    var shell: AppShell
     var scope_id: UInt32
     var version_signal: UInt32  # bumped on list changes
     var selected_signal: UInt32  # currently selected row id (0 = none)
@@ -172,9 +169,7 @@ struct BenchmarkApp(Movable):
     var rows_mounted: Bool
 
     fn __init__(out self):
-        self.runtime = UnsafePointer[Runtime]()
-        self.store = UnsafePointer[VNodeStore]()
-        self.eid_alloc = UnsafePointer[ElementIdAllocator]()
+        self.shell = AppShell()
         self.scope_id = 0
         self.version_signal = 0
         self.selected_signal = 0
@@ -187,9 +182,7 @@ struct BenchmarkApp(Movable):
         self.rows_mounted = False
 
     fn __moveinit__(out self, deinit other: Self):
-        self.runtime = other.runtime
-        self.store = other.store
-        self.eid_alloc = other.eid_alloc
+        self.shell = other.shell^
         self.scope_id = other.scope_id
         self.version_signal = other.version_signal
         self.selected_signal = other.selected_signal
@@ -215,8 +208,8 @@ struct BenchmarkApp(Movable):
 
     fn _bump_version(mut self):
         """Increment the version signal to trigger re-render."""
-        var current = self.runtime[0].peek_signal[Int32](self.version_signal)
-        self.runtime[0].write_signal[Int32](self.version_signal, current + 1)
+        var current = self.shell.peek_signal_i32(self.version_signal)
+        self.shell.write_signal_i32(self.version_signal, current + 1)
 
     fn create_rows(mut self, count: Int):
         """Replace all rows with `count` newly generated rows."""
@@ -245,7 +238,7 @@ struct BenchmarkApp(Movable):
 
     fn select_row(mut self, id: Int32):
         """Select the row with the given id."""
-        self.runtime[0].write_signal[Int32](self.selected_signal, id)
+        self.shell.write_signal_i32(self.selected_signal, id)
 
     fn swap_rows(mut self, a: Int, b: Int):
         """Swap two rows by their list indices."""
@@ -284,7 +277,9 @@ struct BenchmarkApp(Movable):
           dynamic_attr[1] = click on label <a> (select)
           dynamic_attr[2] = click on delete <a> (remove)
         """
-        var vb = VNodeBuilder(self.row_template_id, String(row.id), self.store)
+        var vb = VNodeBuilder(
+            self.row_template_id, String(row.id), self.shell.store
+        )
 
         # Dynamic text 0: row id
         vb.add_dyn_text(String(row.id))
@@ -293,7 +288,7 @@ struct BenchmarkApp(Movable):
         vb.add_dyn_text(row.label)
 
         # Dynamic attr 0: class on <tr> ("danger" if selected)
-        var selected = self.runtime[0].peek_signal[Int32](self.selected_signal)
+        var selected = self.shell.peek_signal_i32(self.selected_signal)
         var tr_class: String
         if selected == row.id:
             tr_class = String("danger")
@@ -302,13 +297,13 @@ struct BenchmarkApp(Movable):
         vb.add_dyn_text_attr(String("class"), tr_class)
 
         # Dynamic attr 1: click on label <a> (select — custom handler)
-        var select_handler = self.runtime[0].register_handler(
+        var select_handler = self.shell.runtime[0].register_handler(
             HandlerEntry.custom(self.scope_id, String("click"))
         )
         vb.add_dyn_event(String("click"), select_handler)
 
         # Dynamic attr 2: click on delete <a> (remove — custom handler)
-        var remove_handler = self.runtime[0].register_handler(
+        var remove_handler = self.shell.runtime[0].register_handler(
             HandlerEntry.custom(self.scope_id, String("click"))
         )
         vb.add_dyn_event(String("click"), remove_handler)
@@ -317,38 +312,34 @@ struct BenchmarkApp(Movable):
 
     fn build_rows_fragment(mut self) -> UInt32:
         """Build a Fragment VNode containing all row VNodes."""
-        var frag_idx = self.store[0].push(VNode.fragment())
+        var frag_idx = self.shell.store[0].push(VNode.fragment())
         for i in range(len(self.rows)):
             var row_idx = self.build_row_vnode(self.rows[i].copy())
-            self.store[0].push_fragment_child(frag_idx, row_idx)
+            self.shell.store[0].push_fragment_child(frag_idx, row_idx)
         return frag_idx
 
 
 fn bench_app_init() -> UnsafePointer[BenchmarkApp]:
     """Initialize the benchmark app.  Returns a pointer to the app state.
 
-    Creates: runtime, VNode store, element ID allocator, scope, signals,
-    and the row template.
+    Creates: AppShell (runtime, VNode store, element ID allocator,
+    scheduler), scope, signals, and the row template.
     """
     var app_ptr = UnsafePointer[BenchmarkApp].alloc(1)
     app_ptr.init_pointee_move(BenchmarkApp())
 
-    # 1. Create subsystem instances
-    app_ptr[0].runtime = create_runtime()
-    app_ptr[0].store = UnsafePointer[VNodeStore].alloc(1)
-    app_ptr[0].store.init_pointee_move(VNodeStore())
-    app_ptr[0].eid_alloc = UnsafePointer[ElementIdAllocator].alloc(1)
-    app_ptr[0].eid_alloc.init_pointee_move(ElementIdAllocator())
+    # 1. Create subsystem instances via AppShell
+    app_ptr[0].shell = app_shell_create()
 
     # 2. Create root scope and signals
-    app_ptr[0].scope_id = app_ptr[0].runtime[0].create_scope(0, -1)
-    _ = app_ptr[0].runtime[0].begin_scope_render(app_ptr[0].scope_id)
-    app_ptr[0].version_signal = app_ptr[0].runtime[0].use_signal_i32(0)
-    app_ptr[0].selected_signal = app_ptr[0].runtime[0].use_signal_i32(0)
+    app_ptr[0].scope_id = app_ptr[0].shell.create_root_scope()
+    _ = app_ptr[0].shell.begin_render(app_ptr[0].scope_id)
+    app_ptr[0].version_signal = app_ptr[0].shell.use_signal_i32(0)
+    app_ptr[0].selected_signal = app_ptr[0].shell.use_signal_i32(0)
     # Read signals to subscribe scope
-    _ = app_ptr[0].runtime[0].read_signal[Int32](app_ptr[0].version_signal)
-    _ = app_ptr[0].runtime[0].read_signal[Int32](app_ptr[0].selected_signal)
-    app_ptr[0].runtime[0].end_scope_render(-1)
+    _ = app_ptr[0].shell.read_signal_i32(app_ptr[0].version_signal)
+    _ = app_ptr[0].shell.read_signal_i32(app_ptr[0].selected_signal)
+    app_ptr[0].shell.end_render(-1)
 
     # 3. Build and register the "bench-row" template via DSL:
     #    tr + dynamic_attr[0](class) > [
@@ -366,7 +357,7 @@ fn bench_app_init() -> UnsafePointer[BenchmarkApp]:
     )
     var row_template = to_template(row_view, String("bench-row"))
     app_ptr[0].row_template_id = UInt32(
-        app_ptr[0].runtime[0].templates.register(row_template^)
+        app_ptr[0].shell.runtime[0].templates.register(row_template^)
     )
 
     return app_ptr
@@ -374,14 +365,7 @@ fn bench_app_init() -> UnsafePointer[BenchmarkApp]:
 
 fn bench_app_destroy(app_ptr: UnsafePointer[BenchmarkApp]):
     """Destroy the benchmark app and free all resources."""
-    if app_ptr[0].store:
-        app_ptr[0].store.destroy_pointee()
-        app_ptr[0].store.free()
-    if app_ptr[0].eid_alloc:
-        app_ptr[0].eid_alloc.destroy_pointee()
-        app_ptr[0].eid_alloc.free()
-    if app_ptr[0].runtime:
-        destroy_runtime(app_ptr[0].runtime)
+    app_ptr[0].shell.destroy()
     app_ptr.destroy_pointee()
     app_ptr.free()
 
@@ -398,7 +382,7 @@ fn bench_app_rebuild(
     Returns byte offset (length) of mutation data.
     """
     # Create an anchor placeholder
-    var anchor_eid = app[0].eid_alloc[0].alloc()
+    var anchor_eid = app[0].shell.eid_alloc[0].alloc()
     app[0].anchor_id = anchor_eid.as_u32()
     writer_ptr[0].create_placeholder(anchor_eid.as_u32())
     writer_ptr[0].append_children(0, 1)
@@ -425,28 +409,34 @@ fn bench_app_flush(
 
     Returns byte offset (length) of mutation data, or 0 if nothing dirty.
     """
-    if not app[0].runtime[0].has_dirty():
+    if not app[0].shell.has_dirty():
         return 0
 
-    var _dirty = app[0].runtime[0].drain_dirty()
+    var _dirty = app[0].shell.runtime[0].drain_dirty()
 
     var new_frag_idx = app[0].build_rows_fragment()
     var old_frag_idx = UInt32(app[0].current_frag)
 
-    var old_frag_ptr = app[0].store[0].get_ptr(old_frag_idx)
-    var new_frag_ptr = app[0].store[0].get_ptr(new_frag_idx)
+    var old_frag_ptr = app[0].shell.store[0].get_ptr(old_frag_idx)
+    var new_frag_ptr = app[0].shell.store[0].get_ptr(new_frag_idx)
     var old_count = old_frag_ptr[0].fragment_child_count()
     var new_count = new_frag_ptr[0].fragment_child_count()
 
     if not app[0].rows_mounted and new_count > 0:
         # ── Transition: empty → populated ─────────────────────────────
         var create_eng = CreateEngine(
-            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
+            writer_ptr,
+            app[0].shell.eid_alloc,
+            app[0].shell.runtime,
+            app[0].shell.store,
         )
         var total_roots: UInt32 = 0
         for i in range(new_count):
             var child_idx = (
-                app[0].store[0].get_ptr(new_frag_idx)[0].get_fragment_child(i)
+                app[0]
+                .shell.store[0]
+                .get_ptr(new_frag_idx)[0]
+                .get_fragment_child(i)
             )
             total_roots += create_eng.create_node(child_idx)
 
@@ -460,15 +450,18 @@ fn bench_app_flush(
         var first_old_root_id: UInt32 = 0
         if old_count > 0:
             var first_child = (
-                app[0].store[0].get_ptr(old_frag_idx)[0].get_fragment_child(0)
+                app[0]
+                .shell.store[0]
+                .get_ptr(old_frag_idx)[0]
+                .get_fragment_child(0)
             )
-            var fc_ptr = app[0].store[0].get_ptr(first_child)
+            var fc_ptr = app[0].shell.store[0].get_ptr(first_child)
             if fc_ptr[0].root_id_count() > 0:
                 first_old_root_id = fc_ptr[0].get_root_id(0)
             elif fc_ptr[0].element_id != 0:
                 first_old_root_id = fc_ptr[0].element_id
 
-        var new_anchor = app[0].eid_alloc[0].alloc()
+        var new_anchor = app[0].shell.eid_alloc[0].alloc()
         writer_ptr[0].create_placeholder(new_anchor.as_u32())
 
         if first_old_root_id != 0:
@@ -476,11 +469,17 @@ fn bench_app_flush(
 
         # Remove all old rows
         var diff_eng = DiffEngine(
-            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
+            writer_ptr,
+            app[0].shell.eid_alloc,
+            app[0].shell.runtime,
+            app[0].shell.store,
         )
         for i in range(old_count):
             var old_child = (
-                app[0].store[0].get_ptr(old_frag_idx)[0].get_fragment_child(i)
+                app[0]
+                .shell.store[0]
+                .get_ptr(old_frag_idx)[0]
+                .get_fragment_child(i)
             )
             diff_eng._remove_node(old_child)
 
@@ -490,7 +489,10 @@ fn bench_app_flush(
     elif app[0].rows_mounted and new_count > 0:
         # ── Transition: populated → populated ─────────────────────────
         var diff_eng = DiffEngine(
-            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
+            writer_ptr,
+            app[0].shell.eid_alloc,
+            app[0].shell.runtime,
+            app[0].shell.store,
         )
         diff_eng.diff_node(old_frag_idx, new_frag_idx)
 
