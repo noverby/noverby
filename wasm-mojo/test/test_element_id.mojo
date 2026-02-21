@@ -371,3 +371,22 @@ fn test_allocator_stress_alloc_free_cycle(
     assert_equal(id, 1, "first alloc after cycle should reuse slot 1")
 
     _destroy_alloc(w, a)
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_allocator_initial_state(w)
+    test_allocator_first_alloc_returns_1(w)
+    test_allocator_sequential_alloc(w)
+    test_allocator_is_alive(w)
+    test_allocator_free_decrements_count(w)
+    test_allocator_free_root_is_noop(w)
+    test_allocator_double_free_is_noop(w)
+    test_allocator_reuse_freed_slot(w)
+    test_allocator_reuse_multiple_freed_slots(w)
+    test_allocator_stress_100(w)
+    test_allocator_stress_free_even_realloc(w)
+    test_allocator_stress_alloc_free_cycle(w)
+    print("element_id: 12/12 passed")

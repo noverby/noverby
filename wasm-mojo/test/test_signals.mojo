@@ -754,3 +754,34 @@ fn test_signal_zero_initial_value(w: UnsafePointer[WasmInstance]) raises:
     )
 
     _destroy_runtime(w, rt)
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_runtime_create_returns_non_null(w)
+    test_signal_create_and_read(w)
+    test_signal_write_and_read_back(w)
+    test_signal_peek(w)
+    test_signal_version_tracking(w)
+    test_multiple_independent_signals(w)
+    test_signal_destroy(w)
+    test_signal_slot_reuse_after_destroy(w)
+    test_signal_iadd(w)
+    test_signal_isub(w)
+    test_no_context_by_default(w)
+    test_context_set_and_clear(w)
+    test_read_with_context_subscribes(w)
+    test_peek_does_not_subscribe(w)
+    test_multiple_contexts_subscribe(w)
+    test_write_marks_subscribers_dirty(w)
+    test_write_without_subscribers_is_clean(w)
+    test_iadd_marks_subscribers_dirty(w)
+    test_multiple_writes_deduplicate_dirty_scopes(w)
+    test_read_after_write_returns_new_value(w)
+    test_stress_100_independent_signals(w)
+    test_stress_create_destroy_reuse_cycle(w)
+    test_signal_negative_values(w)
+    test_signal_zero_initial_value(w)
+    print("signals: 24/24 passed")

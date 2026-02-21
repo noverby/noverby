@@ -285,3 +285,18 @@ fn test_string_eq_reflexive(w: UnsafePointer[WasmInstance]) raises:
             1,
             String("string_eq reflexive for string #") + String(i),
         )
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_200_sequential_string_allocations(w)
+    test_100_return_input_string_roundtrips(w)
+    test_50_sequential_concats(w)
+    test_50_interleaved_numeric_string_ops(w)
+    test_300_alloc_string_struct_non_overlapping(w)
+    test_mixed_size_strings_report_correct_length(w)
+    test_fib_recurrence_2_to_40(w)
+    test_string_eq_reflexive(w)
+    print("stress: 8/8 passed")

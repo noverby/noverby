@@ -262,3 +262,38 @@ fn test_clamp_float64_above(w: UnsafePointer[WasmInstance]) raises:
         10.0,
         "clamp_float64(11, 0, 10) === 10",
     )
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_min_int32_first_smaller(w)
+    test_min_int32_second_smaller(w)
+    test_min_int32_equal(w)
+    test_min_int32_negative(w)
+    test_max_int32_second_larger(w)
+    test_max_int32_first_larger(w)
+    test_max_int32_equal(w)
+    test_max_int32_negative(w)
+    test_min_int64_first_smaller(w)
+    test_min_int64_second_smaller(w)
+    test_min_int64_negative(w)
+    test_max_int64_second_larger(w)
+    test_max_int64_first_larger(w)
+    test_max_int64_negative(w)
+    test_min_float64_first_smaller(w)
+    test_min_float64_second_smaller(w)
+    test_min_float64_negative(w)
+    test_max_float64_second_larger(w)
+    test_max_float64_first_larger(w)
+    test_max_float64_negative(w)
+    test_clamp_int32_within_range(w)
+    test_clamp_int32_below(w)
+    test_clamp_int32_above(w)
+    test_clamp_int32_at_low_bound(w)
+    test_clamp_int32_at_high_bound(w)
+    test_clamp_float64_within_range(w)
+    test_clamp_float64_below(w)
+    test_clamp_float64_above(w)
+    print("minmax: 28/28 passed")

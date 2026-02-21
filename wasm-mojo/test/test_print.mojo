@@ -57,3 +57,16 @@ fn test_print_float64(w: UnsafePointer[WasmInstance]) raises:
 fn test_print_input_string(w: UnsafePointer[WasmInstance]) raises:
     var struct_ptr = w[].write_string_struct("print-input-string")
     w[].call_void("print_input_string", args_ptr(struct_ptr))
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_print_static_string(w)
+    test_print_int32(w)
+    test_print_int64(w)
+    test_print_float32(w)
+    test_print_float64(w)
+    test_print_input_string(w)
+    print("print: 6/6 passed")

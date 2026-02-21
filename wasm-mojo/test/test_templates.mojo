@@ -1861,3 +1861,26 @@ fn test_builder_reset_after_build(w: UnsafePointer[WasmInstance]) raises:
 
     _destroy_builder(w, b)
     _destroy_runtime(w, rt)
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_builder_basic_lifecycle(w)
+    test_registry_register_and_query(w)
+    test_template_structure_node_queries(w)
+    test_template_dynamic_slots(w)
+    test_template_attributes(w)
+    test_template_deduplication(w)
+    test_vnode_creation_basic_kinds(w)
+    test_vnode_dynamic_content(w)
+    test_vnode_fragments(w)
+    test_vnode_keys(w)
+    test_vnode_mixed_attributes(w)
+    test_vnode_store_lifecycle(w)
+    test_builder_pre_build_queries(w)
+    test_complex_template_counter(w)
+    test_multiple_templates_in_one_runtime(w)
+    test_builder_reset_after_build(w)
+    print("templates: 16/16 passed")

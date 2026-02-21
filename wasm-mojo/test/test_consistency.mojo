@@ -218,3 +218,23 @@ fn test_clamp_eq_max_lo_min_hi_x(w: UnsafePointer[WasmInstance]) raises:
             + String(hi)
             + ") === max(lo, min(hi, x))",
         )
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_add_sub_inverse(w)
+    test_mul_div_inverse(w)
+    test_neg_neg_identity(w)
+    test_abs_neg_eq_abs(w)
+    test_min_le_max(w)
+    test_bitwise_identity_and_or_xor(w)
+    test_shl_shr_roundtrip(w)
+    test_de_morgan(w)
+    test_gcd_scaling(w)
+    test_fibonacci_recurrence(w)
+    test_factorial_recurrence(w)
+    test_string_concat_length(w)
+    test_clamp_eq_max_lo_min_hi_x(w)
+    print("consistency: 13/13 passed")

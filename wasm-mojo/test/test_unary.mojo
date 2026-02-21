@@ -211,3 +211,31 @@ fn test_abs_float64_zero(w: UnsafePointer[WasmInstance]) raises:
         0.0,
         "abs_float64(0) === 0",
     )
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_neg_int32_positive(w)
+    test_neg_int32_negative(w)
+    test_neg_int32_zero(w)
+    test_neg_int64_positive(w)
+    test_neg_int64_negative(w)
+    test_neg_int64_zero(w)
+    test_neg_float32(w)
+    test_neg_float64_positive(w)
+    test_neg_float64_negative(w)
+    test_neg_float64_zero(w)
+    test_abs_int32_positive(w)
+    test_abs_int32_negative(w)
+    test_abs_int32_zero(w)
+    test_abs_int64_positive(w)
+    test_abs_int64_negative(w)
+    test_abs_int64_zero(w)
+    test_abs_float32_positive(w)
+    test_abs_float32_negative(w)
+    test_abs_float64_positive(w)
+    test_abs_float64_negative(w)
+    test_abs_float64_zero(w)
+    print("unary: 21/21 passed")

@@ -171,3 +171,27 @@ fn test_shr_255_by_one(w: UnsafePointer[WasmInstance]) raises:
         127,
         "shr_int32(255, 1) === 127",
     )
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_bitand_basic(w)
+    test_bitand_mask(w)
+    test_bitand_zero(w)
+    test_bitor_basic(w)
+    test_bitor_zero(w)
+    test_bitxor_basic(w)
+    test_bitxor_self_is_zero(w)
+    test_bitxor_with_zero_is_identity(w)
+    test_bitnot_zero(w)
+    test_bitnot_one(w)
+    test_shl_by_zero(w)
+    test_shl_by_one(w)
+    test_shl_by_four(w)
+    test_shl_three_by_three(w)
+    test_shr_sixteen_by_four(w)
+    test_shr_twentyfour_by_three(w)
+    test_shr_255_by_one(w)
+    print("bitwise: 17/17 passed")
