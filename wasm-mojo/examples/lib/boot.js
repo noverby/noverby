@@ -3,7 +3,7 @@
 // Provides convenience functions that tie together env, interpreter,
 // and WASM loading so each example only needs ~50 lines of app-specific code.
 
-export { loadWasm, alignedAlloc, getMemory } from "./env.js";
+export { alignedAlloc, getMemory, loadWasm } from "./env.js";
 export { EventBridge } from "./events.js";
 export { Interpreter } from "./interpreter.js";
 export { Op } from "./protocol.js";
@@ -21,7 +21,7 @@ import { Interpreter } from "./interpreter.js";
  * @returns {Interpreter}
  */
 export function createInterpreter(root, templateRoots) {
-  return new Interpreter(root, templateRoots);
+	return new Interpreter(root, templateRoots);
 }
 
 /**
@@ -31,7 +31,7 @@ export function createInterpreter(root, templateRoots) {
  * @returns {bigint} Pointer to the buffer in WASM memory.
  */
 export function allocBuffer(capacity) {
-  return alignedAlloc(8n, BigInt(capacity));
+	return alignedAlloc(8n, BigInt(capacity));
 }
 
 /**
@@ -42,6 +42,6 @@ export function allocBuffer(capacity) {
  * @param {number}      byteLen     - Number of bytes of mutation data.
  */
 export function applyMutations(interpreter, bufPtr, byteLen) {
-  const mem = getMemory();
-  interpreter.applyMutations(mem.buffer, Number(bufPtr), byteLen);
+	const mem = getMemory();
+	interpreter.applyMutations(mem.buffer, Number(bufPtr), byteLen);
 }

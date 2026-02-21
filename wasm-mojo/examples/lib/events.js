@@ -24,16 +24,16 @@
  * with the handler ID, event name, and raw DOM event.
  */
 export class EventBridge {
-  /**
-   * @param {import('./interpreter.js').Interpreter} interpreter
-   * @param {(handlerId: number, eventName: string, domEvent: Event) => void} dispatch
-   */
-  constructor(interpreter, dispatch) {
-    this.dispatch = dispatch;
-    interpreter.onNewListener = (elementId, eventName, handlerId) => {
-      return (domEvent) => {
-        this.dispatch(handlerId, eventName, domEvent);
-      };
-    };
-  }
+	/**
+	 * @param {import('./interpreter.js').Interpreter} interpreter
+	 * @param {(handlerId: number, eventName: string, domEvent: Event) => void} dispatch
+	 */
+	constructor(interpreter, dispatch) {
+		this.dispatch = dispatch;
+		interpreter.onNewListener = (_elementId, eventName, handlerId) => {
+			return (domEvent) => {
+				this.dispatch(handlerId, eventName, domEvent);
+			};
+		};
+	}
 }
