@@ -102,6 +102,7 @@ struct MutationInfo(Copyable, Movable):
     var name_len: Int
     var ns: Int
     var path_len: Int
+    var handler_id: Int
 
     fn __init__(out self, op: Int):
         self.op = op
@@ -112,6 +113,7 @@ struct MutationInfo(Copyable, Movable):
         self.name_len = 0
         self.ns = 0
         self.path_len = 0
+        self.handler_id = 0
 
     fn __copyinit__(out self, other: Self):
         self.op = other.op
@@ -122,6 +124,7 @@ struct MutationInfo(Copyable, Movable):
         self.name_len = other.name_len
         self.ns = other.ns
         self.path_len = other.path_len
+        self.handler_id = other.handler_id
 
     fn __moveinit__(out self, deinit other: Self):
         self.op = other.op
@@ -132,6 +135,7 @@ struct MutationInfo(Copyable, Movable):
         self.name_len = other.name_len
         self.ns = other.ns
         self.path_len = other.path_len
+        self.handler_id = other.handler_id
 
 
 fn _read_mutations(
@@ -200,6 +204,8 @@ fn _read_mutations(
 
         elif op == OP_NEW_EVENT_LISTENER:
             m.id = _read_u32_le(w, buf, pos)
+            pos += 4
+            m.handler_id = _read_u32_le(w, buf, pos)
             pos += 4
             m.name_len = _read_u16_le(w, buf, pos)
             pos += 2

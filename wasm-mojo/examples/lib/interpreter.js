@@ -20,7 +20,7 @@ const TAG_NAMES = [
  * Template roots are provided as a `Map<number, Node[]>` mapping template
  * IDs to arrays of pre-built DOM nodes that are cloned on LoadTemplate.
  *
- * Set `onNewListener` to a callback `(elementId, eventName) => listener`
+ * Set `onNewListener` to a callback `(elementId, eventName, handlerId) => listener`
  * to be notified when a NewEventListener mutation is processed. The
  * returned function is attached as the actual DOM event listener.
  */
@@ -109,7 +109,7 @@ export class Interpreter {
         const el = this.nodes.get(m.id);
         if (!el) break;
         const listener = this.onNewListener
-          ? this.onNewListener(m.id, m.name)
+          ? this.onNewListener(m.id, m.name, m.handlerId)
           : () => {};
         let elMap = this.listeners.get(m.id);
         if (!elMap) {

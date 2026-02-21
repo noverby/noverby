@@ -232,12 +232,16 @@ struct DiffEngine:
                                 elem_id, old_attr.name
                             )
                             self.writer[0].new_event_listener(
-                                elem_id, new_attr.name
+                                elem_id,
+                                new_attr.value.handler_id,
+                                new_attr.name,
                             )
                     else:
                         # Was not an event, now is
                         self.writer[0].new_event_listener(
-                            elem_id, new_attr.name
+                            elem_id,
+                            new_attr.value.handler_id,
+                            new_attr.name,
                         )
                 elif new_attr.value.kind == AVAL_NONE:
                     if old_attr.value.kind == AVAL_EVENT:
