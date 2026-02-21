@@ -33,6 +33,7 @@ from memory import UnsafePointer, memcpy
 from scope import ScopeArena, ScopeState, HOOK_SIGNAL, HOOK_MEMO, HOOK_EFFECT
 from vdom import TemplateRegistry, VNodeStore
 from .memo import MemoStore, MemoEntry
+from .effect import EffectStore, EffectEntry
 from events import (
     HandlerRegistry,
     HandlerEntry,
@@ -313,6 +314,7 @@ struct Runtime(Movable):
     var vnodes: VNodeStore
     var handlers: HandlerRegistry
     var memos: MemoStore
+    var effects: EffectStore
     var current_context: Int  # -1 = no active context
     var current_scope: Int  # -1 = no active scope (for hooks)
     var dirty_scopes: List[UInt32]
@@ -323,6 +325,13 @@ struct Runtime(Movable):
     # the memo's output signal's subscribers are also notified.
     var _memo_ctx_ids: List[UInt32]  # context IDs that belong to memos
     var _memo_ids: List[UInt32]  # corresponding memo IDs
+    # Context-to-effect mapping: parallel arrays.
+    # When a reactive context is notified after a signal write, the
+    # runtime checks whether that context belongs to an effect.  If so,
+    # the effect is marked pending (but NOT added to dirty_scopes —
+    # effects run after rendering, not during).
+    var _effect_ctx_ids: List[UInt32]  # context IDs that belong to effects
+    var _effect_ids: List[UInt32]  # corresponding effect IDs
 
     # ── Construction ─────────────────────────────────────────────────
 
@@ -333,11 +342,14 @@ struct Runtime(Movable):
         self.vnodes = VNodeStore()
         self.handlers = HandlerRegistry()
         self.memos = MemoStore()
+        self.effects = EffectStore()
         self.current_context = -1
         self.current_scope = -1
         self.dirty_scopes = List[UInt32]()
         self._memo_ctx_ids = List[UInt32]()
         self._memo_ids = List[UInt32]()
+        self._effect_ctx_ids = List[UInt32]()
+        self._effect_ids = List[UInt32]()
 
     fn __moveinit__(out self, deinit other: Self):
         self.signals = other.signals^
@@ -346,11 +358,14 @@ struct Runtime(Movable):
         self.vnodes = other.vnodes^
         self.handlers = other.handlers^
         self.memos = other.memos^
+        self.effects = other.effects^
         self.current_context = other.current_context
         self.current_scope = other.current_scope
         self.dirty_scopes = other.dirty_scopes^
         self._memo_ctx_ids = other._memo_ctx_ids^
         self._memo_ids = other._memo_ids^
+        self._effect_ctx_ids = other._effect_ctx_ids^
+        self._effect_ids = other._effect_ids^
 
     # ── Context management ───────────────────────────────────────────
 
@@ -420,7 +435,7 @@ struct Runtime(Movable):
         var subs = self.signals.get_subscribers(key)
         for i in range(len(subs)):
             var ctx = subs[i]
-            # Check if this subscriber is a memo's reactive context
+            # 1. Check if this subscriber is a memo's reactive context
             var is_memo = False
             for m in range(len(self._memo_ctx_ids)):
                 if self._memo_ctx_ids[m] == ctx:
@@ -433,24 +448,49 @@ struct Runtime(Movable):
                         var out_subs = self.signals.get_subscribers(out_key)
                         for k in range(len(out_subs)):
                             var scope_ctx = out_subs[k]
-                            var found2 = False
-                            for j2 in range(len(self.dirty_scopes)):
-                                if self.dirty_scopes[j2] == scope_ctx:
-                                    found2 = True
+                            # Check if this subscriber is an effect context
+                            var is_eff = False
+                            for e2 in range(len(self._effect_ctx_ids)):
+                                if self._effect_ctx_ids[e2] == scope_ctx:
+                                    var eff_id = self._effect_ids[e2]
+                                    if self.effects.contains(eff_id):
+                                        self.effects.mark_pending(eff_id)
+                                    is_eff = True
                                     break
-                            if not found2:
-                                self.dirty_scopes.append(scope_ctx)
+                            if not is_eff:
+                                # Normal scope subscriber
+                                var found2 = False
+                                for j2 in range(len(self.dirty_scopes)):
+                                    if self.dirty_scopes[j2] == scope_ctx:
+                                        found2 = True
+                                        break
+                                if not found2:
+                                    self.dirty_scopes.append(scope_ctx)
                     is_memo = True
                     break
-            if not is_memo:
-                # Normal scope subscriber — append if not already queued
-                var found = False
-                for j in range(len(self.dirty_scopes)):
-                    if self.dirty_scopes[j] == ctx:
-                        found = True
-                        break
-                if not found:
-                    self.dirty_scopes.append(ctx)
+            if is_memo:
+                continue
+            # 2. Check if this subscriber is an effect's reactive context
+            var is_effect = False
+            for e in range(len(self._effect_ctx_ids)):
+                if self._effect_ctx_ids[e] == ctx:
+                    # Mark the effect pending (but do NOT add to dirty_scopes —
+                    # effects run after rendering, not during)
+                    var effect_id = self._effect_ids[e]
+                    if self.effects.contains(effect_id):
+                        self.effects.mark_pending(effect_id)
+                    is_effect = True
+                    break
+            if is_effect:
+                continue
+            # 3. Normal scope subscriber — append if not already queued
+            var found = False
+            for j in range(len(self.dirty_scopes)):
+                if self.dirty_scopes[j] == ctx:
+                    found = True
+                    break
+            if not found:
+                self.dirty_scopes.append(ctx)
 
     fn peek_signal[T: Copyable & Movable & AnyType](self, key: UInt32) -> T:
         """Read a signal without subscribing."""
@@ -562,6 +602,27 @@ struct Runtime(Movable):
             return key
         else:
             # Re-render — return existing signal key
+            return self.scopes.next_hook(scope_id)
+
+    fn use_effect(mut self) -> UInt32:
+        """Hook: create or retrieve an effect for the current scope.
+
+        Follows the same pattern as use_signal_i32 and use_memo_i32:
+          - First render: creates an effect via create_effect, pushes
+            HOOK_EFFECT tag + effect ID onto the scope's hook list.
+          - Re-render: advances the hook cursor and returns the existing
+            effect ID.
+
+        Precondition: current_scope is set (inside a begin/end render).
+        """
+        var scope_id = self.get_scope()
+        if self.scopes.is_first_render(scope_id):
+            # First render — create new effect
+            var effect_id = self.create_effect(scope_id)
+            self.scopes.push_hook(scope_id, HOOK_EFFECT, UInt32(effect_id))
+            return UInt32(effect_id)
+        else:
+            # Re-render — return existing effect ID
             return self.scopes.next_hook(scope_id)
 
     fn use_memo_i32(mut self, initial: Int32) -> UInt32:
@@ -833,6 +894,125 @@ struct Runtime(Movable):
     fn memo_context_id(self, memo_id: UInt32) -> UInt32:
         """Return the reactive context ID of the memo (for testing)."""
         return self.memos.context_id(memo_id)
+
+    # ── Effect operations ────────────────────────────────────────────
+
+    fn create_effect(mut self, scope_id: UInt32) -> UInt32:
+        """Create an effect with a reactive context.
+
+        Allocates a "context signal" (a dummy Int32 signal whose key
+        doubles as the context_id) for dependency tracking.
+        The effect starts pending so the first run is triggered.
+
+        Returns the effect ID.
+        """
+        # Allocate a context signal for dependency tracking
+        var context_id = self.signals.create[Int32](Int32(0))
+        var effect_id = self.effects.create(context_id, scope_id)
+        # Register the context→effect mapping for pending propagation
+        self._effect_ctx_ids.append(context_id)
+        self._effect_ids.append(effect_id)
+        return effect_id
+
+    fn effect_begin_run(mut self, effect_id: UInt32):
+        """Begin effect execution.
+
+        Sets the effect's reactive context as the current context so that
+        signal reads during execution are tracked as dependencies.
+        Clears old subscriptions (re-subscribes fresh on each run).
+        """
+        if not self.effects.contains(effect_id):
+            return
+        var entry = self.effects.get(effect_id)
+        self.effects.set_running(effect_id, True)
+        # Clear old subscriptions: unsubscribe this context from all signals
+        # it was previously subscribed to.  Full scan — acceptable for now
+        # since effect count is small.
+        for i in range(len(self.signals._entries)):
+            if (
+                i < len(self.signals._states)
+                and self.signals._states[i].occupied
+            ):
+                self.signals.unsubscribe(UInt32(i), entry.context_id)
+        # Save previous context in the context signal's value
+        var prev = self.current_context
+        self.signals.write[Int32](entry.context_id, Int32(prev))
+        self.current_context = Int(entry.context_id)
+
+    fn effect_end_run(mut self, effect_id: UInt32):
+        """End effect execution.
+
+        Clears the pending flag and running flag.
+        Restores the previous reactive context.
+        """
+        if not self.effects.contains(effect_id):
+            return
+        var entry = self.effects.get(effect_id)
+        self.effects.clear_pending(effect_id)
+        self.effects.set_running(effect_id, False)
+        # Restore previous context
+        var prev = Int(self.signals.read[Int32](entry.context_id))
+        self.current_context = prev
+
+    fn effect_is_pending(self, effect_id: UInt32) -> Bool:
+        """Check whether the effect needs re-execution."""
+        if not self.effects.contains(effect_id):
+            return False
+        return self.effects.is_pending(effect_id)
+
+    fn destroy_effect(mut self, effect_id: UInt32):
+        """Destroy an effect, cleaning up its context signal.
+
+        Removes the context→effect mapping, destroys the context signal,
+        and frees the effect slot.
+        """
+        if not self.effects.contains(effect_id):
+            return
+        var entry = self.effects.get(effect_id)
+        # Remove context→effect mapping
+        for i in range(len(self._effect_ctx_ids)):
+            if self._effect_ctx_ids[i] == entry.context_id:
+                # Swap-remove for O(1)
+                var last = len(self._effect_ctx_ids) - 1
+                if i != last:
+                    self._effect_ctx_ids[i] = self._effect_ctx_ids[last]
+                    self._effect_ids[i] = self._effect_ids[last]
+                _ = self._effect_ctx_ids.pop()
+                _ = self._effect_ids.pop()
+                break
+        # Destroy the context signal
+        self.signals.destroy(entry.context_id)
+        # Destroy the effect entry
+        self.effects.destroy(effect_id)
+
+    fn effect_count(self) -> Int:
+        """Return the number of live effects."""
+        return self.effects.count()
+
+    fn effect_context_id(self, effect_id: UInt32) -> UInt32:
+        """Return the reactive context ID of the effect (for testing)."""
+        return self.effects.context_id(effect_id)
+
+    fn drain_pending_effects(self) -> List[UInt32]:
+        """Return a list of effect IDs that are currently pending.
+
+        Does NOT clear pending flags — the caller must begin_run/end_run
+        each effect to clear them.
+        """
+        return self.effects.pending_effects()
+
+    fn pending_effect_count(self) -> Int:
+        """Return the number of pending effects."""
+        return len(self.effects.pending_effects())
+
+    fn pending_effect_at(self, index: Int) -> UInt32:
+        """Return the effect ID at the given index in the pending list.
+
+        This is a convenience for WASM export (avoids returning a List).
+        Precondition: index < pending_effect_count().
+        """
+        var pending = self.effects.pending_effects()
+        return pending[index]
 
 
 # ── Heap-allocated Runtime handle ────────────────────────────────────────────

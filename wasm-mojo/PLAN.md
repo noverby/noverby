@@ -33,6 +33,7 @@ A Dioxus-inspired, signal-based UI framework written in Mojo, compiled to WebAss
 - [Phase 11 — Automatic Template & Event Wiring](#phase-11--automatic-template--event-wiring)
 - [Phase 12 — TS Runtime Modernization](#phase-12--ts-runtime-modernization)
 - [Phase 13 — Handler Lifecycle & Derived Signals (Memo)](#phase-13--handler-lifecycle--derived-signals-memo--complete)
+- [Phase 14 — Effects (Reactive Side Effects)](#phase-14--effects-reactive-side-effects)
 - [Open Questions](#open-questions)
 - [Milestone Checklist](#milestone-checklist)
 
@@ -3552,6 +3553,387 @@ Update README and PLAN to reflect Phase 13 changes.
 - [x] README: handler lifecycle documented in "Known limitations" or "Architecture"
 - [x] PLAN milestone checklist updated for M13.1–M13.7
 - [x] Phase 13 marked complete
+
+---
+
+## Phase 14 — Effects (Reactive Side Effects)
+
+> **Goal:** Implement effects — the third core reactive primitive after signals and memos. An effect is a side-effectful computation with automatic dependency tracking: it auto-subscribes to signals/memos read during execution, and is marked "pending" when any dependency changes. Effects complete the reactive triad: **Signal** (state) → **Memo** (derived state) → **Effect** (side effects).
+>
+> **Motivation:** The framework currently supports signals (mutable state) and memos (derived/cached state), but has no mechanism for reactive side effects. In Dioxus/React, effects handle tasks like logging, persisting state to localStorage, syncing derived values imperatively, or triggering external operations when state changes. Without effects, apps must manually check for state changes after every flush — the framework can't tell the app "this signal you care about changed, please re-run this code."
+>
+> **Design:** Effects follow the same pattern as memos: each effect owns a reactive context (for dependency tracking) and belongs to a scope (for cleanup). The key difference is that effects have no cached output value — they exist purely to re-run side-effectful code when dependencies change. Since Mojo WASM cannot store closures, the framework marks effects as "pending" and the app code checks `is_pending()` + calls `begin_run()`/`end_run()` explicitly (same bracket pattern as memo's `begin_compute()`/`end_compute()`).
+>
+> **Scheduling:** Effects run AFTER scope re-renders, not during. The flow is: signal write → scope dirty + effect pending → scheduler → re-render → diff → mutations → DOM update → run pending effects. This ensures effects always see the latest state.
+>
+> **Impact:** Completes the reactive primitive set. Enables reactive side effects. `HOOK_EFFECT` tag (already defined but unused) becomes functional. Counter app gains a "last action" tracking effect as demonstration.
+>
+> **Depends on:** Phase 13 (memo infrastructure, context tracking, hook system).
+
+### 14.1 EffectEntry & EffectStore (✅ Done)
+
+Slab-allocated storage for effect entries, following the same pattern as `MemoStore`.
+
+**Mojo side (`src/signals/effect.mojo`):**
+
+```text
+struct EffectEntry(Copyable, Movable):
+    var context_id: UInt32   # reactive context for dependency tracking
+    var scope_id: UInt32     # owning scope (for cleanup)
+    var pending: Bool        # needs re-execution
+    var running: Bool        # currently inside begin/end run bracket
+
+struct EffectSlotState(Copyable, Movable):
+    var occupied: Bool
+    var next_free: Int
+
+struct EffectStore:
+    var _entries: List[EffectEntry]
+    var _states: List[EffectSlotState]
+    var _free_head: Int
+    var _count: Int
+
+    fn create(context_id, scope_id) -> UInt32     # allocate new effect
+    fn destroy(effect_id)                          # free slot
+    fn contains(effect_id) -> Bool                 # check if alive
+    fn get(effect_id) -> EffectEntry               # read entry
+    fn mark_pending(effect_id)                     # set pending = True
+    fn clear_pending(effect_id)                    # set pending = False
+    fn is_pending(effect_id) -> Bool               # check pending flag
+    fn set_running(effect_id, running: Bool)       # guard re-entrancy
+    fn is_running(effect_id) -> Bool               # check running flag
+    fn count() -> Int                              # number of live effects
+    fn context_id(effect_id) -> UInt32             # for testing
+    fn scope_id(effect_id) -> UInt32               # for testing
+```
+
+**Tests (`test/test_effect.mojo`):**
+
+- Create effect → ID is 0, count is 1, pending starts True (run on creation)
+- Create two effects → distinct IDs, count is 2
+- Destroy effect → count drops, slot reused on next create
+- Mark pending / clear pending → flag toggles correctly
+- Set running / is running → guards re-entrancy
+- Contains → True for live, False for destroyed
+- Get → returns correct context_id and scope_id
+
+**Deliverables:**
+
+- [x] `src/signals/effect.mojo` with `EffectEntry`, `EffectSlotState`, `EffectStore`
+- [x] `src/signals/__init__.mojo` updated to re-export effect types
+- [x] `test/test_effect.mojo` with store-level unit tests
+- [x] All existing tests still pass
+
+### 14.2 Effect Runtime API & WASM Exports (✅ Done)
+
+Integrate effects into the Runtime, following the memo pattern.
+
+**Runtime methods (`src/signals/runtime.mojo`):**
+
+```text
+fn create_effect(scope_id: UInt32) -> UInt32
+    # Allocates a context signal + effect entry
+    # Registers context→effect mapping (parallel to _memo_ctx_ids/_memo_ids)
+    # Effect starts pending (first run)
+
+fn effect_begin_run(effect_id: UInt32)
+    # Sets effect's context as current (for dependency tracking)
+    # Clears old signal subscriptions (re-subscribes fresh on each run)
+    # Saves previous context for restore
+
+fn effect_end_run(effect_id: UInt32)
+    # Clears pending flag, clears running flag
+    # Restores previous reactive context
+
+fn effect_is_pending(effect_id: UInt32) -> Bool
+
+fn destroy_effect(effect_id: UInt32)
+    # Removes context→effect mapping
+    # Destroys context signal
+    # Destroys effect entry
+
+fn effect_count() -> Int
+
+fn drain_pending_effects() -> List[UInt32]
+    # Returns list of effect IDs that are pending
+    # Does NOT clear them — caller must begin_run/end_run each
+
+fn effect_context_id(effect_id: UInt32) -> UInt32   # for testing
+```
+
+**Signal write propagation update:**
+
+In `write_signal`, after checking memo contexts, also check effect contexts. If a subscriber is an effect's context, mark the effect pending (but do NOT add to dirty_scopes — effects don't trigger re-renders, they run after).
+
+```text
+# In write_signal, for each subscriber context:
+#   1. Check if it's a memo context → mark memo dirty, propagate
+#   2. Check if it's an effect context → mark effect pending
+#   3. Otherwise → append to dirty_scopes (normal scope subscriber)
+```
+
+**WASM exports (`src/main.mojo`):**
+
+- `effect_create(rt_ptr, scope_id) -> effect_id`
+- `effect_begin_run(rt_ptr, effect_id)`
+- `effect_end_run(rt_ptr, effect_id)`
+- `effect_is_pending(rt_ptr, effect_id) -> i32`
+- `effect_destroy(rt_ptr, effect_id)`
+- `effect_count(rt_ptr) -> i32`
+- `effect_drain_pending(rt_ptr) -> i32` (count; IDs via separate query)
+- `effect_pending_at(rt_ptr, index) -> i32` (read pending effect ID by index)
+- `effect_context_id(rt_ptr, effect_id) -> i32`
+
+**TS types (`runtime/types.ts`):**
+
+```text
+effect_create(rtPtr: bigint, scopeId: number): number;
+effect_begin_run(rtPtr: bigint, effectId: number): void;
+effect_end_run(rtPtr: bigint, effectId: number): void;
+effect_is_pending(rtPtr: bigint, effectId: number): number;
+effect_destroy(rtPtr: bigint, effectId: number): void;
+effect_count(rtPtr: bigint): number;
+effect_drain_pending(rtPtr: bigint): number;
+effect_pending_at(rtPtr: bigint, index: number): number;
+effect_context_id(rtPtr: bigint, effectId: number): number;
+```
+
+**Tests (`test/test_effect.mojo` + `test-js/effect.test.ts`):**
+
+Mojo tests:
+
+- Create effect → pending is True (initial run needed)
+- Begin/end run → pending cleared, context tracked
+- Signal read during run → auto-subscribed to effect's context
+- Signal write after run → effect becomes pending again
+- Two effects reading same signal → both pending after write
+- Effect reads memo output → pending when memo's output changes
+- Diamond: signal → memo + effect, both react correctly
+- Destroy effect → context cleaned up, no longer reacts to writes
+- Dependency re-tracking: effect reads signal A on first run, signal B on second → only B triggers pending
+
+JS tests:
+
+- Create and destroy lifecycle
+- Pending flag after signal write
+- Auto-tracking during begin/end run
+- Multiple effects independence
+- Propagation chain: signal → effect pending
+- Signal → memo → effect chain (effect reads memo output)
+
+**Deliverables:**
+
+- [x] `Runtime.effects: EffectStore` field + `_effect_ctx_ids`/`_effect_ids` mapping
+- [x] Runtime methods: create, begin_run, end_run, is_pending, destroy, count, drain_pending, pending_effect_at, context_id
+- [x] `write_signal` updated to check effect contexts (including memo output propagation path)
+- [x] 9 WASM exports in `main.mojo`
+- [x] TS types updated in `runtime/types.ts`
+- [x] Mojo tests: 26 tests with 63 assertions (`test/test_effect.mojo`)
+- [x] JS tests: 15 suites with 55 assertions (`test-js/effect.test.ts`)
+- [x] All existing tests still pass
+
+### 14.3 use_effect Hook (✅ Done)
+
+Hook for creating or retrieving an effect within a scope's render.
+
+**Runtime method:**
+
+```text
+fn use_effect(mut self) -> UInt32:
+    # Follows use_signal_i32 / use_memo_i32 pattern:
+    # First render: create_effect(scope_id), push HOOK_EFFECT tag + effect_id
+    # Re-render: advance cursor, return existing effect_id
+```
+
+**WASM export:**
+
+- `hook_use_effect(rt_ptr) -> effect_id`
+
+**TS type:**
+
+- `hook_use_effect(rtPtr: bigint): number;`
+
+**Tests:**
+
+Mojo:
+
+- First render → creates effect, returns ID
+- Re-render → returns same ID (stable)
+- Multiple effects → distinct IDs, correct cursor advancement
+- Interleaved with signal and memo hooks → all stable across re-renders
+
+JS:
+
+- Create on first render
+- Same ID on re-render
+- Interleaved with signal/memo hooks
+
+**Deliverables:**
+
+- [x] `Runtime.use_effect()` method
+- [x] `hook_use_effect` WASM export
+- [x] TS type updated
+- [x] 4 Mojo tests + 3 JS suites (included in 14.2 test files)
+- [x] All existing tests still pass
+
+### 14.4 AppShell Effect Helpers (✅ Done)
+
+Convenience methods on `AppShell` mirroring the signal/memo helper pattern.
+
+**AppShell methods:**
+
+```text
+fn create_effect(scope_id: UInt32) -> UInt32
+fn effect_begin_run(effect_id: UInt32)
+fn effect_end_run(effect_id: UInt32)
+fn effect_is_pending(effect_id: UInt32) -> Bool
+fn use_effect() -> UInt32
+fn drain_pending_effects() -> List[UInt32]
+```
+
+**WASM exports:**
+
+- `shell_effect_create(shell_ptr, scope_id) -> effect_id`
+- `shell_effect_begin_run(shell_ptr, effect_id)`
+- `shell_effect_end_run(shell_ptr, effect_id)`
+- `shell_effect_is_pending(shell_ptr, effect_id) -> i32`
+- `shell_use_effect(shell_ptr) -> effect_id`
+- `shell_effect_drain_pending(shell_ptr) -> i32`
+- `shell_effect_pending_at(shell_ptr, index) -> i32`
+
+**Tests:**
+
+Mojo (test_component.mojo):
+
+- Shell create effect → pending
+- Shell begin/end run → clears pending
+- Signal write → effect pending via shell
+- Shell hook lifecycle
+- Parity with raw Runtime
+
+JS:
+
+- Shell effect lifecycle
+- Signal → effect pending chain
+- Hook create and re-render stability
+
+**Deliverables:**
+
+- [x] 8 AppShell methods (create_effect, effect_begin_run, effect_end_run, effect_is_pending, use_effect, drain_pending_effects, pending_effect_count, pending_effect_at)
+- [x] 7 shell WASM exports (shell_effect_create, shell_effect_begin_run, shell_effect_end_run, shell_effect_is_pending, shell_use_effect, shell_effect_drain_pending, shell_effect_pending_at)
+- [x] TS types for all shell effect exports
+- [x] 6 Mojo tests in test_component.mojo (create, begin/end run, signal propagation, hook, parity, drain pending)
+- [x] 5 JS suites in effect.test.ts (create+pending, signal write, hook lifecycle, drain pending, parity)
+- [x] All existing tests still pass. 838 Mojo + 1,163 JS = 2,001 total.
+
+### 14.5 Counter App Effect Demo
+
+Demonstrate effects in the counter app with a "last action" tracker.
+
+**Design:**
+
+The counter app gains:
+
+- A `last_action` signal (Int32: 0=none, 1=increment, 2=decrement)
+- An effect that observes `count_signal` and writes to `last_action`
+- A third `<span>` showing "Last: none" / "Last: increment" / "Last: decrement"
+
+Template becomes: `div > [span(count), span(doubled), span(last_action), button(+), button(−)]`
+
+**CounterApp changes:**
+
+```text
+var last_action_signal: UInt32   # 0=none, 1=incr, 2=decr
+var action_effect: UInt32        # effect that tracks count changes
+
+fn build_action_text(self) -> String:
+    var action = self.shell.peek_signal_i32(self.last_action_signal)
+    if action == 1: return "Last: increment"
+    if action == 2: return "Last: decrement"
+    return "Last: none"
+
+fn run_pending_effects(mut self):
+    # Check if action_effect is pending
+    if self.shell.effect_is_pending(self.action_effect):
+        self.shell.effect_begin_run(self.action_effect)
+        var count = self.shell.read_signal_i32(self.count_signal)
+        # Determine action based on count change direction
+        # (effect just reads count to re-subscribe; action is set by handler)
+        self.shell.effect_end_run(self.action_effect)
+```
+
+Actually, simpler approach: the effect just tracks that the count was read (for dependency subscription). The `last_action` signal is written directly by the event handlers (action 1 for increment, 2 for decrement). The effect's role is to demonstrate the pending/run lifecycle — it re-reads `count_signal` to maintain the subscription chain.
+
+Even simpler: the `last_action` is set by the handler, and the effect observes `last_action` to compute a "history count" (number of actions taken). This demonstrates effect → signal write → re-render.
+
+Simplest useful demo: effect observes `count_signal`, tracks number of times it changed in an `action_count` signal. Template shows "Actions: N".
+
+```text
+var action_count_signal: UInt32   # how many signal writes have occurred
+var count_effect: UInt32          # effect that observes count_signal
+
+# In run_pending_effects:
+if shell.effect_is_pending(count_effect):
+    shell.effect_begin_run(count_effect)
+    _ = shell.read_signal_i32(count_signal)  # re-subscribe
+    shell.effect_end_run(count_effect)
+    # Increment action count (outside effect bracket to avoid re-trigger)
+    var n = shell.peek_signal_i32(action_count_signal)
+    shell.write_signal_i32(action_count_signal, n + 1)
+```
+
+Template: `div > [span(count), span(doubled), span(actions), button(+), button(−)]`
+
+**WASM exports:**
+
+- `counter_action_count(app_ptr) -> i32`
+- `counter_run_effects(app_ptr)` — runs pending effects
+- `counter_has_pending_effects(app_ptr) -> i32`
+
+**TS integration:**
+
+- `CounterAppHandle.getActionCount(): number`
+- `CounterAppHandle.runEffects(): void`
+- After `flush()`, check and run effects; if effects wrote signals, flush again
+
+**Tests:**
+
+Mojo:
+
+- Initial state: action_count is 0, effect is pending (first run)
+- After first effect run: pending cleared, count_signal subscribed
+- After increment + effect run: action_count is 1
+- After 5 increments: action_count is 5
+- Decrement also triggers: action_count increments
+
+JS:
+
+- Initial mount: "Actions: 0" displayed
+- After increment + flush + effect run + flush: "Actions: 1"
+- After 3 increments: "Actions: 3"
+- DOM structure: third span exists with actions text
+
+**Deliverables:**
+
+- [ ] `CounterApp` gains `action_count_signal`, `count_effect`, `run_pending_effects()`
+- [ ] Template updated with third span for "Actions: N"
+- [ ] `counter_action_count`, `counter_run_effects`, `counter_has_pending_effects` exports
+- [ ] TS `CounterAppHandle` updated
+- [ ] Existing counter tests updated for 5-child template
+- [ ] ~5 new Mojo tests, ~4 new JS suites
+- [ ] All existing tests still pass
+
+### 14.6 Documentation & Test Count Update
+
+Update README and PLAN to reflect Phase 14 changes.
+
+**Deliverables:**
+
+- [ ] README: test count updated, effect section added to "Reactive model"
+- [ ] README: effect added to Features list
+- [ ] README: project structure updated (effect.mojo, test_effect.mojo, effect.test.ts)
+- [ ] PLAN milestone checklist updated for M14.1–M14.6
+- [ ] Phase 14 marked complete
 
 ---
 

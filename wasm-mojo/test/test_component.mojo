@@ -861,6 +861,184 @@ def test_shell_memo_multiple_memos(w: UnsafePointer[WasmInstance]):
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
+# ── Shell effect helpers (M14.4) ────────────────────────────────────────────
+
+
+def test_shell_effect_create_returns_valid_id(w: UnsafePointer[WasmInstance]):
+    """Creating an effect via shell returns a valid ID."""
+    var shell = Int(w[].call_i64("shell_create", no_args()))
+    var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
+
+    var eid = w[].call_i32("shell_effect_create", args_ptr_i32(shell, scope))
+    assert_true(eid >= 0, "effect ID should be non-negative")
+
+    # Effect starts pending
+    assert_equal(
+        w[].call_i32("shell_effect_is_pending", args_ptr_i32(shell, eid)),
+        1,
+        "effect should start pending",
+    )
+
+    w[].call_void("shell_destroy", args_ptr(shell))
+
+
+def test_shell_effect_begin_end_run_clears_pending(
+    w: UnsafePointer[WasmInstance],
+):
+    """Running an effect via shell clears the pending flag."""
+    var shell = Int(w[].call_i64("shell_create", no_args()))
+    var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
+
+    var eid = w[].call_i32("shell_effect_create", args_ptr_i32(shell, scope))
+    assert_equal(
+        w[].call_i32("shell_effect_is_pending", args_ptr_i32(shell, eid)),
+        1,
+        "pending before run",
+    )
+
+    w[].call_void("shell_effect_begin_run", args_ptr_i32(shell, eid))
+    w[].call_void("shell_effect_end_run", args_ptr_i32(shell, eid))
+
+    assert_equal(
+        w[].call_i32("shell_effect_is_pending", args_ptr_i32(shell, eid)),
+        0,
+        "not pending after run",
+    )
+
+    w[].call_void("shell_destroy", args_ptr(shell))
+
+
+def test_shell_effect_signal_write_marks_pending(
+    w: UnsafePointer[WasmInstance],
+):
+    """Writing a signal that an effect reads via shell marks it pending."""
+    var shell = Int(w[].call_i64("shell_create", no_args()))
+    var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
+    var sig = w[].call_i32("shell_create_signal_i32", args_ptr_i32(shell, 0))
+
+    var eid = w[].call_i32("shell_effect_create", args_ptr_i32(shell, scope))
+
+    # Run effect, reading the signal to establish subscription
+    w[].call_void("shell_effect_begin_run", args_ptr_i32(shell, eid))
+    _ = w[].call_i32("shell_read_signal_i32", args_ptr_i32(shell, sig))
+    w[].call_void("shell_effect_end_run", args_ptr_i32(shell, eid))
+
+    assert_equal(
+        w[].call_i32("shell_effect_is_pending", args_ptr_i32(shell, eid)),
+        0,
+        "not pending after run",
+    )
+
+    # Write to signal
+    w[].call_void("shell_write_signal_i32", args_ptr_i32_i32(shell, sig, 42))
+
+    assert_equal(
+        w[].call_i32("shell_effect_is_pending", args_ptr_i32(shell, eid)),
+        1,
+        "pending after signal write",
+    )
+
+    w[].call_void("shell_destroy", args_ptr(shell))
+
+
+def test_shell_use_effect_hook(w: UnsafePointer[WasmInstance]):
+    """Use_effect hook via shell creates on first render, returns same on re-render.
+    """
+    var shell = Int(w[].call_i64("shell_create", no_args()))
+    var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
+
+    # First render
+    _ = w[].call_i32("shell_begin_render", args_ptr_i32(shell, scope))
+    var eid1 = w[].call_i32("shell_use_effect", args_ptr(shell))
+    w[].call_void("shell_end_render", args_ptr_i32(shell, -1))
+
+    assert_true(eid1 >= 0, "effect ID should be non-negative")
+
+    # Re-render
+    _ = w[].call_i32("shell_begin_render", args_ptr_i32(shell, scope))
+    var eid2 = w[].call_i32("shell_use_effect", args_ptr(shell))
+    w[].call_void("shell_end_render", args_ptr_i32(shell, -1))
+
+    assert_equal(eid1, eid2, "same effect ID on re-render")
+
+    w[].call_void("shell_destroy", args_ptr(shell))
+
+
+def test_shell_effect_parity_with_runtime(w: UnsafePointer[WasmInstance]):
+    """Shell effect helpers produce the same result as raw Runtime methods."""
+    var shell = Int(w[].call_i64("shell_create", no_args()))
+    var rt = Int(w[].call_i64("shell_rt_ptr", args_ptr(shell)))
+    var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
+
+    # Create effect via shell
+    var eid = w[].call_i32("shell_effect_create", args_ptr_i32(shell, scope))
+
+    # Verify via raw runtime
+    assert_equal(
+        w[].call_i32("effect_count", args_ptr(rt)),
+        1,
+        "runtime sees 1 effect",
+    )
+    assert_equal(
+        w[].call_i32("effect_is_pending", args_ptr_i32(rt, eid)),
+        1,
+        "runtime sees effect pending",
+    )
+
+    # Run via shell, verify via runtime
+    w[].call_void("shell_effect_begin_run", args_ptr_i32(shell, eid))
+    w[].call_void("shell_effect_end_run", args_ptr_i32(shell, eid))
+
+    assert_equal(
+        w[].call_i32("effect_is_pending", args_ptr_i32(rt, eid)),
+        0,
+        "runtime sees effect not pending after shell run",
+    )
+
+    w[].call_void("shell_destroy", args_ptr(shell))
+
+
+def test_shell_effect_drain_pending(w: UnsafePointer[WasmInstance]):
+    """Shell drain_pending returns correct count of pending effects."""
+    var shell = Int(w[].call_i64("shell_create", no_args()))
+    var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
+    var sig = w[].call_i32("shell_create_signal_i32", args_ptr_i32(shell, 0))
+
+    var e0 = w[].call_i32("shell_effect_create", args_ptr_i32(shell, scope))
+    var e1 = w[].call_i32("shell_effect_create", args_ptr_i32(shell, scope))
+
+    # Both start pending
+    assert_equal(
+        w[].call_i32("shell_effect_drain_pending", args_ptr(shell)),
+        2,
+        "both effects start pending",
+    )
+
+    # Run both, subscribing to signal
+    w[].call_void("shell_effect_begin_run", args_ptr_i32(shell, e0))
+    _ = w[].call_i32("shell_read_signal_i32", args_ptr_i32(shell, sig))
+    w[].call_void("shell_effect_end_run", args_ptr_i32(shell, e0))
+    w[].call_void("shell_effect_begin_run", args_ptr_i32(shell, e1))
+    _ = w[].call_i32("shell_read_signal_i32", args_ptr_i32(shell, sig))
+    w[].call_void("shell_effect_end_run", args_ptr_i32(shell, e1))
+
+    assert_equal(
+        w[].call_i32("shell_effect_drain_pending", args_ptr(shell)),
+        0,
+        "no pending after running both",
+    )
+
+    # Write → both pending
+    w[].call_void("shell_write_signal_i32", args_ptr_i32_i32(shell, sig, 1))
+    assert_equal(
+        w[].call_i32("shell_effect_drain_pending", args_ptr(shell)),
+        2,
+        "both pending after write",
+    )
+
+    w[].call_void("shell_destroy", args_ptr(shell))
+
+
 # ── Counter memo demo (M13.6) ───────────────────────────────────────────────
 
 
@@ -989,4 +1167,11 @@ fn main() raises:
     test_counter_memo_after_increment(w)
     test_counter_memo_multiple_increments(w)
     test_counter_memo_decrement(w)
-    print("component: 39/39 passed")
+    # Shell effect helpers (M14.4)
+    test_shell_effect_create_returns_valid_id(w)
+    test_shell_effect_begin_end_run_clears_pending(w)
+    test_shell_effect_signal_write_marks_pending(w)
+    test_shell_use_effect_hook(w)
+    test_shell_effect_parity_with_runtime(w)
+    test_shell_effect_drain_pending(w)
+    print("component: 45/45 passed")

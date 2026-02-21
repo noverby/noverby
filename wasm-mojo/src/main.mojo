@@ -535,6 +535,16 @@ fn hook_use_memo_i32(rt_ptr: Int64, initial: Int32) -> Int32:
 
 
 @export
+fn hook_use_effect(rt_ptr: Int64) -> Int32:
+    """Hook: create or retrieve an effect for the current scope.
+
+    On first render: creates effect, stores in hooks (HOOK_EFFECT tag), returns ID.
+    On re-render: returns existing effect ID.
+    """
+    return Int32(_get[Runtime](rt_ptr)[0].use_effect())
+
+
+@export
 fn scope_is_first_render(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Check if a scope is on its first render.  Returns 1 or 0."""
     return _b2i(
@@ -1941,6 +1951,65 @@ fn memo_context_id(rt_ptr: Int64, memo_id: Int32) -> Int32:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Phase 14 — Effect (Reactive Side Effect) Exports
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@export
+fn effect_create(rt_ptr: Int64, scope_id: Int32) -> Int32:
+    """Create an effect with a reactive context.  Returns effect ID."""
+    return Int32(_get[Runtime](rt_ptr)[0].create_effect(UInt32(scope_id)))
+
+
+@export
+fn effect_begin_run(rt_ptr: Int64, effect_id: Int32):
+    """Begin effect execution — sets effect's context as current."""
+    _get[Runtime](rt_ptr)[0].effect_begin_run(UInt32(effect_id))
+
+
+@export
+fn effect_end_run(rt_ptr: Int64, effect_id: Int32):
+    """End effect execution — clears pending, restores context."""
+    _get[Runtime](rt_ptr)[0].effect_end_run(UInt32(effect_id))
+
+
+@export
+fn effect_is_pending(rt_ptr: Int64, effect_id: Int32) -> Int32:
+    """Check whether the effect needs re-execution.  Returns 1 or 0."""
+    return _b2i(_get[Runtime](rt_ptr)[0].effect_is_pending(UInt32(effect_id)))
+
+
+@export
+fn effect_destroy(rt_ptr: Int64, effect_id: Int32):
+    """Destroy an effect, cleaning up its context signal."""
+    _get[Runtime](rt_ptr)[0].destroy_effect(UInt32(effect_id))
+
+
+@export
+fn effect_count(rt_ptr: Int64) -> Int32:
+    """Return the number of live effects."""
+    return Int32(_get[Runtime](rt_ptr)[0].effect_count())
+
+
+@export
+fn effect_context_id(rt_ptr: Int64, effect_id: Int32) -> Int32:
+    """Return the reactive context ID of the effect (for testing)."""
+    return Int32(_get[Runtime](rt_ptr)[0].effect_context_id(UInt32(effect_id)))
+
+
+@export
+fn effect_drain_pending(rt_ptr: Int64) -> Int32:
+    """Return the number of currently pending effects."""
+    return Int32(_get[Runtime](rt_ptr)[0].pending_effect_count())
+
+
+@export
+fn effect_pending_at(rt_ptr: Int64, index: Int32) -> Int32:
+    """Return the effect ID at the given index in the pending list."""
+    return Int32(_get[Runtime](rt_ptr)[0].pending_effect_at(Int(index)))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Phase 7 — Counter App (End-to-End)
 # ══════════════════════════════════════════════════════════════════════════════
 #
@@ -2641,6 +2710,56 @@ fn shell_memo_is_dirty(shell_ptr: Int64, memo_id: Int32) -> Int32:
 fn shell_use_memo_i32(shell_ptr: Int64, initial: Int32) -> Int32:
     """Hook: create or retrieve an Int32 memo via the AppShell."""
     return Int32(_get[AppShell](shell_ptr)[0].use_memo_i32(initial))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 14.4 — AppShell Effect Helpers
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@export
+fn shell_effect_create(shell_ptr: Int64, scope_id: Int32) -> Int32:
+    """Create an effect via the AppShell.  Returns effect ID."""
+    return Int32(_get[AppShell](shell_ptr)[0].create_effect(UInt32(scope_id)))
+
+
+@export
+fn shell_effect_begin_run(shell_ptr: Int64, effect_id: Int32):
+    """Begin effect execution via the AppShell."""
+    _get[AppShell](shell_ptr)[0].effect_begin_run(UInt32(effect_id))
+
+
+@export
+fn shell_effect_end_run(shell_ptr: Int64, effect_id: Int32):
+    """End effect execution via the AppShell."""
+    _get[AppShell](shell_ptr)[0].effect_end_run(UInt32(effect_id))
+
+
+@export
+fn shell_effect_is_pending(shell_ptr: Int64, effect_id: Int32) -> Int32:
+    """Check whether effect needs re-execution via the AppShell.  Returns 1 or 0.
+    """
+    return _b2i(
+        _get[AppShell](shell_ptr)[0].effect_is_pending(UInt32(effect_id))
+    )
+
+
+@export
+fn shell_use_effect(shell_ptr: Int64) -> Int32:
+    """Hook: create or retrieve an effect via the AppShell."""
+    return Int32(_get[AppShell](shell_ptr)[0].use_effect())
+
+
+@export
+fn shell_effect_drain_pending(shell_ptr: Int64) -> Int32:
+    """Return the number of pending effects via the AppShell."""
+    return Int32(_get[AppShell](shell_ptr)[0].pending_effect_count())
+
+
+@export
+fn shell_effect_pending_at(shell_ptr: Int64, index: Int32) -> Int32:
+    """Return the pending effect ID at the given index via the AppShell."""
+    return Int32(_get[AppShell](shell_ptr)[0].pending_effect_at(Int(index)))
 
 
 @export
