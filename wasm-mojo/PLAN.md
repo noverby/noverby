@@ -2705,6 +2705,17 @@ Replaced all 12 type-specific `_get_*` pointer accessor helpers with a single ge
 - **`main.mojo` reduction**: 3,326 → 3,282 lines (−44 lines).
 - **No behavioral change**: All 397 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
 
+### 10.21 Inline Single-Use Pointer Bindings (✅ Done)
+
+Inlined all 157 single-use `var X = _get[T](ptr)` intermediate variable declarations into direct `_get[T](ptr)[0].method()` expressions. Every `@export` function now uses a consistent inline style — intermediate pointer variables are only kept when the pointer is referenced multiple times within the same function.
+
+- **157 single-use `var` bindings inlined**: All patterns like `var rt = _get[Runtime](rt_ptr); return Int32(rt[0].method())` replaced with `return Int32(_get[Runtime](rt_ptr)[0].method())`. Applies across all subsystems: Runtime (105), VNodeStore (36), TemplateBuilder (10), ElementIdAllocator (6), UInt8 (3), Node (2), MutationWriter (1).
+- **18 multi-use bindings retained**: Functions that reference the pointer variable 2+ times keep the explicit `var` binding for clarity (e.g., `scope_get_current`, `signal_iadd_i32`, `writer_finalize`, `diff_vnodes`, `mem_test_*`, `shell_destroy`, `shell_diff`, app query exports with peek+signal patterns).
+- **Style consistency achieved**: 77 call sites already used the inline style (shell/app query exports); now all 397 exports follow the same convention. No mixed styles remain.
+- **`create_vnode` simplified**: 4 single-use pointer bindings replaced with inline `_get[T]` calls directly in the `CreateEngine(...)` constructor. `diff_vnodes` similarly simplified (3 of 4 bindings inlined; `w` retained because it is referenced in both `DiffEngine(w, ...)` and `w[0].offset`).
+- **`main.mojo` line count**: 3,282 → 3,298 lines (+16 lines). The 157 removed `var` lines are offset by the Mojo formatter wrapping the longer inlined expressions across multiple lines. The net effect is fewer variable declarations and more consistent style, with a small formatting-driven line increase.
+- **No behavioral change**: All 397 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
+
 ---
 
 ## Milestone Checklist
@@ -2739,3 +2750,4 @@ Replaced all 12 type-specific `_get_*` pointer accessor helpers with a single ge
 - [x] **M10.18:** Complete `_as_ptr` migration & writer helper dedup. `_get_writer` added (13th typed helper). 14 remaining typed `_as_ptr` calls replaced with `_get_*` helpers across 8 exports (`runtime_destroy`, `tmpl_builder_destroy`, `vnode_store_destroy`, `writer_destroy`, `writer_offset`, `writer_finalize`, `create_vnode`, `diff_vnodes`). `writer_create`/`writer_destroy` deduplicated via `_alloc_writer`/`_free_writer`. `_as_ptr` now only used in helper definitions + raw `UInt8` buffer access. `main.mojo` reduced from 3,335 → 3,332 lines (−3 lines). All 676 Mojo + 860 JS tests pass unchanged.
 - [x] **M10.19:** Generic heap alloc/free helpers & `_to_i64` consistency. `_heap_new[T]`/`_heap_del[T]` centralize all typed struct alloc/free. `_alloc_writer`/`_free_writer`/`_alloc_node`/`_free_node` simplified to use generics. 9 inline alloc/free patterns in exports replaced with single-call expressions. 5 `Int64(Int(ptr))` unified to `_to_i64`. `alloc(1)`/`destroy_pointee`/`init_pointee_move` now appear only in helper definitions. `main.mojo` reduced from 3,332 → 3,326 lines (−6 lines). All 676 Mojo + 860 JS tests pass unchanged.
 - [x] **M10.20:** Generic pointer accessor & final `_to_i64` fixes. 12 type-specific `_get_*` helpers replaced with 1 generic `_get[T: AnyType](ptr: Int64)`. 270+ call sites updated. `_as_ptr` now only used inside `_get[T]` definition. 2 remaining `Int64(Int(...))` unified to `_to_i64`. 7 raw `_as_ptr[UInt8]` calls replaced with `_get[UInt8]`. `main.mojo` reduced from 3,326 → 3,282 lines (−44 lines). All 676 Mojo + 860 JS tests pass unchanged.
+- [x] **M10.21:** Inline single-use pointer bindings. 157 single-use `var X = _get[T](ptr)` declarations inlined to direct `_get[T](ptr)[0].method()` expressions. 18 multi-use bindings retained. All 397 exports now use consistent inline style. `create_vnode` and `diff_vnodes` simplified with inline `_get` in engine constructors. `main.mojo`: 3,282 → 3,298 lines (+16 due to formatter wrapping; 157 var declarations removed). All 676 Mojo + 860 JS tests pass unchanged.
