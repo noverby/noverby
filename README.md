@@ -85,6 +85,12 @@
 | [Sidecar 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/sidecar/default.nix) | Jupyter Notebook viewer |
 | [Xeus-lix ❄️](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/xeus-lix/default.nix) | Jupyter Notebook kernel for Nix |
 
+#### AI
+
+| Package | Description |
+|-|-|
+| [IronClaw 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkgs/ironclaw.nix) | Secure personal AI assistant (OpenClaw-inspired) |
+
 #### Development
 
 | Package | Description |
