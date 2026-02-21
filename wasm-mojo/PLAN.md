@@ -2620,6 +2620,18 @@ Added substring filter arguments to `build_test_binaries.sh`, `run_test_binaries
 
 ---
 
+### 10.13 Extract DSL Test Logic from main.mojo (✅ Done)
+
+Moved the 19 self-contained `dsl_test_*` function bodies out of `main.mojo` into a dedicated `src/vdom/dsl_tests.mojo` module. The `@export` wrappers in `main.mojo` now delegate to the extracted functions, following the same thin-wrapper pattern used by the PoC and app sections.
+
+- **`src/vdom/dsl_tests.mojo`** (761 lines): New module containing all 19 DSL test function implementations (`test_text_node`, `test_dyn_text_node`, `test_dyn_node_slot`, `test_static_attr`, `test_dyn_attr`, `test_empty_element`, `test_element_with_children`, `test_element_with_attrs`, `test_element_mixed`, `test_nested_elements`, `test_counter_template`, `test_to_template_simple`, `test_to_template_attrs`, `test_to_template_multi_root`, `test_vnode_builder`, `test_vnode_builder_keyed`, `test_all_tag_helpers`, `test_count_utilities`, `test_template_equivalence`). Each returns `Int32` (1 = pass, 0 = fail). Imports DSL constructors, tag constants, template types, and signal runtime directly from sibling modules.
+- **`main.mojo` reduction**: 4,282 → 3,736 lines (−546 lines, −12.7%). The DSL self-contained test section shrank from ~667 lines of inline test logic to ~103 lines of thin `@export` wrappers. Each wrapper is a single `return _dsl_test_*()` call.
+- **Import pattern**: `main.mojo` imports from `vdom.dsl_tests` using aliased names (`test_text_node as _dsl_test_text_node`, etc.) to avoid collisions with the `@export` wrapper names. The 19 imports add 21 lines to the import section.
+- **No behavioral change**: The WASM export names (`dsl_test_text_node`, etc.) are unchanged, so all JS and Mojo test harnesses work without modification.
+- **All 674 Mojo + 859 JS tests pass unchanged**, confirming that the extracted test module produces identical results.
+
+---
+
 ## Milestone Checklist
 
 - [x] **M0:** Arena allocator + collections + ElementId + protocol defined. All existing tests still pass.
@@ -2644,3 +2656,4 @@ Added substring filter arguments to `build_test_binaries.sh`, `run_test_binaries
 - [x] **M10.10:** Precompiled test binary infrastructure. Each `test/test_*.mojo` has an inline `fn main()` sharing one `WasmInstance` across all tests — no code generation. `build_test_binaries.sh` compiles them in parallel with incremental timestamp checks, `run_test_binaries.sh` executes all binaries concurrently. Test suite reduced from ~5–6 min to ~11s (`just test`, no code change) or ~10s (`just test-run`, binaries pre-built). All 674 Mojo + 859 JS tests pass.
 - [x] **M10.11:** README & documentation update. Updated test counts (790 → 1,533), added missing packages (component, scheduler, DSL, poc, examples/lib, scripts), added "Test infrastructure" and "Ergonomic DSL" sections, updated reactive model with Scheduler step, alphabetized project structure. All 674 Mojo + 859 JS tests pass unchanged.
 - [x] **M10.12:** Test filter support. Substring filter arguments added to `build_test_binaries.sh`, `run_test_binaries.sh`, and Justfile (`just test signals`, `just test-run dsl`, `just test signals mut`). Single-module runs take ~100ms vs ~10s for all 26 binaries. All 674 Mojo + 859 JS tests pass unchanged.
+- [x] **M10.13:** Extract DSL test logic from main.mojo. 19 self-contained `dsl_test_*` function bodies moved to `src/vdom/dsl_tests.mojo` (761 lines). `main.mojo` reduced from 4,282 → 3,736 lines (−546 lines, −12.7%). Inline test logic replaced with thin `@export` wrappers. All 674 Mojo + 859 JS tests pass unchanged.
