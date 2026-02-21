@@ -57,6 +57,13 @@ from vdom import (
     TAG_DIV,
     TAG_SPAN,
     TAG_P,
+    TAG_SECTION,
+    TAG_HEADER,
+    TAG_FOOTER,
+    TAG_NAV,
+    TAG_MAIN,
+    TAG_ARTICLE,
+    TAG_ASIDE,
     TAG_H1,
     TAG_H2,
     TAG_H3,
@@ -69,13 +76,89 @@ from vdom import (
     TAG_BUTTON,
     TAG_INPUT,
     TAG_FORM,
+    TAG_TEXTAREA,
+    TAG_SELECT,
+    TAG_OPTION,
+    TAG_LABEL,
     TAG_A,
     TAG_IMG,
     TAG_TABLE,
+    TAG_THEAD,
+    TAG_TBODY,
     TAG_TR,
     TAG_TD,
     TAG_TH,
+    TAG_STRONG,
+    TAG_EM,
+    TAG_BR,
+    TAG_HR,
+    TAG_PRE,
+    TAG_CODE,
     TAG_UNKNOWN,
+    # DSL — Ergonomic builder API (M10.5)
+    Node,
+    NODE_TEXT,
+    NODE_ELEMENT,
+    NODE_DYN_TEXT,
+    NODE_DYN_NODE,
+    NODE_STATIC_ATTR,
+    NODE_DYN_ATTR,
+    text,
+    dyn_text,
+    dyn_node,
+    attr,
+    dyn_attr,
+    el,
+    el_empty,
+    el_div,
+    el_span,
+    el_p,
+    el_section,
+    el_header,
+    el_footer,
+    el_nav,
+    el_main,
+    el_article,
+    el_aside,
+    el_h1,
+    el_h2,
+    el_h3,
+    el_h4,
+    el_h5,
+    el_h6,
+    el_ul,
+    el_ol,
+    el_li,
+    el_button,
+    el_input,
+    el_form,
+    el_textarea,
+    el_select,
+    el_option,
+    el_label,
+    el_a,
+    el_img,
+    el_table,
+    el_thead,
+    el_tbody,
+    el_tr,
+    el_td,
+    el_th,
+    el_strong,
+    el_em,
+    el_br,
+    el_hr,
+    el_pre,
+    el_code,
+    to_template,
+    to_template_multi,
+    VNodeBuilder,
+    count_nodes,
+    count_all_items,
+    count_dynamic_text_slots,
+    count_dynamic_node_slots,
+    count_dynamic_attr_slots,
+    count_static_attr_nodes,
 )
 from scheduler import Scheduler, SchedulerEntry
 from component import (
@@ -2804,6 +2887,968 @@ fn shell_diff(
     writer_ptr.free()
 
     return result
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DSL Ergonomic Builder Exports (M10.5)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# WASM-exported test functions for the declarative builder DSL.
+# Each function exercises a specific aspect of the DSL and returns 1 for
+# pass, 0 for fail.  The JS test harness calls these and asserts the result.
+#
+# Additionally, "dsl_node_*" and "dsl_vb_*" exports provide low-level
+# building blocks that the Mojo test harness can orchestrate directly.
+
+
+# ── Heap-allocated Node handle ───────────────────────────────────────────────
+
+
+@always_inline
+fn _int_to_node_ptr(addr: Int) -> UnsafePointer[Node]:
+    """Reinterpret an integer address as an UnsafePointer[Node]."""
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[Node]]()[0]
+    slot.free()
+    return result
+
+
+@always_inline
+fn _get_node(ptr: Int64) -> UnsafePointer[Node]:
+    return _int_to_node_ptr(Int(ptr))
+
+
+@export
+fn dsl_node_text(s: String) -> Int64:
+    """Create a text Node on the heap.  Returns a pointer handle."""
+    var ptr = UnsafePointer[Node].alloc(1)
+    ptr.init_pointee_move(text(s))
+    return Int64(Int(ptr))
+
+
+@export
+fn dsl_node_dyn_text(index: Int32) -> Int64:
+    """Create a dynamic text Node on the heap."""
+    var ptr = UnsafePointer[Node].alloc(1)
+    ptr.init_pointee_move(dyn_text(Int(index)))
+    return Int64(Int(ptr))
+
+
+@export
+fn dsl_node_dyn_node(index: Int32) -> Int64:
+    """Create a dynamic node placeholder on the heap."""
+    var ptr = UnsafePointer[Node].alloc(1)
+    ptr.init_pointee_move(dyn_node(Int(index)))
+    return Int64(Int(ptr))
+
+
+@export
+fn dsl_node_attr(name: String, value: String) -> Int64:
+    """Create a static attribute Node on the heap."""
+    var ptr = UnsafePointer[Node].alloc(1)
+    ptr.init_pointee_move(attr(name, value))
+    return Int64(Int(ptr))
+
+
+@export
+fn dsl_node_dyn_attr(index: Int32) -> Int64:
+    """Create a dynamic attribute Node on the heap."""
+    var ptr = UnsafePointer[Node].alloc(1)
+    ptr.init_pointee_move(dyn_attr(Int(index)))
+    return Int64(Int(ptr))
+
+
+@export
+fn dsl_node_element(html_tag: Int32) -> Int64:
+    """Create an empty element Node on the heap."""
+    var ptr = UnsafePointer[Node].alloc(1)
+    ptr.init_pointee_move(el_empty(UInt8(html_tag)))
+    return Int64(Int(ptr))
+
+
+@export
+fn dsl_node_add_item(parent_ptr: Int64, child_ptr: Int64):
+    """Add a child/attr Node to an element Node.
+
+    The child Node is moved out of its heap slot (the child pointer
+    becomes invalid after this call).
+    """
+    var parent = _get_node(parent_ptr)
+    var child = _get_node(child_ptr)
+    var child_val = child[0].copy()
+    parent[0].add_item(child_val^)
+    child.destroy_pointee()
+    child.free()
+
+
+@export
+fn dsl_node_destroy(ptr: Int64):
+    """Destroy and free a heap-allocated Node."""
+    var node_ptr = _get_node(ptr)
+    node_ptr.destroy_pointee()
+    node_ptr.free()
+
+
+@export
+fn dsl_node_kind(ptr: Int64) -> Int32:
+    """Return the kind tag of a Node."""
+    return Int32(_get_node(ptr)[0].kind)
+
+
+@export
+fn dsl_node_tag(ptr: Int64) -> Int32:
+    """Return the HTML tag of an element Node."""
+    return Int32(_get_node(ptr)[0].tag)
+
+
+@export
+fn dsl_node_item_count(ptr: Int64) -> Int32:
+    """Return the total item count (children + attrs) of an element Node."""
+    return Int32(_get_node(ptr)[0].item_count())
+
+
+@export
+fn dsl_node_child_count(ptr: Int64) -> Int32:
+    """Return the child count (excluding attrs) of an element Node."""
+    return Int32(_get_node(ptr)[0].child_count())
+
+
+@export
+fn dsl_node_attr_count(ptr: Int64) -> Int32:
+    """Return the attribute count (excluding children) of an element Node."""
+    return Int32(_get_node(ptr)[0].attr_count())
+
+
+@export
+fn dsl_node_dynamic_index(ptr: Int64) -> Int32:
+    """Return the dynamic_index of a DYN_TEXT/DYN_NODE/DYN_ATTR Node."""
+    return Int32(_get_node(ptr)[0].dynamic_index)
+
+
+@export
+fn dsl_node_count_nodes(ptr: Int64) -> Int32:
+    """Recursively count tree nodes (excluding attrs)."""
+    return Int32(count_nodes(_get_node(ptr)[0]))
+
+
+@export
+fn dsl_node_count_all(ptr: Int64) -> Int32:
+    """Recursively count all items (including attrs)."""
+    return Int32(count_all_items(_get_node(ptr)[0]))
+
+
+@export
+fn dsl_node_count_dyn_text(ptr: Int64) -> Int32:
+    """Count DYN_TEXT slots in the tree."""
+    return Int32(count_dynamic_text_slots(_get_node(ptr)[0]))
+
+
+@export
+fn dsl_node_count_dyn_node(ptr: Int64) -> Int32:
+    """Count DYN_NODE slots in the tree."""
+    return Int32(count_dynamic_node_slots(_get_node(ptr)[0]))
+
+
+@export
+fn dsl_node_count_dyn_attr(ptr: Int64) -> Int32:
+    """Count DYN_ATTR slots in the tree."""
+    return Int32(count_dynamic_attr_slots(_get_node(ptr)[0]))
+
+
+@export
+fn dsl_node_count_static_attr(ptr: Int64) -> Int32:
+    """Count STATIC_ATTR nodes in the tree."""
+    return Int32(count_static_attr_nodes(_get_node(ptr)[0]))
+
+
+# ── to_template via DSL ──────────────────────────────────────────────────────
+
+
+@export
+fn dsl_to_template(node_ptr: Int64, name: String, rt_ptr: Int64) -> Int32:
+    """Convert a Node tree to a Template and register it.
+
+    Args:
+        node_ptr: Pointer to the root Node (consumed — freed after use).
+        name: Template name for registration.
+        rt_ptr: Pointer to the Runtime (owns TemplateRegistry).
+
+    Returns:
+        The template ID (UInt32 as Int32).
+    """
+    var node = _get_node(node_ptr)
+    var rt = _get_runtime(rt_ptr)
+    var template = to_template(node[0], name)
+    var tmpl_id = rt[0].templates.register(template^)
+
+    node.destroy_pointee()
+    node.free()
+
+    return Int32(tmpl_id)
+
+
+# ── VNodeBuilder WASM exports ────────────────────────────────────────────────
+
+
+@export
+fn dsl_vb_create(tmpl_id: Int32, store_ptr: Int64) -> Int64:
+    """Create a VNodeBuilder on the heap.
+
+    Returns a pointer handle to the VNodeBuilder.
+    """
+    var store = _get_vnode_store(store_ptr)
+    var ptr = UnsafePointer[VNodeBuilder].alloc(1)
+    ptr.init_pointee_move(VNodeBuilder(UInt32(tmpl_id), store))
+    return Int64(Int(ptr))
+
+
+@export
+fn dsl_vb_create_keyed(tmpl_id: Int32, key: String, store_ptr: Int64) -> Int64:
+    """Create a keyed VNodeBuilder on the heap."""
+    var store = _get_vnode_store(store_ptr)
+    var ptr = UnsafePointer[VNodeBuilder].alloc(1)
+    ptr.init_pointee_move(VNodeBuilder(UInt32(tmpl_id), key, store))
+    return Int64(Int(ptr))
+
+
+@always_inline
+fn _int_to_vb_ptr(addr: Int) -> UnsafePointer[VNodeBuilder]:
+    """Reinterpret an integer address as an UnsafePointer[VNodeBuilder]."""
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[VNodeBuilder]]()[0]
+    slot.free()
+    return result
+
+
+@always_inline
+fn _get_vb(ptr: Int64) -> UnsafePointer[VNodeBuilder]:
+    return _int_to_vb_ptr(Int(ptr))
+
+
+@export
+fn dsl_vb_destroy(ptr: Int64):
+    """Destroy and free a heap-allocated VNodeBuilder."""
+    var vb = _get_vb(ptr)
+    vb.destroy_pointee()
+    vb.free()
+
+
+@export
+fn dsl_vb_add_dyn_text(ptr: Int64, value: String):
+    """Add a dynamic text node via the VNodeBuilder."""
+    _get_vb(ptr)[0].add_dyn_text(value)
+
+
+@export
+fn dsl_vb_add_dyn_placeholder(ptr: Int64):
+    """Add a dynamic placeholder via the VNodeBuilder."""
+    _get_vb(ptr)[0].add_dyn_placeholder()
+
+
+@export
+fn dsl_vb_add_dyn_event(ptr: Int64, event_name: String, handler_id: Int32):
+    """Add a dynamic event handler via the VNodeBuilder."""
+    _get_vb(ptr)[0].add_dyn_event(event_name, UInt32(handler_id))
+
+
+@export
+fn dsl_vb_add_dyn_text_attr(ptr: Int64, name: String, value: String):
+    """Add a dynamic text attribute via the VNodeBuilder."""
+    _get_vb(ptr)[0].add_dyn_text_attr(name, value)
+
+
+@export
+fn dsl_vb_add_dyn_int_attr(ptr: Int64, name: String, value: Int64):
+    """Add a dynamic integer attribute via the VNodeBuilder."""
+    _get_vb(ptr)[0].add_dyn_int_attr(name, value)
+
+
+@export
+fn dsl_vb_add_dyn_bool_attr(ptr: Int64, name: String, value: Int32):
+    """Add a dynamic boolean attribute via the VNodeBuilder."""
+    _get_vb(ptr)[0].add_dyn_bool_attr(name, value != 0)
+
+
+@export
+fn dsl_vb_add_dyn_none_attr(ptr: Int64, name: String):
+    """Add a dynamic none/removal attribute via the VNodeBuilder."""
+    _get_vb(ptr)[0].add_dyn_none_attr(name)
+
+
+@export
+fn dsl_vb_index(ptr: Int64) -> Int32:
+    """Return the VNode index from the VNodeBuilder."""
+    return Int32(_get_vb(ptr)[0].index())
+
+
+# ── Self-contained DSL tests ─────────────────────────────────────────────────
+#
+# Each returns 1 (pass) or 0 (fail).  These exercise the DSL end-to-end
+# without requiring the test harness to assemble Node trees manually.
+
+
+@export
+fn dsl_test_text_node() -> Int32:
+    """Test: text() creates a NODE_TEXT with correct content."""
+    var n = text(String("hello"))
+    if n.kind != NODE_TEXT:
+        return 0
+    if n.text != String("hello"):
+        return 0
+    if n.is_element():
+        return 0
+    if not n.is_text():
+        return 0
+    if not n.is_child():
+        return 0
+    if n.is_attr():
+        return 0
+    return 1
+
+
+@export
+fn dsl_test_dyn_text_node() -> Int32:
+    """Test: dyn_text() creates a NODE_DYN_TEXT with correct index."""
+    var n = dyn_text(3)
+    if n.kind != NODE_DYN_TEXT:
+        return 0
+    if n.dynamic_index != 3:
+        return 0
+    if not n.is_dyn_text():
+        return 0
+    if not n.is_child():
+        return 0
+    return 1
+
+
+@export
+fn dsl_test_dyn_node_slot() -> Int32:
+    """Test: dyn_node() creates a NODE_DYN_NODE with correct index."""
+    var n = dyn_node(5)
+    if n.kind != NODE_DYN_NODE:
+        return 0
+    if n.dynamic_index != 5:
+        return 0
+    if not n.is_dyn_node():
+        return 0
+    return 1
+
+
+@export
+fn dsl_test_static_attr() -> Int32:
+    """Test: attr() creates a NODE_STATIC_ATTR with name and value."""
+    var n = attr(String("class"), String("container"))
+    if n.kind != NODE_STATIC_ATTR:
+        return 0
+    if n.text != String("class"):
+        return 0
+    if n.attr_value != String("container"):
+        return 0
+    if not n.is_attr():
+        return 0
+    if not n.is_static_attr():
+        return 0
+    if n.is_child():
+        return 0
+    return 1
+
+
+@export
+fn dsl_test_dyn_attr() -> Int32:
+    """Test: dyn_attr() creates a NODE_DYN_ATTR with correct index."""
+    var n = dyn_attr(2)
+    if n.kind != NODE_DYN_ATTR:
+        return 0
+    if n.dynamic_index != 2:
+        return 0
+    if not n.is_dyn_attr():
+        return 0
+    if not n.is_attr():
+        return 0
+    return 1
+
+
+@export
+fn dsl_test_empty_element() -> Int32:
+    """Test: el_div() with no args creates an empty element."""
+    var n = el_div()
+    if n.kind != NODE_ELEMENT:
+        return 0
+    if n.tag != TAG_DIV:
+        return 0
+    if n.item_count() != 0:
+        return 0
+    if n.child_count() != 0:
+        return 0
+    if n.attr_count() != 0:
+        return 0
+    return 1
+
+
+@export
+fn dsl_test_element_with_children() -> Int32:
+    """Test: el_div with text children."""
+    var n = el_div(List[Node](text(String("hello")), text(String("world"))))
+    if n.kind != NODE_ELEMENT:
+        return 0
+    if n.tag != TAG_DIV:
+        return 0
+    if n.item_count() != 2:
+        return 0
+    if n.child_count() != 2:
+        return 0
+    if n.attr_count() != 0:
+        return 0
+    return 1
+
+
+@export
+fn dsl_test_element_with_attrs() -> Int32:
+    """Test: el_div with attributes only."""
+    var n = el_div(
+        List[Node](
+            attr(String("class"), String("box")),
+            attr(String("id"), String("main")),
+        )
+    )
+    if n.item_count() != 2:
+        return 0
+    if n.child_count() != 0:
+        return 0
+    if n.attr_count() != 2:
+        return 0
+    if n.static_attr_count() != 2:
+        return 0
+    return 1
+
+
+@export
+fn dsl_test_element_mixed() -> Int32:
+    """Test: element with a mix of attrs, children, and dynamic slots."""
+    var n = el_div(
+        List[Node](
+            attr(String("class"), String("counter")),
+            dyn_attr(0),
+            text(String("hello")),
+            dyn_text(0),
+            el_span(List[Node](text(String("inner")))),
+        )
+    )
+    if n.item_count() != 5:
+        return 0
+    if n.child_count() != 3:
+        return 0
+    if n.attr_count() != 2:
+        return 0
+    if n.static_attr_count() != 1:
+        return 0
+    if n.dynamic_attr_count() != 1:
+        return 0
+    return 1
+
+
+@export
+fn dsl_test_nested_elements() -> Int32:
+    """Test: deeply nested element tree."""
+    var n = el_div(
+        List[Node](
+            el_h1(List[Node](text(String("Title")))),
+            el_ul(
+                List[Node](
+                    el_li(List[Node](text(String("A")))),
+                    el_li(List[Node](text(String("B")))),
+                    el_li(List[Node](text(String("C")))),
+                )
+            ),
+        )
+    )
+    if n.child_count() != 2:
+        return 0
+    # Total tree nodes: div + h1 + "Title" + ul + li*3 + "A" + "B" + "C" = 10
+    if count_nodes(n) != 10:
+        return 0
+    return 1
+
+
+@export
+fn dsl_test_counter_template() -> Int32:
+    """Test: build counter template via DSL and verify structure.
+
+    Builds the same template as CounterApp does manually:
+        div > [ span > dynamic_text[0],
+                button > text("+") + dynamic_attr[0],
+                button > text("-") + dynamic_attr[1] ]
+    Then registers it and verifies template properties match.
+    """
+    # Build using DSL
+    var view = el_div(
+        List[Node](
+            el_span(List[Node](dyn_text(0))),
+            el_button(List[Node](text(String("+")), dyn_attr(0))),
+            el_button(List[Node](text(String("-")), dyn_attr(1))),
+        )
+    )
+
+    # Verify Node tree structure before template conversion
+    # div(1) + span(1) + dyn_text(1) + button(1) + text("+")(1) + button(1) + text("-")(1) = 7
+    # dyn_attr items are attrs, not children — count_nodes skips attrs.
+    if count_nodes(view) != 7:
+        return 0
+
+    if count_dynamic_text_slots(view) != 1:
+        return 0
+    if count_dynamic_attr_slots(view) != 2:
+        return 0
+
+    # Convert to Template
+    var rt_ptr = create_runtime()
+    var template = to_template(view, String("dsl-counter"))
+    var tmpl_id = rt_ptr[0].templates.register(template^)
+
+    # Verify template properties
+    # 1 root (the div)
+    if rt_ptr[0].templates.root_count(tmpl_id) != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # 7 nodes total: div, span, dyn_text, btn1, text("+"), btn2, text("-")
+    if rt_ptr[0].templates.node_count(tmpl_id) != 7:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # Root node is an element (div)
+    if rt_ptr[0].templates.node_kind(tmpl_id, 0) != TNODE_ELEMENT:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # Root node tag is TAG_DIV
+    if rt_ptr[0].templates.node_html_tag(tmpl_id, 0) != TAG_DIV:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # Div has 3 children: span, button, button
+    if rt_ptr[0].templates.node_child_count(tmpl_id, 0) != 3:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # 1 dynamic text slot
+    if rt_ptr[0].templates.dynamic_text_count(tmpl_id) != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # 2 dynamic attr slots
+    if rt_ptr[0].templates.dynamic_attr_count(tmpl_id) != 2:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+@export
+fn dsl_test_to_template_simple() -> Int32:
+    """Test: simple div with static text converts to valid template."""
+    var view = el_div(List[Node](text(String("hello"))))
+    var rt_ptr = create_runtime()
+    var template = to_template(view, String("dsl-simple"))
+    var tmpl_id = rt_ptr[0].templates.register(template^)
+
+    # 2 nodes: div + text
+    if rt_ptr[0].templates.node_count(tmpl_id) != 2:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # 1 root
+    if rt_ptr[0].templates.root_count(tmpl_id) != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # Root is element
+    if rt_ptr[0].templates.node_kind(tmpl_id, 0) != TNODE_ELEMENT:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # Child is text
+    if rt_ptr[0].templates.node_kind(tmpl_id, 1) != TNODE_TEXT:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+@export
+fn dsl_test_to_template_attrs() -> Int32:
+    """Test: element with static and dynamic attrs converts correctly."""
+    var view = el_div(
+        List[Node](
+            attr(String("class"), String("box")),
+            dyn_attr(0),
+            text(String("content")),
+        )
+    )
+    var rt_ptr = create_runtime()
+    var template = to_template(view, String("dsl-attrs"))
+    var tmpl_id = rt_ptr[0].templates.register(template^)
+
+    # 2 nodes: div + text("content")
+    if rt_ptr[0].templates.node_count(tmpl_id) != 2:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # 1 static attr + 1 dynamic attr = 2 total attrs
+    if rt_ptr[0].templates.attr_total_count(tmpl_id) != 2:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    if rt_ptr[0].templates.static_attr_count(tmpl_id) != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    if rt_ptr[0].templates.dynamic_attr_count(tmpl_id) != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+@export
+fn dsl_test_to_template_multi_root() -> Int32:
+    """Test: multiple root nodes via to_template_multi."""
+    var roots = List[Node](
+        el_h1(List[Node](text(String("Title")))),
+        el_p(List[Node](text(String("Body")))),
+    )
+    var rt_ptr = create_runtime()
+    var template = to_template_multi(roots, String("dsl-multi"))
+    var tmpl_id = rt_ptr[0].templates.register(template^)
+
+    # 2 roots
+    if rt_ptr[0].templates.root_count(tmpl_id) != 2:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # 4 nodes: h1 + "Title" + p + "Body"
+    if rt_ptr[0].templates.node_count(tmpl_id) != 4:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+@export
+fn dsl_test_vnode_builder() -> Int32:
+    """Test: VNodeBuilder creates a VNode with correct dynamic content."""
+    var rt_ptr = create_runtime()
+    var store_ptr = UnsafePointer[VNodeStore].alloc(1)
+    store_ptr.init_pointee_move(VNodeStore())
+
+    # Register a template (we just need an ID)
+    var view = el_div(List[Node](dyn_text(0), dyn_attr(0), dyn_attr(1)))
+    var template = to_template(view, String("dsl-vb-test"))
+    var tmpl_id = rt_ptr[0].templates.register(template^)
+
+    # Build VNode using VNodeBuilder
+    var vb = VNodeBuilder(tmpl_id, store_ptr)
+    vb.add_dyn_text(String("Count: 42"))
+    vb.add_dyn_event(String("click"), UInt32(10))
+    vb.add_dyn_text_attr(String("class"), String("active"))
+    var idx = vb.index()
+
+    # Verify VNode
+    if store_ptr[0].kind(idx) != VNODE_TEMPLATE_REF:
+        store_ptr.destroy_pointee()
+        store_ptr.free()
+        destroy_runtime(rt_ptr)
+        return 0
+
+    if store_ptr[0].template_id(idx) != tmpl_id:
+        store_ptr.destroy_pointee()
+        store_ptr.free()
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # 1 dynamic text node
+    if store_ptr[0].dynamic_node_count(idx) != 1:
+        store_ptr.destroy_pointee()
+        store_ptr.free()
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # 2 dynamic attrs (event + text attr)
+    if store_ptr[0].dynamic_attr_count(idx) != 2:
+        store_ptr.destroy_pointee()
+        store_ptr.free()
+        destroy_runtime(rt_ptr)
+        return 0
+
+    store_ptr.destroy_pointee()
+    store_ptr.free()
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+@export
+fn dsl_test_vnode_builder_keyed() -> Int32:
+    """Test: keyed VNodeBuilder creates a keyed VNode."""
+    var rt_ptr = create_runtime()
+    var store_ptr = UnsafePointer[VNodeStore].alloc(1)
+    store_ptr.init_pointee_move(VNodeStore())
+
+    var view = el_div(List[Node](text(String("item"))))
+    var template = to_template(view, String("dsl-keyed"))
+    var tmpl_id = rt_ptr[0].templates.register(template^)
+
+    var vb = VNodeBuilder(tmpl_id, String("item-42"), store_ptr)
+    var idx = vb.index()
+
+    if not store_ptr[0].has_key(idx):
+        store_ptr.destroy_pointee()
+        store_ptr.free()
+        destroy_runtime(rt_ptr)
+        return 0
+
+    store_ptr.destroy_pointee()
+    store_ptr.free()
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+@export
+fn dsl_test_all_tag_helpers() -> Int32:
+    """Test: every tag helper produces the correct tag constant."""
+    # Layout / Sectioning
+    if el_div().tag != TAG_DIV:
+        return 0
+    if el_span().tag != TAG_SPAN:
+        return 0
+    if el_p().tag != TAG_P:
+        return 0
+    if el_section().tag != TAG_SECTION:
+        return 0
+    if el_header().tag != TAG_HEADER:
+        return 0
+    if el_footer().tag != TAG_FOOTER:
+        return 0
+    if el_nav().tag != TAG_NAV:
+        return 0
+    if el_main().tag != TAG_MAIN:
+        return 0
+    if el_article().tag != TAG_ARTICLE:
+        return 0
+    if el_aside().tag != TAG_ASIDE:
+        return 0
+    # Headings
+    if el_h1().tag != TAG_H1:
+        return 0
+    if el_h2().tag != TAG_H2:
+        return 0
+    if el_h3().tag != TAG_H3:
+        return 0
+    if el_h4().tag != TAG_H4:
+        return 0
+    if el_h5().tag != TAG_H5:
+        return 0
+    if el_h6().tag != TAG_H6:
+        return 0
+    # Lists
+    if el_ul().tag != TAG_UL:
+        return 0
+    if el_ol().tag != TAG_OL:
+        return 0
+    if el_li().tag != TAG_LI:
+        return 0
+    # Interactive
+    if el_button().tag != TAG_BUTTON:
+        return 0
+    if el_input().tag != TAG_INPUT:
+        return 0
+    if el_form().tag != TAG_FORM:
+        return 0
+    if el_textarea().tag != TAG_TEXTAREA:
+        return 0
+    if el_select().tag != TAG_SELECT:
+        return 0
+    if el_option().tag != TAG_OPTION:
+        return 0
+    if el_label().tag != TAG_LABEL:
+        return 0
+    # Links / Media
+    if el_a().tag != TAG_A:
+        return 0
+    if el_img().tag != TAG_IMG:
+        return 0
+    # Table
+    if el_table().tag != TAG_TABLE:
+        return 0
+    if el_thead().tag != TAG_THEAD:
+        return 0
+    if el_tbody().tag != TAG_TBODY:
+        return 0
+    if el_tr().tag != TAG_TR:
+        return 0
+    if el_td().tag != TAG_TD:
+        return 0
+    if el_th().tag != TAG_TH:
+        return 0
+    # Inline / Formatting
+    if el_strong().tag != TAG_STRONG:
+        return 0
+    if el_em().tag != TAG_EM:
+        return 0
+    if el_br().tag != TAG_BR:
+        return 0
+    if el_hr().tag != TAG_HR:
+        return 0
+    if el_pre().tag != TAG_PRE:
+        return 0
+    if el_code().tag != TAG_CODE:
+        return 0
+    return 1
+
+
+@export
+fn dsl_test_count_utilities() -> Int32:
+    """Test: count_* utility functions on a non-trivial tree."""
+    var tree = el_div(
+        List[Node](
+            attr(String("class"), String("app")),
+            dyn_attr(0),
+            el_h1(List[Node](dyn_text(0))),
+            el_ul(
+                List[Node](
+                    el_li(List[Node](text(String("A")), dyn_attr(1))),
+                    el_li(List[Node](dyn_text(1), dyn_node(0))),
+                )
+            ),
+        )
+    )
+
+    # Tree nodes (excluding attrs): div + h1 + dyn_text(0) + ul + li + "A" + li + dyn_text(1) + dyn_node(0) = 9
+    if count_nodes(tree) != 9:
+        return 0
+
+    # DYN_TEXT slots: 2 (index 0 inside h1, index 1 inside second li)
+    if count_dynamic_text_slots(tree) != 2:
+        return 0
+
+    # DYN_NODE slots: 1 (index 0 inside second li)
+    if count_dynamic_node_slots(tree) != 1:
+        return 0
+
+    # DYN_ATTR slots: 2 (index 0 on div, index 1 on first li)
+    if count_dynamic_attr_slots(tree) != 2:
+        return 0
+
+    # STATIC_ATTR: 1 (class on div)
+    if count_static_attr_nodes(tree) != 1:
+        return 0
+
+    return 1
+
+
+@export
+fn dsl_test_template_equivalence() -> Int32:
+    """Test: DSL-built template matches manually-built template.
+
+    Builds the counter template both ways and verifies they have
+    identical structure (node counts, kinds, tags, child counts,
+    dynamic slot counts, attribute counts).
+    """
+    # ── Method 1: Manual builder (same as CounterApp) ────────────────
+    var rt1 = create_runtime()
+    var b = TemplateBuilder(String("manual-counter"))
+    var div_idx = b.push_element(TAG_DIV, -1)
+    var span_idx = b.push_element(TAG_SPAN, Int(div_idx))
+    _ = b.push_dynamic_text(0, Int(span_idx))
+    var btn1_idx = b.push_element(TAG_BUTTON, Int(div_idx))
+    _ = b.push_text(String("+"), Int(btn1_idx))
+    b.push_dynamic_attr(Int(btn1_idx), 0)
+    var btn2_idx = b.push_element(TAG_BUTTON, Int(div_idx))
+    _ = b.push_text(String("-"), Int(btn2_idx))
+    b.push_dynamic_attr(Int(btn2_idx), 1)
+    var manual_tmpl = b.build()
+    var m_id = rt1[0].templates.register(manual_tmpl^)
+
+    # ── Method 2: DSL builder ────────────────────────────────────────
+    var rt2 = create_runtime()
+    var view = el_div(
+        List[Node](
+            el_span(List[Node](dyn_text(0))),
+            el_button(List[Node](text(String("+")), dyn_attr(0))),
+            el_button(List[Node](text(String("-")), dyn_attr(1))),
+        )
+    )
+    var dsl_tmpl = to_template(view, String("dsl-counter"))
+    var d_id = rt2[0].templates.register(dsl_tmpl^)
+
+    # ── Compare ──────────────────────────────────────────────────────
+
+    # Node counts must match
+    if rt1[0].templates.node_count(m_id) != rt2[0].templates.node_count(d_id):
+        destroy_runtime(rt1)
+        destroy_runtime(rt2)
+        return 0
+
+    # Root counts must match
+    if rt1[0].templates.root_count(m_id) != rt2[0].templates.root_count(d_id):
+        destroy_runtime(rt1)
+        destroy_runtime(rt2)
+        return 0
+
+    # Dynamic text slot counts must match
+    if rt1[0].templates.dynamic_text_count(m_id) != rt2[
+        0
+    ].templates.dynamic_text_count(d_id):
+        destroy_runtime(rt1)
+        destroy_runtime(rt2)
+        return 0
+
+    # Dynamic attr slot counts must match
+    if rt1[0].templates.dynamic_attr_count(m_id) != rt2[
+        0
+    ].templates.dynamic_attr_count(d_id):
+        destroy_runtime(rt1)
+        destroy_runtime(rt2)
+        return 0
+
+    # Attr total counts must match
+    if rt1[0].templates.attr_total_count(m_id) != rt2[
+        0
+    ].templates.attr_total_count(d_id):
+        destroy_runtime(rt1)
+        destroy_runtime(rt2)
+        return 0
+
+    # Compare each node kind and tag
+    var node_count = rt1[0].templates.node_count(m_id)
+    for i in range(node_count):
+        if rt1[0].templates.node_kind(m_id, i) != rt2[0].templates.node_kind(
+            d_id, i
+        ):
+            destroy_runtime(rt1)
+            destroy_runtime(rt2)
+            return 0
+        if rt1[0].templates.node_html_tag(m_id, i) != rt2[
+            0
+        ].templates.node_html_tag(d_id, i):
+            destroy_runtime(rt1)
+            destroy_runtime(rt2)
+            return 0
+        if rt1[0].templates.node_child_count(m_id, i) != rt2[
+            0
+        ].templates.node_child_count(d_id, i):
+            destroy_runtime(rt1)
+            destroy_runtime(rt2)
+            return 0
+
+    destroy_runtime(rt1)
+    destroy_runtime(rt2)
+    return 1
 
 
 # ══════════════════════════════════════════════════════════════════════════════
