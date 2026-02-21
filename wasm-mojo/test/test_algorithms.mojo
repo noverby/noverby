@@ -26,57 +26,49 @@ fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
 # ── Fibonacci — int32 ────────────────────────────────────────────────────────
 
 
-fn test_fib_int32_zero() raises:
-    var w = _get_wasm()
+fn test_fib_int32_zero(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(0))), 0, "fib_int32(0) === 0"
     )
 
 
-fn test_fib_int32_one() raises:
-    var w = _get_wasm()
+fn test_fib_int32_one(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(1))), 1, "fib_int32(1) === 1"
     )
 
 
-fn test_fib_int32_two() raises:
-    var w = _get_wasm()
+fn test_fib_int32_two(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(2))), 1, "fib_int32(2) === 1"
     )
 
 
-fn test_fib_int32_three() raises:
-    var w = _get_wasm()
+fn test_fib_int32_three(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(3))), 2, "fib_int32(3) === 2"
     )
 
 
-fn test_fib_int32_four() raises:
-    var w = _get_wasm()
+fn test_fib_int32_four(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(4))), 3, "fib_int32(4) === 3"
     )
 
 
-fn test_fib_int32_five() raises:
-    var w = _get_wasm()
+fn test_fib_int32_five(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(5))), 5, "fib_int32(5) === 5"
     )
 
 
-fn test_fib_int32_six() raises:
-    var w = _get_wasm()
+fn test_fib_int32_six(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(6))), 8, "fib_int32(6) === 8"
     )
 
 
-fn test_fib_int32_seven() raises:
-    var w = _get_wasm()
+fn test_fib_int32_seven(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(7))),
         13,
@@ -84,8 +76,7 @@ fn test_fib_int32_seven() raises:
     )
 
 
-fn test_fib_int32_ten() raises:
-    var w = _get_wasm()
+fn test_fib_int32_ten(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(10))),
         55,
@@ -93,8 +84,7 @@ fn test_fib_int32_ten() raises:
     )
 
 
-fn test_fib_int32_twenty() raises:
-    var w = _get_wasm()
+fn test_fib_int32_twenty(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(20))),
         6765,
@@ -105,22 +95,19 @@ fn test_fib_int32_twenty() raises:
 # ── Fibonacci — int64 ────────────────────────────────────────────────────────
 
 
-fn test_fib_int64_zero() raises:
-    var w = _get_wasm()
+fn test_fib_int64_zero(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("fib_int64", args_i64(0))), 0, "fib_int64(0) === 0"
     )
 
 
-fn test_fib_int64_one() raises:
-    var w = _get_wasm()
+fn test_fib_int64_one(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("fib_int64", args_i64(1))), 1, "fib_int64(1) === 1"
     )
 
 
-fn test_fib_int64_ten() raises:
-    var w = _get_wasm()
+fn test_fib_int64_ten(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("fib_int64", args_i64(10))),
         55,
@@ -128,8 +115,7 @@ fn test_fib_int64_ten() raises:
     )
 
 
-fn test_fib_int64_twenty() raises:
-    var w = _get_wasm()
+fn test_fib_int64_twenty(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("fib_int64", args_i64(20))),
         6765,
@@ -137,8 +123,7 @@ fn test_fib_int64_twenty() raises:
     )
 
 
-fn test_fib_int64_fifty() raises:
-    var w = _get_wasm()
+fn test_fib_int64_fifty(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("fib_int64", args_i64(50))),
         12586269025,
@@ -149,8 +134,7 @@ fn test_fib_int64_fifty() raises:
 # ── Factorial — int32 ────────────────────────────────────────────────────────
 
 
-fn test_factorial_int32_zero() raises:
-    var w = _get_wasm()
+fn test_factorial_int32_zero(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(0))),
         1,
@@ -158,8 +142,7 @@ fn test_factorial_int32_zero() raises:
     )
 
 
-fn test_factorial_int32_one() raises:
-    var w = _get_wasm()
+fn test_factorial_int32_one(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(1))),
         1,
@@ -167,8 +150,7 @@ fn test_factorial_int32_one() raises:
     )
 
 
-fn test_factorial_int32_two() raises:
-    var w = _get_wasm()
+fn test_factorial_int32_two(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(2))),
         2,
@@ -176,8 +158,7 @@ fn test_factorial_int32_two() raises:
     )
 
 
-fn test_factorial_int32_three() raises:
-    var w = _get_wasm()
+fn test_factorial_int32_three(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(3))),
         6,
@@ -185,8 +166,7 @@ fn test_factorial_int32_three() raises:
     )
 
 
-fn test_factorial_int32_four() raises:
-    var w = _get_wasm()
+fn test_factorial_int32_four(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(4))),
         24,
@@ -194,8 +174,7 @@ fn test_factorial_int32_four() raises:
     )
 
 
-fn test_factorial_int32_five() raises:
-    var w = _get_wasm()
+fn test_factorial_int32_five(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(5))),
         120,
@@ -203,8 +182,7 @@ fn test_factorial_int32_five() raises:
     )
 
 
-fn test_factorial_int32_ten() raises:
-    var w = _get_wasm()
+fn test_factorial_int32_ten(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(10))),
         3628800,
@@ -215,8 +193,7 @@ fn test_factorial_int32_ten() raises:
 # ── Factorial — int64 ────────────────────────────────────────────────────────
 
 
-fn test_factorial_int64_zero() raises:
-    var w = _get_wasm()
+fn test_factorial_int64_zero(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("factorial_int64", args_i64(0))),
         1,
@@ -224,8 +201,7 @@ fn test_factorial_int64_zero() raises:
     )
 
 
-fn test_factorial_int64_one() raises:
-    var w = _get_wasm()
+fn test_factorial_int64_one(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("factorial_int64", args_i64(1))),
         1,
@@ -233,8 +209,7 @@ fn test_factorial_int64_one() raises:
     )
 
 
-fn test_factorial_int64_five() raises:
-    var w = _get_wasm()
+fn test_factorial_int64_five(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("factorial_int64", args_i64(5))),
         120,
@@ -242,8 +217,7 @@ fn test_factorial_int64_five() raises:
     )
 
 
-fn test_factorial_int64_ten() raises:
-    var w = _get_wasm()
+fn test_factorial_int64_ten(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("factorial_int64", args_i64(10))),
         3628800,
@@ -251,8 +225,7 @@ fn test_factorial_int64_ten() raises:
     )
 
 
-fn test_factorial_int64_twenty() raises:
-    var w = _get_wasm()
+fn test_factorial_int64_twenty(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("factorial_int64", args_i64(20))),
         2432902008176640000,
@@ -263,8 +236,7 @@ fn test_factorial_int64_twenty() raises:
 # ── GCD (Euclidean algorithm) ────────────────────────────────────────────────
 
 
-fn test_gcd_12_8() raises:
-    var w = _get_wasm()
+fn test_gcd_12_8(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(12, 8))),
         4,
@@ -272,8 +244,7 @@ fn test_gcd_12_8() raises:
     )
 
 
-fn test_gcd_commutative() raises:
-    var w = _get_wasm()
+fn test_gcd_commutative(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(8, 12))),
         4,
@@ -281,8 +252,7 @@ fn test_gcd_commutative() raises:
     )
 
 
-fn test_gcd_coprime() raises:
-    var w = _get_wasm()
+fn test_gcd_coprime(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(7, 13))),
         1,
@@ -290,8 +260,7 @@ fn test_gcd_coprime() raises:
     )
 
 
-fn test_gcd_100_75() raises:
-    var w = _get_wasm()
+fn test_gcd_100_75(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(100, 75))),
         25,
@@ -299,8 +268,7 @@ fn test_gcd_100_75() raises:
     )
 
 
-fn test_gcd_zero_first() raises:
-    var w = _get_wasm()
+fn test_gcd_zero_first(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(0, 5))),
         5,
@@ -308,8 +276,7 @@ fn test_gcd_zero_first() raises:
     )
 
 
-fn test_gcd_zero_second() raises:
-    var w = _get_wasm()
+fn test_gcd_zero_second(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(5, 0))),
         5,
@@ -317,8 +284,7 @@ fn test_gcd_zero_second() raises:
     )
 
 
-fn test_gcd_same() raises:
-    var w = _get_wasm()
+fn test_gcd_same(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(7, 7))),
         7,
@@ -326,8 +292,7 @@ fn test_gcd_same() raises:
     )
 
 
-fn test_gcd_one() raises:
-    var w = _get_wasm()
+fn test_gcd_one(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(1, 100))),
         1,
@@ -335,8 +300,7 @@ fn test_gcd_one() raises:
     )
 
 
-fn test_gcd_negative_first() raises:
-    var w = _get_wasm()
+fn test_gcd_negative_first(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(-12, 8))),
         4,
@@ -344,8 +308,7 @@ fn test_gcd_negative_first() raises:
     )
 
 
-fn test_gcd_negative_second() raises:
-    var w = _get_wasm()
+fn test_gcd_negative_second(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(12, -8))),
         4,
@@ -353,8 +316,7 @@ fn test_gcd_negative_second() raises:
     )
 
 
-fn test_gcd_both_negative() raises:
-    var w = _get_wasm()
+fn test_gcd_both_negative(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(-12, -8))),
         4,
@@ -362,8 +324,7 @@ fn test_gcd_both_negative() raises:
     )
 
 
-fn test_gcd_48_18() raises:
-    var w = _get_wasm()
+fn test_gcd_48_18(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(48, 18))),
         6,
@@ -371,8 +332,7 @@ fn test_gcd_48_18() raises:
     )
 
 
-fn test_gcd_classic_euclid() raises:
-    var w = _get_wasm()
+fn test_gcd_classic_euclid(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(1071, 462))),
         21,
@@ -384,8 +344,7 @@ fn test_gcd_classic_euclid() raises:
 # fib(n) === fib(n-1) + fib(n-2) for n >= 2
 
 
-fn test_fib_recurrence_property() raises:
-    var w = _get_wasm()
+fn test_fib_recurrence_property(w: UnsafePointer[WasmInstance]) raises:
     for n in range(2, 21):
         var fn0 = Int(w[].call_i32("fib_int32", args_i32(Int32(n))))
         var fn1 = Int(w[].call_i32("fib_int32", args_i32(Int32(n - 1))))
@@ -407,8 +366,7 @@ fn test_fib_recurrence_property() raises:
 # n! === n * (n-1)! for n >= 2
 
 
-fn test_factorial_recurrence_property() raises:
-    var w = _get_wasm()
+fn test_factorial_recurrence_property(w: UnsafePointer[WasmInstance]) raises:
     for n in range(2, 11):
         var fn0 = Int(w[].call_i32("factorial_int32", args_i32(Int32(n))))
         var fn1 = Int(w[].call_i32("factorial_int32", args_i32(Int32(n - 1))))
@@ -428,9 +386,8 @@ fn test_factorial_recurrence_property() raises:
 # ── GCD properties ───────────────────────────────────────────────────────────
 
 
-fn test_gcd_commutative_property() raises:
+fn test_gcd_commutative_property(w: UnsafePointer[WasmInstance]) raises:
     """gcd(a, b) === gcd(b, a) for several pairs."""
-    var w = _get_wasm()
     var as_ = List[Int](12, 7, 100, 0, 1071)
     var bs = List[Int](8, 13, 75, 5, 462)
     for i in range(len(as_)):
@@ -443,9 +400,8 @@ fn test_gcd_commutative_property() raises:
         )
 
 
-fn test_gcd_idempotent() raises:
+fn test_gcd_idempotent(w: UnsafePointer[WasmInstance]) raises:
     """gcd(a, a) === a for positive values."""
-    var w = _get_wasm()
     for v in range(1, 20):
         assert_equal(
             Int(w[].call_i32("gcd_int32", args_i32_i32(Int32(v), Int32(v)))),
@@ -459,9 +415,8 @@ fn test_gcd_idempotent() raises:
         )
 
 
-fn test_gcd_with_one() raises:
+fn test_gcd_with_one(w: UnsafePointer[WasmInstance]) raises:
     """gcd(1, n) === 1 for any positive n."""
-    var w = _get_wasm()
     for v in range(1, 20):
         assert_equal(
             Int(w[].call_i32("gcd_int32", args_i32_i32(1, Int32(v)))),

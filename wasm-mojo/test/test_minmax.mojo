@@ -28,8 +28,7 @@ fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
 # ── Min / Max — int32 ────────────────────────────────────────────────────────
 
 
-fn test_min_int32_first_smaller() raises:
-    var w = _get_wasm()
+fn test_min_int32_first_smaller(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("min_int32", args_i32_i32(3, 7))),
         3,
@@ -37,8 +36,7 @@ fn test_min_int32_first_smaller() raises:
     )
 
 
-fn test_min_int32_second_smaller() raises:
-    var w = _get_wasm()
+fn test_min_int32_second_smaller(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("min_int32", args_i32_i32(7, 3))),
         3,
@@ -46,8 +44,7 @@ fn test_min_int32_second_smaller() raises:
     )
 
 
-fn test_min_int32_equal() raises:
-    var w = _get_wasm()
+fn test_min_int32_equal(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("min_int32", args_i32_i32(5, 5))),
         5,
@@ -55,8 +52,7 @@ fn test_min_int32_equal() raises:
     )
 
 
-fn test_min_int32_negative() raises:
-    var w = _get_wasm()
+fn test_min_int32_negative(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("min_int32", args_i32_i32(-3, 3))),
         -3,
@@ -64,8 +60,7 @@ fn test_min_int32_negative() raises:
     )
 
 
-fn test_max_int32_second_larger() raises:
-    var w = _get_wasm()
+fn test_max_int32_second_larger(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("max_int32", args_i32_i32(3, 7))),
         7,
@@ -73,8 +68,7 @@ fn test_max_int32_second_larger() raises:
     )
 
 
-fn test_max_int32_first_larger() raises:
-    var w = _get_wasm()
+fn test_max_int32_first_larger(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("max_int32", args_i32_i32(7, 3))),
         7,
@@ -82,8 +76,7 @@ fn test_max_int32_first_larger() raises:
     )
 
 
-fn test_max_int32_equal() raises:
-    var w = _get_wasm()
+fn test_max_int32_equal(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("max_int32", args_i32_i32(5, 5))),
         5,
@@ -91,8 +84,7 @@ fn test_max_int32_equal() raises:
     )
 
 
-fn test_max_int32_negative() raises:
-    var w = _get_wasm()
+fn test_max_int32_negative(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("max_int32", args_i32_i32(-3, 3))),
         3,
@@ -103,8 +95,7 @@ fn test_max_int32_negative() raises:
 # ── Min / Max — int64 ────────────────────────────────────────────────────────
 
 
-fn test_min_int64_first_smaller() raises:
-    var w = _get_wasm()
+fn test_min_int64_first_smaller(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("min_int64", args_i64_i64(3, 7))),
         3,
@@ -112,8 +103,7 @@ fn test_min_int64_first_smaller() raises:
     )
 
 
-fn test_min_int64_second_smaller() raises:
-    var w = _get_wasm()
+fn test_min_int64_second_smaller(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("min_int64", args_i64_i64(7, 3))),
         3,
@@ -121,8 +111,7 @@ fn test_min_int64_second_smaller() raises:
     )
 
 
-fn test_min_int64_negative() raises:
-    var w = _get_wasm()
+fn test_min_int64_negative(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("min_int64", args_i64_i64(-10, 10))),
         -10,
@@ -130,8 +119,7 @@ fn test_min_int64_negative() raises:
     )
 
 
-fn test_max_int64_second_larger() raises:
-    var w = _get_wasm()
+fn test_max_int64_second_larger(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("max_int64", args_i64_i64(3, 7))),
         7,
@@ -139,8 +127,7 @@ fn test_max_int64_second_larger() raises:
     )
 
 
-fn test_max_int64_first_larger() raises:
-    var w = _get_wasm()
+fn test_max_int64_first_larger(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("max_int64", args_i64_i64(7, 3))),
         7,
@@ -148,8 +135,7 @@ fn test_max_int64_first_larger() raises:
     )
 
 
-fn test_max_int64_negative() raises:
-    var w = _get_wasm()
+fn test_max_int64_negative(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("max_int64", args_i64_i64(-10, 10))),
         10,
@@ -160,8 +146,7 @@ fn test_max_int64_negative() raises:
 # ── Min / Max — float64 ─────────────────────────────────────────────────────
 
 
-fn test_min_float64_first_smaller() raises:
-    var w = _get_wasm()
+fn test_min_float64_first_smaller(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("min_float64", args_f64_f64(1.1, 2.2)),
         1.1,
@@ -169,8 +154,7 @@ fn test_min_float64_first_smaller() raises:
     )
 
 
-fn test_min_float64_second_smaller() raises:
-    var w = _get_wasm()
+fn test_min_float64_second_smaller(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("min_float64", args_f64_f64(2.2, 1.1)),
         1.1,
@@ -178,8 +162,7 @@ fn test_min_float64_second_smaller() raises:
     )
 
 
-fn test_min_float64_negative() raises:
-    var w = _get_wasm()
+fn test_min_float64_negative(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("min_float64", args_f64_f64(-0.5, 0.5)),
         -0.5,
@@ -187,8 +170,7 @@ fn test_min_float64_negative() raises:
     )
 
 
-fn test_max_float64_second_larger() raises:
-    var w = _get_wasm()
+fn test_max_float64_second_larger(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("max_float64", args_f64_f64(1.1, 2.2)),
         2.2,
@@ -196,8 +178,7 @@ fn test_max_float64_second_larger() raises:
     )
 
 
-fn test_max_float64_first_larger() raises:
-    var w = _get_wasm()
+fn test_max_float64_first_larger(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("max_float64", args_f64_f64(2.2, 1.1)),
         2.2,
@@ -205,8 +186,7 @@ fn test_max_float64_first_larger() raises:
     )
 
 
-fn test_max_float64_negative() raises:
-    var w = _get_wasm()
+fn test_max_float64_negative(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("max_float64", args_f64_f64(-0.5, 0.5)),
         0.5,
@@ -217,8 +197,7 @@ fn test_max_float64_negative() raises:
 # ── Clamp — int32 ───────────────────────────────────────────────────────────
 
 
-fn test_clamp_int32_within_range() raises:
-    var w = _get_wasm()
+fn test_clamp_int32_within_range(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("clamp_int32", args_i32_i32_i32(5, 0, 10))),
         5,
@@ -226,8 +205,7 @@ fn test_clamp_int32_within_range() raises:
     )
 
 
-fn test_clamp_int32_below() raises:
-    var w = _get_wasm()
+fn test_clamp_int32_below(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("clamp_int32", args_i32_i32_i32(-5, 0, 10))),
         0,
@@ -235,8 +213,7 @@ fn test_clamp_int32_below() raises:
     )
 
 
-fn test_clamp_int32_above() raises:
-    var w = _get_wasm()
+fn test_clamp_int32_above(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("clamp_int32", args_i32_i32_i32(15, 0, 10))),
         10,
@@ -244,8 +221,7 @@ fn test_clamp_int32_above() raises:
     )
 
 
-fn test_clamp_int32_at_low_bound() raises:
-    var w = _get_wasm()
+fn test_clamp_int32_at_low_bound(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("clamp_int32", args_i32_i32_i32(0, 0, 10))),
         0,
@@ -253,8 +229,7 @@ fn test_clamp_int32_at_low_bound() raises:
     )
 
 
-fn test_clamp_int32_at_high_bound() raises:
-    var w = _get_wasm()
+fn test_clamp_int32_at_high_bound(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("clamp_int32", args_i32_i32_i32(10, 0, 10))),
         10,
@@ -265,8 +240,7 @@ fn test_clamp_int32_at_high_bound() raises:
 # ── Clamp — float64 ─────────────────────────────────────────────────────────
 
 
-fn test_clamp_float64_within_range() raises:
-    var w = _get_wasm()
+fn test_clamp_float64_within_range(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("clamp_float64", args_f64_f64_f64(5.5, 0.0, 10.0)),
         5.5,
@@ -274,8 +248,7 @@ fn test_clamp_float64_within_range() raises:
     )
 
 
-fn test_clamp_float64_below() raises:
-    var w = _get_wasm()
+fn test_clamp_float64_below(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("clamp_float64", args_f64_f64_f64(-1.0, 0.0, 10.0)),
         0.0,
@@ -283,8 +256,7 @@ fn test_clamp_float64_below() raises:
     )
 
 
-fn test_clamp_float64_above() raises:
-    var w = _get_wasm()
+fn test_clamp_float64_above(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         w[].call_f64("clamp_float64", args_f64_f64_f64(11.0, 0.0, 10.0)),
         10.0,

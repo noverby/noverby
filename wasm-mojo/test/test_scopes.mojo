@@ -40,8 +40,7 @@ fn _destroy_runtime(w: UnsafePointer[WasmInstance], rt: Int) raises:
 # ── Scope lifecycle ──────────────────────────────────────────────────────────
 
 
-fn test_scope_create_and_destroy() raises:
-    var w = _get_wasm()
+fn test_scope_create_and_destroy(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     assert_equal(
@@ -77,8 +76,7 @@ fn test_scope_create_and_destroy() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_scope_sequential_ids() raises:
-    var w = _get_wasm()
+fn test_scope_sequential_ids(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s0 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -97,8 +95,7 @@ fn test_scope_sequential_ids() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_scope_slot_reuse_after_destroy() raises:
-    var w = _get_wasm()
+fn test_scope_slot_reuse_after_destroy(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s0 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -116,8 +113,7 @@ fn test_scope_slot_reuse_after_destroy() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_scope_double_destroy_is_noop() raises:
-    var w = _get_wasm()
+fn test_scope_double_destroy_is_noop(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s0 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -135,8 +131,7 @@ fn test_scope_double_destroy_is_noop() raises:
 # ── Height and parent tracking ───────────────────────────────────────────────
 
 
-fn test_scope_height_and_parent_tracking() raises:
-    var w = _get_wasm()
+fn test_scope_height_and_parent_tracking(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var root = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -180,8 +175,9 @@ fn test_scope_height_and_parent_tracking() raises:
     _destroy_runtime(w, rt)
 
 
-fn test_scope_create_child_auto_computes_height() raises:
-    var w = _get_wasm()
+fn test_scope_create_child_auto_computes_height(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var rt = _create_runtime(w)
 
     var root = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -217,8 +213,7 @@ fn test_scope_create_child_auto_computes_height() raises:
 # ── Dirty flag ───────────────────────────────────────────────────────────────
 
 
-fn test_scope_dirty_flag() raises:
-    var w = _get_wasm()
+fn test_scope_dirty_flag(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -248,8 +243,7 @@ fn test_scope_dirty_flag() raises:
 # ── Render count ─────────────────────────────────────────────────────────────
 
 
-fn test_scope_render_count() raises:
-    var w = _get_wasm()
+fn test_scope_render_count(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -281,8 +275,7 @@ fn test_scope_render_count() raises:
 # ── Begin render clears dirty ────────────────────────────────────────────────
 
 
-fn test_scope_begin_render_clears_dirty() raises:
-    var w = _get_wasm()
+fn test_scope_begin_render_clears_dirty(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -307,8 +300,9 @@ fn test_scope_begin_render_clears_dirty() raises:
 # ── Begin/end render manages current scope ───────────────────────────────────
 
 
-fn test_scope_begin_end_render_manages_current() raises:
-    var w = _get_wasm()
+fn test_scope_begin_end_render_manages_current(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var rt = _create_runtime(w)
 
     assert_equal(
@@ -354,8 +348,9 @@ fn test_scope_begin_end_render_manages_current() raises:
 # ── Begin render sets reactive context ───────────────────────────────────────
 
 
-fn test_scope_begin_render_sets_reactive_context() raises:
-    var w = _get_wasm()
+fn test_scope_begin_render_sets_reactive_context(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -385,8 +380,7 @@ fn test_scope_begin_render_sets_reactive_context() raises:
 # ── Nested scope rendering ───────────────────────────────────────────────────
 
 
-fn test_scope_nested_rendering() raises:
-    var w = _get_wasm()
+fn test_scope_nested_rendering(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var root = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -431,8 +425,7 @@ fn test_scope_nested_rendering() raises:
 # ── is_first_render ──────────────────────────────────────────────────────────
 
 
-fn test_scope_is_first_render() raises:
-    var w = _get_wasm()
+fn test_scope_is_first_render(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -464,8 +457,7 @@ fn test_scope_is_first_render() raises:
 # ── Hooks start empty ────────────────────────────────────────────────────────
 
 
-fn test_scope_hooks_start_empty() raises:
-    var w = _get_wasm()
+fn test_scope_hooks_start_empty(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -481,8 +473,9 @@ fn test_scope_hooks_start_empty() raises:
 # ── Hook: use_signal creates signal on first render ──────────────────────────
 
 
-fn test_hook_use_signal_creates_on_first_render() raises:
-    var w = _get_wasm()
+fn test_hook_use_signal_creates_on_first_render(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -518,8 +511,7 @@ fn test_hook_use_signal_creates_on_first_render() raises:
 # ── Hook: use_signal returns same signal on re-render ────────────────────────
 
 
-fn test_hook_use_signal_same_on_rerender() raises:
-    var w = _get_wasm()
+fn test_hook_use_signal_same_on_rerender(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -559,8 +551,7 @@ fn test_hook_use_signal_same_on_rerender() raises:
 # ── Hook: multiple signals in same scope ─────────────────────────────────────
 
 
-fn test_hook_multiple_signals_same_scope() raises:
-    var w = _get_wasm()
+fn test_hook_multiple_signals_same_scope(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -616,8 +607,9 @@ fn test_hook_multiple_signals_same_scope() raises:
 # ── Hook: signals in different scopes are independent ────────────────────────
 
 
-fn test_hook_signals_in_different_scopes_independent() raises:
-    var w = _get_wasm()
+fn test_hook_signals_in_different_scopes_independent(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var rt = _create_runtime(w)
 
     var s1 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -664,8 +656,9 @@ fn test_hook_signals_in_different_scopes_independent() raises:
 # ── Hook: signal read during render subscribes scope ─────────────────────────
 
 
-fn test_hook_signal_read_subscribes_scope() raises:
-    var w = _get_wasm()
+fn test_hook_signal_read_subscribes_scope(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -703,8 +696,7 @@ fn test_hook_signal_read_subscribes_scope() raises:
 # ── Hook: peek during render does NOT subscribe ──────────────────────────────
 
 
-fn test_hook_peek_does_not_subscribe() raises:
-    var w = _get_wasm()
+fn test_hook_peek_does_not_subscribe(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -728,8 +720,9 @@ fn test_hook_peek_does_not_subscribe() raises:
 # ── Nested rendering: child signals subscribe child scope ────────────────────
 
 
-fn test_hook_nested_rendering_subscribes_correct_scope() raises:
-    var w = _get_wasm()
+fn test_hook_nested_rendering_subscribes_correct_scope(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var rt = _create_runtime(w)
 
     var root = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -795,8 +788,7 @@ fn test_hook_nested_rendering_subscribes_correct_scope() raises:
 # ── Stress: 100 scopes ──────────────────────────────────────────────────────
 
 
-fn test_scope_stress_100_scopes() raises:
-    var w = _get_wasm()
+fn test_scope_stress_100_scopes(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var ids = List[Int]()
@@ -845,8 +837,9 @@ fn test_scope_stress_100_scopes() raises:
 # ── Hook: signal stable across many re-renders ──────────────────────────────
 
 
-fn test_hook_signal_stable_across_many_rerenders() raises:
-    var w = _get_wasm()
+fn test_hook_signal_stable_across_many_rerenders(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -887,8 +880,7 @@ fn test_hook_signal_stable_across_many_rerenders() raises:
 # ── Simulated counter component ──────────────────────────────────────────────
 
 
-fn test_hook_simulated_counter_component() raises:
-    var w = _get_wasm()
+fn test_hook_simulated_counter_component(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
@@ -950,8 +942,9 @@ fn test_hook_simulated_counter_component() raises:
 # ── Simulated multi-state component ──────────────────────────────────────────
 
 
-fn test_hook_simulated_multi_state_component() raises:
-    var w = _get_wasm()
+fn test_hook_simulated_multi_state_component(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var rt = _create_runtime(w)
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
@@ -1008,8 +1001,7 @@ fn test_hook_simulated_multi_state_component() raises:
 # ── Simulated parent-child component tree ────────────────────────────────────
 
 
-fn test_hook_simulated_parent_child_tree() raises:
-    var w = _get_wasm()
+fn test_hook_simulated_parent_child_tree(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var parent = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -1104,8 +1096,7 @@ fn test_hook_simulated_parent_child_tree() raises:
 # ── Render scope with no hooks ───────────────────────────────────────────────
 
 
-fn test_scope_render_with_no_hooks() raises:
-    var w = _get_wasm()
+fn test_scope_render_with_no_hooks(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))

@@ -117,8 +117,7 @@ alias TAG_TH = 20
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_builder_basic_lifecycle() raises:
-    var w = _get_wasm()
+fn test_builder_basic_lifecycle(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
     var b = _create_builder(w, "test-basic")
 
@@ -179,8 +178,7 @@ fn test_builder_basic_lifecycle() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_registry_register_and_query() raises:
-    var w = _get_wasm()
+fn test_registry_register_and_query(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     # Register first template
@@ -278,8 +276,7 @@ fn test_registry_register_and_query() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_template_structure_node_queries() raises:
-    var w = _get_wasm()
+fn test_template_structure_node_queries(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     # Build: div > (h1 > "Title", p > "Body")
@@ -439,8 +436,7 @@ fn test_template_structure_node_queries() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_template_dynamic_slots() raises:
-    var w = _get_wasm()
+fn test_template_dynamic_slots(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     # Build: div > (dyntext[0], "static", dyn[0], dyntext[1])
@@ -562,8 +558,7 @@ fn test_template_dynamic_slots() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_template_attributes() raises:
-    var w = _get_wasm()
+fn test_template_attributes(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     # Build: button with class="btn", id="submit", and one dynamic attr
@@ -684,8 +679,7 @@ fn test_template_attributes() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_template_deduplication() raises:
-    var w = _get_wasm()
+fn test_template_deduplication(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     # Register "counter" template
@@ -741,8 +735,7 @@ fn test_template_deduplication() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_vnode_creation_basic_kinds() raises:
-    var w = _get_wasm()
+fn test_vnode_creation_basic_kinds(w: UnsafePointer[WasmInstance]) raises:
     var store = _create_vnode_store(w)
 
     # TemplateRef
@@ -837,8 +830,7 @@ fn test_vnode_creation_basic_kinds() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_vnode_dynamic_content() raises:
-    var w = _get_wasm()
+fn test_vnode_dynamic_content(w: UnsafePointer[WasmInstance]) raises:
     var store = _create_vnode_store(w)
 
     # Create a TemplateRef VNode
@@ -941,8 +933,7 @@ fn test_vnode_dynamic_content() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_vnode_fragments() raises:
-    var w = _get_wasm()
+fn test_vnode_fragments(w: UnsafePointer[WasmInstance]) raises:
     var store = _create_vnode_store(w)
 
     # Create child vnodes
@@ -1036,8 +1027,7 @@ fn test_vnode_fragments() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_vnode_keys() raises:
-    var w = _get_wasm()
+fn test_vnode_keys(w: UnsafePointer[WasmInstance]) raises:
     var store = _create_vnode_store(w)
 
     # Unkeyed
@@ -1083,8 +1073,7 @@ fn test_vnode_keys() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_vnode_mixed_attributes() raises:
-    var w = _get_wasm()
+fn test_vnode_mixed_attributes(w: UnsafePointer[WasmInstance]) raises:
     var store = _create_vnode_store(w)
     var vn = Int(
         w[].call_i32("vnode_push_template_ref", args_ptr_i32(store, 0))
@@ -1241,8 +1230,7 @@ fn test_vnode_mixed_attributes() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_vnode_store_lifecycle() raises:
-    var w = _get_wasm()
+fn test_vnode_store_lifecycle(w: UnsafePointer[WasmInstance]) raises:
     var store = _create_vnode_store(w)
 
     # Add some nodes
@@ -1291,8 +1279,7 @@ fn test_vnode_store_lifecycle() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_builder_pre_build_queries() raises:
-    var w = _get_wasm()
+fn test_builder_pre_build_queries(w: UnsafePointer[WasmInstance]) raises:
     var b = _create_builder(w, "query-test")
 
     # Empty builder
@@ -1386,8 +1373,7 @@ fn test_builder_pre_build_queries() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_complex_template_counter() raises:
-    var w = _get_wasm()
+fn test_complex_template_counter(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     # Build a counter template:
@@ -1649,8 +1635,9 @@ fn test_complex_template_counter() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_multiple_templates_in_one_runtime() raises:
-    var w = _get_wasm()
+fn test_multiple_templates_in_one_runtime(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var rt = _create_runtime(w)
 
     # Template 1: simple div > "Hello"
@@ -1806,8 +1793,7 @@ fn test_multiple_templates_in_one_runtime() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_builder_reset_after_build() raises:
-    var w = _get_wasm()
+fn test_builder_reset_after_build(w: UnsafePointer[WasmInstance]) raises:
     var rt = _create_runtime(w)
 
     var b = _create_builder(w, "reset-test")

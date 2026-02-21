@@ -494,8 +494,7 @@ fn _register_complex_template(
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_create_text_vnode() raises:
-    var w = _get_wasm()
+fn test_create_text_vnode(w: UnsafePointer[WasmInstance]) raises:
     var ctx = WasmTestContext(w)
 
     var vn_idx = Int(
@@ -551,8 +550,7 @@ fn test_create_text_vnode() raises:
     ctx.destroy()
 
 
-fn test_create_placeholder_vnode() raises:
-    var w = _get_wasm()
+fn test_create_placeholder_vnode(w: UnsafePointer[WasmInstance]) raises:
     var ctx = WasmTestContext(w)
 
     var vn_idx = Int(
@@ -594,8 +592,7 @@ fn test_create_placeholder_vnode() raises:
     ctx.destroy()
 
 
-fn test_create_simple_template_ref() raises:
-    var w = _get_wasm()
+fn test_create_simple_template_ref(w: UnsafePointer[WasmInstance]) raises:
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_template(ctx, "simple-div-mut")
@@ -647,8 +644,9 @@ fn test_create_simple_template_ref() raises:
     ctx.destroy()
 
 
-fn test_create_template_ref_with_dyn_text() raises:
-    var w = _get_wasm()
+fn test_create_template_ref_with_dyn_text(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_text(ctx, "dyn-text-div-mut")
@@ -703,8 +701,9 @@ fn test_create_template_ref_with_dyn_text() raises:
     ctx.destroy()
 
 
-fn test_create_template_ref_with_dyn_attr() raises:
-    var w = _get_wasm()
+fn test_create_template_ref_with_dyn_attr(
+    w: UnsafePointer[WasmInstance],
+) raises:
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "dyn-attr-div-mut")
@@ -758,8 +757,7 @@ fn test_create_template_ref_with_dyn_attr() raises:
     ctx.destroy()
 
 
-fn test_create_template_ref_with_event() raises:
-    var w = _get_wasm()
+fn test_create_template_ref_with_event(w: UnsafePointer[WasmInstance]) raises:
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "event-div-mut")
@@ -795,10 +793,11 @@ fn test_create_template_ref_with_event() raises:
     ctx.destroy()
 
 
-fn test_create_template_ref_with_dyn_text_node() raises:
+fn test_create_template_ref_with_dyn_text_node(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Create a template ref with a Dynamic (full) node slot filled with text.
     """
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_node(ctx, "dyn-node-div-mut")
@@ -844,10 +843,11 @@ fn test_create_template_ref_with_dyn_text_node() raises:
     ctx.destroy()
 
 
-fn test_create_template_ref_with_dyn_placeholder() raises:
+fn test_create_template_ref_with_dyn_placeholder(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Create a template ref with a Dynamic node slot filled with placeholder.
     """
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_node(ctx, "dyn-ph-div-mut")
@@ -887,8 +887,7 @@ fn test_create_template_ref_with_dyn_placeholder() raises:
     ctx.destroy()
 
 
-fn test_create_fragment_vnode() raises:
-    var w = _get_wasm()
+fn test_create_fragment_vnode(w: UnsafePointer[WasmInstance]) raises:
     var ctx = WasmTestContext(w)
 
     # Create 3 text children
@@ -942,9 +941,8 @@ fn test_create_fragment_vnode() raises:
     ctx.destroy()
 
 
-fn test_create_element_id_uniqueness() raises:
+fn test_create_element_id_uniqueness(w: UnsafePointer[WasmInstance]) raises:
     """Multiple create calls produce unique ElementIds."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_template(ctx, "unique-div-mut")
@@ -995,9 +993,8 @@ fn test_create_element_id_uniqueness() raises:
     ctx.destroy()
 
 
-fn test_create_empty_fragment() raises:
+fn test_create_empty_fragment(w: UnsafePointer[WasmInstance]) raises:
     """Empty fragment creates 0 roots."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var frag_idx = Int(w[].call_i32("vnode_push_fragment", args_ptr(ctx.store)))
@@ -1018,9 +1015,10 @@ fn test_create_empty_fragment() raises:
     ctx.destroy()
 
 
-fn test_create_complex_template_multi_slots() raises:
+fn test_create_complex_template_multi_slots(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Create a complex template with multiple dynamic slots."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_complex_template(ctx, "complex-mut")
@@ -1088,9 +1086,8 @@ fn test_create_complex_template_multi_slots() raises:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_diff_same_text_zero_mutations() raises:
+fn test_diff_same_text_zero_mutations(w: UnsafePointer[WasmInstance]) raises:
     """Diffing two Text VNodes with the same text -> 0 mutations."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     # Create old text vnode and mount it
@@ -1131,9 +1128,10 @@ fn test_diff_same_text_zero_mutations() raises:
     ctx.destroy()
 
 
-fn test_diff_text_changed_produces_set_text() raises:
+fn test_diff_text_changed_produces_set_text(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Diffing two Text VNodes with different text -> SetText."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     # Create old text vnode and mount it
@@ -1193,9 +1191,8 @@ fn test_diff_text_changed_produces_set_text() raises:
     ctx.destroy()
 
 
-fn test_diff_text_empty_to_content() raises:
+fn test_diff_text_empty_to_content(w: UnsafePointer[WasmInstance]) raises:
     """Diffing '' -> 'hello' produces SetText."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var old_idx = Int(
@@ -1233,9 +1230,10 @@ fn test_diff_text_empty_to_content() raises:
     ctx.destroy()
 
 
-fn test_diff_placeholder_to_placeholder_zero_mutations() raises:
+fn test_diff_placeholder_to_placeholder_zero_mutations(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Diffing two Placeholders -> 0 mutations."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var old_idx = Int(
@@ -1267,9 +1265,10 @@ fn test_diff_placeholder_to_placeholder_zero_mutations() raises:
     ctx.destroy()
 
 
-fn test_diff_same_template_same_dyn_values_zero_mutations() raises:
+fn test_diff_same_template_same_dyn_values_zero_mutations(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Same template, same dynamic text -> 0 mutations."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_text(ctx, "same-dyn-mut")
@@ -1325,9 +1324,10 @@ fn test_diff_same_template_same_dyn_values_zero_mutations() raises:
     ctx.destroy()
 
 
-fn test_diff_same_template_dyn_text_changed() raises:
+fn test_diff_same_template_dyn_text_changed(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Same template, dynamic text changed -> SetText."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_text(ctx, "changed-dyn-mut")
@@ -1398,9 +1398,8 @@ fn test_diff_same_template_dyn_text_changed() raises:
     ctx.destroy()
 
 
-fn test_diff_same_template_attr_changed() raises:
+fn test_diff_same_template_attr_changed(w: UnsafePointer[WasmInstance]) raises:
     """Same template, dynamic attribute changed -> SetAttribute."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "attr-changed-mut")
@@ -1462,9 +1461,10 @@ fn test_diff_same_template_attr_changed() raises:
     ctx.destroy()
 
 
-fn test_diff_same_template_attr_unchanged_zero_mutations() raises:
+fn test_diff_same_template_attr_unchanged_zero_mutations(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Same template, same attribute value -> 0 mutations."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "attr-same-mut")
@@ -1524,9 +1524,8 @@ fn test_diff_same_template_attr_unchanged_zero_mutations() raises:
     ctx.destroy()
 
 
-fn test_diff_bool_attr_changed() raises:
+fn test_diff_bool_attr_changed(w: UnsafePointer[WasmInstance]) raises:
     """Bool attribute changed -> SetAttribute."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "bool-attr-mut")
@@ -1578,9 +1577,10 @@ fn test_diff_bool_attr_changed() raises:
     ctx.destroy()
 
 
-fn test_diff_text_to_placeholder_replacement() raises:
+fn test_diff_text_to_placeholder_replacement(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Text -> Placeholder (different kind) -> replacement."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var old_idx = Int(
@@ -1621,9 +1621,10 @@ fn test_diff_text_to_placeholder_replacement() raises:
     ctx.destroy()
 
 
-fn test_diff_different_templates_replacement() raises:
+fn test_diff_different_templates_replacement(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Different templates -> full replacement."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_a = _register_div_template(ctx, "tmpl-a-mut")
@@ -1662,9 +1663,10 @@ fn test_diff_different_templates_replacement() raises:
     ctx.destroy()
 
 
-fn test_diff_fragment_children_text_changed() raises:
+fn test_diff_fragment_children_text_changed(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Fragment diff: child text changed."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     # Old fragment: [A, B]
@@ -1741,9 +1743,8 @@ fn test_diff_fragment_children_text_changed() raises:
     ctx.destroy()
 
 
-fn test_diff_fragment_children_removed() raises:
+fn test_diff_fragment_children_removed(w: UnsafePointer[WasmInstance]) raises:
     """Fragment diff: children removed."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     # Old fragment: [A, B, C]
@@ -1820,9 +1821,8 @@ fn test_diff_fragment_children_removed() raises:
     ctx.destroy()
 
 
-fn test_diff_fragment_children_added() raises:
+fn test_diff_fragment_children_added(w: UnsafePointer[WasmInstance]) raises:
     """Fragment diff: children added."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     # Old fragment: [A]
@@ -1902,10 +1902,9 @@ fn test_diff_fragment_children_added() raises:
     ctx.destroy()
 
 
-fn test_diff_event_listener_changed() raises:
+fn test_diff_event_listener_changed(w: UnsafePointer[WasmInstance]) raises:
     """Event listener handler changed -> RemoveEventListener + NewEventListener.
     """
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "event-change-mut")
@@ -1959,9 +1958,10 @@ fn test_diff_event_listener_changed() raises:
     ctx.destroy()
 
 
-fn test_diff_same_event_listener_zero_mutations() raises:
+fn test_diff_same_event_listener_zero_mutations(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Same event listener -> 0 mutations."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "event-same-mut")
@@ -2011,9 +2011,10 @@ fn test_diff_same_event_listener_zero_mutations() raises:
     ctx.destroy()
 
 
-fn test_diff_attr_type_changed_text_to_bool() raises:
+fn test_diff_attr_type_changed_text_to_bool(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Attribute type changed (text -> bool) -> SetAttribute."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "type-change-mut")
@@ -2069,9 +2070,8 @@ fn test_diff_attr_type_changed_text_to_bool() raises:
     ctx.destroy()
 
 
-fn test_diff_attr_removed_text_to_none() raises:
+fn test_diff_attr_removed_text_to_none(w: UnsafePointer[WasmInstance]) raises:
     """Attribute removed (text -> none) -> SetAttribute with empty value."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "attr-remove-mut")
@@ -2127,9 +2127,8 @@ fn test_diff_attr_removed_text_to_none() raises:
     ctx.destroy()
 
 
-fn test_diff_int_attr_changed() raises:
+fn test_diff_int_attr_changed(w: UnsafePointer[WasmInstance]) raises:
     """Integer attribute value changed -> SetAttribute."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "int-attr-mut")
@@ -2181,9 +2180,10 @@ fn test_diff_int_attr_changed() raises:
     ctx.destroy()
 
 
-fn test_diff_mount_state_transfer_preserves_ids() raises:
+fn test_diff_mount_state_transfer_preserves_ids(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Diff transfers mount state: ElementIds on new VNode match old."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_text(ctx, "transfer-test-mut")
@@ -2257,9 +2257,10 @@ fn test_diff_mount_state_transfer_preserves_ids() raises:
     ctx.destroy()
 
 
-fn test_diff_sequential_diffs_state_chain() raises:
+fn test_diff_sequential_diffs_state_chain(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Sequential diffs (state chain): v0 -> v1 -> v2 -> v3."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_text(ctx, "chain-test-mut")
@@ -2355,9 +2356,10 @@ fn test_diff_sequential_diffs_state_chain() raises:
     ctx.destroy()
 
 
-fn test_diff_dyn_node_text_to_placeholder() raises:
+fn test_diff_dyn_node_text_to_placeholder(
+    w: UnsafePointer[WasmInstance],
+) raises:
     """Dynamic node: text -> placeholder -> replacement."""
-    var w = _get_wasm()
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_node(ctx, "dyn-text-to-ph-mut")

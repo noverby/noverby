@@ -39,8 +39,7 @@ alias INT64_MIN = -9223372036854775808
 # ── Int32 boundary values — identity ─────────────────────────────────────────
 
 
-fn test_identity_int32_max() raises:
-    var w = _get_wasm()
+fn test_identity_int32_max(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("identity_int32", args_i32(INT32_MAX))),
         INT32_MAX,
@@ -48,8 +47,7 @@ fn test_identity_int32_max() raises:
     )
 
 
-fn test_identity_int32_min() raises:
-    var w = _get_wasm()
+fn test_identity_int32_min(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("identity_int32", args_i32(INT32_MIN))),
         INT32_MIN,
@@ -57,8 +55,7 @@ fn test_identity_int32_min() raises:
     )
 
 
-fn test_identity_int32_zero() raises:
-    var w = _get_wasm()
+fn test_identity_int32_zero(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("identity_int32", args_i32(0))),
         0,
@@ -69,8 +66,7 @@ fn test_identity_int32_zero() raises:
 # ── Int64 boundary values — identity ─────────────────────────────────────────
 
 
-fn test_identity_int64_max() raises:
-    var w = _get_wasm()
+fn test_identity_int64_max(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("identity_int64", args_i64(INT64_MAX))),
         INT64_MAX,
@@ -78,8 +74,7 @@ fn test_identity_int64_max() raises:
     )
 
 
-fn test_identity_int64_min() raises:
-    var w = _get_wasm()
+fn test_identity_int64_min(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("identity_int64", args_i64(INT64_MIN))),
         INT64_MIN,
@@ -90,8 +85,7 @@ fn test_identity_int64_min() raises:
 # ── Int32 overflow — addition ────────────────────────────────────────────────
 
 
-fn test_add_int32_max_plus_one_wraps() raises:
-    var w = _get_wasm()
+fn test_add_int32_max_plus_one_wraps(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("add_int32", args_i32_i32(INT32_MAX, 1))),
         INT32_MIN,
@@ -99,8 +93,7 @@ fn test_add_int32_max_plus_one_wraps() raises:
     )
 
 
-fn test_add_int32_min_minus_one_wraps() raises:
-    var w = _get_wasm()
+fn test_add_int32_min_minus_one_wraps(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("add_int32", args_i32_i32(INT32_MIN, -1))),
         INT32_MAX,
@@ -108,8 +101,7 @@ fn test_add_int32_min_minus_one_wraps() raises:
     )
 
 
-fn test_add_int32_max_plus_max_wraps() raises:
-    var w = _get_wasm()
+fn test_add_int32_max_plus_max_wraps(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("add_int32", args_i32_i32(INT32_MAX, INT32_MAX))),
         -2,
@@ -120,8 +112,7 @@ fn test_add_int32_max_plus_max_wraps() raises:
 # ── Int64 overflow — addition ────────────────────────────────────────────────
 
 
-fn test_add_int64_max_plus_one_wraps() raises:
-    var w = _get_wasm()
+fn test_add_int64_max_plus_one_wraps(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("add_int64", args_i64_i64(INT64_MAX, 1))),
         INT64_MIN,
@@ -129,8 +120,7 @@ fn test_add_int64_max_plus_one_wraps() raises:
     )
 
 
-fn test_add_int64_min_minus_one_wraps() raises:
-    var w = _get_wasm()
+fn test_add_int64_min_minus_one_wraps(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("add_int64", args_i64_i64(INT64_MIN, -1))),
         INT64_MAX,
@@ -141,8 +131,7 @@ fn test_add_int64_min_minus_one_wraps() raises:
 # ── Int32 overflow — subtraction ─────────────────────────────────────────────
 
 
-fn test_sub_int32_min_minus_one_wraps() raises:
-    var w = _get_wasm()
+fn test_sub_int32_min_minus_one_wraps(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("sub_int32", args_i32_i32(INT32_MIN, 1))),
         INT32_MAX,
@@ -150,8 +139,9 @@ fn test_sub_int32_min_minus_one_wraps() raises:
     )
 
 
-fn test_sub_int32_max_minus_neg_one_wraps() raises:
-    var w = _get_wasm()
+fn test_sub_int32_max_minus_neg_one_wraps(
+    w: UnsafePointer[WasmInstance],
+) raises:
     assert_equal(
         Int(w[].call_i32("sub_int32", args_i32_i32(INT32_MAX, -1))),
         INT32_MIN,
@@ -162,8 +152,7 @@ fn test_sub_int32_max_minus_neg_one_wraps() raises:
 # ── Int32 overflow — multiplication ──────────────────────────────────────────
 
 
-fn test_mul_int32_max_times_two_wraps() raises:
-    var w = _get_wasm()
+fn test_mul_int32_max_times_two_wraps(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("mul_int32", args_i32_i32(INT32_MAX, 2))),
         -2,
@@ -171,8 +160,9 @@ fn test_mul_int32_max_times_two_wraps() raises:
     )
 
 
-fn test_mul_int32_min_times_neg_one_wraps() raises:
-    var w = _get_wasm()
+fn test_mul_int32_min_times_neg_one_wraps(
+    w: UnsafePointer[WasmInstance],
+) raises:
     assert_equal(
         Int(w[].call_i32("mul_int32", args_i32_i32(INT32_MIN, -1))),
         INT32_MIN,
@@ -183,8 +173,7 @@ fn test_mul_int32_min_times_neg_one_wraps() raises:
 # ── Int32 overflow — negation ────────────────────────────────────────────────
 
 
-fn test_neg_int32_max() raises:
-    var w = _get_wasm()
+fn test_neg_int32_max(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("neg_int32", args_i32(INT32_MAX))),
         -INT32_MAX,
@@ -192,8 +181,7 @@ fn test_neg_int32_max() raises:
     )
 
 
-fn test_neg_int32_min_wraps() raises:
-    var w = _get_wasm()
+fn test_neg_int32_min_wraps(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("neg_int32", args_i32(INT32_MIN))),
         INT32_MIN,
@@ -204,8 +192,7 @@ fn test_neg_int32_min_wraps() raises:
 # ── Int64 overflow — negation ────────────────────────────────────────────────
 
 
-fn test_neg_int64_max() raises:
-    var w = _get_wasm()
+fn test_neg_int64_max(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("neg_int64", args_i64(INT64_MAX))),
         -INT64_MAX,
@@ -213,8 +200,7 @@ fn test_neg_int64_max() raises:
     )
 
 
-fn test_neg_int64_min_wraps() raises:
-    var w = _get_wasm()
+fn test_neg_int64_min_wraps(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i64("neg_int64", args_i64(INT64_MIN))),
         INT64_MIN,
@@ -225,8 +211,7 @@ fn test_neg_int64_min_wraps() raises:
 # ── Int32 boundary — abs ─────────────────────────────────────────────────────
 
 
-fn test_abs_int32_max() raises:
-    var w = _get_wasm()
+fn test_abs_int32_max(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("abs_int32", args_i32(INT32_MAX))),
         INT32_MAX,
@@ -234,8 +219,7 @@ fn test_abs_int32_max() raises:
     )
 
 
-fn test_abs_int32_min_wraps() raises:
-    var w = _get_wasm()
+fn test_abs_int32_min_wraps(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("abs_int32", args_i32(INT32_MIN))),
         INT32_MIN,
@@ -243,8 +227,7 @@ fn test_abs_int32_min_wraps() raises:
     )
 
 
-fn test_abs_int32_min_plus_one() raises:
-    var w = _get_wasm()
+fn test_abs_int32_min_plus_one(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("abs_int32", args_i32(INT32_MIN + 1))),
         INT32_MAX,
@@ -255,8 +238,7 @@ fn test_abs_int32_min_plus_one() raises:
 # ── Int32 boundary — min / max ───────────────────────────────────────────────
 
 
-fn test_min_int32_boundaries() raises:
-    var w = _get_wasm()
+fn test_min_int32_boundaries(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("min_int32", args_i32_i32(INT32_MIN, INT32_MAX))),
         INT32_MIN,
@@ -264,8 +246,7 @@ fn test_min_int32_boundaries() raises:
     )
 
 
-fn test_max_int32_boundaries() raises:
-    var w = _get_wasm()
+fn test_max_int32_boundaries(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("max_int32", args_i32_i32(INT32_MIN, INT32_MAX))),
         INT32_MAX,
@@ -273,8 +254,7 @@ fn test_max_int32_boundaries() raises:
     )
 
 
-fn test_min_int32_same_min() raises:
-    var w = _get_wasm()
+fn test_min_int32_same_min(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("min_int32", args_i32_i32(INT32_MIN, INT32_MIN))),
         INT32_MIN,
@@ -282,8 +262,7 @@ fn test_min_int32_same_min() raises:
     )
 
 
-fn test_max_int32_same_max() raises:
-    var w = _get_wasm()
+fn test_max_int32_same_max(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("max_int32", args_i32_i32(INT32_MAX, INT32_MAX))),
         INT32_MAX,
@@ -294,8 +273,7 @@ fn test_max_int32_same_max() raises:
 # ── Int32 boundary — comparison ──────────────────────────────────────────────
 
 
-fn test_lt_int32_min_max() raises:
-    var w = _get_wasm()
+fn test_lt_int32_min_max(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("lt_int32", args_i32_i32(INT32_MIN, INT32_MAX))),
         1,
@@ -303,8 +281,7 @@ fn test_lt_int32_min_max() raises:
     )
 
 
-fn test_gt_int32_max_min() raises:
-    var w = _get_wasm()
+fn test_gt_int32_max_min(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gt_int32", args_i32_i32(INT32_MAX, INT32_MIN))),
         1,
@@ -312,8 +289,7 @@ fn test_gt_int32_max_min() raises:
     )
 
 
-fn test_eq_int32_max_max() raises:
-    var w = _get_wasm()
+fn test_eq_int32_max_max(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("eq_int32", args_i32_i32(INT32_MAX, INT32_MAX))),
         1,
@@ -321,8 +297,7 @@ fn test_eq_int32_max_max() raises:
     )
 
 
-fn test_eq_int32_min_min() raises:
-    var w = _get_wasm()
+fn test_eq_int32_min_min(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("eq_int32", args_i32_i32(INT32_MIN, INT32_MIN))),
         1,
@@ -330,8 +305,7 @@ fn test_eq_int32_min_min() raises:
     )
 
 
-fn test_ne_int32_min_max() raises:
-    var w = _get_wasm()
+fn test_ne_int32_min_max(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("ne_int32", args_i32_i32(INT32_MIN, INT32_MAX))),
         1,
@@ -342,8 +316,7 @@ fn test_ne_int32_min_max() raises:
 # ── Int32 boundary — clamp ───────────────────────────────────────────────────
 
 
-fn test_clamp_int32_min_to_range() raises:
-    var w = _get_wasm()
+fn test_clamp_int32_min_to_range(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("clamp_int32", args_i32_i32_i32(INT32_MIN, 0, 100))),
         0,
@@ -351,8 +324,7 @@ fn test_clamp_int32_min_to_range() raises:
     )
 
 
-fn test_clamp_int32_max_to_range() raises:
-    var w = _get_wasm()
+fn test_clamp_int32_max_to_range(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("clamp_int32", args_i32_i32_i32(INT32_MAX, 0, 100))),
         100,
@@ -360,8 +332,7 @@ fn test_clamp_int32_max_to_range() raises:
     )
 
 
-fn test_clamp_int32_within_full_range() raises:
-    var w = _get_wasm()
+fn test_clamp_int32_within_full_range(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(
             w[].call_i32(
@@ -376,8 +347,7 @@ fn test_clamp_int32_within_full_range() raises:
 # ── Int32 boundary — bitwise ─────────────────────────────────────────────────
 
 
-fn test_bitnot_int32_max() raises:
-    var w = _get_wasm()
+fn test_bitnot_int32_max(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitnot_int32", args_i32(INT32_MAX))),
         INT32_MIN,
@@ -385,8 +355,7 @@ fn test_bitnot_int32_max() raises:
     )
 
 
-fn test_bitnot_int32_min() raises:
-    var w = _get_wasm()
+fn test_bitnot_int32_min(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitnot_int32", args_i32(INT32_MIN))),
         INT32_MAX,
@@ -394,8 +363,7 @@ fn test_bitnot_int32_min() raises:
     )
 
 
-fn test_bitand_int32_max_min() raises:
-    var w = _get_wasm()
+fn test_bitand_int32_max_min(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitand_int32", args_i32_i32(INT32_MAX, INT32_MIN))),
         0,
@@ -403,8 +371,7 @@ fn test_bitand_int32_max_min() raises:
     )
 
 
-fn test_bitor_int32_max_min() raises:
-    var w = _get_wasm()
+fn test_bitor_int32_max_min(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitor_int32", args_i32_i32(INT32_MAX, INT32_MIN))),
         -1,
@@ -412,8 +379,7 @@ fn test_bitor_int32_max_min() raises:
     )
 
 
-fn test_bitxor_int32_max_min() raises:
-    var w = _get_wasm()
+fn test_bitxor_int32_max_min(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("bitxor_int32", args_i32_i32(INT32_MAX, INT32_MIN))),
         -1,
@@ -424,8 +390,7 @@ fn test_bitxor_int32_max_min() raises:
 # ── Int32 boundary — GCD ─────────────────────────────────────────────────────
 
 
-fn test_gcd_int32_max_with_one() raises:
-    var w = _get_wasm()
+fn test_gcd_int32_max_with_one(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(INT32_MAX, 1))),
         1,
@@ -433,8 +398,7 @@ fn test_gcd_int32_max_with_one() raises:
     )
 
 
-fn test_gcd_int32_max_with_self() raises:
-    var w = _get_wasm()
+fn test_gcd_int32_max_with_self(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(INT32_MAX, INT32_MAX))),
         INT32_MAX,
@@ -445,8 +409,7 @@ fn test_gcd_int32_max_with_self() raises:
 # ── Int32 overflow — factorial ───────────────────────────────────────────────
 
 
-fn test_factorial_int32_12_fits() raises:
-    var w = _get_wasm()
+fn test_factorial_int32_12_fits(w: UnsafePointer[WasmInstance]) raises:
     # 12! = 479001600, fits in Int32
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(12))),
@@ -455,8 +418,7 @@ fn test_factorial_int32_12_fits() raises:
     )
 
 
-fn test_factorial_int32_13_overflows() raises:
-    var w = _get_wasm()
+fn test_factorial_int32_13_overflows(w: UnsafePointer[WasmInstance]) raises:
     # 13! = 6227020800, overflows Int32 — verify it wraps
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(13))),
@@ -468,8 +430,7 @@ fn test_factorial_int32_13_overflows() raises:
 # ── Int64 boundary — factorial ───────────────────────────────────────────────
 
 
-fn test_factorial_int64_20_fits() raises:
-    var w = _get_wasm()
+fn test_factorial_int64_20_fits(w: UnsafePointer[WasmInstance]) raises:
     # 20! = 2432902008176640000, fits in Int64
     assert_equal(
         Int(w[].call_i64("factorial_int64", args_i64(20))),
@@ -478,8 +439,7 @@ fn test_factorial_int64_20_fits() raises:
     )
 
 
-fn test_factorial_int64_21_overflows() raises:
-    var w = _get_wasm()
+fn test_factorial_int64_21_overflows(w: UnsafePointer[WasmInstance]) raises:
     # 21! = 51090942171709440000, overflows Int64 — verify it wraps
     assert_equal(
         Int(w[].call_i64("factorial_int64", args_i64(21))),
@@ -491,8 +451,7 @@ fn test_factorial_int64_21_overflows() raises:
 # ── Int32 overflow — fibonacci ───────────────────────────────────────────────
 
 
-fn test_fib_int32_46_fits() raises:
-    var w = _get_wasm()
+fn test_fib_int32_46_fits(w: UnsafePointer[WasmInstance]) raises:
     # fib(46) = 1836311903, fits in Int32
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(46))),
@@ -501,8 +460,7 @@ fn test_fib_int32_46_fits() raises:
     )
 
 
-fn test_fib_int32_47_overflows() raises:
-    var w = _get_wasm()
+fn test_fib_int32_47_overflows(w: UnsafePointer[WasmInstance]) raises:
     # fib(47) = 2971215073, overflows Int32 — verify wrapping
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(47))),

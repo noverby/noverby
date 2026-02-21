@@ -29,20 +29,17 @@ fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
 # ── Identity — int32 ─────────────────────────────────────────────────────────
 
 
-fn test_identity_int32_zero() raises:
-    var w = _get_wasm()
+fn test_identity_int32_zero(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("identity_int32", args_i32(0)))
     assert_equal(result, 0, "identity_int32(0) === 0")
 
 
-fn test_identity_int32_positive() raises:
-    var w = _get_wasm()
+fn test_identity_int32_positive(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("identity_int32", args_i32(42)))
     assert_equal(result, 42, "identity_int32(42) === 42")
 
 
-fn test_identity_int32_negative() raises:
-    var w = _get_wasm()
+fn test_identity_int32_negative(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i32("identity_int32", args_i32(-42)))
     assert_equal(result, -42, "identity_int32(-42) === -42")
 
@@ -50,20 +47,17 @@ fn test_identity_int32_negative() raises:
 # ── Identity — int64 ─────────────────────────────────────────────────────────
 
 
-fn test_identity_int64_zero() raises:
-    var w = _get_wasm()
+fn test_identity_int64_zero(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i64("identity_int64", args_i64(0)))
     assert_equal(result, 0, "identity_int64(0) === 0")
 
 
-fn test_identity_int64_positive() raises:
-    var w = _get_wasm()
+fn test_identity_int64_positive(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i64("identity_int64", args_i64(999)))
     assert_equal(result, 999, "identity_int64(999) === 999")
 
 
-fn test_identity_int64_negative() raises:
-    var w = _get_wasm()
+fn test_identity_int64_negative(w: UnsafePointer[WasmInstance]) raises:
     var result = Int(w[].call_i64("identity_int64", args_i64(-999)))
     assert_equal(result, -999, "identity_int64(-999) === -999")
 
@@ -71,15 +65,13 @@ fn test_identity_int64_negative() raises:
 # ── Identity — float32 ───────────────────────────────────────────────────────
 
 
-fn test_identity_float32_pi() raises:
-    var w = _get_wasm()
+fn test_identity_float32_pi(w: UnsafePointer[WasmInstance]) raises:
     var input = Float32(3.14)
     var result = w[].call_f32("identity_float32", args_f32(input))
     assert_equal(Float64(result), Float64(input), "identity_float32(3.14)")
 
 
-fn test_identity_float32_zero() raises:
-    var w = _get_wasm()
+fn test_identity_float32_zero(w: UnsafePointer[WasmInstance]) raises:
     var result = w[].call_f32("identity_float32", args_f32(0.0))
     assert_equal(Float64(result), 0.0, "identity_float32(0) === 0")
 
@@ -87,21 +79,18 @@ fn test_identity_float32_zero() raises:
 # ── Identity — float64 ───────────────────────────────────────────────────────
 
 
-fn test_identity_float64_pi() raises:
-    var w = _get_wasm()
+fn test_identity_float64_pi(w: UnsafePointer[WasmInstance]) raises:
     var pi = 3.141592653589793
     var result = w[].call_f64("identity_float64", args_f64(pi))
     assert_equal(result, pi, "identity_float64(pi)")
 
 
-fn test_identity_float64_zero() raises:
-    var w = _get_wasm()
+fn test_identity_float64_zero(w: UnsafePointer[WasmInstance]) raises:
     var result = w[].call_f64("identity_float64", args_f64(0.0))
     assert_equal(result, 0.0, "identity_float64(0) === 0")
 
 
-fn test_identity_float64_negative_zero() raises:
-    var w = _get_wasm()
+fn test_identity_float64_negative_zero(w: UnsafePointer[WasmInstance]) raises:
     # -0.0 should roundtrip through identity. IEEE 754 says -0.0 == 0.0,
     # but we can verify the sign bit is preserved via copysign.
     var result = w[].call_f64("identity_float64", args_f64(-0.0))

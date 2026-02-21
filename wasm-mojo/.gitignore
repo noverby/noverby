@@ -1,2 +1,4 @@
 __pycache__/
 build/
+test/fast/
+test/test_all.mojo
