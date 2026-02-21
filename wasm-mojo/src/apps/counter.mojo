@@ -8,6 +8,8 @@
 #   div
 #     span
 #       dynamic_text[0]      ← "Count: N"
+#     span
+#       dynamic_text[1]      ← "Doubled: 2N"
 #     button  (text: "+")
 #       dynamic_attr[0]      ← onclick → increment handler
 #     button  (text: "−")
@@ -38,6 +40,7 @@ struct CounterApp(Movable):
     var shell: AppShell
     var scope_id: UInt32
     var count_signal: UInt32
+    var doubled_memo: UInt32
     var template_id: UInt32
     var incr_handler: UInt32
     var decr_handler: UInt32
@@ -47,6 +50,7 @@ struct CounterApp(Movable):
         self.shell = AppShell()
         self.scope_id = 0
         self.count_signal = 0
+        self.doubled_memo = 0
         self.template_id = 0
         self.incr_handler = 0
         self.decr_handler = 0
@@ -56,6 +60,7 @@ struct CounterApp(Movable):
         self.shell = other.shell^
         self.scope_id = other.scope_id
         self.count_signal = other.count_signal
+        self.doubled_memo = other.doubled_memo
         self.template_id = other.template_id
         self.incr_handler = other.incr_handler
         self.decr_handler = other.decr_handler
@@ -66,11 +71,25 @@ struct CounterApp(Movable):
         var val = self.shell.peek_signal_i32(self.count_signal)
         return String("Count: ") + String(val)
 
+    fn build_doubled_text(mut self) -> String:
+        """Build the display string "Doubled: 2N" from the memo value.
+
+        Recomputes the memo if dirty (signal changed since last compute),
+        then reads the cached value.
+        """
+        if self.shell.memo_is_dirty(self.doubled_memo):
+            self.shell.memo_begin_compute(self.doubled_memo)
+            var count = self.shell.read_signal_i32(self.count_signal)
+            self.shell.memo_end_compute_i32(self.doubled_memo, count * 2)
+        var doubled = self.shell.memo_read_i32(self.doubled_memo)
+        return String("Doubled: ") + String(doubled)
+
     fn build_vnode(mut self) -> UInt32:
         """Build a fresh VNode for the counter component.
 
         Creates a TemplateRef VNode with:
           - dynamic_text[0] = "Count: N"
+          - dynamic_text[1] = "Doubled: 2N"
           - dynamic_attr[0] = onclick → incr_handler
           - dynamic_attr[1] = onclick → decr_handler
 
@@ -78,6 +97,7 @@ struct CounterApp(Movable):
         """
         var vb = VNodeBuilder(self.template_id, self.shell.store)
         vb.add_dyn_text(self.build_count_text())
+        vb.add_dyn_text(self.build_doubled_text())
         vb.add_dyn_event(String("click"), self.incr_handler)
         vb.add_dyn_event(String("click"), self.decr_handler)
         return vb.index()
@@ -95,21 +115,27 @@ fn counter_app_init() -> UnsafePointer[CounterApp]:
     # 1. Create subsystem instances via AppShell
     app_ptr[0].shell = app_shell_create()
 
-    # 2. Create root scope and signal via hooks
+    # 2. Create root scope, signal, and memo via hooks
     app_ptr[0].scope_id = app_ptr[0].shell.create_root_scope()
     _ = app_ptr[0].shell.begin_render(app_ptr[0].scope_id)
     app_ptr[0].count_signal = app_ptr[0].shell.use_signal_i32(0)
     # Read the signal during render to subscribe the scope to changes
     _ = app_ptr[0].shell.read_signal_i32(app_ptr[0].count_signal)
+    # Create memo for "count * 2" (starts dirty, will compute on first render)
+    app_ptr[0].doubled_memo = app_ptr[0].shell.use_memo_i32(0)
+    # Read the memo's output to subscribe the scope to memo changes
+    _ = app_ptr[0].shell.memo_read_i32(app_ptr[0].doubled_memo)
     app_ptr[0].shell.end_render(-1)
 
     # 3. Build and register the counter template via DSL:
     #    div > [ span > dynamic_text[0],
+    #            span > dynamic_text[1],
     #            button > text("+") + dynamic_attr[0],
     #            button > text("−") + dynamic_attr[1] ]
     var view = el_div(
         List[Node](
             el_span(List[Node](dyn_text(0))),
+            el_span(List[Node](dyn_text(1))),
             el_button(List[Node](text(String("+")), dyn_attr(0))),
             el_button(List[Node](text(String("-")), dyn_attr(1))),
         )

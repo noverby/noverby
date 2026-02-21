@@ -267,6 +267,9 @@ export interface CounterAppHandle extends AppHandle {
 	/** Read the current count value from WASM. */
 	getCount(): number;
 
+	/** Read the current doubled memo value from WASM. */
+	getDoubled(): number;
+
 	/** Simulate an increment click (dispatch + flush + apply). */
 	increment(): void;
 
@@ -318,6 +321,10 @@ export function createCounterApp(
 
 		getCount(): number {
 			return fns.counter_count_value(handle.appPtr);
+		},
+
+		getDoubled(): number {
+			return fns.counter_doubled_value(handle.appPtr);
 		},
 
 		increment(): void {

@@ -630,4 +630,6 @@ export interface WasmExports extends WebAssembly.Exports {
 	counter_has_dirty(appPtr: bigint): number;
 	counter_scope_id(appPtr: bigint): number;
 	counter_count_signal(appPtr: bigint): number;
+	counter_doubled_value(appPtr: bigint): number;
+	counter_doubled_memo(appPtr: bigint): number;
 }
