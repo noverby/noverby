@@ -1,8 +1,12 @@
 # CounterApp — Self-contained counter application.
 #
-# Orchestrates all subsystems via AppShell:
-#   AppShell (Runtime, VNodeStore, ElementIdAllocator, Scheduler)
+# Orchestrates all subsystems via ComponentContext:
+#   ComponentContext (AppShell, Runtime, VNodeStore, ElementIdAllocator, Scheduler)
 #   + Templates + VNodes + Create/Diff
+#
+# This version uses the ergonomic reactive handles (SignalI32, MemoI32)
+# and ComponentContext to dramatically reduce boilerplate compared to
+# the raw AppShell API.
 #
 # Template structure (built via DSL):
 #   div
@@ -17,11 +21,9 @@
 
 from memory import UnsafePointer
 from bridge import MutationWriter
-from events import HandlerEntry
-from component import AppShell, app_shell_create
+from component import ComponentContext
+from signals import SignalI32, MemoI32
 from vdom import (
-    VNode,
-    VNodeStore,
     Node,
     el_div,
     el_span,
@@ -29,47 +31,50 @@ from vdom import (
     text,
     dyn_text,
     dyn_attr,
-    to_template,
     VNodeBuilder,
 )
+from signals.runtime import Runtime
 
 
 struct CounterApp(Movable):
-    """Self-contained counter application state."""
+    """Self-contained counter application state.
 
-    var shell: AppShell
-    var scope_id: UInt32
-    var count_signal: UInt32
-    var doubled_memo: UInt32
-    var template_id: UInt32
+    Uses ComponentContext + reactive handles for concise component authoring.
+    Compare with the Dioxus equivalent:
+
+        fn App() -> Element {
+            let mut count = use_signal(|| 0);
+            rsx! {
+                h1 { "High-Five counter: {count}" }
+                button { onclick: move |_| count += 1, "Up high!" }
+                button { onclick: move |_| count -= 1, "Down low!" }
+            }
+        }
+    """
+
+    var ctx: ComponentContext
+    var count: SignalI32
+    var doubled: MemoI32
     var incr_handler: UInt32
     var decr_handler: UInt32
-    var current_vnode: Int  # index in store, or -1 if not yet rendered
 
     fn __init__(out self):
-        self.shell = AppShell()
-        self.scope_id = 0
-        self.count_signal = 0
-        self.doubled_memo = 0
-        self.template_id = 0
+        self.ctx = ComponentContext()
+        self.count = SignalI32(0, UnsafePointer[Runtime]())
+        self.doubled = MemoI32(0, UnsafePointer[Runtime]())
         self.incr_handler = 0
         self.decr_handler = 0
-        self.current_vnode = -1
 
     fn __moveinit__(out self, deinit other: Self):
-        self.shell = other.shell^
-        self.scope_id = other.scope_id
-        self.count_signal = other.count_signal
-        self.doubled_memo = other.doubled_memo
-        self.template_id = other.template_id
+        self.ctx = other.ctx^
+        self.count = other.count.copy()
+        self.doubled = other.doubled.copy()
         self.incr_handler = other.incr_handler
         self.decr_handler = other.decr_handler
-        self.current_vnode = other.current_vnode
 
     fn build_count_text(self) -> String:
         """Build the display string "Count: N" from the current signal value."""
-        var val = self.shell.peek_signal_i32(self.count_signal)
-        return String("Count: ") + String(val)
+        return String("Count: ") + String(self.count.peek())
 
     fn build_doubled_text(mut self) -> String:
         """Build the display string "Doubled: 2N" from the memo value.
@@ -77,12 +82,11 @@ struct CounterApp(Movable):
         Recomputes the memo if dirty (signal changed since last compute),
         then reads the cached value.
         """
-        if self.shell.memo_is_dirty(self.doubled_memo):
-            self.shell.memo_begin_compute(self.doubled_memo)
-            var count = self.shell.read_signal_i32(self.count_signal)
-            self.shell.memo_end_compute_i32(self.doubled_memo, count * 2)
-        var doubled = self.shell.memo_read_i32(self.doubled_memo)
-        return String("Doubled: ") + String(doubled)
+        if self.doubled.is_dirty():
+            self.doubled.begin_compute()
+            var val = self.count.read()
+            self.doubled.end_compute(val * 2)
+        return String("Doubled: ") + String(self.doubled.peek())
 
     fn build_vnode(mut self) -> UInt32:
         """Build a fresh VNode for the counter component.
@@ -95,7 +99,7 @@ struct CounterApp(Movable):
 
         Returns the VNode index in the store.
         """
-        var vb = VNodeBuilder(self.template_id, self.shell.store)
+        var vb = self.ctx.vnode_builder()
         vb.add_dyn_text(self.build_count_text())
         vb.add_dyn_text(self.build_doubled_text())
         vb.add_dyn_event(String("click"), self.incr_handler)
@@ -106,77 +110,49 @@ struct CounterApp(Movable):
 fn counter_app_init() -> UnsafePointer[CounterApp]:
     """Initialize the counter app.  Returns a pointer to the app state.
 
-    Creates: AppShell (runtime, VNode store, element ID allocator,
-    scheduler), scope, signal, template, and event handlers.
+    Creates: ComponentContext (runtime, VNode store, element ID allocator,
+    scheduler), scope, signals, memo, template, and event handlers.
     """
     var app_ptr = UnsafePointer[CounterApp].alloc(1)
     app_ptr.init_pointee_move(CounterApp())
 
-    # 1. Create subsystem instances via AppShell
-    app_ptr[0].shell = app_shell_create()
+    # 1. Create context with root scope (begins render bracket)
+    app_ptr[0].ctx = ComponentContext.create()
 
-    # 2. Create root scope, signal, and memo via hooks
-    app_ptr[0].scope_id = app_ptr[0].shell.create_root_scope()
-    _ = app_ptr[0].shell.begin_render(app_ptr[0].scope_id)
-    app_ptr[0].count_signal = app_ptr[0].shell.use_signal_i32(0)
-    # Read the signal during render to subscribe the scope to changes
-    _ = app_ptr[0].shell.read_signal_i32(app_ptr[0].count_signal)
-    # Create memo for "count * 2" (starts dirty, will compute on first render)
-    app_ptr[0].doubled_memo = app_ptr[0].shell.use_memo_i32(0)
-    # Read the memo's output to subscribe the scope to memo changes
-    _ = app_ptr[0].shell.memo_read_i32(app_ptr[0].doubled_memo)
-    app_ptr[0].shell.end_render(-1)
+    # 2. Create reactive state via hooks (auto-subscribes scope)
+    app_ptr[0].count = app_ptr[0].ctx.use_signal(0)
+    app_ptr[0].doubled = app_ptr[0].ctx.use_memo(0)
 
-    # 3. Build and register the counter template via DSL:
+    # 3. End setup (closes render bracket)
+    app_ptr[0].ctx.end_setup()
+
+    # 4. Build and register the counter template via DSL:
     #    div > [ span > dynamic_text[0],
     #            span > dynamic_text[1],
     #            button > text("+") + dynamic_attr[0],
     #            button > text("−") + dynamic_attr[1] ]
-    var view = el_div(
-        List[Node](
-            el_span(List[Node](dyn_text(0))),
-            el_span(List[Node](dyn_text(1))),
-            el_button(List[Node](text(String("+")), dyn_attr(0))),
-            el_button(List[Node](text(String("-")), dyn_attr(1))),
-        )
-    )
-    var template = to_template(view, String("counter"))
-    app_ptr[0].template_id = UInt32(
-        app_ptr[0].shell.runtime[0].templates.register(template^)
+    app_ptr[0].ctx.register_template(
+        el_div(
+            List[Node](
+                el_span(List[Node](dyn_text(0))),
+                el_span(List[Node](dyn_text(1))),
+                el_button(List[Node](text(String("+")), dyn_attr(0))),
+                el_button(List[Node](text(String("-")), dyn_attr(1))),
+            )
+        ),
+        String("counter"),
     )
 
-    # 4. Register event handlers
-    app_ptr[0].incr_handler = UInt32(
-        app_ptr[0]
-        .shell.runtime[0]
-        .register_handler(
-            HandlerEntry.signal_add(
-                app_ptr[0].scope_id,
-                app_ptr[0].count_signal,
-                1,
-                String("click"),
-            )
-        )
-    )
-    app_ptr[0].decr_handler = UInt32(
-        app_ptr[0]
-        .shell.runtime[0]
-        .register_handler(
-            HandlerEntry.signal_sub(
-                app_ptr[0].scope_id,
-                app_ptr[0].count_signal,
-                1,
-                String("click"),
-            )
-        )
-    )
+    # 5. Register event handlers via ergonomic helpers
+    app_ptr[0].incr_handler = app_ptr[0].ctx.on_click_add(app_ptr[0].count, 1)
+    app_ptr[0].decr_handler = app_ptr[0].ctx.on_click_sub(app_ptr[0].count, 1)
 
     return app_ptr
 
 
 fn counter_app_destroy(app_ptr: UnsafePointer[CounterApp]):
     """Destroy the counter app and free all resources."""
-    app_ptr[0].shell.destroy()
+    app_ptr[0].ctx.destroy()
     app_ptr.destroy_pointee()
     app_ptr.free()
 
@@ -193,12 +169,8 @@ fn counter_app_rebuild(
 
     Returns the byte offset (length) of the mutation data written.
     """
-    # Build the initial VNode
     var vnode_idx = app[0].build_vnode()
-    app[0].current_vnode = Int(vnode_idx)
-
-    # Mount with templates prepended (RegisterTemplate + CreateEngine → append → finalize)
-    return app[0].shell.mount_with_templates(writer_ptr, vnode_idx)
+    return app[0].ctx.mount(writer_ptr, vnode_idx)
 
 
 fn counter_app_handle_event(
@@ -208,7 +180,7 @@ fn counter_app_handle_event(
 
     Returns True if an action was executed, False otherwise.
     """
-    return app[0].shell.dispatch_event(handler_id, event_type)
+    return app[0].ctx.dispatch_event(handler_id, event_type)
 
 
 fn counter_app_flush(
@@ -223,19 +195,14 @@ fn counter_app_flush(
     Returns the byte offset (length) of the mutation data written,
     or 0 if there was nothing to update.
     """
-    # Collect and consume dirty scopes via the scheduler
-    if not app[0].shell.consume_dirty():
+    if not app[0].ctx.consume_dirty():
         return 0
 
     # Build a new VNode with updated state
     var new_idx = app[0].build_vnode()
-    var old_idx = UInt32(app[0].current_vnode)
 
-    # Diff old → new via AppShell
-    app[0].shell.diff(writer_ptr, old_idx, UInt32(new_idx))
-
-    # Update current vnode
-    app[0].current_vnode = Int(new_idx)
+    # Diff old → new and update current vnode
+    app[0].ctx.diff(writer_ptr, new_idx)
 
     # Finalize
-    return app[0].shell.finalize(writer_ptr)
+    return app[0].ctx.finalize(writer_ptr)
