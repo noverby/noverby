@@ -70,7 +70,7 @@ At runtime, the TypeScript side (`runtime/`) instantiates the WASM module and pr
 ```txt
 wasm-mojo/
 ├── src/
-│   ├── main.mojo                 # @export wrappers (WASM entry point, 3,332 lines, 397 exports)
+│   ├── main.mojo                 # @export wrappers (WASM entry point, 3,326 lines, 397 exports)
 │   ├── apps/                     # Application modules
 │   │   ├── counter.mojo          # Counter app (Phase 7)
 │   │   ├── todo.mojo             # Todo list app (Phase 8)

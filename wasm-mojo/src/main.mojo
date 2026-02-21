@@ -175,6 +175,24 @@ fn _to_i64[T: AnyType](ptr: UnsafePointer[T]) -> Int64:
     return Int64(Int(ptr))
 
 
+# ── Helper: generic heap alloc/free ─────────────────────────────────────────
+
+
+@always_inline
+fn _heap_new[T: Movable](var val: T) -> UnsafePointer[T]:
+    """Allocate a single T on the heap and move val into it."""
+    var ptr = UnsafePointer[T].alloc(1)
+    ptr.init_pointee_move(val^)
+    return ptr
+
+
+@always_inline
+fn _heap_del[T: Movable](ptr: UnsafePointer[T]):
+    """Destroy and free a single heap-allocated T."""
+    ptr.destroy_pointee()
+    ptr.free()
+
+
 # ── Helper: quick get-pointer wrappers ───────────────────────────────────────
 
 
@@ -246,18 +264,15 @@ fn _alloc_writer(
 ) -> UnsafePointer[MutationWriter]:
     """Allocate a MutationWriter on the heap with the given buffer and capacity.
     """
-    var ptr = UnsafePointer[MutationWriter].alloc(1)
-    ptr.init_pointee_move(
+    return _heap_new(
         MutationWriter(_as_ptr[UInt8](Int(buf_ptr)), Int(capacity))
     )
-    return ptr
 
 
 @always_inline
 fn _free_writer(ptr: UnsafePointer[MutationWriter]):
     """Destroy and free a heap-allocated MutationWriter."""
-    ptr.destroy_pointee()
-    ptr.free()
+    _heap_del(ptr)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -268,17 +283,13 @@ fn _free_writer(ptr: UnsafePointer[MutationWriter]):
 @export
 fn eid_alloc_create() -> Int64:
     """Allocate an ElementIdAllocator on the heap."""
-    var ptr = UnsafePointer[ElementIdAllocator].alloc(1)
-    ptr.init_pointee_move(ElementIdAllocator())
-    return _to_i64(ptr)
+    return _to_i64(_heap_new(ElementIdAllocator()))
 
 
 @export
 fn eid_alloc_destroy(alloc_ptr: Int64):
     """Destroy and free a heap-allocated ElementIdAllocator."""
-    var ptr = _get_eid_alloc(alloc_ptr)
-    ptr.destroy_pointee()
-    ptr.free()
+    _heap_del(_get_eid_alloc(alloc_ptr))
 
 
 @export
@@ -887,17 +898,13 @@ fn tmpl_attr_value(rt_ptr: Int64, tmpl_id: Int32, attr_idx: Int32) -> String:
 @export
 fn vnode_store_create() -> Int64:
     """Allocate a standalone VNodeStore on the heap.  Returns its pointer."""
-    var ptr = UnsafePointer[VNodeStore].alloc(1)
-    ptr.init_pointee_move(VNodeStore())
-    return _to_i64(ptr)
+    return _to_i64(_heap_new(VNodeStore()))
 
 
 @export
 fn vnode_store_destroy(store_ptr: Int64):
     """Destroy and free a heap-allocated VNodeStore."""
-    var ptr = _get_vnode_store(store_ptr)
-    ptr.destroy_pointee()
-    ptr.free()
+    _heap_del(_get_vnode_store(store_ptr))
 
 
 @export
@@ -2311,17 +2318,13 @@ fn mem_test_rapid_writes(rt_ptr: Int64, key: Int32, count: Int32) -> Int32:
 @export
 fn scheduler_create() -> Int64:
     """Allocate a Scheduler on the heap.  Returns its pointer."""
-    var ptr = UnsafePointer[Scheduler].alloc(1)
-    ptr.init_pointee_move(Scheduler())
-    return Int64(Int(ptr))
+    return _to_i64(_heap_new(Scheduler()))
 
 
 @export
 fn scheduler_destroy(sched_ptr: Int64):
     """Destroy and free a heap-allocated Scheduler."""
-    var ptr = _get_scheduler(sched_ptr)
-    ptr.destroy_pointee()
-    ptr.free()
+    _heap_del(_get_scheduler(sched_ptr))
 
 
 @export
@@ -2377,9 +2380,7 @@ fn scheduler_clear(sched_ptr: Int64):
 fn shell_create() -> Int64:
     """Create an AppShell with all subsystems allocated.  Returns its pointer.
     """
-    var ptr = UnsafePointer[AppShell].alloc(1)
-    ptr.init_pointee_move(app_shell_create())
-    return Int64(Int(ptr))
+    return _to_i64(_heap_new(app_shell_create()))
 
 
 @export
@@ -2387,8 +2388,7 @@ fn shell_destroy(shell_ptr: Int64):
     """Destroy an AppShell and free all resources."""
     var ptr = _get_shell(shell_ptr)
     ptr[0].destroy()
-    ptr.destroy_pointee()
-    ptr.free()
+    _heap_del(ptr)
 
 
 @export
@@ -2551,17 +2551,13 @@ fn _get_node(ptr: Int64) -> UnsafePointer[Node]:
 @always_inline
 fn _alloc_node(var val: Node) -> Int64:
     """Heap-allocate a Node and return its address as Int64."""
-    var ptr = UnsafePointer[Node].alloc(1)
-    ptr.init_pointee_move(val^)
-    return Int64(Int(ptr))
+    return _to_i64(_heap_new(val^))
 
 
 @always_inline
 fn _free_node(addr: Int64):
     """Destroy and free a heap-allocated Node from its Int64 address."""
-    var ptr = _get_node(addr)
-    ptr.destroy_pointee()
-    ptr.free()
+    _heap_del(_get_node(addr))
 
 
 @export
@@ -2724,19 +2720,19 @@ fn dsl_vb_create(tmpl_id: Int32, store_ptr: Int64) -> Int64:
 
     Returns a pointer handle to the VNodeBuilder.
     """
-    var store = _get_vnode_store(store_ptr)
-    var ptr = UnsafePointer[VNodeBuilder].alloc(1)
-    ptr.init_pointee_move(VNodeBuilder(UInt32(tmpl_id), store))
-    return Int64(Int(ptr))
+    return _to_i64(
+        _heap_new(VNodeBuilder(UInt32(tmpl_id), _get_vnode_store(store_ptr)))
+    )
 
 
 @export
 fn dsl_vb_create_keyed(tmpl_id: Int32, key: String, store_ptr: Int64) -> Int64:
     """Create a keyed VNodeBuilder on the heap."""
-    var store = _get_vnode_store(store_ptr)
-    var ptr = UnsafePointer[VNodeBuilder].alloc(1)
-    ptr.init_pointee_move(VNodeBuilder(UInt32(tmpl_id), key, store))
-    return Int64(Int(ptr))
+    return _to_i64(
+        _heap_new(
+            VNodeBuilder(UInt32(tmpl_id), key, _get_vnode_store(store_ptr))
+        )
+    )
 
 
 @always_inline
@@ -2747,9 +2743,7 @@ fn _get_vb(ptr: Int64) -> UnsafePointer[VNodeBuilder]:
 @export
 fn dsl_vb_destroy(ptr: Int64):
     """Destroy and free a heap-allocated VNodeBuilder."""
-    var vb = _get_vb(ptr)
-    vb.destroy_pointee()
-    vb.free()
+    _heap_del(_get_vb(ptr))
 
 
 @export
