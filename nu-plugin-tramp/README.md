@@ -14,10 +14,10 @@ a typed Nushell value; pipes operate locally; `tramp save` writes back remotely.
 - **SSH agent forwarding** — no extra configuration needed
 - **ControlMaster multiplexing** — fast subsequent operations on the same host
 - **Connection pooling with health-checks** — sessions are reused across commands; stale connections are detected and transparently reconnected
+- **SFTP fast-path** — file read/write/delete uses the SFTP subsystem for efficient binary-safe transfer without base64 overhead or shell argument limits; falls back to exec transparently if SFTP is unavailable
 - **Stat & directory listing cache** — metadata is cached with a short TTL to avoid redundant remote round-trips
 - **Remote working directory** — `tramp cd` lets you navigate remote hosts with relative paths
 - **Cross-host copy** — `tramp cp` transfers files between any combination of local and remote paths
-- **Binary-safe writes** — uses base64 encoding to safely transfer arbitrary file content
 
 ## Installation
 
@@ -197,7 +197,7 @@ Multi-hop paths are parsed but not yet executed:
 
 - **Nushell** ≥ 0.110
 - **OpenSSH** client installed and in `$PATH` (`ssh`, `ssh-agent`)
-- **GNU coreutils** on the remote host (`stat`, `cat`, `rm`, `base64`)
+- **GNU coreutils** on the remote host (`stat` for listings; `cat`, `rm`, `base64` as fallback when SFTP is unavailable)
 
 ## Architecture
 
@@ -233,7 +233,7 @@ Nushell command
 1. **Path Parser** (`src/protocol.rs`) — Parses TRAMP URIs into structured types with round-trip fidelity; supports relative path resolution against a remote CWD
 2. **Backend Trait** (`src/backend/mod.rs`) — Async trait defining `read`, `write`, `list`, `stat`, `exec`, `delete`, and `check` (health-check)
 3. **VFS** (`src/vfs.rs`) — Resolves paths to backends, manages connection pooling with health-checks, provides stat/list caching with TTL, bridges async↔sync
-4. **SSH Backend** (`src/backend/ssh.rs`) — Implements all operations via remote command execution over OpenSSH
+4. **SSH Backend** (`src/backend/ssh.rs`) — Uses SFTP for file read/write/delete (fast-path) with automatic fallback to remote command execution; listing and stat use exec for structured GNU `stat` output
 
 ## Roadmap
 
@@ -253,7 +253,7 @@ Nushell command
 - [x] Stat + directory listing cache (with 5s TTL)
 - [x] `tramp cp` between local/remote/remote
 - [x] `tramp ping`, `tramp connections`, `tramp disconnect` commands
-- [ ] Streaming for large files (SFTP fast-path)
+- [x] SFTP fast-path for file read/write/delete with automatic exec fallback
 
 ### Phase 3 — Power Features
 

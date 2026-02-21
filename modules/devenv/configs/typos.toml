@@ -1,5 +1,9 @@
 # Run `direnv reload` to apply changes to the repository.
 
+[default.extend-words]
+# Upstream API name from openssh-sftp-client crate
+clonable = "clonable"
+
 [default]
 extend-ignore-re = [
   "Automattic",
@@ -10,13 +14,13 @@ extend-ignore-re = [
   "Iinclude",
   "localed",
   "OIF",
-  "oif"
+  "oif",
 ]
 
 [files]
 extend-exclude = [
-   # Project is still in Danish
+  # Project is still in Danish
   "wiki/**",
-  "secrets/*.age"
+  "secrets/*.age",
 ]
 ignore-hidden = false

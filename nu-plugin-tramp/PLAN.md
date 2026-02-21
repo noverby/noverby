@@ -339,7 +339,7 @@ programs.nushell.plugins = [ pkgs.nu-plugin-tramp ];
 - [x] Connection pooling + keepalive
 - [x] `cd` with relative path resolution
 - [x] Stat + small file cache (with TTL)
-- [ ] Streaming for large files
+- [x] Streaming for large files
 - [x] `cp` between remotes
 - [x] `tramp ping/connections/disconnect` commands
 
