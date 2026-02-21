@@ -32,6 +32,7 @@ A Dioxus-inspired, signal-based UI framework written in Mojo, compiled to WebAss
 - [Phase 10 — Modularization & Next Steps](#phase-10--modularization--next-steps)
 - [Phase 11 — Automatic Template & Event Wiring](#phase-11--automatic-template--event-wiring)
 - [Phase 12 — TS Runtime Modernization](#phase-12--ts-runtime-modernization)
+- [Phase 13 — Handler Lifecycle & Derived Signals (Memo)](#phase-13--handler-lifecycle--derived-signals-memo)
 - [Open Questions](#open-questions)
 - [Milestone Checklist](#milestone-checklist)
 
@@ -3152,6 +3153,398 @@ Update README and PLAN to reflect the new test counts and the modernized TS runt
 
 ---
 
+## Phase 13 — Handler Lifecycle & Derived Signals (Memo)
+
+> **Goal:** Fix the handler ID leak in todo and bench apps, then implement memo (computed/derived) signals — the second core reactive primitive after signals. Handler cleanup uses child scopes per item/row, establishing the pattern for future component composition. Memos enable derived state without manual "version signal" bumps.
+>
+> **Motivation:** Two real issues motivate this phase:
+>
+> 1. **Handler leak.** Every call to `build_items_fragment()` (todo) or `build_rows_fragment()` (bench) registers *new* handler IDs via `runtime.register_handler()`, but never removes the old ones. The local `handler_map` is cleared and rebuilt, but the `HandlerRegistry` in the Runtime grows unboundedly. After 100 add/remove cycles on a 10-item todo list, the registry accumulates ~2,000 stale handler entries. The fix: give each item/row its own child scope; on rebuild, destroy old child scopes (which triggers `remove_for_scope` cleanup) before creating new ones.
+>
+> 2. **No derived/computed values.** The plan described `Memo[T]` in Phase 1.3, but it was never implemented. Currently, the todo app uses a "version signal" (an Int32 bumped on every list mutation) as a proxy for "something changed" — there's no way to express "this value derives from that signal." A memo is a cached value with its own reactive context: it auto-tracks which signals it reads during computation, caches the result, and notifies its own subscribers when it becomes dirty. This is the foundation for efficient derived state.
+>
+> **Impact:** Handler count stabilizes (no leak). Memo signals enable derived state. Child-scope-per-item pattern prepares for component composition. New tests verify handler cleanup, memo caching, dependency tracking, and chain propagation.
+>
+> **Depends on:** Phase 12 (all apps use `createApp()` factory, clean test infrastructure).
+
+### 13.1 Scope-Scoped Handler Cleanup
+
+Fix the handler ID leak in todo and bench apps by giving each item/row its own child scope. When items are rebuilt, old child scopes are destroyed — triggering automatic handler cleanup via the existing `HandlerRegistry.remove_for_scope()` method.
+
+**Problem:**
+
+```text
+# todo.mojo — build_items_fragment() on every flush:
+self.handler_map.clear()          # ← clears LOCAL mapping
+for item in items:
+    toggle = runtime.register_handler(...)   # ← new handler ID every time!
+    remove = runtime.register_handler(...)   # ← never removed from registry!
+```
+
+After N flushes with M items, the registry holds `2 * M * N` stale handler entries (2 handlers per item × M items × N flushes). Same pattern in bench with 2 handlers per row.
+
+**Solution — child scopes per item/row:**
+
+```text
+# Before rebuild: destroy old child scopes (cleans up their handlers)
+for old_scope_id in self.item_scope_ids:
+    self.shell.runtime[0].handlers.remove_for_scope(old_scope_id)
+    self.shell.runtime[0].destroy_scope(old_scope_id)
+self.item_scope_ids.clear()
+
+# During rebuild: each item gets its own child scope
+for item in items:
+    var child_scope = self.shell.create_child_scope(self.scope_id)
+    self.item_scope_ids.append(child_scope)
+    # Register handlers under child_scope instead of self.scope_id
+    toggle = runtime.register_handler(
+        HandlerEntry.custom(child_scope, "click")
+    )
+    ...
+```
+
+**Changes — Mojo side:**
+
+- `TodoApp`: Add `item_scope_ids: List[UInt32]` field. In `build_items_fragment()`, destroy old child scopes before rebuilding. Each `build_item_vnode()` creates a child scope and registers handlers under it.
+- `BenchmarkApp`: Add `row_scope_ids: List[UInt32]` field. Same pattern in `build_rows_fragment()` / `build_row_vnode()`.
+- `AppShell`: Add `destroy_child_scopes(parent_id: UInt32)` convenience method that destroys all child scopes of a parent and cleans up their handlers.
+- App destroy functions: clean up child scopes on app teardown.
+
+**Changes — WASM exports:**
+
+- `todo_handler_count(app_ptr) -> i32` — expose handler count for leak verification.
+- `bench_handler_count(app_ptr) -> i32` — same for bench.
+
+**Tests (Mojo):**
+
+- Register handlers under child scope → `remove_for_scope` removes them
+- Destroy child scope → handlers cleaned up
+- Parent scope handlers unaffected by child scope cleanup
+
+**Tests (JS):**
+
+- Todo: add 5 items → handler count = 2×5+1 (10 item handlers + 1 add handler)
+- Todo: flush after add/remove cycle → handler count stays bounded (not growing)
+- Todo: 10 add/remove cycles → handler count ≤ 2×current_items+1 (no leak)
+- Bench: create 100 rows, clear, create 100 → handler count = 200 (not 400)
+
+**Deliverables:**
+
+- [ ] `TodoApp.item_scope_ids` field + child scope lifecycle in `build_items_fragment()`
+- [ ] `BenchmarkApp.row_scope_ids` field + child scope lifecycle in `build_rows_fragment()`
+- [ ] `AppShell.destroy_child_scopes()` helper method
+- [ ] `todo_handler_count` / `bench_handler_count` WASM exports
+- [ ] Handler leak tests (Mojo + JS)
+- [ ] All existing tests pass (handler IDs change but behavior is identical)
+
+### 13.2 Memo Store & MemoEntry
+
+Implement the memo (computed/derived signal) storage layer. A memo is a cached value with its own reactive context that auto-tracks input signal dependencies and notifies downstream subscribers when dirty.
+
+**MemoEntry struct (`src/signals/memo.mojo`):**
+
+```text
+struct MemoEntry(Copyable, Movable):
+    """A cached derived value with dependency tracking.
+
+    A memo has its own reactive context (context_id) that records which
+    signals it reads during computation.  The cached result is stored in
+    a dedicated signal (output_key) so that other scopes/memos can
+    subscribe to it via the normal signal subscription mechanism.
+
+    Lifecycle:
+      1. create → allocates context + output signal, marked dirty
+      2. begin_compute → sets memo's context as current reactive context
+      3. (app reads input signals — auto-subscribed to memo's context)
+      4. end_compute(value) → stores result in output signal, clears dirty
+      5. read → returns cached value from output signal
+      6. (input signal written → memo's context notified → memo marked dirty
+         → output signal's subscribers notified)
+    """
+    var context_id: UInt32     # reactive context for dependency tracking
+    var output_key: UInt32     # signal key that stores the cached result
+    var scope_id: UInt32       # owning scope (for cleanup)
+    var dirty: Bool            # needs recomputation
+    var computing: Bool        # currently inside begin/end compute bracket
+```
+
+**MemoStore struct (`src/signals/memo.mojo`):**
+
+```text
+struct MemoStore(Movable):
+    """Slab-allocated storage for memo entries.
+
+    Mirrors SignalStore and HandlerRegistry: uses a free-list for
+    stable ID reuse after destruction.
+    """
+    var _entries: List[MemoEntry]
+    var _states: List[MemoSlotState]
+    var _free_head: Int
+    var _count: Int
+
+    fn create(mut self, context_id: UInt32, output_key: UInt32,
+              scope_id: UInt32) -> UInt32: ...
+    fn destroy(mut self, id: UInt32): ...
+    fn get(self, id: UInt32) -> MemoEntry: ...
+    fn get_ptr(mut self, id: UInt32) -> UnsafePointer[MemoEntry]: ...
+    fn mark_dirty(mut self, id: UInt32): ...
+    fn is_dirty(self, id: UInt32) -> Bool: ...
+    fn count(self) -> Int: ...
+    fn contains(self, id: UInt32) -> Bool: ...
+    fn remove_for_scope(mut self, scope_id: UInt32): ...
+```
+
+**Integration with Runtime:**
+
+- `Runtime` gains a `memos: MemoStore` field.
+- When a memo's input signal is written:
+  1. The signal notifies its subscriber (the memo's context_id).
+  2. The Runtime checks if the context_id belongs to a memo.
+  3. If so, the memo is marked dirty.
+  4. The memo's output signal's subscribers (scopes) are notified.
+- Context ID → memo ID mapping: a `List[(UInt32, UInt32)]` in Runtime maps context IDs to memo IDs for the notification step.
+
+**Deliverables:**
+
+- [ ] `MemoEntry` struct with all fields
+- [ ] `MemoStore` with slab allocation (create, destroy, get, mark_dirty, is_dirty)
+- [ ] `Runtime.memos` field
+- [ ] Context-to-memo mapping for dirty propagation
+- [ ] Signal write → memo dirty → scope dirty propagation chain
+- [ ] Unit tests: create/destroy, dirty tracking, propagation
+
+### 13.3 Memo Runtime API & WASM Exports
+
+Expose memo operations through the Runtime and as WASM exports for testing.
+
+**Runtime methods:**
+
+```text
+fn create_memo_i32(mut self, scope_id: UInt32, initial: Int32) -> UInt32:
+    """Create a memo with an initial cached value.
+
+    Allocates a reactive context and an output signal.  The memo starts
+    dirty so the first read triggers a computation.
+
+    Returns the memo ID (not the output signal key).
+    """
+
+fn memo_begin_compute(mut self, memo_id: UInt32):
+    """Begin memo computation.
+
+    Sets the memo's reactive context as the current context so that
+    signal reads during computation are tracked as dependencies.
+    Clears old subscriptions (re-subscribes fresh on each compute).
+    """
+
+fn memo_end_compute_i32(mut self, memo_id: UInt32, value: Int32):
+    """End memo computation and store the result.
+
+    Writes the computed value to the memo's output signal and clears
+    the dirty flag.  Restores the previous reactive context.
+    """
+
+fn memo_read_i32(mut self, memo_id: UInt32) -> Int32:
+    """Read the memo's cached value.
+
+    Subscribes the current reactive context (if any) to the memo's
+    output signal, so the reader is notified when the memo recomputes.
+
+    Does NOT trigger recomputation — the caller must check
+    memo_is_dirty() and call begin/end_compute if needed.
+    """
+
+fn memo_is_dirty(self, memo_id: UInt32) -> Bool:
+    """Check whether the memo needs recomputation."""
+
+fn destroy_memo(mut self, memo_id: UInt32):
+    """Destroy a memo, cleaning up its context and output signal."""
+```
+
+**WASM exports:**
+
+- `memo_create_i32(rt_ptr, scope_id, initial) -> i32` — returns memo ID
+- `memo_begin_compute(rt_ptr, memo_id)`
+- `memo_end_compute_i32(rt_ptr, memo_id, value)`
+- `memo_read_i32(rt_ptr, memo_id) -> i32`
+- `memo_is_dirty(rt_ptr, memo_id) -> i32` (Bool as Int32)
+- `memo_destroy(rt_ptr, memo_id)`
+- `memo_count(rt_ptr) -> i32`
+
+**Tests (Mojo — `test/test_memo.mojo`):**
+
+- Create memo → count is 1, initial value readable
+- Destroy memo → count is 0, context and signal cleaned up
+- begin/end compute → cached value updated
+- Read memo without context → no subscription (no crash)
+- Read memo with context → context subscribed to output signal
+- Memo is dirty after creation (before first compute)
+- Memo is clean after end_compute
+- Write to input signal → memo dirty
+- Memo dirty → output signal subscribers notified (scope in dirty queue)
+
+**Tests (JS — additions to `bench.test.ts` or new `test-js/memo.test.ts`):**
+
+- Create memo, compute, read → correct value
+- Auto-track: signal write → memo dirty → scope dirty
+- Cache hit: read memo twice after compute → same value, no recompute needed
+- Chain: signal → memo → scope, write signal → both memo dirty + scope dirty
+- Diamond: two memos read same signal, third reads both → correct propagation
+- Cleanup: destroy memo → subscriber count on input signal decremented
+
+### 13.4 use_memo_i32 Hook
+
+Hook version of memo for scope-based usage, matching the `use_signal_i32` pattern.
+
+**Runtime method:**
+
+```text
+fn use_memo_i32(mut self, initial: Int32) -> UInt32:
+    """Hook: create or retrieve an Int32 memo for the current scope.
+
+    On first render: creates a new memo, stores its ID in the scope's
+    hook array (with HOOK_MEMO tag), and returns the memo ID.
+
+    On re-render: retrieves the existing memo ID from the hook array
+    and returns it.
+
+    Precondition: has_scope() is True.
+    """
+```
+
+**WASM export:**
+
+- `use_memo_i32(rt_ptr, initial) -> i32` — returns memo ID (during scope render)
+
+**Tests (Mojo):**
+
+- Hook creates memo on first render (hook tag = HOOK_MEMO)
+- Hook returns same memo ID on re-render
+- Multiple memos in same scope: each gets distinct ID
+- Hook cursor advances correctly when interleaved with signal hooks
+
+**Tests (JS):**
+
+- `use_memo_i32` during scope render → valid memo ID
+- Re-render same scope → same memo ID returned
+- Memo value survives re-render
+
+### 13.5 AppShell Memo Helpers
+
+Add memo convenience methods to `AppShell`, mirroring the signal helper pattern.
+
+**Methods:**
+
+```text
+fn create_memo_i32(mut self, initial: Int32) -> UInt32:
+    """Create an Int32 memo.  Returns its ID."""
+
+fn memo_begin_compute(mut self, memo_id: UInt32):
+    """Begin memo computation (sets memo's context as current)."""
+
+fn memo_end_compute_i32(mut self, memo_id: UInt32, value: Int32):
+    """End memo computation and cache the result."""
+
+fn memo_read_i32(mut self, memo_id: UInt32) -> Int32:
+    """Read a memo's cached value (with context tracking)."""
+
+fn memo_is_dirty(self, memo_id: UInt32) -> Bool:
+    """Check whether the memo needs recomputation."""
+
+fn use_memo_i32(mut self, initial: Int32) -> UInt32:
+    """Hook: create or retrieve an Int32 memo for the current scope."""
+```
+
+**WASM exports (shell):**
+
+- `shell_memo_create_i32(shell_ptr, initial) -> i32`
+- `shell_memo_begin_compute(shell_ptr, memo_id)`
+- `shell_memo_end_compute_i32(shell_ptr, memo_id, value)`
+- `shell_memo_read_i32(shell_ptr, memo_id) -> i32`
+- `shell_memo_is_dirty(shell_ptr, memo_id) -> i32`
+- `shell_use_memo_i32(shell_ptr, initial) -> i32`
+
+**Tests:**
+
+- Shell memo helpers produce same results as raw Runtime methods
+- Shell use_memo_i32 works within begin_render/end_render
+
+### 13.6 Counter App Memo Demo
+
+Demonstrate memos end-to-end by adding a "doubled count" derived value to the counter app. This proves the full chain: signal write → memo dirty → memo recompute → DOM update.
+
+**Changes to CounterApp:**
+
+```text
+struct CounterApp:
+    ...
+    var doubled_memo: UInt32   # memo ID for "count * 2"
+
+fn counter_app_init():
+    ...
+    # Create memo (starts dirty, will compute on first render)
+    app.doubled_memo = app.shell.runtime[0].create_memo_i32(app.scope_id, 0)
+
+fn build_vnode(mut self) -> UInt32:
+    # Recompute memo if dirty
+    if self.shell.runtime[0].memo_is_dirty(self.doubled_memo):
+        self.shell.runtime[0].memo_begin_compute(self.doubled_memo)
+        var count = self.shell.read_signal_i32(self.count_signal)
+        self.shell.runtime[0].memo_end_compute_i32(
+            self.doubled_memo, count * 2
+        )
+
+    var doubled = self.shell.runtime[0].memo_read_i32(self.doubled_memo)
+
+    var vb = VNodeBuilder(self.template_id, self.shell.store)
+    vb.add_dyn_text(self.build_count_text())
+    vb.add_dyn_text(String("Doubled: ") + String(doubled))
+    vb.add_dyn_event(String("click"), self.incr_handler)
+    vb.add_dyn_event(String("click"), self.decr_handler)
+    return vb.index()
+```
+
+**Template update:**
+
+```text
+# Counter template gains a second dynamic text node:
+#   div > [ span > dynamic_text[0],          ← "Count: N"
+#           span > dynamic_text[1],          ← "Doubled: 2N"  (NEW)
+#           button("+") + dynamic_attr[0],
+#           button("−") + dynamic_attr[1] ]
+```
+
+**WASM exports:**
+
+- `counter_doubled_value(app_ptr) -> i32` — read the memo's cached value directly
+
+**Tests (JS — additions to `counter.test.ts`):**
+
+- Initial mount: count=0 → doubled text shows "Doubled: 0"
+- Increment → count=1, doubled=2 (both DOM texts update)
+- Decrement → count=0, doubled=0
+- 10 increments → count=10, doubled=20
+- DOM structure: second span contains "Doubled: N"
+
+**Tests (Mojo — additions to `test/test_component.mojo` or `test/test_memo.mojo`):**
+
+- Counter memo starts dirty
+- After first build_vnode: memo is clean, value = 0
+- After signal write + rebuild: memo recomputes, value = count * 2
+
+### 13.7 Documentation & Test Count Update
+
+Update README and PLAN to reflect Phase 13 changes.
+
+**Deliverables:**
+
+- [ ] README: test count updated, memo section added to "Reactive model"
+- [ ] README: handler lifecycle documented in "Known limitations" or "Architecture"
+- [ ] PLAN milestone checklist updated for M13.1–M13.7
+- [ ] Phase 13 marked complete
+
+---
+
 ## Milestone Checklist
 
 - [x] **M0:** Arena allocator + collections + ElementId + protocol defined. All existing tests still pass.
@@ -3197,3 +3590,10 @@ Update README and PLAN to reflect the new test counts and the modernized TS runt
 - [x] **M12.3:** Todo app modernization. `createTodoApp()` in `test-js/todo.test.ts` rewritten to use `createApp()` — ~50 lines of manual template DOM construction removed. All 26 todo test suites pass unchanged. All 679 Mojo + 934 JS tests pass.
 - [x] **M12.4:** Bench app factory & DOM tests. `createBenchApp()` factory added to `test-js/bench.test.ts` using `createApp()`. 10 new DOM integration test suites (31 assertions): mount, create/append/clear/update/swap/select/remove operations verified against headless DOM. All 679 Mojo + 965 JS tests pass.
 - [x] **M12.5:** Documentation & test count update. README updated (1,613 → 1,644 tests). PLAN milestone checklist updated. Phase 12 marked complete.
+- [ ] **M13.1:** Scope-scoped handler cleanup. Child scopes per item/row in todo and bench apps. `AppShell.destroy_child_scopes()` helper. `todo_handler_count`/`bench_handler_count` WASM exports. Handler leak verified fixed via JS tests. All existing tests pass.
+- [ ] **M13.2:** Memo store & MemoEntry. `MemoEntry` struct + `MemoStore` slab allocator in `src/signals/memo.mojo`. `Runtime.memos` field. Context-to-memo mapping for dirty propagation. Signal write → memo dirty → scope dirty chain. Unit tests for create/destroy, dirty tracking, propagation.
+- [ ] **M13.3:** Memo runtime API & WASM exports. `create_memo_i32`, `memo_begin_compute`, `memo_end_compute_i32`, `memo_read_i32`, `memo_is_dirty`, `destroy_memo` on Runtime. Corresponding `memo_*` WASM exports. Mojo + JS tests: basic memo, auto-track, cache hit, chain, diamond, cleanup.
+- [ ] **M13.4:** `use_memo_i32` hook. Hook version of memo matching `use_signal_i32` pattern. HOOK_MEMO tag in scope hook array. `use_memo_i32` WASM export. Tests: first render creates, re-render returns same ID, interleaved with signal hooks.
+- [ ] **M13.5:** AppShell memo helpers. Convenience methods on AppShell mirroring signal helper pattern. Shell WASM exports (`shell_memo_*`). Tests verify parity with raw Runtime methods.
+- [ ] **M13.6:** Counter app memo demo. `doubled_memo` field on CounterApp. Template gains second dynamic text span ("Doubled: 2N"). `counter_doubled_value` WASM export. JS DOM tests: increment → both count and doubled update. Proves full signal → memo → DOM chain.
+- [ ] **M13.7:** Documentation & test count update. README updated with memo section in reactive model, handler lifecycle documented. PLAN milestone checklist updated. Phase 13 marked complete.

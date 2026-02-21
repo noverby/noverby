@@ -2104,6 +2104,12 @@ fn todo_scope_id(app_ptr: Int64) -> Int32:
     return Int32(_get[TodoApp](app_ptr)[0].scope_id)
 
 
+@export
+fn todo_handler_count(app_ptr: Int64) -> Int32:
+    """Return the number of live event handlers in the todo app's runtime."""
+    return Int32(_get[TodoApp](app_ptr)[0].shell.runtime[0].handler_count())
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 9 — Benchmark App
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2230,6 +2236,14 @@ fn bench_row_template_id(app_ptr: Int64) -> Int32:
 fn bench_scope_id(app_ptr: Int64) -> Int32:
     """Return the root scope ID."""
     return Int32(_get[BenchmarkApp](app_ptr)[0].scope_id)
+
+
+@export
+fn bench_handler_count(app_ptr: Int64) -> Int32:
+    """Return the number of live event handlers in the bench app's runtime."""
+    return Int32(
+        _get[BenchmarkApp](app_ptr)[0].shell.runtime[0].handler_count()
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -1157,6 +1157,103 @@ function testBenchDomMultipleInstances(fns: Fns): void {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// Section: Handler lifecycle (M13.1)
+// ══════════════════════════════════════════════════════════════════════════════
+
+function testBenchHandlerLifecycle(fns: Fns): void {
+	suite("Bench — handler count after create 100 rows");
+	{
+		const appPtr = fns.bench_init();
+		const bufSize = 4 * 1024 * 1024; // 4 MB
+		const bufPtr = fns.mutation_buf_alloc(bufSize);
+		fns.bench_rebuild(appPtr, bufPtr, bufSize);
+
+		// Before any rows: 0 handlers (bench has no app-level handlers)
+		const hcBefore = fns.bench_handler_count(appPtr);
+		assert(hcBefore, 0, "0 handlers before any rows");
+
+		// Create 100 rows — each gets 2 handlers (select + remove)
+		fns.bench_create(appPtr, 100);
+		fns.bench_flush(appPtr, bufPtr, bufSize);
+
+		const hcAfter = fns.bench_handler_count(appPtr);
+		assert(hcAfter, 200, "200 handlers after 100 rows (2 per row)");
+
+		fns.bench_destroy(appPtr);
+	}
+
+	suite("Bench — handler count bounded after clear + create cycle");
+	{
+		const appPtr = fns.bench_init();
+		const bufSize = 4 * 1024 * 1024;
+		const bufPtr = fns.mutation_buf_alloc(bufSize);
+		fns.bench_rebuild(appPtr, bufPtr, bufSize);
+
+		// Create 100 rows, flush
+		fns.bench_create(appPtr, 100);
+		fns.bench_flush(appPtr, bufPtr, bufSize);
+
+		// Clear all rows, flush — handlers should be cleaned up
+		fns.bench_clear(appPtr);
+		fns.bench_flush(appPtr, bufPtr, bufSize);
+
+		const hcAfterClear = fns.bench_handler_count(appPtr);
+		assert(hcAfterClear, 0, "0 handlers after clear (no leak)");
+
+		// Create 100 rows again — should be exactly 200, not 400
+		fns.bench_create(appPtr, 100);
+		fns.bench_flush(appPtr, bufPtr, bufSize);
+
+		const hcAfterRecreate = fns.bench_handler_count(appPtr);
+		assert(hcAfterRecreate, 200, "200 handlers after recreate (not 400)");
+
+		fns.bench_destroy(appPtr);
+	}
+
+	suite("Bench — handler count bounded after multiple create cycles");
+	{
+		const appPtr = fns.bench_init();
+		const bufSize = 4 * 1024 * 1024;
+		const bufPtr = fns.mutation_buf_alloc(bufSize);
+		fns.bench_rebuild(appPtr, bufPtr, bufSize);
+
+		// 5 cycles of create 50 rows (each create replaces all rows)
+		for (let i = 0; i < 5; i++) {
+			fns.bench_create(appPtr, 50);
+			fns.bench_flush(appPtr, bufPtr, bufSize);
+		}
+
+		// Should be 100 (50 rows * 2 handlers), NOT 500 (leaked)
+		const hc = fns.bench_handler_count(appPtr);
+		assert(hc, 100, "100 handlers after 5 create cycles (no leak)");
+
+		fns.bench_destroy(appPtr);
+	}
+
+	suite("Bench — handler count after update (no new handlers)");
+	{
+		const appPtr = fns.bench_init();
+		const bufSize = 4 * 1024 * 1024;
+		const bufPtr = fns.mutation_buf_alloc(bufSize);
+		fns.bench_rebuild(appPtr, bufPtr, bufSize);
+
+		fns.bench_create(appPtr, 100);
+		fns.bench_flush(appPtr, bufPtr, bufSize);
+
+		const hcBefore = fns.bench_handler_count(appPtr);
+
+		// Update every 10th — triggers rebuild, old handlers cleaned up
+		fns.bench_update(appPtr);
+		fns.bench_flush(appPtr, bufPtr, bufSize);
+
+		const hcAfter = fns.bench_handler_count(appPtr);
+		assert(hcAfter, hcBefore, "handler count unchanged after update");
+
+		fns.bench_destroy(appPtr);
+	}
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Combined export
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -1202,4 +1299,7 @@ export function testBench(fns: Fns): void {
 	testBenchDomUpdate(fns);
 	testBenchDomCreateAfterClear(fns);
 	testBenchDomMultipleInstances(fns);
+
+	// 13.1 — Handler lifecycle
+	testBenchHandlerLifecycle(fns);
 }

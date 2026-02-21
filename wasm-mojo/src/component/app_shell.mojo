@@ -113,6 +113,27 @@ struct AppShell(Movable):
         """Create a child scope.  Returns scope ID."""
         return self.runtime[0].create_child_scope(parent_id)
 
+    fn destroy_child_scopes(mut self, scope_ids: List[UInt32]):
+        """Destroy a list of child scopes and clean up their handlers.
+
+        For each scope ID in the list:
+          1. Remove all event handlers registered under that scope
+             (via HandlerRegistry.remove_for_scope).
+          2. Destroy the scope itself (via ScopeArena.destroy).
+
+        This is the correct cleanup sequence for ephemeral per-item or
+        per-row scopes whose handlers are re-registered on every rebuild.
+        Permanent handlers (registered under the parent scope) are
+        unaffected.
+
+        Args:
+            scope_ids: List of child scope IDs to destroy.
+        """
+        for i in range(len(scope_ids)):
+            var sid = scope_ids[i]
+            self.runtime[0].handlers.remove_for_scope(sid)
+            self.runtime[0].destroy_scope(sid)
+
     fn begin_render(mut self, scope_id: UInt32) -> Int:
         """Begin rendering a scope.  Returns previous scope ID (or -1)."""
         return self.runtime[0].begin_scope_render(scope_id)
