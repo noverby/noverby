@@ -35,12 +35,6 @@ pub enum TrampError {
     #[error("sftp: {0}")]
     SftpError(String),
 
-    #[error("tramp: chained paths not yet supported (see roadmap)")]
-    ChainedPathNotSupported,
-
-    #[error("tramp: backend '{0}' not yet supported (see roadmap)")]
-    BackendNotSupported(String),
-
     #[error("tramp: {0}")]
     Internal(String),
 }

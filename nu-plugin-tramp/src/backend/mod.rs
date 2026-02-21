@@ -10,6 +10,8 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use std::time::SystemTime;
 
+pub mod exec;
+pub mod runner;
 pub mod ssh;
 
 // ---------------------------------------------------------------------------

@@ -8,11 +8,21 @@
 //! - `tramp rm <path>`          — delete a remote file
 //! - `tramp cp <src> <dst>`     — copy files between local/remote locations
 //! - `tramp cd <path>`          — set the remote working directory
+//! - `tramp exec <path> <cmd>`  — execute a command on the remote (push execution)
 //! - `tramp ping <path>`        — test connectivity to a remote host
 //! - `tramp connections`        — list active connections
 //! - `tramp disconnect [host]`  — close connections
 //!
-//! Paths use the TRAMP URI format: `/ssh:user@host#port:/remote/path`
+//! Supported backends: **ssh**, **docker**, **k8s** (kubernetes), **sudo**.
+//!
+//! Paths use the TRAMP URI format: `/<backend>:<user>@<host>#<port>:<remote-path>`
+//!
+//! Chained paths enable reaching nested environments:
+//!
+//! ```text
+//! /ssh:myvm|docker:container:/app/config.toml
+//! /ssh:myvm|sudo:root:/etc/shadow
+//! ```
 
 mod backend;
 mod errors;
@@ -72,6 +82,7 @@ impl Plugin for TrampPlugin {
             Box::new(TrampCp),
             Box::new(TrampCd),
             Box::new(TrampPwd),
+            Box::new(TrampExec),
             Box::new(TrampPing),
             Box::new(TrampConnections),
             Box::new(TrampDisconnect),
@@ -270,6 +281,14 @@ nu-plugin-tramp lets you transparently access remote files using TRAMP-style URI
     tramp rm   /ssh:myvm:/tmp/stale.lock
     tramp cp   /ssh:myvm:/etc/config ./local-copy
 
+Supported backends: ssh, docker, k8s (kubernetes), sudo
+
+Chained paths let you reach nested environments:
+
+    tramp open /ssh:myvm|docker:ctr:/app/config.toml
+    tramp ls   /ssh:myvm|sudo:root:/etc
+    tramp exec /ssh:myvm|docker:ctr:/ -- hostname
+
 Set a remote working directory to use relative paths:
 
     tramp cd /ssh:myvm:/app
@@ -283,8 +302,6 @@ Connection management:
     tramp disconnect myvm
 
 Path format: /<backend>:<user>@<host>#<port>:<remote-path>
-
-Only the SSH backend is supported in Phase 1.
 "#
         .trim()
     }
@@ -294,7 +311,15 @@ Only the SSH backend is supported in Phase 1.
     }
 
     fn search_terms(&self) -> Vec<&str> {
-        vec!["tramp", "remote", "ssh", "sftp"]
+        vec![
+            "tramp",
+            "remote",
+            "ssh",
+            "sftp",
+            "docker",
+            "kubernetes",
+            "sudo",
+        ]
     }
 
     fn run(
@@ -1183,6 +1208,13 @@ impl PluginCommand for TrampConnections {
                         .map(|p| Value::int(p as i64, span))
                         .unwrap_or_else(|| Value::nothing(span)),
                 );
+                record.push(
+                    "chain",
+                    info.chain
+                        .as_deref()
+                        .map(|c| Value::string(c, span))
+                        .unwrap_or_else(|| Value::nothing(span)),
+                );
                 Value::record(record, span)
             })
             .collect();
@@ -1294,6 +1326,131 @@ impl PluginCommand for TrampDisconnect {
             )
             .with_label("missing argument", span)),
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// `tramp exec`
+// ---------------------------------------------------------------------------
+
+struct TrampExec;
+
+impl PluginCommand for TrampExec {
+    type Plugin = TrampPlugin;
+
+    fn name(&self) -> &str {
+        "tramp exec"
+    }
+
+    fn description(&self) -> &str {
+        "Execute a command on a remote host (push execution model)"
+    }
+
+    fn extra_description(&self) -> &str {
+        "Runs an arbitrary command on the remote host identified by the \
+         TRAMP URI and returns its stdout as a string (or binary if not \
+         valid UTF-8). The remote path in the URI is ignored — only the \
+         hop chain matters.\n\n\
+         Use `--` to separate the TRAMP path from the command and its \
+         arguments:\n\n\
+         \x20   tramp exec /ssh:myvm:/ -- ls -la /tmp\n\
+         \x20   tramp exec /ssh:myvm|docker:ctr:/ -- cat /etc/hostname"
+    }
+
+    fn signature(&self) -> Signature {
+        Signature::build(self.name())
+            .required(
+                "path",
+                SyntaxShape::String,
+                "TRAMP URI identifying the remote target",
+            )
+            .required(
+                "command",
+                SyntaxShape::String,
+                "Command to execute on the remote",
+            )
+            .rest(
+                "args",
+                SyntaxShape::String,
+                "Arguments to the remote command",
+            )
+            .input_output_types(vec![(Type::Nothing, Type::Any)])
+            .category(Category::FileSystem)
+    }
+
+    fn search_terms(&self) -> Vec<&str> {
+        vec!["tramp", "exec", "run", "remote", "ssh", "docker", "kubectl"]
+    }
+
+    fn examples(&self) -> Vec<Example<'_>> {
+        vec![
+            Example {
+                example: "tramp exec /ssh:myvm:/ -- ls -la /tmp",
+                description: "List /tmp on a remote host",
+                result: None,
+            },
+            Example {
+                example: "tramp exec /ssh:myvm|docker:ctr:/ -- hostname",
+                description: "Get the hostname inside a Docker container on a remote host",
+                result: None,
+            },
+            Example {
+                example: "tramp exec /docker:mycontainer:/ -- cat /etc/os-release",
+                description: "Read a file inside a local Docker container",
+                result: None,
+            },
+            Example {
+                example: "tramp exec /sudo:root:/ -- cat /etc/shadow",
+                description: "Read a file as root via sudo",
+                result: None,
+            },
+        ]
+    }
+
+    fn run(
+        &self,
+        plugin: &TrampPlugin,
+        _engine: &EngineInterface,
+        call: &EvaluatedCall,
+        _input: PipelineData,
+    ) -> Result<PipelineData, LabeledError> {
+        let path = parse_tramp_arg(call, &plugin.remote_cwd)?;
+        let command: String = call.req(1)?;
+        let extra_args: Vec<String> = call.rest(2)?;
+
+        let arg_refs: Vec<&str> = extra_args.iter().map(|s| s.as_str()).collect();
+
+        let result = plugin
+            .vfs
+            .exec(&path, &command, &arg_refs)
+            .map_err(|e| tramp_err(e, call.head))?;
+
+        let span = call.head;
+
+        if result.exit_code != 0 {
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            let msg = if stderr.trim().is_empty() {
+                format!(
+                    "remote command `{command}` exited with code {}",
+                    result.exit_code
+                )
+            } else {
+                format!(
+                    "remote command `{command}` exited with code {}: {}",
+                    result.exit_code,
+                    stderr.trim()
+                )
+            };
+            return Err(LabeledError::new(msg).with_label("non-zero exit", span));
+        }
+
+        // Return stdout as string if valid UTF-8, otherwise as binary.
+        let value = match String::from_utf8(result.stdout.to_vec()) {
+            Ok(s) => Value::string(s, span),
+            Err(e) => Value::binary(e.into_bytes(), span),
+        };
+
+        Ok(PipelineData::Value(value, None))
     }
 }
 

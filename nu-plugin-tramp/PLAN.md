@@ -345,12 +345,19 @@ programs.nushell.plugins = [ pkgs.nu-plugin-tramp ];
 
 ### Phase 3 — Power Features
 
-- [ ] Path chaining (jump hosts, sudo, Docker-in-SSH)
-- [ ] Docker backend
-- [ ] Kubernetes (`kubectl exec`) backend
-- [ ] `sudo` backend
-- [ ] Push execution model (run commands natively on remote)
+- [x] Path chaining (SSH → Docker, SSH → Sudo, triple chains, etc.)
+- [x] Docker backend
+- [x] Kubernetes (`kubectl exec`) backend
+- [x] `sudo` backend
+- [x] Push execution model (`tramp exec` command)
+
+### Phase 4 — Future
+
 - [ ] Home Manager module for auto-registration
+- [ ] Streaming for very large files
+- [ ] Glob/wildcard support for `tramp ls` and `tramp cp`
+- [ ] Tab completion for remote paths
+- [ ] Configurable cache TTL via environment variables
 
 ---
 
