@@ -193,47 +193,13 @@ fn _heap_del[T: Movable](ptr: UnsafePointer[T]):
     ptr.free()
 
 
-# ── Helper: quick get-pointer wrappers ───────────────────────────────────────
+# ── Helper: generic get-pointer wrapper ──────────────────────────────────────
 
 
-fn _get_eid_alloc(alloc_ptr: Int64) -> UnsafePointer[ElementIdAllocator]:
-    return _as_ptr[ElementIdAllocator](Int(alloc_ptr))
-
-
-fn _get_runtime(rt_ptr: Int64) -> UnsafePointer[Runtime]:
-    return _as_ptr[Runtime](Int(rt_ptr))
-
-
-fn _get_builder(ptr: Int64) -> UnsafePointer[TemplateBuilder]:
-    return _as_ptr[TemplateBuilder](Int(ptr))
-
-
-fn _get_vnode_store(store_ptr: Int64) -> UnsafePointer[VNodeStore]:
-    return _as_ptr[VNodeStore](Int(store_ptr))
-
-
-fn _get_counter(app_ptr: Int64) -> UnsafePointer[CounterApp]:
-    return _as_ptr[CounterApp](Int(app_ptr))
-
-
-fn _get_todo(app_ptr: Int64) -> UnsafePointer[TodoApp]:
-    return _as_ptr[TodoApp](Int(app_ptr))
-
-
-fn _get_bench(app_ptr: Int64) -> UnsafePointer[BenchmarkApp]:
-    return _as_ptr[BenchmarkApp](Int(app_ptr))
-
-
-fn _get_shell(shell_ptr: Int64) -> UnsafePointer[AppShell]:
-    return _as_ptr[AppShell](Int(shell_ptr))
-
-
-fn _get_scheduler(sched_ptr: Int64) -> UnsafePointer[Scheduler]:
-    return _as_ptr[Scheduler](Int(sched_ptr))
-
-
-fn _get_writer(writer_ptr: Int64) -> UnsafePointer[MutationWriter]:
-    return _as_ptr[MutationWriter](Int(writer_ptr))
+@always_inline
+fn _get[T: AnyType](ptr: Int64) -> UnsafePointer[T]:
+    """Reinterpret an Int64 WASM handle as an UnsafePointer[T]."""
+    return _as_ptr[T](Int(ptr))
 
 
 # ── Helper: Bool → Int32 for WASM ABI ───────────────────────────────────────
@@ -252,7 +218,7 @@ fn _b2i(val: Bool) -> Int32:
 
 @always_inline
 fn _writer(buf: Int64, off: Int32) -> MutationWriter:
-    return MutationWriter(_as_ptr[UInt8](Int(buf)), Int(off), 0)
+    return MutationWriter(_get[UInt8](buf), Int(off), 0)
 
 
 # ── Helper: heap-allocated MutationWriter for app rebuild/flush ──────────────
@@ -264,9 +230,7 @@ fn _alloc_writer(
 ) -> UnsafePointer[MutationWriter]:
     """Allocate a MutationWriter on the heap with the given buffer and capacity.
     """
-    return _heap_new(
-        MutationWriter(_as_ptr[UInt8](Int(buf_ptr)), Int(capacity))
-    )
+    return _heap_new(MutationWriter(_get[UInt8](buf_ptr), Int(capacity)))
 
 
 @always_inline
@@ -289,41 +253,41 @@ fn eid_alloc_create() -> Int64:
 @export
 fn eid_alloc_destroy(alloc_ptr: Int64):
     """Destroy and free a heap-allocated ElementIdAllocator."""
-    _heap_del(_get_eid_alloc(alloc_ptr))
+    _heap_del(_get[ElementIdAllocator](alloc_ptr))
 
 
 @export
 fn eid_alloc(alloc_ptr: Int64) -> Int32:
     """Allocate a new ElementId.  Returns the raw u32 as i32."""
-    var a = _get_eid_alloc(alloc_ptr)
+    var a = _get[ElementIdAllocator](alloc_ptr)
     return Int32(a[0].alloc().as_u32())
 
 
 @export
 fn eid_free(alloc_ptr: Int64, id: Int32):
     """Free an ElementId."""
-    var a = _get_eid_alloc(alloc_ptr)
+    var a = _get[ElementIdAllocator](alloc_ptr)
     a[0].free(ElementId(UInt32(id)))
 
 
 @export
 fn eid_is_alive(alloc_ptr: Int64, id: Int32) -> Int32:
     """Check whether an ElementId is currently allocated.  Returns 1 or 0."""
-    var a = _get_eid_alloc(alloc_ptr)
+    var a = _get[ElementIdAllocator](alloc_ptr)
     return _b2i(a[0].is_alive(ElementId(UInt32(id))))
 
 
 @export
 fn eid_count(alloc_ptr: Int64) -> Int32:
     """Number of allocated IDs (including root)."""
-    var a = _get_eid_alloc(alloc_ptr)
+    var a = _get[ElementIdAllocator](alloc_ptr)
     return Int32(a[0].count())
 
 
 @export
 fn eid_user_count(alloc_ptr: Int64) -> Int32:
     """Number of user-allocated IDs (excluding root)."""
-    var a = _get_eid_alloc(alloc_ptr)
+    var a = _get[ElementIdAllocator](alloc_ptr)
     return Int32(a[0].user_count())
 
 
@@ -341,69 +305,69 @@ fn runtime_create() -> Int64:
 @export
 fn runtime_destroy(rt_ptr: Int64):
     """Destroy and free a heap-allocated Runtime."""
-    destroy_runtime(_get_runtime(rt_ptr))
+    destroy_runtime(_get[Runtime](rt_ptr))
 
 
 @export
 fn signal_create_i32(rt_ptr: Int64, initial: Int32) -> Int32:
     """Create an Int32 signal.  Returns its key."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].create_signal[Int32](initial))
 
 
 @export
 fn signal_read_i32(rt_ptr: Int64, key: Int32) -> Int32:
     """Read an Int32 signal (with context tracking)."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return rt[0].read_signal[Int32](UInt32(key))
 
 
 @export
 fn signal_write_i32(rt_ptr: Int64, key: Int32, value: Int32):
     """Write a new value to an Int32 signal."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     rt[0].write_signal[Int32](UInt32(key), value)
 
 
 @export
 fn signal_peek_i32(rt_ptr: Int64, key: Int32) -> Int32:
     """Read an Int32 signal without subscribing."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return rt[0].peek_signal[Int32](UInt32(key))
 
 
 @export
 fn signal_destroy(rt_ptr: Int64, key: Int32):
     """Destroy a signal."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     rt[0].destroy_signal(UInt32(key))
 
 
 @export
 fn signal_subscriber_count(rt_ptr: Int64, key: Int32) -> Int32:
     """Return the number of subscribers for a signal."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].signals.subscriber_count(UInt32(key)))
 
 
 @export
 fn signal_version(rt_ptr: Int64, key: Int32) -> Int32:
     """Return the write-version counter for a signal."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].signals.version(UInt32(key)))
 
 
 @export
 fn signal_count(rt_ptr: Int64) -> Int32:
     """Return the number of live signals."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].signals.signal_count())
 
 
 @export
 fn signal_contains(rt_ptr: Int64, key: Int32) -> Int32:
     """Check whether a signal key is live.  Returns 1 or 0."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].signals.contains(UInt32(key)))
 
 
@@ -413,35 +377,35 @@ fn signal_contains(rt_ptr: Int64, key: Int32) -> Int32:
 @export
 fn runtime_set_context(rt_ptr: Int64, context_id: Int32):
     """Set the current reactive context."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     rt[0].set_context(UInt32(context_id))
 
 
 @export
 fn runtime_clear_context(rt_ptr: Int64):
     """Clear the current reactive context."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     rt[0].clear_context()
 
 
 @export
 fn runtime_has_context(rt_ptr: Int64) -> Int32:
     """Check if a reactive context is active.  Returns 1 or 0."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].has_context())
 
 
 @export
 fn runtime_dirty_count(rt_ptr: Int64) -> Int32:
     """Return the number of dirty scopes."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].dirty_count())
 
 
 @export
 fn runtime_has_dirty(rt_ptr: Int64) -> Int32:
     """Check if any scopes are dirty.  Returns 1 or 0."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].has_dirty())
 
 
@@ -453,91 +417,91 @@ fn runtime_has_dirty(rt_ptr: Int64) -> Int32:
 @export
 fn scope_create(rt_ptr: Int64, height: Int32, parent_id: Int32) -> Int32:
     """Create a new scope.  Returns its ID."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].create_scope(UInt32(height), Int(parent_id)))
 
 
 @export
 fn scope_create_child(rt_ptr: Int64, parent_id: Int32) -> Int32:
     """Create a child scope.  Height is parent.height + 1."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].create_child_scope(UInt32(parent_id)))
 
 
 @export
 fn scope_destroy(rt_ptr: Int64, id: Int32):
     """Destroy a scope."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     rt[0].destroy_scope(UInt32(id))
 
 
 @export
 fn scope_count(rt_ptr: Int64) -> Int32:
     """Return the number of live scopes."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].scope_count())
 
 
 @export
 fn scope_contains(rt_ptr: Int64, id: Int32) -> Int32:
     """Check whether a scope ID is live.  Returns 1 or 0."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].scope_contains(UInt32(id)))
 
 
 @export
 fn scope_height(rt_ptr: Int64, id: Int32) -> Int32:
     """Return the height (depth) of a scope."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].scopes.height(UInt32(id)))
 
 
 @export
 fn scope_parent(rt_ptr: Int64, id: Int32) -> Int32:
     """Return the parent ID of a scope, or -1 if root."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].scopes.parent_id(UInt32(id)))
 
 
 @export
 fn scope_is_dirty(rt_ptr: Int64, id: Int32) -> Int32:
     """Check whether a scope is dirty.  Returns 1 or 0."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].scopes.is_dirty(UInt32(id)))
 
 
 @export
 fn scope_set_dirty(rt_ptr: Int64, id: Int32, dirty: Int32):
     """Set the dirty flag on a scope."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     rt[0].scopes.set_dirty(UInt32(id), dirty != 0)
 
 
 @export
 fn scope_render_count(rt_ptr: Int64, id: Int32) -> Int32:
     """Return how many times a scope has been rendered."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].scopes.render_count(UInt32(id)))
 
 
 @export
 fn scope_hook_count(rt_ptr: Int64, id: Int32) -> Int32:
     """Return the number of hooks in a scope."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].scopes.hook_count(UInt32(id)))
 
 
 @export
 fn scope_hook_value_at(rt_ptr: Int64, id: Int32, index: Int32) -> Int32:
     """Return the hook value (signal key) at position `index` in scope `id`."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].scopes.hook_value_at(UInt32(id), Int(index)))
 
 
 @export
 fn scope_hook_tag_at(rt_ptr: Int64, id: Int32, index: Int32) -> Int32:
     """Return the hook tag at position `index` in scope `id`."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].scopes.hook_tag_at(UInt32(id), Int(index)))
 
 
@@ -547,28 +511,28 @@ fn scope_hook_tag_at(rt_ptr: Int64, id: Int32, index: Int32) -> Int32:
 @export
 fn scope_begin_render(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Begin rendering a scope.  Returns the previous scope ID (or -1)."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].begin_scope_render(UInt32(scope_id)))
 
 
 @export
 fn scope_end_render(rt_ptr: Int64, prev_scope: Int32):
     """End rendering the current scope and restore the previous scope."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     rt[0].end_scope_render(Int(prev_scope))
 
 
 @export
 fn scope_has_scope(rt_ptr: Int64) -> Int32:
     """Check if a scope is currently active.  Returns 1 or 0."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].has_scope())
 
 
 @export
 fn scope_get_current(rt_ptr: Int64) -> Int32:
     """Return the current scope ID, or -1 if none."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     if rt[0].has_scope():
         return Int32(rt[0].get_scope())
     return -1
@@ -584,14 +548,14 @@ fn hook_use_signal_i32(rt_ptr: Int64, initial: Int32) -> Int32:
     On first render: creates signal, stores in hooks, returns key.
     On re-render: returns existing signal key (initial ignored).
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].use_signal_i32(initial))
 
 
 @export
 fn scope_is_first_render(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Check if a scope is on its first render.  Returns 1 or 0."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].scopes.is_first_render(UInt32(scope_id)))
 
 
@@ -609,7 +573,7 @@ fn tmpl_builder_create(name: String) -> Int64:
 @export
 fn tmpl_builder_destroy(ptr: Int64):
     """Destroy and free a heap-allocated TemplateBuilder."""
-    destroy_builder(_get_builder(ptr))
+    destroy_builder(_get[TemplateBuilder](ptr))
 
 
 @export
@@ -617,14 +581,14 @@ fn tmpl_builder_push_element(
     ptr: Int64, html_tag: Int32, parent: Int32
 ) -> Int32:
     """Add an Element node.  parent=-1 means root.  Returns node index."""
-    var b = _get_builder(ptr)
+    var b = _get[TemplateBuilder](ptr)
     return Int32(b[0].push_element(UInt8(html_tag), Int(parent)))
 
 
 @export
 fn tmpl_builder_push_text(ptr: Int64, text: String, parent: Int32) -> Int32:
     """Add a static Text node.  Returns node index."""
-    var b = _get_builder(ptr)
+    var b = _get[TemplateBuilder](ptr)
     return Int32(b[0].push_text(text, Int(parent)))
 
 
@@ -633,7 +597,7 @@ fn tmpl_builder_push_dynamic(
     ptr: Int64, dynamic_index: Int32, parent: Int32
 ) -> Int32:
     """Add a Dynamic node placeholder.  Returns node index."""
-    var b = _get_builder(ptr)
+    var b = _get[TemplateBuilder](ptr)
     return Int32(b[0].push_dynamic(UInt32(dynamic_index), Int(parent)))
 
 
@@ -642,7 +606,7 @@ fn tmpl_builder_push_dynamic_text(
     ptr: Int64, dynamic_index: Int32, parent: Int32
 ) -> Int32:
     """Add a DynamicText node placeholder.  Returns node index."""
-    var b = _get_builder(ptr)
+    var b = _get[TemplateBuilder](ptr)
     return Int32(b[0].push_dynamic_text(UInt32(dynamic_index), Int(parent)))
 
 
@@ -651,7 +615,7 @@ fn tmpl_builder_push_static_attr(
     ptr: Int64, node_index: Int32, name: String, value: String
 ):
     """Add a static attribute to the specified node."""
-    var b = _get_builder(ptr)
+    var b = _get[TemplateBuilder](ptr)
     b[0].push_static_attr(Int(node_index), name, value)
 
 
@@ -660,28 +624,28 @@ fn tmpl_builder_push_dynamic_attr(
     ptr: Int64, node_index: Int32, dynamic_index: Int32
 ):
     """Add a dynamic attribute placeholder to the specified node."""
-    var b = _get_builder(ptr)
+    var b = _get[TemplateBuilder](ptr)
     b[0].push_dynamic_attr(Int(node_index), UInt32(dynamic_index))
 
 
 @export
 fn tmpl_builder_node_count(ptr: Int64) -> Int32:
     """Return the number of nodes in the builder."""
-    var b = _get_builder(ptr)
+    var b = _get[TemplateBuilder](ptr)
     return Int32(b[0].node_count())
 
 
 @export
 fn tmpl_builder_root_count(ptr: Int64) -> Int32:
     """Return the number of root nodes in the builder."""
-    var b = _get_builder(ptr)
+    var b = _get[TemplateBuilder](ptr)
     return Int32(b[0].root_count())
 
 
 @export
 fn tmpl_builder_attr_count(ptr: Int64) -> Int32:
     """Return the total number of attributes in the builder."""
-    var b = _get_builder(ptr)
+    var b = _get[TemplateBuilder](ptr)
     return Int32(b[0].attr_count())
 
 
@@ -689,8 +653,8 @@ fn tmpl_builder_attr_count(ptr: Int64) -> Int32:
 fn tmpl_builder_register(rt_ptr: Int64, builder_ptr: Int64) -> Int32:
     """Build the template and register it in the runtime.  Returns template ID.
     """
-    var rt = _get_runtime(rt_ptr)
-    var b = _get_builder(builder_ptr)
+    var rt = _get[Runtime](rt_ptr)
+    var b = _get[TemplateBuilder](builder_ptr)
     var template = b[0].build()
     return Int32(rt[0].templates.register(template^))
 
@@ -701,35 +665,35 @@ fn tmpl_builder_register(rt_ptr: Int64, builder_ptr: Int64) -> Int32:
 @export
 fn tmpl_count(rt_ptr: Int64) -> Int32:
     """Return the number of registered templates."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].templates.count())
 
 
 @export
 fn tmpl_root_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
     """Return the number of root nodes in the template."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].templates.root_count(UInt32(tmpl_id)))
 
 
 @export
 fn tmpl_node_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
     """Return the total number of nodes in the template."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].templates.node_count(UInt32(tmpl_id)))
 
 
 @export
 fn tmpl_node_kind(rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32) -> Int32:
     """Return the kind tag (TNODE_*) of the node at node_idx."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].templates.node_kind(UInt32(tmpl_id), Int(node_idx)))
 
 
 @export
 fn tmpl_node_tag(rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32) -> Int32:
     """Return the HTML tag constant of the Element node at node_idx."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].templates.node_html_tag(UInt32(tmpl_id), Int(node_idx)))
 
 
@@ -738,7 +702,7 @@ fn tmpl_node_child_count(
     rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32
 ) -> Int32:
     """Return the number of children of the node at node_idx."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(
         rt[0].templates.node_child_count(UInt32(tmpl_id), Int(node_idx))
     )
@@ -749,7 +713,7 @@ fn tmpl_node_child_at(
     rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32, child_pos: Int32
 ) -> Int32:
     """Return the node index of the child at child_pos within node_idx."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(
         rt[0].templates.node_child_at(
             UInt32(tmpl_id), Int(node_idx), Int(child_pos)
@@ -762,7 +726,7 @@ fn tmpl_node_dynamic_index(
     rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32
 ) -> Int32:
     """Return the dynamic slot index of the node at node_idx."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(
         rt[0].templates.node_dynamic_index(UInt32(tmpl_id), Int(node_idx))
     )
@@ -773,7 +737,7 @@ fn tmpl_node_attr_count(
     rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32
 ) -> Int32:
     """Return the number of attributes on the node at node_idx."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(
         rt[0].templates.node_attr_count(UInt32(tmpl_id), Int(node_idx))
     )
@@ -782,21 +746,21 @@ fn tmpl_node_attr_count(
 @export
 fn tmpl_attr_total_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
     """Return the total number of attributes in the template."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].templates.attr_total_count(UInt32(tmpl_id)))
 
 
 @export
 fn tmpl_get_root_index(rt_ptr: Int64, tmpl_id: Int32, root_pos: Int32) -> Int32:
     """Return the node index of the root at position root_pos."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].templates.get_root_index(UInt32(tmpl_id), Int(root_pos)))
 
 
 @export
 fn tmpl_attr_kind(rt_ptr: Int64, tmpl_id: Int32, attr_idx: Int32) -> Int32:
     """Return the kind (TATTR_*) of the attribute at attr_idx."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].templates.get_attr_kind(UInt32(tmpl_id), Int(attr_idx)))
 
 
@@ -805,7 +769,7 @@ fn tmpl_attr_dynamic_index(
     rt_ptr: Int64, tmpl_id: Int32, attr_idx: Int32
 ) -> Int32:
     """Return the dynamic index of the attribute at attr_idx."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(
         rt[0].templates.get_attr_dynamic_index(UInt32(tmpl_id), Int(attr_idx))
     )
@@ -814,28 +778,28 @@ fn tmpl_attr_dynamic_index(
 @export
 fn tmpl_dynamic_node_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
     """Return the number of Dynamic node slots in the template."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].templates.dynamic_node_count(UInt32(tmpl_id)))
 
 
 @export
 fn tmpl_dynamic_text_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
     """Return the number of DynamicText slots in the template."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].templates.dynamic_text_count(UInt32(tmpl_id)))
 
 
 @export
 fn tmpl_dynamic_attr_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
     """Return the number of dynamic attribute slots in the template."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].templates.dynamic_attr_count(UInt32(tmpl_id)))
 
 
 @export
 fn tmpl_static_attr_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
     """Return the number of static attributes in the template."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].templates.static_attr_count(UInt32(tmpl_id)))
 
 
@@ -843,14 +807,14 @@ fn tmpl_static_attr_count(rt_ptr: Int64, tmpl_id: Int32) -> Int32:
 fn tmpl_contains_name(rt_ptr: Int64, name: String) -> Int32:
     """Check if a template with the given name is registered.  Returns 1 or 0.
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].templates.contains_name(name))
 
 
 @export
 fn tmpl_find_by_name(rt_ptr: Int64, name: String) -> Int32:
     """Find a template by name.  Returns ID or -1 if not found."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].templates.find_by_name(name))
 
 
@@ -859,7 +823,7 @@ fn tmpl_node_first_attr(
     rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32
 ) -> Int32:
     """Return the first attribute index of the node at node_idx."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(
         rt[0].templates.node_first_attr(UInt32(tmpl_id), Int(node_idx))
     )
@@ -868,7 +832,7 @@ fn tmpl_node_first_attr(
 @export
 fn tmpl_node_text(rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32) -> String:
     """Return the static text content of a Text node in the template."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     var tmpl_ptr = rt[0].templates.get_ptr(UInt32(tmpl_id))
     var node_ptr = tmpl_ptr[0].get_node_ptr(Int(node_idx))
     return node_ptr[0].text
@@ -877,7 +841,7 @@ fn tmpl_node_text(rt_ptr: Int64, tmpl_id: Int32, node_idx: Int32) -> String:
 @export
 fn tmpl_attr_name(rt_ptr: Int64, tmpl_id: Int32, attr_idx: Int32) -> String:
     """Return the name of the attribute at attr_idx in the template."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     var tmpl_ptr = rt[0].templates.get_ptr(UInt32(tmpl_id))
     return tmpl_ptr[0].attrs[Int(attr_idx)].name
 
@@ -885,7 +849,7 @@ fn tmpl_attr_name(rt_ptr: Int64, tmpl_id: Int32, attr_idx: Int32) -> String:
 @export
 fn tmpl_attr_value(rt_ptr: Int64, tmpl_id: Int32, attr_idx: Int32) -> String:
     """Return the value of the attribute at attr_idx in the template."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     var tmpl_ptr = rt[0].templates.get_ptr(UInt32(tmpl_id))
     return tmpl_ptr[0].attrs[Int(attr_idx)].value
 
@@ -904,13 +868,13 @@ fn vnode_store_create() -> Int64:
 @export
 fn vnode_store_destroy(store_ptr: Int64):
     """Destroy and free a heap-allocated VNodeStore."""
-    _heap_del(_get_vnode_store(store_ptr))
+    _heap_del(_get[VNodeStore](store_ptr))
 
 
 @export
 fn vnode_push_template_ref(store_ptr: Int64, tmpl_id: Int32) -> Int32:
     """Create a TemplateRef VNode and push it into the store.  Returns index."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].push(VNode.template_ref(UInt32(tmpl_id))))
 
 
@@ -919,84 +883,84 @@ fn vnode_push_template_ref_keyed(
     store_ptr: Int64, tmpl_id: Int32, key: String
 ) -> Int32:
     """Create a keyed TemplateRef VNode.  Returns index."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].push(VNode.template_ref_keyed(UInt32(tmpl_id), key)))
 
 
 @export
 fn vnode_push_text(store_ptr: Int64, text: String) -> Int32:
     """Create a Text VNode and push it into the store.  Returns index."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].push(VNode.text_node(text)))
 
 
 @export
 fn vnode_push_placeholder(store_ptr: Int64, element_id: Int32) -> Int32:
     """Create a Placeholder VNode.  Returns index."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].push(VNode.placeholder(UInt32(element_id))))
 
 
 @export
 fn vnode_push_fragment(store_ptr: Int64) -> Int32:
     """Create an empty Fragment VNode.  Returns index."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].push(VNode.fragment()))
 
 
 @export
 fn vnode_count(store_ptr: Int64) -> Int32:
     """Return the number of VNodes in the store."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].count())
 
 
 @export
 fn vnode_kind(store_ptr: Int64, index: Int32) -> Int32:
     """Return the kind tag (VNODE_*) of the VNode at index."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].kind(UInt32(index)))
 
 
 @export
 fn vnode_template_id(store_ptr: Int64, index: Int32) -> Int32:
     """Return the template_id of the TemplateRef VNode at index."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].template_id(UInt32(index)))
 
 
 @export
 fn vnode_element_id(store_ptr: Int64, index: Int32) -> Int32:
     """Return the element_id of the Placeholder VNode at index."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].element_id(UInt32(index)))
 
 
 @export
 fn vnode_has_key(store_ptr: Int64, index: Int32) -> Int32:
     """Check if the VNode has a key.  Returns 1 or 0."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return _b2i(s[0].has_key(UInt32(index)))
 
 
 @export
 fn vnode_dynamic_node_count(store_ptr: Int64, index: Int32) -> Int32:
     """Return the number of dynamic nodes on the VNode."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].dynamic_node_count(UInt32(index)))
 
 
 @export
 fn vnode_dynamic_attr_count(store_ptr: Int64, index: Int32) -> Int32:
     """Return the number of dynamic attributes on the VNode."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].dynamic_attr_count(UInt32(index)))
 
 
 @export
 fn vnode_fragment_child_count(store_ptr: Int64, index: Int32) -> Int32:
     """Return the number of fragment children on the VNode."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].fragment_child_count(UInt32(index)))
 
 
@@ -1005,7 +969,7 @@ fn vnode_fragment_child_at(
     store_ptr: Int64, index: Int32, child_pos: Int32
 ) -> Int32:
     """Return the VNode index of the fragment child at child_pos."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].get_fragment_child(UInt32(index), Int(child_pos)))
 
 
@@ -1014,14 +978,14 @@ fn vnode_push_dynamic_text_node(
     store_ptr: Int64, vnode_index: Int32, text: String
 ):
     """Append a dynamic text node to the VNode at vnode_index."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     s[0].push_dynamic_node(UInt32(vnode_index), DynamicNode.text_node(text))
 
 
 @export
 fn vnode_push_dynamic_placeholder(store_ptr: Int64, vnode_index: Int32):
     """Append a dynamic placeholder node to the VNode at vnode_index."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     s[0].push_dynamic_node(UInt32(vnode_index), DynamicNode.placeholder())
 
 
@@ -1034,7 +998,7 @@ fn vnode_push_dynamic_attr_text(
     elem_id: Int32,
 ):
     """Append a dynamic text attribute to the VNode."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     s[0].push_dynamic_attr(
         UInt32(vnode_index),
         DynamicAttr(name, AttributeValue.text(value), UInt32(elem_id)),
@@ -1050,7 +1014,7 @@ fn vnode_push_dynamic_attr_int(
     elem_id: Int32,
 ):
     """Append a dynamic integer attribute to the VNode."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     s[0].push_dynamic_attr(
         UInt32(vnode_index),
         DynamicAttr(
@@ -1068,7 +1032,7 @@ fn vnode_push_dynamic_attr_bool(
     elem_id: Int32,
 ):
     """Append a dynamic boolean attribute to the VNode."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     s[0].push_dynamic_attr(
         UInt32(vnode_index),
         DynamicAttr(name, AttributeValue.boolean(value != 0), UInt32(elem_id)),
@@ -1084,7 +1048,7 @@ fn vnode_push_dynamic_attr_event(
     elem_id: Int32,
 ):
     """Append a dynamic event handler attribute to the VNode."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     s[0].push_dynamic_attr(
         UInt32(vnode_index),
         DynamicAttr(
@@ -1098,7 +1062,7 @@ fn vnode_push_dynamic_attr_none(
     store_ptr: Int64, vnode_index: Int32, name: String, elem_id: Int32
 ):
     """Append a dynamic none attribute (removal) to the VNode."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     s[0].push_dynamic_attr(
         UInt32(vnode_index),
         DynamicAttr(name, AttributeValue.none(), UInt32(elem_id)),
@@ -1110,7 +1074,7 @@ fn vnode_push_fragment_child(
     store_ptr: Int64, vnode_index: Int32, child_index: Int32
 ):
     """Append a child VNode index to the Fragment at vnode_index."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     s[0].push_fragment_child(UInt32(vnode_index), UInt32(child_index))
 
 
@@ -1119,7 +1083,7 @@ fn vnode_get_dynamic_node_kind(
     store_ptr: Int64, vnode_index: Int32, dyn_index: Int32
 ) -> Int32:
     """Return the kind of the dynamic node at dyn_index."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(
         s[0].get_dynamic_node_kind(UInt32(vnode_index), Int(dyn_index))
     )
@@ -1130,7 +1094,7 @@ fn vnode_get_dynamic_attr_kind(
     store_ptr: Int64, vnode_index: Int32, attr_index: Int32
 ) -> Int32:
     """Return the attribute value kind of the dynamic attr at attr_index."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(
         s[0].get_dynamic_attr_kind(UInt32(vnode_index), Int(attr_index))
     )
@@ -1141,7 +1105,7 @@ fn vnode_get_dynamic_attr_element_id(
     store_ptr: Int64, vnode_index: Int32, attr_index: Int32
 ) -> Int32:
     """Return the element_id of the dynamic attr at attr_index."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(
         s[0].get_dynamic_attr_element_id(UInt32(vnode_index), Int(attr_index))
     )
@@ -1150,7 +1114,7 @@ fn vnode_get_dynamic_attr_element_id(
 @export
 fn vnode_store_clear(store_ptr: Int64):
     """Clear all VNodes from the store."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     s[0].clear()
 
 
@@ -1160,7 +1124,7 @@ fn vnode_store_clear(store_ptr: Int64):
 @export
 fn signal_iadd_i32(rt_ptr: Int64, key: Int32, rhs: Int32):
     """Increment a signal: signal += rhs."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     var current = rt[0].peek_signal[Int32](UInt32(key))
     rt[0].write_signal[Int32](UInt32(key), current + rhs)
 
@@ -1168,7 +1132,7 @@ fn signal_iadd_i32(rt_ptr: Int64, key: Int32, rhs: Int32):
 @export
 fn signal_isub_i32(rt_ptr: Int64, key: Int32, rhs: Int32):
     """Decrement a signal: signal -= rhs."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     var current = rt[0].peek_signal[Int32](UInt32(key))
     rt[0].write_signal[Int32](UInt32(key), current - rhs)
 
@@ -1187,19 +1151,19 @@ fn writer_create(buf_ptr: Int64, capacity: Int32) -> Int64:
 @export
 fn writer_destroy(writer_ptr: Int64):
     """Destroy and free a heap-allocated MutationWriter."""
-    _free_writer(_get_writer(writer_ptr))
+    _free_writer(_get[MutationWriter](writer_ptr))
 
 
 @export
 fn writer_offset(writer_ptr: Int64) -> Int32:
     """Return the current write offset of the MutationWriter."""
-    return Int32(_get_writer(writer_ptr)[0].offset)
+    return Int32(_get[MutationWriter](writer_ptr)[0].offset)
 
 
 @export
 fn writer_finalize(writer_ptr: Int64) -> Int32:
     """Write the End sentinel and return the final offset."""
-    var ptr = _get_writer(writer_ptr)
+    var ptr = _get[MutationWriter](writer_ptr)
     ptr[0].finalize()
     return Int32(ptr[0].offset)
 
@@ -1213,10 +1177,10 @@ fn create_vnode(
     vnode_index: Int32,
 ) -> Int32:
     """Create mutations for the VNode at vnode_index.  Returns root count."""
-    var w = _get_writer(writer_ptr)
-    var e = _get_eid_alloc(eid_ptr)
-    var rt = _get_runtime(rt_ptr)
-    var s = _get_vnode_store(store_ptr)
+    var w = _get[MutationWriter](writer_ptr)
+    var e = _get[ElementIdAllocator](eid_ptr)
+    var rt = _get[Runtime](rt_ptr)
+    var s = _get[VNodeStore](store_ptr)
 
     var engine = CreateEngine(w, e, rt, s)
     return Int32(engine.create_node(UInt32(vnode_index)))
@@ -1232,10 +1196,10 @@ fn diff_vnodes(
     new_index: Int32,
 ) -> Int32:
     """Diff old and new VNodes and emit mutations.  Returns writer offset."""
-    var w = _get_writer(writer_ptr)
-    var e = _get_eid_alloc(eid_ptr)
-    var rt = _get_runtime(rt_ptr)
-    var s = _get_vnode_store(store_ptr)
+    var w = _get[MutationWriter](writer_ptr)
+    var e = _get[ElementIdAllocator](eid_ptr)
+    var rt = _get[Runtime](rt_ptr)
+    var s = _get[VNodeStore](store_ptr)
 
     var engine = DiffEngine(w, e, rt, s)
     engine.diff_node(UInt32(old_index), UInt32(new_index))
@@ -1248,49 +1212,49 @@ fn diff_vnodes(
 @export
 fn vnode_root_id_count(store_ptr: Int64, index: Int32) -> Int32:
     """Return the number of root ElementIds assigned to this VNode."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].get_ptr(UInt32(index))[0].root_id_count())
 
 
 @export
 fn vnode_get_root_id(store_ptr: Int64, index: Int32, pos: Int32) -> Int32:
     """Return the root ElementId at position `pos`."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].get_ptr(UInt32(index))[0].get_root_id(Int(pos)))
 
 
 @export
 fn vnode_dyn_node_id_count(store_ptr: Int64, index: Int32) -> Int32:
     """Return the number of dynamic node ElementIds."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].get_ptr(UInt32(index))[0].dyn_node_id_count())
 
 
 @export
 fn vnode_get_dyn_node_id(store_ptr: Int64, index: Int32, pos: Int32) -> Int32:
     """Return the dynamic node ElementId at position `pos`."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].get_ptr(UInt32(index))[0].get_dyn_node_id(Int(pos)))
 
 
 @export
 fn vnode_dyn_attr_id_count(store_ptr: Int64, index: Int32) -> Int32:
     """Return the number of dynamic attribute target ElementIds."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].get_ptr(UInt32(index))[0].dyn_attr_id_count())
 
 
 @export
 fn vnode_get_dyn_attr_id(store_ptr: Int64, index: Int32, pos: Int32) -> Int32:
     """Return the dynamic attribute target ElementId at position `pos`."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].get_ptr(UInt32(index))[0].get_dyn_attr_id(Int(pos)))
 
 
 @export
 fn vnode_is_mounted(store_ptr: Int64, index: Int32) -> Int32:
     """Check whether the VNode has been mounted.  Returns 1 or 0."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return _b2i(s[0].get_ptr(UInt32(index))[0].is_mounted())
 
 
@@ -1309,7 +1273,7 @@ fn mutation_buf_alloc(capacity: Int32) -> Int64:
 @export
 fn mutation_buf_free(ptr: Int64):
     """Free a previously allocated mutation buffer."""
-    _as_ptr[UInt8](Int(ptr)).free()
+    _get[UInt8](ptr).free()
 
 
 # ── Debug exports ────────────────────────────────────────────────────────────
@@ -1318,14 +1282,14 @@ fn mutation_buf_free(ptr: Int64):
 @export
 fn debug_ptr_roundtrip(ptr: Int64) -> Int64:
     """Check that _as_ptr round-trips correctly."""
-    var p = _as_ptr[UInt8](Int(ptr))
-    return Int64(Int(p))
+    var p = _get[UInt8](ptr)
+    return _to_i64(p)
 
 
 @export
 fn debug_write_byte(ptr: Int64, off: Int32, val: Int32) -> Int32:
     """Write a single byte to ptr+off and return off+1."""
-    var p = _as_ptr[UInt8](Int(ptr))
+    var p = _get[UInt8](ptr)
     p[Int(off)] = UInt8(val)
     return off + 1
 
@@ -1333,7 +1297,7 @@ fn debug_write_byte(ptr: Int64, off: Int32, val: Int32) -> Int32:
 @export
 fn debug_read_byte(ptr: Int64, off: Int32) -> Int32:
     """Read a single byte from ptr+off."""
-    var p = _as_ptr[UInt8](Int(ptr))
+    var p = _get[UInt8](ptr)
     return Int32(p[Int(off)])
 
 
@@ -1461,7 +1425,7 @@ fn write_op_assign_id(
     buf: Int64, off: Int32, path_ptr: Int64, path_len: Int32, id: Int32
 ) -> Int32:
     var w = _writer(buf, off)
-    w.assign_id(_as_ptr[UInt8](Int(path_ptr)), Int(path_len), UInt32(id))
+    w.assign_id(_get[UInt8](path_ptr), Int(path_len), UInt32(id))
     return Int32(w.offset)
 
 
@@ -1470,9 +1434,7 @@ fn write_op_replace_placeholder(
     buf: Int64, off: Int32, path_ptr: Int64, path_len: Int32, m: Int32
 ) -> Int32:
     var w = _writer(buf, off)
-    w.replace_placeholder(
-        _as_ptr[UInt8](Int(path_ptr)), Int(path_len), UInt32(m)
-    )
+    w.replace_placeholder(_get[UInt8](path_ptr), Int(path_len), UInt32(m))
     return Int32(w.offset)
 
 
@@ -1482,7 +1444,7 @@ fn write_op_replace_placeholder(
 @export
 fn write_test_sequence(buf: Int64) -> Int32:
     """Write a known 5-mutation sequence for integration testing."""
-    var w = MutationWriter(_as_ptr[UInt8](Int(buf)), 0)
+    var w = MutationWriter(_get[UInt8](buf), 0)
     w.load_template(1, 0, 10)
     w.create_text_node(11, String("hello"))
     w.append_children(10, 1)
@@ -1506,7 +1468,7 @@ fn handler_register_signal_add(
 ) -> Int32:
     """Register a handler that adds `delta` to `signal_key`.  Returns handler ID.
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(
         rt[0].register_handler(
             HandlerEntry.signal_add(
@@ -1526,7 +1488,7 @@ fn handler_register_signal_sub(
 ) -> Int32:
     """Register a handler that subtracts `delta` from `signal_key`.  Returns handler ID.
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(
         rt[0].register_handler(
             HandlerEntry.signal_sub(
@@ -1546,7 +1508,7 @@ fn handler_register_signal_set(
 ) -> Int32:
     """Register a handler that sets `signal_key` to `value`.  Returns handler ID.
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(
         rt[0].register_handler(
             HandlerEntry.signal_set(
@@ -1565,7 +1527,7 @@ fn handler_register_signal_toggle(
 ) -> Int32:
     """Register a handler that toggles `signal_key` (0↔1).  Returns handler ID.
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(
         rt[0].register_handler(
             HandlerEntry.signal_toggle(
@@ -1584,7 +1546,7 @@ fn handler_register_signal_set_input(
 ) -> Int32:
     """Register a handler that sets `signal_key` from event input.  Returns handler ID.
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(
         rt[0].register_handler(
             HandlerEntry.signal_set_input(
@@ -1599,7 +1561,7 @@ fn handler_register_custom(
     rt_ptr: Int64, scope_id: Int32, event_name: String
 ) -> Int32:
     """Register a custom handler.  Returns handler ID."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(
         rt[0].register_handler(
             HandlerEntry.custom(UInt32(scope_id), event_name)
@@ -1612,7 +1574,7 @@ fn handler_register_noop(
     rt_ptr: Int64, scope_id: Int32, event_name: String
 ) -> Int32:
     """Register a no-op handler.  Returns handler ID."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(
         rt[0].register_handler(HandlerEntry.noop(UInt32(scope_id), event_name))
     )
@@ -1621,49 +1583,49 @@ fn handler_register_noop(
 @export
 fn handler_remove(rt_ptr: Int64, handler_id: Int32):
     """Remove an event handler by ID."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     rt[0].remove_handler(UInt32(handler_id))
 
 
 @export
 fn handler_count(rt_ptr: Int64) -> Int32:
     """Return the number of live event handlers."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].handler_count())
 
 
 @export
 fn handler_contains(rt_ptr: Int64, handler_id: Int32) -> Int32:
     """Check whether a handler ID is live.  Returns 1 or 0."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].handlers.contains(UInt32(handler_id)))
 
 
 @export
 fn handler_scope_id(rt_ptr: Int64, handler_id: Int32) -> Int32:
     """Return the scope_id of the handler."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].handlers.scope_id(UInt32(handler_id)))
 
 
 @export
 fn handler_action(rt_ptr: Int64, handler_id: Int32) -> Int32:
     """Return the action tag of the handler."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].handlers.action(UInt32(handler_id)))
 
 
 @export
 fn handler_signal_key(rt_ptr: Int64, handler_id: Int32) -> Int32:
     """Return the signal_key of the handler."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].handlers.signal_key(UInt32(handler_id)))
 
 
 @export
 fn handler_operand(rt_ptr: Int64, handler_id: Int32) -> Int32:
     """Return the operand of the handler."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].handlers.operand(UInt32(handler_id)))
 
 
@@ -1671,7 +1633,7 @@ fn handler_operand(rt_ptr: Int64, handler_id: Int32) -> Int32:
 fn dispatch_event(rt_ptr: Int64, handler_id: Int32, event_type: Int32) -> Int32:
     """Dispatch an event to a handler.  Returns 1 if action executed, 0 otherwise.
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].dispatch_event(UInt32(handler_id), UInt8(event_type)))
 
 
@@ -1681,7 +1643,7 @@ fn dispatch_event_with_i32(
 ) -> Int32:
     """Dispatch an event with an Int32 payload.  Returns 1 if action executed.
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(
         rt[0].dispatch_event_with_i32(
             UInt32(handler_id), UInt8(event_type), value
@@ -1692,7 +1654,7 @@ fn dispatch_event_with_i32(
 @export
 fn runtime_drain_dirty(rt_ptr: Int64) -> Int32:
     """Drain the dirty scope queue.  Returns the number of dirty scopes."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     var dirty = rt[0].drain_dirty()
     return Int32(len(dirty))
 
@@ -1705,7 +1667,7 @@ fn runtime_drain_dirty(rt_ptr: Int64) -> Int32:
 @export
 fn ctx_provide(rt_ptr: Int64, scope_id: Int32, key: Int32, value: Int32):
     """Provide a context value at the given scope."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     rt[0].scopes.provide_context(UInt32(scope_id), UInt32(key), value)
 
 
@@ -1713,7 +1675,7 @@ fn ctx_provide(rt_ptr: Int64, scope_id: Int32, key: Int32, value: Int32):
 fn ctx_consume(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
     """Look up a context value by walking up the scope tree.  Returns 0 if not found.
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     var result = rt[0].scopes.consume_context(UInt32(scope_id), UInt32(key))
     return result[1]
 
@@ -1721,7 +1683,7 @@ fn ctx_consume(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
 @export
 fn ctx_consume_found(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
     """Check whether a context value exists.  Returns 1 if found, 0 if not."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     var result = rt[0].scopes.consume_context(UInt32(scope_id), UInt32(key))
     return _b2i(result[0])
 
@@ -1730,21 +1692,21 @@ fn ctx_consume_found(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
 fn ctx_has_local(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
     """Check whether the scope itself provides a context for `key`.  Returns 1 or 0.
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].scopes.has_context_local(UInt32(scope_id), UInt32(key)))
 
 
 @export
 fn ctx_count(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Return the number of context entries provided by this scope."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].scopes.context_count(UInt32(scope_id)))
 
 
 @export
 fn ctx_remove(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
     """Remove a context entry.  Returns 1 if removed, 0 if not found."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].scopes.remove_context(UInt32(scope_id), UInt32(key)))
 
 
@@ -1756,42 +1718,42 @@ fn ctx_remove(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
 @export
 fn err_set_boundary(rt_ptr: Int64, scope_id: Int32, enabled: Int32):
     """Mark or unmark a scope as an error boundary."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     rt[0].scopes.set_error_boundary(UInt32(scope_id), enabled != 0)
 
 
 @export
 fn err_is_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Check whether the scope is an error boundary.  Returns 1 or 0."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].scopes.is_error_boundary(UInt32(scope_id)))
 
 
 @export
 fn err_set_error(rt_ptr: Int64, scope_id: Int32, message: String):
     """Set an error directly on the scope."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     rt[0].scopes.set_error(UInt32(scope_id), message)
 
 
 @export
 fn err_clear(rt_ptr: Int64, scope_id: Int32):
     """Clear the error state on the scope."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     rt[0].scopes.clear_error(UInt32(scope_id))
 
 
 @export
 fn err_has_error(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Check whether the scope has a captured error.  Returns 1 or 0."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].scopes.has_error(UInt32(scope_id)))
 
 
 @export
 fn err_find_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Find the nearest error boundary ancestor.  Returns scope ID or -1."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].scopes.find_error_boundary(UInt32(scope_id)))
 
 
@@ -1799,7 +1761,7 @@ fn err_find_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
 fn err_propagate(rt_ptr: Int64, scope_id: Int32, message: String) -> Int32:
     """Propagate an error to its nearest error boundary.  Returns boundary ID or -1.
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].scopes.propagate_error(UInt32(scope_id), message))
 
 
@@ -1811,42 +1773,42 @@ fn err_propagate(rt_ptr: Int64, scope_id: Int32, message: String) -> Int32:
 @export
 fn suspense_set_boundary(rt_ptr: Int64, scope_id: Int32, enabled: Int32):
     """Mark or unmark a scope as a suspense boundary."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     rt[0].scopes.set_suspense_boundary(UInt32(scope_id), enabled != 0)
 
 
 @export
 fn suspense_is_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Check whether the scope is a suspense boundary.  Returns 1 or 0."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].scopes.is_suspense_boundary(UInt32(scope_id)))
 
 
 @export
 fn suspense_set_pending(rt_ptr: Int64, scope_id: Int32, pending: Int32):
     """Set the pending (async loading) state on a scope."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     rt[0].scopes.set_pending(UInt32(scope_id), pending != 0)
 
 
 @export
 fn suspense_is_pending(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Check whether the scope is in a pending state.  Returns 1 or 0."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].scopes.is_pending(UInt32(scope_id)))
 
 
 @export
 fn suspense_find_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Find the nearest suspense boundary ancestor.  Returns scope ID or -1."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].scopes.find_suspense_boundary(UInt32(scope_id)))
 
 
 @export
 fn suspense_has_pending(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Check if any descendant of `scope_id` is pending.  Returns 1 or 0."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return _b2i(rt[0].scopes.has_pending_descendant(UInt32(scope_id)))
 
 
@@ -1854,7 +1816,7 @@ fn suspense_has_pending(rt_ptr: Int64, scope_id: Int32) -> Int32:
 fn suspense_resolve(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Mark a scope as no longer pending.  Returns suspense boundary ID or -1.
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(rt[0].scopes.resolve_pending(UInt32(scope_id)))
 
 
@@ -1874,7 +1836,7 @@ fn counter_init() -> Int64:
 @export
 fn counter_destroy(app_ptr: Int64):
     """Destroy the counter app and free all resources."""
-    counter_app_destroy(_get_counter(app_ptr))
+    counter_app_destroy(_get[CounterApp](app_ptr))
 
 
 @export
@@ -1882,7 +1844,7 @@ fn counter_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount) of the counter app.  Returns mutation byte length.
     """
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = counter_app_rebuild(_get_counter(app_ptr), writer_ptr)
+    var offset = counter_app_rebuild(_get[CounterApp](app_ptr), writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -1894,7 +1856,7 @@ fn counter_handle_event(
     """Dispatch an event to the counter app.  Returns 1 if action executed."""
     return _b2i(
         counter_app_handle_event(
-            _get_counter(app_ptr), UInt32(handler_id), UInt8(event_type)
+            _get[CounterApp](app_ptr), UInt32(handler_id), UInt8(event_type)
         )
     )
 
@@ -1904,7 +1866,7 @@ fn counter_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = counter_app_flush(_get_counter(app_ptr), writer_ptr)
+    var offset = counter_app_flush(_get[CounterApp](app_ptr), writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -1915,50 +1877,50 @@ fn counter_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 @export
 fn counter_rt_ptr(app_ptr: Int64) -> Int64:
     """Return the runtime pointer for JS template registration."""
-    return _to_i64(_get_counter(app_ptr)[0].shell.runtime)
+    return _to_i64(_get[CounterApp](app_ptr)[0].shell.runtime)
 
 
 @export
 fn counter_tmpl_id(app_ptr: Int64) -> Int32:
     """Return the counter template ID."""
-    return Int32(_get_counter(app_ptr)[0].template_id)
+    return Int32(_get[CounterApp](app_ptr)[0].template_id)
 
 
 @export
 fn counter_incr_handler(app_ptr: Int64) -> Int32:
     """Return the increment handler ID."""
-    return Int32(_get_counter(app_ptr)[0].incr_handler)
+    return Int32(_get[CounterApp](app_ptr)[0].incr_handler)
 
 
 @export
 fn counter_decr_handler(app_ptr: Int64) -> Int32:
     """Return the decrement handler ID."""
-    return Int32(_get_counter(app_ptr)[0].decr_handler)
+    return Int32(_get[CounterApp](app_ptr)[0].decr_handler)
 
 
 @export
 fn counter_count_value(app_ptr: Int64) -> Int32:
     """Peek the current count signal value (without subscribing)."""
-    var app = _get_counter(app_ptr)
+    var app = _get[CounterApp](app_ptr)
     return app[0].shell.peek_signal_i32(app[0].count_signal)
 
 
 @export
 fn counter_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the counter app has dirty scopes.  Returns 1 or 0."""
-    return _b2i(_get_counter(app_ptr)[0].shell.has_dirty())
+    return _b2i(_get[CounterApp](app_ptr)[0].shell.has_dirty())
 
 
 @export
 fn counter_scope_id(app_ptr: Int64) -> Int32:
     """Return the counter app's root scope ID."""
-    return Int32(_get_counter(app_ptr)[0].scope_id)
+    return Int32(_get[CounterApp](app_ptr)[0].scope_id)
 
 
 @export
 fn counter_count_signal(app_ptr: Int64) -> Int32:
     """Return the counter app's count signal key."""
-    return Int32(_get_counter(app_ptr)[0].count_signal)
+    return Int32(_get[CounterApp](app_ptr)[0].count_signal)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1977,14 +1939,14 @@ fn todo_init() -> Int64:
 @export
 fn todo_destroy(app_ptr: Int64):
     """Destroy the todo app and free all resources."""
-    todo_app_destroy(_get_todo(app_ptr))
+    todo_app_destroy(_get[TodoApp](app_ptr))
 
 
 @export
 fn todo_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount) of the todo app.  Returns mutation byte length."""
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = todo_app_rebuild(_get_todo(app_ptr), writer_ptr)
+    var offset = todo_app_rebuild(_get[TodoApp](app_ptr), writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -1992,25 +1954,25 @@ fn todo_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 @export
 fn todo_add_item(app_ptr: Int64, text: String):
     """Add a new item to the todo list."""
-    _get_todo(app_ptr)[0].add_item(text)
+    _get[TodoApp](app_ptr)[0].add_item(text)
 
 
 @export
 fn todo_remove_item(app_ptr: Int64, item_id: Int32):
     """Remove an item by its ID."""
-    _get_todo(app_ptr)[0].remove_item(item_id)
+    _get[TodoApp](app_ptr)[0].remove_item(item_id)
 
 
 @export
 fn todo_toggle_item(app_ptr: Int64, item_id: Int32):
     """Toggle an item's completed status."""
-    _get_todo(app_ptr)[0].toggle_item(item_id)
+    _get[TodoApp](app_ptr)[0].toggle_item(item_id)
 
 
 @export
 fn todo_set_input(app_ptr: Int64, text: String):
     """Update the input text (stored in app state, no re-render)."""
-    _get_todo(app_ptr)[0].input_text = text
+    _get[TodoApp](app_ptr)[0].input_text = text
 
 
 @export
@@ -2018,7 +1980,7 @@ fn todo_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = todo_app_flush(_get_todo(app_ptr), writer_ptr)
+    var offset = todo_app_flush(_get[TodoApp](app_ptr), writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -2029,56 +1991,56 @@ fn todo_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 @export
 fn todo_app_template_id(app_ptr: Int64) -> Int32:
     """Return the app template ID."""
-    return Int32(_get_todo(app_ptr)[0].app_template_id)
+    return Int32(_get[TodoApp](app_ptr)[0].app_template_id)
 
 
 @export
 fn todo_item_template_id(app_ptr: Int64) -> Int32:
     """Return the item template ID."""
-    return Int32(_get_todo(app_ptr)[0].item_template_id)
+    return Int32(_get[TodoApp](app_ptr)[0].item_template_id)
 
 
 @export
 fn todo_add_handler(app_ptr: Int64) -> Int32:
     """Return the Add button handler ID."""
-    return Int32(_get_todo(app_ptr)[0].add_handler)
+    return Int32(_get[TodoApp](app_ptr)[0].add_handler)
 
 
 @export
 fn todo_item_count(app_ptr: Int64) -> Int32:
     """Return the number of items in the list."""
-    return Int32(len(_get_todo(app_ptr)[0].items))
+    return Int32(len(_get[TodoApp](app_ptr)[0].items))
 
 
 @export
 fn todo_item_id_at(app_ptr: Int64, index: Int32) -> Int32:
     """Return the ID of the item at the given index."""
-    return _get_todo(app_ptr)[0].items[Int(index)].id
+    return _get[TodoApp](app_ptr)[0].items[Int(index)].id
 
 
 @export
 fn todo_item_completed_at(app_ptr: Int64, index: Int32) -> Int32:
     """Return 1 if the item at index is completed, 0 otherwise."""
-    return _b2i(_get_todo(app_ptr)[0].items[Int(index)].completed)
+    return _b2i(_get[TodoApp](app_ptr)[0].items[Int(index)].completed)
 
 
 @export
 fn todo_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the todo app has dirty scopes.  Returns 1 or 0."""
-    return _b2i(_get_todo(app_ptr)[0].shell.has_dirty())
+    return _b2i(_get[TodoApp](app_ptr)[0].shell.has_dirty())
 
 
 @export
 fn todo_list_version(app_ptr: Int64) -> Int32:
     """Return the current list version signal value."""
-    var app = _get_todo(app_ptr)
+    var app = _get[TodoApp](app_ptr)
     return app[0].shell.peek_signal_i32(app[0].list_version_signal)
 
 
 @export
 fn todo_scope_id(app_ptr: Int64) -> Int32:
     """Return the root scope ID."""
-    return Int32(_get_todo(app_ptr)[0].scope_id)
+    return Int32(_get[TodoApp](app_ptr)[0].scope_id)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2097,49 +2059,49 @@ fn bench_init() -> Int64:
 @export
 fn bench_destroy(app_ptr: Int64):
     """Destroy the benchmark app and free all resources."""
-    bench_app_destroy(_get_bench(app_ptr))
+    bench_app_destroy(_get[BenchmarkApp](app_ptr))
 
 
 @export
 fn bench_create(app_ptr: Int64, count: Int32):
     """Replace all rows with `count` new rows (benchmark: create)."""
-    _get_bench(app_ptr)[0].create_rows(Int(count))
+    _get[BenchmarkApp](app_ptr)[0].create_rows(Int(count))
 
 
 @export
 fn bench_append(app_ptr: Int64, count: Int32):
     """Append `count` new rows (benchmark: append)."""
-    _get_bench(app_ptr)[0].append_rows(Int(count))
+    _get[BenchmarkApp](app_ptr)[0].append_rows(Int(count))
 
 
 @export
 fn bench_update(app_ptr: Int64):
     """Update every 10th row label (benchmark: update)."""
-    _get_bench(app_ptr)[0].update_every_10th()
+    _get[BenchmarkApp](app_ptr)[0].update_every_10th()
 
 
 @export
 fn bench_select(app_ptr: Int64, id: Int32):
     """Select a row by id (benchmark: select)."""
-    _get_bench(app_ptr)[0].select_row(id)
+    _get[BenchmarkApp](app_ptr)[0].select_row(id)
 
 
 @export
 fn bench_swap(app_ptr: Int64):
     """Swap rows at indices 1 and 998 (benchmark: swap)."""
-    _get_bench(app_ptr)[0].swap_rows(1, 998)
+    _get[BenchmarkApp](app_ptr)[0].swap_rows(1, 998)
 
 
 @export
 fn bench_remove(app_ptr: Int64, id: Int32):
     """Remove a row by id (benchmark: remove)."""
-    _get_bench(app_ptr)[0].remove_row(id)
+    _get[BenchmarkApp](app_ptr)[0].remove_row(id)
 
 
 @export
 fn bench_clear(app_ptr: Int64):
     """Clear all rows (benchmark: clear)."""
-    _get_bench(app_ptr)[0].clear_rows()
+    _get[BenchmarkApp](app_ptr)[0].clear_rows()
 
 
 @export
@@ -2147,7 +2109,7 @@ fn bench_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render of the benchmark table body.  Returns mutation byte length.
     """
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = bench_app_rebuild(_get_bench(app_ptr), writer_ptr)
+    var offset = bench_app_rebuild(_get[BenchmarkApp](app_ptr), writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -2157,7 +2119,7 @@ fn bench_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = bench_app_flush(_get_bench(app_ptr), writer_ptr)
+    var offset = bench_app_flush(_get[BenchmarkApp](app_ptr), writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -2168,45 +2130,45 @@ fn bench_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 @export
 fn bench_row_count(app_ptr: Int64) -> Int32:
     """Return the number of rows."""
-    return Int32(len(_get_bench(app_ptr)[0].rows))
+    return Int32(len(_get[BenchmarkApp](app_ptr)[0].rows))
 
 
 @export
 fn bench_row_id_at(app_ptr: Int64, index: Int32) -> Int32:
     """Return the id of the row at the given index."""
-    return _get_bench(app_ptr)[0].rows[Int(index)].id
+    return _get[BenchmarkApp](app_ptr)[0].rows[Int(index)].id
 
 
 @export
 fn bench_selected(app_ptr: Int64) -> Int32:
     """Return the currently selected row id (0 = none)."""
-    var app = _get_bench(app_ptr)
+    var app = _get[BenchmarkApp](app_ptr)
     return app[0].shell.peek_signal_i32(app[0].selected_signal)
 
 
 @export
 fn bench_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the benchmark app has dirty scopes.  Returns 1 or 0."""
-    return _b2i(_get_bench(app_ptr)[0].shell.has_dirty())
+    return _b2i(_get[BenchmarkApp](app_ptr)[0].shell.has_dirty())
 
 
 @export
 fn bench_version(app_ptr: Int64) -> Int32:
     """Return the current version signal value."""
-    var app = _get_bench(app_ptr)
+    var app = _get[BenchmarkApp](app_ptr)
     return app[0].shell.peek_signal_i32(app[0].version_signal)
 
 
 @export
 fn bench_row_template_id(app_ptr: Int64) -> Int32:
     """Return the row template ID."""
-    return Int32(_get_bench(app_ptr)[0].row_template_id)
+    return Int32(_get[BenchmarkApp](app_ptr)[0].row_template_id)
 
 
 @export
 fn bench_scope_id(app_ptr: Int64) -> Int32:
     """Return the root scope ID."""
-    return Int32(_get_bench(app_ptr)[0].scope_id)
+    return Int32(_get[BenchmarkApp](app_ptr)[0].scope_id)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2240,35 +2202,35 @@ fn runtime_end_batch(rt_ptr: Int64):
 @export
 fn debug_signal_store_capacity(rt_ptr: Int64) -> Int32:
     """Return the total number of signal slots (occupied + free)."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(len(rt[0].signals._entries))
 
 
 @export
 fn debug_scope_store_capacity(rt_ptr: Int64) -> Int32:
     """Return the total number of scope slots (occupied + free)."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(len(rt[0].scopes._scopes))
 
 
 @export
 fn debug_vnode_store_count(store_ptr: Int64) -> Int32:
     """Return the number of VNodes in a standalone store."""
-    var s = _get_vnode_store(store_ptr)
+    var s = _get[VNodeStore](store_ptr)
     return Int32(s[0].count())
 
 
 @export
 fn debug_handler_store_capacity(rt_ptr: Int64) -> Int32:
     """Return the total number of handler slots."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     return Int32(len(rt[0].handlers._entries))
 
 
 @export
 fn debug_eid_alloc_capacity(alloc_ptr: Int64) -> Int32:
     """Return the total number of ElementId slots."""
-    var a = _get_eid_alloc(alloc_ptr)
+    var a = _get[ElementIdAllocator](alloc_ptr)
     return Int32(len(a[0]._slots))
 
 
@@ -2279,7 +2241,7 @@ fn debug_eid_alloc_capacity(alloc_ptr: Int64) -> Int32:
 fn mem_test_signal_cycle(rt_ptr: Int64, count: Int32) -> Int32:
     """Create and destroy `count` signals.  Returns final signal_count (should be 0).
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     var keys = List[UInt32]()
     for i in range(Int(count)):
         keys.append(rt[0].create_signal[Int32](Int32(i)))
@@ -2292,7 +2254,7 @@ fn mem_test_signal_cycle(rt_ptr: Int64, count: Int32) -> Int32:
 fn mem_test_scope_cycle(rt_ptr: Int64, count: Int32) -> Int32:
     """Create and destroy `count` scopes.  Returns final scope_count (should be 0).
     """
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     var ids = List[UInt32]()
     for i in range(Int(count)):
         ids.append(rt[0].create_scope(0, -1))
@@ -2304,7 +2266,7 @@ fn mem_test_scope_cycle(rt_ptr: Int64, count: Int32) -> Int32:
 @export
 fn mem_test_rapid_writes(rt_ptr: Int64, key: Int32, count: Int32) -> Int32:
     """Write to a signal `count` times.  Returns final dirty_count."""
-    var rt = _get_runtime(rt_ptr)
+    var rt = _get[Runtime](rt_ptr)
     for i in range(Int(count)):
         rt[0].write_signal[Int32](UInt32(key), Int32(i))
     return Int32(rt[0].dirty_count())
@@ -2324,51 +2286,51 @@ fn scheduler_create() -> Int64:
 @export
 fn scheduler_destroy(sched_ptr: Int64):
     """Destroy and free a heap-allocated Scheduler."""
-    _heap_del(_get_scheduler(sched_ptr))
+    _heap_del(_get[Scheduler](sched_ptr))
 
 
 @export
 fn scheduler_collect(sched_ptr: Int64, rt_ptr: Int64):
     """Drain the runtime's dirty queue into the scheduler."""
-    _get_scheduler(sched_ptr)[0].collect(_get_runtime(rt_ptr))
+    _get[Scheduler](sched_ptr)[0].collect(_get[Runtime](rt_ptr))
 
 
 @export
 fn scheduler_collect_one(sched_ptr: Int64, rt_ptr: Int64, scope_id: Int32):
     """Add a single scope to the scheduler queue."""
-    _get_scheduler(sched_ptr)[0].collect_one(
-        _get_runtime(rt_ptr), UInt32(scope_id)
+    _get[Scheduler](sched_ptr)[0].collect_one(
+        _get[Runtime](rt_ptr), UInt32(scope_id)
     )
 
 
 @export
 fn scheduler_next(sched_ptr: Int64) -> Int32:
     """Return and remove the next scope to render (lowest height first)."""
-    return Int32(_get_scheduler(sched_ptr)[0].next())
+    return Int32(_get[Scheduler](sched_ptr)[0].next())
 
 
 @export
 fn scheduler_is_empty(sched_ptr: Int64) -> Int32:
     """Check if the scheduler has no pending dirty scopes.  Returns 1 or 0."""
-    return _b2i(_get_scheduler(sched_ptr)[0].is_empty())
+    return _b2i(_get[Scheduler](sched_ptr)[0].is_empty())
 
 
 @export
 fn scheduler_count(sched_ptr: Int64) -> Int32:
     """Return the number of pending dirty scopes."""
-    return Int32(_get_scheduler(sched_ptr)[0].count())
+    return Int32(_get[Scheduler](sched_ptr)[0].count())
 
 
 @export
 fn scheduler_has_scope(sched_ptr: Int64, scope_id: Int32) -> Int32:
     """Check if a scope is already in the scheduler queue.  Returns 1 or 0."""
-    return _b2i(_get_scheduler(sched_ptr)[0].has_scope(UInt32(scope_id)))
+    return _b2i(_get[Scheduler](sched_ptr)[0].has_scope(UInt32(scope_id)))
 
 
 @export
 fn scheduler_clear(sched_ptr: Int64):
     """Discard all pending dirty scopes."""
-    _get_scheduler(sched_ptr)[0].clear()
+    _get[Scheduler](sched_ptr)[0].clear()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2386,7 +2348,7 @@ fn shell_create() -> Int64:
 @export
 fn shell_destroy(shell_ptr: Int64):
     """Destroy an AppShell and free all resources."""
-    var ptr = _get_shell(shell_ptr)
+    var ptr = _get[AppShell](shell_ptr)
     ptr[0].destroy()
     _heap_del(ptr)
 
@@ -2394,79 +2356,81 @@ fn shell_destroy(shell_ptr: Int64):
 @export
 fn shell_is_alive(shell_ptr: Int64) -> Int32:
     """Check if the shell is alive.  Returns 1 or 0."""
-    return _b2i(_get_shell(shell_ptr)[0].is_alive())
+    return _b2i(_get[AppShell](shell_ptr)[0].is_alive())
 
 
 @export
 fn shell_create_root_scope(shell_ptr: Int64) -> Int32:
     """Create a root scope via the AppShell.  Returns scope ID."""
-    return Int32(_get_shell(shell_ptr)[0].create_root_scope())
+    return Int32(_get[AppShell](shell_ptr)[0].create_root_scope())
 
 
 @export
 fn shell_create_child_scope(shell_ptr: Int64, parent_id: Int32) -> Int32:
     """Create a child scope via the AppShell.  Returns scope ID."""
-    return Int32(_get_shell(shell_ptr)[0].create_child_scope(UInt32(parent_id)))
+    return Int32(
+        _get[AppShell](shell_ptr)[0].create_child_scope(UInt32(parent_id))
+    )
 
 
 @export
 fn shell_create_signal_i32(shell_ptr: Int64, initial: Int32) -> Int32:
     """Create an Int32 signal via the AppShell.  Returns signal key."""
-    return Int32(_get_shell(shell_ptr)[0].create_signal_i32(initial))
+    return Int32(_get[AppShell](shell_ptr)[0].create_signal_i32(initial))
 
 
 @export
 fn shell_read_signal_i32(shell_ptr: Int64, key: Int32) -> Int32:
     """Read an Int32 signal via the AppShell (with context tracking)."""
-    return _get_shell(shell_ptr)[0].read_signal_i32(UInt32(key))
+    return _get[AppShell](shell_ptr)[0].read_signal_i32(UInt32(key))
 
 
 @export
 fn shell_peek_signal_i32(shell_ptr: Int64, key: Int32) -> Int32:
     """Peek an Int32 signal via the AppShell (without subscribing)."""
-    return _get_shell(shell_ptr)[0].peek_signal_i32(UInt32(key))
+    return _get[AppShell](shell_ptr)[0].peek_signal_i32(UInt32(key))
 
 
 @export
 fn shell_write_signal_i32(shell_ptr: Int64, key: Int32, value: Int32):
     """Write to an Int32 signal via the AppShell."""
-    _get_shell(shell_ptr)[0].write_signal_i32(UInt32(key), value)
+    _get[AppShell](shell_ptr)[0].write_signal_i32(UInt32(key), value)
 
 
 @export
 fn shell_begin_render(shell_ptr: Int64, scope_id: Int32) -> Int32:
     """Begin rendering a scope.  Returns previous scope ID (or -1)."""
-    return Int32(_get_shell(shell_ptr)[0].begin_render(UInt32(scope_id)))
+    return Int32(_get[AppShell](shell_ptr)[0].begin_render(UInt32(scope_id)))
 
 
 @export
 fn shell_end_render(shell_ptr: Int64, prev_scope: Int32):
     """End rendering and restore the previous scope."""
-    _get_shell(shell_ptr)[0].end_render(Int(prev_scope))
+    _get[AppShell](shell_ptr)[0].end_render(Int(prev_scope))
 
 
 @export
 fn shell_has_dirty(shell_ptr: Int64) -> Int32:
     """Check if the shell has dirty scopes.  Returns 1 or 0."""
-    return _b2i(_get_shell(shell_ptr)[0].has_dirty())
+    return _b2i(_get[AppShell](shell_ptr)[0].has_dirty())
 
 
 @export
 fn shell_collect_dirty(shell_ptr: Int64):
     """Drain dirty scopes into the shell's scheduler."""
-    _get_shell(shell_ptr)[0].collect_dirty()
+    _get[AppShell](shell_ptr)[0].collect_dirty()
 
 
 @export
 fn shell_next_dirty(shell_ptr: Int64) -> Int32:
     """Return next dirty scope from the shell's scheduler."""
-    return Int32(_get_shell(shell_ptr)[0].next_dirty())
+    return Int32(_get[AppShell](shell_ptr)[0].next_dirty())
 
 
 @export
 fn shell_scheduler_empty(shell_ptr: Int64) -> Int32:
     """Check if the shell's scheduler is empty.  Returns 1 or 0."""
-    return _b2i(_get_shell(shell_ptr)[0].scheduler_empty())
+    return _b2i(_get[AppShell](shell_ptr)[0].scheduler_empty())
 
 
 @export
@@ -2475,7 +2439,7 @@ fn shell_dispatch_event(
 ) -> Int32:
     """Dispatch an event via the AppShell.  Returns 1 if executed."""
     return _b2i(
-        _get_shell(shell_ptr)[0].dispatch_event(
+        _get[AppShell](shell_ptr)[0].dispatch_event(
             UInt32(handler_id), UInt8(event_type)
         )
     )
@@ -2485,19 +2449,19 @@ fn shell_dispatch_event(
 fn shell_rt_ptr(shell_ptr: Int64) -> Int64:
     """Return the runtime pointer from an AppShell (for template registration etc.).
     """
-    return _to_i64(_get_shell(shell_ptr)[0].runtime)
+    return _to_i64(_get[AppShell](shell_ptr)[0].runtime)
 
 
 @export
 fn shell_store_ptr(shell_ptr: Int64) -> Int64:
     """Return the VNodeStore pointer from an AppShell."""
-    return _to_i64(_get_shell(shell_ptr)[0].store)
+    return _to_i64(_get[AppShell](shell_ptr)[0].store)
 
 
 @export
 fn shell_eid_ptr(shell_ptr: Int64) -> Int64:
     """Return the ElementIdAllocator pointer from an AppShell."""
-    return Int64(Int(_get_shell(shell_ptr)[0].eid_alloc))
+    return _to_i64(_get[AppShell](shell_ptr)[0].eid_alloc)
 
 
 @export
@@ -2506,7 +2470,9 @@ fn shell_mount(
 ) -> Int32:
     """Mount a VNode via the AppShell.  Returns mutation byte length."""
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var result = _get_shell(shell_ptr)[0].mount(writer_ptr, UInt32(vnode_index))
+    var result = _get[AppShell](shell_ptr)[0].mount(
+        writer_ptr, UInt32(vnode_index)
+    )
     _free_writer(writer_ptr)
     return result
 
@@ -2520,7 +2486,7 @@ fn shell_diff(
     new_index: Int32,
 ) -> Int32:
     """Diff two VNodes via the AppShell.  Returns mutation byte length."""
-    var ptr = _get_shell(shell_ptr)
+    var ptr = _get[AppShell](shell_ptr)
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
     ptr[0].diff(writer_ptr, UInt32(old_index), UInt32(new_index))
     var result = ptr[0].finalize(writer_ptr)
@@ -2544,11 +2510,6 @@ fn shell_diff(
 
 
 @always_inline
-fn _get_node(ptr: Int64) -> UnsafePointer[Node]:
-    return _as_ptr[Node](Int(ptr))
-
-
-@always_inline
 fn _alloc_node(var val: Node) -> Int64:
     """Heap-allocate a Node and return its address as Int64."""
     return _to_i64(_heap_new(val^))
@@ -2557,7 +2518,7 @@ fn _alloc_node(var val: Node) -> Int64:
 @always_inline
 fn _free_node(addr: Int64):
     """Destroy and free a heap-allocated Node from its Int64 address."""
-    _heap_del(_get_node(addr))
+    _heap_del(_get[Node](addr))
 
 
 @export
@@ -2603,8 +2564,8 @@ fn dsl_node_add_item(parent_ptr: Int64, child_ptr: Int64):
     The child Node is moved out of its heap slot (the child pointer
     becomes invalid after this call).
     """
-    var parent = _get_node(parent_ptr)
-    var child = _get_node(child_ptr)
+    var parent = _get[Node](parent_ptr)
+    var child = _get[Node](child_ptr)
     var child_val = child[0].copy()
     parent[0].add_item(child_val^)
     _free_node(child_ptr)
@@ -2619,73 +2580,73 @@ fn dsl_node_destroy(ptr: Int64):
 @export
 fn dsl_node_kind(ptr: Int64) -> Int32:
     """Return the kind tag of a Node."""
-    return Int32(_get_node(ptr)[0].kind)
+    return Int32(_get[Node](ptr)[0].kind)
 
 
 @export
 fn dsl_node_tag(ptr: Int64) -> Int32:
     """Return the HTML tag of an element Node."""
-    return Int32(_get_node(ptr)[0].tag)
+    return Int32(_get[Node](ptr)[0].tag)
 
 
 @export
 fn dsl_node_item_count(ptr: Int64) -> Int32:
     """Return the total item count (children + attrs) of an element Node."""
-    return Int32(_get_node(ptr)[0].item_count())
+    return Int32(_get[Node](ptr)[0].item_count())
 
 
 @export
 fn dsl_node_child_count(ptr: Int64) -> Int32:
     """Return the child count (excluding attrs) of an element Node."""
-    return Int32(_get_node(ptr)[0].child_count())
+    return Int32(_get[Node](ptr)[0].child_count())
 
 
 @export
 fn dsl_node_attr_count(ptr: Int64) -> Int32:
     """Return the attribute count (excluding children) of an element Node."""
-    return Int32(_get_node(ptr)[0].attr_count())
+    return Int32(_get[Node](ptr)[0].attr_count())
 
 
 @export
 fn dsl_node_dynamic_index(ptr: Int64) -> Int32:
     """Return the dynamic_index of a DYN_TEXT/DYN_NODE/DYN_ATTR Node."""
-    return Int32(_get_node(ptr)[0].dynamic_index)
+    return Int32(_get[Node](ptr)[0].dynamic_index)
 
 
 @export
 fn dsl_node_count_nodes(ptr: Int64) -> Int32:
     """Recursively count tree nodes (excluding attrs)."""
-    return Int32(count_nodes(_get_node(ptr)[0]))
+    return Int32(count_nodes(_get[Node](ptr)[0]))
 
 
 @export
 fn dsl_node_count_all(ptr: Int64) -> Int32:
     """Recursively count all items (including attrs)."""
-    return Int32(count_all_items(_get_node(ptr)[0]))
+    return Int32(count_all_items(_get[Node](ptr)[0]))
 
 
 @export
 fn dsl_node_count_dyn_text(ptr: Int64) -> Int32:
     """Count DYN_TEXT slots in the tree."""
-    return Int32(count_dynamic_text_slots(_get_node(ptr)[0]))
+    return Int32(count_dynamic_text_slots(_get[Node](ptr)[0]))
 
 
 @export
 fn dsl_node_count_dyn_node(ptr: Int64) -> Int32:
     """Count DYN_NODE slots in the tree."""
-    return Int32(count_dynamic_node_slots(_get_node(ptr)[0]))
+    return Int32(count_dynamic_node_slots(_get[Node](ptr)[0]))
 
 
 @export
 fn dsl_node_count_dyn_attr(ptr: Int64) -> Int32:
     """Count DYN_ATTR slots in the tree."""
-    return Int32(count_dynamic_attr_slots(_get_node(ptr)[0]))
+    return Int32(count_dynamic_attr_slots(_get[Node](ptr)[0]))
 
 
 @export
 fn dsl_node_count_static_attr(ptr: Int64) -> Int32:
     """Count STATIC_ATTR nodes in the tree."""
-    return Int32(count_static_attr_nodes(_get_node(ptr)[0]))
+    return Int32(count_static_attr_nodes(_get[Node](ptr)[0]))
 
 
 # ── to_template via DSL ──────────────────────────────────────────────────────
@@ -2703,8 +2664,8 @@ fn dsl_to_template(node_ptr: Int64, name: String, rt_ptr: Int64) -> Int32:
     Returns:
         The template ID (UInt32 as Int32).
     """
-    var node = _get_node(node_ptr)
-    var rt = _get_runtime(rt_ptr)
+    var node = _get[Node](node_ptr)
+    var rt = _get[Runtime](rt_ptr)
     var template = to_template(node[0], name)
     var tmpl_id = rt[0].templates.register(template^)
     _free_node(node_ptr)
@@ -2721,7 +2682,7 @@ fn dsl_vb_create(tmpl_id: Int32, store_ptr: Int64) -> Int64:
     Returns a pointer handle to the VNodeBuilder.
     """
     return _to_i64(
-        _heap_new(VNodeBuilder(UInt32(tmpl_id), _get_vnode_store(store_ptr)))
+        _heap_new(VNodeBuilder(UInt32(tmpl_id), _get[VNodeStore](store_ptr)))
     )
 
 
@@ -2730,68 +2691,63 @@ fn dsl_vb_create_keyed(tmpl_id: Int32, key: String, store_ptr: Int64) -> Int64:
     """Create a keyed VNodeBuilder on the heap."""
     return _to_i64(
         _heap_new(
-            VNodeBuilder(UInt32(tmpl_id), key, _get_vnode_store(store_ptr))
+            VNodeBuilder(UInt32(tmpl_id), key, _get[VNodeStore](store_ptr))
         )
     )
-
-
-@always_inline
-fn _get_vb(ptr: Int64) -> UnsafePointer[VNodeBuilder]:
-    return _as_ptr[VNodeBuilder](Int(ptr))
 
 
 @export
 fn dsl_vb_destroy(ptr: Int64):
     """Destroy and free a heap-allocated VNodeBuilder."""
-    _heap_del(_get_vb(ptr))
+    _heap_del(_get[VNodeBuilder](ptr))
 
 
 @export
 fn dsl_vb_add_dyn_text(ptr: Int64, value: String):
     """Add a dynamic text node via the VNodeBuilder."""
-    _get_vb(ptr)[0].add_dyn_text(value)
+    _get[VNodeBuilder](ptr)[0].add_dyn_text(value)
 
 
 @export
 fn dsl_vb_add_dyn_placeholder(ptr: Int64):
     """Add a dynamic placeholder via the VNodeBuilder."""
-    _get_vb(ptr)[0].add_dyn_placeholder()
+    _get[VNodeBuilder](ptr)[0].add_dyn_placeholder()
 
 
 @export
 fn dsl_vb_add_dyn_event(ptr: Int64, event_name: String, handler_id: Int32):
     """Add a dynamic event handler via the VNodeBuilder."""
-    _get_vb(ptr)[0].add_dyn_event(event_name, UInt32(handler_id))
+    _get[VNodeBuilder](ptr)[0].add_dyn_event(event_name, UInt32(handler_id))
 
 
 @export
 fn dsl_vb_add_dyn_text_attr(ptr: Int64, name: String, value: String):
     """Add a dynamic text attribute via the VNodeBuilder."""
-    _get_vb(ptr)[0].add_dyn_text_attr(name, value)
+    _get[VNodeBuilder](ptr)[0].add_dyn_text_attr(name, value)
 
 
 @export
 fn dsl_vb_add_dyn_int_attr(ptr: Int64, name: String, value: Int64):
     """Add a dynamic integer attribute via the VNodeBuilder."""
-    _get_vb(ptr)[0].add_dyn_int_attr(name, value)
+    _get[VNodeBuilder](ptr)[0].add_dyn_int_attr(name, value)
 
 
 @export
 fn dsl_vb_add_dyn_bool_attr(ptr: Int64, name: String, value: Int32):
     """Add a dynamic boolean attribute via the VNodeBuilder."""
-    _get_vb(ptr)[0].add_dyn_bool_attr(name, value != 0)
+    _get[VNodeBuilder](ptr)[0].add_dyn_bool_attr(name, value != 0)
 
 
 @export
 fn dsl_vb_add_dyn_none_attr(ptr: Int64, name: String):
     """Add a dynamic none/removal attribute via the VNodeBuilder."""
-    _get_vb(ptr)[0].add_dyn_none_attr(name)
+    _get[VNodeBuilder](ptr)[0].add_dyn_none_attr(name)
 
 
 @export
 fn dsl_vb_index(ptr: Int64) -> Int32:
     """Return the VNode index from the VNodeBuilder."""
-    return Int32(_get_vb(ptr)[0].index())
+    return Int32(_get[VNodeBuilder](ptr)[0].index())
 
 
 # ── Self-contained DSL tests ─────────────────────────────────────────────────
