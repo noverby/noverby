@@ -1870,6 +1870,67 @@ fn suspense_resolve(rt_ptr: Int64, scope_id: Int32) -> Int32:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Phase 13.2 — Memo (Computed/Derived Signal) Exports
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@export
+fn memo_create_i32(rt_ptr: Int64, scope_id: Int32, initial: Int32) -> Int32:
+    """Create a memo with an initial cached value.  Returns memo ID."""
+    return Int32(
+        _get[Runtime](rt_ptr)[0].create_memo_i32(UInt32(scope_id), initial)
+    )
+
+
+@export
+fn memo_begin_compute(rt_ptr: Int64, memo_id: Int32):
+    """Begin memo computation — sets memo's context as current."""
+    _get[Runtime](rt_ptr)[0].memo_begin_compute(UInt32(memo_id))
+
+
+@export
+fn memo_end_compute_i32(rt_ptr: Int64, memo_id: Int32, value: Int32):
+    """End memo computation and store the result."""
+    _get[Runtime](rt_ptr)[0].memo_end_compute_i32(UInt32(memo_id), value)
+
+
+@export
+fn memo_read_i32(rt_ptr: Int64, memo_id: Int32) -> Int32:
+    """Read the memo's cached value."""
+    return _get[Runtime](rt_ptr)[0].memo_read_i32(UInt32(memo_id))
+
+
+@export
+fn memo_is_dirty(rt_ptr: Int64, memo_id: Int32) -> Int32:
+    """Check whether the memo needs recomputation.  Returns 1 or 0."""
+    return _b2i(_get[Runtime](rt_ptr)[0].memo_is_dirty(UInt32(memo_id)))
+
+
+@export
+fn memo_destroy(rt_ptr: Int64, memo_id: Int32):
+    """Destroy a memo, cleaning up its context and output signal."""
+    _get[Runtime](rt_ptr)[0].destroy_memo(UInt32(memo_id))
+
+
+@export
+fn memo_count(rt_ptr: Int64) -> Int32:
+    """Return the number of live memos."""
+    return Int32(_get[Runtime](rt_ptr)[0].memo_count())
+
+
+@export
+fn memo_output_key(rt_ptr: Int64, memo_id: Int32) -> Int32:
+    """Return the output signal key of the memo (for testing)."""
+    return Int32(_get[Runtime](rt_ptr)[0].memo_output_key(UInt32(memo_id)))
+
+
+@export
+fn memo_context_id(rt_ptr: Int64, memo_id: Int32) -> Int32:
+    """Return the reactive context ID of the memo (for testing)."""
+    return Int32(_get[Runtime](rt_ptr)[0].memo_context_id(UInt32(memo_id)))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Phase 7 — Counter App (End-to-End)
 # ══════════════════════════════════════════════════════════════════════════════
 #

@@ -555,6 +555,18 @@ export interface WasmExports extends WebAssembly.Exports {
 	// Dirty scope management
 	runtime_drain_dirty(rtPtr: bigint): number;
 
+	// ── Phase 13.2: Memo (Computed/Derived Signals) ──────────────────
+
+	memo_create_i32(rtPtr: bigint, scopeId: number, initial: number): number;
+	memo_begin_compute(rtPtr: bigint, memoId: number): void;
+	memo_end_compute_i32(rtPtr: bigint, memoId: number, value: number): void;
+	memo_read_i32(rtPtr: bigint, memoId: number): number;
+	memo_is_dirty(rtPtr: bigint, memoId: number): number;
+	memo_destroy(rtPtr: bigint, memoId: number): void;
+	memo_count(rtPtr: bigint): number;
+	memo_output_key(rtPtr: bigint, memoId: number): number;
+	memo_context_id(rtPtr: bigint, memoId: number): number;
+
 	// ── Phase 7: Counter App ─────────────────────────────────────────
 
 	// App lifecycle

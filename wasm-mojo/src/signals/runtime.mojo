@@ -32,6 +32,7 @@ from sys import size_of
 from memory import UnsafePointer, memcpy
 from scope import ScopeArena, ScopeState, HOOK_SIGNAL, HOOK_MEMO, HOOK_EFFECT
 from vdom import TemplateRegistry, VNodeStore
+from .memo import MemoStore, MemoEntry
 from events import (
     HandlerRegistry,
     HandlerEntry,
@@ -311,9 +312,17 @@ struct Runtime(Movable):
     var templates: TemplateRegistry
     var vnodes: VNodeStore
     var handlers: HandlerRegistry
+    var memos: MemoStore
     var current_context: Int  # -1 = no active context
     var current_scope: Int  # -1 = no active scope (for hooks)
     var dirty_scopes: List[UInt32]
+    # Context-to-memo mapping: parallel arrays.
+    # When a reactive context is notified (i.e. appears in a signal's
+    # subscriber list after a write), the runtime checks whether that
+    # context belongs to a memo.  If so, the memo is marked dirty and
+    # the memo's output signal's subscribers are also notified.
+    var _memo_ctx_ids: List[UInt32]  # context IDs that belong to memos
+    var _memo_ids: List[UInt32]  # corresponding memo IDs
 
     # ── Construction ─────────────────────────────────────────────────
 
@@ -323,9 +332,12 @@ struct Runtime(Movable):
         self.templates = TemplateRegistry()
         self.vnodes = VNodeStore()
         self.handlers = HandlerRegistry()
+        self.memos = MemoStore()
         self.current_context = -1
         self.current_scope = -1
         self.dirty_scopes = List[UInt32]()
+        self._memo_ctx_ids = List[UInt32]()
+        self._memo_ids = List[UInt32]()
 
     fn __moveinit__(out self, deinit other: Self):
         self.signals = other.signals^
@@ -333,9 +345,12 @@ struct Runtime(Movable):
         self.templates = other.templates^
         self.vnodes = other.vnodes^
         self.handlers = other.handlers^
+        self.memos = other.memos^
         self.current_context = other.current_context
         self.current_scope = other.current_scope
         self.dirty_scopes = other.dirty_scopes^
+        self._memo_ctx_ids = other._memo_ctx_ids^
+        self._memo_ids = other._memo_ids^
 
     # ── Context management ───────────────────────────────────────────
 
@@ -404,15 +419,38 @@ struct Runtime(Movable):
         self.signals.write[T](key, value)
         var subs = self.signals.get_subscribers(key)
         for i in range(len(subs)):
-            # Append only if not already queued (simple linear scan for now)
             var ctx = subs[i]
-            var found = False
-            for j in range(len(self.dirty_scopes)):
-                if self.dirty_scopes[j] == ctx:
-                    found = True
+            # Check if this subscriber is a memo's reactive context
+            var is_memo = False
+            for m in range(len(self._memo_ctx_ids)):
+                if self._memo_ctx_ids[m] == ctx:
+                    # Mark the memo dirty
+                    var memo_id = self._memo_ids[m]
+                    if self.memos.contains(memo_id):
+                        self.memos.mark_dirty(memo_id)
+                        # Propagate: notify the memo's output signal subscribers
+                        var out_key = self.memos.output_key(memo_id)
+                        var out_subs = self.signals.get_subscribers(out_key)
+                        for k in range(len(out_subs)):
+                            var scope_ctx = out_subs[k]
+                            var found2 = False
+                            for j2 in range(len(self.dirty_scopes)):
+                                if self.dirty_scopes[j2] == scope_ctx:
+                                    found2 = True
+                                    break
+                            if not found2:
+                                self.dirty_scopes.append(scope_ctx)
+                    is_memo = True
                     break
-            if not found:
-                self.dirty_scopes.append(ctx)
+            if not is_memo:
+                # Normal scope subscriber — append if not already queued
+                var found = False
+                for j in range(len(self.dirty_scopes)):
+                    if self.dirty_scopes[j] == ctx:
+                        found = True
+                        break
+                if not found:
+                    self.dirty_scopes.append(ctx)
 
     fn peek_signal[T: Copyable & Movable & AnyType](self, key: UInt32) -> T:
         """Read a signal without subscribing."""
@@ -641,6 +679,139 @@ struct Runtime(Movable):
     fn handler_count(self) -> Int:
         """Return the number of live event handlers."""
         return self.handlers.count()
+
+    # ── Memo operations ──────────────────────────────────────────────
+
+    fn create_memo_i32(mut self, scope_id: UInt32, initial: Int32) -> UInt32:
+        """Create a memo with an initial cached value.
+
+        Allocates a reactive context (a scope-level context ID via a
+        dedicated signal used only for tracking) and an output signal.
+        The memo starts dirty so the first read triggers a computation.
+
+        Returns the memo ID (not the output signal key).
+        """
+        # Allocate a "context signal" whose sole purpose is to act as a
+        # reactive-context identifier.  We use a dummy Int32 signal whose
+        # key doubles as the context_id.
+        var context_id = self.signals.create[Int32](Int32(0))
+        # Allocate the output signal that stores the cached result.
+        var output_key = self.signals.create[Int32](initial)
+        var memo_id = self.memos.create(context_id, output_key, scope_id)
+        # Register the context→memo mapping for dirty propagation.
+        self._memo_ctx_ids.append(context_id)
+        self._memo_ids.append(memo_id)
+        return memo_id
+
+    fn memo_begin_compute(mut self, memo_id: UInt32):
+        """Begin memo computation.
+
+        Sets the memo's reactive context as the current context so that
+        signal reads during computation are tracked as dependencies.
+        Clears old subscriptions (re-subscribes fresh on each compute).
+        """
+        if not self.memos.contains(memo_id):
+            return
+        var entry = self.memos.get(memo_id)
+        self.memos.set_computing(memo_id, True)
+        # Clear old subscriptions: unsubscribe this context from all signals
+        # it was previously subscribed to.  We do a full scan of signals —
+        # acceptable for now since memo count is small.
+        for i in range(len(self.signals._entries)):
+            if (
+                i < len(self.signals._states)
+                and self.signals._states[i].occupied
+            ):
+                self.signals.unsubscribe(UInt32(i), entry.context_id)
+        # Push the memo's context as the current reactive context
+        # (saves the previous context for restore in end_compute).
+        # We store the previous context in a simple way: use the
+        # context signal's value as storage for the previous context.
+        var prev = self.current_context
+        self.signals.write[Int32](entry.context_id, Int32(prev))
+        self.current_context = Int(entry.context_id)
+
+    fn memo_end_compute_i32(mut self, memo_id: UInt32, value: Int32):
+        """End memo computation and store the result.
+
+        Writes the computed value to the memo's output signal and clears
+        the dirty flag.  Restores the previous reactive context.
+        """
+        if not self.memos.contains(memo_id):
+            return
+        var entry = self.memos.get(memo_id)
+        # Store the result in the output signal (does NOT trigger dirty
+        # propagation through write_signal — we write directly to avoid
+        # recursive memo updates during computation).
+        self.signals.write[Int32](entry.output_key, value)
+        self.memos.clear_dirty(memo_id)
+        self.memos.set_computing(memo_id, False)
+        # Restore previous context
+        var prev = Int(self.signals.read[Int32](entry.context_id))
+        self.current_context = prev
+
+    fn memo_read_i32(mut self, memo_id: UInt32) -> Int32:
+        """Read the memo's cached value.
+
+        Subscribes the current reactive context (if any) to the memo's
+        output signal, so the reader is notified when the memo recomputes.
+
+        Does NOT trigger recomputation — the caller must check
+        memo_is_dirty() and call begin/end_compute if needed.
+        """
+        if not self.memos.contains(memo_id):
+            return Int32(0)
+        var entry = self.memos.get(memo_id)
+        # Subscribe the current context to the memo's output signal
+        if self.has_context():
+            self.signals._entries[Int(entry.output_key)].subscribe(
+                self.get_context()
+            )
+        return self.signals.read[Int32](entry.output_key)
+
+    fn memo_is_dirty(self, memo_id: UInt32) -> Bool:
+        """Check whether the memo needs recomputation."""
+        if not self.memos.contains(memo_id):
+            return False
+        return self.memos.is_dirty(memo_id)
+
+    fn destroy_memo(mut self, memo_id: UInt32):
+        """Destroy a memo, cleaning up its context and output signal.
+
+        Removes the context→memo mapping, destroys the context signal
+        and output signal, and frees the memo slot.
+        """
+        if not self.memos.contains(memo_id):
+            return
+        var entry = self.memos.get(memo_id)
+        # Remove context→memo mapping
+        for i in range(len(self._memo_ctx_ids)):
+            if self._memo_ctx_ids[i] == entry.context_id:
+                # Swap-remove for O(1)
+                var last = len(self._memo_ctx_ids) - 1
+                if i != last:
+                    self._memo_ctx_ids[i] = self._memo_ctx_ids[last]
+                    self._memo_ids[i] = self._memo_ids[last]
+                _ = self._memo_ctx_ids.pop()
+                _ = self._memo_ids.pop()
+                break
+        # Destroy the context signal and output signal
+        self.signals.destroy(entry.context_id)
+        self.signals.destroy(entry.output_key)
+        # Destroy the memo entry
+        self.memos.destroy(memo_id)
+
+    fn memo_count(self) -> Int:
+        """Return the number of live memos."""
+        return self.memos.count()
+
+    fn memo_output_key(self, memo_id: UInt32) -> UInt32:
+        """Return the output signal key of the memo (for testing)."""
+        return self.memos.output_key(memo_id)
+
+    fn memo_context_id(self, memo_id: UInt32) -> UInt32:
+        """Return the reactive context ID of the memo (for testing)."""
+        return self.memos.context_id(memo_id)
 
 
 # ── Heap-allocated Runtime handle ────────────────────────────────────────────
