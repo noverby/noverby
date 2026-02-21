@@ -2405,23 +2405,23 @@ runtime/
 
 ## Open Questions
 
-| # | Question | Phase | Notes |
-|---|---|---|---|
-| 1 | Can Mojo function pointers be stored in collections and called dynamically? | 1 | Core to signal callbacks and event handlers. If not, use dispatch table with integer IDs. |
-| 2 | Does Mojo support recursive/self-referential types? | 3 | VNode children contain VNodes. May need indirection via UnsafePointer. |
-| 3 | How to implement "current reactive context" in single-threaded WASM? | 1 | Global mutable state works (WASM is single-threaded). Use a module-level `var`. |
-| 4 | Can `@parameter` enable compile-time template generation? | 9 | Tier 2 depends on this. `comptime` values should work for `Template` if all fields are compile-time-known. `@parameter for` requires `_StridedRangeIterator` (only `Int` induction vars). Test early, optimize late. |
-| 5 | What is the overhead of WASM↔JS calls vs shared memory reads? | 5 | Determines whether mutation buffer is worth the complexity vs direct JS calls. Benchmark. |
-| 6 | How does Mojo handle type erasure for heterogeneous hook storage? | 2 | Hooks array stores different types. May need `AnyValue` wrapper or union types. |
-| 7 | Should we support `wasm32` in addition to `wasm64`? | 0 | Currently using wasm64. wasm32 has wider browser support but 4GB limit. |
-| 8 | How to handle Mojo's ownership model for VNode tree sharing? | 4 | Diffing needs old + new tree simultaneously. Arena allocation may sidestep ownership issues. |
-| 9 | Can we implement a Mojo decorator/macro for component declaration? | 7+ | `@component` decorator that generates boilerplate. Depends on Mojo metaprogramming support. |
-| 10 | Can `comptime` values contain `DynArray` or only `StaticArray`? | 3 | Templates with `comptime` require all fields to be compile-time-known. May need `StaticArray` for `comptime` templates, `DynArray` for runtime templates. |
-| 11 | Does variadic parameter homogeneity block any builder patterns? | 3 | All children are `Renderable` (trait), so homogeneous variadics should work. Verify with mixed String/Signal/Element children. |
-| 12 | Can `@parameter fn` closures capture `Signal[T]` handles? | 1 | Critical for `onclick=fn(_): count += 1`. Signals are small structs (just a `UInt32` ID), so capturing should work. Test early. |
-| 13 | Does Mojo support `__iadd__` and other augmented assignment dunders on structs? | 1 | Critical for `count += 1` ergonomics. If not supported, fall back to `count.set(count() + 1)`. |
-| 14 | Can Mojo variadic runtime args (`*children`) accept trait-conforming heterogeneous types? | 3 | `*children: Renderable` where String, Signal, and Element all conform. If runtime variadics must be homogeneous like parameter variadics, need overloads per arity or a `children(...)` helper. |
-| 15 | Does `def` implicit return work with the last expression being a function call? | 2 | `def counter() -> Element:` with `div(...)` as last line. Must verify this returns the Element. |
+| # | Question | Phase | Status | Notes |
+|---|---|---|---|---|
+| 1 | Can Mojo function pointers be stored in collections and called dynamically? | 1 | ✅ Resolved | No — used integer-ID dispatch tables instead. `HandlerEntry` stores an action ID (`UInt8`); the event registry maps handler IDs to entries and the app dispatches via `match`-style conditionals. Works well for WASM. |
+| 2 | Does Mojo support recursive/self-referential types? | 3 | ✅ Resolved | Not directly — used `UnsafePointer` indirection. VNode children are stored in `VNodeStore` (arena-indexed), and the DSL `Node` tagged union stores children in a `List[Node]` (heap-allocated). |
+| 3 | How to implement "current reactive context" in single-threaded WASM? | 1 | ✅ Resolved | Module-level `var` in `Runtime` (`current_context: Optional[UInt32]`). `set_context`/`clear_context` bracket scope renders; signal reads check the active context for auto-subscription. |
+| 4 | Can `@parameter` enable compile-time template generation? | 9 | ⏳ Deferred | Tier 2 deferred per M9 — core template-aware diffing is in place; full `comptime` path awaits Mojo language maturation. Runtime `TemplateBuilder` + DSL `to_template()` are sufficient for now. |
+| 5 | What is the overhead of WASM↔JS calls vs shared memory reads? | 5 | ✅ Resolved | Binary mutation protocol in shared memory is the chosen approach. Compact byte sequences (15 opcodes) are written by Mojo and decoded by the JS interpreter in a single pass. Efficient for batched DOM updates. |
+| 6 | How does Mojo handle type erasure for heterogeneous hook storage? | 2 | ✅ Resolved | Hooks store `UInt32` keys (signal IDs) with a `UInt8` tag for type discrimination. No type erasure needed — all hook values are opaque integer handles into the typed signal store. |
+| 7 | Should we support `wasm32` in addition to `wasm64`? | 0 | 🔓 Open | Still using wasm64. The `_as_ptr` helper reinterprets `Int` addresses, which would need adjustment for wasm32 pointer sizes. Not a priority until browser wasm64 support is universal. |
+| 8 | How to handle Mojo's ownership model for VNode tree sharing? | 4 | ✅ Resolved | Arena-based `VNodeStore` with `UInt32` index handles. Old and new VNode trees coexist in the same store; the diff engine reads both by index without ownership conflicts. `destroy_pointee` reclaims slots after diffing. |
+| 9 | Can we implement a Mojo decorator/macro for component declaration? | 7+ | 🔓 Open | Mojo does not yet support user-defined decorators or proc macros. The `@export` wrappers in `main.mojo` are the primary boilerplate target; code generation is the most viable near-term alternative (see M10.22). |
+| 10 | Can `comptime` values contain `DynArray` or only `StaticArray`? | 3 | ⏳ Deferred | Moot for now — all templates use runtime `List` via `TemplateBuilder` or DSL `to_template()`. Will revisit with Tier 2 compile-time templates if Mojo adds richer `comptime` container support. |
+| 11 | Does variadic parameter homogeneity block any builder patterns? | 3 | ✅ Resolved | Sidestepped — the DSL uses `List[Node]` for children instead of variadic parameters. `el_div(List(text("hi"), dyn_text()))` is ergonomic enough. Variadic overloads can be added later if Mojo supports heterogeneous variadics. |
+| 12 | Can `@parameter fn` closures capture `Signal[T]` handles? | 1 | ✅ Resolved | Not needed — event handlers use integer action IDs (`UInt8`) rather than closures. The app's `dispatch_event` method interprets the action ID and mutates signals directly. No closure capture required. |
+| 13 | Does Mojo support `__iadd__` and other augmented assignment dunders on structs? | 1 | ✅ Resolved | Yes for simple types, but not used for signals. Signal writes go through `write_signal[Int32](key, new_value)`. The `signal_iadd_i32` export reads, adds, and writes in one step. Operator overloading is available but the WASM ABI boundary uses explicit function calls. |
+| 14 | Can Mojo variadic runtime args (`*children`) accept trait-conforming heterogeneous types? | 3 | ✅ Resolved | Sidestepped — `List[Node]` is used instead of variadics. The `Node` tagged union (TEXT, DYN_TEXT, ELEMENT, ATTR, etc.) provides type-safe heterogeneous children without requiring trait-based variadics. |
+| 15 | Does `def` implicit return work with the last expression being a function call? | 2 | ✅ Resolved | Not relied upon — all component/app functions use explicit `return` or `fn` (not `def`). The builder DSL returns `Node` values explicitly. `def` implicit return was not needed in practice. |
 
 ---
 
@@ -2716,6 +2716,17 @@ Inlined all 157 single-use `var X = _get[T](ptr)` intermediate variable declarat
 - **`main.mojo` line count**: 3,282 → 3,298 lines (+16 lines). The 157 removed `var` lines are offset by the Mojo formatter wrapping the longer inlined expressions across multiple lines. The net effect is fewer variable declarations and more consistent style, with a small formatting-driven line increase.
 - **No behavioral change**: All 397 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
 
+### 10.22 Document `@export` Submodule Limitation (✅ Done)
+
+Investigated whether `@export` functions could be moved from `main.mojo` into submodules (e.g., `poc/`, `vdom/dsl_tests.mojo`) to eliminate ~430 lines of thin forwarding wrappers. The experiment conclusively demonstrated that **Mojo's `@export` decorator only reliably produces WASM exports for functions defined in the main module** passed to `mojo build`.
+
+- **Root cause — dead code elimination (DCE)**: Mojo's compiler aggressively eliminates functions that are not transitively reachable from the main module's entry points before LLVM IR generation. An `@export` annotation on a submodule function does not prevent DCE — the function must actually be called from the main module to survive.
+- **Experiment 1 — `@export` in submodules**: Added `@export` to `poc/arithmetic.mojo` functions and removed the corresponding wrappers from `main.mojo`. Result: all PoC exports disappeared from the WASM binary. The functions were eliminated before the linker saw them.
+- **Experiment 2 — DCE anchor imports**: Imported all submodule functions into `main.mojo` (with aliases) without wrapping them, hoping the import alone would anchor them against DCE. Result: functions still eliminated. Mojo only retains symbols that are actually referenced in executable code paths.
+- **Conclusion**: The existing pattern — importing submodule functions and wrapping them with `@export` in `main.mojo` — is the only reliable way to guarantee WASM export visibility with the current Mojo toolchain. All 397 exports must remain in `main.mojo`.
+- **Future outlook**: If Mojo adds a `@wasm_export` decorator, linker-level `--export` flags, or changes DCE behavior for `@export`-annotated functions, this limitation can be revisited. Until then, code generation or macro-based approaches (when Mojo supports them) are the most promising path to reducing wrapper boilerplate.
+- **No code changes**: Codebase remains at 3,298 lines in `main.mojo` with all 397 WASM exports. All 676 Mojo + 860 JS tests pass unchanged.
+
 ---
 
 ## Milestone Checklist
@@ -2751,3 +2762,4 @@ Inlined all 157 single-use `var X = _get[T](ptr)` intermediate variable declarat
 - [x] **M10.19:** Generic heap alloc/free helpers & `_to_i64` consistency. `_heap_new[T]`/`_heap_del[T]` centralize all typed struct alloc/free. `_alloc_writer`/`_free_writer`/`_alloc_node`/`_free_node` simplified to use generics. 9 inline alloc/free patterns in exports replaced with single-call expressions. 5 `Int64(Int(ptr))` unified to `_to_i64`. `alloc(1)`/`destroy_pointee`/`init_pointee_move` now appear only in helper definitions. `main.mojo` reduced from 3,332 → 3,326 lines (−6 lines). All 676 Mojo + 860 JS tests pass unchanged.
 - [x] **M10.20:** Generic pointer accessor & final `_to_i64` fixes. 12 type-specific `_get_*` helpers replaced with 1 generic `_get[T: AnyType](ptr: Int64)`. 270+ call sites updated. `_as_ptr` now only used inside `_get[T]` definition. 2 remaining `Int64(Int(...))` unified to `_to_i64`. 7 raw `_as_ptr[UInt8]` calls replaced with `_get[UInt8]`. `main.mojo` reduced from 3,326 → 3,282 lines (−44 lines). All 676 Mojo + 860 JS tests pass unchanged.
 - [x] **M10.21:** Inline single-use pointer bindings. 157 single-use `var X = _get[T](ptr)` declarations inlined to direct `_get[T](ptr)[0].method()` expressions. 18 multi-use bindings retained. All 397 exports now use consistent inline style. `create_vnode` and `diff_vnodes` simplified with inline `_get` in engine constructors. `main.mojo`: 3,282 → 3,298 lines (+16 due to formatter wrapping; 157 var declarations removed). All 676 Mojo + 860 JS tests pass unchanged.
+- [x] **M10.22:** Document `@export` submodule limitation. Investigated moving `@export` to submodules to eliminate ~430 lines of thin wrappers from `main.mojo`. Mojo's DCE eliminates submodule `@export` functions before LLVM IR — only main-module `@export` reliably produces WASM exports. Imports without call sites do not anchor against DCE. Current wrapper pattern is required. No code changes; limitation documented.
