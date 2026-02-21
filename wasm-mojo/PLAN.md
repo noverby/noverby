@@ -3167,7 +3167,7 @@ Update README and PLAN to reflect the new test counts and the modernized TS runt
 >
 > **Depends on:** Phase 12 (all apps use `createApp()` factory, clean test infrastructure).
 
-### 13.1 Scope-Scoped Handler Cleanup
+### 13.1 Scope-Scoped Handler Cleanup (✅ Done)
 
 Fix the handler ID leak in todo and bench apps by giving each item/row its own child scope. When items are rebuilt, old child scopes are destroyed — triggering automatic handler cleanup via the existing `HandlerRegistry.remove_for_scope()` method.
 
@@ -3237,7 +3237,7 @@ for item in items:
 - [ ] Handler leak tests (Mojo + JS)
 - [ ] All existing tests pass (handler IDs change but behavior is identical)
 
-### 13.2 Memo Store & MemoEntry
+### 13.2 Memo Store & MemoEntry (✅ Done)
 
 Implement the memo (computed/derived signal) storage layer. A memo is a cached value with its own reactive context that auto-tracks input signal dependencies and notifies downstream subscribers when dirty.
 
@@ -3313,7 +3313,7 @@ struct MemoStore(Movable):
 - [ ] Signal write → memo dirty → scope dirty propagation chain
 - [ ] Unit tests: create/destroy, dirty tracking, propagation
 
-### 13.3 Memo Runtime API & WASM Exports
+### 13.3 Memo Runtime API & WASM Exports (✅ Done)
 
 Expose memo operations through the Runtime and as WASM exports for testing.
 
@@ -3590,9 +3590,8 @@ Update README and PLAN to reflect Phase 13 changes.
 - [x] **M12.3:** Todo app modernization. `createTodoApp()` in `test-js/todo.test.ts` rewritten to use `createApp()` — ~50 lines of manual template DOM construction removed. All 26 todo test suites pass unchanged. All 679 Mojo + 934 JS tests pass.
 - [x] **M12.4:** Bench app factory & DOM tests. `createBenchApp()` factory added to `test-js/bench.test.ts` using `createApp()`. 10 new DOM integration test suites (31 assertions): mount, create/append/clear/update/swap/select/remove operations verified against headless DOM. All 679 Mojo + 965 JS tests pass.
 - [x] **M12.5:** Documentation & test count update. README updated (1,613 → 1,644 tests). PLAN milestone checklist updated. Phase 12 marked complete.
-- [ ] **M13.1:** Scope-scoped handler cleanup. Child scopes per item/row in todo and bench apps. `AppShell.destroy_child_scopes()` helper. `todo_handler_count`/`bench_handler_count` WASM exports. Handler leak verified fixed via JS tests. All existing tests pass.
-- [ ] **M13.2:** Memo store & MemoEntry. `MemoEntry` struct + `MemoStore` slab allocator in `src/signals/memo.mojo`. `Runtime.memos` field. Context-to-memo mapping for dirty propagation. Signal write → memo dirty → scope dirty chain. Unit tests for create/destroy, dirty tracking, propagation.
-- [ ] **M13.3:** Memo runtime API & WASM exports. `create_memo_i32`, `memo_begin_compute`, `memo_end_compute_i32`, `memo_read_i32`, `memo_is_dirty`, `destroy_memo` on Runtime. Corresponding `memo_*` WASM exports. Mojo + JS tests: basic memo, auto-track, cache hit, chain, diamond, cleanup.
+- [x] **M13.1:** Scope-scoped handler cleanup. Child scopes per item/row in todo and bench apps. `AppShell.destroy_child_scopes()` helper. `todo_handler_count`/`bench_handler_count` WASM exports. Handler leak verified fixed via 11 new JS test assertions. All 679 Mojo + 976 JS = 1,655 tests pass.
+- [x] **M13.2–13.3:** Memo store, runtime API & WASM exports (combined). `MemoEntry` struct + `MemoStore` slab allocator in `src/signals/memo.mojo`. `Runtime.memos` field + context-to-memo mapping (`_memo_ctx_ids`/`_memo_ids`) for dirty propagation. Signal write → memo dirty → scope dirty chain in `write_signal`. 6 Runtime methods: `create_memo_i32`, `memo_begin_compute`, `memo_end_compute_i32`, `memo_read_i32`, `memo_is_dirty`, `destroy_memo` + 2 introspection helpers (`memo_output_key`, `memo_context_id`). 9 WASM exports (`memo_*`). TS types updated in `runtime/types.ts`. Dependency re-tracking on recompute (begin_compute clears old subscriptions). 50 new Mojo assertions (`test/test_memo.mojo`) + 52 new JS assertions (`test-js/memo.test.ts`): create/destroy, dirty tracking, auto-track, propagation chain, diamond dependency, dependency re-tracking, cache hit, version bumps, cleanup. All 729 Mojo + 1,028 JS = 1,757 tests pass.
 - [ ] **M13.4:** `use_memo_i32` hook. Hook version of memo matching `use_signal_i32` pattern. HOOK_MEMO tag in scope hook array. `use_memo_i32` WASM export. Tests: first render creates, re-render returns same ID, interleaved with signal hooks.
 - [ ] **M13.5:** AppShell memo helpers. Convenience methods on AppShell mirroring signal helper pattern. Shell WASM exports (`shell_memo_*`). Tests verify parity with raw Runtime methods.
 - [ ] **M13.6:** Counter app memo demo. `doubled_memo` field on CounterApp. Template gains second dynamic text span ("Doubled: 2N"). `counter_doubled_value` WASM export. JS DOM tests: increment → both count and doubled update. Proves full signal → memo → DOM chain.

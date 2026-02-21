@@ -4,6 +4,7 @@ import { testCounter } from "./counter.test.ts";
 import { testDsl } from "./dsl.test.ts";
 import { summary } from "./harness.ts";
 import { testInterpreter } from "./interpreter.test.ts";
+import { testMemo } from "./memo.test.ts";
 import { testMutations } from "./mutations.test.ts";
 import { testPhase8 } from "./phase8.test.ts";
 import { testProtocol } from "./protocol.test.ts";
@@ -22,6 +23,7 @@ async function run(): Promise<void> {
 	testTodo(fns);
 	testPhase8(fns);
 	testBench(fns);
+	testMemo(fns);
 	testDsl(fns);
 
 	summary();

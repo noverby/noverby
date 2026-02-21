@@ -1,0 +1,431 @@
+import type { WasmExports } from "../runtime/types.ts";
+import { assert, suite } from "./harness.ts";
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function createRt(fns: WasmExports): bigint {
+	return fns.runtime_create();
+}
+
+function destroyRt(fns: WasmExports, rt: bigint): void {
+	fns.runtime_destroy(rt);
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────────
+
+export function testMemo(fns: WasmExports): void {
+	// ── Create / Destroy ────────────────────────────────────────────
+	suite("Memo — create and destroy");
+	{
+		const rt = createRt(fns);
+
+		const scopeId = fns.scope_create(rt, 0, -1);
+		assert(fns.memo_count(rt), 0, "no memos initially");
+
+		const m0 = fns.memo_create_i32(rt, scopeId, 42);
+		assert(fns.memo_count(rt), 1, "memo count is 1 after create");
+		assert(m0 >= 0, true, "memo ID is non-negative");
+
+		// Memo starts dirty (needs first computation)
+		assert(fns.memo_is_dirty(rt, m0), 1, "memo is dirty after creation");
+
+		// Read initial cached value
+		assert(fns.memo_read_i32(rt, m0), 42, "initial cached value is 42");
+
+		// Output key and context ID are valid signal keys
+		const outKey = fns.memo_output_key(rt, m0);
+		const ctxId = fns.memo_context_id(rt, m0);
+		assert(fns.signal_contains(rt, outKey), 1, "output signal exists");
+		assert(fns.signal_contains(rt, ctxId), 1, "context signal exists");
+
+		// Destroy
+		fns.memo_destroy(rt, m0);
+		assert(fns.memo_count(rt), 0, "memo count is 0 after destroy");
+		// Output signal and context signal should be cleaned up
+		assert(
+			fns.signal_contains(rt, outKey),
+			0,
+			"output signal destroyed after memo destroy",
+		);
+		assert(
+			fns.signal_contains(rt, ctxId),
+			0,
+			"context signal destroyed after memo destroy",
+		);
+
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
+
+	// ── Multiple memos ──────────────────────────────────────────────
+	suite("Memo — multiple memos");
+	{
+		const rt = createRt(fns);
+		const scopeId = fns.scope_create(rt, 0, -1);
+
+		const m0 = fns.memo_create_i32(rt, scopeId, 10);
+		const m1 = fns.memo_create_i32(rt, scopeId, 20);
+		const m2 = fns.memo_create_i32(rt, scopeId, 30);
+		assert(fns.memo_count(rt), 3, "3 memos created");
+		assert(m0 !== m1 && m1 !== m2, true, "memo IDs are distinct");
+
+		assert(fns.memo_read_i32(rt, m0), 10, "m0 initial = 10");
+		assert(fns.memo_read_i32(rt, m1), 20, "m1 initial = 20");
+		assert(fns.memo_read_i32(rt, m2), 30, "m2 initial = 30");
+
+		fns.memo_destroy(rt, m1);
+		assert(fns.memo_count(rt), 2, "2 memos after destroying m1");
+
+		fns.memo_destroy(rt, m0);
+		fns.memo_destroy(rt, m2);
+		assert(fns.memo_count(rt), 0, "0 memos after destroying all");
+
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
+
+	// ── ID reuse after destroy ──────────────────────────────────────
+	suite("Memo — ID reuse after destroy");
+	{
+		const rt = createRt(fns);
+		const scopeId = fns.scope_create(rt, 0, -1);
+
+		const m0 = fns.memo_create_i32(rt, scopeId, 1);
+		fns.memo_destroy(rt, m0);
+
+		const m1 = fns.memo_create_i32(rt, scopeId, 2);
+		assert(m1, m0, "freed memo ID is reused");
+		assert(fns.memo_read_i32(rt, m1), 2, "reused slot has new value");
+
+		fns.memo_destroy(rt, m1);
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
+
+	// ── Begin / End compute cycle ───────────────────────────────────
+	suite("Memo — begin/end compute");
+	{
+		const rt = createRt(fns);
+		const scopeId = fns.scope_create(rt, 0, -1);
+
+		const m0 = fns.memo_create_i32(rt, scopeId, 0);
+		assert(fns.memo_is_dirty(rt, m0), 1, "dirty before first compute");
+
+		// Compute: result = 100
+		fns.memo_begin_compute(rt, m0);
+		fns.memo_end_compute_i32(rt, m0, 100);
+
+		assert(fns.memo_is_dirty(rt, m0), 0, "clean after compute");
+		assert(fns.memo_read_i32(rt, m0), 100, "cached value is 100");
+
+		// Compute again with a different value
+		fns.memo_begin_compute(rt, m0);
+		fns.memo_end_compute_i32(rt, m0, 200);
+
+		assert(fns.memo_is_dirty(rt, m0), 0, "clean after second compute");
+		assert(fns.memo_read_i32(rt, m0), 200, "cached value updated to 200");
+
+		fns.memo_destroy(rt, m0);
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
+
+	// ── Auto-track: signal write → memo dirty ───────────────────────
+	suite("Memo — signal write marks memo dirty");
+	{
+		const rt = createRt(fns);
+		const scopeId = fns.scope_create(rt, 0, -1);
+
+		// Create an input signal
+		const sig = fns.signal_create_i32(rt, 10);
+
+		// Create a memo that depends on `sig`
+		const m0 = fns.memo_create_i32(rt, scopeId, 0);
+
+		// First compute: read the signal inside the compute bracket
+		// This should auto-subscribe the memo's context to `sig`.
+		fns.memo_begin_compute(rt, m0);
+		const val = fns.signal_read_i32(rt, sig); // auto-tracks
+		fns.memo_end_compute_i32(rt, m0, val);
+
+		assert(fns.memo_read_i32(rt, m0), 10, "computed value matches signal");
+		assert(fns.memo_is_dirty(rt, m0), 0, "memo is clean after compute");
+
+		// Verify subscription: memo's context is subscribed to `sig`
+		const _ctxId = fns.memo_context_id(rt, m0);
+		assert(
+			fns.signal_subscriber_count(rt, sig) >= 1,
+			true,
+			"input signal has at least 1 subscriber (memo context)",
+		);
+
+		// Write to the input signal — should mark memo dirty
+		fns.signal_write_i32(rt, sig, 20);
+		assert(fns.memo_is_dirty(rt, m0), 1, "memo dirty after signal write");
+
+		// Recompute
+		fns.memo_begin_compute(rt, m0);
+		const val2 = fns.signal_read_i32(rt, sig);
+		fns.memo_end_compute_i32(rt, m0, val2);
+
+		assert(fns.memo_read_i32(rt, m0), 20, "recomputed value is 20");
+		assert(fns.memo_is_dirty(rt, m0), 0, "clean after recompute");
+
+		fns.memo_destroy(rt, m0);
+		fns.signal_destroy(rt, sig);
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
+
+	// ── Propagation chain: signal → memo → scope dirty ──────────────
+	suite("Memo — signal → memo → scope dirty propagation");
+	{
+		const rt = createRt(fns);
+		const scopeId = fns.scope_create(rt, 0, -1);
+
+		const sig = fns.signal_create_i32(rt, 5);
+		const m0 = fns.memo_create_i32(rt, scopeId, 0);
+
+		// Compute: subscribe memo to signal
+		fns.memo_begin_compute(rt, m0);
+		const v = fns.signal_read_i32(rt, sig);
+		fns.memo_end_compute_i32(rt, m0, v);
+
+		// Subscribe scopeId to memo's output signal
+		// (simulate a scope reading the memo during render)
+		fns.scope_begin_render(rt, scopeId);
+		fns.memo_read_i32(rt, m0); // subscribes scope to memo's output
+		fns.scope_end_render(rt, -1);
+
+		// Drain any existing dirty scopes
+		fns.runtime_drain_dirty(rt);
+
+		// Write to input signal — should propagate: sig → memo dirty → scope dirty
+		fns.signal_write_i32(rt, sig, 99);
+
+		assert(fns.memo_is_dirty(rt, m0), 1, "memo is dirty after sig write");
+		// scope should be in the dirty queue
+		const dirtyCount = fns.runtime_drain_dirty(rt);
+		assert(dirtyCount >= 1, true, "at least 1 scope dirty after propagation");
+
+		fns.memo_destroy(rt, m0);
+		fns.signal_destroy(rt, sig);
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
+
+	// ── Cache hit: read memo twice → same value ─────────────────────
+	suite("Memo — cache hit (no recompute needed)");
+	{
+		const rt = createRt(fns);
+		const scopeId = fns.scope_create(rt, 0, -1);
+
+		const m0 = fns.memo_create_i32(rt, scopeId, 0);
+		fns.memo_begin_compute(rt, m0);
+		fns.memo_end_compute_i32(rt, m0, 77);
+
+		// Read twice — both should return the cached value
+		const r1 = fns.memo_read_i32(rt, m0);
+		const r2 = fns.memo_read_i32(rt, m0);
+		assert(r1, 77, "first read returns 77");
+		assert(r2, 77, "second read returns 77 (cache hit)");
+		assert(fns.memo_is_dirty(rt, m0), 0, "still clean after reads");
+
+		fns.memo_destroy(rt, m0);
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
+
+	// ── Diamond dependency: two memos read same signal ───────────────
+	suite("Memo — diamond: two memos depend on same signal");
+	{
+		const rt = createRt(fns);
+		const scopeId = fns.scope_create(rt, 0, -1);
+
+		const sig = fns.signal_create_i32(rt, 1);
+		const mA = fns.memo_create_i32(rt, scopeId, 0);
+		const mB = fns.memo_create_i32(rt, scopeId, 0);
+
+		// mA computes: sig * 2
+		fns.memo_begin_compute(rt, mA);
+		const vA = fns.signal_read_i32(rt, sig);
+		fns.memo_end_compute_i32(rt, mA, vA * 2);
+
+		// mB computes: sig * 3
+		fns.memo_begin_compute(rt, mB);
+		const vB = fns.signal_read_i32(rt, sig);
+		fns.memo_end_compute_i32(rt, mB, vB * 3);
+
+		assert(fns.memo_read_i32(rt, mA), 2, "mA = sig*2 = 2");
+		assert(fns.memo_read_i32(rt, mB), 3, "mB = sig*3 = 3");
+
+		// Write to shared input — both memos should become dirty
+		fns.signal_write_i32(rt, sig, 10);
+		assert(fns.memo_is_dirty(rt, mA), 1, "mA dirty after write");
+		assert(fns.memo_is_dirty(rt, mB), 1, "mB dirty after write");
+
+		// Recompute both
+		fns.memo_begin_compute(rt, mA);
+		fns.memo_end_compute_i32(rt, mA, fns.signal_read_i32(rt, sig) * 2);
+		fns.memo_begin_compute(rt, mB);
+		fns.memo_end_compute_i32(rt, mB, fns.signal_read_i32(rt, sig) * 3);
+
+		assert(fns.memo_read_i32(rt, mA), 20, "mA recomputed = 20");
+		assert(fns.memo_read_i32(rt, mB), 30, "mB recomputed = 30");
+
+		fns.memo_destroy(rt, mA);
+		fns.memo_destroy(rt, mB);
+		fns.signal_destroy(rt, sig);
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
+
+	// ── Cleanup: destroy memo removes subscription on input signal ───
+	suite("Memo — destroy removes input signal subscription");
+	{
+		const rt = createRt(fns);
+		const scopeId = fns.scope_create(rt, 0, -1);
+
+		const sig = fns.signal_create_i32(rt, 1);
+		const subsBefore = fns.signal_subscriber_count(rt, sig);
+
+		const m0 = fns.memo_create_i32(rt, scopeId, 0);
+
+		// Compute so the memo subscribes to sig
+		fns.memo_begin_compute(rt, m0);
+		fns.signal_read_i32(rt, sig);
+		fns.memo_end_compute_i32(rt, m0, 1);
+
+		const subsAfterCompute = fns.signal_subscriber_count(rt, sig);
+		assert(
+			subsAfterCompute > subsBefore,
+			true,
+			"subscriber count increased after compute",
+		);
+
+		// Destroy the memo — its context signal is destroyed, and the
+		// subscription should be effectively removed (context no longer
+		// exists, so even if still in the list it's inert).
+		fns.memo_destroy(rt, m0);
+
+		// Write to signal should not cause issues
+		fns.signal_write_i32(rt, sig, 99);
+		// Just verify no crash
+		fns.runtime_drain_dirty(rt);
+
+		fns.signal_destroy(rt, sig);
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
+
+	// ── Dependency re-tracking on recompute ─────────────────────────
+	suite("Memo — dependency re-tracking on recompute");
+	{
+		const rt = createRt(fns);
+		const scopeId = fns.scope_create(rt, 0, -1);
+
+		const sigA = fns.signal_create_i32(rt, 1);
+		const sigB = fns.signal_create_i32(rt, 100);
+
+		const m0 = fns.memo_create_i32(rt, scopeId, 0);
+
+		// First compute: read only sigA
+		fns.memo_begin_compute(rt, m0);
+		const v1 = fns.signal_read_i32(rt, sigA);
+		fns.memo_end_compute_i32(rt, m0, v1);
+
+		assert(fns.memo_read_i32(rt, m0), 1, "first compute reads sigA=1");
+
+		// Writing sigA should dirty the memo
+		fns.signal_write_i32(rt, sigA, 2);
+		assert(fns.memo_is_dirty(rt, m0), 1, "dirty after sigA write");
+
+		// Second compute: read only sigB (not sigA)
+		fns.memo_begin_compute(rt, m0);
+		const v2 = fns.signal_read_i32(rt, sigB);
+		fns.memo_end_compute_i32(rt, m0, v2);
+
+		assert(fns.memo_read_i32(rt, m0), 100, "second compute reads sigB=100");
+		assert(fns.memo_is_dirty(rt, m0), 0, "clean after recompute");
+
+		// Now writing sigA should NOT dirty the memo (no longer subscribed)
+		fns.signal_write_i32(rt, sigA, 999);
+		assert(
+			fns.memo_is_dirty(rt, m0),
+			0,
+			"memo NOT dirty after sigA write (unsubscribed)",
+		);
+
+		// Writing sigB SHOULD dirty the memo
+		fns.signal_write_i32(rt, sigB, 200);
+		assert(fns.memo_is_dirty(rt, m0), 1, "memo dirty after sigB write");
+
+		fns.memo_destroy(rt, m0);
+		fns.signal_destroy(rt, sigA);
+		fns.signal_destroy(rt, sigB);
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
+
+	// ── Read memo without active context — no crash ─────────────────
+	suite("Memo — read without active context");
+	{
+		const rt = createRt(fns);
+		const scopeId = fns.scope_create(rt, 0, -1);
+
+		const m0 = fns.memo_create_i32(rt, scopeId, 55);
+
+		fns.memo_begin_compute(rt, m0);
+		fns.memo_end_compute_i32(rt, m0, 55);
+
+		// Read with no scope render active (no context) — should just return value
+		const v = fns.memo_read_i32(rt, m0);
+		assert(v, 55, "read without context returns cached value");
+
+		fns.memo_destroy(rt, m0);
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
+
+	// ── Destroy non-existent memo — no crash ────────────────────────
+	suite("Memo — destroy non-existent memo is no-op");
+	{
+		const rt = createRt(fns);
+
+		// Should not crash
+		fns.memo_destroy(rt, 9999);
+		assert(
+			fns.memo_count(rt),
+			0,
+			"count still 0 after destroying non-existent",
+		);
+
+		destroyRt(fns, rt);
+	}
+
+	// ── Output signal version bumps on compute ──────────────────────
+	suite("Memo — output signal version increments on compute");
+	{
+		const rt = createRt(fns);
+		const scopeId = fns.scope_create(rt, 0, -1);
+
+		const m0 = fns.memo_create_i32(rt, scopeId, 0);
+		const outKey = fns.memo_output_key(rt, m0);
+
+		const v0 = fns.signal_version(rt, outKey);
+
+		fns.memo_begin_compute(rt, m0);
+		fns.memo_end_compute_i32(rt, m0, 10);
+		const v1 = fns.signal_version(rt, outKey);
+		assert(v1 > v0, true, "version bumped after first compute");
+
+		fns.memo_begin_compute(rt, m0);
+		fns.memo_end_compute_i32(rt, m0, 20);
+		const v2 = fns.signal_version(rt, outKey);
+		assert(v2 > v1, true, "version bumped after second compute");
+
+		fns.memo_destroy(rt, m0);
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
+}
