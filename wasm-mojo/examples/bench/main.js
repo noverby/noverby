@@ -1,6 +1,7 @@
 // Benchmark App — Browser Entry Point
 //
 // Uses shared runtime from examples/lib/ for WASM env, protocol, and interpreter.
+// Templates are automatically registered from WASM via RegisterTemplate mutations.
 //
 // Boots the Mojo WASM benchmark app (js-framework-benchmark style) in a
 // browser environment. Provides Create/Append/Update/Swap/Clear/Select/Remove
@@ -40,46 +41,24 @@ async function boot() {
   try {
     fns = await loadWasm(new URL("../../build/out.wasm", import.meta.url));
 
-    // Initialize benchmark app
+    // 1. Initialize benchmark app
     appPtr = fns.bench_init();
-    const rowTmplId = fns.bench_row_template_id(appPtr);
 
-    // Build template DOM for bench-row: tr > [ td(id), td > a(label), td > a("×") ]
-    const templateRoots = new Map();
-    {
-      const tr = document.createElement("tr");
-      const tdId = document.createElement("td");
-      tdId.appendChild(document.createTextNode("")); // dynamic_text[0]
-      tr.appendChild(tdId);
-      const tdLabel = document.createElement("td");
-      const aLabel = document.createElement("a");
-      aLabel.appendChild(document.createTextNode("")); // dynamic_text[1]
-      tdLabel.appendChild(aLabel);
-      tr.appendChild(tdLabel);
-      const tdAction = document.createElement("td");
-      const aRemove = document.createElement("a");
-      aRemove.className = "remove";
-      aRemove.appendChild(document.createTextNode("×"));
-      tdAction.appendChild(aRemove);
-      tr.appendChild(tdAction);
-      templateRoots.set(rowTmplId, [tr.cloneNode(true)]);
-    }
-
-    // Create interpreter and allocate mutation buffer
-    interp = createInterpreter(tbody, templateRoots);
+    // 2. Create interpreter (empty — templates come from WASM via RegisterTemplate mutations)
+    interp = createInterpreter(tbody, new Map());
     bufPtr = allocBuffer(BUF_CAPACITY);
 
-    // Wire up event listener tracking via EventBridge (no-op dispatch —
+    // 3. Wire up event listener tracking via EventBridge (no-op dispatch —
     // bench uses event delegation on tbody, not per-element listeners)
     new EventBridge(interp, () => {});
 
-    // Initial mount (empty table body with anchor placeholder)
+    // 4. Initial mount (RegisterTemplate + LoadTemplate in one pass)
     const mountLen = fns.bench_rebuild(appPtr, bufPtr, BUF_CAPACITY);
     if (mountLen > 0) {
       applyMutations(interp, bufPtr, mountLen);
     }
 
-    // Event delegation on tbody
+    // 5. Event delegation on tbody
     tbody.addEventListener("click", (e) => {
       const a = e.target.closest("a");
       if (!a) return;
@@ -104,7 +83,7 @@ async function boot() {
       }
     });
 
-    // Wire buttons
+    // 6. Wire buttons
     document.getElementById("btn-create1k").onclick = () => {
       timeOp("Create 1,000 rows", () => {
         fns.bench_create(appPtr, 1000);

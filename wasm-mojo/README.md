@@ -9,12 +9,14 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **Reactive signals** — fine-grained reactivity with automatic dependency tracking
 - **Virtual DOM** — template-based VNodes with keyed diffing
 - **Binary mutation protocol** — efficient Mojo → JS communication via shared memory
+- **Automatic template wiring** — templates defined once in Mojo, auto-registered in JS via `RegisterTemplate` mutations
+- **Automatic event wiring** — handler IDs flow through the mutation protocol; `EventBridge` dispatches events without manual mapping
 - **Event system** — DOM events delegated through WASM with action-based handlers
 - **Scoped components** — hierarchical scopes with hooks, context, error boundaries, and suspense
 - **Ergonomic DSL** — `el_div`, `el_button`, `dyn_text` tag helpers with `to_template()` conversion
 - **AppShell abstraction** — single struct bundling runtime, store, allocator, and scheduler
 - **Three working apps** — counter, todo list, and js-framework-benchmark
-- **1,536 tests** — 676 Mojo (via wasmtime) + 860 JS (via Deno), all passing
+- **1,613 tests** — 679 Mojo (via wasmtime) + 934 JS (via Deno), all passing
 
 ## How it works
 
@@ -199,10 +201,11 @@ Mojo and JS communicate through a binary protocol in shared memory. Each mutatio
 | `0x09` | InsertBefore | id: u32, count: u32 |
 | `0x0a` | SetAttribute | id: u32, ns: u8, name: str, value: str |
 | `0x0b` | SetText | id: u32, text: str |
-| `0x0c` | NewEventListener | id: u32, name: str |
+| `0x0c` | NewEventListener | id: u32, handler_id: u32, name: str |
 | `0x0d` | RemoveEventListener | id: u32, name: str |
 | `0x0e` | Remove | id: u32 |
 | `0x0f` | PushRoot | id: u32 |
+| `0x10` | RegisterTemplate | tmpl_id: u32, name: str, nodes[], attrs[], roots[] |
 
 ## Prerequisites
 
@@ -285,7 +288,7 @@ Adding a new test:
 
 ## Test results
 
-1,536 tests across 26 Mojo modules and 8 JS test suites:
+1,613 tests across 26 Mojo modules and 8 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
