@@ -2538,6 +2538,20 @@ Extracted the repeated fragment-based list flush logic from todo and bench apps 
 - **Total app reduction**: 1,205 → 1,013 lines across all three apps (−192 lines). Net across all changed files: −10 lines (223 insertions, 233 deletions).
 - **All 674 Mojo + 859 JS tests pass unchanged**, confirming that the extracted lifecycle helper produces identical mutation sequences and DOM output.
 
+### 10.9 AppShell Flush Methods & Scheduler Integration (✅ Done)
+
+Added convenience methods to `AppShell` so app flush functions no longer bypass the Scheduler or pass raw subsystem pointers:
+
+- **`AppShell.consume_dirty()` method** (`component/app_shell.mojo`): Routes dirty scope processing through the height-ordered Scheduler instead of raw `runtime.drain_dirty()`. Calls `collect_dirty()` (which drains runtime → scheduler with deduplication and height sorting) then consumes all scheduled entries. Returns `True` if any scopes were dirty. For single-scope apps this is functionally equivalent to a raw drain, but correctly prepares for multi-scope support by ensuring parent-before-child render order.
+- **`AppShell.flush_fragment()` method** (`component/app_shell.mojo`): Convenience wrapper around the lifecycle `flush_fragment()` helper that uses the shell's own `eid_alloc`, `runtime`, and `store` pointers. Eliminates the need for apps to pass 4 raw pointers individually. Same semantics: handles all three fragment transitions (empty→populated, populated→populated, populated→empty), does NOT finalize.
+- **Counter app** (`apps/counter.mojo`): Replaced `shell.has_dirty()` + `runtime[0].drain_dirty()` (5 lines) with single `shell.consume_dirty()` call (2 lines). Flush path no longer accesses `runtime[0]` directly. Net reduction: 217 → 214 lines (−3 lines).
+- **Todo app** (`apps/todo.mojo`): Replaced `shell.has_dirty()` + `runtime[0].drain_dirty()` with `shell.consume_dirty()`. Replaced 6-argument `flush_fragment(writer, eid, rt, store, slot, frag)` call with 3-argument `shell.flush_fragment(writer, slot, frag)`. Removed direct `flush_fragment` import from component package. Net reduction: 376 → 370 lines (−6 lines).
+- **Bench app** (`apps/bench.mojo`): Same changes as todo. Replaced raw drain + raw flush_fragment with shell methods. Removed direct `flush_fragment` import. Net reduction: 420 → 414 lines (−6 lines).
+- **AppShell growth**: `component/app_shell.mojo` grew from 242 → 304 lines (+62 lines) for the two new methods with full documentation.
+- **Total app reduction**: 1,013 → 998 lines across all three apps (−15 lines). Net across all changed files: +47 lines (76 insertions, 29 deletions).
+- **Key architectural improvement**: All app flush paths now route through the Scheduler (M10.4) instead of bypassing it with raw `drain_dirty()`. The Scheduler's height-ordered processing and deduplication are now active, preparing the codebase for multi-scope component trees.
+- **All 674 Mojo + 859 JS tests pass unchanged**, confirming that the scheduler-routed flush produces identical mutation sequences and DOM output.
+
 ---
 
 ## Milestone Checklist
@@ -2560,3 +2574,4 @@ Extracted the repeated fragment-based list flush logic from todo and bench apps 
 - [x] **M10.6:** DSL-based app rewrite. Counter, todo, and bench apps converted from `TemplateBuilder`/manual VNode construction to `el_*`/`to_template`/`VNodeBuilder` DSL. All 674 Mojo + 859 JS tests pass unchanged.
 - [x] **M10.7:** AppShell integration. All three apps refactored from manual `Runtime`/`VNodeStore`/`ElementIdAllocator` pointer management to `AppShell` struct. Counter fully uses shell lifecycle methods (`mount`, `diff`, `finalize`, `dispatch_event`). Todo and bench use shell for init/destroy/signals, direct subsystem access for complex flush logic. 8 WASM exports updated. All 674 Mojo + 859 JS tests pass unchanged.
 - [x] **M10.8:** Fragment lifecycle helpers. `FragmentSlot` struct + `flush_fragment()` extracted to `component/lifecycle.mojo`. Todo and bench apps refactored from ~90/~80 lines of manual fragment transition logic to single `flush_fragment()` call each. Apps reduced by −192 lines total (todo: 484→376, bench: 504→420). All 674 Mojo + 859 JS tests pass unchanged.
+- [x] **M10.9:** AppShell flush methods & scheduler integration. `consume_dirty()` routes dirty scope processing through the Scheduler instead of raw `drain_dirty()`. `flush_fragment()` method on AppShell wraps lifecycle helper using shell's own pointers (3 args instead of 6). All app flush paths simplified, no more raw subsystem pointer access in flush. Apps reduced by −15 lines (counter: 217→214, todo: 376→370, bench: 420→414). All 674 Mojo + 859 JS tests pass unchanged.
