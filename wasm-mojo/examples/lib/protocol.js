@@ -24,6 +24,7 @@ export const Op = {
   RemoveEventListener: 0x0d,
   Remove: 0x0e,
   PushRoot: 0x0f,
+  RegisterTemplate: 0x10,
 };
 
 // ── MutationReader ──────────────────────────────────────────────────────────
@@ -132,6 +133,50 @@ export class MutationReader {
         return { op, id: this.readU32() };
       case Op.PushRoot:
         return { op, id: this.readU32() };
+      case Op.RegisterTemplate: {
+        const tmplId = this.readU32();
+        const name = this.readShortStr();
+        const rootCount = this.readU16();
+        const nodeCount = this.readU16();
+        const attrCount = this.readU16();
+        const nodes = [];
+        for (let i = 0; i < nodeCount; i++) {
+          const kind = this.readU8();
+          if (kind === 0x00) {
+            // Element
+            const tag = this.readU8();
+            const childCount = this.readU16();
+            const children = [];
+            for (let c = 0; c < childCount; c++) children.push(this.readU16());
+            const attrFirst = this.readU16();
+            const attrNum = this.readU16();
+            nodes.push({ kind, tag, children, attrFirst, attrCount: attrNum });
+          } else if (kind === 0x01) {
+            // Text
+            nodes.push({ kind, text: this.readStr() });
+          } else if (kind === 0x02) {
+            // Dynamic
+            nodes.push({ kind, dynamicIndex: this.readU32() });
+          } else if (kind === 0x03) {
+            // DynamicText
+            nodes.push({ kind, dynamicIndex: this.readU32() });
+          }
+        }
+        const attrs = [];
+        for (let i = 0; i < attrCount; i++) {
+          const akind = this.readU8();
+          if (akind === 0x00) {
+            // Static
+            attrs.push({ kind: akind, name: this.readShortStr(), value: this.readStr() });
+          } else if (akind === 0x01) {
+            // Dynamic
+            attrs.push({ kind: akind, dynamicIndex: this.readU32() });
+          }
+        }
+        const rootIndices = [];
+        for (let i = 0; i < rootCount; i++) rootIndices.push(this.readU16());
+        return { op, tmplId, name, rootCount, nodeCount, attrCount, nodes, attrs, rootIndices };
+      }
       default:
         throw new Error(`Unknown opcode 0x${op.toString(16)}`);
     }

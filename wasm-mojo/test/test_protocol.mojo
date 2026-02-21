@@ -24,7 +24,11 @@ from wasm_harness import (
     args_ptr_i32_i32_ptr,
     args_ptr_i32_i32_i32_i32,
     args_ptr_i32_i32_i32_ptr_ptr,
+    args_ptr_i32_ptr_i32,
     args_ptr_i32_ptr_i32_i32,
+    args_ptr_i32_ptr_ptr,
+    args_ptr_ptr,
+    args_ptr_ptr_i32,
     no_args,
 )
 
@@ -51,6 +55,7 @@ alias OP_NEW_EVENT_LISTENER = 0x0C
 alias OP_REMOVE_EVENT_LISTENER = 0x0D
 alias OP_REMOVE = 0x0E
 alias OP_PUSH_ROOT = 0x0F
+alias OP_REGISTER_TEMPLATE = 0x10
 
 alias BUF_CAP = 4096
 
@@ -1177,6 +1182,428 @@ fn test_all_opcodes_in_one_buffer(w: UnsafePointer[WasmInstance]) raises:
     _free_buf(w, buf)
 
 
+# ── Template node / attr kind constants ──────────────────────────────────────
+
+alias TNODE_ELEMENT = 0x00
+alias TNODE_TEXT = 0x01
+alias TNODE_DYNAMIC = 0x02
+alias TNODE_DYNAMIC_TEXT = 0x03
+alias TATTR_STATIC = 0x00
+alias TATTR_DYNAMIC = 0x01
+
+# HTML tag constants (matching src/vdom/tags.mojo)
+alias TAG_DIV = 0
+alias TAG_SPAN = 1
+alias TAG_BUTTON = 19
+
+
+# ── Template registration helpers ────────────────────────────────────────────
+
+
+fn _create_runtime(w: UnsafePointer[WasmInstance]) raises -> Int:
+    return Int(w[].call_i64("runtime_create", no_args()))
+
+
+fn _destroy_runtime(w: UnsafePointer[WasmInstance], rt: Int) raises:
+    w[].call_void("runtime_destroy", args_ptr(rt))
+
+
+fn _create_builder(w: UnsafePointer[WasmInstance], name: String) raises -> Int:
+    return Int(
+        w[].call_i64(
+            "tmpl_builder_create", args_ptr(w[].write_string_struct(name))
+        )
+    )
+
+
+fn _destroy_builder(w: UnsafePointer[WasmInstance], b: Int) raises:
+    w[].call_void("tmpl_builder_destroy", args_ptr(b))
+
+
+fn _read_short_str_bytes(
+    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
+) raises -> (Int, Int):
+    """Read a u16-length-prefixed string's length and return (length, new_offset).
+
+    Does NOT read the string content itself — caller should verify byte-by-byte.
+    """
+    var slen = _read_u16_le(w, buf, offset)
+    return (slen, offset + 2 + slen)
+
+
+fn _read_str_bytes(
+    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
+) raises -> (Int, Int):
+    """Read a u32-length-prefixed string's length and return (length, new_offset).
+
+    Does NOT read the string content itself — caller should verify byte-by-byte.
+    """
+    var slen = _read_u32_le(w, buf, offset)
+    return (slen, offset + 4 + slen)
+
+
+# ── Register Template tests ──────────────────────────────────────────────────
+
+
+fn test_register_template_minimal(w: UnsafePointer[WasmInstance]) raises:
+    """Serialize a minimal template: div > dyn_text[0].
+
+    Template structure:
+      node[0] = Element(TAG_DIV), children=[1], no attrs
+      node[1] = DynamicText(index=0)
+      root_indices = [0]
+
+    Verifies: opcode, header fields, node encodings, root indices.
+    """
+    var rt = _create_runtime(w)
+    var b = _create_builder(w, String("min"))
+
+    # div (root, parent=-1)
+    _ = w[].call_i32(
+        "tmpl_builder_push_element", args_ptr_i32_i32(b, TAG_DIV, -1)
+    )
+    # dyn_text[0] (parent=0 → div)
+    _ = w[].call_i32(
+        "tmpl_builder_push_dynamic_text", args_ptr_i32_i32(b, 0, 0)
+    )
+    # Register
+    var tmpl_id = Int(
+        w[].call_i32("tmpl_builder_register", args_ptr_ptr(rt, b))
+    )
+    _destroy_builder(w, b)
+
+    # Serialize
+    var buf = _alloc_buf(w)
+    var off = Int(
+        w[].call_i32(
+            "write_op_register_template",
+            args_ptr_i32_ptr_i32(buf, 0, rt, Int32(tmpl_id)),
+        )
+    )
+
+    var pos = 0
+
+    # Opcode
+    assert_equal(
+        _read_u8(w, buf, pos),
+        OP_REGISTER_TEMPLATE,
+        "opcode is REGISTER_TEMPLATE",
+    )
+    pos += 1
+
+    # tmpl_id (u32)
+    assert_equal(_read_u32_le(w, buf, pos), tmpl_id, "tmpl_id")
+    pos += 4
+
+    # name: u16 len + "min"
+    assert_equal(_read_u16_le(w, buf, pos), 3, "name length is 3")
+    pos += 2
+    assert_equal(_read_u8(w, buf, pos), Int(ord("m")), "name[0]='m'")
+    assert_equal(_read_u8(w, buf, pos + 1), Int(ord("i")), "name[1]='i'")
+    assert_equal(_read_u8(w, buf, pos + 2), Int(ord("n")), "name[2]='n'")
+    pos += 3
+
+    # root_count (u16) = 1
+    assert_equal(_read_u16_le(w, buf, pos), 1, "root_count is 1")
+    pos += 2
+
+    # node_count (u16) = 2
+    assert_equal(_read_u16_le(w, buf, pos), 2, "node_count is 2")
+    pos += 2
+
+    # attr_count (u16) = 0
+    assert_equal(_read_u16_le(w, buf, pos), 0, "attr_count is 0")
+    pos += 2
+
+    # ── Node 0: Element(TAG_DIV) ──
+    assert_equal(
+        _read_u8(w, buf, pos), TNODE_ELEMENT, "node[0] kind is ELEMENT"
+    )
+    pos += 1
+    assert_equal(_read_u8(w, buf, pos), TAG_DIV, "node[0] tag is DIV")
+    pos += 1
+    # child_count = 1
+    assert_equal(_read_u16_le(w, buf, pos), 1, "node[0] child_count is 1")
+    pos += 2
+    # child[0] = 1 (the dyn_text node)
+    assert_equal(_read_u16_le(w, buf, pos), 1, "node[0] child[0] is 1")
+    pos += 2
+    # attr_first = 0, attr_count = 0
+    assert_equal(_read_u16_le(w, buf, pos), 0, "node[0] attr_first is 0")
+    pos += 2
+    assert_equal(_read_u16_le(w, buf, pos), 0, "node[0] attr_count is 0")
+    pos += 2
+
+    # ── Node 1: DynamicText(index=0) ──
+    assert_equal(
+        _read_u8(w, buf, pos),
+        TNODE_DYNAMIC_TEXT,
+        "node[1] kind is DYNAMIC_TEXT",
+    )
+    pos += 1
+    assert_equal(_read_u32_le(w, buf, pos), 0, "node[1] dynamic_index is 0")
+    pos += 4
+
+    # ── No attributes ──
+
+    # ── Root indices: [0] ──
+    assert_equal(_read_u16_le(w, buf, pos), 0, "root[0] is 0")
+    pos += 2
+
+    # Verify total bytes written matches offset
+    assert_equal(off, pos, "total bytes matches expected")
+
+    _free_buf(w, buf)
+    _destroy_runtime(w, rt)
+
+
+fn test_register_template_with_text_and_attrs(
+    w: UnsafePointer[WasmInstance],
+) raises:
+    """Serialize a template with static text, static attrs, and dynamic attrs.
+
+    Template structure (counter-like):
+      node[0] = Element(TAG_DIV), children=[1, 2]
+      node[1] = Element(TAG_SPAN), children=[3]
+      node[2] = Element(TAG_BUTTON), children=[4]
+        static_attr: type="submit"
+        dynamic_attr: index=0
+      node[3] = DynamicText(index=0)
+      node[4] = Text("+")
+      root_indices = [0]
+
+    Verifies: text node encoding, static/dynamic attr encoding.
+    """
+    var rt = _create_runtime(w)
+    var b = _create_builder(w, String("ctr"))
+
+    # div (root)
+    _ = w[].call_i32(
+        "tmpl_builder_push_element", args_ptr_i32_i32(b, TAG_DIV, -1)
+    )
+    # span (child of div)
+    _ = w[].call_i32(
+        "tmpl_builder_push_element", args_ptr_i32_i32(b, TAG_SPAN, 0)
+    )
+    # button (child of div)
+    _ = w[].call_i32(
+        "tmpl_builder_push_element", args_ptr_i32_i32(b, TAG_BUTTON, 0)
+    )
+    # dyn_text[0] (child of span)
+    _ = w[].call_i32(
+        "tmpl_builder_push_dynamic_text", args_ptr_i32_i32(b, 0, 1)
+    )
+    # text "+" (child of button)
+    var plus_ptr = w[].write_string_struct("+")
+    _ = w[].call_i32("tmpl_builder_push_text", args_ptr_ptr_i32(b, plus_ptr, 2))
+    # static attr on button: type="submit"
+    var type_ptr = w[].write_string_struct("type")
+    var submit_ptr = w[].write_string_struct("submit")
+    w[].call_void(
+        "tmpl_builder_push_static_attr",
+        args_ptr_i32_ptr_ptr(b, 2, type_ptr, submit_ptr),
+    )
+    # dynamic attr on button: index=0
+    w[].call_void("tmpl_builder_push_dynamic_attr", args_ptr_i32_i32(b, 2, 0))
+
+    # Register
+    var tmpl_id = Int(
+        w[].call_i32("tmpl_builder_register", args_ptr_ptr(rt, b))
+    )
+    _destroy_builder(w, b)
+
+    # Serialize
+    var buf = _alloc_buf(w)
+    var off = Int(
+        w[].call_i32(
+            "write_op_register_template",
+            args_ptr_i32_ptr_i32(buf, 0, rt, Int32(tmpl_id)),
+        )
+    )
+
+    var pos = 0
+
+    # Opcode
+    assert_equal(_read_u8(w, buf, pos), OP_REGISTER_TEMPLATE)
+    pos += 1
+
+    # tmpl_id
+    assert_equal(_read_u32_le(w, buf, pos), tmpl_id)
+    pos += 4
+
+    # name: "ctr"
+    assert_equal(_read_u16_le(w, buf, pos), 3, "name length")
+    pos += 2 + 3  # skip "ctr"
+
+    # root_count = 1
+    assert_equal(_read_u16_le(w, buf, pos), 1, "root_count")
+    pos += 2
+
+    # node_count = 5
+    assert_equal(_read_u16_le(w, buf, pos), 5, "node_count")
+    pos += 2
+
+    # attr_count = 2 (1 static + 1 dynamic)
+    assert_equal(_read_u16_le(w, buf, pos), 2, "attr_count")
+    pos += 2
+
+    # ── Node 0: Element(TAG_DIV), 2 children [1,2], 0 attrs ──
+    assert_equal(_read_u8(w, buf, pos), TNODE_ELEMENT, "n0 kind")
+    pos += 1
+    assert_equal(_read_u8(w, buf, pos), TAG_DIV, "n0 tag")
+    pos += 1
+    assert_equal(_read_u16_le(w, buf, pos), 2, "n0 child_count")
+    pos += 2
+    assert_equal(_read_u16_le(w, buf, pos), 1, "n0 child[0]")
+    pos += 2
+    assert_equal(_read_u16_le(w, buf, pos), 2, "n0 child[1]")
+    pos += 2
+    assert_equal(_read_u16_le(w, buf, pos), 0, "n0 attr_first")
+    pos += 2
+    assert_equal(_read_u16_le(w, buf, pos), 0, "n0 attr_count")
+    pos += 2
+
+    # ── Node 1: Element(TAG_SPAN), 1 child [3], 0 attrs ──
+    assert_equal(_read_u8(w, buf, pos), TNODE_ELEMENT, "n1 kind")
+    pos += 1
+    assert_equal(_read_u8(w, buf, pos), TAG_SPAN, "n1 tag")
+    pos += 1
+    assert_equal(_read_u16_le(w, buf, pos), 1, "n1 child_count")
+    pos += 2
+    assert_equal(_read_u16_le(w, buf, pos), 3, "n1 child[0]")
+    pos += 2
+    assert_equal(_read_u16_le(w, buf, pos), 0, "n1 attr_first")
+    pos += 2
+    assert_equal(_read_u16_le(w, buf, pos), 0, "n1 attr_count")
+    pos += 2
+
+    # ── Node 2: Element(TAG_BUTTON), 1 child [4], 2 attrs at first=0 ──
+    assert_equal(_read_u8(w, buf, pos), TNODE_ELEMENT, "n2 kind")
+    pos += 1
+    assert_equal(_read_u8(w, buf, pos), TAG_BUTTON, "n2 tag")
+    pos += 1
+    assert_equal(_read_u16_le(w, buf, pos), 1, "n2 child_count")
+    pos += 2
+    assert_equal(_read_u16_le(w, buf, pos), 4, "n2 child[0]")
+    pos += 2
+    # attr_first and attr_count set by TemplateBuilder
+    var n2_attr_first = _read_u16_le(w, buf, pos)
+    pos += 2
+    assert_equal(_read_u16_le(w, buf, pos), 2, "n2 attr_count")
+    pos += 2
+
+    # ── Node 3: DynamicText(index=0) ──
+    assert_equal(_read_u8(w, buf, pos), TNODE_DYNAMIC_TEXT, "n3 kind")
+    pos += 1
+    assert_equal(_read_u32_le(w, buf, pos), 0, "n3 dynamic_index")
+    pos += 4
+
+    # ── Node 4: Text("+") ──
+    assert_equal(_read_u8(w, buf, pos), TNODE_TEXT, "n4 kind")
+    pos += 1
+    # u32 text length = 1
+    assert_equal(_read_u32_le(w, buf, pos), 1, "n4 text length")
+    pos += 4
+    assert_equal(_read_u8(w, buf, pos), Int(ord("+")), "n4 text is '+'")
+    pos += 1
+
+    # ── Attr 0: Static("type", "submit") ──
+    assert_equal(_read_u8(w, buf, pos), TATTR_STATIC, "a0 kind static")
+    pos += 1
+    # name: u16 len + "type"
+    assert_equal(_read_u16_le(w, buf, pos), 4, "a0 name len")
+    pos += 2
+    assert_equal(_read_u8(w, buf, pos), Int(ord("t")))
+    assert_equal(_read_u8(w, buf, pos + 1), Int(ord("y")))
+    assert_equal(_read_u8(w, buf, pos + 2), Int(ord("p")))
+    assert_equal(_read_u8(w, buf, pos + 3), Int(ord("e")))
+    pos += 4
+    # value: u32 len + "submit"
+    assert_equal(_read_u32_le(w, buf, pos), 6, "a0 value len")
+    pos += 4
+    assert_equal(_read_u8(w, buf, pos), Int(ord("s")))
+    assert_equal(_read_u8(w, buf, pos + 1), Int(ord("u")))
+    assert_equal(_read_u8(w, buf, pos + 2), Int(ord("b")))
+    assert_equal(_read_u8(w, buf, pos + 3), Int(ord("m")))
+    assert_equal(_read_u8(w, buf, pos + 4), Int(ord("i")))
+    assert_equal(_read_u8(w, buf, pos + 5), Int(ord("t")))
+    pos += 6
+
+    # ── Attr 1: Dynamic(index=0) ──
+    assert_equal(_read_u8(w, buf, pos), TATTR_DYNAMIC, "a1 kind dynamic")
+    pos += 1
+    assert_equal(_read_u32_le(w, buf, pos), 0, "a1 dynamic_index")
+    pos += 4
+
+    # ── Root indices: [0] ──
+    assert_equal(_read_u16_le(w, buf, pos), 0, "root[0]")
+    pos += 2
+
+    assert_equal(off, pos, "total bytes matches")
+
+    _free_buf(w, buf)
+    _destroy_runtime(w, rt)
+
+
+fn test_register_template_with_dynamic_node(
+    w: UnsafePointer[WasmInstance],
+) raises:
+    """Serialize a template with a Dynamic node slot (not DynamicText).
+
+    Template: div > dynamic[0]
+      node[0] = Element(TAG_DIV), children=[1]
+      node[1] = Dynamic(index=0)
+      root_indices = [0]
+    """
+    var rt = _create_runtime(w)
+    var b = _create_builder(w, String("dyn"))
+
+    _ = w[].call_i32(
+        "tmpl_builder_push_element", args_ptr_i32_i32(b, TAG_DIV, -1)
+    )
+    _ = w[].call_i32("tmpl_builder_push_dynamic", args_ptr_i32_i32(b, 0, 0))
+    var tmpl_id = Int(
+        w[].call_i32("tmpl_builder_register", args_ptr_ptr(rt, b))
+    )
+    _destroy_builder(w, b)
+
+    var buf = _alloc_buf(w)
+    var off = Int(
+        w[].call_i32(
+            "write_op_register_template",
+            args_ptr_i32_ptr_i32(buf, 0, rt, Int32(tmpl_id)),
+        )
+    )
+
+    # Skip header: op(1) + id(4) + name_u16(2) + "dyn"(3) + root(2) + node(2) + attr(2)
+    var pos = 1 + 4 + 2 + 3 + 2 + 2 + 2  # = 16
+
+    # Node 0: Element(TAG_DIV), 1 child
+    assert_equal(_read_u8(w, buf, pos), TNODE_ELEMENT, "n0 element")
+    pos += 1  # kind
+    pos += 1  # tag
+    assert_equal(_read_u16_le(w, buf, pos), 1, "n0 1 child")
+    pos += 2  # child_count
+    pos += 2  # child[0]
+    pos += 2  # attr_first
+    pos += 2  # attr_count
+
+    # Node 1: Dynamic(index=0)
+    assert_equal(_read_u8(w, buf, pos), TNODE_DYNAMIC, "n1 kind is DYNAMIC")
+    pos += 1
+    assert_equal(_read_u32_le(w, buf, pos), 0, "n1 dynamic_index")
+    pos += 4
+
+    # Root indices
+    assert_equal(_read_u16_le(w, buf, pos), 0, "root[0]")
+    pos += 2
+
+    assert_equal(off, pos, "total bytes")
+
+    _free_buf(w, buf)
+    _destroy_runtime(w, rt)
+
+
 fn main() raises:
     from wasm_harness import get_instance
 
@@ -1215,4 +1642,7 @@ fn main() raises:
     test_debug_ptr_roundtrip(w)
     test_debug_read_write_byte(w)
     test_all_opcodes_in_one_buffer(w)
-    print("protocol: 34/34 passed")
+    test_register_template_minimal(w)
+    test_register_template_with_text_and_attrs(w)
+    test_register_template_with_dynamic_node(w)
+    print("protocol: 37/37 passed")

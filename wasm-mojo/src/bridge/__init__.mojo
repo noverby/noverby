@@ -1,1 +1,1 @@
-from .protocol import MutationWriter
+from .protocol import MutationWriter, OP_REGISTER_TEMPLATE

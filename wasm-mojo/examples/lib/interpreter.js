@@ -4,6 +4,15 @@
 
 import { Op, MutationReader } from "./protocol.js";
 
+// Tag ID → tag name lookup (must match src/vdom/tags.mojo)
+const TAG_NAMES = [
+  "div", "span", "p", "section", "header", "footer", "nav", "main",
+  "article", "aside", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol",
+  "li", "button", "input", "form", "textarea", "select", "option", "label",
+  "a", "img", "table", "thead", "tbody", "tr", "td", "th", "strong", "em",
+  "br", "hr", "pre", "code",
+];
+
 /**
  * Minimal DOM interpreter that applies binary-encoded mutation buffers
  * (produced by Mojo's MutationWriter) to a live DOM tree.
@@ -177,6 +186,59 @@ export class Interpreter {
         for (const n of news) parent.insertBefore(n, ref);
         break;
       }
+
+      case Op.RegisterTemplate: {
+        const roots = [];
+        for (const rootIdx of m.rootIndices) {
+          roots.push(this.buildTemplateNode(rootIdx, m.nodes, m.attrs));
+        }
+        this.templateRoots.set(m.tmplId, roots);
+        break;
+      }
+    }
+  }
+
+  /**
+   * Recursively build a DOM node from a decoded RegisterTemplate mutation's
+   * serialized node/attr arrays.
+   *
+   * @param {number} nodeIdx - Index into the nodes array.
+   * @param {Array}  nodes   - Flat array of serialized template nodes.
+   * @param {Array}  attrs   - Flat array of serialized template attributes.
+   * @returns {Node}
+   */
+  buildTemplateNode(nodeIdx, nodes, attrs) {
+    const node = nodes[nodeIdx];
+    switch (node.kind) {
+      case 0x00: {
+        // Element
+        const tag = TAG_NAMES[node.tag] || "unknown";
+        const el = this.doc.createElement(tag);
+        // Static attributes
+        for (let a = 0; a < node.attrCount; a++) {
+          const attr = attrs[node.attrFirst + a];
+          if (attr.kind === 0x00) {
+            el.setAttribute(attr.name, attr.value);
+          }
+          // Dynamic attrs are filled at render time — skip
+        }
+        // Children
+        for (const childIdx of node.children) {
+          el.appendChild(this.buildTemplateNode(childIdx, nodes, attrs));
+        }
+        return el;
+      }
+      case 0x01:
+        // Static text
+        return this.doc.createTextNode(node.text);
+      case 0x02:
+        // Dynamic node placeholder
+        return this.doc.createComment("placeholder");
+      case 0x03:
+        // Dynamic text placeholder
+        return this.doc.createTextNode("");
+      default:
+        throw new Error(`Unknown template node kind ${node.kind}`);
     }
   }
 }

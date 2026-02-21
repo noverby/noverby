@@ -29,6 +29,8 @@ A Dioxus-inspired, signal-based UI framework written in Mojo, compiled to WebAss
 - [Phase 9 — Performance & Polish](#phase-9--performance--polish)
 - [Test Strategy](#test-strategy)
 - [Project Structure](#project-structure)
+- [Phase 10 — Modularization & Next Steps](#phase-10--modularization--next-steps)
+- [Phase 11 — Automatic Template & Event Wiring](#phase-11--automatic-template--event-wiring)
 - [Open Questions](#open-questions)
 - [Milestone Checklist](#milestone-checklist)
 
@@ -2429,7 +2431,7 @@ runtime/
 
 > **Goal:** Improve codebase structure, reduce monolithic coupling, and prepare for future feature work.
 >
-> **Status:** In progress.
+> **Status:** Complete (M10.1–M10.22).
 
 ### 10.1 Extract App Modules (✅ Done)
 
@@ -2729,6 +2731,228 @@ Investigated whether `@export` functions could be moved from `main.mojo` into su
 
 ---
 
+## Phase 11 — Automatic Template & Event Wiring
+
+> **Goal:** Eliminate the two largest sources of JS-side boilerplate: (1) manual DOM template construction — templates are defined once in Mojo and auto-materialized in JS via the mutation protocol; (2) manual event handler mapping — handler IDs flow through the mutation protocol so the JS runtime can dispatch events automatically.
+>
+> **Motivation:** Today every template must be defined twice — once in Mojo (via `to_template()`) for the VNode/diffing layer, and again in JS (manually calling `createElement`/`createTextNode`) for the interpreter to clone. Event wiring is similarly duplicated: the Mojo side stores handler IDs in `DynamicAttr.value.handler_id`, but the `NewEventListener` mutation only carries the event name — JS must maintain a parallel handler-ID mapping. This phase closes both gaps.
+>
+> **Impact:** Counter JS drops from ~80 → ~25 lines. Todo JS drops from ~170 → ~50 lines. Bench JS drops from ~150 → ~60 lines. New apps only need a ~15-line boot function.
+>
+> **Status:** In progress (M11.1–M11.2 done).
+
+### 11.1 Template Serialization Protocol
+
+Add a new mutation opcode that lets Mojo serialize a `Template`'s full static structure into the binary buffer so the JS interpreter can build DOM template roots automatically.
+
+**New opcode:** `OP_REGISTER_TEMPLATE (0x10)`
+
+**Wire format:**
+
+```text
+| op (u8)
+| tmpl_id (u32)        — template registry ID
+| name_len (u16)       — template name (for debugging)
+| name ([u8])
+| root_count (u16)     — number of root node indices
+| node_count (u16)     — total nodes in flat array
+| attr_count (u16)     — total attributes in flat array
+| [nodes × node_count] — serialized TemplateNodes
+| [attrs × attr_count] — serialized TemplateAttributes
+| [root_indices × root_count as u16]
+```
+
+**Node wire format** (kind-tagged):
+
+- Element: `| 0x00 | tag (u8) | child_count (u16) | [child_indices as u16…] | attr_first (u16) | attr_count (u16) |`
+- Text: `| 0x01 | text_len (u32) | text ([u8]) |`
+- Dynamic: `| 0x02 | dynamic_index (u32) |`
+- DynamicText: `| 0x03 | dynamic_index (u32) |`
+
+**Attribute wire format** (kind-tagged):
+
+- Static: `| 0x00 | name_len (u16) | name | value_len (u32) | value |`
+- Dynamic: `| 0x01 | dynamic_index (u32) |`
+
+**Mojo changes:**
+
+- `MutationWriter.register_template(tmpl: Template)` — walks the template's flat node/attr arrays and emits the wire format above.
+- Unit tests: serialize counter, todo-app, todo-item, bench-row templates and verify exact byte output.
+
+**Deliverables:**
+
+- [x] `OP_REGISTER_TEMPLATE` constant in `protocol.mojo`
+- [x] `MutationWriter.register_template()` method
+- [x] Mojo tests: 3 round-trip serialization tests (minimal, text+attrs, dynamic node)
+- [x] JS `Op.RegisterTemplate` constant in `protocol.js` and `runtime/protocol.ts`
+- [x] JS `MutationReader.next()` case for `RegisterTemplate` (both browser and test runtimes)
+- [x] JS tests: 4 test suites (minimal, text+attrs, dynamic node, readAll sequence) — 39 new assertions
+
+### 11.2 JS Template Deserializer & Interpreter Integration
+
+The JS interpreter builds DOM template roots from the serialized data instead of requiring pre-built `templateRoots`.
+
+**JS changes:**
+
+- `MutationReader` gains a `RegisterTemplate` case that returns a structured object with the full template description (nodes, attrs, root indices).
+- `Interpreter.handle()` handles `Op.RegisterTemplate`:
+  1. Walks the flat node array starting from each root index.
+  2. Recursively builds DOM nodes: `createElement(tagName)` for elements, `createTextNode(text)` for text, `createTextNode("")` for DynamicText (placeholder for future `SetText`), `createComment("placeholder")` for Dynamic (placeholder for future `ReplacePlaceholder`).
+  3. Applies static attributes via `setAttribute()`.
+  4. Skips dynamic attributes (they're filled in at render time via `SetAttribute`/`NewEventListener`).
+  5. Stores the result in `this.templateRoots.set(tmplId, [rootNode.cloneNode(true)])`.
+- Tag ID → tag name mapping: a JS lookup array matching `tags.mojo` constants (index 0 = "div", 1 = "span", …, 39 = "code").
+
+**Tests:**
+
+- [x] JS test: minimal template (div > dyn_text) → interpreter builds correct DOM (div with empty text node)
+- [x] JS test: template with static text + attrs (div > span + button[type=submit]) → correct structure, static attrs applied
+- [x] JS test: Dynamic node → comment placeholder in DOM
+- [x] JS test: RegisterTemplate + LoadTemplate round-trip → template registered, cloned, and mounted to DOM
+- [x] JS test: verify DynamicText nodes become empty text nodes
+- [x] JS test: verify Dynamic nodes become comment placeholders
+- [x] JS test: verify static attributes (type="submit") are applied
+
+### 11.3 Handler-Aware Event Mutations
+
+Include the handler ID in `NewEventListener` mutations so the JS side knows which WASM handler to invoke without external mapping.
+
+**Protocol change (breaking):**
+
+Current: `| op (u8) | id (u32) | name_len (u16) | name ([u8]) |`
+
+New: `| op (u8) | id (u32) | handler_id (u32) | name_len (u16) | name ([u8]) |`
+
+**Mojo changes:**
+
+- `MutationWriter.new_event_listener(id, handler_id, name)` — add `handler_id` parameter.
+- `CreateEngine`: pass `dyn_attr.value.handler_id` when emitting `new_event_listener`.
+- `DiffEngine`: pass `new_attr.value.handler_id` when emitting `new_event_listener`.
+- Update `write_op_new_event_listener` WASM export.
+
+**JS changes:**
+
+- `MutationReader.next()` for `NewEventListener`: read extra `handler_id (u32)` field.
+- `Interpreter.handle()` for `NewEventListener`: store `handlerId` in the listener metadata.
+- `interp.onNewListener` callback signature becomes `(elementId, eventName, handlerId) => listener`.
+
+**Test updates:**
+
+- [ ] All Mojo protocol tests updated for new wire format size
+- [ ] All JS protocol tests updated for new field
+- [ ] All mutation tests updated for new `new_event_listener` signature
+- [ ] Verify handler_id flows through counter create → JS decode
+
+### 11.4 EventBridge Auto-Dispatch
+
+A reusable JS class that automatically wires event listeners to WASM dispatch, eliminating per-app handler mapping.
+
+**New file:** `examples/lib/events.js`
+
+```js
+export class EventBridge {
+  constructor(interpreter, dispatch) {
+    this.dispatch = dispatch;
+    interpreter.onNewListener = (elementId, eventName, handlerId) => {
+      return (domEvent) => {
+        this.dispatch(handlerId, eventName, domEvent);
+      };
+    };
+  }
+}
+```
+
+**`dispatch` callback signature:** `(handlerId: number, eventName: string, domEvent: Event) => void`
+
+Each app provides a single dispatch function that:
+
+1. Calls the appropriate WASM `*_handle_event(appPtr, handlerId, eventType)` export.
+2. Calls `*_flush(appPtr, bufPtr, capacity)`.
+3. Applies mutations if any.
+
+For apps with complex event handling (todo: reading input values, extracting row IDs from DOM), the dispatch function can inspect `domEvent.target` or use handler-ID ranges to determine the action.
+
+**Deliverables:**
+
+- [ ] `examples/lib/events.js` with `EventBridge` class
+- [ ] Export from `examples/lib/boot.js`
+- [ ] Counter example uses `EventBridge` (simplest case)
+- [ ] Todo example uses `EventBridge` with custom dispatch logic
+- [ ] Bench example uses `EventBridge` with event delegation
+
+### 11.5 AppShell Template Emission
+
+Convenience method on `AppShell` to serialize all registered templates into the mutation buffer as part of the initial boot sequence.
+
+**Mojo changes:**
+
+- `AppShell.emit_templates(writer_ptr)` — iterates the template registry and calls `writer_ptr[0].register_template(tmpl)` for each registered template.
+- Alternative: emit templates as the first step of each app's `*_rebuild()` function, before `CreateEngine` runs. This keeps the "one buffer, one pass" pattern.
+
+**New WASM exports (one per app):**
+
+- `counter_emit_templates(app, buf, cap) -> Int32` — or integrated into `counter_rebuild`.
+- `todo_emit_templates(app, buf, cap) -> Int32`
+- `bench_emit_templates(app, buf, cap) -> Int32`
+
+**Design decision:** Emit templates as a separate mutation buffer vs. prepended to the mount buffer.
+
+- **Separate buffer** (simpler): JS calls `emit_templates()` first, applies it (interpreter registers templates), then calls `rebuild()` which uses `LoadTemplate`.
+- **Prepended** (fewer round-trips): templates + mount mutations in one buffer, one `applyMutations()` call. Requires `RegisterTemplate` to be processed before `LoadTemplate` in the same pass — which works naturally since the reader processes mutations sequentially.
+
+Recommendation: **Prepended** — fewer WASM↔JS round-trips, simpler app boot.
+
+**Deliverables:**
+
+- [ ] `AppShell.emit_templates(writer_ptr)` method
+- [ ] `Runtime.template_count()` / `Runtime.get_template(index)` accessors
+- [ ] Integration into `*_rebuild()` (prepend strategy) OR separate WASM exports
+- [ ] Tests: verify templates appear before `LoadTemplate` in mutation buffer
+
+### 11.6 Example Simplification
+
+Rewrite all three browser examples to use automatic template registration and `EventBridge`, eliminating manual DOM construction and handler wiring.
+
+**Counter (target: ~25 lines of app-specific JS):**
+
+```js
+import { loadWasm, createInterpreter, allocBuffer, applyMutations } from "../lib/boot.js";
+import { EventBridge } from "../lib/events.js";
+
+async function boot() {
+  const root = document.getElementById("root");
+  const fns = await loadWasm(new URL("../../build/out.wasm", import.meta.url));
+  const appPtr = fns.counter_init();
+  const bufPtr = allocBuffer(16384);
+  root.innerHTML = "";
+  const interp = createInterpreter(root, new Map());  // empty — templates come from WASM
+
+  new EventBridge(interp, (handlerId) => {
+    fns.counter_handle_event(appPtr, handlerId, 0);
+    const len = fns.counter_flush(appPtr, bufPtr, 16384);
+    if (len > 0) applyMutations(interp, bufPtr, len);
+  });
+
+  const mountLen = fns.counter_rebuild(appPtr, bufPtr, 16384);
+  if (mountLen > 0) applyMutations(interp, bufPtr, mountLen);
+}
+boot();
+```
+
+**Todo (target: ~50 lines):** dispatch function reads input values and extracts item IDs from handler-ID ranges or DOM attributes.
+
+**Bench (target: ~60 lines):** event delegation on `<tbody>` remains (bench pattern), but template construction is eliminated.
+
+**Deliverables:**
+
+- [ ] Counter example rewritten — no manual `templateRoots`, no `handlerOrder`
+- [ ] Todo example rewritten — no manual template DOM, simplified event dispatch
+- [ ] Bench example rewritten — no manual template DOM
+- [ ] All examples verified working in browser (`just serve`)
+- [ ] Line count comparison documented
+
+---
+
 ## Milestone Checklist
 
 - [x] **M0:** Arena allocator + collections + ElementId + protocol defined. All existing tests still pass.
@@ -2763,3 +2987,9 @@ Investigated whether `@export` functions could be moved from `main.mojo` into su
 - [x] **M10.20:** Generic pointer accessor & final `_to_i64` fixes. 12 type-specific `_get_*` helpers replaced with 1 generic `_get[T: AnyType](ptr: Int64)`. 270+ call sites updated. `_as_ptr` now only used inside `_get[T]` definition. 2 remaining `Int64(Int(...))` unified to `_to_i64`. 7 raw `_as_ptr[UInt8]` calls replaced with `_get[UInt8]`. `main.mojo` reduced from 3,326 → 3,282 lines (−44 lines). All 676 Mojo + 860 JS tests pass unchanged.
 - [x] **M10.21:** Inline single-use pointer bindings. 157 single-use `var X = _get[T](ptr)` declarations inlined to direct `_get[T](ptr)[0].method()` expressions. 18 multi-use bindings retained. All 397 exports now use consistent inline style. `create_vnode` and `diff_vnodes` simplified with inline `_get` in engine constructors. `main.mojo`: 3,282 → 3,298 lines (+16 due to formatter wrapping; 157 var declarations removed). All 676 Mojo + 860 JS tests pass unchanged.
 - [x] **M10.22:** Document `@export` submodule limitation. Investigated moving `@export` to submodules to eliminate ~430 lines of thin wrappers from `main.mojo`. Mojo's DCE eliminates submodule `@export` functions before LLVM IR — only main-module `@export` reliably produces WASM exports. Imports without call sites do not anchor against DCE. Current wrapper pattern is required. No code changes; limitation documented.
+- [x] **M11.1:** Template serialization protocol. `OP_REGISTER_TEMPLATE (0x10)` opcode + `MutationWriter.register_template()` method. Full template structure (nodes, attrs, roots) serialized to binary buffer. JS `MutationReader` decodes new opcode in both `examples/lib/protocol.js` and `runtime/protocol.ts`. `write_op_register_template` WASM export added. 3 new Mojo tests + 39 new JS assertions. All 679 Mojo + 899 JS tests pass.
+- [x] **M11.2:** JS template deserializer. `TemplateCache.registerFromMutation()` builds DOM template roots from decoded `RegisterTemplate` mutations. `Interpreter.handleMutation()` routes `Op.RegisterTemplate` to the cache. Browser interpreter (`examples/lib/interpreter.js`) gains `buildTemplateNode()` with inline tag-name lookup table. 25 new JS assertions (4 test suites: minimal, text+attrs, dynamic node, LoadTemplate round-trip). All 679 Mojo + 924 JS tests pass.
+- [ ] **M11.3:** Handler-aware event mutations. `NewEventListener` wire format extended with `handler_id (u32)`. CreateEngine/DiffEngine pass handler IDs. JS `MutationReader` + `Interpreter` updated. `onNewListener` callback receives handler ID.
+- [ ] **M11.4:** EventBridge auto-dispatch. `examples/lib/events.js` provides `EventBridge` class. Apps supply one `dispatch(handlerId, eventName, domEvent)` callback instead of manual handler-to-element mapping.
+- [ ] **M11.5:** AppShell template emission. `emit_templates(writer)` serializes all registered templates. Prepended to mount buffer for single-pass boot. `Runtime` gains template iteration accessors.
+- [ ] **M11.6:** Example simplification. Counter/todo/bench rewritten with auto template registration + EventBridge. Counter ~80→~25 lines, todo ~170→~50 lines, bench ~150→~60 lines. All examples verified in browser.
