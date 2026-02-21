@@ -122,6 +122,8 @@ struct TodoApp(Movable):
     var add_handler: UInt32
     # Handler → item action mapping (rebuilt on every flush)
     var handler_map: List[HandlerItemMapping]
+    # Child scope IDs for per-item handler lifecycle (one scope per item)
+    var item_scope_ids: List[UInt32]
 
     fn __init__(out self):
         self.shell = AppShell()
@@ -136,6 +138,7 @@ struct TodoApp(Movable):
         self.item_slot = FragmentSlot()
         self.add_handler = 0
         self.handler_map = List[HandlerItemMapping]()
+        self.item_scope_ids = List[UInt32]()
 
     fn __moveinit__(out self, deinit other: Self):
         self.shell = other.shell^
@@ -150,6 +153,7 @@ struct TodoApp(Movable):
         self.item_slot = other.item_slot^
         self.add_handler = other.add_handler
         self.handler_map = other.handler_map^
+        self.item_scope_ids = other.item_scope_ids^
 
     fn add_item(mut self, text: String):
         """Add a new item and bump the list version signal."""
@@ -197,6 +201,10 @@ struct TodoApp(Movable):
         Registers toggle/remove handler IDs in handler_map so the
         EventBridge dispatch can call the correct WASM action.
         """
+        # Create a child scope for this item's handlers
+        var child_scope = self.shell.create_child_scope(self.scope_id)
+        self.item_scope_ids.append(child_scope)
+
         var vb = VNodeBuilder(
             self.item_template_id, String(item.id), self.shell.store
         )
@@ -211,7 +219,7 @@ struct TodoApp(Movable):
 
         # Dynamic attr 0: toggle handler (click on ✓ button)
         var toggle_handler = self.shell.runtime[0].register_handler(
-            HandlerEntry.custom(self.scope_id, String("click"))
+            HandlerEntry.custom(child_scope, String("click"))
         )
         vb.add_dyn_event(String("click"), toggle_handler)
         self.handler_map.append(
@@ -220,7 +228,7 @@ struct TodoApp(Movable):
 
         # Dynamic attr 1: remove handler (click on ✕ button)
         var remove_handler = self.shell.runtime[0].register_handler(
-            HandlerEntry.custom(self.scope_id, String("click"))
+            HandlerEntry.custom(child_scope, String("click"))
         )
         vb.add_dyn_event(String("click"), remove_handler)
         self.handler_map.append(
@@ -240,9 +248,13 @@ struct TodoApp(Movable):
     fn build_items_fragment(mut self) -> UInt32:
         """Build a Fragment VNode containing keyed item children.
 
-        Clears and rebuilds the handler_map so it reflects the current
-        set of item handler IDs.
+        Destroys old per-item child scopes (cleaning up their handlers),
+        then clears and rebuilds the handler_map so it reflects the
+        current set of item handler IDs.
         """
+        # Destroy old child scopes — cleans up their handlers automatically
+        self.shell.destroy_child_scopes(self.item_scope_ids)
+        self.item_scope_ids.clear()
         self.handler_map.clear()
         var frag_idx = self.shell.store[0].push(VNode.fragment())
         for i in range(len(self.items)):

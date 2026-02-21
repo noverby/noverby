@@ -165,6 +165,8 @@ struct BenchmarkApp(Movable):
     var next_id: Int32
     var rng_state: UInt32  # simple LCG state
     var row_slot: FragmentSlot  # tracks row list fragment lifecycle
+    # Child scope IDs for per-row handler lifecycle (one scope per row)
+    var row_scope_ids: List[UInt32]
 
     fn __init__(out self):
         self.shell = AppShell()
@@ -176,6 +178,7 @@ struct BenchmarkApp(Movable):
         self.next_id = 1
         self.rng_state = 42
         self.row_slot = FragmentSlot()
+        self.row_scope_ids = List[UInt32]()
 
     fn __moveinit__(out self, deinit other: Self):
         self.shell = other.shell^
@@ -187,6 +190,7 @@ struct BenchmarkApp(Movable):
         self.next_id = other.next_id
         self.rng_state = other.rng_state
         self.row_slot = other.row_slot^
+        self.row_scope_ids = other.row_scope_ids^
 
     fn _next_random(mut self) -> UInt32:
         """Simple LCG: state = state * 1664525 + 1013904223."""
@@ -271,6 +275,10 @@ struct BenchmarkApp(Movable):
           dynamic_attr[1] = click on label <a> (select)
           dynamic_attr[2] = click on delete <a> (remove)
         """
+        # Create a child scope for this row's handlers
+        var child_scope = self.shell.create_child_scope(self.scope_id)
+        self.row_scope_ids.append(child_scope)
+
         var vb = VNodeBuilder(
             self.row_template_id, String(row.id), self.shell.store
         )
@@ -292,20 +300,27 @@ struct BenchmarkApp(Movable):
 
         # Dynamic attr 1: click on label <a> (select — custom handler)
         var select_handler = self.shell.runtime[0].register_handler(
-            HandlerEntry.custom(self.scope_id, String("click"))
+            HandlerEntry.custom(child_scope, String("click"))
         )
         vb.add_dyn_event(String("click"), select_handler)
 
         # Dynamic attr 2: click on delete <a> (remove — custom handler)
         var remove_handler = self.shell.runtime[0].register_handler(
-            HandlerEntry.custom(self.scope_id, String("click"))
+            HandlerEntry.custom(child_scope, String("click"))
         )
         vb.add_dyn_event(String("click"), remove_handler)
 
         return vb.index()
 
     fn build_rows_fragment(mut self) -> UInt32:
-        """Build a Fragment VNode containing all row VNodes."""
+        """Build a Fragment VNode containing all row VNodes.
+
+        Destroys old per-row child scopes (cleaning up their handlers),
+        then creates new child scopes for each row.
+        """
+        # Destroy old child scopes — cleans up their handlers automatically
+        self.shell.destroy_child_scopes(self.row_scope_ids)
+        self.row_scope_ids.clear()
         var frag_idx = self.shell.store[0].push(VNode.fragment())
         for i in range(len(self.rows)):
             var row_idx = self.build_row_vnode(self.rows[i].copy())

@@ -764,4 +764,86 @@ export function testTodo(fns: Fns): void {
 
 		app.destroy();
 	}
+
+	// ═════════════════════════════════════════════════════════════════════
+	// Section 4: Handler lifecycle (M13.1)
+	// ═════════════════════════════════════════════════════════════════════
+
+	suite("Todo — handler count after adding items");
+	{
+		const appPtr = fns.todo_init();
+		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
+		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
+
+		// Before adding items: only the "add" handler exists
+		const hcBefore = fns.todo_handler_count(appPtr);
+		assert(hcBefore, 1, "1 handler (add) before any items");
+
+		// Add 5 items — each gets 2 handlers (toggle + remove)
+		for (let i = 0; i < 5; i++) {
+			fns.todo_add_item(appPtr, writeStringStruct(`Item ${i}`));
+		}
+		fns.todo_flush(appPtr, bufPtr, BUF_CAPACITY);
+
+		const hcAfter = fns.todo_handler_count(appPtr);
+		// 1 (add) + 5 * 2 (toggle + remove per item) = 11
+		assert(hcAfter, 11, "11 handlers after adding 5 items (1 add + 10 item)");
+
+		fns.todo_destroy(appPtr);
+	}
+
+	suite("Todo — handler count stays bounded after add/remove cycles");
+	{
+		const appPtr = fns.todo_init();
+		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
+		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
+
+		// Perform 10 cycles of add-then-remove
+		for (let cycle = 0; cycle < 10; cycle++) {
+			fns.todo_add_item(appPtr, writeStringStruct(`Cycle ${cycle}`));
+			fns.todo_flush(appPtr, bufPtr, BUF_CAPACITY);
+
+			const itemId = fns.todo_item_id_at(appPtr, 0);
+			fns.todo_remove_item(appPtr, itemId);
+			fns.todo_flush(appPtr, bufPtr, BUF_CAPACITY);
+		}
+
+		// After 10 add/remove cycles with 0 items remaining:
+		// Should be 1 (add handler only), NOT 1 + 10*2 = 21 (leaked)
+		const hc = fns.todo_handler_count(appPtr);
+		assert(hc, 1, "1 handler after 10 add/remove cycles (no leak)");
+
+		fns.todo_destroy(appPtr);
+	}
+
+	suite("Todo — handler count bounded with multiple items across flushes");
+	{
+		const appPtr = fns.todo_init();
+		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
+		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
+
+		// Add 3 items, flush
+		fns.todo_add_item(appPtr, writeStringStruct("A"));
+		fns.todo_add_item(appPtr, writeStringStruct("B"));
+		fns.todo_add_item(appPtr, writeStringStruct("C"));
+		fns.todo_flush(appPtr, bufPtr, BUF_CAPACITY);
+
+		const hc1 = fns.todo_handler_count(appPtr);
+		assert(hc1, 7, "7 handlers: 1 add + 3*2 item handlers");
+
+		// Add 2 more items, flush again — old item handlers should be cleaned up
+		// and re-registered (total = 1 add + 5*2 item = 11)
+		fns.todo_add_item(appPtr, writeStringStruct("D"));
+		fns.todo_add_item(appPtr, writeStringStruct("E"));
+		fns.todo_flush(appPtr, bufPtr, BUF_CAPACITY);
+
+		const hc2 = fns.todo_handler_count(appPtr);
+		assert(
+			hc2,
+			11,
+			"11 handlers: 1 add + 5*2 item handlers (no leak from previous flush)",
+		);
+
+		fns.todo_destroy(appPtr);
+	}
 }
