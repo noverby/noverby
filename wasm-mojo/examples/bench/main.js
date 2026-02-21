@@ -6,7 +6,7 @@
 // browser environment. Provides Create/Append/Update/Swap/Clear/Select/Remove
 // operations with timing display.
 
-import { loadWasm, createInterpreter, allocBuffer, applyMutations } from "../lib/boot.js";
+import { loadWasm, createInterpreter, allocBuffer, applyMutations, EventBridge } from "../lib/boot.js";
 
 const BUF_CAPACITY = 8 * 1024 * 1024; // 8 MB mutation buffer
 
@@ -69,10 +69,9 @@ async function boot() {
     interp = createInterpreter(tbody, templateRoots);
     bufPtr = allocBuffer(BUF_CAPACITY);
 
-    // Wire up event listener tracking (no-op — we use delegation below)
-    interp.onNewListener = (elementId, eventName) => {
-      return () => {};
-    };
+    // Wire up event listener tracking via EventBridge (no-op dispatch —
+    // bench uses event delegation on tbody, not per-element listeners)
+    new EventBridge(interp, () => {});
 
     // Initial mount (empty table body with anchor placeholder)
     const mountLen = fns.bench_rebuild(appPtr, bufPtr, BUF_CAPACITY);

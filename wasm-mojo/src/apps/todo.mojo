@@ -70,6 +70,35 @@ struct TodoItem(Copyable, Movable):
         self.completed = other.completed
 
 
+# Handler-to-item action tags for EventBridge dispatch.
+alias TODO_ACTION_ADD: UInt8 = 0
+alias TODO_ACTION_TOGGLE: UInt8 = 1
+alias TODO_ACTION_REMOVE: UInt8 = 2
+
+
+struct HandlerItemMapping(Copyable, Movable):
+    """Maps a handler ID to an item action and item ID."""
+
+    var handler_id: UInt32
+    var action: UInt8  # TODO_ACTION_TOGGLE or TODO_ACTION_REMOVE
+    var item_id: Int32
+
+    fn __init__(out self, handler_id: UInt32, action: UInt8, item_id: Int32):
+        self.handler_id = handler_id
+        self.action = action
+        self.item_id = item_id
+
+    fn __copyinit__(out self, other: Self):
+        self.handler_id = other.handler_id
+        self.action = other.action
+        self.item_id = other.item_id
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.handler_id = other.handler_id
+        self.action = other.action
+        self.item_id = other.item_id
+
+
 struct TodoApp(Movable):
     """Self-contained todo list application state.
 
@@ -91,6 +120,8 @@ struct TodoApp(Movable):
     var item_slot: FragmentSlot  # tracks item list fragment lifecycle
     # Handler IDs for the app-level controls
     var add_handler: UInt32
+    # Handler → item action mapping (rebuilt on every flush)
+    var handler_map: List[HandlerItemMapping]
 
     fn __init__(out self):
         self.shell = AppShell()
@@ -104,6 +135,7 @@ struct TodoApp(Movable):
         self.current_vnode = -1
         self.item_slot = FragmentSlot()
         self.add_handler = 0
+        self.handler_map = List[HandlerItemMapping]()
 
     fn __moveinit__(out self, deinit other: Self):
         self.shell = other.shell^
@@ -117,6 +149,7 @@ struct TodoApp(Movable):
         self.current_vnode = other.current_vnode
         self.item_slot = other.item_slot^
         self.add_handler = other.add_handler
+        self.handler_map = other.handler_map^
 
     fn add_item(mut self, text: String):
         """Add a new item and bump the list version signal."""
@@ -160,6 +193,9 @@ struct TodoApp(Movable):
           dynamic_attr[0] = click on toggle button
           dynamic_attr[1] = click on remove button
           dynamic_attr[2] = class on the li element
+
+        Registers toggle/remove handler IDs in handler_map so the
+        EventBridge dispatch can call the correct WASM action.
         """
         var vb = VNodeBuilder(
             self.item_template_id, String(item.id), self.shell.store
@@ -178,12 +214,18 @@ struct TodoApp(Movable):
             HandlerEntry.custom(self.scope_id, String("click"))
         )
         vb.add_dyn_event(String("click"), toggle_handler)
+        self.handler_map.append(
+            HandlerItemMapping(toggle_handler, TODO_ACTION_TOGGLE, item.id)
+        )
 
         # Dynamic attr 1: remove handler (click on ✕ button)
         var remove_handler = self.shell.runtime[0].register_handler(
             HandlerEntry.custom(self.scope_id, String("click"))
         )
         vb.add_dyn_event(String("click"), remove_handler)
+        self.handler_map.append(
+            HandlerItemMapping(remove_handler, TODO_ACTION_REMOVE, item.id)
+        )
 
         # Dynamic attr 2: class on the li element
         var li_class: String
@@ -196,12 +238,41 @@ struct TodoApp(Movable):
         return vb.index()
 
     fn build_items_fragment(mut self) -> UInt32:
-        """Build a Fragment VNode containing keyed item children."""
+        """Build a Fragment VNode containing keyed item children.
+
+        Clears and rebuilds the handler_map so it reflects the current
+        set of item handler IDs.
+        """
+        self.handler_map.clear()
         var frag_idx = self.shell.store[0].push(VNode.fragment())
         for i in range(len(self.items)):
             var item_idx = self.build_item_vnode(self.items[i].copy())
             self.shell.store[0].push_fragment_child(frag_idx, item_idx)
         return frag_idx
+
+    fn handle_event(mut self, handler_id: UInt32) -> Bool:
+        """Dispatch a click event by handler ID.
+
+        Looks up the handler in the handler_map to determine the action
+        (toggle/remove) and the target item ID.  Returns True if the
+        handler was found and the action executed, False otherwise
+        (e.g. the add_handler which JS handles specially).
+        """
+        if handler_id == self.add_handler:
+            # Add handler — JS must read the input value and call add_item
+            return False
+
+        for i in range(len(self.handler_map)):
+            if self.handler_map[i].handler_id == handler_id:
+                var action = self.handler_map[i].action
+                var item_id = self.handler_map[i].item_id
+                if action == TODO_ACTION_TOGGLE:
+                    self.toggle_item(item_id)
+                    return True
+                elif action == TODO_ACTION_REMOVE:
+                    self.remove_item(item_id)
+                    return True
+        return False
 
     fn build_app_vnode(mut self) -> UInt32:
         """Build the app shell VNode (TemplateRef for todo-app).
