@@ -2,13 +2,14 @@
 //
 // Uses shared runtime from examples/lib/ for WASM env, protocol, and interpreter.
 // Uses EventBridge for automatic event wiring via handler IDs in the mutation protocol.
+// Templates are automatically registered from WASM via RegisterTemplate mutations.
 //
 // Flow:
 //   1. Load WASM via shared loadWasm()
 //   2. Initialize counter app in WASM (runtime, signals, handlers, template)
-//   3. Build matching template DOM on JS side
-//   4. Create interpreter + EventBridge BEFORE first mount
-//   5. Apply initial mount mutations (events get wired up in the same pass)
+//   3. Create interpreter with empty template map (templates come from WASM)
+//   4. Wire EventBridge for automatic event dispatch
+//   5. Apply initial mount mutations (templates + events wired in one pass)
 //   6. Clicks → EventBridge → WASM dispatch → flush → apply mutations → DOM updated
 
 import { loadWasm, createInterpreter, allocBuffer, applyMutations, EventBridge } from "../lib/boot.js";
@@ -24,37 +25,20 @@ async function boot() {
 
     // 1. Initialize counter app in WASM
     const appPtr = fns.counter_init();
-    const tmplId = fns.counter_tmpl_id(appPtr);
 
-    // 2. Build matching template DOM: div > [ span > "", button > "+", button > "−" ]
-    const templateRoots = new Map();
-    {
-      const div = document.createElement("div");
-      const span = document.createElement("span");
-      span.appendChild(document.createTextNode(""));
-      div.appendChild(span);
-      const btnPlus = document.createElement("button");
-      btnPlus.appendChild(document.createTextNode("+"));
-      div.appendChild(btnPlus);
-      const btnMinus = document.createElement("button");
-      btnMinus.appendChild(document.createTextNode("\u2212"));
-      div.appendChild(btnMinus);
-      templateRoots.set(tmplId, [div.cloneNode(true)]);
-    }
-
-    // 3. Clear loading indicator and create interpreter
+    // 2. Clear loading indicator and create interpreter (empty — templates come from WASM)
     rootEl.innerHTML = "";
-    const interp = createInterpreter(rootEl, templateRoots);
+    const interp = createInterpreter(rootEl, new Map());
     const bufPtr = allocBuffer(BUF_CAPACITY);
 
-    // 4. Wire events via EventBridge — handler IDs come from the mutation protocol
+    // 3. Wire events via EventBridge — handler IDs come from the mutation protocol
     new EventBridge(interp, (handlerId) => {
       fns.counter_handle_event(appPtr, handlerId, EVT_CLICK);
       const len = fns.counter_flush(appPtr, bufPtr, BUF_CAPACITY);
       if (len > 0) applyMutations(interp, bufPtr, len);
     });
 
-    // 5. Initial mount
+    // 4. Initial mount (RegisterTemplate + LoadTemplate + events in one pass)
     const mountLen = fns.counter_rebuild(appPtr, bufPtr, BUF_CAPACITY);
     if (mountLen > 0) applyMutations(interp, bufPtr, mountLen);
 
