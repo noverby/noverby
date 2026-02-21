@@ -2442,31 +2442,49 @@ The monolithic `src/main.mojo` (4,249 lines) has been refactored:
 
 `src/main.mojo` is now 2,930 lines of thin `@export` wrappers and PoC arithmetic/string functions. All 790 tests pass unchanged.
 
-### 10.2 Extract PoC Exports (Planned)
+### 10.2 Extract PoC Exports (✅ Done)
 
-Move the original proof-of-concept arithmetic, string, and algorithm exports into a `src/poc/` package:
+The original proof-of-concept arithmetic, string, and algorithm implementations have been extracted into a `src/poc/` package:
 
-- `src/poc/arithmetic.mojo` — add, sub, mul, div, mod, pow, neg, abs, min, max, clamp
-- `src/poc/bitwise.mojo` — bitand, bitor, bitxor, bitnot, shl, shr
-- `src/poc/comparison.mojo` — eq, ne, lt, le, gt, ge, bool_and, bool_or, bool_not
-- `src/poc/algorithms.mojo` — fib, factorial, gcd
-- `src/poc/strings.mojo` — string_length, string_concat, string_repeat, string_eq, print, identity
+- **`src/poc/arithmetic.mojo`** — `poc_add_*`, `poc_sub_*`, `poc_mul_*`, `poc_div_*`, `poc_mod_*`, `poc_pow_*`, `poc_neg_*`, `poc_abs_*`, `poc_min_*`, `poc_max_*`, `poc_clamp_*`
+- **`src/poc/bitwise.mojo`** — `poc_bitand_int32`, `poc_bitor_int32`, `poc_bitxor_int32`, `poc_bitnot_int32`, `poc_shl_int32`, `poc_shr_int32`
+- **`src/poc/comparison.mojo`** — `poc_eq_int32`, `poc_ne_int32`, `poc_lt_int32`, `poc_le_int32`, `poc_gt_int32`, `poc_ge_int32`, `poc_bool_and`, `poc_bool_or`, `poc_bool_not`
+- **`src/poc/algorithms.mojo`** — `poc_fib_*`, `poc_factorial_*`, `poc_gcd_int32`
+- **`src/poc/strings.mojo`** — `poc_identity_*`, `poc_print_*`, `poc_return_*_string`, `poc_string_length`, `poc_string_concat`, `poc_string_repeat`, `poc_string_eq`
+- **`src/poc/__init__.mojo`** — Package re-exports
 
-### 10.3 Shared JS Runtime Deduplication (Planned)
+`src/main.mojo` PoC section is now thin `@export` wrappers calling into `poc/` modules. All 602 Mojo tests and 790 JS tests pass unchanged.
 
-The counter, todo, and bench examples each inline the full WASM environment, mutation reader, and interpreter (~300 lines each). Extract into a shared `runtime/` import:
+### 10.3 Shared JS Runtime Deduplication (✅ Done)
 
-- Deduplicate `MutationReader`, `Interpreter`, `env` object across examples
-- Single `runtime/boot.ts` helper: `createApp({ wasmUrl, templateRoots, onEvent })`
-- Examples become ~50 lines each
+The counter, todo, and bench examples each inlined the full WASM environment, mutation reader, and interpreter (~300 lines each). Extracted into a shared `examples/lib/` package:
 
-### 10.4 Component Abstraction (Planned)
+- **`examples/lib/env.js`** (84 lines) — WASM memory management, `alignedAlloc`, `env` import object, `loadWasm()` helper
+- **`examples/lib/protocol.js`** (139 lines) — `Op` constants + `MutationReader` class
+- **`examples/lib/interpreter.js`** (182 lines) — DOM `Interpreter` class
+- **`examples/lib/strings.js`** (37 lines) — Mojo String ABI `writeStringStruct()` helper
+- **`examples/lib/boot.js`** (46 lines) — Re-exports + convenience helpers: `createInterpreter()`, `allocBuffer()`, `applyMutations()`
 
-Currently each app is a hand-rolled struct with manual scope/signal/template wiring. Introduce a `Component` trait or helper:
+Examples now import from `../lib/boot.js` and contain only app-specific logic:
 
-- `src/component/component.mojo` — `ComponentFn` type alias, `Element` alias
-- `src/component/lifecycle.mojo` — `mount`, `update`, `unmount` orchestration
-- `src/scheduler/scheduler.mojo` — dirty scope queue with height-ordered rendering
+- **`examples/counter/main.js`** — 81 lines (was ~337)
+- **`examples/todo/main.js`** — 194 lines (was ~553)
+- **`examples/bench/main.js`** — 160 lines (was ~490 inline in HTML)
+- **`examples/bench/index.html`** — Now uses external `<script type="module" src="main.js">` instead of inline `<script>`
+
+All 602 Mojo tests and 790 JS tests pass unchanged.
+
+### 10.4 Component Abstraction (✅ Done)
+
+Each app previously hand-rolled scope/signal/template wiring. Extracted common infrastructure into reusable packages:
+
+- **`src/component/app_shell.mojo`** (242 lines) — `AppShell` struct bundling Runtime, VNodeStore, ElementIdAllocator, and Scheduler. Provides lifecycle methods: `setup()`, `destroy()`, `mount()`, `diff()`, `finalize()`, `collect_dirty()`, `next_dirty()`, `dispatch_event()`, plus scope/signal helpers.
+- **`src/component/lifecycle.mojo`** (184 lines) — Reusable orchestration: `mount_vnode()`, `mount_vnode_to()`, `diff_and_finalize()`, `diff_no_finalize()`, `create_no_finalize()`.
+- **`src/component/__init__.mojo`** — Package re-exports.
+- **`src/scheduler/scheduler.mojo`** (169 lines) — `Scheduler` struct: height-ordered dirty scope queue with `collect()`, `collect_one()`, `next()`, deduplication, insertion-sort by scope height.
+- **`src/scheduler/__init__.mojo`** — Package re-exports.
+
+`main.mojo` now exposes `shell_*` WASM exports (create, destroy, mount, diff, signals, scopes, dirty tracking, event dispatch) and `scheduler_*` exports. Tests: `test_component.mojo` (26 tests) and `test_scheduler.mojo` (11 tests). All 641 Mojo + 790 JS tests pass.
 
 ### 10.5 Ergonomic Builder API (Planned)
 
@@ -2492,7 +2510,7 @@ Implement the Tier 1 builder DSL from the plan's [Ergonomics-First API Design](#
 - [x] **M8:** Todo list works. Conditional rendering, keyed lists, context, error boundaries, suspense.
 - [x] **M9:** js-framework-benchmark competitive. Memory bounded. Tier 2 compile-time templates deferred (core template-aware diffing already in place; full `comptime` path awaits Mojo language maturation). Developer tools functional.
 - [x] **M10.1:** App modules extracted (`apps/counter.mojo`, `apps/todo.mojo`, `apps/bench.mojo`). `main.mojo` reduced from 4,249 → 2,930 lines. All 790 tests pass.
-- [ ] **M10.2:** PoC exports extracted to `poc/` package. `main.mojo` reduced to pure @export wrappers (~1,500 lines).
-- [ ] **M10.3:** Shared JS runtime. Examples deduplicated. `runtime/boot.ts` helper.
-- [ ] **M10.4:** Component abstraction. `Component` trait, scheduler, lifecycle hooks.
+- [x] **M10.2:** PoC exports extracted to `poc/` package (`poc/arithmetic.mojo`, `poc/bitwise.mojo`, `poc/comparison.mojo`, `poc/algorithms.mojo`, `poc/strings.mojo`). `main.mojo` is now pure `@export` wrappers. All 602 Mojo + 790 JS tests pass.
+- [x] **M10.3:** Shared JS runtime extracted to `examples/lib/` (env, protocol, interpreter, strings, boot). Examples deduplicated: counter 81 lines, todo 194 lines, bench 160 lines. All 602 Mojo + 790 JS tests pass.
+- [x] **M10.4:** Component abstraction. `AppShell` struct (`component/app_shell.mojo`), lifecycle helpers (`component/lifecycle.mojo`), height-ordered scheduler (`scheduler/scheduler.mojo`). `shell_*` and `scheduler_*` WASM exports. 37 new tests. All 641 Mojo + 790 JS tests pass.
 - [ ] **M10.5:** Ergonomic builder API. Tag helpers, `signal()` shorthand, `Renderable` trait.
