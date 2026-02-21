@@ -7,6 +7,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 ## Features
 
 - **Reactive signals** — fine-grained reactivity with automatic dependency tracking
+- **Memo (derived signals)** — cached computed values with automatic dependency re-tracking
 - **Virtual DOM** — template-based VNodes with keyed diffing
 - **Binary mutation protocol** — efficient Mojo → JS communication via shared memory
 - **Automatic template wiring** — templates defined once in Mojo, auto-registered in JS via `RegisterTemplate` mutations
@@ -16,7 +17,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **Ergonomic DSL** — `el_div`, `el_button`, `dyn_text` tag helpers with `to_template()` conversion
 - **AppShell abstraction** — single struct bundling runtime, store, allocator, and scheduler
 - **Three working apps** — counter, todo list, and js-framework-benchmark
-- **1,644 tests** — 679 Mojo (via wasmtime) + 965 JS (via Deno), all passing
+- **1,868 tests** — 775 Mojo (via wasmtime) + 1,093 JS (via Deno), all passing
 
 ## How it works
 
@@ -58,6 +59,7 @@ At runtime, the TypeScript side (`runtime/`) instantiates the WASM module and pr
 │  │  (JS)         │              │  (Mojo)             │  │
 │  └──────────────┘               │                     │  │
 │                                 │  ┌─ Signals ──────┐ │  │
+│                                 │  │  Memos          │ │  │
 │                                 │  │  Scopes         │ │  │
 │                                 │  │  VNode Store    │ │  │
 │                                 │  │  Diff Engine    │ │  │
@@ -72,7 +74,7 @@ At runtime, the TypeScript side (`runtime/`) instantiates the WASM module and pr
 ```txt
 wasm-mojo/
 ├── src/
-│   ├── main.mojo                 # @export wrappers (WASM entry point, 3,298 lines, 397 exports)
+│   ├── main.mojo                 # @export wrappers (WASM entry point, 3,476 lines, 419 exports)
 │   ├── apps/                     # Application modules
 │   │   ├── counter.mojo          # Counter app (Phase 7)
 │   │   ├── todo.mojo             # Todo list app (Phase 8)
@@ -101,6 +103,7 @@ wasm-mojo/
 │   │   ├── scope.mojo            # ScopeState, hooks, context, error/suspense
 │   │   └── arena.mojo            # ScopeArena (slab allocator)
 │   ├── signals/
+│   │   ├── memo.mojo             # MemoEntry, MemoStore (slab allocator for derived signals)
 │   │   └── runtime.mojo          # Reactive runtime, signal store, context tracking
 │   └── vdom/
 │       ├── builder.mojo          # TemplateBuilder API (manual template construction)
@@ -132,7 +135,7 @@ wasm-mojo/
 │   ├── counter/                  # Counter app (browser)
 │   ├── todo/                     # Todo list app (browser)
 │   └── bench/                    # js-framework-benchmark (browser)
-├── test/                         # Mojo tests (26 modules, 676 tests via wasmtime)
+├── test/                         # Mojo tests (27 modules, 775 tests via wasmtime)
 │   ├── wasm_harness.mojo         # WasmInstance harness using wasmtime-mojo FFI
 │   ├── test_signals.mojo         # Reactive signals
 │   ├── test_scopes.mojo          # Scope arena and hooks
@@ -142,15 +145,17 @@ wasm-mojo/
 │   ├── test_protocol.mojo        # Binary mutation encoding
 │   ├── test_dsl.mojo             # Ergonomic DSL builder
 │   ├── test_component.mojo       # AppShell and lifecycle
+│   ├── test_memo.mojo            # Memo store, runtime API, hooks, propagation
 │   ├── test_scheduler.mojo       # Scheduler ordering and dedup
 │   └── ...                       # + arithmetic, strings, boundaries, etc.
-├── test-js/                      # JS runtime integration tests (860 tests via Deno)
+├── test-js/                      # JS runtime integration tests (1,093 tests via Deno)
 │   ├── harness.ts                # Shared WASM loading and test helpers
 │   ├── counter.test.ts           # Full counter app lifecycle with DOM
 │   ├── todo.test.ts              # Todo app: add, remove, toggle, clear
 │   ├── bench.test.ts             # Benchmark operations + timing
 │   ├── dsl.test.ts               # DSL builder + VNodeBuilder round-trip
 │   ├── interpreter.test.ts       # DOM interpreter + template cache
+│   ├── memo.test.ts              # Memo lifecycle, dirty tracking, propagation
 │   ├── mutations.test.ts         # JS-side MutationReader + memory
 │   ├── phase8.test.ts            # Context, error boundaries, suspense
 │   └── protocol.test.ts          # Binary protocol parsing
@@ -160,27 +165,30 @@ wasm-mojo/
 │   └── precompile.mojo           # .wasm → .cwasm via wasmtime AOT
 ├── justfile                      # Build and test commands
 ├── default.nix                   # Nix dev shell
-└── PLAN.md                       # Full development plan (Phases 0–10)
+└── PLAN.md                       # Full development plan (Phases 0–13)
 ```
 
 ## Known limitations
 
-**`@export` only works in the main module.** Mojo's compiler aggressively eliminates dead code before LLVM IR generation. An `@export` decorator on a function in a submodule (e.g., `poc/arithmetic.mojo`) does **not** prevent it from being removed — the function must be called from `main.mojo` to survive. Importing a submodule function without calling it is also insufficient as a DCE anchor. This is why `main.mojo` contains ~397 thin `@export` wrappers that forward to submodule implementations: it is the only reliable way to guarantee WASM export visibility with the current Mojo toolchain. See [PLAN.md § 10.22](PLAN.md#1022-document-export-submodule-limitation--done) for the full investigation.
+**`@export` only works in the main module.** Mojo's compiler aggressively eliminates dead code before LLVM IR generation. An `@export` decorator on a function in a submodule (e.g., `poc/arithmetic.mojo`) does **not** prevent it from being removed — the function must be called from `main.mojo` to survive. Importing a submodule function without calling it is also insufficient as a DCE anchor. This is why `main.mojo` contains ~419 thin `@export` wrappers that forward to submodule implementations: it is the only reliable way to guarantee WASM export visibility with the current Mojo toolchain. See [PLAN.md § 10.22](PLAN.md#1022-document-export-submodule-limitation--done) for the full investigation.
+
+**Handler lifecycle is scope-scoped.** Event handlers registered via `runtime.register_handler()` are automatically cleaned up when their owning scope is destroyed. For dynamic lists (todo items, benchmark rows), each item gets its own child scope. Rebuilding a list destroys old child scopes — which triggers `remove_for_scope` cleanup in the `HandlerRegistry` — before creating new ones. Without this pattern, handler IDs leak: after 100 add/remove cycles on a 10-item list, the registry would accumulate ~2,000 stale entries. The child-scope-per-item pattern ensures handler count stays proportional to visible items.
 
 ## Reactive model
 
 The framework follows the same reactive model as [Dioxus](https://dioxuslabs.com/):
 
 1. **Signals** hold state. Reading a signal inside a scope subscribes that scope.
-2. **Writing** to a signal marks all subscribing scopes as dirty.
-3. **Dirty scopes** are collected into the **Scheduler** (height-ordered, deduplicated).
-4. Scopes are re-rendered in parent-before-child order, producing new VNode trees.
-5. The **diff engine** compares old and new VNode trees (with keyed reconciliation).
-6. Mutations are written to a **binary buffer** in shared WASM memory.
-7. The JS **interpreter** reads the buffer and applies DOM operations.
+2. **Memos** (derived signals) cache computed values. A memo has its own reactive context: it auto-tracks which signals it reads during computation, caches the result, and marks subscribing scopes dirty when its inputs change. Memos are lazy — they only recompute when read while dirty. Dependency re-tracking on recompute means memos automatically adapt to conditional reads.
+3. **Writing** to a signal marks all subscribing scopes *and* all subscribing memos as dirty. Dirty memos propagate dirtiness to their own subscribers.
+4. **Dirty scopes** are collected into the **Scheduler** (height-ordered, deduplicated).
+5. Scopes are re-rendered in parent-before-child order, producing new VNode trees.
+6. The **diff engine** compares old and new VNode trees (with keyed reconciliation).
+7. Mutations are written to a **binary buffer** in shared WASM memory.
+8. The JS **interpreter** reads the buffer and applies DOM operations.
 
 ```txt
-Signal write → scope dirty → scheduler → re-render → diff → mutations → DOM update
+Signal write → memo dirty → scope dirty → scheduler → re-render → diff → mutations → DOM update
 ```
 
 ## Binary mutation protocol
@@ -288,7 +296,7 @@ Adding a new test:
 
 ## Test results
 
-1,644 tests across 26 Mojo modules and 8 JS test suites:
+1,868 tests across 27 Mojo modules and 9 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -298,8 +306,9 @@ Adding a new test:
 - **Mutations** — create engine, diff engine, binary protocol round-trip
 - **Events** — handler registry, dispatch, signal actions
 - **DSL** — Node union, tag helpers, to_template conversion, VNodeBuilder
-- **Component** — AppShell lifecycle, mount/diff/finalize helpers, FragmentSlot
-- **Counter app** — init, mount, click, flush, DOM verification
+- **Memo** — create/destroy, dirty tracking, auto-track, propagation chain, diamond dependency, dependency re-tracking, cache hit, version bumps, cleanup, hooks
+- **Component** — AppShell lifecycle, mount/diff/finalize helpers, FragmentSlot, shell memo helpers
+- **Counter app** — init, mount, click, flush, DOM verification, memo (doubled count) demo
 - **Todo app** — add, remove, toggle, clear, keyed list transitions
 - **Benchmark** — create/append/update/swap/select/remove/clear 1000 rows, full DOM integration
 - **Memory** — allocation cycles, bounded growth, rapid write stability
