@@ -4,6 +4,7 @@
 // and WASM loading so each example only needs ~50 lines of app-specific code.
 
 export { loadWasm, alignedAlloc, getMemory } from "./env.js";
+export { EventBridge } from "./events.js";
 export { Interpreter } from "./interpreter.js";
 export { Op } from "./protocol.js";
 export { writeStringStruct } from "./strings.js";

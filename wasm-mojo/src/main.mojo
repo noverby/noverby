@@ -2001,6 +2001,18 @@ fn todo_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 
 
 @export
+fn todo_handle_event(
+    app_ptr: Int64, handler_id: Int32, event_type: Int32
+) -> Int32:
+    """Dispatch a click event by handler ID.
+
+    Returns 1 if the handler was found and action executed (toggle/remove),
+    0 if the handler is the add handler (JS must read input) or unknown.
+    """
+    return _b2i(_get[TodoApp](app_ptr)[0].handle_event(UInt32(handler_id)))
+
+
+@export
 fn todo_add_item(app_ptr: Int64, text: String):
     """Add a new item to the todo list."""
     _get[TodoApp](app_ptr)[0].add_item(text)
