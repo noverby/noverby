@@ -17,21 +17,21 @@ const encoder = new TextEncoder();
  * @returns {bigint} Pointer to the 24-byte String struct in WASM memory.
  */
 export function writeStringStruct(str) {
-  const bytes = encoder.encode(str);
-  const dataLen = BigInt(bytes.length);
-  const memory = getMemory();
+	const bytes = encoder.encode(str);
+	const dataLen = BigInt(bytes.length);
+	const memory = getMemory();
 
-  // Allocate buffer for string data (with null terminator)
-  const dataPtr = alignedAlloc(1n, dataLen + 1n);
-  new Uint8Array(memory.buffer).set(bytes, Number(dataPtr));
-  new Uint8Array(memory.buffer)[Number(dataPtr + dataLen)] = 0;
+	// Allocate buffer for string data (with null terminator)
+	const dataPtr = alignedAlloc(1n, dataLen + 1n);
+	new Uint8Array(memory.buffer).set(bytes, Number(dataPtr));
+	new Uint8Array(memory.buffer)[Number(dataPtr + dataLen)] = 0;
 
-  // Allocate 24-byte String struct
-  const structPtr = alignedAlloc(8n, 24n);
-  const view = new DataView(memory.buffer);
-  view.setBigInt64(Number(structPtr), dataPtr, true); // data_ptr
-  view.setBigInt64(Number(structPtr) + 8, dataLen, true); // len
-  view.setBigInt64(Number(structPtr) + 16, dataLen + 1n, true); // capacity
+	// Allocate 24-byte String struct
+	const structPtr = alignedAlloc(8n, 24n);
+	const view = new DataView(memory.buffer);
+	view.setBigInt64(Number(structPtr), dataPtr, true); // data_ptr
+	view.setBigInt64(Number(structPtr) + 8, dataLen, true); // len
+	view.setBigInt64(Number(structPtr) + 16, dataLen + 1n, true); // capacity
 
-  return structPtr;
+	return structPtr;
 }
