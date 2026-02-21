@@ -525,6 +525,16 @@ fn hook_use_signal_i32(rt_ptr: Int64, initial: Int32) -> Int32:
 
 
 @export
+fn hook_use_memo_i32(rt_ptr: Int64, initial: Int32) -> Int32:
+    """Hook: create or retrieve an Int32 memo for the current scope.
+
+    On first render: creates memo, stores in hooks (HOOK_MEMO tag), returns ID.
+    On re-render: returns existing memo ID (initial ignored).
+    """
+    return Int32(_get[Runtime](rt_ptr)[0].use_memo_i32(initial))
+
+
+@export
 fn scope_is_first_render(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Check if a scope is on its first render.  Returns 1 or 0."""
     return _b2i(

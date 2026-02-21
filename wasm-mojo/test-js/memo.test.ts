@@ -428,4 +428,114 @@ export function testMemo(fns: WasmExports): void {
 		fns.scope_destroy(rt, scopeId);
 		destroyRt(fns, rt);
 	}
+
+	// ── Hook: use_memo_i32 — create on first render ─────────────────
+	suite("Memo hook — creates memo on first render");
+	{
+		const rt = createRt(fns);
+		const scopeId = fns.scope_create(rt, 0, -1);
+
+		assert(fns.memo_count(rt), 0, "no memos before render");
+		assert(fns.scope_hook_count(rt, scopeId), 0, "no hooks before render");
+
+		// First render
+		const prev = fns.scope_begin_render(rt, scopeId);
+		const m0 = fns.hook_use_memo_i32(rt, 42);
+		fns.scope_end_render(rt, prev);
+
+		assert(m0 >= 0, true, "memo ID is non-negative");
+		assert(fns.memo_count(rt), 1, "1 memo after hook");
+		assert(fns.scope_hook_count(rt, scopeId), 1, "1 hook registered");
+		// HOOK_MEMO tag = 1
+		assert(
+			fns.scope_hook_tag_at(rt, scopeId, 0),
+			1,
+			"hook tag is HOOK_MEMO (1)",
+		);
+		assert(
+			fns.scope_hook_value_at(rt, scopeId, 0),
+			m0,
+			"hook value is memo ID",
+		);
+		// Initial value readable
+		assert(fns.memo_read_i32(rt, m0), 42, "memo initial value is 42");
+		// Memo starts dirty
+		assert(fns.memo_is_dirty(rt, m0), 1, "memo starts dirty");
+
+		fns.memo_destroy(rt, m0);
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
+
+	// ── Hook: use_memo_i32 — same ID on re-render ───────────────────
+	suite("Memo hook — returns same ID on re-render");
+	{
+		const rt = createRt(fns);
+		const scopeId = fns.scope_create(rt, 0, -1);
+
+		// First render
+		let prev = fns.scope_begin_render(rt, scopeId);
+		const m0 = fns.hook_use_memo_i32(rt, 10);
+		fns.scope_end_render(rt, prev);
+
+		// Compute a value
+		fns.memo_begin_compute(rt, m0);
+		fns.memo_end_compute_i32(rt, m0, 100);
+		assert(fns.memo_read_i32(rt, m0), 100, "computed value is 100");
+
+		// Re-render — initial value (999) is ignored
+		prev = fns.scope_begin_render(rt, scopeId);
+		const m1 = fns.hook_use_memo_i32(rt, 999);
+		fns.scope_end_render(rt, prev);
+
+		assert(m1, m0, "same memo ID on re-render");
+		assert(fns.memo_count(rt), 1, "still 1 memo");
+		assert(fns.scope_hook_count(rt, scopeId), 1, "still 1 hook");
+		// Cached value survives re-render
+		assert(fns.memo_read_i32(rt, m1), 100, "cached value survives re-render");
+
+		fns.memo_destroy(rt, m0);
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
+
+	// ── Hook: use_memo_i32 — interleaved with signal hooks ──────────
+	suite("Memo hook — interleaved with signal hooks");
+	{
+		const rt = createRt(fns);
+		const scopeId = fns.scope_create(rt, 0, -1);
+
+		// First render: signal, memo, signal, memo
+		let prev = fns.scope_begin_render(rt, scopeId);
+		const sig0 = fns.hook_use_signal_i32(rt, 10);
+		const mem0 = fns.hook_use_memo_i32(rt, 20);
+		const sig1 = fns.hook_use_signal_i32(rt, 30);
+		const mem1 = fns.hook_use_memo_i32(rt, 40);
+		fns.scope_end_render(rt, prev);
+
+		assert(fns.scope_hook_count(rt, scopeId), 4, "4 hooks total");
+		// HOOK_SIGNAL = 0, HOOK_MEMO = 1
+		assert(fns.scope_hook_tag_at(rt, scopeId, 0), 0, "hook 0 = SIGNAL");
+		assert(fns.scope_hook_tag_at(rt, scopeId, 1), 1, "hook 1 = MEMO");
+		assert(fns.scope_hook_tag_at(rt, scopeId, 2), 0, "hook 2 = SIGNAL");
+		assert(fns.scope_hook_tag_at(rt, scopeId, 3), 1, "hook 3 = MEMO");
+
+		// Re-render: same order returns same IDs
+		prev = fns.scope_begin_render(rt, scopeId);
+		const rSig0 = fns.hook_use_signal_i32(rt, 0);
+		const rMem0 = fns.hook_use_memo_i32(rt, 0);
+		const rSig1 = fns.hook_use_signal_i32(rt, 0);
+		const rMem1 = fns.hook_use_memo_i32(rt, 0);
+		fns.scope_end_render(rt, prev);
+
+		assert(rSig0, sig0, "signal 0 stable across re-render");
+		assert(rMem0, mem0, "memo 0 stable across re-render");
+		assert(rSig1, sig1, "signal 1 stable across re-render");
+		assert(rMem1, mem1, "memo 1 stable across re-render");
+
+		fns.memo_destroy(rt, mem0);
+		fns.memo_destroy(rt, mem1);
+		fns.scope_destroy(rt, scopeId);
+		destroyRt(fns, rt);
+	}
 }

@@ -3392,7 +3392,7 @@ fn destroy_memo(mut self, memo_id: UInt32):
 - Diamond: two memos read same signal, third reads both → correct propagation
 - Cleanup: destroy memo → subscriber count on input signal decremented
 
-### 13.4 use_memo_i32 Hook
+### 13.4 use_memo_i32 Hook (✅ Done)
 
 Hook version of memo for scope-based usage, matching the `use_signal_i32` pattern.
 
@@ -3414,20 +3414,30 @@ fn use_memo_i32(mut self, initial: Int32) -> UInt32:
 
 **WASM export:**
 
-- `use_memo_i32(rt_ptr, initial) -> i32` — returns memo ID (during scope render)
+- `hook_use_memo_i32(rt_ptr, initial) -> i32` — returns memo ID (during scope render)
 
-**Tests (Mojo):**
+**Implementation:**
 
-- Hook creates memo on first render (hook tag = HOOK_MEMO)
-- Hook returns same memo ID on re-render
-- Multiple memos in same scope: each gets distinct ID
-- Hook cursor advances correctly when interleaved with signal hooks
+- `Runtime.use_memo_i32()` in `src/signals/runtime.mojo` — follows exact pattern
+  of `use_signal_i32`: first render creates memo via `create_memo_i32` and pushes
+  hook with `HOOK_MEMO` tag; re-render advances cursor and returns existing ID.
+- `hook_use_memo_i32` WASM export in `src/main.mojo`.
+- `WasmExports.hook_use_memo_i32` added to `runtime/types.ts`.
 
-**Tests (JS):**
+**Tests (Mojo — 4 tests, 33 assertions in `test/test_memo.mojo`):**
 
-- `use_memo_i32` during scope render → valid memo ID
-- Re-render same scope → same memo ID returned
-- Memo value survives re-render
+- `test_hook_memo_creates_on_first_render` — hook tag = HOOK_MEMO, value = memo ID
+- `test_hook_memo_returns_same_id_on_rerender` — stable ID, cached value survives
+- `test_hook_memo_multiple_distinct_ids` — 3 memos get distinct IDs, stable on re-render
+- `test_hook_memo_interleaved_with_signal` — signal/memo/signal/memo cursor correctness
+
+**Tests (JS — 3 suites, 23 assertions in `test-js/memo.test.ts`):**
+
+- "Memo hook — creates memo on first render" — ID, tag, value, dirty state
+- "Memo hook — returns same ID on re-render" — stable ID, cached value
+- "Memo hook — interleaved with signal hooks" — mixed hook types, cursor order
+
+**Test counts:** Mojo memo 83 assertions (was 50), JS total 1,051 (was 1,028).
 
 ### 13.5 AppShell Memo Helpers
 
@@ -3592,7 +3602,7 @@ Update README and PLAN to reflect Phase 13 changes.
 - [x] **M12.5:** Documentation & test count update. README updated (1,613 → 1,644 tests). PLAN milestone checklist updated. Phase 12 marked complete.
 - [x] **M13.1:** Scope-scoped handler cleanup. Child scopes per item/row in todo and bench apps. `AppShell.destroy_child_scopes()` helper. `todo_handler_count`/`bench_handler_count` WASM exports. Handler leak verified fixed via 11 new JS test assertions. All 679 Mojo + 976 JS = 1,655 tests pass.
 - [x] **M13.2–13.3:** Memo store, runtime API & WASM exports (combined). `MemoEntry` struct + `MemoStore` slab allocator in `src/signals/memo.mojo`. `Runtime.memos` field + context-to-memo mapping (`_memo_ctx_ids`/`_memo_ids`) for dirty propagation. Signal write → memo dirty → scope dirty chain in `write_signal`. 6 Runtime methods: `create_memo_i32`, `memo_begin_compute`, `memo_end_compute_i32`, `memo_read_i32`, `memo_is_dirty`, `destroy_memo` + 2 introspection helpers (`memo_output_key`, `memo_context_id`). 9 WASM exports (`memo_*`). TS types updated in `runtime/types.ts`. Dependency re-tracking on recompute (begin_compute clears old subscriptions). 50 new Mojo assertions (`test/test_memo.mojo`) + 52 new JS assertions (`test-js/memo.test.ts`): create/destroy, dirty tracking, auto-track, propagation chain, diamond dependency, dependency re-tracking, cache hit, version bumps, cleanup. All 729 Mojo + 1,028 JS = 1,757 tests pass.
-- [ ] **M13.4:** `use_memo_i32` hook. Hook version of memo matching `use_signal_i32` pattern. HOOK_MEMO tag in scope hook array. `use_memo_i32` WASM export. Tests: first render creates, re-render returns same ID, interleaved with signal hooks.
+- [x] **M13.4:** `use_memo_i32` hook. `Runtime.use_memo_i32()` follows `use_signal_i32` pattern: first render creates memo via `create_memo_i32` + pushes `HOOK_MEMO` tag; re-render advances cursor and returns existing ID. `hook_use_memo_i32` WASM export + `WasmExports` type updated. 4 new Mojo tests (33 assertions): first-render creation, re-render stability, multiple distinct IDs, interleaved signal/memo cursor. 3 new JS suites (23 assertions): create on first render, same ID on re-render, interleaved with signal hooks. All 762 Mojo + 1,051 JS = 1,813 tests pass.
 - [ ] **M13.5:** AppShell memo helpers. Convenience methods on AppShell mirroring signal helper pattern. Shell WASM exports (`shell_memo_*`). Tests verify parity with raw Runtime methods.
 - [ ] **M13.6:** Counter app memo demo. `doubled_memo` field on CounterApp. Template gains second dynamic text span ("Doubled: 2N"). `counter_doubled_value` WASM export. JS DOM tests: increment → both count and doubled update. Proves full signal → memo → DOM chain.
 - [ ] **M13.7:** Documentation & test count update. README updated with memo section in reactive model, handler lifecycle documented. PLAN milestone checklist updated. Phase 13 marked complete.

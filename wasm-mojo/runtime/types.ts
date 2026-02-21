@@ -283,6 +283,7 @@ export interface WasmExports extends WebAssembly.Exports {
 	// ── Hooks ────────────────────────────────────────────────────────
 
 	hook_use_signal_i32(rtPtr: bigint, initial: number): number;
+	hook_use_memo_i32(rtPtr: bigint, initial: number): number;
 
 	// ── Template Builder ─────────────────────────────────────────────
 

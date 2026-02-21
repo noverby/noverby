@@ -564,6 +564,27 @@ struct Runtime(Movable):
             # Re-render — return existing signal key
             return self.scopes.next_hook(scope_id)
 
+    fn use_memo_i32(mut self, initial: Int32) -> UInt32:
+        """Hook: create or retrieve an Int32 memo for the current scope.
+
+        On first render: creates a new memo, stores its ID in the scope's
+        hook array (with HOOK_MEMO tag), and returns the memo ID.
+
+        On re-render: retrieves the existing memo ID from the hook array
+        and returns it (initial value is ignored).
+
+        Precondition: has_scope() is True.
+        """
+        var scope_id = self.get_scope()
+        if self.scopes.is_first_render(scope_id):
+            # First render — create memo and store in hooks
+            var memo_id = self.create_memo_i32(scope_id, initial)
+            self.scopes.push_hook(scope_id, HOOK_MEMO, memo_id)
+            return memo_id
+        else:
+            # Re-render — return existing memo ID
+            return self.scopes.next_hook(scope_id)
+
     # ── Event handler management ─────────────────────────────────────
 
     fn register_handler(mut self, entry: HandlerEntry) -> UInt32:
