@@ -32,7 +32,7 @@ A Dioxus-inspired, signal-based UI framework written in Mojo, compiled to WebAss
 - [Phase 10 — Modularization & Next Steps](#phase-10--modularization--next-steps)
 - [Phase 11 — Automatic Template & Event Wiring](#phase-11--automatic-template--event-wiring)
 - [Phase 12 — TS Runtime Modernization](#phase-12--ts-runtime-modernization)
-- [Phase 13 — Handler Lifecycle & Derived Signals (Memo)](#phase-13--handler-lifecycle--derived-signals-memo)
+- [Phase 13 — Handler Lifecycle & Derived Signals (Memo)](#phase-13--handler-lifecycle--derived-signals-memo--complete)
 - [Open Questions](#open-questions)
 - [Milestone Checklist](#milestone-checklist)
 
@@ -3153,7 +3153,7 @@ Update README and PLAN to reflect the new test counts and the modernized TS runt
 
 ---
 
-## Phase 13 — Handler Lifecycle & Derived Signals (Memo)
+## Phase 13 — Handler Lifecycle & Derived Signals (Memo) (✅ Complete)
 
 > **Goal:** Fix the handler ID leak in todo and bench apps, then implement memo (computed/derived) signals — the second core reactive primitive after signals. Handler cleanup uses child scopes per item/row, establishing the pattern for future component composition. Memos enable derived state without manual "version signal" bumps.
 >
@@ -3542,16 +3542,16 @@ fn build_vnode(mut self) -> UInt32:
 - After first build_vnode: memo is clean, value = 0
 - After signal write + rebuild: memo recomputes, value = count * 2
 
-### 13.7 Documentation & Test Count Update
+### 13.7 Documentation & Test Count Update (✅ Done)
 
 Update README and PLAN to reflect Phase 13 changes.
 
 **Deliverables:**
 
-- [ ] README: test count updated, memo section added to "Reactive model"
-- [ ] README: handler lifecycle documented in "Known limitations" or "Architecture"
-- [ ] PLAN milestone checklist updated for M13.1–M13.7
-- [ ] Phase 13 marked complete
+- [x] README: test count updated, memo section added to "Reactive model"
+- [x] README: handler lifecycle documented in "Known limitations" or "Architecture"
+- [x] PLAN milestone checklist updated for M13.1–M13.7
+- [x] Phase 13 marked complete
 
 ---
 
@@ -3605,4 +3605,4 @@ Update README and PLAN to reflect Phase 13 changes.
 - [x] **M13.4:** `use_memo_i32` hook. `Runtime.use_memo_i32()` follows `use_signal_i32` pattern: first render creates memo via `create_memo_i32` + pushes `HOOK_MEMO` tag; re-render advances cursor and returns existing ID. `hook_use_memo_i32` WASM export + `WasmExports` type updated. 4 new Mojo tests (33 assertions): first-render creation, re-render stability, multiple distinct IDs, interleaved signal/memo cursor. 3 new JS suites (23 assertions): create on first render, same ID on re-render, interleaved with signal hooks. All 762 Mojo + 1,051 JS = 1,813 tests pass.
 - [x] **M13.5:** AppShell memo helpers. 6 convenience methods on `AppShell` mirroring signal helper pattern: `create_memo_i32`, `memo_begin_compute`, `memo_end_compute_i32`, `memo_read_i32`, `memo_is_dirty`, `use_memo_i32`. 6 shell WASM exports (`shell_memo_create_i32`, `shell_memo_begin_compute`, `shell_memo_end_compute_i32`, `shell_memo_read_i32`, `shell_memo_is_dirty`, `shell_use_memo_i32`). TS types added for all shell exports. 8 new Mojo tests (create, read, dirty, compute, signal propagation, hook, parity, multiple memos). 6 new JS suites (24 assertions): create+read, dirty+compute, signal propagation, multiple memos, hook lifecycle, parity with raw Runtime. All 770 Mojo + 1,075 JS = 1,845 tests pass.
 - [x] **M13.6:** Counter app memo demo. `doubled_memo` field on `CounterApp`. Template gains second dynamic text span (`span > dynamic_text[1]` for "Doubled: 2N"). `build_doubled_text()` method recomputes memo if dirty then reads cached value. `use_memo_i32` hook in init subscribes scope to memo output. `counter_doubled_value` + `counter_doubled_memo` WASM exports. `CounterAppHandle.getDoubled()` in TS. Existing counter tests updated for 4-child template (span, span, button, button). 5 new Mojo tests (13 assertions): memo starts at 0, after first build, after increment doubled=2, 5 increments doubled=10, decrement doubled=−2. 5 new JS suites + updated assertions (18 net new): initial mount "Doubled: 0", increment updates both texts, decrement doubled=−2, 10 increments doubled=20, DOM structure second span. Proves full signal write → memo dirty → memo recompute → DOM update chain. All 775 Mojo + 1,093 JS = 1,868 tests pass.
-- [ ] **M13.7:** Documentation & test count update. README updated with memo section in reactive model, handler lifecycle documented. PLAN milestone checklist updated. Phase 13 marked complete.
+- [x] **M13.7:** Documentation & test count update. README updated with memo section in reactive model (8-step flow including memo dirty propagation), handler lifecycle documented in "Known limitations" (scope-scoped cleanup pattern). Project structure updated: `signals/memo.mojo`, `test_memo.mojo`, `memo.test.ts` added; main.mojo stats updated (3,476 lines, 419 exports); test counts updated (27 Mojo modules, 9 JS suites). Architecture diagram gains Memos box. All 775 Mojo + 1,093 JS = 1,868 tests pass. Phase 13 marked complete.
