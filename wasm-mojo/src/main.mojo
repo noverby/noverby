@@ -296,140 +296,43 @@ from memory import UnsafePointer
 #
 # Mojo 0.25 does not support UnsafePointer construction from an integer
 # address directly.  We reinterpret the bits via a temporary heap slot.
+#
+# Generic helpers — one function replaces all type-specific variants.
 
 
 @always_inline
-fn _int_to_ptr(addr: Int) -> UnsafePointer[UInt8]:
-    """Reinterpret an integer address as an UnsafePointer[UInt8]."""
+fn _as_ptr[T: AnyType](addr: Int) -> UnsafePointer[T]:
+    """Reinterpret an integer address as an UnsafePointer[T]."""
     var slot = UnsafePointer[Int].alloc(1)
     slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[UInt8]]()[0]
+    var result = slot.bitcast[UnsafePointer[T]]()[0]
     slot.free()
     return result
 
 
 @always_inline
-fn _ptr_to_i64(ptr: UnsafePointer[UInt8]) -> Int64:
-    """Return the raw address of a pointer as Int64."""
+fn _to_i64[T: AnyType](ptr: UnsafePointer[T]) -> Int64:
+    """Return the raw address of a typed pointer as Int64."""
     return Int64(Int(ptr))
-
-
-@always_inline
-fn _int_to_runtime_ptr(addr: Int) -> UnsafePointer[Runtime]:
-    """Reinterpret an integer address as an UnsafePointer[Runtime]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[Runtime]]()[0]
-    slot.free()
-    return result
-
-
-@always_inline
-fn _runtime_ptr_to_i64(ptr: UnsafePointer[Runtime]) -> Int64:
-    """Return the raw address of a Runtime pointer as Int64."""
-    return Int64(Int(ptr))
-
-
-@always_inline
-fn _int_to_builder_ptr(addr: Int) -> UnsafePointer[TemplateBuilder]:
-    """Reinterpret an integer address as an UnsafePointer[TemplateBuilder]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[TemplateBuilder]]()[0]
-    slot.free()
-    return result
-
-
-@always_inline
-fn _builder_ptr_to_i64(ptr: UnsafePointer[TemplateBuilder]) -> Int64:
-    """Return the raw address of a TemplateBuilder pointer as Int64."""
-    return Int64(Int(ptr))
-
-
-@always_inline
-fn _int_to_vnode_store_ptr(addr: Int) -> UnsafePointer[VNodeStore]:
-    """Reinterpret an integer address as an UnsafePointer[VNodeStore]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[VNodeStore]]()[0]
-    slot.free()
-    return result
-
-
-@always_inline
-fn _vnode_store_ptr_to_i64(ptr: UnsafePointer[VNodeStore]) -> Int64:
-    """Return the raw address of a VNodeStore pointer as Int64."""
-    return Int64(Int(ptr))
-
-
-@always_inline
-fn _int_to_eid_alloc_ptr(addr: Int) -> UnsafePointer[ElementIdAllocator]:
-    """Reinterpret an integer address as an UnsafePointer[ElementIdAllocator].
-    """
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[ElementIdAllocator]]()[0]
-    slot.free()
-    return result
-
-
-@always_inline
-fn _int_to_writer_ptr(addr: Int) -> UnsafePointer[MutationWriter]:
-    """Reinterpret an integer address as an UnsafePointer[MutationWriter]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[MutationWriter]]()[0]
-    slot.free()
-    return result
-
-
-@always_inline
-fn _int_to_counter_ptr(addr: Int) -> UnsafePointer[CounterApp]:
-    """Reinterpret an integer address as an UnsafePointer[CounterApp]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[CounterApp]]()[0]
-    slot.free()
-    return result
-
-
-@always_inline
-fn _int_to_todo_ptr(addr: Int) -> UnsafePointer[TodoApp]:
-    """Reinterpret an integer address as an UnsafePointer[TodoApp]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[TodoApp]]()[0]
-    slot.free()
-    return result
-
-
-@always_inline
-fn _int_to_bench_ptr(addr: Int) -> UnsafePointer[BenchmarkApp]:
-    """Reinterpret an integer address as an UnsafePointer[BenchmarkApp]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[BenchmarkApp]]()[0]
-    slot.free()
-    return result
 
 
 # ── Helper: quick get-pointer wrappers ───────────────────────────────────────
 
 
 fn _get_eid_alloc(alloc_ptr: Int64) -> UnsafePointer[ElementIdAllocator]:
-    return _int_to_eid_alloc_ptr(Int(alloc_ptr))
+    return _as_ptr[ElementIdAllocator](Int(alloc_ptr))
 
 
 fn _get_runtime(rt_ptr: Int64) -> UnsafePointer[Runtime]:
-    return _int_to_runtime_ptr(Int(rt_ptr))
+    return _as_ptr[Runtime](Int(rt_ptr))
 
 
 fn _get_builder(ptr: Int64) -> UnsafePointer[TemplateBuilder]:
-    return _int_to_builder_ptr(Int(ptr))
+    return _as_ptr[TemplateBuilder](Int(ptr))
 
 
 fn _get_vnode_store(store_ptr: Int64) -> UnsafePointer[VNodeStore]:
-    return _int_to_vnode_store_ptr(Int(store_ptr))
+    return _as_ptr[VNodeStore](Int(store_ptr))
 
 
 # ── Helper: writer at (buf, off) ────────────────────────────────────────────
@@ -437,7 +340,7 @@ fn _get_vnode_store(store_ptr: Int64) -> UnsafePointer[VNodeStore]:
 
 @always_inline
 fn _writer(buf: Int64, off: Int32) -> MutationWriter:
-    return MutationWriter(_int_to_ptr(Int(buf)), Int(off), 0)
+    return MutationWriter(_as_ptr[UInt8](Int(buf)), Int(off), 0)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -450,7 +353,7 @@ fn eid_alloc_create() -> Int64:
     """Allocate an ElementIdAllocator on the heap."""
     var ptr = UnsafePointer[ElementIdAllocator].alloc(1)
     ptr.init_pointee_move(ElementIdAllocator())
-    return Int64(Int(ptr))
+    return _to_i64(ptr)
 
 
 @export
@@ -506,13 +409,13 @@ fn eid_user_count(alloc_ptr: Int64) -> Int32:
 @export
 fn runtime_create() -> Int64:
     """Allocate a reactive Runtime on the heap."""
-    return _runtime_ptr_to_i64(create_runtime())
+    return _to_i64(create_runtime())
 
 
 @export
 fn runtime_destroy(rt_ptr: Int64):
     """Destroy and free a heap-allocated Runtime."""
-    destroy_runtime(_int_to_runtime_ptr(Int(rt_ptr)))
+    destroy_runtime(_as_ptr[Runtime](Int(rt_ptr)))
 
 
 @export
@@ -788,13 +691,13 @@ fn scope_is_first_render(rt_ptr: Int64, scope_id: Int32) -> Int32:
 @export
 fn tmpl_builder_create(name: String) -> Int64:
     """Create a heap-allocated TemplateBuilder.  Returns its pointer."""
-    return _builder_ptr_to_i64(create_builder(name))
+    return _to_i64(create_builder(name))
 
 
 @export
 fn tmpl_builder_destroy(ptr: Int64):
     """Destroy and free a heap-allocated TemplateBuilder."""
-    destroy_builder(_int_to_builder_ptr(Int(ptr)))
+    destroy_builder(_as_ptr[TemplateBuilder](Int(ptr)))
 
 
 @export
@@ -1087,13 +990,13 @@ fn vnode_store_create() -> Int64:
     """Allocate a standalone VNodeStore on the heap.  Returns its pointer."""
     var ptr = UnsafePointer[VNodeStore].alloc(1)
     ptr.init_pointee_move(VNodeStore())
-    return _vnode_store_ptr_to_i64(ptr)
+    return _to_i64(ptr)
 
 
 @export
 fn vnode_store_destroy(store_ptr: Int64):
     """Destroy and free a heap-allocated VNodeStore."""
-    var ptr = _int_to_vnode_store_ptr(Int(store_ptr))
+    var ptr = _as_ptr[VNodeStore](Int(store_ptr))
     ptr.destroy_pointee()
     ptr.free()
 
@@ -1376,7 +1279,7 @@ fn writer_create(buf_ptr: Int64, capacity: Int32) -> Int64:
     """Create a heap-allocated MutationWriter.  Returns its pointer."""
     var ptr = UnsafePointer[MutationWriter].alloc(1)
     ptr.init_pointee_move(
-        MutationWriter(_int_to_ptr(Int(buf_ptr)), Int(capacity))
+        MutationWriter(_as_ptr[UInt8](Int(buf_ptr)), Int(capacity))
     )
     return Int64(Int(ptr))
 
@@ -1384,7 +1287,7 @@ fn writer_create(buf_ptr: Int64, capacity: Int32) -> Int64:
 @export
 fn writer_destroy(writer_ptr: Int64):
     """Destroy and free a heap-allocated MutationWriter."""
-    var ptr = _int_to_writer_ptr(Int(writer_ptr))
+    var ptr = _as_ptr[MutationWriter](Int(writer_ptr))
     ptr.destroy_pointee()
     ptr.free()
 
@@ -1392,14 +1295,14 @@ fn writer_destroy(writer_ptr: Int64):
 @export
 fn writer_offset(writer_ptr: Int64) -> Int32:
     """Return the current write offset of the MutationWriter."""
-    var ptr = _int_to_writer_ptr(Int(writer_ptr))
+    var ptr = _as_ptr[MutationWriter](Int(writer_ptr))
     return Int32(ptr[0].offset)
 
 
 @export
 fn writer_finalize(writer_ptr: Int64) -> Int32:
     """Write the End sentinel and return the final offset."""
-    var ptr = _int_to_writer_ptr(Int(writer_ptr))
+    var ptr = _as_ptr[MutationWriter](Int(writer_ptr))
     ptr[0].finalize()
     return Int32(ptr[0].offset)
 
@@ -1413,10 +1316,10 @@ fn create_vnode(
     vnode_index: Int32,
 ) -> Int32:
     """Create mutations for the VNode at vnode_index.  Returns root count."""
-    var w = _int_to_writer_ptr(Int(writer_ptr))
-    var e = _int_to_eid_alloc_ptr(Int(eid_ptr))
-    var rt = _int_to_runtime_ptr(Int(rt_ptr))
-    var s = _int_to_vnode_store_ptr(Int(store_ptr))
+    var w = _as_ptr[MutationWriter](Int(writer_ptr))
+    var e = _as_ptr[ElementIdAllocator](Int(eid_ptr))
+    var rt = _as_ptr[Runtime](Int(rt_ptr))
+    var s = _as_ptr[VNodeStore](Int(store_ptr))
 
     var engine = CreateEngine(w, e, rt, s)
     return Int32(engine.create_node(UInt32(vnode_index)))
@@ -1432,10 +1335,10 @@ fn diff_vnodes(
     new_index: Int32,
 ) -> Int32:
     """Diff old and new VNodes and emit mutations.  Returns writer offset."""
-    var w = _int_to_writer_ptr(Int(writer_ptr))
-    var e = _int_to_eid_alloc_ptr(Int(eid_ptr))
-    var rt = _int_to_runtime_ptr(Int(rt_ptr))
-    var s = _int_to_vnode_store_ptr(Int(store_ptr))
+    var w = _as_ptr[MutationWriter](Int(writer_ptr))
+    var e = _as_ptr[ElementIdAllocator](Int(eid_ptr))
+    var rt = _as_ptr[Runtime](Int(rt_ptr))
+    var s = _as_ptr[VNodeStore](Int(store_ptr))
 
     var engine = DiffEngine(w, e, rt, s)
     engine.diff_node(UInt32(old_index), UInt32(new_index))
@@ -1505,13 +1408,13 @@ fn vnode_is_mounted(store_ptr: Int64, index: Int32) -> Int32:
 fn mutation_buf_alloc(capacity: Int32) -> Int64:
     """Allocate a mutation buffer. Returns a pointer into WASM linear memory."""
     var ptr = UnsafePointer[UInt8].alloc(Int(capacity))
-    return _ptr_to_i64(ptr)
+    return _to_i64(ptr)
 
 
 @export
 fn mutation_buf_free(ptr: Int64):
     """Free a previously allocated mutation buffer."""
-    _int_to_ptr(Int(ptr)).free()
+    _as_ptr[UInt8](Int(ptr)).free()
 
 
 # ── Debug exports ────────────────────────────────────────────────────────────
@@ -1519,15 +1422,15 @@ fn mutation_buf_free(ptr: Int64):
 
 @export
 fn debug_ptr_roundtrip(ptr: Int64) -> Int64:
-    """Check that _int_to_ptr round-trips correctly."""
-    var p = _int_to_ptr(Int(ptr))
+    """Check that _as_ptr round-trips correctly."""
+    var p = _as_ptr[UInt8](Int(ptr))
     return Int64(Int(p))
 
 
 @export
 fn debug_write_byte(ptr: Int64, off: Int32, val: Int32) -> Int32:
     """Write a single byte to ptr+off and return off+1."""
-    var p = _int_to_ptr(Int(ptr))
+    var p = _as_ptr[UInt8](Int(ptr))
     p[Int(off)] = UInt8(val)
     return off + 1
 
@@ -1535,7 +1438,7 @@ fn debug_write_byte(ptr: Int64, off: Int32, val: Int32) -> Int32:
 @export
 fn debug_read_byte(ptr: Int64, off: Int32) -> Int32:
     """Read a single byte from ptr+off."""
-    var p = _int_to_ptr(Int(ptr))
+    var p = _as_ptr[UInt8](Int(ptr))
     return Int32(p[Int(off)])
 
 
@@ -1663,7 +1566,7 @@ fn write_op_assign_id(
     buf: Int64, off: Int32, path_ptr: Int64, path_len: Int32, id: Int32
 ) -> Int32:
     var w = _writer(buf, off)
-    w.assign_id(_int_to_ptr(Int(path_ptr)), Int(path_len), UInt32(id))
+    w.assign_id(_as_ptr[UInt8](Int(path_ptr)), Int(path_len), UInt32(id))
     return Int32(w.offset)
 
 
@@ -1672,7 +1575,9 @@ fn write_op_replace_placeholder(
     buf: Int64, off: Int32, path_ptr: Int64, path_len: Int32, m: Int32
 ) -> Int32:
     var w = _writer(buf, off)
-    w.replace_placeholder(_int_to_ptr(Int(path_ptr)), Int(path_len), UInt32(m))
+    w.replace_placeholder(
+        _as_ptr[UInt8](Int(path_ptr)), Int(path_len), UInt32(m)
+    )
     return Int32(w.offset)
 
 
@@ -1682,7 +1587,7 @@ fn write_op_replace_placeholder(
 @export
 fn write_test_sequence(buf: Int64) -> Int32:
     """Write a known 5-mutation sequence for integration testing."""
-    var w = MutationWriter(_int_to_ptr(Int(buf)), 0)
+    var w = MutationWriter(_as_ptr[UInt8](Int(buf)), 0)
     w.load_template(1, 0, 10)
     w.create_text_node(11, String("hello"))
     w.append_children(10, 1)
@@ -2088,21 +1993,21 @@ fn suspense_resolve(rt_ptr: Int64, scope_id: Int32) -> Int32:
 @export
 fn counter_init() -> Int64:
     """Initialize the counter app.  Returns a pointer to the app state."""
-    return Int64(Int(counter_app_init()))
+    return _to_i64(counter_app_init())
 
 
 @export
 fn counter_destroy(app_ptr: Int64):
     """Destroy the counter app and free all resources."""
-    counter_app_destroy(_int_to_counter_ptr(Int(app_ptr)))
+    counter_app_destroy(_as_ptr[CounterApp](Int(app_ptr)))
 
 
 @export
 fn counter_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount) of the counter app.  Returns mutation byte length.
     """
-    var app = _int_to_counter_ptr(Int(app_ptr))
-    var buf = _int_to_ptr(Int(buf_ptr))
+    var app = _as_ptr[CounterApp](Int(app_ptr))
+    var buf = _as_ptr[UInt8](Int(buf_ptr))
 
     var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
     writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
@@ -2120,7 +2025,7 @@ fn counter_handle_event(
     app_ptr: Int64, handler_id: Int32, event_type: Int32
 ) -> Int32:
     """Dispatch an event to the counter app.  Returns 1 if action executed."""
-    var app = _int_to_counter_ptr(Int(app_ptr))
+    var app = _as_ptr[CounterApp](Int(app_ptr))
     if counter_app_handle_event(app, UInt32(handler_id), UInt8(event_type)):
         return 1
     return 0
@@ -2130,8 +2035,8 @@ fn counter_handle_event(
 fn counter_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
-    var app = _int_to_counter_ptr(Int(app_ptr))
-    var buf = _int_to_ptr(Int(buf_ptr))
+    var app = _as_ptr[CounterApp](Int(app_ptr))
+    var buf = _as_ptr[UInt8](Int(buf_ptr))
 
     var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
     writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
@@ -2150,42 +2055,42 @@ fn counter_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 @export
 fn counter_rt_ptr(app_ptr: Int64) -> Int64:
     """Return the runtime pointer for JS template registration."""
-    var app = _int_to_counter_ptr(Int(app_ptr))
-    return _runtime_ptr_to_i64(app[0].shell.runtime)
+    var app = _as_ptr[CounterApp](Int(app_ptr))
+    return _to_i64(app[0].shell.runtime)
 
 
 @export
 fn counter_tmpl_id(app_ptr: Int64) -> Int32:
     """Return the counter template ID."""
-    var app = _int_to_counter_ptr(Int(app_ptr))
+    var app = _as_ptr[CounterApp](Int(app_ptr))
     return Int32(app[0].template_id)
 
 
 @export
 fn counter_incr_handler(app_ptr: Int64) -> Int32:
     """Return the increment handler ID."""
-    var app = _int_to_counter_ptr(Int(app_ptr))
+    var app = _as_ptr[CounterApp](Int(app_ptr))
     return Int32(app[0].incr_handler)
 
 
 @export
 fn counter_decr_handler(app_ptr: Int64) -> Int32:
     """Return the decrement handler ID."""
-    var app = _int_to_counter_ptr(Int(app_ptr))
+    var app = _as_ptr[CounterApp](Int(app_ptr))
     return Int32(app[0].decr_handler)
 
 
 @export
 fn counter_count_value(app_ptr: Int64) -> Int32:
     """Peek the current count signal value (without subscribing)."""
-    var app = _int_to_counter_ptr(Int(app_ptr))
+    var app = _as_ptr[CounterApp](Int(app_ptr))
     return app[0].shell.peek_signal_i32(app[0].count_signal)
 
 
 @export
 fn counter_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the counter app has dirty scopes.  Returns 1 or 0."""
-    var app = _int_to_counter_ptr(Int(app_ptr))
+    var app = _as_ptr[CounterApp](Int(app_ptr))
     if app[0].shell.has_dirty():
         return 1
     return 0
@@ -2194,14 +2099,14 @@ fn counter_has_dirty(app_ptr: Int64) -> Int32:
 @export
 fn counter_scope_id(app_ptr: Int64) -> Int32:
     """Return the counter app's root scope ID."""
-    var app = _int_to_counter_ptr(Int(app_ptr))
+    var app = _as_ptr[CounterApp](Int(app_ptr))
     return Int32(app[0].scope_id)
 
 
 @export
 fn counter_count_signal(app_ptr: Int64) -> Int32:
     """Return the counter app's count signal key."""
-    var app = _int_to_counter_ptr(Int(app_ptr))
+    var app = _as_ptr[CounterApp](Int(app_ptr))
     return Int32(app[0].count_signal)
 
 
@@ -2215,20 +2120,20 @@ fn counter_count_signal(app_ptr: Int64) -> Int32:
 @export
 fn todo_init() -> Int64:
     """Initialize the todo app.  Returns a pointer to the app state."""
-    return Int64(Int(todo_app_init()))
+    return _to_i64(todo_app_init())
 
 
 @export
 fn todo_destroy(app_ptr: Int64):
     """Destroy the todo app and free all resources."""
-    todo_app_destroy(_int_to_todo_ptr(Int(app_ptr)))
+    todo_app_destroy(_as_ptr[TodoApp](Int(app_ptr)))
 
 
 @export
 fn todo_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount) of the todo app.  Returns mutation byte length."""
-    var app = _int_to_todo_ptr(Int(app_ptr))
-    var buf = _int_to_ptr(Int(buf_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
+    var buf = _as_ptr[UInt8](Int(buf_ptr))
 
     var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
     writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
@@ -2244,28 +2149,28 @@ fn todo_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 @export
 fn todo_add_item(app_ptr: Int64, text: String):
     """Add a new item to the todo list."""
-    var app = _int_to_todo_ptr(Int(app_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
     app[0].add_item(text)
 
 
 @export
 fn todo_remove_item(app_ptr: Int64, item_id: Int32):
     """Remove an item by its ID."""
-    var app = _int_to_todo_ptr(Int(app_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
     app[0].remove_item(item_id)
 
 
 @export
 fn todo_toggle_item(app_ptr: Int64, item_id: Int32):
     """Toggle an item's completed status."""
-    var app = _int_to_todo_ptr(Int(app_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
     app[0].toggle_item(item_id)
 
 
 @export
 fn todo_set_input(app_ptr: Int64, text: String):
     """Update the input text (stored in app state, no re-render)."""
-    var app = _int_to_todo_ptr(Int(app_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
     app[0].input_text = text
 
 
@@ -2273,8 +2178,8 @@ fn todo_set_input(app_ptr: Int64, text: String):
 fn todo_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
-    var app = _int_to_todo_ptr(Int(app_ptr))
-    var buf = _int_to_ptr(Int(buf_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
+    var buf = _as_ptr[UInt8](Int(buf_ptr))
 
     var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
     writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
@@ -2293,42 +2198,42 @@ fn todo_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 @export
 fn todo_app_template_id(app_ptr: Int64) -> Int32:
     """Return the app template ID."""
-    var app = _int_to_todo_ptr(Int(app_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
     return Int32(app[0].app_template_id)
 
 
 @export
 fn todo_item_template_id(app_ptr: Int64) -> Int32:
     """Return the item template ID."""
-    var app = _int_to_todo_ptr(Int(app_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
     return Int32(app[0].item_template_id)
 
 
 @export
 fn todo_add_handler(app_ptr: Int64) -> Int32:
     """Return the Add button handler ID."""
-    var app = _int_to_todo_ptr(Int(app_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
     return Int32(app[0].add_handler)
 
 
 @export
 fn todo_item_count(app_ptr: Int64) -> Int32:
     """Return the number of items in the list."""
-    var app = _int_to_todo_ptr(Int(app_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
     return Int32(len(app[0].items))
 
 
 @export
 fn todo_item_id_at(app_ptr: Int64, index: Int32) -> Int32:
     """Return the ID of the item at the given index."""
-    var app = _int_to_todo_ptr(Int(app_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
     return app[0].items[Int(index)].id
 
 
 @export
 fn todo_item_completed_at(app_ptr: Int64, index: Int32) -> Int32:
     """Return 1 if the item at index is completed, 0 otherwise."""
-    var app = _int_to_todo_ptr(Int(app_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
     if app[0].items[Int(index)].completed:
         return 1
     return 0
@@ -2337,7 +2242,7 @@ fn todo_item_completed_at(app_ptr: Int64, index: Int32) -> Int32:
 @export
 fn todo_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the todo app has dirty scopes.  Returns 1 or 0."""
-    var app = _int_to_todo_ptr(Int(app_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
     if app[0].shell.has_dirty():
         return 1
     return 0
@@ -2346,14 +2251,14 @@ fn todo_has_dirty(app_ptr: Int64) -> Int32:
 @export
 fn todo_list_version(app_ptr: Int64) -> Int32:
     """Return the current list version signal value."""
-    var app = _int_to_todo_ptr(Int(app_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
     return app[0].shell.peek_signal_i32(app[0].list_version_signal)
 
 
 @export
 fn todo_scope_id(app_ptr: Int64) -> Int32:
     """Return the root scope ID."""
-    var app = _int_to_todo_ptr(Int(app_ptr))
+    var app = _as_ptr[TodoApp](Int(app_ptr))
     return Int32(app[0].scope_id)
 
 
@@ -2367,61 +2272,61 @@ fn todo_scope_id(app_ptr: Int64) -> Int32:
 @export
 fn bench_init() -> Int64:
     """Initialize the benchmark app.  Returns a pointer to the app state."""
-    return Int64(Int(bench_app_init()))
+    return _to_i64(bench_app_init())
 
 
 @export
 fn bench_destroy(app_ptr: Int64):
     """Destroy the benchmark app and free all resources."""
-    bench_app_destroy(_int_to_bench_ptr(Int(app_ptr)))
+    bench_app_destroy(_as_ptr[BenchmarkApp](Int(app_ptr)))
 
 
 @export
 fn bench_create(app_ptr: Int64, count: Int32):
     """Replace all rows with `count` new rows (benchmark: create)."""
-    var app = _int_to_bench_ptr(Int(app_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     app[0].create_rows(Int(count))
 
 
 @export
 fn bench_append(app_ptr: Int64, count: Int32):
     """Append `count` new rows (benchmark: append)."""
-    var app = _int_to_bench_ptr(Int(app_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     app[0].append_rows(Int(count))
 
 
 @export
 fn bench_update(app_ptr: Int64):
     """Update every 10th row label (benchmark: update)."""
-    var app = _int_to_bench_ptr(Int(app_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     app[0].update_every_10th()
 
 
 @export
 fn bench_select(app_ptr: Int64, id: Int32):
     """Select a row by id (benchmark: select)."""
-    var app = _int_to_bench_ptr(Int(app_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     app[0].select_row(id)
 
 
 @export
 fn bench_swap(app_ptr: Int64):
     """Swap rows at indices 1 and 998 (benchmark: swap)."""
-    var app = _int_to_bench_ptr(Int(app_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     app[0].swap_rows(1, 998)
 
 
 @export
 fn bench_remove(app_ptr: Int64, id: Int32):
     """Remove a row by id (benchmark: remove)."""
-    var app = _int_to_bench_ptr(Int(app_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     app[0].remove_row(id)
 
 
 @export
 fn bench_clear(app_ptr: Int64):
     """Clear all rows (benchmark: clear)."""
-    var app = _int_to_bench_ptr(Int(app_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     app[0].clear_rows()
 
 
@@ -2429,8 +2334,8 @@ fn bench_clear(app_ptr: Int64):
 fn bench_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render of the benchmark table body.  Returns mutation byte length.
     """
-    var app = _int_to_bench_ptr(Int(app_ptr))
-    var buf = _int_to_ptr(Int(buf_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
+    var buf = _as_ptr[UInt8](Int(buf_ptr))
 
     var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
     writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
@@ -2447,8 +2352,8 @@ fn bench_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 fn bench_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
-    var app = _int_to_bench_ptr(Int(app_ptr))
-    var buf = _int_to_ptr(Int(buf_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
+    var buf = _as_ptr[UInt8](Int(buf_ptr))
 
     var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
     writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
@@ -2467,28 +2372,28 @@ fn bench_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 @export
 fn bench_row_count(app_ptr: Int64) -> Int32:
     """Return the number of rows."""
-    var app = _int_to_bench_ptr(Int(app_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     return Int32(len(app[0].rows))
 
 
 @export
 fn bench_row_id_at(app_ptr: Int64, index: Int32) -> Int32:
     """Return the id of the row at the given index."""
-    var app = _int_to_bench_ptr(Int(app_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     return app[0].rows[Int(index)].id
 
 
 @export
 fn bench_selected(app_ptr: Int64) -> Int32:
     """Return the currently selected row id (0 = none)."""
-    var app = _int_to_bench_ptr(Int(app_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     return app[0].shell.peek_signal_i32(app[0].selected_signal)
 
 
 @export
 fn bench_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the benchmark app has dirty scopes.  Returns 1 or 0."""
-    var app = _int_to_bench_ptr(Int(app_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     if app[0].shell.has_dirty():
         return 1
     return 0
@@ -2497,21 +2402,21 @@ fn bench_has_dirty(app_ptr: Int64) -> Int32:
 @export
 fn bench_version(app_ptr: Int64) -> Int32:
     """Return the current version signal value."""
-    var app = _int_to_bench_ptr(Int(app_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     return app[0].shell.peek_signal_i32(app[0].version_signal)
 
 
 @export
 fn bench_row_template_id(app_ptr: Int64) -> Int32:
     """Return the row template ID."""
-    var app = _int_to_bench_ptr(Int(app_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     return Int32(app[0].row_template_id)
 
 
 @export
 fn bench_scope_id(app_ptr: Int64) -> Int32:
     """Return the root scope ID."""
-    var app = _int_to_bench_ptr(Int(app_ptr))
+    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     return Int32(app[0].scope_id)
 
 
@@ -2621,16 +2526,6 @@ fn mem_test_rapid_writes(rt_ptr: Int64, key: Int32, count: Int32) -> Int32:
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-@always_inline
-fn _int_to_scheduler_ptr(addr: Int) -> UnsafePointer[Scheduler]:
-    """Reinterpret an integer address as an UnsafePointer[Scheduler]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[Scheduler]]()[0]
-    slot.free()
-    return result
-
-
 @export
 fn scheduler_create() -> Int64:
     """Allocate a Scheduler on the heap.  Returns its pointer."""
@@ -2642,7 +2537,7 @@ fn scheduler_create() -> Int64:
 @export
 fn scheduler_destroy(sched_ptr: Int64):
     """Destroy and free a heap-allocated Scheduler."""
-    var ptr = _int_to_scheduler_ptr(Int(sched_ptr))
+    var ptr = _as_ptr[Scheduler](Int(sched_ptr))
     ptr.destroy_pointee()
     ptr.free()
 
@@ -2650,30 +2545,30 @@ fn scheduler_destroy(sched_ptr: Int64):
 @export
 fn scheduler_collect(sched_ptr: Int64, rt_ptr: Int64):
     """Drain the runtime's dirty queue into the scheduler."""
-    var sched = _int_to_scheduler_ptr(Int(sched_ptr))
-    var rt = _int_to_runtime_ptr(Int(rt_ptr))
+    var sched = _as_ptr[Scheduler](Int(sched_ptr))
+    var rt = _as_ptr[Runtime](Int(rt_ptr))
     sched[0].collect(rt)
 
 
 @export
 fn scheduler_collect_one(sched_ptr: Int64, rt_ptr: Int64, scope_id: Int32):
     """Add a single scope to the scheduler queue."""
-    var sched = _int_to_scheduler_ptr(Int(sched_ptr))
-    var rt = _int_to_runtime_ptr(Int(rt_ptr))
+    var sched = _as_ptr[Scheduler](Int(sched_ptr))
+    var rt = _as_ptr[Runtime](Int(rt_ptr))
     sched[0].collect_one(rt, UInt32(scope_id))
 
 
 @export
 fn scheduler_next(sched_ptr: Int64) -> Int32:
     """Return and remove the next scope to render (lowest height first)."""
-    var sched = _int_to_scheduler_ptr(Int(sched_ptr))
+    var sched = _as_ptr[Scheduler](Int(sched_ptr))
     return Int32(sched[0].next())
 
 
 @export
 fn scheduler_is_empty(sched_ptr: Int64) -> Int32:
     """Check if the scheduler has no pending dirty scopes.  Returns 1 or 0."""
-    var sched = _int_to_scheduler_ptr(Int(sched_ptr))
+    var sched = _as_ptr[Scheduler](Int(sched_ptr))
     if sched[0].is_empty():
         return 1
     return 0
@@ -2682,14 +2577,14 @@ fn scheduler_is_empty(sched_ptr: Int64) -> Int32:
 @export
 fn scheduler_count(sched_ptr: Int64) -> Int32:
     """Return the number of pending dirty scopes."""
-    var sched = _int_to_scheduler_ptr(Int(sched_ptr))
+    var sched = _as_ptr[Scheduler](Int(sched_ptr))
     return Int32(sched[0].count())
 
 
 @export
 fn scheduler_has_scope(sched_ptr: Int64, scope_id: Int32) -> Int32:
     """Check if a scope is already in the scheduler queue.  Returns 1 or 0."""
-    var sched = _int_to_scheduler_ptr(Int(sched_ptr))
+    var sched = _as_ptr[Scheduler](Int(sched_ptr))
     if sched[0].has_scope(UInt32(scope_id)):
         return 1
     return 0
@@ -2698,23 +2593,13 @@ fn scheduler_has_scope(sched_ptr: Int64, scope_id: Int32) -> Int32:
 @export
 fn scheduler_clear(sched_ptr: Int64):
     """Discard all pending dirty scopes."""
-    var sched = _int_to_scheduler_ptr(Int(sched_ptr))
+    var sched = _as_ptr[Scheduler](Int(sched_ptr))
     sched[0].clear()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 10.4 — AppShell Exports
 # ══════════════════════════════════════════════════════════════════════════════
-
-
-@always_inline
-fn _int_to_shell_ptr(addr: Int) -> UnsafePointer[AppShell]:
-    """Reinterpret an integer address as an UnsafePointer[AppShell]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[AppShell]]()[0]
-    slot.free()
-    return result
 
 
 @export
@@ -2729,7 +2614,7 @@ fn shell_create() -> Int64:
 @export
 fn shell_destroy(shell_ptr: Int64):
     """Destroy an AppShell and free all resources."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     ptr[0].destroy()
     ptr.destroy_pointee()
     ptr.free()
@@ -2738,7 +2623,7 @@ fn shell_destroy(shell_ptr: Int64):
 @export
 fn shell_is_alive(shell_ptr: Int64) -> Int32:
     """Check if the shell is alive.  Returns 1 or 0."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     if ptr[0].is_alive():
         return 1
     return 0
@@ -2747,63 +2632,63 @@ fn shell_is_alive(shell_ptr: Int64) -> Int32:
 @export
 fn shell_create_root_scope(shell_ptr: Int64) -> Int32:
     """Create a root scope via the AppShell.  Returns scope ID."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     return Int32(ptr[0].create_root_scope())
 
 
 @export
 fn shell_create_child_scope(shell_ptr: Int64, parent_id: Int32) -> Int32:
     """Create a child scope via the AppShell.  Returns scope ID."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     return Int32(ptr[0].create_child_scope(UInt32(parent_id)))
 
 
 @export
 fn shell_create_signal_i32(shell_ptr: Int64, initial: Int32) -> Int32:
     """Create an Int32 signal via the AppShell.  Returns signal key."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     return Int32(ptr[0].create_signal_i32(initial))
 
 
 @export
 fn shell_read_signal_i32(shell_ptr: Int64, key: Int32) -> Int32:
     """Read an Int32 signal via the AppShell (with context tracking)."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     return ptr[0].read_signal_i32(UInt32(key))
 
 
 @export
 fn shell_peek_signal_i32(shell_ptr: Int64, key: Int32) -> Int32:
     """Peek an Int32 signal via the AppShell (without subscribing)."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     return ptr[0].peek_signal_i32(UInt32(key))
 
 
 @export
 fn shell_write_signal_i32(shell_ptr: Int64, key: Int32, value: Int32):
     """Write to an Int32 signal via the AppShell."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     ptr[0].write_signal_i32(UInt32(key), value)
 
 
 @export
 fn shell_begin_render(shell_ptr: Int64, scope_id: Int32) -> Int32:
     """Begin rendering a scope.  Returns previous scope ID (or -1)."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     return Int32(ptr[0].begin_render(UInt32(scope_id)))
 
 
 @export
 fn shell_end_render(shell_ptr: Int64, prev_scope: Int32):
     """End rendering and restore the previous scope."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     ptr[0].end_render(Int(prev_scope))
 
 
 @export
 fn shell_has_dirty(shell_ptr: Int64) -> Int32:
     """Check if the shell has dirty scopes.  Returns 1 or 0."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     if ptr[0].has_dirty():
         return 1
     return 0
@@ -2812,21 +2697,21 @@ fn shell_has_dirty(shell_ptr: Int64) -> Int32:
 @export
 fn shell_collect_dirty(shell_ptr: Int64):
     """Drain dirty scopes into the shell's scheduler."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     ptr[0].collect_dirty()
 
 
 @export
 fn shell_next_dirty(shell_ptr: Int64) -> Int32:
     """Return next dirty scope from the shell's scheduler."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     return Int32(ptr[0].next_dirty())
 
 
 @export
 fn shell_scheduler_empty(shell_ptr: Int64) -> Int32:
     """Check if the shell's scheduler is empty.  Returns 1 or 0."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     if ptr[0].scheduler_empty():
         return 1
     return 0
@@ -2837,7 +2722,7 @@ fn shell_dispatch_event(
     shell_ptr: Int64, handler_id: Int32, event_type: Int32
 ) -> Int32:
     """Dispatch an event via the AppShell.  Returns 1 if executed."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     if ptr[0].dispatch_event(UInt32(handler_id), UInt8(event_type)):
         return 1
     return 0
@@ -2847,21 +2732,21 @@ fn shell_dispatch_event(
 fn shell_rt_ptr(shell_ptr: Int64) -> Int64:
     """Return the runtime pointer from an AppShell (for template registration etc.).
     """
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
-    return _runtime_ptr_to_i64(ptr[0].runtime)
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
+    return _to_i64(ptr[0].runtime)
 
 
 @export
 fn shell_store_ptr(shell_ptr: Int64) -> Int64:
     """Return the VNodeStore pointer from an AppShell."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
-    return _vnode_store_ptr_to_i64(ptr[0].store)
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
+    return _to_i64(ptr[0].store)
 
 
 @export
 fn shell_eid_ptr(shell_ptr: Int64) -> Int64:
     """Return the ElementIdAllocator pointer from an AppShell."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     return Int64(Int(ptr[0].eid_alloc))
 
 
@@ -2870,11 +2755,11 @@ fn shell_mount(
     shell_ptr: Int64, buf_ptr: Int64, capacity: Int32, vnode_index: Int32
 ) -> Int32:
     """Mount a VNode via the AppShell.  Returns mutation byte length."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
 
     var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
     writer_ptr.init_pointee_move(
-        MutationWriter(_int_to_ptr(Int(buf_ptr)), Int(capacity))
+        MutationWriter(_as_ptr[UInt8](Int(buf_ptr)), Int(capacity))
     )
 
     var result = ptr[0].mount(writer_ptr, UInt32(vnode_index))
@@ -2894,11 +2779,11 @@ fn shell_diff(
     new_index: Int32,
 ) -> Int32:
     """Diff two VNodes via the AppShell.  Returns mutation byte length."""
-    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    var ptr = _as_ptr[AppShell](Int(shell_ptr))
 
     var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
     writer_ptr.init_pointee_move(
-        MutationWriter(_int_to_ptr(Int(buf_ptr)), Int(capacity))
+        MutationWriter(_as_ptr[UInt8](Int(buf_ptr)), Int(capacity))
     )
 
     ptr[0].diff(writer_ptr, UInt32(old_index), UInt32(new_index))
@@ -2926,18 +2811,8 @@ fn shell_diff(
 
 
 @always_inline
-fn _int_to_node_ptr(addr: Int) -> UnsafePointer[Node]:
-    """Reinterpret an integer address as an UnsafePointer[Node]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[Node]]()[0]
-    slot.free()
-    return result
-
-
-@always_inline
 fn _get_node(ptr: Int64) -> UnsafePointer[Node]:
-    return _int_to_node_ptr(Int(ptr))
+    return _as_ptr[Node](Int(ptr))
 
 
 @export
@@ -3134,18 +3009,8 @@ fn dsl_vb_create_keyed(tmpl_id: Int32, key: String, store_ptr: Int64) -> Int64:
 
 
 @always_inline
-fn _int_to_vb_ptr(addr: Int) -> UnsafePointer[VNodeBuilder]:
-    """Reinterpret an integer address as an UnsafePointer[VNodeBuilder]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[VNodeBuilder]]()[0]
-    slot.free()
-    return result
-
-
-@always_inline
 fn _get_vb(ptr: Int64) -> UnsafePointer[VNodeBuilder]:
-    return _int_to_vb_ptr(Int(ptr))
+    return _as_ptr[VNodeBuilder](Int(ptr))
 
 
 @export

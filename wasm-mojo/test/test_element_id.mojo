@@ -373,6 +373,31 @@ fn test_allocator_stress_alloc_free_cycle(
     _destroy_alloc(w, a)
 
 
+# ── Debug — capacity query ───────────────────────────────────────────────────
+
+
+fn test_debug_eid_alloc_capacity(w: UnsafePointer[WasmInstance]) raises:
+    """debug_eid_alloc_capacity returns the total number of slots."""
+    var a = _create_alloc(w)
+
+    # Initial capacity: at least 1 slot (root is pre-reserved)
+    var cap0 = Int(w[].call_i32("debug_eid_alloc_capacity", args_ptr(a)))
+    assert_true(cap0 >= 1, "initial capacity should be >= 1")
+
+    # Allocate several IDs — capacity should grow to accommodate them
+    for _ in range(10):
+        _ = w[].call_i32("eid_alloc", args_ptr(a))
+
+    var cap1 = Int(w[].call_i32("debug_eid_alloc_capacity", args_ptr(a)))
+    assert_true(
+        cap1 >= 11,
+        "capacity should be >= 11 after 10 allocs (root + 10)",
+    )
+    assert_true(cap1 >= cap0, "capacity should not shrink")
+
+    _destroy_alloc(w, a)
+
+
 fn main() raises:
     from wasm_harness import get_instance
 
@@ -389,4 +414,5 @@ fn main() raises:
     test_allocator_stress_100(w)
     test_allocator_stress_free_even_realloc(w)
     test_allocator_stress_alloc_free_cycle(w)
-    print("element_id: 12/12 passed")
+    test_debug_eid_alloc_capacity(w)
+    print("element_id: 13/13 passed")
