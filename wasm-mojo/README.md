@@ -70,7 +70,7 @@ At runtime, the TypeScript side (`runtime/`) instantiates the WASM module and pr
 ```txt
 wasm-mojo/
 ├── src/
-│   ├── main.mojo                 # @export wrappers (WASM entry point, 396 exports)
+│   ├── main.mojo                 # @export wrappers (WASM entry point, 3,736 lines, 396 exports)
 │   ├── apps/                     # Application modules
 │   │   ├── counter.mojo          # Counter app (Phase 7)
 │   │   ├── todo.mojo             # Todo list app (Phase 8)
@@ -103,6 +103,7 @@ wasm-mojo/
 │   └── vdom/
 │       ├── builder.mojo          # TemplateBuilder API (manual template construction)
 │       ├── dsl.mojo              # Ergonomic DSL: Node union, el_* helpers, to_template()
+│       ├── dsl_tests.mojo        # Self-contained DSL test functions (19 tests, extracted from main.mojo)
 │       ├── registry.mojo         # Template storage and lookup
 │       ├── tags.mojo             # HTML tag constants (TAG_DIV, TAG_SPAN, ...)
 │       ├── template.mojo         # Template, TemplateNode (static structure)
