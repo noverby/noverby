@@ -11,12 +11,13 @@
 //   - String data flow (input text from JS → WASM)
 
 import { parseHTML } from "npm:linkedom";
-import { Interpreter } from "../runtime/interpreter.ts";
+import { createApp } from "../runtime/app.ts";
+import type { Interpreter } from "../runtime/interpreter.ts";
 import { alignedAlloc, getMemory } from "../runtime/memory.ts";
 import { MutationReader, Op } from "../runtime/protocol.ts";
 
 import { writeStringStruct } from "../runtime/strings.ts";
-import { TemplateCache } from "../runtime/templates.ts";
+import type { TemplateCache } from "../runtime/templates.ts";
 import type { WasmExports } from "../runtime/types.ts";
 import { assert, pass, suite } from "./harness.ts";
 
@@ -59,135 +60,79 @@ interface TodoAppHandle {
 }
 
 function createTodoApp(fns: Fns, root: Element, doc: Document): TodoAppHandle {
-	// 1. Initialize WASM-side app
-	const appPtr = fns.todo_init();
-	const appTmplId = fns.todo_app_template_id(appPtr);
-	const itemTmplId = fns.todo_item_template_id(appPtr);
-
-	// 2. Create template cache and register templates
-	const templates = new TemplateCache(doc);
-
-	// "todo-app" template: div > [ input, button("Add"), ul > placeholder ]
-	{
-		const div = doc.createElement("div");
-
-		const input = doc.createElement("input");
-		input.setAttribute("type", "text");
-		input.setAttribute("placeholder", "What needs to be done?");
-		div.appendChild(input);
-
-		const btnAdd = doc.createElement("button");
-		btnAdd.appendChild(doc.createTextNode("Add"));
-		div.appendChild(btnAdd);
-
-		const ul = doc.createElement("ul");
-		ul.appendChild(doc.createComment("placeholder"));
-		div.appendChild(ul);
-
-		templates.register(appTmplId, [div]);
-	}
-
-	// "todo-item" template: li > [ span > "", button("✓"), button("✕") ]
-	{
-		const li = doc.createElement("li");
-
-		const span = doc.createElement("span");
-		span.appendChild(doc.createTextNode(""));
-		li.appendChild(span);
-
-		const btnToggle = doc.createElement("button");
-		btnToggle.appendChild(doc.createTextNode("✓"));
-		li.appendChild(btnToggle);
-
-		const btnRemove = doc.createElement("button");
-		btnRemove.appendChild(doc.createTextNode("✕"));
-		li.appendChild(btnRemove);
-
-		templates.register(itemTmplId, [li]);
-	}
-
-	// 3. Create interpreter
-	const interpreter = new Interpreter(root, templates, doc);
-
-	// Wire onNewListener to a no-op (tests don't need real event delegation)
-	interpreter.onNewListener = (
-		_elementId: number,
-		_eventName: string,
-	): EventListener => {
-		return () => {};
-	};
-
-	// 4. Allocate mutation buffer
-	const bufPtr = alignedAlloc(8n, BigInt(BUF_CAPACITY));
-
-	// 5. Initial mount
-	const mountLen = fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
-	if (mountLen > 0) {
-		const mem = getMemory();
-		interpreter.applyMutations(mem.buffer, Number(bufPtr), mountLen);
-	}
-
-	// ── Helpers ──────────────────────────────────────────────────────
-
-	function flushAndApply(): number {
-		const len = fns.todo_flush(appPtr, bufPtr, BUF_CAPACITY);
-		if (len > 0) {
-			const mem = getMemory();
-			interpreter.applyMutations(mem.buffer, Number(bufPtr), len);
-		}
-		return len;
-	}
+	// Use the generic createApp factory — templates come from WASM via
+	// RegisterTemplate mutations, no manual DOM template construction needed.
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		bufCapacity: BUF_CAPACITY,
+		init: (f) => f.todo_init(),
+		rebuild: (f, app, buf, cap) => f.todo_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.todo_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.todo_handle_event(app, hid, evt),
+		destroy: (f, app) => f.todo_destroy(app),
+	});
 
 	return {
 		fns,
-		interpreter,
-		templates,
+		interpreter: handle.interpreter,
+		templates: handle.templates,
 		root,
-		appPtr,
-		bufPtr,
+		appPtr: handle.appPtr,
+		bufPtr: handle.bufPtr,
 
 		addItem(text: string): void {
 			const strPtr = writeStringStruct(text);
-			fns.todo_add_item(appPtr, strPtr);
-			flushAndApply();
+			fns.todo_add_item(handle.appPtr, strPtr);
+			handle.flushAndApply();
 		},
 
 		removeItem(itemId: number): void {
-			fns.todo_remove_item(appPtr, itemId);
-			flushAndApply();
+			fns.todo_remove_item(handle.appPtr, itemId);
+			handle.flushAndApply();
 		},
 
 		toggleItem(itemId: number): void {
-			fns.todo_toggle_item(appPtr, itemId);
-			flushAndApply();
+			fns.todo_toggle_item(handle.appPtr, itemId);
+			handle.flushAndApply();
 		},
 
 		itemCount(): number {
-			return fns.todo_item_count(appPtr);
+			return fns.todo_item_count(handle.appPtr);
 		},
 
 		itemIdAt(index: number): number {
-			return fns.todo_item_id_at(appPtr, index);
+			return fns.todo_item_id_at(handle.appPtr, index);
 		},
 
 		itemCompletedAt(index: number): boolean {
-			return fns.todo_item_completed_at(appPtr, index) === 1;
+			return fns.todo_item_completed_at(handle.appPtr, index) === 1;
 		},
 
 		listVersion(): number {
-			return fns.todo_list_version(appPtr);
+			return fns.todo_list_version(handle.appPtr);
 		},
 
 		hasDirty(): boolean {
-			return fns.todo_has_dirty(appPtr) === 1;
+			return fns.todo_has_dirty(handle.appPtr) === 1;
 		},
 
 		flush(): number {
-			return flushAndApply();
+			const len = fns.todo_flush(handle.appPtr, handle.bufPtr, BUF_CAPACITY);
+			if (len > 0) {
+				const mem = getMemory();
+				handle.interpreter.applyMutations(
+					mem.buffer,
+					Number(handle.bufPtr),
+					len,
+				);
+			}
+			return len;
 		},
 
 		destroy(): void {
-			fns.todo_destroy(appPtr);
+			handle.destroy();
 		},
 	};
 }

@@ -1,20 +1,22 @@
 // App Shell — Orchestrates WASM runtime, DOM interpreter, and event bridge.
 //
-// Provides `createCounterApp()` for headless (test) usage and
-// `mountCounterApp()` for browser usage.  Both wire together:
+// Provides a generic `createApp()` factory that wires together:
 //
-//   1. WASM counter app exports (init, rebuild, handle_event, flush)
-//   2. TemplateCache (registers templates from WASM structure queries)
+//   1. WASM app exports (init, rebuild, handle_event, flush, destroy)
+//   2. TemplateCache (templates auto-registered from WASM via RegisterTemplate mutations)
 //   3. Interpreter (applies binary mutation buffers to DOM)
 //   4. EventBridge (delegates DOM events → WASM dispatch → flush → apply)
 //
 // The mutation buffer is allocated once in WASM linear memory and reused
 // for every rebuild/flush cycle.
 //
-// Note: We build the template DOM manually rather than using
-// TemplateCache.registerFromWasm() because Mojo's String return ABI
-// (sret pointer) is not directly callable from JS.  The counter
-// template structure is known at compile time anyway.
+// Templates are automatically registered from WASM via RegisterTemplate
+// mutations prepended to the mount buffer by AppShell.emit_templates().
+// No manual DOM template construction is needed.
+//
+// App-specific factories (`createCounterApp`, etc.) are thin wrappers
+// that pass the correct WASM export names and add app-specific helpers
+// (e.g. `getCount`, `increment`, `addItem`).
 
 import { EventBridge, EventType } from "./events.ts";
 import { Interpreter } from "./interpreter.ts";
@@ -25,25 +27,77 @@ import type { WasmExports } from "./types.ts";
 // ── Constants ───────────────────────────────────────────────────────────────
 
 /** Default mutation buffer size (16 KiB). */
-const BUF_CAPACITY = 16384;
+const DEFAULT_BUF_CAPACITY = 16384;
 
-// ── CounterApp handle ───────────────────────────────────────────────────────
+// ── Generic App types ───────────────────────────────────────────────────────
 
 /**
- * A fully wired counter app instance.
+ * Configuration for the generic `createApp()` factory.
  *
- * Returned by `createCounterApp`.  Exposes methods for programmatic
- * interaction (useful in tests) and the underlying subsystems for
- * inspection.
+ * Each field wraps a WASM export call so that `createApp` doesn't need
+ * to know the specific export names (counter_init vs todo_init, etc.).
  */
-export interface CounterAppHandle {
+export interface AppConfig {
+	/** Instantiated WASM exports. */
+	fns: WasmExports;
+
+	/** The mount-point DOM element. */
+	root: Element;
+
+	/** The Document to use for DOM operations (for headless testing). */
+	doc?: Document;
+
+	/** Mutation buffer capacity in bytes (default: 16384). */
+	bufCapacity?: number;
+
+	/** Whether to install DOM event delegation (default: false). */
+	install?: boolean;
+
+	/** Initialize the WASM-side app.  Returns the app pointer. */
+	init: (fns: WasmExports) => bigint;
+
+	/** Initial render (mount).  Returns byte length of mutation data. */
+	rebuild: (
+		fns: WasmExports,
+		appPtr: bigint,
+		bufPtr: bigint,
+		capacity: number,
+	) => number;
+
+	/** Flush pending updates.  Returns byte length of mutation data (0 = nothing dirty). */
+	flush: (
+		fns: WasmExports,
+		appPtr: bigint,
+		bufPtr: bigint,
+		capacity: number,
+	) => number;
+
+	/** Dispatch an event to the WASM app.  Returns 1 if handled, 0 otherwise. */
+	handleEvent: (
+		fns: WasmExports,
+		appPtr: bigint,
+		handlerId: number,
+		eventType: number,
+	) => number;
+
+	/** Destroy the WASM-side app and free resources. */
+	destroy: (fns: WasmExports, appPtr: bigint) => void;
+}
+
+/**
+ * A fully wired app instance returned by `createApp()`.
+ *
+ * Provides the common lifecycle methods (dispatch, flush, destroy) and
+ * exposes the underlying subsystems for inspection and extension.
+ */
+export interface AppHandle {
 	/** The WASM exports object. */
 	fns: WasmExports;
 
 	/** The DOM interpreter. */
 	interpreter: Interpreter;
 
-	/** The event bridge (if installed). */
+	/** The event bridge. */
 	events: EventBridge;
 
 	/** The template cache. */
@@ -58,6 +112,152 @@ export interface CounterAppHandle {
 	/** Pointer to the mutation buffer in WASM memory. */
 	bufPtr: bigint;
 
+	/** Mutation buffer capacity in bytes. */
+	bufCapacity: number;
+
+	/** Dispatch an event by handler ID and flush + apply any mutations. */
+	dispatchAndFlush(handlerId: number, eventType?: number): void;
+
+	/** Flush pending updates and apply mutations to the DOM. */
+	flushAndApply(): void;
+
+	/** Destroy the app and free WASM resources. */
+	destroy(): void;
+}
+
+// ── Generic App factory ─────────────────────────────────────────────────────
+
+/**
+ * Create a WASM app wired to a DOM root element.
+ *
+ * This is the generic, headless-compatible version (no browser required).
+ * Pass a `Document` from linkedom/deno-dom for testing.
+ *
+ * Templates are automatically registered from WASM via RegisterTemplate
+ * mutations — no manual DOM template construction needed.  Handler IDs
+ * flow through the mutation protocol via the `handlerId` parameter on
+ * `onNewListener` — no manual handler ordering needed.
+ */
+export function createApp(config: AppConfig): AppHandle {
+	const {
+		fns,
+		root,
+		init,
+		rebuild,
+		flush,
+		handleEvent,
+		destroy: destroyApp,
+		install = false,
+		bufCapacity = DEFAULT_BUF_CAPACITY,
+	} = config;
+	const document = config.doc ?? root.ownerDocument!;
+
+	// 1. Initialize WASM-side app
+	const appPtr = init(fns);
+
+	// 2. Create empty template cache — templates come from WASM via
+	//    RegisterTemplate mutations prepended to the mount buffer.
+	const templates = new TemplateCache(document);
+
+	// 3. Create interpreter
+	const interpreter = new Interpreter(root, templates, document);
+
+	// 4. Allocate a mutation buffer in WASM memory
+	const bufPtr = alignedAlloc(8n, BigInt(bufCapacity));
+
+	// 5. Create event bridge and wire onNewListener BEFORE mount so that
+	//    NewEventListener mutations in the mount buffer are captured.
+	const nodeMap: Map<number, Node> = new Map();
+	const events = new EventBridge(root, nodeMap);
+
+	// Handler IDs come from the mutation protocol — the Interpreter's
+	// onNewListener callback receives (elementId, eventName, handlerId)
+	// directly from the NewEventListener mutation.  No manual ordering needed.
+	interpreter.onNewListener = (
+		elementId: number,
+		eventName: string,
+		handlerId: number,
+	): EventListener => {
+		events.addHandler(elementId, eventName, handlerId);
+		// Return a no-op listener (the EventBridge handles delegation)
+		return () => {};
+	};
+
+	// Set up dispatch functions on the bridge
+	events.setDispatch(
+		(handlerId: number, eventType: number) => {
+			return handleEvent(fns, appPtr, handlerId, eventType);
+		},
+		(handlerId: number, eventType: number, _value: number) => {
+			return handleEvent(fns, appPtr, handlerId, eventType);
+		},
+	);
+
+	// After-dispatch callback: flush and apply mutations
+	events.onAfterDispatch = () => {
+		flushAndApply();
+	};
+
+	// 6. Initial mount — rebuild (RegisterTemplate + LoadTemplate + events in one pass)
+	const mountLen = rebuild(fns, appPtr, bufPtr, bufCapacity);
+	if (mountLen > 0) {
+		const mem = getMemory();
+		interpreter.applyMutations(mem.buffer, Number(bufPtr), mountLen);
+	}
+
+	// 7. Optionally install DOM event delegation
+	if (install) {
+		events.install();
+	}
+
+	// ── Helpers ───────────────────────────────────────────────────────
+
+	function flushAndApply(): void {
+		const len = flush(fns, appPtr, bufPtr, bufCapacity);
+		if (len > 0) {
+			const mem = getMemory();
+			interpreter.applyMutations(mem.buffer, Number(bufPtr), len);
+		}
+	}
+
+	function dispatchAndFlush(
+		handlerId: number,
+		eventType: number = EventType.Click,
+	): void {
+		handleEvent(fns, appPtr, handlerId, eventType);
+		flushAndApply();
+	}
+
+	// ── Public handle ─────────────────────────────────────────────────
+
+	return {
+		fns,
+		interpreter,
+		events,
+		templates,
+		root,
+		appPtr,
+		bufPtr,
+		bufCapacity,
+		dispatchAndFlush,
+		flushAndApply,
+
+		destroy(): void {
+			events.uninstall();
+			destroyApp(fns, appPtr);
+		},
+	};
+}
+
+// ── CounterApp handle ───────────────────────────────────────────────────────
+
+/**
+ * A fully wired counter app instance.
+ *
+ * Returned by `createCounterApp`.  Extends `AppHandle` with
+ * counter-specific methods for programmatic interaction (useful in tests).
+ */
+export interface CounterAppHandle extends AppHandle {
 	/** Increment handler ID (for programmatic dispatch). */
 	incrHandler: number;
 
@@ -72,18 +272,15 @@ export interface CounterAppHandle {
 
 	/** Simulate a decrement click (dispatch + flush + apply). */
 	decrement(): void;
-
-	/** Dispatch an event by handler ID and flush. */
-	dispatchAndFlush(handlerId: number, eventType?: number): void;
-
-	/** Destroy the app and free WASM resources. */
-	destroy(): void;
 }
 
-// ── App factory ─────────────────────────────────────────────────────────────
+// ── Counter App factory ─────────────────────────────────────────────────────
 
 /**
  * Create a counter app wired to a DOM root element.
+ *
+ * Thin wrapper around `createApp()` that adds counter-specific helpers:
+ * `getCount()`, `increment()`, `decrement()`, and handler ID accessors.
  *
  * This is the headless-compatible version (no browser required).
  * Pass a `Document` from linkedom/deno-dom for testing.
@@ -99,161 +296,36 @@ export function createCounterApp(
 	doc?: Document,
 	install = false,
 ): CounterAppHandle {
-	const document = doc ?? root.ownerDocument!;
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		install,
+		init: (f) => f.counter_init(),
+		rebuild: (f, app, buf, cap) => f.counter_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.counter_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.counter_handle_event(app, hid, evt),
+		destroy: (f, app) => f.counter_destroy(app),
+	});
 
-	// 1. Initialize WASM-side app
-	const appPtr = fns.counter_init();
-	const tmplId = fns.counter_tmpl_id(appPtr);
-	const incrHandler = fns.counter_incr_handler(appPtr);
-	const decrHandler = fns.counter_decr_handler(appPtr);
-
-	// 2. Create template cache and register the counter template manually.
-	//
-	//    The counter template structure (from Mojo):
-	//      div
-	//        span
-	//          <empty text node>         ← dynamic_text[0] slot
-	//        button
-	//          "+"
-	//          (dynamic_attr[0] slot)    ← onclick
-	//        button
-	//          "-"
-	//          (dynamic_attr[1] slot)    ← onclick
-	//
-	//    We build this DOM tree directly instead of calling
-	//    registerFromWasm() to avoid the Mojo String sret ABI issue.
-	const templates = new TemplateCache(document);
-	{
-		const div = document.createElement("div");
-
-		const span = document.createElement("span");
-		span.appendChild(document.createTextNode("")); // dynamic text placeholder
-		div.appendChild(span);
-
-		const btnIncr = document.createElement("button");
-		btnIncr.appendChild(document.createTextNode("+"));
-		div.appendChild(btnIncr);
-
-		const btnDecr = document.createElement("button");
-		btnDecr.appendChild(document.createTextNode("-"));
-		div.appendChild(btnDecr);
-
-		templates.register(tmplId, [div]);
-	}
-
-	// 3. Create interpreter
-	const interpreter = new Interpreter(root, templates, document);
-
-	// 4. Allocate a mutation buffer in WASM memory
-	const bufPtr = alignedAlloc(8n, BigInt(BUF_CAPACITY));
-
-	// 5. Initial mount — rebuild
-	const mountLen = fns.counter_rebuild(appPtr, bufPtr, BUF_CAPACITY);
-	if (mountLen > 0) {
-		const mem = getMemory();
-		interpreter.applyMutations(mem.buffer, Number(bufPtr), mountLen);
-	}
-
-	// 6. Create event bridge.
-	//    We pass a fresh Map here — EventBridge.findElementId uses it for
-	//    delegation-based dispatch, but our counter app wires events via
-	//    Interpreter.onNewListener instead, so it's not needed.
-	const nodeMap: Map<number, Node> = new Map();
-	const events = new EventBridge(root, nodeMap);
-
-	// Wire up the interpreter's onNewListener to register handler mappings
-	// in the EventBridge.  The NewEventListener mutation carries the element ID
-	// and event name.  We look up the handler ID from the WASM app state by
-	// matching the event name to our known handlers.
-	//
-	// For the counter app we know:
-	//   - The "+" button gets incrHandler
-	//   - The "−" button gets decrHandler
-	// We track the order of listener registrations to assign them correctly.
-	let listenerIndex = 0;
-	const handlerOrder = [incrHandler, decrHandler];
-
-	interpreter.onNewListener = (
-		elementId: number,
-		eventName: string,
-	): EventListener => {
-		// Map this element+event to the correct handler ID
-		const hid = handlerOrder[listenerIndex] ?? incrHandler;
-		listenerIndex++;
-		events.addHandler(elementId, eventName, hid);
-
-		// Return a no-op listener (the EventBridge handles delegation)
-		return () => {};
-	};
-
-	// 7. Set up dispatch functions on the bridge
-	events.setDispatch(
-		(handlerId: number, eventType: number) => {
-			return fns.counter_handle_event(appPtr, handlerId, eventType);
-		},
-		(handlerId: number, eventType: number, _value: number) => {
-			return fns.counter_handle_event(appPtr, handlerId, eventType);
-		},
-	);
-
-	// After-dispatch callback: flush and apply mutations
-	events.onAfterDispatch = () => {
-		flushAndApply();
-	};
-
-	// 8. Optionally install DOM event delegation
-	if (install) {
-		events.install();
-	}
-
-	// ── Helpers ───────────────────────────────────────────────────────
-
-	function flushAndApply(): void {
-		const len = fns.counter_flush(appPtr, bufPtr, BUF_CAPACITY);
-		if (len > 0) {
-			const mem = getMemory();
-			interpreter.applyMutations(mem.buffer, Number(bufPtr), len);
-		}
-	}
-
-	function dispatchAndFlush(
-		handlerId: number,
-		eventType: number = EventType.Click,
-	): void {
-		fns.counter_handle_event(appPtr, handlerId, eventType);
-		flushAndApply();
-	}
-
-	// ── Public handle ─────────────────────────────────────────────────
+	const incrHandler = fns.counter_incr_handler(handle.appPtr);
+	const decrHandler = fns.counter_decr_handler(handle.appPtr);
 
 	return {
-		fns,
-		interpreter,
-		events,
-		templates,
-		root,
-		appPtr,
-		bufPtr,
+		...handle,
 		incrHandler,
 		decrHandler,
 
 		getCount(): number {
-			return fns.counter_count_value(appPtr);
+			return fns.counter_count_value(handle.appPtr);
 		},
 
 		increment(): void {
-			dispatchAndFlush(incrHandler);
+			handle.dispatchAndFlush(incrHandler);
 		},
 
 		decrement(): void {
-			dispatchAndFlush(decrHandler);
-		},
-
-		dispatchAndFlush,
-
-		destroy(): void {
-			events.uninstall();
-			fns.counter_destroy(appPtr);
+			handle.dispatchAndFlush(decrHandler);
 		},
 	};
 }
