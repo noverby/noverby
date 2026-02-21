@@ -99,6 +99,21 @@ impl SshBackend {
         self.sftp.is_some()
     }
 
+    /// Get a reference to the underlying SSH session (wrapped in `Arc`).
+    ///
+    /// Used by the VFS layer to pass the session to the agent deployment
+    /// module without creating a new connection.
+    pub fn session(&self) -> &Arc<Session> {
+        &self.session
+    }
+
+    /// Get a reference to the SFTP channel, if available.
+    ///
+    /// Used by the VFS layer for agent binary uploads.
+    pub fn sftp(&self) -> Option<&Sftp> {
+        self.sftp.as_ref()
+    }
+
     // -----------------------------------------------------------------------
     // Exec helpers (unchanged from the original implementation)
     // -----------------------------------------------------------------------

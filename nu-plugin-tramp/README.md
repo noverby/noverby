@@ -496,6 +496,44 @@ Key advantages over shell parsing:
 | Shell dependency   | Requires sh, stat, cat, etc.  | None (self-contained binary)  |
 | Cache invalidation | TTL-based (5s default)         | inotify/kqueue push events    |
 
+### Automatic agent deployment
+
+When the plugin connects to a remote host via SSH, it attempts to deploy
+and start the `tramp-agent` binary automatically:
+
+```text
+Connect via SSH
+       │
+       ▼
+Agent already deployed? ──yes──► Start agent, use RPC backend
+       │ no
+       ▼
+Detect remote arch (uname -sm)
+       │
+       ▼
+Check local cache (~/.cache/nu-plugin-tramp/<version>/<triple>/tramp-agent)
+       │
+       ├─ Found ──────────────► Upload via SFTP, chmod, start
+       │
+       ▼
+No cached binary available
+       │
+       ▼
+Fall back to shell-parsing mode (SshBackend)
+```
+
+The deployment is completely transparent — if anything fails at any step,
+the plugin silently falls back to the existing shell-parsing SSH backend.
+When the agent is available, an `RpcBackend` replaces `SshBackend` and all
+operations go through the MsgPack-RPC pipe instead of spawning individual
+shell commands.
+
+To pre-cache an agent binary for a target, place it at:
+`~/.cache/nu-plugin-tramp/<version>/<target-triple>/tramp-agent`
+
+Supported target triples: `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`,
+`x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-unknown-freebsd`.
+
 ### Layers
 
 1. **Path Parser** (`crates/plugin/src/protocol.rs`) — Parses TRAMP URIs into structured types with round-trip fidelity; supports multi-hop chained paths
@@ -503,9 +541,12 @@ Key advantages over shell parsing:
 3. **CommandRunner** (`crates/plugin/src/backend/runner.rs`) — Abstraction for executing commands locally (`LocalRunner`) or through a parent backend (`RemoteRunner`), enabling path chaining
 4. **ExecBackend** (`crates/plugin/src/backend/exec.rs`) — Generic exec-based backend used by Docker, Kubernetes, and Sudo; wraps commands with a configurable prefix
 5. **SSH Backend** (`crates/plugin/src/backend/ssh.rs`) — Uses SFTP for file read/write/delete (fast-path) with automatic fallback to remote command execution; listing and stat use batch-stat (single remote command for all metadata including owner, group, nlinks, inode, symlink targets)
-6. **VFS** (`crates/plugin/src/vfs.rs`) — Resolves paths to backends, builds multi-hop chains, manages connection pooling with health-checks, provides stat/list caching with TTL, bridges async↔sync
-7. **RPC Protocol** (`crates/agent/src/rpc.rs`) — Length-prefixed MsgPack framing with Request/Response/Notification message types
-8. **Agent Operations** (`crates/agent/src/ops/`) — Native implementations of file, directory, process, system, batch, and watch operations
+6. **RPC Backend** (`crates/plugin/src/backend/rpc.rs`) — Implements `Backend` by sending MsgPack-RPC calls to a running `tramp-agent`; used automatically when the agent is deployed
+7. **RPC Client** (`crates/plugin/src/backend/rpc_client.rs`) — Client-side MsgPack-RPC framing (length-prefixed messages, request/response matching, notification buffering)
+8. **Agent Deployment** (`crates/plugin/src/backend/deploy.rs`) — Detects remote arch, manages local binary cache, uploads agent via SFTP or exec fallback, starts the agent process
+9. **VFS** (`crates/plugin/src/vfs.rs`) — Resolves paths to backends, builds multi-hop chains, manages connection pooling with health-checks, provides stat/list caching with TTL, bridges async↔sync; automatically attempts RPC backend for SSH hops
+10. **RPC Protocol** (`crates/agent/src/rpc.rs`) — Length-prefixed MsgPack framing with Request/Response/Notification message types
+11. **Agent Operations** (`crates/agent/src/ops/`) — Native implementations of file, directory, process, system, batch, and watch operations
 
 ### Chaining internals
 
@@ -567,8 +608,8 @@ This composable design means any combination of backends can be chained (except 
 - [x] Batch operations — `batch` (N ops in 1 round-trip, sequential or parallel)
 - [x] Filesystem watching — `watch.add`, `watch.remove`, `watch.list` via inotify/kqueue with `fs.changed` push notifications
 - [x] Cargo workspace restructure — plugin and agent as separate crates
-- [ ] Automatic agent deployment (detect arch, upload, fallback to shell-parsing)
-- [ ] Plugin RPC backend (switch SSH backend to use agent when available)
+- [x] Automatic agent deployment (detect arch, upload, fallback to shell-parsing)
+- [x] Plugin RPC backend (switch SSH backend to use agent when available)
 - [ ] Agent for exec backends (deploy inside Docker/K8s containers)
 
 ### Phase 6 — Future

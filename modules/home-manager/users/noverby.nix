@@ -8,6 +8,7 @@
     inputs.spicetify-nix.homeManagerModules.spicetify
     inputs.catppuccin.homeModules.catppuccin
     inputs.ragenix.homeManagerModules.default
+    nu-plugin-tramp
     nix
     home
     systemd

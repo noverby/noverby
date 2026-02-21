@@ -428,7 +428,7 @@ Key advantages over shell parsing:
 | Shell dependency   | Requires sh, stat, cat, etc.  | None (self-contained binary)  |
 | Cache invalidation | TTL-based (5s default)         | inotify/kqueue push events    |
 
-#### 5.2 — Automatic deployment
+#### 5.2 — Automatic deployment ✅
 
 On first connection (when the agent is not yet present on the remote), the
 plugin:

@@ -31,8 +31,8 @@ in {
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = pkgs.callPackage ./default.nix {};
-      defaultText = lib.literalExpression "pkgs.callPackage ./default.nix { }";
+      default = pkgs.nu-plugin-tramp;
+      defaultText = lib.literalExpression "pkgs.nu-plugin-tramp";
       description = "The nu-plugin-tramp package to use.";
     };
 
