@@ -9,12 +9,19 @@
 # (up to $JOBS processes, default: nproc).
 #
 # Usage:
-#   bash scripts/build_test_binaries.sh          # build all
-#   bash scripts/build_test_binaries.sh -j 4     # limit to 4 jobs
-#   bash scripts/build_test_binaries.sh -f        # force rebuild (ignore timestamps)
+#   bash scripts/build_test_binaries.sh              # build all
+#   bash scripts/build_test_binaries.sh -j 4         # limit to 4 jobs
+#   bash scripts/build_test_binaries.sh -f            # force rebuild (ignore timestamps)
+#   bash scripts/build_test_binaries.sh signals       # build only test_signals
+#   bash scripts/build_test_binaries.sh signals mut   # build test_signals + test_mutations
+#   bash scripts/build_test_binaries.sh -f dsl        # force rebuild test_dsl only
+#
+# Filter arguments are matched as substrings against source file names.
+# "signals" matches "test_signals.mojo", "mut" matches "test_mutations.mojo", etc.
 #
 # Or via justfile:
 #   just test-build
+#   just test-build signals
 
 set -euo pipefail
 
@@ -26,38 +33,75 @@ WASMTIME_MOJO="$PROJECT_DIR/../wasmtime-mojo/src"
 
 JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 8)
 FORCE=0
+FILTERS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -j|--jobs)  JOBS="$2"; shift 2 ;;
         -f|--force) FORCE=1; shift ;;
         -h|--help)
-            echo "Usage: $0 [-j JOBS] [-f|--force]"
+            echo "Usage: $0 [-j JOBS] [-f|--force] [FILTER...]"
             echo "  -j JOBS   Max parallel compilations (default: nproc=$JOBS)"
             echo "  -f        Force rebuild even if binary is up-to-date"
+            echo "  FILTER    Substring match against test module names"
+            echo ""
+            echo "Examples:"
+            echo "  $0                  # build all test binaries"
+            echo "  $0 signals          # build test_signals only"
+            echo "  $0 signals mut      # build test_signals and test_mutations"
+            echo "  $0 -f dsl           # force rebuild test_dsl"
             exit 0
             ;;
-        *) echo "Unknown option: $1" >&2; exit 1 ;;
+        -*) echo "Unknown option: $1" >&2; exit 1 ;;
+        *) FILTERS+=("$1"); shift ;;
     esac
 done
 
 mkdir -p "$OUT_DIR"
 
 # Collect source files — every test/test_*.mojo that contains fn main()
-sources=()
+all_sources=()
 for f in "$TEST_DIR"/test_*.mojo; do
     [ -f "$f" ] || continue
-    grep -q '^fn main' "$f" && sources+=("$f")
+    grep -q '^fn main' "$f" && all_sources+=("$f")
 done
+
+# Apply filter if provided
+sources=()
+if [[ ${#FILTERS[@]} -gt 0 ]]; then
+    for f in "${all_sources[@]}"; do
+        name=$(basename "$f")
+        for filter in "${FILTERS[@]}"; do
+            if [[ "$name" == *"$filter"* ]]; then
+                sources+=("$f")
+                break
+            fi
+        done
+    done
+else
+    sources=("${all_sources[@]}")
+fi
 
 total=${#sources[@]}
 
 if [[ $total -eq 0 ]]; then
-    echo "No test files with fn main() found in $TEST_DIR" >&2
+    if [[ ${#FILTERS[@]} -gt 0 ]]; then
+        echo "No test files matching filter(s): ${FILTERS[*]}" >&2
+        echo "Available test modules:" >&2
+        for f in "${all_sources[@]}"; do
+            echo "  $(basename "$f" .mojo)" >&2
+        done
+    else
+        echo "No test files with fn main() found in $TEST_DIR" >&2
+    fi
     exit 1
 fi
 
-echo "Building $total test binaries (jobs=$JOBS)..."
+if [[ ${#FILTERS[@]} -gt 0 ]]; then
+    echo "Building $total test binaries (filter: ${FILTERS[*]}, jobs=$JOBS)..."
+else
+    echo "Building $total test binaries (jobs=$JOBS)..."
+fi
 
 # Track results
 built=0
