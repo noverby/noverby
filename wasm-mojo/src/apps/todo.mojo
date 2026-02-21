@@ -381,6 +381,9 @@ fn todo_app_rebuild(
 
     Returns the byte offset (length) of the mutation data written.
     """
+    # Emit all registered templates so JS can build DOM from mutations
+    app[0].shell.emit_templates(writer_ptr)
+
     # Build the app shell VNode (no items yet — just the template)
     var app_vnode_idx = app[0].build_app_vnode()
     app[0].current_vnode = Int(app_vnode_idx)
