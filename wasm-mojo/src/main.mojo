@@ -77,6 +77,92 @@ from vdom import (
     TAG_TH,
     TAG_UNKNOWN,
 )
+from scheduler import Scheduler, SchedulerEntry
+from component import (
+    AppShell,
+    app_shell_create,
+    mount_vnode,
+    mount_vnode_to,
+    diff_and_finalize,
+    diff_no_finalize,
+    create_no_finalize,
+)
+from poc import (
+    poc_add_int32,
+    poc_add_int64,
+    poc_add_float32,
+    poc_add_float64,
+    poc_sub_int32,
+    poc_sub_int64,
+    poc_sub_float32,
+    poc_sub_float64,
+    poc_mul_int32,
+    poc_mul_int64,
+    poc_mul_float32,
+    poc_mul_float64,
+    poc_div_int32,
+    poc_div_int64,
+    poc_div_float32,
+    poc_div_float64,
+    poc_mod_int32,
+    poc_mod_int64,
+    poc_pow_int32,
+    poc_pow_int64,
+    poc_pow_float32,
+    poc_pow_float64,
+    poc_neg_int32,
+    poc_neg_int64,
+    poc_neg_float32,
+    poc_neg_float64,
+    poc_abs_int32,
+    poc_abs_int64,
+    poc_abs_float32,
+    poc_abs_float64,
+    poc_min_int32,
+    poc_max_int32,
+    poc_min_int64,
+    poc_max_int64,
+    poc_min_float64,
+    poc_max_float64,
+    poc_clamp_int32,
+    poc_clamp_float64,
+    poc_bitand_int32,
+    poc_bitor_int32,
+    poc_bitxor_int32,
+    poc_bitnot_int32,
+    poc_shl_int32,
+    poc_shr_int32,
+    poc_eq_int32,
+    poc_ne_int32,
+    poc_lt_int32,
+    poc_le_int32,
+    poc_gt_int32,
+    poc_ge_int32,
+    poc_bool_and,
+    poc_bool_or,
+    poc_bool_not,
+    poc_fib_int32,
+    poc_fib_int64,
+    poc_factorial_int32,
+    poc_factorial_int64,
+    poc_gcd_int32,
+    poc_identity_int32,
+    poc_identity_int64,
+    poc_identity_float32,
+    poc_identity_float64,
+    poc_print_int32,
+    poc_print_int64,
+    poc_print_float32,
+    poc_print_float64,
+    poc_print_static_string,
+    poc_print_input_string,
+    poc_return_input_string,
+    poc_return_static_string,
+    poc_string_length,
+    poc_string_concat,
+    poc_string_repeat,
+    poc_string_eq,
+)
 from apps import (
     CounterApp,
     counter_app_init,
@@ -2427,8 +2513,304 @@ fn mem_test_rapid_writes(rt_ptr: Int64, key: Int32, count: Int32) -> Int32:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Phase 10.4 — Scheduler Exports
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@always_inline
+fn _int_to_scheduler_ptr(addr: Int) -> UnsafePointer[Scheduler]:
+    """Reinterpret an integer address as an UnsafePointer[Scheduler]."""
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[Scheduler]]()[0]
+    slot.free()
+    return result
+
+
+@export
+fn scheduler_create() -> Int64:
+    """Allocate a Scheduler on the heap.  Returns its pointer."""
+    var ptr = UnsafePointer[Scheduler].alloc(1)
+    ptr.init_pointee_move(Scheduler())
+    return Int64(Int(ptr))
+
+
+@export
+fn scheduler_destroy(sched_ptr: Int64):
+    """Destroy and free a heap-allocated Scheduler."""
+    var ptr = _int_to_scheduler_ptr(Int(sched_ptr))
+    ptr.destroy_pointee()
+    ptr.free()
+
+
+@export
+fn scheduler_collect(sched_ptr: Int64, rt_ptr: Int64):
+    """Drain the runtime's dirty queue into the scheduler."""
+    var sched = _int_to_scheduler_ptr(Int(sched_ptr))
+    var rt = _int_to_runtime_ptr(Int(rt_ptr))
+    sched[0].collect(rt)
+
+
+@export
+fn scheduler_collect_one(sched_ptr: Int64, rt_ptr: Int64, scope_id: Int32):
+    """Add a single scope to the scheduler queue."""
+    var sched = _int_to_scheduler_ptr(Int(sched_ptr))
+    var rt = _int_to_runtime_ptr(Int(rt_ptr))
+    sched[0].collect_one(rt, UInt32(scope_id))
+
+
+@export
+fn scheduler_next(sched_ptr: Int64) -> Int32:
+    """Return and remove the next scope to render (lowest height first)."""
+    var sched = _int_to_scheduler_ptr(Int(sched_ptr))
+    return Int32(sched[0].next())
+
+
+@export
+fn scheduler_is_empty(sched_ptr: Int64) -> Int32:
+    """Check if the scheduler has no pending dirty scopes.  Returns 1 or 0."""
+    var sched = _int_to_scheduler_ptr(Int(sched_ptr))
+    if sched[0].is_empty():
+        return 1
+    return 0
+
+
+@export
+fn scheduler_count(sched_ptr: Int64) -> Int32:
+    """Return the number of pending dirty scopes."""
+    var sched = _int_to_scheduler_ptr(Int(sched_ptr))
+    return Int32(sched[0].count())
+
+
+@export
+fn scheduler_has_scope(sched_ptr: Int64, scope_id: Int32) -> Int32:
+    """Check if a scope is already in the scheduler queue.  Returns 1 or 0."""
+    var sched = _int_to_scheduler_ptr(Int(sched_ptr))
+    if sched[0].has_scope(UInt32(scope_id)):
+        return 1
+    return 0
+
+
+@export
+fn scheduler_clear(sched_ptr: Int64):
+    """Discard all pending dirty scopes."""
+    var sched = _int_to_scheduler_ptr(Int(sched_ptr))
+    sched[0].clear()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 10.4 — AppShell Exports
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@always_inline
+fn _int_to_shell_ptr(addr: Int) -> UnsafePointer[AppShell]:
+    """Reinterpret an integer address as an UnsafePointer[AppShell]."""
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[AppShell]]()[0]
+    slot.free()
+    return result
+
+
+@export
+fn shell_create() -> Int64:
+    """Create an AppShell with all subsystems allocated.  Returns its pointer.
+    """
+    var ptr = UnsafePointer[AppShell].alloc(1)
+    ptr.init_pointee_move(app_shell_create())
+    return Int64(Int(ptr))
+
+
+@export
+fn shell_destroy(shell_ptr: Int64):
+    """Destroy an AppShell and free all resources."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    ptr[0].destroy()
+    ptr.destroy_pointee()
+    ptr.free()
+
+
+@export
+fn shell_is_alive(shell_ptr: Int64) -> Int32:
+    """Check if the shell is alive.  Returns 1 or 0."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    if ptr[0].is_alive():
+        return 1
+    return 0
+
+
+@export
+fn shell_create_root_scope(shell_ptr: Int64) -> Int32:
+    """Create a root scope via the AppShell.  Returns scope ID."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    return Int32(ptr[0].create_root_scope())
+
+
+@export
+fn shell_create_child_scope(shell_ptr: Int64, parent_id: Int32) -> Int32:
+    """Create a child scope via the AppShell.  Returns scope ID."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    return Int32(ptr[0].create_child_scope(UInt32(parent_id)))
+
+
+@export
+fn shell_create_signal_i32(shell_ptr: Int64, initial: Int32) -> Int32:
+    """Create an Int32 signal via the AppShell.  Returns signal key."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    return Int32(ptr[0].create_signal_i32(initial))
+
+
+@export
+fn shell_read_signal_i32(shell_ptr: Int64, key: Int32) -> Int32:
+    """Read an Int32 signal via the AppShell (with context tracking)."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    return ptr[0].read_signal_i32(UInt32(key))
+
+
+@export
+fn shell_peek_signal_i32(shell_ptr: Int64, key: Int32) -> Int32:
+    """Peek an Int32 signal via the AppShell (without subscribing)."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    return ptr[0].peek_signal_i32(UInt32(key))
+
+
+@export
+fn shell_write_signal_i32(shell_ptr: Int64, key: Int32, value: Int32):
+    """Write to an Int32 signal via the AppShell."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    ptr[0].write_signal_i32(UInt32(key), value)
+
+
+@export
+fn shell_begin_render(shell_ptr: Int64, scope_id: Int32) -> Int32:
+    """Begin rendering a scope.  Returns previous scope ID (or -1)."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    return Int32(ptr[0].begin_render(UInt32(scope_id)))
+
+
+@export
+fn shell_end_render(shell_ptr: Int64, prev_scope: Int32):
+    """End rendering and restore the previous scope."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    ptr[0].end_render(Int(prev_scope))
+
+
+@export
+fn shell_has_dirty(shell_ptr: Int64) -> Int32:
+    """Check if the shell has dirty scopes.  Returns 1 or 0."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    if ptr[0].has_dirty():
+        return 1
+    return 0
+
+
+@export
+fn shell_collect_dirty(shell_ptr: Int64):
+    """Drain dirty scopes into the shell's scheduler."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    ptr[0].collect_dirty()
+
+
+@export
+fn shell_next_dirty(shell_ptr: Int64) -> Int32:
+    """Return next dirty scope from the shell's scheduler."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    return Int32(ptr[0].next_dirty())
+
+
+@export
+fn shell_scheduler_empty(shell_ptr: Int64) -> Int32:
+    """Check if the shell's scheduler is empty.  Returns 1 or 0."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    if ptr[0].scheduler_empty():
+        return 1
+    return 0
+
+
+@export
+fn shell_dispatch_event(
+    shell_ptr: Int64, handler_id: Int32, event_type: Int32
+) -> Int32:
+    """Dispatch an event via the AppShell.  Returns 1 if executed."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    if ptr[0].dispatch_event(UInt32(handler_id), UInt8(event_type)):
+        return 1
+    return 0
+
+
+@export
+fn shell_rt_ptr(shell_ptr: Int64) -> Int64:
+    """Return the runtime pointer from an AppShell (for template registration etc.).
+    """
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    return _runtime_ptr_to_i64(ptr[0].runtime)
+
+
+@export
+fn shell_store_ptr(shell_ptr: Int64) -> Int64:
+    """Return the VNodeStore pointer from an AppShell."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    return _vnode_store_ptr_to_i64(ptr[0].store)
+
+
+@export
+fn shell_eid_ptr(shell_ptr: Int64) -> Int64:
+    """Return the ElementIdAllocator pointer from an AppShell."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+    return Int64(Int(ptr[0].eid_alloc))
+
+
+@export
+fn shell_mount(
+    shell_ptr: Int64, buf_ptr: Int64, capacity: Int32, vnode_index: Int32
+) -> Int32:
+    """Mount a VNode via the AppShell.  Returns mutation byte length."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+
+    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
+    writer_ptr.init_pointee_move(
+        MutationWriter(_int_to_ptr(Int(buf_ptr)), Int(capacity))
+    )
+
+    var result = ptr[0].mount(writer_ptr, UInt32(vnode_index))
+
+    writer_ptr.destroy_pointee()
+    writer_ptr.free()
+
+    return result
+
+
+@export
+fn shell_diff(
+    shell_ptr: Int64,
+    buf_ptr: Int64,
+    capacity: Int32,
+    old_index: Int32,
+    new_index: Int32,
+) -> Int32:
+    """Diff two VNodes via the AppShell.  Returns mutation byte length."""
+    var ptr = _int_to_shell_ptr(Int(shell_ptr))
+
+    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
+    writer_ptr.init_pointee_move(
+        MutationWriter(_int_to_ptr(Int(buf_ptr)), Int(capacity))
+    )
+
+    ptr[0].diff(writer_ptr, UInt32(old_index), UInt32(new_index))
+    var result = ptr[0].finalize(writer_ptr)
+
+    writer_ptr.destroy_pointee()
+    writer_ptr.free()
+
+    return result
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Original wasm-mojo PoC Exports — Arithmetic, String, Algorithm Functions
 # ══════════════════════════════════════════════════════════════════════════════
+#
+# Thin @export wrappers calling into poc/ package modules.
 
 
 # ── Add ──────────────────────────────────────────────────────────────────────
@@ -2436,22 +2818,22 @@ fn mem_test_rapid_writes(rt_ptr: Int64, key: Int32, count: Int32) -> Int32:
 
 @export
 fn add_int32(x: Int32, y: Int32) -> Int32:
-    return x + y
+    return poc_add_int32(x, y)
 
 
 @export
 fn add_int64(x: Int64, y: Int64) -> Int64:
-    return x + y
+    return poc_add_int64(x, y)
 
 
 @export
 fn add_float32(x: Float32, y: Float32) -> Float32:
-    return x + y
+    return poc_add_float32(x, y)
 
 
 @export
 fn add_float64(x: Float64, y: Float64) -> Float64:
-    return x + y
+    return poc_add_float64(x, y)
 
 
 # ── Subtract ─────────────────────────────────────────────────────────────────
@@ -2459,22 +2841,22 @@ fn add_float64(x: Float64, y: Float64) -> Float64:
 
 @export
 fn sub_int32(x: Int32, y: Int32) -> Int32:
-    return x - y
+    return poc_sub_int32(x, y)
 
 
 @export
 fn sub_int64(x: Int64, y: Int64) -> Int64:
-    return x - y
+    return poc_sub_int64(x, y)
 
 
 @export
 fn sub_float32(x: Float32, y: Float32) -> Float32:
-    return x - y
+    return poc_sub_float32(x, y)
 
 
 @export
 fn sub_float64(x: Float64, y: Float64) -> Float64:
-    return x - y
+    return poc_sub_float64(x, y)
 
 
 # ── Multiply ─────────────────────────────────────────────────────────────────
@@ -2482,22 +2864,22 @@ fn sub_float64(x: Float64, y: Float64) -> Float64:
 
 @export
 fn mul_int32(x: Int32, y: Int32) -> Int32:
-    return x * y
+    return poc_mul_int32(x, y)
 
 
 @export
 fn mul_int64(x: Int64, y: Int64) -> Int64:
-    return x * y
+    return poc_mul_int64(x, y)
 
 
 @export
 fn mul_float32(x: Float32, y: Float32) -> Float32:
-    return x * y
+    return poc_mul_float32(x, y)
 
 
 @export
 fn mul_float64(x: Float64, y: Float64) -> Float64:
-    return x * y
+    return poc_mul_float64(x, y)
 
 
 # ── Division ─────────────────────────────────────────────────────────────────
@@ -2505,22 +2887,22 @@ fn mul_float64(x: Float64, y: Float64) -> Float64:
 
 @export
 fn div_int32(x: Int32, y: Int32) -> Int32:
-    return x // y
+    return poc_div_int32(x, y)
 
 
 @export
 fn div_int64(x: Int64, y: Int64) -> Int64:
-    return x // y
+    return poc_div_int64(x, y)
 
 
 @export
 fn div_float32(x: Float32, y: Float32) -> Float32:
-    return x / y
+    return poc_div_float32(x, y)
 
 
 @export
 fn div_float64(x: Float64, y: Float64) -> Float64:
-    return x / y
+    return poc_div_float64(x, y)
 
 
 # ── Modulo ───────────────────────────────────────────────────────────────────
@@ -2528,12 +2910,12 @@ fn div_float64(x: Float64, y: Float64) -> Float64:
 
 @export
 fn mod_int32(x: Int32, y: Int32) -> Int32:
-    return x % y
+    return poc_mod_int32(x, y)
 
 
 @export
 fn mod_int64(x: Int64, y: Int64) -> Int64:
-    return x % y
+    return poc_mod_int64(x, y)
 
 
 # ── Power ────────────────────────────────────────────────────────────────────
@@ -2541,22 +2923,22 @@ fn mod_int64(x: Int64, y: Int64) -> Int64:
 
 @export
 fn pow_int32(x: Int32) -> Int32:
-    return x**x
+    return poc_pow_int32(x)
 
 
 @export
 fn pow_int64(x: Int64) -> Int64:
-    return x**x
+    return poc_pow_int64(x)
 
 
 @export
 fn pow_float32(x: Float32) -> Float32:
-    return x**x
+    return poc_pow_float32(x)
 
 
 @export
 fn pow_float64(x: Float64) -> Float64:
-    return x**x
+    return poc_pow_float64(x)
 
 
 # ── Negate ───────────────────────────────────────────────────────────────────
@@ -2564,22 +2946,22 @@ fn pow_float64(x: Float64) -> Float64:
 
 @export
 fn neg_int32(x: Int32) -> Int32:
-    return -x
+    return poc_neg_int32(x)
 
 
 @export
 fn neg_int64(x: Int64) -> Int64:
-    return -x
+    return poc_neg_int64(x)
 
 
 @export
 fn neg_float32(x: Float32) -> Float32:
-    return -x
+    return poc_neg_float32(x)
 
 
 @export
 fn neg_float64(x: Float64) -> Float64:
-    return -x
+    return poc_neg_float64(x)
 
 
 # ── Absolute value ───────────────────────────────────────────────────────────
@@ -2587,30 +2969,22 @@ fn neg_float64(x: Float64) -> Float64:
 
 @export
 fn abs_int32(x: Int32) -> Int32:
-    if x < 0:
-        return -x
-    return x
+    return poc_abs_int32(x)
 
 
 @export
 fn abs_int64(x: Int64) -> Int64:
-    if x < 0:
-        return -x
-    return x
+    return poc_abs_int64(x)
 
 
 @export
 fn abs_float32(x: Float32) -> Float32:
-    if x < 0:
-        return -x
-    return x
+    return poc_abs_float32(x)
 
 
 @export
 fn abs_float64(x: Float64) -> Float64:
-    if x < 0:
-        return -x
-    return x
+    return poc_abs_float64(x)
 
 
 # ── Min / Max ────────────────────────────────────────────────────────────────
@@ -2618,44 +2992,32 @@ fn abs_float64(x: Float64) -> Float64:
 
 @export
 fn min_int32(x: Int32, y: Int32) -> Int32:
-    if x < y:
-        return x
-    return y
+    return poc_min_int32(x, y)
 
 
 @export
 fn max_int32(x: Int32, y: Int32) -> Int32:
-    if x > y:
-        return x
-    return y
+    return poc_max_int32(x, y)
 
 
 @export
 fn min_int64(x: Int64, y: Int64) -> Int64:
-    if x < y:
-        return x
-    return y
+    return poc_min_int64(x, y)
 
 
 @export
 fn max_int64(x: Int64, y: Int64) -> Int64:
-    if x > y:
-        return x
-    return y
+    return poc_max_int64(x, y)
 
 
 @export
 fn min_float64(x: Float64, y: Float64) -> Float64:
-    if x < y:
-        return x
-    return y
+    return poc_min_float64(x, y)
 
 
 @export
 fn max_float64(x: Float64, y: Float64) -> Float64:
-    if x > y:
-        return x
-    return y
+    return poc_max_float64(x, y)
 
 
 # ── Clamp ────────────────────────────────────────────────────────────────────
@@ -2663,20 +3025,12 @@ fn max_float64(x: Float64, y: Float64) -> Float64:
 
 @export
 fn clamp_int32(x: Int32, lo: Int32, hi: Int32) -> Int32:
-    if x < lo:
-        return lo
-    if x > hi:
-        return hi
-    return x
+    return poc_clamp_int32(x, lo, hi)
 
 
 @export
 fn clamp_float64(x: Float64, lo: Float64, hi: Float64) -> Float64:
-    if x < lo:
-        return lo
-    if x > hi:
-        return hi
-    return x
+    return poc_clamp_float64(x, lo, hi)
 
 
 # ── Bitwise operations ──────────────────────────────────────────────────────
@@ -2684,32 +3038,32 @@ fn clamp_float64(x: Float64, lo: Float64, hi: Float64) -> Float64:
 
 @export
 fn bitand_int32(x: Int32, y: Int32) -> Int32:
-    return x & y
+    return poc_bitand_int32(x, y)
 
 
 @export
 fn bitor_int32(x: Int32, y: Int32) -> Int32:
-    return x | y
+    return poc_bitor_int32(x, y)
 
 
 @export
 fn bitxor_int32(x: Int32, y: Int32) -> Int32:
-    return x ^ y
+    return poc_bitxor_int32(x, y)
 
 
 @export
 fn bitnot_int32(x: Int32) -> Int32:
-    return ~x
+    return poc_bitnot_int32(x)
 
 
 @export
 fn shl_int32(x: Int32, y: Int32) -> Int32:
-    return x << y
+    return poc_shl_int32(x, y)
 
 
 @export
 fn shr_int32(x: Int32, y: Int32) -> Int32:
-    return x >> y
+    return poc_shr_int32(x, y)
 
 
 # ── Boolean / comparison ─────────────────────────────────────────────────────
@@ -2717,47 +3071,47 @@ fn shr_int32(x: Int32, y: Int32) -> Int32:
 
 @export
 fn eq_int32(x: Int32, y: Int32) -> Bool:
-    return x == y
+    return poc_eq_int32(x, y)
 
 
 @export
 fn ne_int32(x: Int32, y: Int32) -> Bool:
-    return x != y
+    return poc_ne_int32(x, y)
 
 
 @export
 fn lt_int32(x: Int32, y: Int32) -> Bool:
-    return x < y
+    return poc_lt_int32(x, y)
 
 
 @export
 fn le_int32(x: Int32, y: Int32) -> Bool:
-    return x <= y
+    return poc_le_int32(x, y)
 
 
 @export
 fn gt_int32(x: Int32, y: Int32) -> Bool:
-    return x > y
+    return poc_gt_int32(x, y)
 
 
 @export
 fn ge_int32(x: Int32, y: Int32) -> Bool:
-    return x >= y
+    return poc_ge_int32(x, y)
 
 
 @export
 fn bool_and(x: Bool, y: Bool) -> Bool:
-    return x and y
+    return poc_bool_and(x, y)
 
 
 @export
 fn bool_or(x: Bool, y: Bool) -> Bool:
-    return x or y
+    return poc_bool_or(x, y)
 
 
 @export
 fn bool_not(x: Bool) -> Bool:
-    return not x
+    return poc_bool_not(x)
 
 
 # ── Fibonacci (iterative) ───────────────────────────────────────────────────
@@ -2765,32 +3119,12 @@ fn bool_not(x: Bool) -> Bool:
 
 @export
 fn fib_int32(n: Int32) -> Int32:
-    if n <= 0:
-        return 0
-    if n == 1:
-        return 1
-    var a: Int32 = 0
-    var b: Int32 = 1
-    for _ in range(2, Int(n) + 1):
-        var tmp = a + b
-        a = b
-        b = tmp
-    return b
+    return poc_fib_int32(n)
 
 
 @export
 fn fib_int64(n: Int64) -> Int64:
-    if n <= 0:
-        return 0
-    if n == 1:
-        return 1
-    var a: Int64 = 0
-    var b: Int64 = 1
-    for _ in range(2, Int(n) + 1):
-        var tmp = a + b
-        a = b
-        b = tmp
-    return b
+    return poc_fib_int64(n)
 
 
 # ── Factorial (iterative) ───────────────────────────────────────────────────
@@ -2798,22 +3132,12 @@ fn fib_int64(n: Int64) -> Int64:
 
 @export
 fn factorial_int32(n: Int32) -> Int32:
-    if n <= 1:
-        return 1
-    var result: Int32 = 1
-    for i in range(2, Int(n) + 1):
-        result *= Int32(i)
-    return result
+    return poc_factorial_int32(n)
 
 
 @export
 fn factorial_int64(n: Int64) -> Int64:
-    if n <= 1:
-        return 1
-    var result: Int64 = 1
-    for i in range(2, Int(n) + 1):
-        result *= Int64(i)
-    return result
+    return poc_factorial_int64(n)
 
 
 # ── GCD (Euclidean algorithm) ────────────────────────────────────────────────
@@ -2821,17 +3145,7 @@ fn factorial_int64(n: Int64) -> Int64:
 
 @export
 fn gcd_int32(x: Int32, y: Int32) -> Int32:
-    var a = x
-    var b = y
-    if a < 0:
-        a = -a
-    if b < 0:
-        b = -b
-    while b != 0:
-        var tmp = b
-        b = a % b
-        a = tmp
-    return a
+    return poc_gcd_int32(x, y)
 
 
 # ── Identity / passthrough ──────────────────────────────────────────────────
@@ -2839,22 +3153,22 @@ fn gcd_int32(x: Int32, y: Int32) -> Int32:
 
 @export
 fn identity_int32(x: Int32) -> Int32:
-    return x
+    return poc_identity_int32(x)
 
 
 @export
 fn identity_int64(x: Int64) -> Int64:
-    return x
+    return poc_identity_int64(x)
 
 
 @export
 fn identity_float32(x: Float32) -> Float32:
-    return x
+    return poc_identity_float32(x)
 
 
 @export
 fn identity_float64(x: Float64) -> Float64:
-    return x
+    return poc_identity_float64(x)
 
 
 # ── Print ────────────────────────────────────────────────────────────────────
@@ -2862,36 +3176,32 @@ fn identity_float64(x: Float64) -> Float64:
 
 @export
 fn print_int32():
-    alias int32: Int32 = 3
-    print(int32)
+    poc_print_int32()
 
 
 @export
 fn print_int64():
-    alias int64: Int64 = 3
-    print(2)
+    poc_print_int64()
 
 
 @export
 fn print_float32():
-    alias float32: Float32 = 3.0
-    print(float32)
+    poc_print_float32()
 
 
 @export
 fn print_float64():
-    alias float64: Float64 = 3.0
-    print(float64)
+    poc_print_float64()
 
 
 @export
 fn print_static_string():
-    print("print-static-string")
+    poc_print_static_string()
 
 
 @export
 fn print_input_string(input: String):
-    print(input)
+    poc_print_input_string(input)
 
 
 # ── String I/O ───────────────────────────────────────────────────────────────
@@ -2899,32 +3209,29 @@ fn print_input_string(input: String):
 
 @export
 fn return_input_string(x: String) -> String:
-    return x
+    return poc_return_input_string(x)
 
 
 @export
 fn return_static_string() -> String:
-    return "return-static-string"
+    return poc_return_static_string()
 
 
 @export
 fn string_length(x: String) -> Int64:
-    return Int64(len(x))
+    return poc_string_length(x)
 
 
 @export
 fn string_concat(x: String, y: String) -> String:
-    return x + y
+    return poc_string_concat(x, y)
 
 
 @export
 fn string_repeat(x: String, n: Int32) -> String:
-    var result = String("")
-    for _ in range(Int(n)):
-        result += x
-    return result
+    return poc_string_repeat(x, n)
 
 
 @export
 fn string_eq(x: String, y: String) -> Bool:
-    return x == y
+    return poc_string_eq(x, y)

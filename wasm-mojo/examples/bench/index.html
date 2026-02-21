@@ -1,490 +1,188 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🔥 Mojo WASM — js-framework-benchmark</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #1a1a2e; color: #e0e0e0; }
-    .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
-    h1 { font-size: 1.4rem; margin-bottom: 12px; color: #ff6b35; }
-    .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
-    .controls button {
-      padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;
-      font-size: 0.85rem; font-weight: 600; transition: background 0.15s;
-    }
-    .btn-create  { background: #4ecca3; color: #1a1a2e; }
-    .btn-create:hover { background: #3db88f; }
-    .btn-append  { background: #36a2eb; color: #fff; }
-    .btn-append:hover { background: #2b8fd4; }
-    .btn-update  { background: #ff9f43; color: #1a1a2e; }
-    .btn-update:hover { background: #e88e3a; }
-    .btn-swap    { background: #a55eea; color: #fff; }
-    .btn-swap:hover { background: #8e4fd6; }
-    .btn-clear   { background: #ee5a6f; color: #fff; }
-    .btn-clear:hover { background: #d44d60; }
-    .btn-create10k { background: #2ecc71; color: #1a1a2e; }
-    .btn-create10k:hover { background: #27ae60; }
-    .status {
-      font-size: 0.8rem; color: #aaa; margin-bottom: 8px; font-family: monospace;
-      min-height: 1.2em;
-    }
-    .timing { color: #ff6b35; font-weight: bold; }
-    table { width: 100%; border-collapse: collapse; }
-    thead th {
-      text-align: left; padding: 6px 8px; border-bottom: 2px solid #333;
-      font-size: 0.75rem; text-transform: uppercase; color: #888;
-      position: sticky; top: 0; background: #1a1a2e;
-    }
-    tbody tr { border-bottom: 1px solid #2a2a3e; cursor: pointer; transition: background 0.1s; }
-    tbody tr:hover { background: #2a2a3e; }
-    tbody tr.danger { background: #3d1f2e; }
-    tbody td { padding: 4px 8px; font-size: 0.85rem; }
-    tbody td:first-child { width: 60px; color: #888; font-family: monospace; }
-    tbody td a { color: #4ecca3; text-decoration: none; cursor: pointer; }
-    tbody td a:hover { text-decoration: underline; }
-    tbody td a.remove { color: #ee5a6f; }
-    .table-wrap { max-height: 70vh; overflow-y: auto; border: 1px solid #2a2a3e; border-radius: 4px; }
-    .loading { text-align: center; padding: 40px; color: #888; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>🔥 Mojo WASM — js-framework-benchmark</h1>
-    <div class="controls">
-      <button class="btn-create" id="btn-create1k">Create 1,000 rows</button>
-      <button class="btn-create10k" id="btn-create10k">Create 10,000 rows</button>
-      <button class="btn-append" id="btn-append">Append 1,000 rows</button>
-      <button class="btn-update" id="btn-update">Update every 10th row</button>
-      <button class="btn-swap" id="btn-swap">Swap rows</button>
-      <button class="btn-clear" id="btn-clear">Clear</button>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🔥 Mojo WASM — js-framework-benchmark</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #1a1a2e;
+        color: #e0e0e0;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 16px;
+      }
+      h1 {
+        font-size: 1.4rem;
+        margin-bottom: 12px;
+        color: #ff6b35;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+      .controls button {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 600;
+        transition: background 0.15s;
+      }
+      .btn-create {
+        background: #4ecca3;
+        color: #1a1a2e;
+      }
+      .btn-create:hover {
+        background: #3db88f;
+      }
+      .btn-append {
+        background: #36a2eb;
+        color: #fff;
+      }
+      .btn-append:hover {
+        background: #2b8fd4;
+      }
+      .btn-update {
+        background: #ff9f43;
+        color: #1a1a2e;
+      }
+      .btn-update:hover {
+        background: #e88e3a;
+      }
+      .btn-swap {
+        background: #a55eea;
+        color: #fff;
+      }
+      .btn-swap:hover {
+        background: #8e4fd6;
+      }
+      .btn-clear {
+        background: #ee5a6f;
+        color: #fff;
+      }
+      .btn-clear:hover {
+        background: #d44d60;
+      }
+      .btn-create10k {
+        background: #2ecc71;
+        color: #1a1a2e;
+      }
+      .btn-create10k:hover {
+        background: #27ae60;
+      }
+      .status {
+        font-size: 0.8rem;
+        color: #aaa;
+        margin-bottom: 8px;
+        font-family: monospace;
+        min-height: 1.2em;
+      }
+      .timing {
+        color: #ff6b35;
+        font-weight: bold;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      thead th {
+        text-align: left;
+        padding: 6px 8px;
+        border-bottom: 2px solid #333;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        color: #888;
+        position: sticky;
+        top: 0;
+        background: #1a1a2e;
+      }
+      tbody tr {
+        border-bottom: 1px solid #2a2a3e;
+        cursor: pointer;
+        transition: background 0.1s;
+      }
+      tbody tr:hover {
+        background: #2a2a3e;
+      }
+      tbody tr.danger {
+        background: #3d1f2e;
+      }
+      tbody td {
+        padding: 4px 8px;
+        font-size: 0.85rem;
+      }
+      tbody td:first-child {
+        width: 60px;
+        color: #888;
+        font-family: monospace;
+      }
+      tbody td a {
+        color: #4ecca3;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      tbody td a:hover {
+        text-decoration: underline;
+      }
+      tbody td a.remove {
+        color: #ee5a6f;
+      }
+      .table-wrap {
+        max-height: 70vh;
+        overflow-y: auto;
+        border: 1px solid #2a2a3e;
+        border-radius: 4px;
+      }
+      .loading {
+        text-align: center;
+        padding: 40px;
+        color: #888;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🔥 Mojo WASM — js-framework-benchmark</h1>
+      <div class="controls">
+        <button class="btn-create" id="btn-create1k">Create 1,000 rows</button>
+        <button class="btn-create10k" id="btn-create10k">
+          Create 10,000 rows
+        </button>
+        <button class="btn-append" id="btn-append">Append 1,000 rows</button>
+        <button class="btn-update" id="btn-update">
+          Update every 10th row
+        </button>
+        <button class="btn-swap" id="btn-swap">Swap rows</button>
+        <button class="btn-clear" id="btn-clear">Clear</button>
+      </div>
+      <div class="status" id="status">Loading WASM…</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Label</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
     </div>
-    <div class="status" id="status">Loading WASM…</div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>#</th><th>Label</th><th>Action</th></tr>
-        </thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
-  </div>
 
-  <script type="module">
-    // ── Constants ──────────────────────────────────────────────────────
-    const BUF_CAPACITY = 8 * 1024 * 1024; // 8 MB mutation buffer
-
-    // ── WASM memory state ─────────────────────────────────────────────
-    let wasmMemory = null;
-    let heapPointer = 0n;
-
-    function alignedAlloc(align, size) {
-      const remainder = heapPointer % align;
-      if (remainder !== 0n) heapPointer += align - remainder;
-      const ptr = heapPointer;
-      heapPointer += size;
-      return ptr;
-    }
-
-    // ── Text encoder for Mojo String ABI ──────────────────────────────
-    const textEncoder = new TextEncoder();
-    const textDecoder = new TextDecoder();
-
-    // ── Mutation protocol ─────────────────────────────────────────────
-    const Op = {
-      End: 0x00, AppendChildren: 0x01, AssignId: 0x02, CreatePlaceholder: 0x03,
-      CreateTextNode: 0x04, LoadTemplate: 0x05, ReplaceWith: 0x06,
-      ReplacePlaceholder: 0x07, InsertAfter: 0x08, InsertBefore: 0x09,
-      SetAttribute: 0x0a, SetText: 0x0b, NewEventListener: 0x0c,
-      RemoveEventListener: 0x0d, Remove: 0x0e, PushRoot: 0x0f,
-    };
-
-    class MutationReader {
-      constructor(buffer, byteOffset, byteLength) {
-        this.view = new DataView(buffer, byteOffset, byteLength);
-        this.bytes = new Uint8Array(buffer, byteOffset, byteLength);
-        this.offset = 0;
-        this.end = byteLength;
-      }
-      readU8()  { const v = this.view.getUint8(this.offset); this.offset += 1; return v; }
-      readU16() { const v = this.view.getUint16(this.offset, true); this.offset += 2; return v; }
-      readU32() { const v = this.view.getUint32(this.offset, true); this.offset += 4; return v; }
-      readStr() {
-        const len = this.readU32();
-        if (len === 0) return "";
-        const s = textDecoder.decode(this.bytes.subarray(this.offset, this.offset + len));
-        this.offset += len;
-        return s;
-      }
-      readShortStr() {
-        const len = this.readU16();
-        if (len === 0) return "";
-        const s = textDecoder.decode(this.bytes.subarray(this.offset, this.offset + len));
-        this.offset += len;
-        return s;
-      }
-      readPath() {
-        const len = this.readU8();
-        const p = this.bytes.slice(this.offset, this.offset + len);
-        this.offset += len;
-        return p;
-      }
-      next() {
-        if (this.offset >= this.end) return null;
-        const op = this.readU8();
-        switch (op) {
-          case Op.End:               return null;
-          case Op.AppendChildren:    return { op, id: this.readU32(), m: this.readU32() };
-          case Op.AssignId:          return { op, path: this.readPath(), id: this.readU32() };
-          case Op.CreatePlaceholder: return { op, id: this.readU32() };
-          case Op.CreateTextNode:    return { op, id: this.readU32(), text: this.readStr() };
-          case Op.LoadTemplate:      return { op, tmplId: this.readU32(), index: this.readU32(), id: this.readU32() };
-          case Op.ReplaceWith:       return { op, id: this.readU32(), m: this.readU32() };
-          case Op.ReplacePlaceholder:return { op, path: this.readPath(), m: this.readU32() };
-          case Op.InsertAfter:       return { op, id: this.readU32(), m: this.readU32() };
-          case Op.InsertBefore:      return { op, id: this.readU32(), m: this.readU32() };
-          case Op.SetAttribute:      { const id = this.readU32(), ns = this.readU8(), name = this.readShortStr(), value = this.readStr(); return { op, id, ns, name, value }; }
-          case Op.SetText:           return { op, id: this.readU32(), text: this.readStr() };
-          case Op.NewEventListener:  return { op, id: this.readU32(), name: this.readShortStr() };
-          case Op.RemoveEventListener: return { op, id: this.readU32(), name: this.readShortStr() };
-          case Op.Remove:            return { op, id: this.readU32() };
-          case Op.PushRoot:          return { op, id: this.readU32() };
-          default: throw new Error(`Unknown opcode 0x${op.toString(16)}`);
-        }
-      }
-    }
-
-    // ── DOM Interpreter ───────────────────────────────────────────────
-    class Interpreter {
-      constructor(root, templateRoots) {
-        this.stack = [];
-        this.nodes = new Map();
-        this.templateRoots = templateRoots;
-        this.doc = root.ownerDocument;
-        this.root = root;
-        this.listeners = new Map();
-        this.onNewListener = null;
-        this.nodes.set(0, root);
-      }
-
-      applyMutations(buffer, byteOffset, byteLength) {
-        const reader = new MutationReader(buffer, byteOffset, byteLength);
-        for (let m = reader.next(); m !== null; m = reader.next()) {
-          this.handle(m);
-        }
-      }
-
-      handle(m) {
-        switch (m.op) {
-          case Op.PushRoot:
-            this.stack.push(this.nodes.get(m.id));
-            break;
-          case Op.AppendChildren: {
-            const parent = this.nodes.get(m.id);
-            const children = this.stack.splice(-m.m, m.m);
-            for (const c of children) parent.appendChild(c);
-            break;
-          }
-          case Op.CreateTextNode: {
-            const n = this.doc.createTextNode(m.text);
-            this.nodes.set(m.id, n);
-            this.stack.push(n);
-            break;
-          }
-          case Op.CreatePlaceholder: {
-            const n = this.doc.createComment("ph");
-            this.nodes.set(m.id, n);
-            this.stack.push(n);
-            break;
-          }
-          case Op.LoadTemplate: {
-            const roots = this.templateRoots.get(m.tmplId);
-            if (!roots) throw new Error(`Template ${m.tmplId} not found`);
-            const n = roots[m.index].cloneNode(true);
-            this.nodes.set(m.id, n);
-            this.stack.push(n);
-            break;
-          }
-          case Op.AssignId: {
-            let n = this.stack[this.stack.length - 1];
-            for (const idx of m.path) n = n.childNodes[idx];
-            this.nodes.set(m.id, n);
-            break;
-          }
-          case Op.SetAttribute: {
-            const n = this.nodes.get(m.id);
-            if (n && n.setAttribute) n.setAttribute(m.name, m.value);
-            break;
-          }
-          case Op.SetText: {
-            const n = this.nodes.get(m.id);
-            if (n) n.textContent = m.text;
-            break;
-          }
-          case Op.NewEventListener: {
-            const el = this.nodes.get(m.id);
-            if (!el) break;
-            const listener = this.onNewListener ? this.onNewListener(m.id, m.name) : () => {};
-            let elMap = this.listeners.get(m.id);
-            if (!elMap) { elMap = new Map(); this.listeners.set(m.id, elMap); }
-            const prev = elMap.get(m.name);
-            if (prev) el.removeEventListener(m.name, prev);
-            el.addEventListener(m.name, listener);
-            elMap.set(m.name, listener);
-            break;
-          }
-          case Op.RemoveEventListener: {
-            const el = this.nodes.get(m.id);
-            if (!el) break;
-            const elMap = this.listeners.get(m.id);
-            if (!elMap) break;
-            const fn = elMap.get(m.name);
-            if (fn) { el.removeEventListener(m.name, fn); elMap.delete(m.name); }
-            break;
-          }
-          case Op.Remove: {
-            const n = this.nodes.get(m.id);
-            if (n && n.parentNode) n.parentNode.removeChild(n);
-            break;
-          }
-          case Op.ReplaceWith: {
-            const old = this.nodes.get(m.id);
-            const reps = this.stack.splice(-m.m, m.m);
-            const parent = old.parentNode;
-            if (parent) {
-              parent.replaceChild(reps[0], old);
-              for (let i = 1; i < reps.length; i++) {
-                parent.insertBefore(reps[i], reps[i - 1].nextSibling);
-              }
-            }
-            break;
-          }
-          case Op.ReplacePlaceholder: {
-            const reps = this.stack.splice(-m.m, m.m);
-            let target = this.stack[this.stack.length - 1];
-            for (const idx of m.path) target = target.childNodes[idx];
-            const parent = target.parentNode;
-            if (parent) {
-              for (const r of reps) parent.insertBefore(r, target);
-              parent.removeChild(target);
-            }
-            break;
-          }
-          case Op.InsertAfter: {
-            const ref = this.nodes.get(m.id);
-            const news = this.stack.splice(-m.m, m.m);
-            const parent = ref.parentNode;
-            let point = ref.nextSibling;
-            for (const n of news) { parent.insertBefore(n, point); point = n.nextSibling; }
-            break;
-          }
-          case Op.InsertBefore: {
-            const ref = this.nodes.get(m.id);
-            const news = this.stack.splice(-m.m, m.m);
-            const parent = ref.parentNode;
-            for (const n of news) parent.insertBefore(n, ref);
-            break;
-          }
-        }
-      }
-    }
-
-    // ── WASM environment ──────────────────────────────────────────────
-    const env = {
-      memory: new WebAssembly.Memory({ initial: 4096 }),
-      __cxa_atexit: () => 0,
-      KGEN_CompilerRT_AlignedAlloc: alignedAlloc,
-      KGEN_CompilerRT_AlignedFree: () => 1,
-      KGEN_CompilerRT_GetStackTrace: () => 0n,
-      KGEN_CompilerRT_fprintf: () => 0,
-      write: (fd, ptr, len) => {
-        if (len === 0n || !wasmMemory) return 0;
-        const text = textDecoder.decode(new Uint8Array(wasmMemory.buffer, Number(ptr), Number(len)));
-        console.log(text);
-        return Number(len);
-      },
-      free: () => 1, dup: () => 1, fdopen: () => 1, fflush: () => 1, fclose: () => 1,
-      __multi3: (resultPtr, aLo, aHi, bLo, bHi) => {
-        if (!wasmMemory) return;
-        const mask = 0xffffffffffffffffn;
-        const product = (((aHi & mask) << 64n) | (aLo & mask)) * (((bHi & mask) << 64n) | (bLo & mask));
-        const view = new DataView(wasmMemory.buffer);
-        view.setBigInt64(Number(resultPtr), product & mask, true);
-        view.setBigInt64(Number(resultPtr) + 8, (product >> 64n) & mask, true);
-      },
-      fmaf: (x, y, z) => Math.fround(Math.fround(x * y) + z),
-      fminf: (x, y) => (x > y ? y : x),
-      fmaxf: (x, y) => (x > y ? x : y),
-      fma: (x, y, z) => x * y + z,
-      fmin: (x, y) => (x > y ? y : x),
-      fmax: (x, y) => (x > y ? x : y),
-    };
-
-    // ── Boot ──────────────────────────────────────────────────────────
-    const statusEl = document.getElementById("status");
-    const tbody = document.getElementById("tbody");
-
-    function setStatus(text) {
-      statusEl.innerHTML = text;
-    }
-
-    function timeOp(name, fn) {
-      const start = performance.now();
-      fn();
-      const ms = (performance.now() - start).toFixed(1);
-      setStatus(`<strong>${name}</strong>: <span class="timing">${ms}ms</span> — ${fns ? fns.bench_row_count(appPtr) : "?"} rows`);
-    }
-
-    let fns = null;
-    let appPtr = null;
-    let bufPtr = null;
-    let interp = null;
-    let rowActions = new Map(); // elementId → { type: "select"|"remove", rowId }
-
-    async function boot() {
-      try {
-        const wasmUrl = new URL("../../build/out.wasm", import.meta.url);
-        const wasmBuffer = await fetch(wasmUrl).then(r => r.arrayBuffer());
-        const { instance } = await WebAssembly.instantiate(wasmBuffer, { env });
-
-        fns = instance.exports;
-        wasmMemory = fns.memory;
-        heapPointer = fns.__heap_base.value;
-
-        // Initialize benchmark app
-        appPtr = fns.bench_init();
-        const rowTmplId = fns.bench_row_template_id(appPtr);
-
-        // Build template DOM for bench-row:
-        //   tr > [ td(id), td > a(label), td > a("×") ]
-        const templateRoots = new Map();
-        {
-          const tr = document.createElement("tr");
-
-          const tdId = document.createElement("td");
-          tdId.appendChild(document.createTextNode("")); // dynamic_text[0]
-          tr.appendChild(tdId);
-
-          const tdLabel = document.createElement("td");
-          const aLabel = document.createElement("a");
-          aLabel.appendChild(document.createTextNode("")); // dynamic_text[1]
-          tdLabel.appendChild(aLabel);
-          tr.appendChild(tdLabel);
-
-          const tdAction = document.createElement("td");
-          const aRemove = document.createElement("a");
-          aRemove.className = "remove";
-          aRemove.appendChild(document.createTextNode("×"));
-          tdAction.appendChild(aRemove);
-          tr.appendChild(tdAction);
-
-          templateRoots.set(rowTmplId, [tr.cloneNode(true)]);
-        }
-
-        // Create interpreter
-        interp = new Interpreter(tbody, templateRoots);
-
-        // Allocate mutation buffer
-        bufPtr = alignedAlloc(8n, BigInt(BUF_CAPACITY));
-
-        // Wire up event listener tracking
-        interp.onNewListener = (elementId, eventName) => {
-          return () => {}; // no-op — we use delegation below
-        };
-
-        // Initial mount (empty table body with anchor placeholder)
-        const mountLen = fns.bench_rebuild(appPtr, bufPtr, BUF_CAPACITY);
-        if (mountLen > 0) {
-          interp.applyMutations(wasmMemory.buffer, Number(bufPtr), mountLen);
-        }
-
-        // Event delegation on tbody
-        tbody.addEventListener("click", (e) => {
-          const a = e.target.closest("a");
-          if (!a) return;
-          const tr = a.closest("tr");
-          if (!tr) return;
-
-          // The first td contains the row id text
-          const idText = tr.querySelector("td")?.textContent;
-          if (!idText) return;
-          const rowId = parseInt(idText, 10);
-          if (isNaN(rowId)) return;
-
-          if (a.classList.contains("remove")) {
-            timeOp("Remove row", () => {
-              fns.bench_remove(appPtr, rowId);
-              flush();
-            });
-          } else {
-            timeOp("Select row", () => {
-              fns.bench_select(appPtr, rowId);
-              flush();
-            });
-          }
-        });
-
-        // Wire buttons
-        document.getElementById("btn-create1k").onclick = () => {
-          timeOp("Create 1,000 rows", () => {
-            fns.bench_create(appPtr, 1000);
-            flush();
-          });
-        };
-
-        document.getElementById("btn-create10k").onclick = () => {
-          timeOp("Create 10,000 rows", () => {
-            fns.bench_create(appPtr, 10000);
-            flush();
-          });
-        };
-
-        document.getElementById("btn-append").onclick = () => {
-          timeOp("Append 1,000 rows", () => {
-            fns.bench_append(appPtr, 1000);
-            flush();
-          });
-        };
-
-        document.getElementById("btn-update").onclick = () => {
-          timeOp("Update every 10th", () => {
-            fns.bench_update(appPtr);
-            flush();
-          });
-        };
-
-        document.getElementById("btn-swap").onclick = () => {
-          timeOp("Swap rows", () => {
-            fns.bench_swap(appPtr);
-            flush();
-          });
-        };
-
-        document.getElementById("btn-clear").onclick = () => {
-          timeOp("Clear", () => {
-            fns.bench_clear(appPtr);
-            flush();
-          });
-        };
-
-        setStatus("Ready — click a button to start benchmarking");
-        console.log("🔥 Mojo Benchmark app running!");
-
-      } catch (err) {
-        console.error("Failed to boot:", err);
-        setStatus(`<span style="color:#ee5a6f">Failed to load: ${err.message}</span>`);
-      }
-    }
-
-    function flush() {
-      const len = fns.bench_flush(appPtr, bufPtr, BUF_CAPACITY);
-      if (len > 0) {
-        interp.applyMutations(wasmMemory.buffer, Number(bufPtr), len);
-      }
-    }
-
-    boot();
-  </script>
-</body>
+    <script type="module" src="main.js"></script>
+  </body>
 </html>

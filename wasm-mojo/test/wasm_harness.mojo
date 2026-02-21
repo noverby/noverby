@@ -1126,6 +1126,31 @@ fn args_ptr_ptr_i32(a: Int, b: Int, c: Int32) -> List[WasmtimeVal]:
     return v^
 
 
+fn args_ptr_ptr_i32_i32(
+    a: Int, b: Int, c: Int32, d: Int32
+) -> List[WasmtimeVal]:
+    """Build a (ptr, ptr, i32, i32) argument list."""
+    var v = List[WasmtimeVal]()
+    v.append(WasmtimeVal.from_i64(Int64(a)))
+    v.append(WasmtimeVal.from_i64(Int64(b)))
+    v.append(WasmtimeVal.from_i32(c))
+    v.append(WasmtimeVal.from_i32(d))
+    return v^
+
+
+fn args_ptr_ptr_i32_i32_i32(
+    a: Int, b: Int, c: Int32, d: Int32, e: Int32
+) -> List[WasmtimeVal]:
+    """Build a (ptr, ptr, i32, i32, i32) argument list."""
+    var v = List[WasmtimeVal]()
+    v.append(WasmtimeVal.from_i64(Int64(a)))
+    v.append(WasmtimeVal.from_i64(Int64(b)))
+    v.append(WasmtimeVal.from_i32(c))
+    v.append(WasmtimeVal.from_i32(d))
+    v.append(WasmtimeVal.from_i32(e))
+    return v^
+
+
 fn args_ptr_ptr_ptr_ptr(a: Int, b: Int, c: Int, d: Int) -> List[WasmtimeVal]:
     """Build a four-pointer (i64, i64, i64, i64) argument list."""
     var v = List[WasmtimeVal]()
