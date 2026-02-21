@@ -45,13 +45,13 @@
 | **Language** | 🔥 [Mojo](https://en.wikipedia.org/wiki/Mojo_(programming_language)), 🐍 Python, ❄️ Nix/[Nickel](https://github.com/tweag/nickel), 🦀 Rust, 🦪 Nushell, 🐹 Go, 💣 C/C++, 🐒 [ECMAScript](https://en.wikipedia.org/wiki/ECMAScript), 🐷 Java/Kotlin, 🌙 Lua, λ Haskell |
 | **Miscellaneous** | 🇽➡️🇾 Migrating from 🇽 to 🇾, 🌀 [Atmosphere (AT Protocol)](https://atproto.com) , 👁️ [Sentientist](https://en.wikipedia.org/wiki/Sentientism) |
 
-## 📁 Repository
+<a id="-repository"></a>
 
-[⬆](#toc)
+## 📁 Repository [⬆](#toc)
 
-### 🚀 Projects
+<a id="-projects"></a>
 
-[⬆](#toc)
+### 🚀 Projects [⬆](#toc)
 
 <details open>
 
@@ -69,9 +69,9 @@
 
 </details>
 
-### 📦 Packages
+<a id="-packages"></a>
 
-[⬆](#toc)
+### 📦 Packages [⬆](#toc)
 
 <details open>
 
@@ -130,9 +130,9 @@
 
 </details>
 
-### 📋 Configurations
+<a id="-configurations"></a>
 
-[⬆](#toc)
+### 📋 Configurations [⬆](#toc)
 
 <details open>
 
@@ -144,9 +144,9 @@
 
 </details>
 
-### 🧩 Modules
+<a id="-modules"></a>
 
-[⬆](#toc)
+### 🧩 Modules [⬆](#toc)
 
 <details open>
 
@@ -159,9 +159,9 @@
 
 </details>
 
-## 💻 Hardware
+<a id="-hardware"></a>
 
-[⬆](#toc)
+## 💻 Hardware [⬆](#toc)
 
 <details open>
 
@@ -180,13 +180,13 @@
 
 </details>
 
-## 🌐 Services
+<a id="-services"></a>
 
-[⬆](#toc)
+## 🌐 Services [⬆](#toc)
 
-### 🔒 Personal
+<a id="-personal"></a>
 
-[⬆](#toc)
+### 🔒 Personal [⬆](#toc)
 
 <details open>
 
@@ -211,9 +211,9 @@
 
 </details>
 
-### 👥 Social Platforms
+<a id="-social-platforms"></a>
 
-[⬆](#toc)
+### 👥 Social Platforms [⬆](#toc)
 
 <details open>
 
@@ -266,9 +266,9 @@
 
 </details>
 
-### ☁️ Cloud
+<a id="-cloud"></a>
 
-[⬆](#toc)
+### ☁️ Cloud [⬆](#toc)
 
 <details open>
 
@@ -285,13 +285,11 @@
 
 </details>
 
-## 📏 Standards
+<a id="-standards"></a>
 
-[⬆](#toc)
+## 📏 Standards [⬆](#toc)
 
-### 🔌 Hardware
-
-[⬆](#toc)
+### 🔌 Hardware [⬆](#toc)
 
 <details open>
 
@@ -320,9 +318,9 @@
 
 </details>
 
-### 🔗 Software
+<a id="-software"></a>
 
-[⬆](#toc)
+### 🔗 Software [⬆](#toc)
 
 <details open>
 
@@ -340,9 +338,9 @@
 
 </details>
 
-### 📝 Data
+<a id="-data"></a>
 
-[⬆](#toc)
+### 📝 Data [⬆](#toc)
 
 <details open>
 
@@ -365,9 +363,9 @@
 
 </details>
 
-### 📡 Network
+<a id="-network"></a>
 
-[⬆](#toc)
+### 📡 Network [⬆](#toc)
 
 <details open>
 
@@ -382,13 +380,13 @@
 
 </details>
 
-## 🖥️ System
+<a id="-system"></a>
 
-[⬆](#toc)
+## 🖥️ System [⬆](#toc)
 
-### ⚙️ Core
+<a id="-core"></a>
 
-[⬆](#toc)
+### ⚙️ Core [⬆](#toc)
 
 <details open>
 
@@ -406,9 +404,9 @@
 
 </details>
 
-### 📚 Libraries
+<a id="-libraries"></a>
 
-[⬆](#toc)
+### 📚 Libraries [⬆](#toc)
 
 <details open>
 
@@ -431,9 +429,9 @@
 
 </details>
 
-### 🏗️ Infrastructure
+<a id="-infrastructure"></a>
 
-[⬆](#toc)
+### 🏗️ Infrastructure [⬆](#toc)
 
 <details open>
 
@@ -453,9 +451,9 @@
 
 </details>
 
-## 🛠️ Development
+<a id="-development"></a>
 
-[⬆](#toc)
+## 🛠️ Development [⬆](#toc)
 
 <details open>
 
@@ -490,9 +488,9 @@
 
 </details>
 
-### ❄️ Configuration
+<a id="-configuration"></a>
 
-[⬆](#toc)
+### ❄️ Configuration [⬆](#toc)
 
 <details open>
 
@@ -519,9 +517,9 @@
 
 </details>
 
-### 🦀 Systems
+<a id="-systems"></a>
 
-[⬆](#toc)
+### 🦀 Systems [⬆](#toc)
 
 <details open>
 
@@ -535,9 +533,9 @@
 
 </details>
 
-### 🌐 Web
+<a id="-web"></a>
 
-[⬆](#toc)
+### 🌐 Web [⬆](#toc)
 
 <details open>
 
@@ -552,9 +550,9 @@
 
 </details>
 
-### 🐍 Scripting
+<a id="-scripting"></a>
 
-[⬆](#toc)
+### 🐍 Scripting [⬆](#toc)
 
 <details open>
 
@@ -570,13 +568,13 @@
 
 </details>
 
-## 📱 Applications
+<a id="-applications"></a>
 
-[⬆](#toc)
+## 📱 Applications [⬆](#toc)
 
-### 💻 Command Line
+<a id="-command-line"></a>
 
-[⬆](#toc)
+### 💻 Command Line [⬆](#toc)
 
 <details open>
 
@@ -629,9 +627,9 @@
 
 </details>
 
-### 🖥️ Desktop Environment
+<a id="-desktop-environment"></a>
 
-[⬆](#toc)
+### 🖥️ Desktop Environment [⬆](#toc)
 
 <details open>
 
@@ -645,9 +643,9 @@
 
 </details>
 
-### 🚀 Productivity
+<a id="-productivity"></a>
 
-[⬆](#toc)
+### 🚀 Productivity [⬆](#toc)
 
 <details open>
 
@@ -663,9 +661,9 @@
 
 </details>
 
-### 🎨 Media
+<a id="-media"></a>
 
-[⬆](#toc)
+### 🎨 Media [⬆](#toc)
 
 <details open>
 
@@ -682,9 +680,9 @@
 
 </details>
 
-### 🌐 Browser Extensions
+<a id="-browser-extensions"></a>
 
-[⬆](#toc)
+### 🌐 Browser Extensions [⬆](#toc)
 
 <details open>
 
@@ -697,9 +695,9 @@
 
 </details>
 
-### 📱 Mobile
+<a id="-mobile"></a>
 
-[⬆](#toc)
+### 📱 Mobile [⬆](#toc)
 
 <details open>
 
