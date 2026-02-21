@@ -6,23 +6,24 @@
 //! backends.  Its responsibilities are:
 //!
 //! - Resolve a [`TrampPath`] to a concrete [`Backend`] instance.
-//! - Connection pooling: reuse open SSH sessions keyed by
-//!   `(backend, user, host, port)`.
+//! - Connection pooling: reuse open sessions keyed by the full hop chain.
 //! - Connection health-checking: verify pooled connections are alive
 //!   before reusing them; reconnect on failure.
 //! - Stat cache: cache metadata results with a configurable TTL to
 //!   avoid redundant remote calls.
+//! - Path chaining: compose backends so that e.g. Docker commands run
+//!   through an SSH session (`/ssh:host|docker:ctr:/path`).
 //! - Provide a **synchronous** API that the Nushell plugin commands can call
 //!   (internally it owns a tokio runtime and blocks on async operations).
-//!
-//! Phase 1 supports single-hop SSH only.  Chained paths produce an error
-//! with a clear message pointing at the roadmap.
 
 use bytes::Bytes;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::backend::exec::ExecBackend;
+use crate::backend::runner::CommandRunner;
+use crate::backend::runner::{LocalRunner, RemoteRunner};
 use crate::backend::ssh::SshBackend;
 use crate::backend::{Backend, DirEntry, ExecResult, Metadata};
 use crate::errors::{TrampError, TrampResult};
@@ -42,16 +43,16 @@ const DEFAULT_LIST_TTL: Duration = Duration::from_secs(5);
 // Connection key
 // ---------------------------------------------------------------------------
 
-/// Cache key for an open backend connection.
+/// A single hop's identity, used as a component of [`ConnectionKey`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct ConnectionKey {
+struct HopKey {
     backend: BackendKind,
     user: Option<String>,
     host: String,
     port: Option<u16>,
 }
 
-impl From<&Hop> for ConnectionKey {
+impl From<&Hop> for HopKey {
     fn from(hop: &Hop) -> Self {
         Self {
             backend: hop.backend,
@@ -59,6 +60,33 @@ impl From<&Hop> for ConnectionKey {
             host: hop.host.clone(),
             port: hop.port,
         }
+    }
+}
+
+/// Cache / pool key representing a full (possibly multi-hop) connection chain.
+///
+/// Two paths that differ only in their `remote_path` share the same
+/// `ConnectionKey`; the key captures only the transport hops.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ConnectionKey {
+    hops: Vec<HopKey>,
+}
+
+impl ConnectionKey {
+    fn from_hops(hops: &[Hop]) -> Self {
+        Self {
+            hops: hops.iter().map(HopKey::from).collect(),
+        }
+    }
+
+    /// Return `true` if any hop in this key targets `host`.
+    fn contains_host(&self, host: &str) -> bool {
+        self.hops.iter().any(|h| h.host == host)
+    }
+
+    /// The host of the *last* hop — the endpoint that owns the files.
+    fn endpoint_host(&self) -> &str {
+        self.hops.last().map(|h| h.host.as_str()).unwrap_or("")
     }
 }
 
@@ -101,64 +129,53 @@ impl StatCache {
         }
     }
 
-    /// Look up a cached stat result.  Returns `None` if the entry is
-    /// missing or expired (expired entries are removed eagerly).
+    /// Get a cached entry if it exists and has not expired.
     fn get(&mut self, key: &ConnectionKey, path: &str) -> Option<Metadata> {
         let cache_key = (key.clone(), path.to_string());
         if let Some(entry) = self.entries.get(&cache_key) {
-            if entry.is_expired(self.ttl) {
-                self.entries.remove(&cache_key);
-                None
-            } else {
-                Some(entry.value.clone())
+            if !entry.is_expired(self.ttl) {
+                return Some(entry.value.clone());
             }
-        } else {
-            None
+            // Expired — remove lazily.
+            self.entries.remove(&cache_key);
         }
+        None
     }
 
-    /// Insert or replace a stat result in the cache.
-    fn insert(&mut self, key: &ConnectionKey, path: &str, metadata: Metadata) {
-        let cache_key = (key.clone(), path.to_string());
-        self.entries.insert(cache_key, CacheEntry::new(metadata));
+    fn insert(&mut self, key: &ConnectionKey, path: &str, value: Metadata) {
+        self.entries
+            .insert((key.clone(), path.to_string()), CacheEntry::new(value));
     }
 
-    /// Invalidate (remove) a specific cached entry.
     fn invalidate(&mut self, key: &ConnectionKey, path: &str) {
-        let cache_key = (key.clone(), path.to_string());
-        self.entries.remove(&cache_key);
+        self.entries.remove(&(key.clone(), path.to_string()));
     }
 
-    /// Invalidate all entries under a given connection key whose path starts
-    /// with `prefix`.  Useful after writes or deletes.
+    /// Invalidate all entries whose path starts with `prefix`.
     fn invalidate_prefix(&mut self, key: &ConnectionKey, prefix: &str) {
         self.entries
             .retain(|(k, p), _| !(k == key && p.starts_with(prefix)));
     }
 
-    /// Invalidate all entries for a given connection key.
     fn invalidate_connection(&mut self, key: &ConnectionKey) {
         self.entries.retain(|(k, _), _| k != key);
     }
 
     /// Remove all expired entries (garbage collection).
     fn evict_expired(&mut self) {
-        let ttl = self.ttl;
-        self.entries.retain(|_, entry| !entry.is_expired(ttl));
+        self.entries.retain(|_, e| !e.is_expired(self.ttl));
     }
 
-    /// Drop everything.
     fn clear(&mut self) {
         self.entries.clear();
     }
 
-    /// Number of entries currently in the cache (including possibly expired).
     fn len(&self) -> usize {
         self.entries.len()
     }
 }
 
-/// A TTL-based cache for directory listing results.
+/// A TTL-based cache for directory listings.
 struct ListCache {
     entries: HashMap<(ConnectionKey, String), CacheEntry<Vec<DirEntry>>>,
     ttl: Duration,
@@ -175,25 +192,21 @@ impl ListCache {
     fn get(&mut self, key: &ConnectionKey, path: &str) -> Option<Vec<DirEntry>> {
         let cache_key = (key.clone(), path.to_string());
         if let Some(entry) = self.entries.get(&cache_key) {
-            if entry.is_expired(self.ttl) {
-                self.entries.remove(&cache_key);
-                None
-            } else {
-                Some(entry.value.clone())
+            if !entry.is_expired(self.ttl) {
+                return Some(entry.value.clone());
             }
-        } else {
-            None
+            self.entries.remove(&cache_key);
         }
+        None
     }
 
-    fn insert(&mut self, key: &ConnectionKey, path: &str, entries: Vec<DirEntry>) {
-        let cache_key = (key.clone(), path.to_string());
-        self.entries.insert(cache_key, CacheEntry::new(entries));
+    fn insert(&mut self, key: &ConnectionKey, path: &str, value: Vec<DirEntry>) {
+        self.entries
+            .insert((key.clone(), path.to_string()), CacheEntry::new(value));
     }
 
     fn invalidate(&mut self, key: &ConnectionKey, path: &str) {
-        let cache_key = (key.clone(), path.to_string());
-        self.entries.remove(&cache_key);
+        self.entries.remove(&(key.clone(), path.to_string()));
     }
 
     fn invalidate_prefix(&mut self, key: &ConnectionKey, prefix: &str) {
@@ -221,7 +234,7 @@ impl ListCache {
 /// calling thread on the internal runtime.
 pub struct Vfs {
     runtime: tokio::runtime::Runtime,
-    /// Connection pool keyed by `(backend, user, host, port)`.
+    /// Connection pool keyed by the full hop chain.
     ///
     /// The `Arc<dyn Backend>` is shared so that multiple concurrent calls
     /// can reuse the same underlying session.
@@ -250,46 +263,93 @@ impl Vfs {
     }
 
     // -----------------------------------------------------------------------
-    // Resolve a TrampPath to a backend
+    // Chain resolution
     // -----------------------------------------------------------------------
 
-    /// Validate a [`TrampPath`] and return the single hop for Phase 1.
-    ///
-    /// Returns an error for chained (multi-hop) paths or unsupported backends.
-    fn validate_single_hop(path: &TrampPath) -> TrampResult<&Hop> {
-        if path.hops.len() > 1 {
-            return Err(TrampError::ChainedPathNotSupported);
-        }
-
-        let hop = &path.hops[0];
-        match hop.backend {
-            BackendKind::Ssh => Ok(hop),
-            other => Err(TrampError::BackendNotSupported(other.to_string())),
-        }
-    }
-
-    /// Create a fresh backend connection for the given hop.
-    async fn connect_backend(hop: &Hop) -> TrampResult<Arc<dyn Backend>> {
+    /// Build a backend for a single hop, optionally chained through a
+    /// `parent` backend from a previous hop.
+    async fn connect_hop(
+        hop: &Hop,
+        parent: Option<&Arc<dyn Backend>>,
+    ) -> TrampResult<Arc<dyn Backend>> {
         match hop.backend {
             BackendKind::Ssh => {
+                if parent.is_some() {
+                    return Err(TrampError::Internal(
+                        "SSH-through-SSH chaining is not supported directly. \
+                         Use ProxyJump in ~/.ssh/config for jump hosts instead."
+                            .into(),
+                    ));
+                }
                 let ssh = SshBackend::connect(&hop.host, hop.user.as_deref(), hop.port).await?;
                 Ok(Arc::new(ssh))
             }
-            other => Err(TrampError::BackendNotSupported(other.to_string())),
+            BackendKind::Docker => {
+                let runner: Arc<dyn CommandRunner> = match parent {
+                    None => Arc::new(LocalRunner),
+                    Some(p) => Arc::new(RemoteRunner::new(Arc::clone(p))),
+                };
+                Ok(Arc::new(ExecBackend::docker(
+                    runner,
+                    &hop.host,
+                    hop.user.as_deref(),
+                )))
+            }
+            BackendKind::Kubernetes => {
+                let runner: Arc<dyn CommandRunner> = match parent {
+                    None => Arc::new(LocalRunner),
+                    Some(p) => Arc::new(RemoteRunner::new(Arc::clone(p))),
+                };
+                Ok(Arc::new(ExecBackend::kubernetes(
+                    runner,
+                    &hop.host,
+                    hop.user.as_deref(),
+                )))
+            }
+            BackendKind::Sudo => {
+                let runner: Arc<dyn CommandRunner> = match parent {
+                    None => Arc::new(LocalRunner),
+                    Some(p) => Arc::new(RemoteRunner::new(Arc::clone(p))),
+                };
+                // For sudo, the "host" field is the target user.
+                Ok(Arc::new(ExecBackend::sudo(runner, &hop.host)))
+            }
         }
     }
 
-    /// Get or create a backend connection for the given hop.
+    /// Build a (possibly chained) backend from a sequence of hops.
     ///
-    /// If a pooled connection exists, it is health-checked first.  Stale
-    /// connections are dropped and a fresh one is opened transparently.
+    /// Each hop is layered on top of the previous one:
     ///
-    /// This must be called from within the tokio runtime context.
+    /// ```text
+    /// /ssh:myvm|docker:ctr:/path
+    ///   hop 0: SSH to myvm          → SshBackend
+    ///   hop 1: docker exec ctr …    → ExecBackend(RemoteRunner(SshBackend))
+    /// ```
+    async fn build_chain(hops: &[Hop]) -> TrampResult<Arc<dyn Backend>> {
+        if hops.is_empty() {
+            return Err(TrampError::Internal("no hops in path".into()));
+        }
+
+        let mut current: Option<Arc<dyn Backend>> = None;
+
+        for hop in hops {
+            current = Some(Self::connect_hop(hop, current.as_ref()).await?);
+        }
+
+        // Safety: we checked that hops is non-empty above.
+        Ok(current.unwrap())
+    }
+
+    /// Get or create a backend connection for the given hop chain.
+    ///
+    /// If a pooled connection exists it is health-checked first.  Stale
+    /// connections are dropped and a fresh chain is built transparently.
     async fn get_or_connect(
         pool: &Mutex<HashMap<ConnectionKey, Arc<dyn Backend>>>,
-        hop: &Hop,
+        hops: &[Hop],
     ) -> TrampResult<(ConnectionKey, Arc<dyn Backend>)> {
-        let key = ConnectionKey::from(hop);
+        let key = ConnectionKey::from_hops(hops);
 
         // Fast path: check if we already have a connection.
         let existing = {
@@ -304,8 +364,7 @@ impl Vfs {
             match backend.check().await {
                 Ok(()) => return Ok((key, backend)),
                 Err(_) => {
-                    // Connection is stale — remove it from the pool and fall
-                    // through to create a new one.
+                    // Connection is stale — remove and reconnect.
                     if let Ok(mut pool_guard) = pool.lock() {
                         pool_guard.remove(&key);
                     }
@@ -313,8 +372,8 @@ impl Vfs {
             }
         }
 
-        // Slow path: create a new connection.
-        let backend = Self::connect_backend(hop).await?;
+        // Slow path: build a new chain.
+        let backend = Self::build_chain(hops).await?;
 
         // Store in pool.
         {
@@ -329,9 +388,10 @@ impl Vfs {
 
     /// Resolve a [`TrampPath`] to a `(connection_key, backend, remote_path)` triple.
     fn resolve(&self, path: &TrampPath) -> TrampResult<(ConnectionKey, Arc<dyn Backend>, String)> {
-        let hop = Self::validate_single_hop(path)?;
         let pool = &self.pool;
-        let (key, backend) = self.runtime.block_on(Self::get_or_connect(pool, hop))?;
+        let (key, backend) = self
+            .runtime
+            .block_on(Self::get_or_connect(pool, &path.hops))?;
         Ok((key, backend, path.remote_path.clone()))
     }
 
@@ -474,25 +534,26 @@ impl Vfs {
         }
     }
 
-    /// Drop the pooled connection for a specific host (matching any user/port
-    /// combination whose host field equals `host`).
+    /// Drop pooled connections for a specific host.
+    ///
+    /// Any connection whose hop chain mentions `host` (in any position)
+    /// is removed, along with its cached data.
     pub fn disconnect_host(&self, host: &str) {
         if let Ok(mut pool) = self.pool.lock() {
-            pool.retain(|key, _| key.host != host);
+            pool.retain(|key, _| !key.contains_host(host));
         }
 
-        // Invalidate caches for any connection key matching this host,
-        // regardless of whether it was in the pool.
+        // Invalidate caches for any connection key mentioning this host.
         if let Ok(mut cache) = self.stat_cache.lock() {
-            cache.entries.retain(|(k, _), _| k.host != host);
+            cache.entries.retain(|(k, _), _| !k.contains_host(host));
         }
         if let Ok(mut cache) = self.list_cache.lock() {
-            cache.entries.retain(|(k, _), _| k.host != host);
+            cache.entries.retain(|(k, _), _| !k.contains_host(host));
         }
     }
 
-    /// Return a snapshot of the currently active connection keys (for
-    /// display in `tramp connections`).
+    /// Return a snapshot of the currently active connection descriptions
+    /// (for display in `tramp connections`).
     pub fn active_connections(&self) -> Vec<String> {
         let pool = match self.pool.lock() {
             Ok(p) => p,
@@ -501,23 +562,33 @@ impl Vfs {
 
         pool.iter()
             .map(|(key, backend)| {
-                let mut s = format!("{}", key.backend);
-                s.push(':');
-                if let Some(ref user) = key.user {
-                    s.push_str(user);
-                    s.push('@');
-                }
-                s.push_str(&key.host);
-                if let Some(port) = key.port {
-                    s.push('#');
-                    s.push_str(&port.to_string());
-                }
+                let chain: Vec<String> = key
+                    .hops
+                    .iter()
+                    .map(|h| {
+                        let mut s = format!("{}", h.backend);
+                        s.push(':');
+                        if let Some(ref user) = h.user {
+                            s.push_str(user);
+                            s.push('@');
+                        }
+                        s.push_str(&h.host);
+                        if let Some(port) = h.port {
+                            s.push('#');
+                            s.push_str(&port.to_string());
+                        }
+                        s
+                    })
+                    .collect();
+                let chain_str = chain.join("|");
+
                 // Append the backend's own description for richer output.
                 let desc = backend.description();
                 if !desc.is_empty() {
-                    s.push_str(&format!(" ({})", desc));
+                    format!("{chain_str} ({desc})")
+                } else {
+                    chain_str
                 }
-                s
             })
             .collect()
     }
@@ -530,11 +601,27 @@ impl Vfs {
         };
 
         pool.keys()
-            .map(|key| ConnectionInfo {
-                backend: key.backend.to_string(),
-                user: key.user.clone(),
-                host: key.host.clone(),
-                port: key.port,
+            .map(|key| {
+                // Format the chain as "backend:host|backend:host|…"
+                let chain: Vec<String> = key
+                    .hops
+                    .iter()
+                    .map(|h| format!("{}:{}", h.backend, h.host))
+                    .collect();
+
+                // Use the last hop for the primary display fields.
+                let last = key.hops.last();
+                ConnectionInfo {
+                    backend: last.map(|h| h.backend.to_string()).unwrap_or_default(),
+                    user: last.and_then(|h| h.user.clone()),
+                    host: last.map(|h| h.host.clone()).unwrap_or_default(),
+                    port: last.and_then(|h| h.port),
+                    chain: if key.hops.len() > 1 {
+                        Some(chain.join("|"))
+                    } else {
+                        None
+                    },
+                }
             })
             .collect()
     }
@@ -571,6 +658,9 @@ pub struct ConnectionInfo {
     pub user: Option<String>,
     pub host: String,
     pub port: Option<u16>,
+    /// For chained connections, the full chain description (e.g. `ssh:myvm|docker:ctr`).
+    /// `None` for single-hop connections.
+    pub chain: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -613,61 +703,194 @@ mod tests {
 
     fn make_key(host: &str) -> ConnectionKey {
         ConnectionKey {
-            backend: BackendKind::Ssh,
-            user: None,
-            host: host.to_string(),
-            port: None,
+            hops: vec![HopKey {
+                backend: BackendKind::Ssh,
+                user: None,
+                host: host.to_string(),
+                port: None,
+            }],
         }
     }
 
-    // -- Validation ----------------------------------------------------------
+    fn make_chained_key(hosts: &[(&str, BackendKind)]) -> ConnectionKey {
+        ConnectionKey {
+            hops: hosts
+                .iter()
+                .map(|(h, b)| HopKey {
+                    backend: *b,
+                    user: None,
+                    host: h.to_string(),
+                    port: None,
+                })
+                .collect(),
+        }
+    }
+
+    // -- ConnectionKey -------------------------------------------------------
 
     #[test]
-    fn rejects_chained_paths() {
-        let path = TrampPath {
-            hops: vec![
-                Hop {
-                    backend: BackendKind::Ssh,
-                    host: "jump".to_string(),
-                    user: None,
-                    port: None,
-                },
-                Hop {
-                    backend: BackendKind::Ssh,
-                    host: "target".to_string(),
-                    user: None,
-                    port: None,
-                },
-            ],
-            remote_path: "/etc/config".to_string(),
+    fn connection_key_from_single_hop() {
+        let hop = Hop {
+            backend: BackendKind::Ssh,
+            host: "myvm".into(),
+            user: Some("admin".into()),
+            port: Some(2222),
         };
-
-        let err = Vfs::validate_single_hop(&path).unwrap_err();
-        assert!(matches!(err, TrampError::ChainedPathNotSupported));
+        let key = ConnectionKey::from_hops(&[hop]);
+        assert_eq!(key.hops.len(), 1);
+        assert_eq!(key.hops[0].host, "myvm");
+        assert_eq!(key.hops[0].user.as_deref(), Some("admin"));
+        assert_eq!(key.hops[0].port, Some(2222));
     }
 
     #[test]
-    fn rejects_unsupported_backend() {
-        let path = TrampPath {
-            hops: vec![Hop {
-                backend: BackendKind::Docker,
-                host: "mycontainer".to_string(),
+    fn connection_key_from_multi_hop() {
+        let hops = vec![
+            Hop {
+                backend: BackendKind::Ssh,
+                host: "myvm".into(),
                 user: None,
                 port: None,
-            }],
-            remote_path: "/app".to_string(),
-        };
-
-        let err = Vfs::validate_single_hop(&path).unwrap_err();
-        assert!(matches!(err, TrampError::BackendNotSupported(_)));
+            },
+            Hop {
+                backend: BackendKind::Docker,
+                host: "container".into(),
+                user: None,
+                port: None,
+            },
+        ];
+        let key = ConnectionKey::from_hops(&hops);
+        assert_eq!(key.hops.len(), 2);
+        assert_eq!(key.endpoint_host(), "container");
     }
+
+    #[test]
+    fn connection_key_contains_host() {
+        let key = make_chained_key(&[
+            ("myvm", BackendKind::Ssh),
+            ("container", BackendKind::Docker),
+        ]);
+        assert!(key.contains_host("myvm"));
+        assert!(key.contains_host("container"));
+        assert!(!key.contains_host("other"));
+    }
+
+    #[test]
+    fn connection_key_equality() {
+        let key1 = make_key("myvm");
+        let key2 = make_key("myvm");
+        let key3 = make_key("other");
+        assert_eq!(key1, key2);
+        assert_ne!(key1, key3);
+    }
+
+    // -- Chain validation (standalone Docker/K8s/Sudo) -----------------------
 
     #[test]
     fn accepts_single_ssh_hop() {
         let path = make_path("myvm", "/etc/config");
-        let hop = Vfs::validate_single_hop(&path).unwrap();
-        assert_eq!(hop.host, "myvm");
-        assert_eq!(hop.backend, BackendKind::Ssh);
+        let key = ConnectionKey::from_hops(&path.hops);
+        assert_eq!(key.hops.len(), 1);
+        assert_eq!(key.hops[0].backend, BackendKind::Ssh);
+    }
+
+    #[test]
+    fn accepts_single_docker_hop() {
+        let path = TrampPath {
+            hops: vec![Hop {
+                backend: BackendKind::Docker,
+                host: "mycontainer".into(),
+                user: None,
+                port: None,
+            }],
+            remote_path: "/app".into(),
+        };
+        let key = ConnectionKey::from_hops(&path.hops);
+        assert_eq!(key.hops[0].backend, BackendKind::Docker);
+    }
+
+    #[test]
+    fn accepts_single_kubernetes_hop() {
+        let path = TrampPath {
+            hops: vec![Hop {
+                backend: BackendKind::Kubernetes,
+                host: "mypod".into(),
+                user: None,
+                port: None,
+            }],
+            remote_path: "/tmp".into(),
+        };
+        let key = ConnectionKey::from_hops(&path.hops);
+        assert_eq!(key.hops[0].backend, BackendKind::Kubernetes);
+    }
+
+    #[test]
+    fn accepts_single_sudo_hop() {
+        let path = TrampPath {
+            hops: vec![Hop {
+                backend: BackendKind::Sudo,
+                host: "root".into(),
+                user: None,
+                port: None,
+            }],
+            remote_path: "/etc/shadow".into(),
+        };
+        let key = ConnectionKey::from_hops(&path.hops);
+        assert_eq!(key.hops[0].backend, BackendKind::Sudo);
+    }
+
+    #[test]
+    fn accepts_chained_ssh_docker() {
+        let path = TrampPath {
+            hops: vec![
+                Hop {
+                    backend: BackendKind::Ssh,
+                    host: "myvm".into(),
+                    user: None,
+                    port: None,
+                },
+                Hop {
+                    backend: BackendKind::Docker,
+                    host: "container".into(),
+                    user: None,
+                    port: None,
+                },
+            ],
+            remote_path: "/app/config.toml".into(),
+        };
+        let key = ConnectionKey::from_hops(&path.hops);
+        assert_eq!(key.hops.len(), 2);
+        assert_eq!(key.endpoint_host(), "container");
+    }
+
+    #[test]
+    fn accepts_triple_chain() {
+        let path = TrampPath {
+            hops: vec![
+                Hop {
+                    backend: BackendKind::Ssh,
+                    host: "myvm".into(),
+                    user: None,
+                    port: None,
+                },
+                Hop {
+                    backend: BackendKind::Docker,
+                    host: "container".into(),
+                    user: None,
+                    port: None,
+                },
+                Hop {
+                    backend: BackendKind::Sudo,
+                    host: "root".into(),
+                    user: None,
+                    port: None,
+                },
+            ],
+            remote_path: "/etc/shadow".into(),
+        };
+        let key = ConnectionKey::from_hops(&path.hops);
+        assert_eq!(key.hops.len(), 3);
+        assert_eq!(key.endpoint_host(), "root");
     }
 
     // -- VFS creation --------------------------------------------------------
@@ -845,6 +1068,36 @@ mod tests {
         assert!(cache.get(&key, "/app").is_none());
     }
 
+    // -- Chained key cache isolation -----------------------------------------
+
+    #[test]
+    fn stat_cache_isolates_by_chain() {
+        let mut cache = StatCache::new(Duration::from_secs(60));
+
+        // Same container name but different SSH hosts → different keys.
+        let key_vm1 = make_chained_key(&[("vm1", BackendKind::Ssh), ("ctr", BackendKind::Docker)]);
+        let key_vm2 = make_chained_key(&[("vm2", BackendKind::Ssh), ("ctr", BackendKind::Docker)]);
+
+        let meta1 = Metadata {
+            kind: crate::backend::EntryKind::File,
+            size: 100,
+            modified: None,
+            permissions: None,
+        };
+        let meta2 = Metadata {
+            kind: crate::backend::EntryKind::File,
+            size: 200,
+            modified: None,
+            permissions: None,
+        };
+
+        cache.insert(&key_vm1, "/app/config", meta1);
+        cache.insert(&key_vm2, "/app/config", meta2);
+
+        assert_eq!(cache.get(&key_vm1, "/app/config").unwrap().size, 100);
+        assert_eq!(cache.get(&key_vm2, "/app/config").unwrap().size, 200);
+    }
+
     // -- parent_dir helper ---------------------------------------------------
 
     #[test]
@@ -926,5 +1179,34 @@ mod tests {
         // Verify vm2's entry is still present.
         let mut cache = vfs.stat_cache.lock().unwrap();
         assert!(cache.get(&key2, "/test").is_some());
+    }
+
+    #[test]
+    fn vfs_disconnect_host_clears_chained_caches() {
+        let vfs = Vfs::new().unwrap();
+        let chained_key =
+            make_chained_key(&[("myvm", BackendKind::Ssh), ("ctr", BackendKind::Docker)]);
+        let other_key = make_key("othervm");
+        let meta = Metadata {
+            kind: crate::backend::EntryKind::File,
+            size: 100,
+            modified: None,
+            permissions: None,
+        };
+
+        {
+            let mut cache = vfs.stat_cache.lock().unwrap();
+            cache.insert(&chained_key, "/test", meta.clone());
+            cache.insert(&other_key, "/test", meta);
+        }
+        assert_eq!(vfs.stat_cache_size(), 2);
+
+        // Disconnecting "myvm" should clear the chained connection too.
+        vfs.disconnect_host("myvm");
+        assert_eq!(vfs.stat_cache_size(), 1);
+
+        let mut cache = vfs.stat_cache.lock().unwrap();
+        assert!(cache.get(&other_key, "/test").is_some());
+        assert!(cache.get(&chained_key, "/test").is_none());
     }
 }
