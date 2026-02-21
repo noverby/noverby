@@ -12,7 +12,7 @@
 # Each row has: id (int), label (string).
 # The selected row id is tracked separately.
 #
-# Template structure:
+# Template structure (built via DSL):
 #   "bench-row": tr + dynamic_attr[0](class) > [
 #       td > dynamic_text[0] (id),
 #       td > a > dynamic_text[1] (label),
@@ -31,17 +31,17 @@ from signals import Runtime, create_runtime, destroy_runtime
 from mutations import CreateEngine, DiffEngine
 from events import HandlerEntry
 from vdom import (
-    TemplateBuilder,
-    create_builder,
-    destroy_builder,
     VNode,
     VNodeStore,
-    DynamicNode,
-    DynamicAttr,
-    AttributeValue,
-    TAG_TR,
-    TAG_TD,
-    TAG_A,
+    Node,
+    el_tr,
+    el_td,
+    el_a,
+    text,
+    dyn_text,
+    dyn_attr,
+    to_template,
+    VNodeBuilder,
 )
 
 
@@ -284,17 +284,13 @@ struct BenchmarkApp(Movable):
           dynamic_attr[1] = click on label <a> (select)
           dynamic_attr[2] = click on delete <a> (remove)
         """
-        var idx = self.store[0].push(
-            VNode.template_ref_keyed(self.row_template_id, String(row.id))
-        )
+        var vb = VNodeBuilder(self.row_template_id, String(row.id), self.store)
 
         # Dynamic text 0: row id
-        self.store[0].push_dynamic_node(
-            idx, DynamicNode.text_node(String(row.id))
-        )
+        vb.add_dyn_text(String(row.id))
 
         # Dynamic text 1: row label
-        self.store[0].push_dynamic_node(idx, DynamicNode.text_node(row.label))
+        vb.add_dyn_text(row.label)
 
         # Dynamic attr 0: class on <tr> ("danger" if selected)
         var selected = self.runtime[0].peek_signal[Int32](self.selected_signal)
@@ -303,42 +299,21 @@ struct BenchmarkApp(Movable):
             tr_class = String("danger")
         else:
             tr_class = String("")
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("class"),
-                AttributeValue.text(tr_class),
-                UInt32(0),
-            ),
-        )
+        vb.add_dyn_text_attr(String("class"), tr_class)
 
         # Dynamic attr 1: click on label <a> (select — custom handler)
         var select_handler = self.runtime[0].register_handler(
             HandlerEntry.custom(self.scope_id, String("click"))
         )
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("click"),
-                AttributeValue.event(select_handler),
-                UInt32(0),
-            ),
-        )
+        vb.add_dyn_event(String("click"), select_handler)
 
         # Dynamic attr 2: click on delete <a> (remove — custom handler)
         var remove_handler = self.runtime[0].register_handler(
             HandlerEntry.custom(self.scope_id, String("click"))
         )
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("click"),
-                AttributeValue.event(remove_handler),
-                UInt32(0),
-            ),
-        )
+        vb.add_dyn_event(String("click"), remove_handler)
 
-        return idx
+        return vb.index()
 
     fn build_rows_fragment(mut self) -> UInt32:
         """Build a Fragment VNode containing all row VNodes."""
@@ -375,35 +350,24 @@ fn bench_app_init() -> UnsafePointer[BenchmarkApp]:
     _ = app_ptr[0].runtime[0].read_signal[Int32](app_ptr[0].selected_signal)
     app_ptr[0].runtime[0].end_scope_render(-1)
 
-    # 3. Build and register the "bench-row" template:
+    # 3. Build and register the "bench-row" template via DSL:
     #    tr + dynamic_attr[0](class) > [
     #        td > dynamic_text[0],          ← id
     #        td > a + dynamic_attr[1] > dynamic_text[1],  ← label + select click
     #        td > a + dynamic_attr[2] > text("×")         ← delete click
     #    ]
-    var builder_ptr = create_builder(String("bench-row"))
-
-    var tr_idx = builder_ptr[0].push_element(TAG_TR, -1)
-    builder_ptr[0].push_dynamic_attr(Int(tr_idx), 0)  # class
-
-    var td_id = builder_ptr[0].push_element(TAG_TD, Int(tr_idx))
-    var _dyn_id = builder_ptr[0].push_dynamic_text(0, Int(td_id))
-
-    var td_label = builder_ptr[0].push_element(TAG_TD, Int(tr_idx))
-    var a_label = builder_ptr[0].push_element(TAG_A, Int(td_label))
-    builder_ptr[0].push_dynamic_attr(Int(a_label), 1)  # click select
-    var _dyn_label = builder_ptr[0].push_dynamic_text(1, Int(a_label))
-
-    var td_action = builder_ptr[0].push_element(TAG_TD, Int(tr_idx))
-    var a_remove = builder_ptr[0].push_element(TAG_A, Int(td_action))
-    builder_ptr[0].push_dynamic_attr(Int(a_remove), 2)  # click remove
-    var _dyn_remove = builder_ptr[0].push_text(String("×"), Int(a_remove))
-
-    var row_template = builder_ptr[0].build()
+    var row_view = el_tr(
+        List[Node](
+            dyn_attr(0),  # class on <tr>
+            el_td(List[Node](dyn_text(0))),
+            el_td(List[Node](el_a(List[Node](dyn_attr(1), dyn_text(1))))),
+            el_td(List[Node](el_a(List[Node](dyn_attr(2), text(String("×")))))),
+        )
+    )
+    var row_template = to_template(row_view, String("bench-row"))
     app_ptr[0].row_template_id = UInt32(
         app_ptr[0].runtime[0].templates.register(row_template^)
     )
-    destroy_builder(builder_ptr)
 
     return app_ptr
 

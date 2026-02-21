@@ -3,7 +3,7 @@
 # Orchestrates all subsystems:
 #   Runtime (signals, scopes, handlers) + Templates + VNodes + Create/Diff
 #
-# Template structure:
+# Template structure (built via DSL):
 #   div
 #     span
 #       dynamic_text[0]      ← "Count: N"
@@ -19,17 +19,17 @@ from signals import Runtime, create_runtime, destroy_runtime
 from mutations import CreateEngine, DiffEngine
 from events import HandlerEntry
 from vdom import (
-    TemplateBuilder,
-    create_builder,
-    destroy_builder,
     VNode,
     VNodeStore,
-    DynamicNode,
-    DynamicAttr,
-    AttributeValue,
-    TAG_DIV,
-    TAG_SPAN,
-    TAG_BUTTON,
+    Node,
+    el_div,
+    el_span,
+    el_button,
+    text,
+    dyn_text,
+    dyn_attr,
+    to_template,
+    VNodeBuilder,
 )
 
 
@@ -83,30 +83,11 @@ struct CounterApp(Movable):
 
         Returns the VNode index in the store.
         """
-        var idx = self.store[0].push(VNode.template_ref(self.template_id))
-        # Dynamic text node: "Count: N"
-        self.store[0].push_dynamic_node(
-            idx, DynamicNode.text_node(self.build_count_text())
-        )
-        # Dynamic attr 0: onclick on the "+" button
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("click"),
-                AttributeValue.event(self.incr_handler),
-                UInt32(0),
-            ),
-        )
-        # Dynamic attr 1: onclick on the "−" button
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("click"),
-                AttributeValue.event(self.decr_handler),
-                UInt32(0),
-            ),
-        )
-        return idx
+        var vb = VNodeBuilder(self.template_id, self.store)
+        vb.add_dyn_text(self.build_count_text())
+        vb.add_dyn_event(String("click"), self.incr_handler)
+        vb.add_dyn_event(String("click"), self.decr_handler)
+        return vb.index()
 
 
 fn counter_app_init() -> UnsafePointer[CounterApp]:
@@ -133,28 +114,21 @@ fn counter_app_init() -> UnsafePointer[CounterApp]:
     _ = app_ptr[0].runtime[0].read_signal[Int32](app_ptr[0].count_signal)
     app_ptr[0].runtime[0].end_scope_render(-1)
 
-    # 3. Build and register the counter template:
+    # 3. Build and register the counter template via DSL:
     #    div > [ span > dynamic_text[0],
     #            button > text("+") + dynamic_attr[0],
     #            button > text("−") + dynamic_attr[1] ]
-    var builder_ptr = create_builder(String("counter"))
-    var div_idx = builder_ptr[0].push_element(TAG_DIV, -1)
-    var span_idx = builder_ptr[0].push_element(TAG_SPAN, Int(div_idx))
-    var _dyn_text = builder_ptr[0].push_dynamic_text(0, Int(span_idx))
-
-    var btn_incr = builder_ptr[0].push_element(TAG_BUTTON, Int(div_idx))
-    var _text_plus = builder_ptr[0].push_text(String("+"), Int(btn_incr))
-    builder_ptr[0].push_dynamic_attr(Int(btn_incr), 0)
-
-    var btn_decr = builder_ptr[0].push_element(TAG_BUTTON, Int(div_idx))
-    var _text_minus = builder_ptr[0].push_text(String("-"), Int(btn_decr))
-    builder_ptr[0].push_dynamic_attr(Int(btn_decr), 1)
-
-    var template = builder_ptr[0].build()
+    var view = el_div(
+        List[Node](
+            el_span(List[Node](dyn_text(0))),
+            el_button(List[Node](text(String("+")), dyn_attr(0))),
+            el_button(List[Node](text(String("-")), dyn_attr(1))),
+        )
+    )
+    var template = to_template(view, String("counter"))
     app_ptr[0].template_id = UInt32(
         app_ptr[0].runtime[0].templates.register(template^)
     )
-    destroy_builder(builder_ptr)
 
     # 4. Register event handlers
     app_ptr[0].incr_handler = UInt32(

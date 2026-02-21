@@ -2500,6 +2500,16 @@ Implemented the Tier 1 builder DSL from the plan's [Ergonomics-First API Design]
 - **WASM exports**: `dsl_node_*` (Node lifecycle), `dsl_vb_*` (VNodeBuilder), `dsl_to_template()`, and 15 self-contained `dsl_test_*` functions.
 - **33 new Mojo tests + 69 new JS tests**. All 674 Mojo + 859 JS tests pass.
 
+### 10.6 DSL-Based App Rewrite (✅ Done)
+
+Converted all three apps from verbose `TemplateBuilder`/`VNodeStore` API to the ergonomic DSL (M10.5):
+
+- **Counter app** (`apps/counter.mojo`): Template construction replaced with `el_div`/`el_span`/`el_button`/`dyn_text`/`dyn_attr` + `to_template()`. VNode construction replaced with `VNodeBuilder`. Removed imports of `TemplateBuilder`, `create_builder`, `destroy_builder`, `DynamicNode`, `DynamicAttr`, `AttributeValue`, and tag constants. Net reduction: 276 → 250 lines.
+- **Todo app** (`apps/todo.mojo`): Both templates (`todo-app` and `todo-item`) converted to DSL. `build_app_vnode()` and `build_item_vnode()` use `VNodeBuilder` with `add_dyn_text()`, `add_dyn_event()`, `add_dyn_text_attr()`, `add_dyn_placeholder()`. Static attributes use `attr()`. Net reduction: 538 → 486 lines.
+- **Bench app** (`apps/bench.mojo`): Row template (`bench-row`) converted to DSL. `build_row_vnode()` uses `VNodeBuilder` with `add_dyn_text()`, `add_dyn_text_attr()`, `add_dyn_event()`. Net reduction: 538 → 502 lines.
+- **Template equivalence verified**: All existing 674 Mojo + 859 JS tests pass unchanged, confirming DSL-built apps produce identical template structures, mutation sequences, and DOM output to the original manual builder code.
+- **No new tests required**: The comprehensive existing test suites (counter: 650 lines, todo: 786 lines, bench: 769 lines of JS tests) exercise the full round-trip and implicitly validate the DSL conversion.
+
 ---
 
 ## Milestone Checklist
@@ -2519,3 +2529,4 @@ Implemented the Tier 1 builder DSL from the plan's [Ergonomics-First API Design]
 - [x] **M10.3:** Shared JS runtime extracted to `examples/lib/` (env, protocol, interpreter, strings, boot). Examples deduplicated: counter 81 lines, todo 194 lines, bench 160 lines. All 602 Mojo + 790 JS tests pass.
 - [x] **M10.4:** Component abstraction. `AppShell` struct (`component/app_shell.mojo`), lifecycle helpers (`component/lifecycle.mojo`), height-ordered scheduler (`scheduler/scheduler.mojo`). `shell_*` and `scheduler_*` WASM exports. 37 new tests. All 641 Mojo + 790 JS tests pass.
 - [x] **M10.5:** Ergonomic builder API. `Node` tagged union (`vdom/dsl.mojo`), 40 tag helpers (`el_div`, `el_h1`, …), `to_template()` conversion, `VNodeBuilder` for ergonomic VNode construction, count utilities. Template equivalence verified (DSL matches manual builder). 33 new Mojo + 69 new JS tests. All 674 Mojo + 859 JS tests pass.
+- [x] **M10.6:** DSL-based app rewrite. Counter, todo, and bench apps converted from `TemplateBuilder`/manual VNode construction to `el_*`/`to_template`/`VNodeBuilder` DSL. All 674 Mojo + 859 JS tests pass unchanged.

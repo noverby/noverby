@@ -13,7 +13,7 @@
 #   - JS calls specific exports (todo_add_item, todo_remove_item, etc.)
 #     then calls todo_flush() to get mutation bytes
 #
-# Templates:
+# Templates (built via DSL):
 #   - "todo-app": The app shell with input field + item list container
 #       div > [ input + button("Add") + ul > dynamic[0] ]
 #   - "todo-item": A single list item
@@ -29,20 +29,22 @@ from signals import Runtime, create_runtime, destroy_runtime
 from mutations import CreateEngine, DiffEngine
 from events import HandlerEntry
 from vdom import (
-    TemplateBuilder,
-    create_builder,
-    destroy_builder,
     VNode,
     VNodeStore,
-    DynamicNode,
-    DynamicAttr,
-    AttributeValue,
-    TAG_DIV,
-    TAG_SPAN,
-    TAG_BUTTON,
-    TAG_INPUT,
-    TAG_UL,
-    TAG_LI,
+    Node,
+    el_div,
+    el_span,
+    el_button,
+    el_input,
+    el_ul,
+    el_li,
+    text,
+    dyn_text,
+    dyn_node,
+    dyn_attr,
+    attr,
+    to_template,
+    VNodeBuilder,
 )
 
 
@@ -185,8 +187,8 @@ struct TodoApp(Movable):
           dynamic_attr[1] = click on remove button
           dynamic_attr[2] = class on the li element
         """
-        var idx = self.store[0].push(
-            VNode.template_ref_keyed(self.item_template_id, String(item.id))
+        var vb = VNodeBuilder(
+            self.item_template_id, String(item.id), self.store
         )
 
         # Dynamic text: item text with completion indicator
@@ -195,36 +197,19 @@ struct TodoApp(Movable):
             display_text = String("✓ ") + item.text
         else:
             display_text = item.text
-
-        self.store[0].push_dynamic_node(
-            idx, DynamicNode.text_node(display_text)
-        )
+        vb.add_dyn_text(display_text)
 
         # Dynamic attr 0: toggle handler (click on ✓ button)
         var toggle_handler = self.runtime[0].register_handler(
             HandlerEntry.custom(self.scope_id, String("click"))
         )
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("click"),
-                AttributeValue.event(toggle_handler),
-                UInt32(0),
-            ),
-        )
+        vb.add_dyn_event(String("click"), toggle_handler)
 
         # Dynamic attr 1: remove handler (click on ✕ button)
         var remove_handler = self.runtime[0].register_handler(
             HandlerEntry.custom(self.scope_id, String("click"))
         )
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("click"),
-                AttributeValue.event(remove_handler),
-                UInt32(0),
-            ),
-        )
+        vb.add_dyn_event(String("click"), remove_handler)
 
         # Dynamic attr 2: class on the li element
         var li_class: String
@@ -232,16 +217,9 @@ struct TodoApp(Movable):
             li_class = String("completed")
         else:
             li_class = String("")
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("class"),
-                AttributeValue.text(li_class),
-                UInt32(0),
-            ),
-        )
+        vb.add_dyn_text_attr(String("class"), li_class)
 
-        return idx
+        return vb.index()
 
     fn build_items_fragment(mut self) -> UInt32:
         """Build a Fragment VNode containing keyed item children."""
@@ -258,24 +236,15 @@ struct TodoApp(Movable):
           dynamic_attr[0] = click on Add button
           dynamic[0] = placeholder (item list managed separately)
         """
-        var app_idx = self.store[0].push(
-            VNode.template_ref(self.app_template_id)
-        )
+        var vb = VNodeBuilder(self.app_template_id, self.store)
 
         # Dynamic node 0: placeholder in the <ul>
-        self.store[0].push_dynamic_node(app_idx, DynamicNode.placeholder())
+        vb.add_dyn_placeholder()
 
         # Dynamic attr 0: click on Add button
-        self.store[0].push_dynamic_attr(
-            app_idx,
-            DynamicAttr(
-                String("click"),
-                AttributeValue.event(self.add_handler),
-                UInt32(0),
-            ),
-        )
+        vb.add_dyn_event(String("click"), self.add_handler)
 
-        return app_idx
+        return vb.index()
 
 
 fn todo_app_init() -> UnsafePointer[TodoApp]:
@@ -302,65 +271,44 @@ fn todo_app_init() -> UnsafePointer[TodoApp]:
     _ = app_ptr[0].runtime[0].read_signal[Int32](app_ptr[0].list_version_signal)
     app_ptr[0].runtime[0].end_scope_render(-1)
 
-    # 3. Build and register the "todo-app" template:
+    # 3. Build and register the "todo-app" template via DSL:
     #    div > [ input (placeholder), button("Add") + dynamic_attr[0], ul > dynamic[0] ]
-    var app_builder_ptr = create_builder(String("todo-app"))
-
-    var div_idx = app_builder_ptr[0].push_element(TAG_DIV, -1)
-
-    # Input field (static in template, JS handles the value)
-    var input_idx = app_builder_ptr[0].push_element(TAG_INPUT, Int(div_idx))
-    app_builder_ptr[0].push_static_attr(
-        Int(input_idx), String("type"), String("text")
+    var app_view = el_div(
+        List[Node](
+            el_input(
+                List[Node](
+                    attr(String("type"), String("text")),
+                    attr(
+                        String("placeholder"),
+                        String("What needs to be done?"),
+                    ),
+                )
+            ),
+            el_button(List[Node](text(String("Add")), dyn_attr(0))),
+            el_ul(List[Node](dyn_node(0))),
+        )
     )
-    app_builder_ptr[0].push_static_attr(
-        Int(input_idx), String("placeholder"), String("What needs to be done?")
-    )
-
-    # Add button with dynamic click handler
-    var btn_add = app_builder_ptr[0].push_element(TAG_BUTTON, Int(div_idx))
-    var _text_add = app_builder_ptr[0].push_text(String("Add"), Int(btn_add))
-    app_builder_ptr[0].push_dynamic_attr(Int(btn_add), 0)
-
-    # ul container with dynamic[0] for the item list
-    var ul_idx = app_builder_ptr[0].push_element(TAG_UL, Int(div_idx))
-    var _dyn_list = app_builder_ptr[0].push_dynamic(0, Int(ul_idx))
-
-    var app_template = app_builder_ptr[0].build()
+    var app_template = to_template(app_view, String("todo-app"))
     app_ptr[0].app_template_id = UInt32(
         app_ptr[0].runtime[0].templates.register(app_template^)
     )
-    destroy_builder(app_builder_ptr)
 
-    # 4. Build and register the "todo-item" template:
+    # 4. Build and register the "todo-item" template via DSL:
     #    li + dynamic_attr[2] > [ span > dynamic_text[0],
     #                             button("✓") + dynamic_attr[0],
     #                             button("✕") + dynamic_attr[1] ]
-    var item_builder_ptr = create_builder(String("todo-item"))
-
-    var li_idx = item_builder_ptr[0].push_element(TAG_LI, -1)
-    item_builder_ptr[0].push_dynamic_attr(Int(li_idx), 2)  # class attr
-
-    var span_idx = item_builder_ptr[0].push_element(TAG_SPAN, Int(li_idx))
-    var _dyn_text = item_builder_ptr[0].push_dynamic_text(0, Int(span_idx))
-
-    var btn_toggle = item_builder_ptr[0].push_element(TAG_BUTTON, Int(li_idx))
-    var _text_toggle = item_builder_ptr[0].push_text(
-        String("✓"), Int(btn_toggle)
+    var item_view = el_li(
+        List[Node](
+            dyn_attr(2),  # class attr on li
+            el_span(List[Node](dyn_text(0))),
+            el_button(List[Node](text(String("✓")), dyn_attr(0))),
+            el_button(List[Node](text(String("✕")), dyn_attr(1))),
+        )
     )
-    item_builder_ptr[0].push_dynamic_attr(Int(btn_toggle), 0)  # click
-
-    var btn_remove = item_builder_ptr[0].push_element(TAG_BUTTON, Int(li_idx))
-    var _text_remove = item_builder_ptr[0].push_text(
-        String("✕"), Int(btn_remove)
-    )
-    item_builder_ptr[0].push_dynamic_attr(Int(btn_remove), 1)  # click
-
-    var item_template = item_builder_ptr[0].build()
+    var item_template = to_template(item_view, String("todo-item"))
     app_ptr[0].item_template_id = UInt32(
         app_ptr[0].runtime[0].templates.register(item_template^)
     )
-    destroy_builder(item_builder_ptr)
 
     # 5. Register the Add button handler (custom — JS calls todo_add_item)
     app_ptr[0].add_handler = (
