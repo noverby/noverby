@@ -375,6 +375,9 @@ fn bench_app_rebuild(
 
     Returns byte offset (length) of mutation data.
     """
+    # Emit all registered templates so JS can build DOM from mutations
+    app[0].shell.emit_templates(writer_ptr)
+
     # Create an anchor placeholder
     var anchor_eid = app[0].shell.eid_alloc[0].alloc()
     writer_ptr[0].create_placeholder(anchor_eid.as_u32())

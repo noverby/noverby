@@ -161,8 +161,9 @@ fn counter_app_rebuild(
 ) -> Int32:
     """Initial render (mount) of the counter app.
 
-    Builds the VNode tree, runs CreateEngine, emits AppendChildren to
-    mount to root (id 0), and finalizes the mutation buffer.
+    Emits RegisterTemplate mutations for all templates, then builds the
+    VNode tree, runs CreateEngine, emits AppendChildren to mount to
+    root (id 0), and finalizes the mutation buffer.
 
     Returns the byte offset (length) of the mutation data written.
     """
@@ -170,8 +171,8 @@ fn counter_app_rebuild(
     var vnode_idx = app[0].build_vnode()
     app[0].current_vnode = Int(vnode_idx)
 
-    # Mount via AppShell (CreateEngine → append to root → finalize)
-    return app[0].shell.mount(writer_ptr, vnode_idx)
+    # Mount with templates prepended (RegisterTemplate + CreateEngine → append → finalize)
+    return app[0].shell.mount_with_templates(writer_ptr, vnode_idx)
 
 
 fn counter_app_handle_event(

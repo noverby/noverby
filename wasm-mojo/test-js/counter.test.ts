@@ -9,7 +9,7 @@
 import { parseHTML } from "npm:linkedom";
 import { createCounterApp } from "../runtime/app.ts";
 import { alignedAlloc, getMemory } from "../runtime/memory.ts";
-import { MutationReader } from "../runtime/protocol.ts";
+import { MutationReader, Op } from "../runtime/protocol.ts";
 import type { WasmExports } from "../runtime/types.ts";
 import { assert, pass, suite } from "./harness.ts";
 
@@ -113,6 +113,17 @@ export function testCounter(fns: Fns): void {
 			newListeners.length >= 2,
 			true,
 			"at least 2 NewEventListener mutations (+ and - buttons)",
+		);
+
+		// Verify RegisterTemplate appears before LoadTemplate (M11.5 prepend strategy)
+		const regIdx = mutations.findIndex((m) => m.op === Op.RegisterTemplate);
+		const loadIdx = mutations.findIndex((m) => m.op === Op.LoadTemplate);
+		assert(regIdx >= 0, true, "contains RegisterTemplate mutation");
+		assert(loadIdx >= 0, true, "contains LoadTemplate mutation");
+		assert(
+			regIdx < loadIdx,
+			true,
+			"RegisterTemplate precedes LoadTemplate in mutation buffer",
 		);
 
 		fns.counter_destroy(app);

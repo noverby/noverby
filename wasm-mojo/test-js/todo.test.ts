@@ -13,6 +13,7 @@
 import { parseHTML } from "npm:linkedom";
 import { Interpreter } from "../runtime/interpreter.ts";
 import { alignedAlloc, getMemory } from "../runtime/memory.ts";
+import { MutationReader, Op } from "../runtime/protocol.ts";
 
 import { writeStringStruct } from "../runtime/strings.ts";
 import { TemplateCache } from "../runtime/templates.ts";
@@ -310,6 +311,41 @@ export function testTodo(fns: Fns): void {
 	// ═════════════════════════════════════════════════════════════════════
 	// Section 2: DOM-level todo app tests
 	// ═════════════════════════════════════════════════════════════════════
+
+	suite("Todo — rebuild emits RegisterTemplate before LoadTemplate");
+	{
+		const appPtr = fns.todo_init();
+		const bufPtr = alignedAlloc(8n, BigInt(BUF_CAPACITY));
+
+		const offset = fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
+		assert(offset > 0, true, "todo rebuild wrote mutations");
+
+		const mem = getMemory();
+		const mutations = new MutationReader(
+			mem.buffer,
+			Number(bufPtr),
+			offset,
+		).readAll();
+
+		const regIndices = mutations
+			.map((m, i) => (m.op === Op.RegisterTemplate ? i : -1))
+			.filter((i) => i >= 0);
+		const loadIdx = mutations.findIndex((m) => m.op === Op.LoadTemplate);
+
+		assert(
+			regIndices.length >= 2,
+			true,
+			"at least 2 RegisterTemplate mutations (app + item templates)",
+		);
+		assert(loadIdx >= 0, true, "contains LoadTemplate mutation");
+		assert(
+			regIndices[regIndices.length - 1] < loadIdx,
+			true,
+			"all RegisterTemplate precede LoadTemplate",
+		);
+
+		fns.todo_destroy(appPtr);
+	}
 
 	suite("Todo — initial mount renders empty app shell");
 	{

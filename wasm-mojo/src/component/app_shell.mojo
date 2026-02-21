@@ -172,6 +172,41 @@ struct AppShell(Movable):
         writer_ptr[0].finalize()
         return Int32(writer_ptr[0].offset)
 
+    fn mount_with_templates(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter],
+        vnode_idx: UInt32,
+    ) -> Int32:
+        """Initial render with template emission prepended.
+
+        Emits `RegisterTemplate` mutations for all registered templates,
+        then creates the VNode tree, appends to root, and finalizes.
+        The JS interpreter can build DOM templates and instantiate them
+        in a single `applyMutations()` pass.
+
+        Args:
+            writer_ptr: Pointer to the MutationWriter for output.
+            vnode_idx: Index of the VNode to mount in the store.
+
+        Returns:
+            Byte length of the mutation data written.
+        """
+        # 1. Emit all registered templates
+        self.emit_templates(writer_ptr)
+
+        # 2. Create + mount (without finalize — we do it once at the end)
+        var engine = CreateEngine(
+            writer_ptr, self.eid_alloc, self.runtime, self.store
+        )
+        var num_roots = engine.create_node(vnode_idx)
+
+        # 3. Append to root element (id 0)
+        writer_ptr[0].append_children(0, num_roots)
+
+        # 4. Finalize
+        writer_ptr[0].finalize()
+        return Int32(writer_ptr[0].offset)
+
     # ── Update lifecycle ─────────────────────────────────────────────
 
     fn diff(
@@ -278,6 +313,21 @@ struct AppShell(Movable):
             mut_slot,
             new_frag_idx,
         )
+
+    # ── Template emission ────────────────────────────────────────────
+
+    fn emit_templates(self, writer_ptr: UnsafePointer[MutationWriter]):
+        """Serialize all registered templates into the mutation buffer.
+
+        Iterates the template registry and emits a `RegisterTemplate`
+        mutation for each template.  Call this before `CreateEngine`
+        so that the JS interpreter can build DOM templates from the
+        same mutation buffer pass.
+        """
+        var count = self.runtime[0].templates.count()
+        for i in range(count):
+            var tmpl_ptr = self.runtime[0].templates.get_ptr(UInt32(i))
+            writer_ptr[0].register_template(tmpl_ptr[0])
 
     # ── Event dispatch ───────────────────────────────────────────────
 
