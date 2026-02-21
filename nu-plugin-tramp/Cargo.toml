@@ -1,5 +1,5 @@
 [package]
-name = "nu_plugin_tramp"
+name = "nu-plugin-tramp"
 version = "0.1.0"
 authors = ["Niclas Overby <niclas@overby.me>"]
 edition = "2024"

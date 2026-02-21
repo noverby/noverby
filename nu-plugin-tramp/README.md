@@ -36,10 +36,10 @@ plugin use tramp
 
 ### With Nix
 
-The package is available as `nu_plugin_tramp` from the monorepo flake:
+The package is available as `nu-plugin-tramp` from the monorepo flake:
 
 ```sh
-nix build .#nu_plugin_tramp
+nix build .#nu-plugin-tramp
 ```
 
 ## Usage
