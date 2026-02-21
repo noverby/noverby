@@ -194,6 +194,26 @@ fn _get_vnode_store(store_ptr: Int64) -> UnsafePointer[VNodeStore]:
     return _as_ptr[VNodeStore](Int(store_ptr))
 
 
+fn _get_counter(app_ptr: Int64) -> UnsafePointer[CounterApp]:
+    return _as_ptr[CounterApp](Int(app_ptr))
+
+
+fn _get_todo(app_ptr: Int64) -> UnsafePointer[TodoApp]:
+    return _as_ptr[TodoApp](Int(app_ptr))
+
+
+fn _get_bench(app_ptr: Int64) -> UnsafePointer[BenchmarkApp]:
+    return _as_ptr[BenchmarkApp](Int(app_ptr))
+
+
+fn _get_shell(shell_ptr: Int64) -> UnsafePointer[AppShell]:
+    return _as_ptr[AppShell](Int(shell_ptr))
+
+
+fn _get_scheduler(sched_ptr: Int64) -> UnsafePointer[Scheduler]:
+    return _as_ptr[Scheduler](Int(sched_ptr))
+
+
 # ── Helper: Bool → Int32 for WASM ABI ───────────────────────────────────────
 
 
@@ -1699,9 +1719,7 @@ fn ctx_consume_found(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
     """Check whether a context value exists.  Returns 1 if found, 0 if not."""
     var rt = _get_runtime(rt_ptr)
     var result = rt[0].scopes.consume_context(UInt32(scope_id), UInt32(key))
-    if result[0]:
-        return 1
-    return 0
+    return _b2i(result[0])
 
 
 @export
@@ -1709,9 +1727,7 @@ fn ctx_has_local(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
     """Check whether the scope itself provides a context for `key`.  Returns 1 or 0.
     """
     var rt = _get_runtime(rt_ptr)
-    if rt[0].scopes.has_context_local(UInt32(scope_id), UInt32(key)):
-        return 1
-    return 0
+    return _b2i(rt[0].scopes.has_context_local(UInt32(scope_id), UInt32(key)))
 
 
 @export
@@ -1827,9 +1843,7 @@ fn suspense_find_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
 fn suspense_has_pending(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Check if any descendant of `scope_id` is pending.  Returns 1 or 0."""
     var rt = _get_runtime(rt_ptr)
-    if rt[0].scopes.has_pending_descendant(UInt32(scope_id)):
-        return 1
-    return 0
+    return _b2i(rt[0].scopes.has_pending_descendant(UInt32(scope_id)))
 
 
 @export
@@ -1856,16 +1870,15 @@ fn counter_init() -> Int64:
 @export
 fn counter_destroy(app_ptr: Int64):
     """Destroy the counter app and free all resources."""
-    counter_app_destroy(_as_ptr[CounterApp](Int(app_ptr)))
+    counter_app_destroy(_get_counter(app_ptr))
 
 
 @export
 fn counter_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount) of the counter app.  Returns mutation byte length.
     """
-    var app = _as_ptr[CounterApp](Int(app_ptr))
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = counter_app_rebuild(app, writer_ptr)
+    var offset = counter_app_rebuild(_get_counter(app_ptr), writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -1875,9 +1888,10 @@ fn counter_handle_event(
     app_ptr: Int64, handler_id: Int32, event_type: Int32
 ) -> Int32:
     """Dispatch an event to the counter app.  Returns 1 if action executed."""
-    var app = _as_ptr[CounterApp](Int(app_ptr))
     return _b2i(
-        counter_app_handle_event(app, UInt32(handler_id), UInt8(event_type))
+        counter_app_handle_event(
+            _get_counter(app_ptr), UInt32(handler_id), UInt8(event_type)
+        )
     )
 
 
@@ -1885,9 +1899,8 @@ fn counter_handle_event(
 fn counter_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
-    var app = _as_ptr[CounterApp](Int(app_ptr))
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = counter_app_flush(app, writer_ptr)
+    var offset = counter_app_flush(_get_counter(app_ptr), writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -1898,57 +1911,50 @@ fn counter_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 @export
 fn counter_rt_ptr(app_ptr: Int64) -> Int64:
     """Return the runtime pointer for JS template registration."""
-    var app = _as_ptr[CounterApp](Int(app_ptr))
-    return _to_i64(app[0].shell.runtime)
+    return _to_i64(_get_counter(app_ptr)[0].shell.runtime)
 
 
 @export
 fn counter_tmpl_id(app_ptr: Int64) -> Int32:
     """Return the counter template ID."""
-    var app = _as_ptr[CounterApp](Int(app_ptr))
-    return Int32(app[0].template_id)
+    return Int32(_get_counter(app_ptr)[0].template_id)
 
 
 @export
 fn counter_incr_handler(app_ptr: Int64) -> Int32:
     """Return the increment handler ID."""
-    var app = _as_ptr[CounterApp](Int(app_ptr))
-    return Int32(app[0].incr_handler)
+    return Int32(_get_counter(app_ptr)[0].incr_handler)
 
 
 @export
 fn counter_decr_handler(app_ptr: Int64) -> Int32:
     """Return the decrement handler ID."""
-    var app = _as_ptr[CounterApp](Int(app_ptr))
-    return Int32(app[0].decr_handler)
+    return Int32(_get_counter(app_ptr)[0].decr_handler)
 
 
 @export
 fn counter_count_value(app_ptr: Int64) -> Int32:
     """Peek the current count signal value (without subscribing)."""
-    var app = _as_ptr[CounterApp](Int(app_ptr))
+    var app = _get_counter(app_ptr)
     return app[0].shell.peek_signal_i32(app[0].count_signal)
 
 
 @export
 fn counter_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the counter app has dirty scopes.  Returns 1 or 0."""
-    var app = _as_ptr[CounterApp](Int(app_ptr))
-    return _b2i(app[0].shell.has_dirty())
+    return _b2i(_get_counter(app_ptr)[0].shell.has_dirty())
 
 
 @export
 fn counter_scope_id(app_ptr: Int64) -> Int32:
     """Return the counter app's root scope ID."""
-    var app = _as_ptr[CounterApp](Int(app_ptr))
-    return Int32(app[0].scope_id)
+    return Int32(_get_counter(app_ptr)[0].scope_id)
 
 
 @export
 fn counter_count_signal(app_ptr: Int64) -> Int32:
     """Return the counter app's count signal key."""
-    var app = _as_ptr[CounterApp](Int(app_ptr))
-    return Int32(app[0].count_signal)
+    return Int32(_get_counter(app_ptr)[0].count_signal)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1967,15 +1973,14 @@ fn todo_init() -> Int64:
 @export
 fn todo_destroy(app_ptr: Int64):
     """Destroy the todo app and free all resources."""
-    todo_app_destroy(_as_ptr[TodoApp](Int(app_ptr)))
+    todo_app_destroy(_get_todo(app_ptr))
 
 
 @export
 fn todo_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount) of the todo app.  Returns mutation byte length."""
-    var app = _as_ptr[TodoApp](Int(app_ptr))
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = todo_app_rebuild(app, writer_ptr)
+    var offset = todo_app_rebuild(_get_todo(app_ptr), writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -1983,38 +1988,33 @@ fn todo_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 @export
 fn todo_add_item(app_ptr: Int64, text: String):
     """Add a new item to the todo list."""
-    var app = _as_ptr[TodoApp](Int(app_ptr))
-    app[0].add_item(text)
+    _get_todo(app_ptr)[0].add_item(text)
 
 
 @export
 fn todo_remove_item(app_ptr: Int64, item_id: Int32):
     """Remove an item by its ID."""
-    var app = _as_ptr[TodoApp](Int(app_ptr))
-    app[0].remove_item(item_id)
+    _get_todo(app_ptr)[0].remove_item(item_id)
 
 
 @export
 fn todo_toggle_item(app_ptr: Int64, item_id: Int32):
     """Toggle an item's completed status."""
-    var app = _as_ptr[TodoApp](Int(app_ptr))
-    app[0].toggle_item(item_id)
+    _get_todo(app_ptr)[0].toggle_item(item_id)
 
 
 @export
 fn todo_set_input(app_ptr: Int64, text: String):
     """Update the input text (stored in app state, no re-render)."""
-    var app = _as_ptr[TodoApp](Int(app_ptr))
-    app[0].input_text = text
+    _get_todo(app_ptr)[0].input_text = text
 
 
 @export
 fn todo_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
-    var app = _as_ptr[TodoApp](Int(app_ptr))
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = todo_app_flush(app, writer_ptr)
+    var offset = todo_app_flush(_get_todo(app_ptr), writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -2025,64 +2025,56 @@ fn todo_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 @export
 fn todo_app_template_id(app_ptr: Int64) -> Int32:
     """Return the app template ID."""
-    var app = _as_ptr[TodoApp](Int(app_ptr))
-    return Int32(app[0].app_template_id)
+    return Int32(_get_todo(app_ptr)[0].app_template_id)
 
 
 @export
 fn todo_item_template_id(app_ptr: Int64) -> Int32:
     """Return the item template ID."""
-    var app = _as_ptr[TodoApp](Int(app_ptr))
-    return Int32(app[0].item_template_id)
+    return Int32(_get_todo(app_ptr)[0].item_template_id)
 
 
 @export
 fn todo_add_handler(app_ptr: Int64) -> Int32:
     """Return the Add button handler ID."""
-    var app = _as_ptr[TodoApp](Int(app_ptr))
-    return Int32(app[0].add_handler)
+    return Int32(_get_todo(app_ptr)[0].add_handler)
 
 
 @export
 fn todo_item_count(app_ptr: Int64) -> Int32:
     """Return the number of items in the list."""
-    var app = _as_ptr[TodoApp](Int(app_ptr))
-    return Int32(len(app[0].items))
+    return Int32(len(_get_todo(app_ptr)[0].items))
 
 
 @export
 fn todo_item_id_at(app_ptr: Int64, index: Int32) -> Int32:
     """Return the ID of the item at the given index."""
-    var app = _as_ptr[TodoApp](Int(app_ptr))
-    return app[0].items[Int(index)].id
+    return _get_todo(app_ptr)[0].items[Int(index)].id
 
 
 @export
 fn todo_item_completed_at(app_ptr: Int64, index: Int32) -> Int32:
     """Return 1 if the item at index is completed, 0 otherwise."""
-    var app = _as_ptr[TodoApp](Int(app_ptr))
-    return _b2i(app[0].items[Int(index)].completed)
+    return _b2i(_get_todo(app_ptr)[0].items[Int(index)].completed)
 
 
 @export
 fn todo_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the todo app has dirty scopes.  Returns 1 or 0."""
-    var app = _as_ptr[TodoApp](Int(app_ptr))
-    return _b2i(app[0].shell.has_dirty())
+    return _b2i(_get_todo(app_ptr)[0].shell.has_dirty())
 
 
 @export
 fn todo_list_version(app_ptr: Int64) -> Int32:
     """Return the current list version signal value."""
-    var app = _as_ptr[TodoApp](Int(app_ptr))
+    var app = _get_todo(app_ptr)
     return app[0].shell.peek_signal_i32(app[0].list_version_signal)
 
 
 @export
 fn todo_scope_id(app_ptr: Int64) -> Int32:
     """Return the root scope ID."""
-    var app = _as_ptr[TodoApp](Int(app_ptr))
-    return Int32(app[0].scope_id)
+    return Int32(_get_todo(app_ptr)[0].scope_id)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2101,65 +2093,57 @@ fn bench_init() -> Int64:
 @export
 fn bench_destroy(app_ptr: Int64):
     """Destroy the benchmark app and free all resources."""
-    bench_app_destroy(_as_ptr[BenchmarkApp](Int(app_ptr)))
+    bench_app_destroy(_get_bench(app_ptr))
 
 
 @export
 fn bench_create(app_ptr: Int64, count: Int32):
     """Replace all rows with `count` new rows (benchmark: create)."""
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    app[0].create_rows(Int(count))
+    _get_bench(app_ptr)[0].create_rows(Int(count))
 
 
 @export
 fn bench_append(app_ptr: Int64, count: Int32):
     """Append `count` new rows (benchmark: append)."""
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    app[0].append_rows(Int(count))
+    _get_bench(app_ptr)[0].append_rows(Int(count))
 
 
 @export
 fn bench_update(app_ptr: Int64):
     """Update every 10th row label (benchmark: update)."""
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    app[0].update_every_10th()
+    _get_bench(app_ptr)[0].update_every_10th()
 
 
 @export
 fn bench_select(app_ptr: Int64, id: Int32):
     """Select a row by id (benchmark: select)."""
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    app[0].select_row(id)
+    _get_bench(app_ptr)[0].select_row(id)
 
 
 @export
 fn bench_swap(app_ptr: Int64):
     """Swap rows at indices 1 and 998 (benchmark: swap)."""
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    app[0].swap_rows(1, 998)
+    _get_bench(app_ptr)[0].swap_rows(1, 998)
 
 
 @export
 fn bench_remove(app_ptr: Int64, id: Int32):
     """Remove a row by id (benchmark: remove)."""
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    app[0].remove_row(id)
+    _get_bench(app_ptr)[0].remove_row(id)
 
 
 @export
 fn bench_clear(app_ptr: Int64):
     """Clear all rows (benchmark: clear)."""
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    app[0].clear_rows()
+    _get_bench(app_ptr)[0].clear_rows()
 
 
 @export
 fn bench_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render of the benchmark table body.  Returns mutation byte length.
     """
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = bench_app_rebuild(app, writer_ptr)
+    var offset = bench_app_rebuild(_get_bench(app_ptr), writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -2168,9 +2152,8 @@ fn bench_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 fn bench_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = bench_app_flush(app, writer_ptr)
+    var offset = bench_app_flush(_get_bench(app_ptr), writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -2181,50 +2164,45 @@ fn bench_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 @export
 fn bench_row_count(app_ptr: Int64) -> Int32:
     """Return the number of rows."""
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    return Int32(len(app[0].rows))
+    return Int32(len(_get_bench(app_ptr)[0].rows))
 
 
 @export
 fn bench_row_id_at(app_ptr: Int64, index: Int32) -> Int32:
     """Return the id of the row at the given index."""
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    return app[0].rows[Int(index)].id
+    return _get_bench(app_ptr)[0].rows[Int(index)].id
 
 
 @export
 fn bench_selected(app_ptr: Int64) -> Int32:
     """Return the currently selected row id (0 = none)."""
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
+    var app = _get_bench(app_ptr)
     return app[0].shell.peek_signal_i32(app[0].selected_signal)
 
 
 @export
 fn bench_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the benchmark app has dirty scopes.  Returns 1 or 0."""
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    return _b2i(app[0].shell.has_dirty())
+    return _b2i(_get_bench(app_ptr)[0].shell.has_dirty())
 
 
 @export
 fn bench_version(app_ptr: Int64) -> Int32:
     """Return the current version signal value."""
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
+    var app = _get_bench(app_ptr)
     return app[0].shell.peek_signal_i32(app[0].version_signal)
 
 
 @export
 fn bench_row_template_id(app_ptr: Int64) -> Int32:
     """Return the row template ID."""
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    return Int32(app[0].row_template_id)
+    return Int32(_get_bench(app_ptr)[0].row_template_id)
 
 
 @export
 fn bench_scope_id(app_ptr: Int64) -> Int32:
     """Return the root scope ID."""
-    var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    return Int32(app[0].scope_id)
+    return Int32(_get_bench(app_ptr)[0].scope_id)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2344,7 +2322,7 @@ fn scheduler_create() -> Int64:
 @export
 fn scheduler_destroy(sched_ptr: Int64):
     """Destroy and free a heap-allocated Scheduler."""
-    var ptr = _as_ptr[Scheduler](Int(sched_ptr))
+    var ptr = _get_scheduler(sched_ptr)
     ptr.destroy_pointee()
     ptr.free()
 
@@ -2352,52 +2330,45 @@ fn scheduler_destroy(sched_ptr: Int64):
 @export
 fn scheduler_collect(sched_ptr: Int64, rt_ptr: Int64):
     """Drain the runtime's dirty queue into the scheduler."""
-    var sched = _as_ptr[Scheduler](Int(sched_ptr))
-    var rt = _as_ptr[Runtime](Int(rt_ptr))
-    sched[0].collect(rt)
+    _get_scheduler(sched_ptr)[0].collect(_get_runtime(rt_ptr))
 
 
 @export
 fn scheduler_collect_one(sched_ptr: Int64, rt_ptr: Int64, scope_id: Int32):
     """Add a single scope to the scheduler queue."""
-    var sched = _as_ptr[Scheduler](Int(sched_ptr))
-    var rt = _as_ptr[Runtime](Int(rt_ptr))
-    sched[0].collect_one(rt, UInt32(scope_id))
+    _get_scheduler(sched_ptr)[0].collect_one(
+        _get_runtime(rt_ptr), UInt32(scope_id)
+    )
 
 
 @export
 fn scheduler_next(sched_ptr: Int64) -> Int32:
     """Return and remove the next scope to render (lowest height first)."""
-    var sched = _as_ptr[Scheduler](Int(sched_ptr))
-    return Int32(sched[0].next())
+    return Int32(_get_scheduler(sched_ptr)[0].next())
 
 
 @export
 fn scheduler_is_empty(sched_ptr: Int64) -> Int32:
     """Check if the scheduler has no pending dirty scopes.  Returns 1 or 0."""
-    var sched = _as_ptr[Scheduler](Int(sched_ptr))
-    return _b2i(sched[0].is_empty())
+    return _b2i(_get_scheduler(sched_ptr)[0].is_empty())
 
 
 @export
 fn scheduler_count(sched_ptr: Int64) -> Int32:
     """Return the number of pending dirty scopes."""
-    var sched = _as_ptr[Scheduler](Int(sched_ptr))
-    return Int32(sched[0].count())
+    return Int32(_get_scheduler(sched_ptr)[0].count())
 
 
 @export
 fn scheduler_has_scope(sched_ptr: Int64, scope_id: Int32) -> Int32:
     """Check if a scope is already in the scheduler queue.  Returns 1 or 0."""
-    var sched = _as_ptr[Scheduler](Int(sched_ptr))
-    return _b2i(sched[0].has_scope(UInt32(scope_id)))
+    return _b2i(_get_scheduler(sched_ptr)[0].has_scope(UInt32(scope_id)))
 
 
 @export
 fn scheduler_clear(sched_ptr: Int64):
     """Discard all pending dirty scopes."""
-    var sched = _as_ptr[Scheduler](Int(sched_ptr))
-    sched[0].clear()
+    _get_scheduler(sched_ptr)[0].clear()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2417,7 +2388,7 @@ fn shell_create() -> Int64:
 @export
 fn shell_destroy(shell_ptr: Int64):
     """Destroy an AppShell and free all resources."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
+    var ptr = _get_shell(shell_ptr)
     ptr[0].destroy()
     ptr.destroy_pointee()
     ptr.free()
@@ -2426,92 +2397,79 @@ fn shell_destroy(shell_ptr: Int64):
 @export
 fn shell_is_alive(shell_ptr: Int64) -> Int32:
     """Check if the shell is alive.  Returns 1 or 0."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    return _b2i(ptr[0].is_alive())
+    return _b2i(_get_shell(shell_ptr)[0].is_alive())
 
 
 @export
 fn shell_create_root_scope(shell_ptr: Int64) -> Int32:
     """Create a root scope via the AppShell.  Returns scope ID."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    return Int32(ptr[0].create_root_scope())
+    return Int32(_get_shell(shell_ptr)[0].create_root_scope())
 
 
 @export
 fn shell_create_child_scope(shell_ptr: Int64, parent_id: Int32) -> Int32:
     """Create a child scope via the AppShell.  Returns scope ID."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    return Int32(ptr[0].create_child_scope(UInt32(parent_id)))
+    return Int32(_get_shell(shell_ptr)[0].create_child_scope(UInt32(parent_id)))
 
 
 @export
 fn shell_create_signal_i32(shell_ptr: Int64, initial: Int32) -> Int32:
     """Create an Int32 signal via the AppShell.  Returns signal key."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    return Int32(ptr[0].create_signal_i32(initial))
+    return Int32(_get_shell(shell_ptr)[0].create_signal_i32(initial))
 
 
 @export
 fn shell_read_signal_i32(shell_ptr: Int64, key: Int32) -> Int32:
     """Read an Int32 signal via the AppShell (with context tracking)."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    return ptr[0].read_signal_i32(UInt32(key))
+    return _get_shell(shell_ptr)[0].read_signal_i32(UInt32(key))
 
 
 @export
 fn shell_peek_signal_i32(shell_ptr: Int64, key: Int32) -> Int32:
     """Peek an Int32 signal via the AppShell (without subscribing)."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    return ptr[0].peek_signal_i32(UInt32(key))
+    return _get_shell(shell_ptr)[0].peek_signal_i32(UInt32(key))
 
 
 @export
 fn shell_write_signal_i32(shell_ptr: Int64, key: Int32, value: Int32):
     """Write to an Int32 signal via the AppShell."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    ptr[0].write_signal_i32(UInt32(key), value)
+    _get_shell(shell_ptr)[0].write_signal_i32(UInt32(key), value)
 
 
 @export
 fn shell_begin_render(shell_ptr: Int64, scope_id: Int32) -> Int32:
     """Begin rendering a scope.  Returns previous scope ID (or -1)."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    return Int32(ptr[0].begin_render(UInt32(scope_id)))
+    return Int32(_get_shell(shell_ptr)[0].begin_render(UInt32(scope_id)))
 
 
 @export
 fn shell_end_render(shell_ptr: Int64, prev_scope: Int32):
     """End rendering and restore the previous scope."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    ptr[0].end_render(Int(prev_scope))
+    _get_shell(shell_ptr)[0].end_render(Int(prev_scope))
 
 
 @export
 fn shell_has_dirty(shell_ptr: Int64) -> Int32:
     """Check if the shell has dirty scopes.  Returns 1 or 0."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    return _b2i(ptr[0].has_dirty())
+    return _b2i(_get_shell(shell_ptr)[0].has_dirty())
 
 
 @export
 fn shell_collect_dirty(shell_ptr: Int64):
     """Drain dirty scopes into the shell's scheduler."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    ptr[0].collect_dirty()
+    _get_shell(shell_ptr)[0].collect_dirty()
 
 
 @export
 fn shell_next_dirty(shell_ptr: Int64) -> Int32:
     """Return next dirty scope from the shell's scheduler."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    return Int32(ptr[0].next_dirty())
+    return Int32(_get_shell(shell_ptr)[0].next_dirty())
 
 
 @export
 fn shell_scheduler_empty(shell_ptr: Int64) -> Int32:
     """Check if the shell's scheduler is empty.  Returns 1 or 0."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    return _b2i(ptr[0].scheduler_empty())
+    return _b2i(_get_shell(shell_ptr)[0].scheduler_empty())
 
 
 @export
@@ -2519,30 +2477,30 @@ fn shell_dispatch_event(
     shell_ptr: Int64, handler_id: Int32, event_type: Int32
 ) -> Int32:
     """Dispatch an event via the AppShell.  Returns 1 if executed."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    return _b2i(ptr[0].dispatch_event(UInt32(handler_id), UInt8(event_type)))
+    return _b2i(
+        _get_shell(shell_ptr)[0].dispatch_event(
+            UInt32(handler_id), UInt8(event_type)
+        )
+    )
 
 
 @export
 fn shell_rt_ptr(shell_ptr: Int64) -> Int64:
     """Return the runtime pointer from an AppShell (for template registration etc.).
     """
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    return _to_i64(ptr[0].runtime)
+    return _to_i64(_get_shell(shell_ptr)[0].runtime)
 
 
 @export
 fn shell_store_ptr(shell_ptr: Int64) -> Int64:
     """Return the VNodeStore pointer from an AppShell."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    return _to_i64(ptr[0].store)
+    return _to_i64(_get_shell(shell_ptr)[0].store)
 
 
 @export
 fn shell_eid_ptr(shell_ptr: Int64) -> Int64:
     """Return the ElementIdAllocator pointer from an AppShell."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    return Int64(Int(ptr[0].eid_alloc))
+    return Int64(Int(_get_shell(shell_ptr)[0].eid_alloc))
 
 
 @export
@@ -2550,9 +2508,8 @@ fn shell_mount(
     shell_ptr: Int64, buf_ptr: Int64, capacity: Int32, vnode_index: Int32
 ) -> Int32:
     """Mount a VNode via the AppShell.  Returns mutation byte length."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var result = ptr[0].mount(writer_ptr, UInt32(vnode_index))
+    var result = _get_shell(shell_ptr)[0].mount(writer_ptr, UInt32(vnode_index))
     _free_writer(writer_ptr)
     return result
 
@@ -2566,7 +2523,7 @@ fn shell_diff(
     new_index: Int32,
 ) -> Int32:
     """Diff two VNodes via the AppShell.  Returns mutation byte length."""
-    var ptr = _as_ptr[AppShell](Int(shell_ptr))
+    var ptr = _get_shell(shell_ptr)
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
     ptr[0].diff(writer_ptr, UInt32(old_index), UInt32(new_index))
     var result = ptr[0].finalize(writer_ptr)

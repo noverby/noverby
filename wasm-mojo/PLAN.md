@@ -2659,6 +2659,16 @@ Replaced 32 repetitive `if X: return 1; return 0` boolean-to-Int32 patterns with
 - **`main.mojo` reduction**: 3,425 → 3,378 lines (−47 lines, −1.4%).
 - **No behavioral change**: All 397 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
 
+### 10.17 Typed Pointer Accessors & Missed `_b2i` Fixes (✅ Done)
+
+Added 5 typed `_get_*` pointer accessor helpers for the remaining subsystem types, and fixed 3 boolean-to-Int32 conversions missed in M10.16. Inlined all single-use pointer accesses to eliminate redundant `var` lines across 73 export functions.
+
+- **5 new typed accessors**: `_get_counter(app_ptr) -> UnsafePointer[CounterApp]`, `_get_todo(app_ptr) -> UnsafePointer[TodoApp]`, `_get_bench(app_ptr) -> UnsafePointer[BenchmarkApp]`, `_get_shell(shell_ptr) -> UnsafePointer[AppShell]`, `_get_scheduler(sched_ptr) -> UnsafePointer[Scheduler]`. Consistent with existing `_get_runtime`, `_get_eid_alloc`, `_get_builder`, `_get_vnode_store`, `_get_node`, `_get_vb` helpers.
+- **3 missed `_b2i` fixes**: `ctx_consume_found`, `ctx_has_local`, and `suspense_has_pending` still used manual `if X: return 1; return 0` patterns instead of `_b2i`. Now consistent with all other boolean-returning exports.
+- **Inlined single-use pointer accesses**: 61 export functions that only used the pointer once had their `var app = _as_ptr[T](Int(ptr))` line eliminated, calling the getter inline instead (e.g., `return Int32(_get_counter(app_ptr)[0].template_id)`). Multi-access exports (rebuild/flush, destroy, diff) use `var` with the shorter getter call.
+- **`main.mojo` reduction**: 3,378 → 3,335 lines (−43 lines, −1.3%).
+- **No behavioral change**: All 397 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
+
 ---
 
 ## Milestone Checklist
@@ -2689,3 +2699,4 @@ Replaced 32 repetitive `if X: return 1; return 0` boolean-to-Int32 patterns with
 - [x] **M10.14:** Consolidate WASM ABI helpers & close test gaps. 16 type-specific pointer conversion functions replaced with 2 generic helpers (`_as_ptr[T]`, `_to_i64[T]`). `main.mojo` reduced from 3,736 → 3,601 lines (−135 lines, −3.6%). 5 untested WASM exports identified via audit; all now covered. All 676 Mojo + 860 JS tests pass.
 - [x] **M10.15:** Clean unused imports & consolidate writer boilerplate. 140 unused import symbols removed (TAG_*, el_*, EVT_*, ACTION_*, TNODE_*, etc.). 8 identical MutationWriter alloc/free blocks replaced with `_alloc_writer`/`_free_writer` helpers. `main.mojo` reduced from 3,601 → 3,425 lines (−176 lines, −4.9%). All 676 Mojo + 860 JS tests pass unchanged.
 - [x] **M10.16:** Bool→Int32 helper & Node handle consolidation. `_b2i(Bool) -> Int32` replaces 32 identical `if X: return 1; return 0` patterns across all boolean-returning exports. `_alloc_node`/`_free_node` consolidate 6 Node alloc + 3 Node free patterns in DSL exports. `main.mojo` reduced from 3,425 → 3,378 lines (−47 lines, −1.4%). All 676 Mojo + 860 JS tests pass unchanged.
+- [x] **M10.17:** Typed pointer accessors & missed `_b2i` fixes. 5 new `_get_*` helpers (`_get_counter`, `_get_todo`, `_get_bench`, `_get_shell`, `_get_scheduler`) replace 73 `_as_ptr[T](Int(x))` call sites. 3 missed `_b2i` conversions fixed (`ctx_consume_found`, `ctx_has_local`, `suspense_has_pending`). 61 single-use pointer accesses inlined. `main.mojo` reduced from 3,378 → 3,335 lines (−43 lines, −1.3%). All 676 Mojo + 860 JS tests pass unchanged.
