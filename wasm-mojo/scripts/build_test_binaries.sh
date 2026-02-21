@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# build_test_binaries.sh — Compile test/fast/*.mojo into standalone binaries.
+# build_test_binaries.sh — Compile test/test_*.mojo into standalone binaries.
 #
-# Each test group file has a main() that creates one WasmInstance and
+# Each test module has a fn main() that creates one WasmInstance and
 # calls all tests in that module sequentially.  Precompiling avoids
 # the ~11s Mojo compilation overhead on every run.
 #
@@ -20,13 +20,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-FAST_DIR="$PROJECT_DIR/test/fast"
-
-# Regenerate test/fast/ runners so they stay in sync with test sources.
-bash "$SCRIPT_DIR/gen_test_fast.sh"
+TEST_DIR="$PROJECT_DIR/test"
 OUT_DIR="$PROJECT_DIR/build/test-bin"
 WASMTIME_MOJO="$PROJECT_DIR/../wasmtime-mojo/src"
-TEST_DIR="$PROJECT_DIR/test"
 
 JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 8)
 FORCE=0
@@ -47,12 +43,17 @@ done
 
 mkdir -p "$OUT_DIR"
 
-# Collect source files
-sources=("$FAST_DIR"/test_grp_*.mojo)
+# Collect source files — every test/test_*.mojo that contains fn main()
+sources=()
+for f in "$TEST_DIR"/test_*.mojo; do
+    [ -f "$f" ] || continue
+    grep -q '^fn main' "$f" && sources+=("$f")
+done
+
 total=${#sources[@]}
 
 if [[ $total -eq 0 ]]; then
-    echo "No test group files found in $FAST_DIR" >&2
+    echo "No test files with fn main() found in $TEST_DIR" >&2
     exit 1
 fi
 
@@ -109,13 +110,10 @@ for src in "${sources[@]}"; do
 
     # Skip if binary is newer than all relevant sources (unless --force)
     if [[ $FORCE -eq 0 && -f "$bin" ]]; then
-        # Check against: the source file itself, wasm_harness, and the test module it imports
-        stem="${name#test_grp_}"
-        test_module="$TEST_DIR/test_${stem}.mojo"
         harness="$TEST_DIR/wasm_harness.mojo"
 
         needs_rebuild=0
-        for dep in "$src" "$harness" "$test_module"; do
+        for dep in "$src" "$harness"; do
             if [[ -f "$dep" && "$dep" -nt "$bin" ]]; then
                 needs_rebuild=1
                 break

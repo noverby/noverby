@@ -639,3 +639,36 @@ def test_shell_independent_instances(w: UnsafePointer[WasmInstance]):
 
     w[].call_void("shell_destroy", args_ptr(shell_a))
     w[].call_void("shell_destroy", args_ptr(shell_b))
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_shell_create_destroy(w)
+    test_shell_is_alive_after_create(w)
+    test_shell_rt_ptr_non_zero(w)
+    test_shell_store_ptr_non_zero(w)
+    test_shell_eid_ptr_non_zero(w)
+    test_shell_create_root_scope(w)
+    test_shell_create_child_scope(w)
+    test_shell_create_multiple_root_scopes(w)
+    test_shell_create_signal_i32(w)
+    test_shell_write_and_peek_signal(w)
+    test_shell_read_signal_with_context(w)
+    test_shell_peek_does_not_subscribe(w)
+    test_shell_multiple_signals(w)
+    test_shell_begin_end_render(w)
+    test_shell_nested_render(w)
+    test_shell_initially_not_dirty(w)
+    test_shell_dirty_after_signal_write(w)
+    test_shell_collect_and_drain_dirty(w)
+    test_shell_dirty_height_ordering(w)
+    test_shell_dispatch_event(w)
+    test_shell_mount_text_vnode(w)
+    test_shell_mount_template_ref(w)
+    test_shell_diff_same_text_zero_mutations(w)
+    test_shell_diff_text_changed(w)
+    test_shell_full_mount_update_cycle(w)
+    test_shell_independent_instances(w)
+    print("component: 26/26 passed")

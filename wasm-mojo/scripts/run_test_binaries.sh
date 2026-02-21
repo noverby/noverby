@@ -38,7 +38,7 @@ fi
 
 # Collect binaries
 binaries=()
-for bin in "$BIN_DIR"/test_grp_*; do
+for bin in "$BIN_DIR"/test_*; do
     [[ -x "$bin" ]] && binaries+=("$bin")
 done
 

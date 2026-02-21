@@ -392,3 +392,23 @@ def test_scheduler_collect_deduplicates_against_existing(
 
     w[].call_void("scheduler_destroy", args_ptr(sched))
     w[].call_void("runtime_destroy", args_ptr(rt))
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_scheduler_create_destroy(w)
+    test_scheduler_initially_empty(w)
+    test_scheduler_collect_one_and_next(w)
+    test_scheduler_height_ordering(w)
+    test_scheduler_same_height_preserves_order(w)
+    test_scheduler_deduplicates(w)
+    test_scheduler_collect_from_dirty_queue(w)
+    test_scheduler_collect_multiple_dirty(w)
+    test_scheduler_clear(w)
+    test_scheduler_has_scope(w)
+    test_scheduler_multiple_collect_cycles(w)
+    test_scheduler_deep_hierarchy(w)
+    test_scheduler_collect_deduplicates_against_existing(w)
+    print("scheduler: 13/13 passed")

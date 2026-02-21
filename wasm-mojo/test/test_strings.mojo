@@ -296,3 +296,34 @@ fn test_string_eq_case_sensitive(w: UnsafePointer[WasmInstance]) raises:
         0,
         'string_eq("abc", "ABC") === false (case sensitive)',
     )
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_return_static_string(w)
+    test_return_input_string_basic(w)
+    test_return_input_string_empty(w)
+    test_return_input_string_single_char(w)
+    test_return_input_string_emoji(w)
+    test_string_length_hello(w)
+    test_string_length_empty(w)
+    test_string_length_single_char(w)
+    test_string_length_ten_chars(w)
+    test_string_length_utf8_emoji(w)
+    test_string_concat_basic(w)
+    test_string_concat_empty_first(w)
+    test_string_concat_empty_second(w)
+    test_string_concat_both_empty(w)
+    test_string_concat_short(w)
+    test_string_repeat_basic(w)
+    test_string_repeat_one(w)
+    test_string_repeat_zero(w)
+    test_string_repeat_five(w)
+    test_string_eq_same(w)
+    test_string_eq_different(w)
+    test_string_eq_both_empty(w)
+    test_string_eq_prefix(w)
+    test_string_eq_case_sensitive(w)
+    print("strings: 24/24 passed")

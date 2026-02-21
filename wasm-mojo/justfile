@@ -30,39 +30,22 @@ precompile-if-changed: build-if-changed
     just precompile
   fi
 
-# Regenerate test/test_all.mojo from all test/test_*.mojo files.
-gen-test-runner:
-  bash scripts/gen_test_runner.sh
-
-# Fast test: single-file runner (~2-3 min vs ~5-6 min for full mojo test).
-# Compiles all 26 test modules once instead of once per file.
-test-fast: precompile-if-changed gen-test-runner
-  mojo test -I ../wasmtime-mojo/src test/test_all.mojo
-
-# Full test suite via mojo test (each file compiled separately).
-test: precompile
-  mojo test -I ../wasmtime-mojo/src test/
-
 # Build precompiled test binaries (parallel, incremental).
 # Depends on precompile-if-changed so .cwasm exists for fast WASM loading.
 test-build: precompile-if-changed
   bash scripts/build_test_binaries.sh
 
-# Run precompiled test binaries (parallel, <2s).
+# Run precompiled test binaries (parallel, ~10s).
 test-run:
   bash scripts/run_test_binaries.sh
 
 # Build + run precompiled test binaries (fastest full Mojo test cycle).
-test-compiled: test-build test-run
+test: test-build test-run
 
 test-js: build
   deno run --allow-read test-js/run.ts
 
 test-all: test test-js
-
-test-all-fast: test-fast test-js
-
-test-all-compiled: test-compiled test-js
 
 serve: build
   @echo "Open http://localhost:4507/examples/counter/"

@@ -99,3 +99,21 @@ fn test_identity_float64_negative_zero(w: UnsafePointer[WasmInstance]) raises:
         copysign(Float64(1.0), result) < 0,
         "identity_float64(-0) === -0 (sign bit preserved)",
     )
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_identity_int32_zero(w)
+    test_identity_int32_positive(w)
+    test_identity_int32_negative(w)
+    test_identity_int64_zero(w)
+    test_identity_int64_positive(w)
+    test_identity_int64_negative(w)
+    test_identity_float32_pi(w)
+    test_identity_float32_zero(w)
+    test_identity_float64_pi(w)
+    test_identity_float64_zero(w)
+    test_identity_float64_negative_zero(w)
+    print("identity_native: 11/11 passed")

@@ -302,3 +302,43 @@ fn test_bool_not_false(w: UnsafePointer[WasmInstance]) raises:
         1,
         "bool_not(false) === true",
     )
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_eq_int32_equal(w)
+    test_eq_int32_not_equal(w)
+    test_eq_int32_zero(w)
+    test_ne_int32_not_equal(w)
+    test_ne_int32_equal(w)
+    test_lt_int32_less(w)
+    test_lt_int32_equal(w)
+    test_lt_int32_greater(w)
+    test_le_int32_less(w)
+    test_le_int32_equal(w)
+    test_le_int32_greater(w)
+    test_gt_int32_greater(w)
+    test_gt_int32_equal(w)
+    test_gt_int32_less(w)
+    test_ge_int32_greater(w)
+    test_ge_int32_equal(w)
+    test_ge_int32_less(w)
+    test_lt_negative_vs_zero(w)
+    test_gt_zero_vs_negative(w)
+    test_le_negative_equal(w)
+    test_ge_negative_equal(w)
+    test_lt_more_negative(w)
+    test_gt_less_negative(w)
+    test_bool_and_true_true(w)
+    test_bool_and_true_false(w)
+    test_bool_and_false_true(w)
+    test_bool_and_false_false(w)
+    test_bool_or_true_true(w)
+    test_bool_or_true_false(w)
+    test_bool_or_false_true(w)
+    test_bool_or_false_false(w)
+    test_bool_not_true(w)
+    test_bool_not_false(w)
+    print("comparison: 33/33 passed")

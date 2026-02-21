@@ -279,3 +279,27 @@ fn test_length_256_bytes(w: UnsafePointer[WasmInstance]) raises:
         256,
         "string_length 256-byte (heap)",
     )
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_roundtrip_22_bytes_sso(w)
+    test_roundtrip_23_bytes_sso_max(w)
+    test_roundtrip_24_bytes_heap(w)
+    test_roundtrip_25_bytes_heap(w)
+    test_length_22_sso(w)
+    test_length_23_sso_max(w)
+    test_length_24_heap(w)
+    test_eq_23_identical_sso(w)
+    test_eq_23_vs_24_different_length(w)
+    test_eq_24_identical_heap(w)
+    test_eq_23_differ_last_byte_sso(w)
+    test_concat_11_plus_12_eq_23_sso(w)
+    test_concat_12_plus_12_eq_24_heap(w)
+    test_repeat_8x3_eq_24_heap(w)
+    test_repeat_23x1_stays_sso(w)
+    test_roundtrip_150_bytes(w)
+    test_length_256_bytes(w)
+    print("sso: 17/17 passed")

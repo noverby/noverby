@@ -1128,3 +1128,37 @@ fn test_scope_render_with_no_hooks(w: UnsafePointer[WasmInstance]) raises:
     )
 
     _destroy_runtime(w, rt)
+
+
+fn main() raises:
+    from wasm_harness import get_instance
+
+    var w = get_instance()
+    test_scope_create_and_destroy(w)
+    test_scope_sequential_ids(w)
+    test_scope_slot_reuse_after_destroy(w)
+    test_scope_double_destroy_is_noop(w)
+    test_scope_height_and_parent_tracking(w)
+    test_scope_create_child_auto_computes_height(w)
+    test_scope_dirty_flag(w)
+    test_scope_render_count(w)
+    test_scope_begin_render_clears_dirty(w)
+    test_scope_begin_end_render_manages_current(w)
+    test_scope_begin_render_sets_reactive_context(w)
+    test_scope_nested_rendering(w)
+    test_scope_is_first_render(w)
+    test_scope_hooks_start_empty(w)
+    test_hook_use_signal_creates_on_first_render(w)
+    test_hook_use_signal_same_on_rerender(w)
+    test_hook_multiple_signals_same_scope(w)
+    test_hook_signals_in_different_scopes_independent(w)
+    test_hook_signal_read_subscribes_scope(w)
+    test_hook_peek_does_not_subscribe(w)
+    test_hook_nested_rendering_subscribes_correct_scope(w)
+    test_scope_stress_100_scopes(w)
+    test_hook_signal_stable_across_many_rerenders(w)
+    test_hook_simulated_counter_component(w)
+    test_hook_simulated_multi_state_component(w)
+    test_hook_simulated_parent_child_tree(w)
+    test_scope_render_with_no_hooks(w)
+    print("scopes: 27/27 passed")

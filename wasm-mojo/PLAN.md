@@ -2554,34 +2554,36 @@ Added convenience methods to `AppShell` so app flush functions no longer bypass 
 
 ### 10.10 Precompiled Test Binary Infrastructure (✅ Done)
 
-Implemented the precompiled test binary workflow to reduce Mojo test suite execution from ~5–6 minutes to ~10 seconds for iterative development:
+Implemented precompiled test binaries to reduce Mojo test suite execution from ~5–6 minutes to ~10 seconds for iterative development. No code generation — each test module has an inline `fn main()` that shares a single `WasmInstance` across all tests.
 
-- **`scripts/gen_test_fast.sh`**: Generates `test/fast/test_grp_<module>.mojo` binary runners from all `test/test_*.mojo` source modules. Each generated file has a `fn main() raises` that creates a single `WasmInstance` and calls every test function from that module sequentially. Uses write-to-temp-then-compare pattern to preserve timestamps when content is unchanged (critical for incremental builds). Removes stale runners when test modules are deleted.
-- **`scripts/build_test_binaries.sh`**: Compiles all `test/fast/test_grp_*.mojo` files into standalone binaries in `build/test-bin/` using `mojo build`. Runs compilations in parallel (up to `nproc` jobs, configurable via `-j`). Supports incremental builds: skips compilation when the binary is newer than its source file, the corresponding test module, and the wasm harness. Calls `gen_test_fast.sh` automatically to keep runners in sync. Supports `--force` flag for full rebuilds.
-- **`scripts/run_test_binaries.sh`**: Launches all precompiled binaries in `build/test-bin/` concurrently from the project directory (so `build/out.wasm` / `build/out.cwasm` paths resolve correctly). Waits for each in order, captures stdout/stderr per binary, reports pass/fail with summary lines. Supports `-v` verbose mode for full output. Displays elapsed wall-clock time and exit status.
+- **Inline `fn main()` per test module**: Every `test/test_*.mojo` file now ends with a `fn main() raises` block that creates one `WasmInstance` via `get_instance()` and calls all test functions in sequence. Adding a new test requires one additional line in `main()` — no external scripts or generated files. `mojo build test/test_scheduler.mojo` produces a standalone binary directly.
+- **Shared `WasmInstance` parameter**: All test functions accept `w: UnsafePointer[WasmInstance]` instead of each creating their own instance. This eliminated per-function `_load()` calls (−591 lines net) and is what enables the single-process optimization.
+- **`scripts/build_test_binaries.sh`**: Compiles every `test/test_*.mojo` that contains `fn main` into standalone binaries in `build/test-bin/` using `mojo build`. Runs compilations in parallel (up to `nproc` jobs, configurable via `-j`). Supports incremental builds: skips compilation when the binary is newer than its source file and `test/wasm_harness.mojo`. Supports `--force` flag for full rebuilds.
+- **`scripts/run_test_binaries.sh`**: Launches all precompiled binaries in `build/test-bin/` concurrently from the project directory (so `build/out.wasm` / `build/out.cwasm` paths resolve correctly). Waits for each in order, captures stdout/stderr per binary, reports pass/fail with summary lines. Supports `-v` verbose mode. Displays elapsed wall-clock time.
 - **Justfile targets**:
   - `test-build` — Depends on `precompile-if-changed` (ensures `.cwasm` exists for fast WASM loading), then runs `build_test_binaries.sh`.
   - `test-run` — Runs `run_test_binaries.sh` (precompiled binaries only, no compilation).
-  - `test-compiled` — `test-build` + `test-run` (full incremental build-and-run cycle).
-  - `test-all-compiled` — `test-compiled` + `test-js` (all Mojo + JS tests).
-- **`.gitignore` updated**: Added `test/fast/` (generated runners) and `test/test_all.mojo` (generated grouped runner).
+  - `test` — `test-build` + `test-run` (full incremental build-and-run cycle).
+  - `test-all` — `test` + `test-js` (all Mojo + JS tests).
+- **Removed codegen artifacts**: Deleted `scripts/gen_test_fast.sh`, `scripts/gen_test_runner.sh`, `test/fast/` directory, and `test/test_all.mojo`. The entire test infrastructure is now plain Mojo with no generated code.
 - **Performance results** (16-core machine, 674 Mojo tests across 26 modules):
 
 | Scenario | Time | Notes |
 |---|---|---|
-| Cold build (all 26 binaries) | ~66s | Parallel `mojo build` on 16 cores |
+| Cold build (all 26 binaries) | ~92s | Parallel `mojo build` on 16 cores |
 | Incremental build (nothing changed) | <0.1s | All 26 skipped via timestamp check |
 | Incremental build (1 test file changed) | ~11s | Only changed module recompiled |
 | Run precompiled binaries | ~10s | 26 binaries in parallel, wasmtime init |
 | Full cycle (no code change) | ~11s | Skip build + run binaries |
 | Full cycle + JS tests | ~22s | Mojo binaries + 859 JS tests |
-| Previous `just test` | ~5–6 min | Each of 674 tests compiled separately |
+| Previous `mojo test` approach | ~5–6 min | Each of 674 tests compiled separately |
 
 - **Key design decisions**:
+  - No code generation — `fn main()` lives directly in each test file, keeping test discovery and test execution in one place.
   - Each binary loads `build/out.cwasm` (pre-compiled WASM) for fast wasmtime instantiation (~70ms per binary).
-  - Timestamp-based incremental checks compare against 3 dependencies: the fast runner source, the corresponding `test/test_*.mojo` module, and `test/wasm_harness.mojo`.
-  - Generated runners use `get_instance()` which returns a heap-allocated `WasmInstance` pointer, shared across all test calls in a single process.
-- **All 674 Mojo + 859 JS tests pass**, confirming precompiled binaries produce identical results to `mojo test`.
+  - Timestamp-based incremental checks compare against 2 dependencies: the test source file and `test/wasm_harness.mojo`.
+  - `get_instance()` returns a heap-allocated `WasmInstance` pointer, shared across all test calls in a single process.
+- **All 674 Mojo + 859 JS tests pass**, confirming precompiled binaries produce identical results.
 
 ---
 
@@ -2606,4 +2608,4 @@ Implemented the precompiled test binary workflow to reduce Mojo test suite execu
 - [x] **M10.7:** AppShell integration. All three apps refactored from manual `Runtime`/`VNodeStore`/`ElementIdAllocator` pointer management to `AppShell` struct. Counter fully uses shell lifecycle methods (`mount`, `diff`, `finalize`, `dispatch_event`). Todo and bench use shell for init/destroy/signals, direct subsystem access for complex flush logic. 8 WASM exports updated. All 674 Mojo + 859 JS tests pass unchanged.
 - [x] **M10.8:** Fragment lifecycle helpers. `FragmentSlot` struct + `flush_fragment()` extracted to `component/lifecycle.mojo`. Todo and bench apps refactored from ~90/~80 lines of manual fragment transition logic to single `flush_fragment()` call each. Apps reduced by −192 lines total (todo: 484→376, bench: 504→420). All 674 Mojo + 859 JS tests pass unchanged.
 - [x] **M10.9:** AppShell flush methods & scheduler integration. `consume_dirty()` routes dirty scope processing through the Scheduler instead of raw `drain_dirty()`. `flush_fragment()` method on AppShell wraps lifecycle helper using shell's own pointers (3 args instead of 6). All app flush paths simplified, no more raw subsystem pointer access in flush. Apps reduced by −15 lines (counter: 217→214, todo: 376→370, bench: 420→414). All 674 Mojo + 859 JS tests pass unchanged.
-- [x] **M10.10:** Precompiled test binary infrastructure. `gen_test_fast.sh` generates `test/fast/test_grp_*.mojo` runners, `build_test_binaries.sh` compiles them in parallel with incremental timestamp checks, `run_test_binaries.sh` executes all binaries concurrently. New justfile targets: `test-build`, `test-run`, `test-compiled`, `test-all-compiled`. Test suite reduced from ~5–6 min (`just test`) to ~11s (`just test-compiled`, no code change) or ~10s (`just test-run`, binaries pre-built). All 674 Mojo + 859 JS tests pass.
+- [x] **M10.10:** Precompiled test binary infrastructure. Each `test/test_*.mojo` has an inline `fn main()` sharing one `WasmInstance` across all tests — no code generation. `build_test_binaries.sh` compiles them in parallel with incremental timestamp checks, `run_test_binaries.sh` executes all binaries concurrently. Test suite reduced from ~5–6 min to ~11s (`just test`, no code change) or ~10s (`just test-run`, binaries pre-built). All 674 Mojo + 859 JS tests pass.
