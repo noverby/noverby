@@ -3,6 +3,7 @@
     ./avahi.nix
     ./flatpak.nix
     ./fwupd.nix
+    ./ironclaw.nix
     ./keyd.nix
     ./ollama.nix
     ./openssh.nix
