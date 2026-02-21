@@ -16,7 +16,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **Ergonomic DSL** — `el_div`, `el_button`, `dyn_text` tag helpers with `to_template()` conversion
 - **AppShell abstraction** — single struct bundling runtime, store, allocator, and scheduler
 - **Three working apps** — counter, todo list, and js-framework-benchmark
-- **1,613 tests** — 679 Mojo (via wasmtime) + 934 JS (via Deno), all passing
+- **1,644 tests** — 679 Mojo (via wasmtime) + 965 JS (via Deno), all passing
 
 ## How it works
 
@@ -288,7 +288,7 @@ Adding a new test:
 
 ## Test results
 
-1,613 tests across 26 Mojo modules and 8 JS test suites:
+1,644 tests across 26 Mojo modules and 8 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -301,7 +301,7 @@ Adding a new test:
 - **Component** — AppShell lifecycle, mount/diff/finalize helpers, FragmentSlot
 - **Counter app** — init, mount, click, flush, DOM verification
 - **Todo app** — add, remove, toggle, clear, keyed list transitions
-- **Benchmark** — create/append/update/swap/select/remove/clear 1000 rows
+- **Benchmark** — create/append/update/swap/select/remove/clear 1000 rows, full DOM integration
 - **Memory** — allocation cycles, bounded growth, rapid write stability
 - **Arithmetic/strings** — original PoC interop regression suite
 

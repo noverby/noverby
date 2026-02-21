@@ -31,6 +31,7 @@ A Dioxus-inspired, signal-based UI framework written in Mojo, compiled to WebAss
 - [Project Structure](#project-structure)
 - [Phase 10 — Modularization & Next Steps](#phase-10--modularization--next-steps)
 - [Phase 11 — Automatic Template & Event Wiring](#phase-11--automatic-template--event-wiring)
+- [Phase 12 — TS Runtime Modernization](#phase-12--ts-runtime-modernization)
 - [Open Questions](#open-questions)
 - [Milestone Checklist](#milestone-checklist)
 
@@ -2964,6 +2965,193 @@ All three examples now pass `new Map()` as templateRoots — templates are autom
 
 ---
 
+## Phase 12 — TS Runtime Modernization
+
+> **Goal:** Bring the TypeScript test runtime (`runtime/app.ts`, `runtime/events.ts`) in line with the simplified browser examples from Phase 11. Eliminate manual template DOM construction and manual handler-ordering from the headless test app factory. Extract a generic app factory pattern that works for counter, todo, and bench apps.
+>
+> **Motivation:** Phase 11 eliminated manual template DOM construction and handler wiring from all three browser examples (`examples/`), but the TypeScript test runtime (`runtime/app.ts`) still uses the old patterns: manual `createElement`/`createTextNode` template construction, `listenerIndex`-based handler ordering, and counter-specific `TemplateCache.register()` calls. The `onNewListener` callback already receives `handlerId` (added in M11.3) but `createCounterApp` ignores it. This inconsistency makes the test app harder to maintain and doesn't exercise the auto-registration path that browser users actually hit.
+>
+> **Impact:** `runtime/app.ts` drops from ~260 → ~120 lines. Manual template DOM construction eliminated. Handler wiring simplified from ordering-based to direct `handlerId` usage. New todo/bench app factories enable full DOM integration tests for all three apps.
+>
+> **Status:** Complete (M12.1–M12.5 done).
+
+### 12.1 Simplify `createCounterApp` — Auto Template Registration
+
+Update `runtime/app.ts` to use the same pattern as browser examples: empty `TemplateCache`, templates registered automatically from `RegisterTemplate` mutations in the mount buffer.
+
+**Current (old pattern):**
+
+```text
+// Manual template DOM construction (~30 lines)
+const templates = new TemplateCache(document);
+const div = document.createElement("div");
+const span = document.createElement("span");
+span.appendChild(document.createTextNode(""));
+div.appendChild(span);
+// ... etc
+templates.register(tmplId, [div]);
+
+// Manual handler ordering
+let listenerIndex = 0;
+const handlerOrder = [incrHandler, decrHandler];
+interpreter.onNewListener = (elementId, eventName) => {
+    const hid = handlerOrder[listenerIndex] ?? incrHandler;
+    listenerIndex++;
+    events.addHandler(elementId, eventName, hid);
+    return () => {};
+};
+```
+
+**New (auto-registration pattern):**
+
+```text
+// Empty template cache — templates come from WASM via RegisterTemplate mutations
+const templates = new TemplateCache(document);
+
+// Handler IDs come from the mutation protocol — no manual ordering needed
+interpreter.onNewListener = (elementId, eventName, handlerId) => {
+    events.addHandler(elementId, eventName, handlerId);
+    return () => {};
+};
+```
+
+**Changes:**
+
+- Remove `counter_tmpl_id` WASM export call (template ID no longer needed JS-side).
+- Remove manual DOM template construction block (~20 lines).
+- Update `onNewListener` to use `handlerId` parameter directly (3rd arg, available since M11.3).
+- Remove `listenerIndex` and `handlerOrder` variables.
+- Keep `incrHandler`/`decrHandler` queries for `CounterAppHandle` (programmatic dispatch).
+
+**Deliverables:**
+
+- [x] `runtime/app.ts` updated — manual template DOM removed, `handlerId` used directly
+- [x] All existing `counter.test.ts` tests pass unchanged (same DOM output)
+- [x] `runtime/app.ts` reduced from 259 → 217 lines (−42 lines, −16%)
+
+### 12.2 Extract Generic `createApp` Helper
+
+Factor out the common WASM app lifecycle (allocate buffer, create interpreter, wire EventBridge, mount, flush) into a reusable helper that any app can use.
+
+**New type:**
+
+```ts
+interface AppConfig {
+    fns: WasmExports;
+    root: Element;
+    doc?: Document;
+    bufCapacity?: number;
+    init: (fns: WasmExports) => bigint;
+    rebuild: (fns: WasmExports, appPtr: bigint, bufPtr: bigint, cap: number) => number;
+    flush: (fns: WasmExports, appPtr: bigint, bufPtr: bigint, cap: number) => number;
+    handleEvent: (fns: WasmExports, appPtr: bigint, handlerId: number, eventType: number) => number;
+    destroy: (fns: WasmExports, appPtr: bigint) => void;
+    install?: boolean;
+}
+
+interface AppHandle {
+    fns: WasmExports;
+    interpreter: Interpreter;
+    events: EventBridge;
+    templates: TemplateCache;
+    root: Element;
+    appPtr: bigint;
+    bufPtr: bigint;
+    dispatchAndFlush(handlerId: number, eventType?: number): void;
+    flushAndApply(): void;
+    destroy(): void;
+}
+```
+
+**`createApp(config: AppConfig): AppHandle`** — generic factory:
+
+1. Call `config.init()` to get `appPtr`.
+2. Create empty `TemplateCache` + `Interpreter`.
+3. Allocate mutation buffer.
+4. Wire `EventBridge` with `handlerId`-based `onNewListener`.
+5. Call `config.rebuild()` and apply mount mutations.
+6. Return `AppHandle`.
+
+**`createCounterApp`** becomes a thin wrapper:
+
+```ts
+export function createCounterApp(fns, root, doc?, install?): CounterAppHandle {
+    const handle = createApp({
+        fns, root, doc, install,
+        init: (f) => f.counter_init(),
+        rebuild: (f, app, buf, cap) => f.counter_rebuild(app, buf, cap),
+        flush: (f, app, buf, cap) => f.counter_flush(app, buf, cap),
+        handleEvent: (f, app, hid, evt) => f.counter_handle_event(app, hid, evt),
+        destroy: (f, app) => f.counter_destroy(app),
+    });
+
+    const incrHandler = fns.counter_incr_handler(handle.appPtr);
+    const decrHandler = fns.counter_decr_handler(handle.appPtr);
+
+    return {
+        ...handle,
+        incrHandler,
+        decrHandler,
+        getCount: () => fns.counter_count_value(handle.appPtr),
+        increment: () => handle.dispatchAndFlush(incrHandler),
+        decrement: () => handle.dispatchAndFlush(decrHandler),
+    };
+}
+```
+
+**Deliverables:**
+
+- [x] `AppConfig` and `AppHandle` types/interfaces defined in `runtime/app.ts`
+- [x] `createApp()` generic factory in `runtime/app.ts`
+- [x] `createCounterApp()` refactored as thin wrapper around `createApp()`
+- [x] All existing `counter.test.ts` tests pass unchanged
+
+### 12.3 Todo App Modernization & DOM Tests
+
+Modernize the existing `createTodoApp()` in `test-js/todo.test.ts` to use auto template registration via `createApp()`, eliminating manual template DOM construction.
+
+**Changes:**
+
+- `createTodoApp` rewritten to use `createApp()` from `runtime/app.ts` — manual template DOM construction (~50 lines) removed.
+- Templates come from WASM via `RegisterTemplate` mutations in the mount buffer, same as browser examples.
+- All 26 existing todo DOM integration tests pass unchanged (mount structure, add/toggle/remove items, keyed list transitions, etc.).
+
+**Deliverables:**
+
+- [x] `createTodoApp` in `todo.test.ts` modernized — uses `createApp()`, no manual template DOM
+- [x] All 26 existing todo test suites pass unchanged
+
+### 12.4 Bench App Factory & DOM Tests
+
+Add `createBenchApp()` factory in `test-js/bench.test.ts` using `createApp()` and full DOM integration tests for the benchmark app.
+
+**New factory:** `createBenchApp(fns, tbody, doc): BenchAppHandle` — uses `createApp()` with a no-op `handleEvent` (bench uses direct WASM calls for operations, not event dispatch). 8 MB mutation buffer for large row sets.
+
+**New tests (10 suites, 31 assertions):**
+
+- [x] `createBenchApp` mounts empty tbody (no tr elements before create)
+- [x] Create 100 rows → 100 tr elements, each with 3 td children
+- [x] Append 100 rows to existing 100 → 200 tr elements total
+- [x] Clear → 0 tr elements
+- [x] Update every 10th → " !!!" appended to label, non-updated rows unchanged
+- [x] Swap rows → DOM row order matches WASM row order
+- [x] Select row → exactly 1 tr with class="danger"
+- [x] Remove row → tr count decremented to 99
+- [x] Create after clear → correct row count
+- [x] Multiple independent instances → separate DOM state
+
+### 12.5 Documentation & Test Count Update
+
+Update README and PLAN to reflect the new test counts and the modernized TS runtime.
+
+**Deliverables:**
+
+- [x] README test count updated (1,613 → 1,644: 679 Mojo + 965 JS)
+- [x] PLAN milestone checklist updated
+- [x] Phase 12 marked complete
+
+---
+
 ## Milestone Checklist
 
 - [x] **M0:** Arena allocator + collections + ElementId + protocol defined. All existing tests still pass.
@@ -3004,3 +3192,8 @@ All three examples now pass `new Map()` as templateRoots — templates are autom
 - [x] **M11.4:** EventBridge auto-dispatch. `examples/lib/events.js` provides `EventBridge` class that hooks `interpreter.onNewListener` to a single `dispatch(handlerId, eventName, domEvent)` callback. Counter example simplified from manual `handlerOrder`/`handlerMap`/`listenerIdx` wiring to 5-line EventBridge constructor. Todo example simplified: `HandlerItemMapping` + `handle_event()` added to Mojo `TodoApp`, new `todo_handle_event` WASM export; JS reduced from ~80 lines of DOM-scanning handler logic to 10-line dispatch. Bench example: no-op `onNewListener` replaced with `new EventBridge(interp, () => {})`. All 679 Mojo + 927 JS tests pass.
 - [x] **M11.5:** AppShell template emission. `AppShell.emit_templates(writer_ptr)` iterates the template registry and emits `RegisterTemplate` for each template. `mount_with_templates()` method prepends template emission before `CreateEngine`. All three apps (`counter_app_rebuild`, `todo_app_rebuild`, `bench_app_rebuild`) updated to emit templates in the mount buffer. JS tests verify `RegisterTemplate` precedes `LoadTemplate` in counter and todo mutation buffers. All 679 Mojo + 934 JS tests pass.
 - [x] **M11.6:** Example simplification. Counter/todo/bench rewritten with auto template registration + EventBridge. Manual template DOM construction eliminated from all three examples: counter 65→52 lines, todo 108→91 lines, bench 152→138 lines (−44 lines total). All `templateRoots` maps are now empty — templates come from WASM via `RegisterTemplate` mutations. All 679 Mojo + 934 JS tests pass.
+- [x] **M12.1:** Simplify `createCounterApp` — auto template registration. Manual template DOM construction removed from `runtime/app.ts`. `onNewListener` uses `handlerId` parameter directly instead of manual ordering. `runtime/app.ts` reduced from 259 → 217 lines (−42 lines). All 18 counter test suites pass unchanged. All 679 Mojo + 934 JS tests pass.
+- [x] **M12.2:** Generic `createApp` helper. `AppConfig` and `AppHandle` interfaces defined. Common WASM app lifecycle (buffer alloc, interpreter, EventBridge, mount, flush) extracted to reusable `createApp()` factory. `createCounterApp` refactored as thin wrapper. EventBridge wired before mount so `NewEventListener` mutations are captured during initial render. All 679 Mojo + 934 JS tests pass unchanged.
+- [x] **M12.3:** Todo app modernization. `createTodoApp()` in `test-js/todo.test.ts` rewritten to use `createApp()` — ~50 lines of manual template DOM construction removed. All 26 todo test suites pass unchanged. All 679 Mojo + 934 JS tests pass.
+- [x] **M12.4:** Bench app factory & DOM tests. `createBenchApp()` factory added to `test-js/bench.test.ts` using `createApp()`. 10 new DOM integration test suites (31 assertions): mount, create/append/clear/update/swap/select/remove operations verified against headless DOM. All 679 Mojo + 965 JS tests pass.
+- [x] **M12.5:** Documentation & test count update. README updated (1,613 → 1,644 tests). PLAN milestone checklist updated. Phase 12 marked complete.
