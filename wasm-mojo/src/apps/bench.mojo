@@ -26,9 +26,9 @@
 
 from memory import UnsafePointer
 from bridge import MutationWriter
-from mutations import CreateEngine, DiffEngine
+
 from events import HandlerEntry
-from component import AppShell, app_shell_create
+from component import AppShell, app_shell_create, FragmentSlot, flush_fragment
 from vdom import (
     VNode,
     VNodeStore,
@@ -164,9 +164,7 @@ struct BenchmarkApp(Movable):
     var rows: List[BenchRow]
     var next_id: Int32
     var rng_state: UInt32  # simple LCG state
-    var current_frag: Int  # Fragment VNode index, or -1
-    var anchor_id: UInt32  # ElementId of anchor node (placeholder when empty)
-    var rows_mounted: Bool
+    var row_slot: FragmentSlot  # tracks row list fragment lifecycle
 
     fn __init__(out self):
         self.shell = AppShell()
@@ -177,9 +175,7 @@ struct BenchmarkApp(Movable):
         self.rows = List[BenchRow]()
         self.next_id = 1
         self.rng_state = 42
-        self.current_frag = -1
-        self.anchor_id = 0
-        self.rows_mounted = False
+        self.row_slot = FragmentSlot()
 
     fn __moveinit__(out self, deinit other: Self):
         self.shell = other.shell^
@@ -190,9 +186,7 @@ struct BenchmarkApp(Movable):
         self.rows = other.rows^
         self.next_id = other.next_id
         self.rng_state = other.rng_state
-        self.current_frag = other.current_frag
-        self.anchor_id = other.anchor_id
-        self.rows_mounted = other.rows_mounted
+        self.row_slot = other.row_slot^
 
     fn _next_random(mut self) -> UInt32:
         """Simple LCG: state = state * 1664525 + 1013904223."""
@@ -383,14 +377,12 @@ fn bench_app_rebuild(
     """
     # Create an anchor placeholder
     var anchor_eid = app[0].shell.eid_alloc[0].alloc()
-    app[0].anchor_id = anchor_eid.as_u32()
     writer_ptr[0].create_placeholder(anchor_eid.as_u32())
     writer_ptr[0].append_children(0, 1)
 
-    # Build initial empty fragment
+    # Build initial empty fragment and initialize the FragmentSlot
     var frag_idx = app[0].build_rows_fragment()
-    app[0].current_frag = Int(frag_idx)
-    app[0].rows_mounted = False
+    app[0].row_slot = FragmentSlot(anchor_eid.as_u32(), Int(frag_idx))
 
     writer_ptr[0].finalize()
     return Int32(writer_ptr[0].offset)
@@ -402,10 +394,8 @@ fn bench_app_flush(
 ) -> Int32:
     """Flush pending updates after a benchmark operation.
 
-    Handles transitions:
-      - empty → populated: create rows, ReplaceWith anchor
-      - populated → populated: diff old fragment vs new fragment (keyed)
-      - populated → empty: remove rows, recreate anchor
+    Delegates fragment transitions (empty↔populated) to the reusable
+    `flush_fragment` lifecycle helper via the app's `FragmentSlot`.
 
     Returns byte offset (length) of mutation data, or 0 if nothing dirty.
     """
@@ -415,90 +405,16 @@ fn bench_app_flush(
     var _dirty = app[0].shell.runtime[0].drain_dirty()
 
     var new_frag_idx = app[0].build_rows_fragment()
-    var old_frag_idx = UInt32(app[0].current_frag)
 
-    var old_frag_ptr = app[0].shell.store[0].get_ptr(old_frag_idx)
-    var new_frag_ptr = app[0].shell.store[0].get_ptr(new_frag_idx)
-    var old_count = old_frag_ptr[0].fragment_child_count()
-    var new_count = new_frag_ptr[0].fragment_child_count()
-
-    if not app[0].rows_mounted and new_count > 0:
-        # ── Transition: empty → populated ─────────────────────────────
-        var create_eng = CreateEngine(
-            writer_ptr,
-            app[0].shell.eid_alloc,
-            app[0].shell.runtime,
-            app[0].shell.store,
-        )
-        var total_roots: UInt32 = 0
-        for i in range(new_count):
-            var child_idx = (
-                app[0]
-                .shell.store[0]
-                .get_ptr(new_frag_idx)[0]
-                .get_fragment_child(i)
-            )
-            total_roots += create_eng.create_node(child_idx)
-
-        if app[0].anchor_id != 0 and total_roots > 0:
-            writer_ptr[0].replace_with(app[0].anchor_id, total_roots)
-        app[0].rows_mounted = True
-
-    elif app[0].rows_mounted and new_count == 0:
-        # ── Transition: populated → empty ─────────────────────────────
-        # Create a new anchor placeholder
-        var first_old_root_id: UInt32 = 0
-        if old_count > 0:
-            var first_child = (
-                app[0]
-                .shell.store[0]
-                .get_ptr(old_frag_idx)[0]
-                .get_fragment_child(0)
-            )
-            var fc_ptr = app[0].shell.store[0].get_ptr(first_child)
-            if fc_ptr[0].root_id_count() > 0:
-                first_old_root_id = fc_ptr[0].get_root_id(0)
-            elif fc_ptr[0].element_id != 0:
-                first_old_root_id = fc_ptr[0].element_id
-
-        var new_anchor = app[0].shell.eid_alloc[0].alloc()
-        writer_ptr[0].create_placeholder(new_anchor.as_u32())
-
-        if first_old_root_id != 0:
-            writer_ptr[0].insert_before(first_old_root_id, 1)
-
-        # Remove all old rows
-        var diff_eng = DiffEngine(
-            writer_ptr,
-            app[0].shell.eid_alloc,
-            app[0].shell.runtime,
-            app[0].shell.store,
-        )
-        for i in range(old_count):
-            var old_child = (
-                app[0]
-                .shell.store[0]
-                .get_ptr(old_frag_idx)[0]
-                .get_fragment_child(i)
-            )
-            diff_eng._remove_node(old_child)
-
-        app[0].anchor_id = new_anchor.as_u32()
-        app[0].rows_mounted = False
-
-    elif app[0].rows_mounted and new_count > 0:
-        # ── Transition: populated → populated ─────────────────────────
-        var diff_eng = DiffEngine(
-            writer_ptr,
-            app[0].shell.eid_alloc,
-            app[0].shell.runtime,
-            app[0].shell.store,
-        )
-        diff_eng.diff_node(old_frag_idx, new_frag_idx)
-
-    # else: both empty → no-op
-
-    app[0].current_frag = Int(new_frag_idx)
+    # Flush via lifecycle helper (handles all three transitions)
+    app[0].row_slot = flush_fragment(
+        writer_ptr,
+        app[0].shell.eid_alloc,
+        app[0].shell.runtime,
+        app[0].shell.store,
+        app[0].row_slot,
+        new_frag_idx,
+    )
 
     writer_ptr[0].finalize()
     return Int32(writer_ptr[0].offset)
