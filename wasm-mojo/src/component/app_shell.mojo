@@ -31,6 +31,7 @@ from signals import Runtime, create_runtime, destroy_runtime
 from mutations import CreateEngine, DiffEngine
 from vdom import VNodeStore, VNode
 from scheduler import Scheduler
+from .lifecycle import FragmentSlot, flush_fragment as _flush_fragment_raw
 
 
 struct AppShell(Movable):
@@ -216,6 +217,67 @@ struct AppShell(Movable):
     fn scheduler_empty(self) -> Bool:
         """Check if the scheduler has no more pending scopes."""
         return self.scheduler.is_empty()
+
+    fn consume_dirty(mut self) -> Bool:
+        """Collect all dirty scopes via the scheduler and consume them.
+
+        Routes dirty scope processing through the height-ordered
+        scheduler instead of raw `runtime.drain_dirty()`.  This
+        ensures correct render order when multiple scopes are dirty
+        (parent before child) and deduplicates scope IDs.
+
+        For single-scope apps this is equivalent to a simple drain,
+        but correctly prepares for multi-scope support.
+
+        Returns:
+            True if any scopes were dirty, False otherwise.
+        """
+        if not self.has_dirty():
+            return False
+        self.collect_dirty()
+        while not self.scheduler_empty():
+            _ = self.next_dirty()
+        return True
+
+    # ── Fragment flush ───────────────────────────────────────────────
+
+    fn flush_fragment(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter],
+        slot: FragmentSlot,
+        new_frag_idx: UInt32,
+    ) -> FragmentSlot:
+        """Flush a fragment slot using the shell's own subsystem pointers.
+
+        Convenience wrapper around the lifecycle `flush_fragment()` helper
+        that avoids passing `eid_alloc`, `runtime`, and `store` pointers
+        individually.  See `lifecycle.flush_fragment()` for full docs.
+
+        Handles three transitions:
+          1. empty → populated (CreateEngine + ReplaceWith anchor)
+          2. populated → populated (DiffEngine keyed diff)
+          3. populated → empty (new anchor + remove old items)
+
+        Does NOT finalize — the caller must call `writer_ptr[0].finalize()`
+        or `self.finalize(writer_ptr)` after this returns.
+
+        Args:
+            writer_ptr: Pointer to the MutationWriter for output.
+            slot: Current FragmentSlot state.
+            new_frag_idx: Index of the new Fragment VNode in the store.
+
+        Returns:
+            Updated FragmentSlot with new state.
+        """
+        var mut_slot = slot.copy()
+        return _flush_fragment_raw(
+            writer_ptr,
+            self.eid_alloc,
+            self.runtime,
+            self.store,
+            mut_slot,
+            new_frag_idx,
+        )
 
     # ── Event dispatch ───────────────────────────────────────────────
 

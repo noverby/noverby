@@ -26,7 +26,7 @@ from memory import UnsafePointer
 from bridge import MutationWriter
 from mutations import CreateEngine
 from events import HandlerEntry
-from component import AppShell, app_shell_create, FragmentSlot, flush_fragment
+from component import AppShell, app_shell_create, FragmentSlot
 from vdom import (
     VNode,
     VNodeStore,
@@ -354,22 +354,16 @@ fn todo_app_flush(
 
     Returns the byte offset (length) of mutation data, or 0 if nothing dirty.
     """
-    if not app[0].shell.has_dirty():
+    # Collect and consume dirty scopes via the scheduler
+    if not app[0].shell.consume_dirty():
         return 0
-
-    var _dirty = app[0].shell.runtime[0].drain_dirty()
 
     # Build a new items fragment from the current item list
     var new_frag_idx = app[0].build_items_fragment()
 
-    # Flush via lifecycle helper (handles all three transitions)
-    app[0].item_slot = flush_fragment(
-        writer_ptr,
-        app[0].shell.eid_alloc,
-        app[0].shell.runtime,
-        app[0].shell.store,
-        app[0].item_slot,
-        new_frag_idx,
+    # Flush via AppShell method (handles all three transitions)
+    app[0].item_slot = app[0].shell.flush_fragment(
+        writer_ptr, app[0].item_slot, new_frag_idx
     )
 
     writer_ptr[0].finalize()

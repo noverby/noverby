@@ -196,12 +196,9 @@ fn counter_app_flush(
     Returns the byte offset (length) of the mutation data written,
     or 0 if there was nothing to update.
     """
-    # Check for dirty scopes
-    if not app[0].shell.has_dirty():
+    # Collect and consume dirty scopes via the scheduler
+    if not app[0].shell.consume_dirty():
         return 0
-
-    # Drain dirty scopes (we only have one scope, so just drain)
-    var _dirty = app[0].shell.runtime[0].drain_dirty()
 
     # Build a new VNode with updated state
     var new_idx = app[0].build_vnode()
