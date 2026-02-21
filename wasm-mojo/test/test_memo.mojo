@@ -192,6 +192,53 @@ fn _scope_end_render(w: UnsafePointer[WasmInstance], rt: Int, prev: Int) raises:
     w[].call_void("scope_end_render", args_ptr_i32(rt, Int32(prev)))
 
 
+fn _hook_use_memo(
+    w: UnsafePointer[WasmInstance], rt: Int, initial: Int32
+) raises -> Int:
+    """Hook: create or retrieve an Int32 memo for the current scope."""
+    return Int(w[].call_i32("hook_use_memo_i32", args_ptr_i32(rt, initial)))
+
+
+fn _hook_use_signal(
+    w: UnsafePointer[WasmInstance], rt: Int, initial: Int32
+) raises -> Int:
+    """Hook: create or retrieve an Int32 signal for the current scope."""
+    return Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, initial)))
+
+
+fn _scope_hook_count(
+    w: UnsafePointer[WasmInstance], rt: Int, scope_id: Int
+) raises -> Int:
+    """Return the number of hooks in a scope."""
+    return Int(
+        w[].call_i32("scope_hook_count", args_ptr_i32(rt, Int32(scope_id)))
+    )
+
+
+fn _scope_hook_tag_at(
+    w: UnsafePointer[WasmInstance], rt: Int, scope_id: Int, index: Int
+) raises -> Int:
+    """Return the hook tag at the given index."""
+    return Int(
+        w[].call_i32(
+            "scope_hook_tag_at",
+            args_ptr_i32_i32(rt, Int32(scope_id), Int32(index)),
+        )
+    )
+
+
+fn _scope_hook_value_at(
+    w: UnsafePointer[WasmInstance], rt: Int, scope_id: Int, index: Int
+) raises -> Int:
+    """Return the hook value at the given index."""
+    return Int(
+        w[].call_i32(
+            "scope_hook_value_at",
+            args_ptr_i32_i32(rt, Int32(scope_id), Int32(index)),
+        )
+    )
+
+
 # ── Create / Destroy ─────────────────────────────────────────────────────────
 
 
@@ -643,6 +690,162 @@ fn test_memo_destroy_cleans_up(
 # ── Test runner ──────────────────────────────────────────────────────────────
 
 
+# ── Hook: use_memo_i32 ──────────────────────────────────────────────────────
+
+
+fn test_hook_memo_creates_on_first_render(
+    w: UnsafePointer[WasmInstance],
+) raises:
+    """Hook creates memo on first render with HOOK_MEMO tag."""
+    var rt = _create_runtime(w)
+    var s0 = _scope_create(w, rt, 0, -1)
+
+    assert_equal(_memo_count(w, rt), 0, "no memos before render")
+    assert_equal(_scope_hook_count(w, rt, s0), 0, "no hooks before render")
+
+    # First render
+    var prev = _scope_begin_render(w, rt, s0)
+    var m0 = _hook_use_memo(w, rt, 42)
+    _scope_end_render(w, rt, prev)
+
+    assert_true(m0 >= 0, "memo ID is non-negative")
+    assert_equal(_memo_count(w, rt), 1, "1 memo after hook")
+    assert_equal(_scope_hook_count(w, rt, s0), 1, "1 hook registered")
+    # HOOK_MEMO tag = 1
+    assert_equal(
+        _scope_hook_tag_at(w, rt, s0, 0), 1, "hook tag is HOOK_MEMO (1)"
+    )
+    assert_equal(
+        _scope_hook_value_at(w, rt, s0, 0), m0, "hook value is memo ID"
+    )
+    # Initial value readable
+    assert_equal(_memo_read(w, rt, m0), 42, "memo initial value is 42")
+
+    _memo_destroy(w, rt, m0)
+    _scope_destroy(w, rt, s0)
+    _destroy_runtime(w, rt)
+
+
+fn test_hook_memo_returns_same_id_on_rerender(
+    w: UnsafePointer[WasmInstance],
+) raises:
+    """Hook returns same memo ID on re-render (initial ignored)."""
+    var rt = _create_runtime(w)
+    var s0 = _scope_create(w, rt, 0, -1)
+
+    # First render
+    var prev = _scope_begin_render(w, rt, s0)
+    var m0 = _hook_use_memo(w, rt, 10)
+    _scope_end_render(w, rt, prev)
+
+    # Compute a value
+    _memo_begin_compute(w, rt, m0)
+    _memo_end_compute(w, rt, m0, 100)
+    assert_equal(_memo_read(w, rt, m0), 100, "computed value is 100")
+
+    # Re-render — initial value (999) is ignored
+    prev = _scope_begin_render(w, rt, s0)
+    var m1 = _hook_use_memo(w, rt, 999)
+    _scope_end_render(w, rt, prev)
+
+    assert_equal(m1, m0, "same memo ID on re-render")
+    assert_equal(_memo_count(w, rt), 1, "still 1 memo")
+    assert_equal(_scope_hook_count(w, rt, s0), 1, "still 1 hook")
+    # Cached value survives re-render
+    assert_equal(_memo_read(w, rt, m1), 100, "cached value survives re-render")
+
+    _memo_destroy(w, rt, m0)
+    _scope_destroy(w, rt, s0)
+    _destroy_runtime(w, rt)
+
+
+fn test_hook_memo_multiple_distinct_ids(
+    w: UnsafePointer[WasmInstance],
+) raises:
+    """Multiple memos in same scope get distinct IDs."""
+    var rt = _create_runtime(w)
+    var s0 = _scope_create(w, rt, 0, -1)
+
+    # First render — create 3 memos
+    var prev = _scope_begin_render(w, rt, s0)
+    var mA = _hook_use_memo(w, rt, 1)
+    var mB = _hook_use_memo(w, rt, 2)
+    var mC = _hook_use_memo(w, rt, 3)
+    _scope_end_render(w, rt, prev)
+
+    assert_true(mA != mB, "mA != mB")
+    assert_true(mB != mC, "mB != mC")
+    assert_true(mA != mC, "mA != mC")
+    assert_equal(_memo_count(w, rt), 3, "3 memos created")
+    assert_equal(_scope_hook_count(w, rt, s0), 3, "3 hooks registered")
+
+    # All tags are HOOK_MEMO (1)
+    assert_equal(_scope_hook_tag_at(w, rt, s0, 0), 1, "hook 0 tag = MEMO")
+    assert_equal(_scope_hook_tag_at(w, rt, s0, 1), 1, "hook 1 tag = MEMO")
+    assert_equal(_scope_hook_tag_at(w, rt, s0, 2), 1, "hook 2 tag = MEMO")
+
+    # Re-render returns same IDs in order
+    prev = _scope_begin_render(w, rt, s0)
+    var rA = _hook_use_memo(w, rt, 0)
+    var rB = _hook_use_memo(w, rt, 0)
+    var rC = _hook_use_memo(w, rt, 0)
+    _scope_end_render(w, rt, prev)
+
+    assert_equal(rA, mA, "re-render: mA stable")
+    assert_equal(rB, mB, "re-render: mB stable")
+    assert_equal(rC, mC, "re-render: mC stable")
+
+    _memo_destroy(w, rt, mA)
+    _memo_destroy(w, rt, mB)
+    _memo_destroy(w, rt, mC)
+    _scope_destroy(w, rt, s0)
+    _destroy_runtime(w, rt)
+
+
+fn test_hook_memo_interleaved_with_signal(
+    w: UnsafePointer[WasmInstance],
+) raises:
+    """Hook cursor advances correctly when memos and signals are interleaved."""
+    var rt = _create_runtime(w)
+    var s0 = _scope_create(w, rt, 0, -1)
+
+    # First render: signal, memo, signal, memo
+    var prev = _scope_begin_render(w, rt, s0)
+    var sig0 = _hook_use_signal(w, rt, 10)
+    var mem0 = _hook_use_memo(w, rt, 20)
+    var sig1 = _hook_use_signal(w, rt, 30)
+    var mem1 = _hook_use_memo(w, rt, 40)
+    _scope_end_render(w, rt, prev)
+
+    assert_equal(_scope_hook_count(w, rt, s0), 4, "4 hooks total")
+    # HOOK_SIGNAL = 0, HOOK_MEMO = 1
+    assert_equal(_scope_hook_tag_at(w, rt, s0, 0), 0, "hook 0 = SIGNAL")
+    assert_equal(_scope_hook_tag_at(w, rt, s0, 1), 1, "hook 1 = MEMO")
+    assert_equal(_scope_hook_tag_at(w, rt, s0, 2), 0, "hook 2 = SIGNAL")
+    assert_equal(_scope_hook_tag_at(w, rt, s0, 3), 1, "hook 3 = MEMO")
+
+    # Re-render: same order
+    prev = _scope_begin_render(w, rt, s0)
+    var rSig0 = _hook_use_signal(w, rt, 0)
+    var rMem0 = _hook_use_memo(w, rt, 0)
+    var rSig1 = _hook_use_signal(w, rt, 0)
+    var rMem1 = _hook_use_memo(w, rt, 0)
+    _scope_end_render(w, rt, prev)
+
+    assert_equal(rSig0, sig0, "signal 0 stable")
+    assert_equal(rMem0, mem0, "memo 0 stable")
+    assert_equal(rSig1, sig1, "signal 1 stable")
+    assert_equal(rMem1, mem1, "memo 1 stable")
+
+    _memo_destroy(w, rt, mem0)
+    _memo_destroy(w, rt, mem1)
+    _scope_destroy(w, rt, s0)
+    _destroy_runtime(w, rt)
+
+
+# ── Test runner ──────────────────────────────────────────────────────────────
+
+
 fn test_all(w: UnsafePointer[WasmInstance]) raises:
     test_memo_create_returns_valid_id(w)
     test_memo_initial_value_readable(w)
@@ -661,6 +864,10 @@ fn test_all(w: UnsafePointer[WasmInstance]) raises:
     test_memo_cache_hit(w)
     test_memo_read_no_context(w)
     test_memo_destroy_cleans_up(w)
+    test_hook_memo_creates_on_first_render(w)
+    test_hook_memo_returns_same_id_on_rerender(w)
+    test_hook_memo_multiple_distinct_ids(w)
+    test_hook_memo_interleaved_with_signal(w)
 
 
 fn main() raises:
@@ -668,4 +875,4 @@ fn main() raises:
 
     var w = get_instance()
     test_all(w)
-    print("memo: 50/50 passed")
+    print("memo: 83/83 passed")
