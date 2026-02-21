@@ -2208,7 +2208,6 @@ Upgrade the builder to support `comptime` templates (see [rsx! vs Mojo Parameter
 
 **Existing (keep):**
 
-- `test/wasm_harness.py` — wasmtime-py harness for loading WASM binary
 - `test/test_*.mojo` — primary WASM test suite (arithmetic, signals, templates, etc.)
 - `test-js/harness.ts` — assert, assertClose, assertNaN, suite, summary
 - `test-js/run.ts` — JS test runner entry point

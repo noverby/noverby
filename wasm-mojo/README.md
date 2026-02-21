@@ -35,7 +35,6 @@ wasm-mojo/
 │   ├── env.ts                 # Environment imports (I/O, math, libc stubs)
 │   └── strings.ts             # Mojo String ABI helpers (read/write/alloc)
 ├── test/                      # Primary test suite — WASM via wasmtime (Mojo)
-│   ├── wasm_harness.py        # wasmtime-py harness for loading WASM binary
 │   ├── test_arithmetic.mojo   # add, sub, mul, div, mod, pow
 │   ├── test_unary.mojo        # neg, abs
 │   ├── test_minmax.mojo       # min, max, clamp
