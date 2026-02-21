@@ -2647,7 +2647,17 @@ Audited all ~300 lines of imports in `main.mojo` and removed 140 symbols that be
 - **Unused import cleanup**: Removed 140 imported symbols across 8 import groups. Largest removals: 35 `TAG_*` constants, 38 `el_*` tag helpers, 18 `TNODE_`/`TATTR_`/`VNODE_`/`AVAL_`/`DNODE_` constants, 18 `EVT_`/`ACTION_` constants, 6 `NODE_*` constants, and 7 unused types/functions (`HandlerRegistry`, `SchedulerEntry`, `TodoItem`, `BenchRow`, `HOOK_SIGNAL`, `mount_vnode`, `mount_vnode_to`, `diff_and_finalize`, `diff_no_finalize`, `create_no_finalize`, `to_template_multi`, `el`). Import block reduced from ~300 → ~150 lines.
 - **Writer boilerplate consolidation**: Added `_alloc_writer(buf_ptr, capacity)` and `_free_writer(ptr)` helpers. Replaced 8 identical 7-line `UnsafePointer[MutationWriter].alloc` / `init_pointee_move` / `destroy_pointee` / `free` blocks in `counter_rebuild`, `counter_flush`, `todo_rebuild`, `todo_flush`, `bench_rebuild`, `bench_flush`, `shell_mount`, and `shell_diff` with 2-line calls.
 - **`main.mojo` reduction**: 3,601 → 3,425 lines (−176 lines, −4.9%).
-- **No behavioral change**: All 392 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
+- **No behavioral change**: All 397 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
+
+### 10.16 Bool→Int32 Helper & Node Handle Consolidation (✅ Done)
+
+Replaced 32 repetitive `if X: return 1; return 0` boolean-to-Int32 patterns with a single `_b2i(val: Bool) -> Int32` helper, and consolidated 6 Node heap-allocation + 3 Node heap-free patterns with `_alloc_node`/`_free_node` helpers.
+
+- **`_b2i(val: Bool) -> Int32` helper**: Converts a Bool to Int32 (1 or 0) for WASM export return values. Replaced 32 identical 3-line `if X: return 1; return 0` blocks across all boolean-returning exports (`eid_is_alive`, `signal_contains`, `runtime_has_context`, `runtime_has_dirty`, `scope_contains`, `scope_is_dirty`, `scope_has_scope`, `scope_is_first_render`, `tmpl_contains_name`, `vnode_has_key`, `vnode_is_mounted`, `handler_contains`, `dispatch_event`, `dispatch_event_with_i32`, `ctx_remove`, `err_is_boundary`, `err_has_error`, `suspense_is_boundary`, `suspense_is_pending`, `counter_handle_event`, `counter_has_dirty`, `todo_item_completed_at`, `todo_has_dirty`, `bench_has_dirty`, `scheduler_is_empty`, `scheduler_has_scope`, `shell_is_alive`, `shell_has_dirty`, `shell_scheduler_empty`, `shell_dispatch_event`). Each call site reduced from 3 lines to 1 line.
+- **`_alloc_node(var val: Node) -> Int64` helper**: Heap-allocates a Node and returns its address as Int64. Replaced 6 identical 3-line alloc/init/return blocks in `dsl_node_text`, `dsl_node_dyn_text`, `dsl_node_dyn_node`, `dsl_node_attr`, `dsl_node_dyn_attr`, and `dsl_node_element` with 1-line calls.
+- **`_free_node(addr: Int64)` helper**: Destroys and frees a heap-allocated Node. Replaced 3 identical destroy/free patterns in `dsl_node_add_item`, `dsl_node_destroy`, and `dsl_to_template` with 1-line calls.
+- **`main.mojo` reduction**: 3,425 → 3,378 lines (−47 lines, −1.4%).
+- **No behavioral change**: All 397 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
 
 ---
 
@@ -2678,3 +2688,4 @@ Audited all ~300 lines of imports in `main.mojo` and removed 140 symbols that be
 - [x] **M10.13:** Extract DSL test logic from main.mojo. 19 self-contained `dsl_test_*` function bodies moved to `src/vdom/dsl_tests.mojo` (761 lines). `main.mojo` reduced from 4,282 → 3,736 lines (−546 lines, −12.7%). Inline test logic replaced with thin `@export` wrappers. All 674 Mojo + 859 JS tests pass unchanged.
 - [x] **M10.14:** Consolidate WASM ABI helpers & close test gaps. 16 type-specific pointer conversion functions replaced with 2 generic helpers (`_as_ptr[T]`, `_to_i64[T]`). `main.mojo` reduced from 3,736 → 3,601 lines (−135 lines, −3.6%). 5 untested WASM exports identified via audit; all now covered. All 676 Mojo + 860 JS tests pass.
 - [x] **M10.15:** Clean unused imports & consolidate writer boilerplate. 140 unused import symbols removed (TAG_*, el_*, EVT_*, ACTION_*, TNODE_*, etc.). 8 identical MutationWriter alloc/free blocks replaced with `_alloc_writer`/`_free_writer` helpers. `main.mojo` reduced from 3,601 → 3,425 lines (−176 lines, −4.9%). All 676 Mojo + 860 JS tests pass unchanged.
+- [x] **M10.16:** Bool→Int32 helper & Node handle consolidation. `_b2i(Bool) -> Int32` replaces 32 identical `if X: return 1; return 0` patterns across all boolean-returning exports. `_alloc_node`/`_free_node` consolidate 6 Node alloc + 3 Node free patterns in DSL exports. `main.mojo` reduced from 3,425 → 3,378 lines (−47 lines, −1.4%). All 676 Mojo + 860 JS tests pass unchanged.
