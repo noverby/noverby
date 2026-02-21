@@ -2669,6 +2669,18 @@ Added 5 typed `_get_*` pointer accessor helpers for the remaining subsystem type
 - **`main.mojo` reduction**: 3,378 → 3,335 lines (−43 lines, −1.3%).
 - **No behavioral change**: All 397 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
 
+### 10.18 Complete `_as_ptr` Migration & Writer Helper Dedup (✅ Done)
+
+Added `_get_writer` typed pointer accessor and replaced all 14 remaining typed `_as_ptr` call sites with their corresponding `_get_*` helpers. Eliminated duplicated MutationWriter alloc/free logic in `writer_create`/`writer_destroy` by reusing existing `_alloc_writer`/`_free_writer` helpers.
+
+- **1 new typed accessor**: `_get_writer(writer_ptr) -> UnsafePointer[MutationWriter]`. Completes the set of 13 typed pointer helpers (`_get_eid_alloc`, `_get_runtime`, `_get_builder`, `_get_vnode_store`, `_get_counter`, `_get_todo`, `_get_bench`, `_get_shell`, `_get_scheduler`, `_get_writer`, `_get_node`, `_get_vb`).
+- **14 `_as_ptr` call sites migrated**: `runtime_destroy` → `_get_runtime`, `tmpl_builder_destroy` → `_get_builder`, `vnode_store_destroy` → `_get_vnode_store`, `writer_destroy`/`writer_offset`/`writer_finalize` → `_get_writer`, `create_vnode` (4 calls) and `diff_vnodes` (4 calls) → `_get_writer`/`_get_eid_alloc`/`_get_runtime`/`_get_vnode_store`.
+- **Writer helper dedup**: `writer_create` rewritten to `_to_i64(_alloc_writer(...))` (−4 lines), `writer_destroy` rewritten to `_free_writer(_get_writer(...))` (−2 lines). Eliminates duplicated MutationWriter construction/teardown logic.
+- **Inlined `writer_offset`**: Single-use pointer access inlined (−1 line).
+- **`_as_ptr` now only appears in**: `_get_*` helper definitions (13 helpers) and raw `UInt8` buffer access (mutation buffers, debug byte I/O, path buffers). No typed struct pointers use `_as_ptr` directly anymore.
+- **`main.mojo` reduction**: 3,335 → 3,332 lines (−3 lines).
+- **No behavioral change**: All 397 WASM exports unchanged. All 676 Mojo + 860 JS tests pass unchanged.
+
 ---
 
 ## Milestone Checklist
@@ -2700,3 +2712,4 @@ Added 5 typed `_get_*` pointer accessor helpers for the remaining subsystem type
 - [x] **M10.15:** Clean unused imports & consolidate writer boilerplate. 140 unused import symbols removed (TAG_*, el_*, EVT_*, ACTION_*, TNODE_*, etc.). 8 identical MutationWriter alloc/free blocks replaced with `_alloc_writer`/`_free_writer` helpers. `main.mojo` reduced from 3,601 → 3,425 lines (−176 lines, −4.9%). All 676 Mojo + 860 JS tests pass unchanged.
 - [x] **M10.16:** Bool→Int32 helper & Node handle consolidation. `_b2i(Bool) -> Int32` replaces 32 identical `if X: return 1; return 0` patterns across all boolean-returning exports. `_alloc_node`/`_free_node` consolidate 6 Node alloc + 3 Node free patterns in DSL exports. `main.mojo` reduced from 3,425 → 3,378 lines (−47 lines, −1.4%). All 676 Mojo + 860 JS tests pass unchanged.
 - [x] **M10.17:** Typed pointer accessors & missed `_b2i` fixes. 5 new `_get_*` helpers (`_get_counter`, `_get_todo`, `_get_bench`, `_get_shell`, `_get_scheduler`) replace 73 `_as_ptr[T](Int(x))` call sites. 3 missed `_b2i` conversions fixed (`ctx_consume_found`, `ctx_has_local`, `suspense_has_pending`). 61 single-use pointer accesses inlined. `main.mojo` reduced from 3,378 → 3,335 lines (−43 lines, −1.3%). All 676 Mojo + 860 JS tests pass unchanged.
+- [x] **M10.18:** Complete `_as_ptr` migration & writer helper dedup. `_get_writer` added (13th typed helper). 14 remaining typed `_as_ptr` calls replaced with `_get_*` helpers across 8 exports (`runtime_destroy`, `tmpl_builder_destroy`, `vnode_store_destroy`, `writer_destroy`, `writer_offset`, `writer_finalize`, `create_vnode`, `diff_vnodes`). `writer_create`/`writer_destroy` deduplicated via `_alloc_writer`/`_free_writer`. `_as_ptr` now only used in helper definitions + raw `UInt8` buffer access. `main.mojo` reduced from 3,335 → 3,332 lines (−3 lines). All 676 Mojo + 860 JS tests pass unchanged.
