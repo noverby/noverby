@@ -2,6 +2,7 @@ import { instantiate } from "../runtime/mod.ts";
 import { testBench } from "./bench.test.ts";
 import { testCounter } from "./counter.test.ts";
 import { testDsl } from "./dsl.test.ts";
+import { testEffect } from "./effect.test.ts";
 import { summary } from "./harness.ts";
 import { testInterpreter } from "./interpreter.test.ts";
 import { testMemo } from "./memo.test.ts";
@@ -24,6 +25,7 @@ async function run(): Promise<void> {
 	testPhase8(fns);
 	testBench(fns);
 	testMemo(fns);
+	testEffect(fns);
 	testDsl(fns);
 
 	summary();

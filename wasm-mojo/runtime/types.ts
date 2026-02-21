@@ -284,6 +284,7 @@ export interface WasmExports extends WebAssembly.Exports {
 
 	hook_use_signal_i32(rtPtr: bigint, initial: number): number;
 	hook_use_memo_i32(rtPtr: bigint, initial: number): number;
+	hook_use_effect(rtPtr: bigint): number;
 
 	// ── Template Builder ─────────────────────────────────────────────
 
@@ -568,6 +569,18 @@ export interface WasmExports extends WebAssembly.Exports {
 	memo_output_key(rtPtr: bigint, memoId: number): number;
 	memo_context_id(rtPtr: bigint, memoId: number): number;
 
+	// ── Phase 14: Effects (Reactive Side Effects) ────────────────────
+
+	effect_create(rtPtr: bigint, scopeId: number): number;
+	effect_begin_run(rtPtr: bigint, effectId: number): void;
+	effect_end_run(rtPtr: bigint, effectId: number): void;
+	effect_is_pending(rtPtr: bigint, effectId: number): number;
+	effect_destroy(rtPtr: bigint, effectId: number): void;
+	effect_count(rtPtr: bigint): number;
+	effect_context_id(rtPtr: bigint, effectId: number): number;
+	effect_drain_pending(rtPtr: bigint): number;
+	effect_pending_at(rtPtr: bigint, index: number): number;
+
 	// ── Phase 13.5: AppShell Memo Helpers ────────────────────────────
 
 	shell_create(): bigint;
@@ -607,6 +620,16 @@ export interface WasmExports extends WebAssembly.Exports {
 	shell_memo_read_i32(shellPtr: bigint, memoId: number): number;
 	shell_memo_is_dirty(shellPtr: bigint, memoId: number): number;
 	shell_use_memo_i32(shellPtr: bigint, initial: number): number;
+
+	// ── Phase 14.4: AppShell Effect Helpers ──────────────────────────
+
+	shell_effect_create(shellPtr: bigint, scopeId: number): number;
+	shell_effect_begin_run(shellPtr: bigint, effectId: number): void;
+	shell_effect_end_run(shellPtr: bigint, effectId: number): void;
+	shell_effect_is_pending(shellPtr: bigint, effectId: number): number;
+	shell_use_effect(shellPtr: bigint): number;
+	shell_effect_drain_pending(shellPtr: bigint): number;
+	shell_effect_pending_at(shellPtr: bigint, index: number): number;
 
 	// ── Phase 7: Counter App ─────────────────────────────────────────
 

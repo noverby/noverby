@@ -190,6 +190,44 @@ struct AppShell(Movable):
         """Hook: create or retrieve an Int32 memo for the current scope."""
         return self.runtime[0].use_memo_i32(initial)
 
+    # ── Effect helpers ───────────────────────────────────────────────
+
+    fn create_effect(mut self, scope_id: UInt32) -> UInt32:
+        """Create an effect with a reactive context.  Returns its ID."""
+        return self.runtime[0].create_effect(scope_id)
+
+    fn effect_begin_run(mut self, effect_id: UInt32):
+        """Begin effect execution (sets effect's context as current)."""
+        self.runtime[0].effect_begin_run(effect_id)
+
+    fn effect_end_run(mut self, effect_id: UInt32):
+        """End effect execution (clears pending, restores context)."""
+        self.runtime[0].effect_end_run(effect_id)
+
+    fn effect_is_pending(self, effect_id: UInt32) -> Bool:
+        """Check whether the effect needs re-execution."""
+        return self.runtime[0].effect_is_pending(effect_id)
+
+    fn use_effect(mut self) -> UInt32:
+        """Hook: create or retrieve an effect for the current scope."""
+        return self.runtime[0].use_effect()
+
+    fn drain_pending_effects(self) -> List[UInt32]:
+        """Return a list of effect IDs that are currently pending.
+
+        Does NOT clear pending flags — the caller must begin_run/end_run
+        each effect to clear them.
+        """
+        return self.runtime[0].drain_pending_effects()
+
+    fn pending_effect_count(self) -> Int:
+        """Return the number of pending effects."""
+        return self.runtime[0].pending_effect_count()
+
+    fn pending_effect_at(self, index: Int) -> UInt32:
+        """Return the effect ID at the given index in the pending list."""
+        return self.runtime[0].pending_effect_at(index)
+
     # ── Mount lifecycle ──────────────────────────────────────────────
 
     fn mount(
