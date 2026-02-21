@@ -194,6 +194,17 @@ fn _get_vnode_store(store_ptr: Int64) -> UnsafePointer[VNodeStore]:
     return _as_ptr[VNodeStore](Int(store_ptr))
 
 
+# ── Helper: Bool → Int32 for WASM ABI ───────────────────────────────────────
+
+
+@always_inline
+fn _b2i(val: Bool) -> Int32:
+    """Convert a Bool to Int32 (1 or 0) for WASM export returns."""
+    if val:
+        return 1
+    return 0
+
+
 # ── Helper: writer at (buf, off) ────────────────────────────────────────────
 
 
@@ -264,9 +275,7 @@ fn eid_free(alloc_ptr: Int64, id: Int32):
 fn eid_is_alive(alloc_ptr: Int64, id: Int32) -> Int32:
     """Check whether an ElementId is currently allocated.  Returns 1 or 0."""
     var a = _get_eid_alloc(alloc_ptr)
-    if a[0].is_alive(ElementId(UInt32(id))):
-        return 1
-    return 0
+    return _b2i(a[0].is_alive(ElementId(UInt32(id))))
 
 
 @export
@@ -360,9 +369,7 @@ fn signal_count(rt_ptr: Int64) -> Int32:
 fn signal_contains(rt_ptr: Int64, key: Int32) -> Int32:
     """Check whether a signal key is live.  Returns 1 or 0."""
     var rt = _get_runtime(rt_ptr)
-    if rt[0].signals.contains(UInt32(key)):
-        return 1
-    return 0
+    return _b2i(rt[0].signals.contains(UInt32(key)))
 
 
 # ── Context management exports ───────────────────────────────────────────────
@@ -386,9 +393,7 @@ fn runtime_clear_context(rt_ptr: Int64):
 fn runtime_has_context(rt_ptr: Int64) -> Int32:
     """Check if a reactive context is active.  Returns 1 or 0."""
     var rt = _get_runtime(rt_ptr)
-    if rt[0].has_context():
-        return 1
-    return 0
+    return _b2i(rt[0].has_context())
 
 
 @export
@@ -402,9 +407,7 @@ fn runtime_dirty_count(rt_ptr: Int64) -> Int32:
 fn runtime_has_dirty(rt_ptr: Int64) -> Int32:
     """Check if any scopes are dirty.  Returns 1 or 0."""
     var rt = _get_runtime(rt_ptr)
-    if rt[0].has_dirty():
-        return 1
-    return 0
+    return _b2i(rt[0].has_dirty())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -444,9 +447,7 @@ fn scope_count(rt_ptr: Int64) -> Int32:
 fn scope_contains(rt_ptr: Int64, id: Int32) -> Int32:
     """Check whether a scope ID is live.  Returns 1 or 0."""
     var rt = _get_runtime(rt_ptr)
-    if rt[0].scope_contains(UInt32(id)):
-        return 1
-    return 0
+    return _b2i(rt[0].scope_contains(UInt32(id)))
 
 
 @export
@@ -467,9 +468,7 @@ fn scope_parent(rt_ptr: Int64, id: Int32) -> Int32:
 fn scope_is_dirty(rt_ptr: Int64, id: Int32) -> Int32:
     """Check whether a scope is dirty.  Returns 1 or 0."""
     var rt = _get_runtime(rt_ptr)
-    if rt[0].scopes.is_dirty(UInt32(id)):
-        return 1
-    return 0
+    return _b2i(rt[0].scopes.is_dirty(UInt32(id)))
 
 
 @export
@@ -528,9 +527,7 @@ fn scope_end_render(rt_ptr: Int64, prev_scope: Int32):
 fn scope_has_scope(rt_ptr: Int64) -> Int32:
     """Check if a scope is currently active.  Returns 1 or 0."""
     var rt = _get_runtime(rt_ptr)
-    if rt[0].has_scope():
-        return 1
-    return 0
+    return _b2i(rt[0].has_scope())
 
 
 @export
@@ -560,9 +557,7 @@ fn hook_use_signal_i32(rt_ptr: Int64, initial: Int32) -> Int32:
 fn scope_is_first_render(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Check if a scope is on its first render.  Returns 1 or 0."""
     var rt = _get_runtime(rt_ptr)
-    if rt[0].scopes.is_first_render(UInt32(scope_id)):
-        return 1
-    return 0
+    return _b2i(rt[0].scopes.is_first_render(UInt32(scope_id)))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -814,9 +809,7 @@ fn tmpl_contains_name(rt_ptr: Int64, name: String) -> Int32:
     """Check if a template with the given name is registered.  Returns 1 or 0.
     """
     var rt = _get_runtime(rt_ptr)
-    if rt[0].templates.contains_name(name):
-        return 1
-    return 0
+    return _b2i(rt[0].templates.contains_name(name))
 
 
 @export
@@ -952,9 +945,7 @@ fn vnode_element_id(store_ptr: Int64, index: Int32) -> Int32:
 fn vnode_has_key(store_ptr: Int64, index: Int32) -> Int32:
     """Check if the VNode has a key.  Returns 1 or 0."""
     var s = _get_vnode_store(store_ptr)
-    if s[0].has_key(UInt32(index)):
-        return 1
-    return 0
+    return _b2i(s[0].has_key(UInt32(index)))
 
 
 @export
@@ -1276,9 +1267,7 @@ fn vnode_get_dyn_attr_id(store_ptr: Int64, index: Int32, pos: Int32) -> Int32:
 fn vnode_is_mounted(store_ptr: Int64, index: Int32) -> Int32:
     """Check whether the VNode has been mounted.  Returns 1 or 0."""
     var s = _get_vnode_store(store_ptr)
-    if s[0].get_ptr(UInt32(index))[0].is_mounted():
-        return 1
-    return 0
+    return _b2i(s[0].get_ptr(UInt32(index))[0].is_mounted())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1623,9 +1612,7 @@ fn handler_count(rt_ptr: Int64) -> Int32:
 fn handler_contains(rt_ptr: Int64, handler_id: Int32) -> Int32:
     """Check whether a handler ID is live.  Returns 1 or 0."""
     var rt = _get_runtime(rt_ptr)
-    if rt[0].handlers.contains(UInt32(handler_id)):
-        return 1
-    return 0
+    return _b2i(rt[0].handlers.contains(UInt32(handler_id)))
 
 
 @export
@@ -1661,9 +1648,7 @@ fn dispatch_event(rt_ptr: Int64, handler_id: Int32, event_type: Int32) -> Int32:
     """Dispatch an event to a handler.  Returns 1 if action executed, 0 otherwise.
     """
     var rt = _get_runtime(rt_ptr)
-    if rt[0].dispatch_event(UInt32(handler_id), UInt8(event_type)):
-        return 1
-    return 0
+    return _b2i(rt[0].dispatch_event(UInt32(handler_id), UInt8(event_type)))
 
 
 @export
@@ -1673,11 +1658,11 @@ fn dispatch_event_with_i32(
     """Dispatch an event with an Int32 payload.  Returns 1 if action executed.
     """
     var rt = _get_runtime(rt_ptr)
-    if rt[0].dispatch_event_with_i32(
-        UInt32(handler_id), UInt8(event_type), value
-    ):
-        return 1
-    return 0
+    return _b2i(
+        rt[0].dispatch_event_with_i32(
+            UInt32(handler_id), UInt8(event_type), value
+        )
+    )
 
 
 @export
@@ -1740,9 +1725,7 @@ fn ctx_count(rt_ptr: Int64, scope_id: Int32) -> Int32:
 fn ctx_remove(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
     """Remove a context entry.  Returns 1 if removed, 0 if not found."""
     var rt = _get_runtime(rt_ptr)
-    if rt[0].scopes.remove_context(UInt32(scope_id), UInt32(key)):
-        return 1
-    return 0
+    return _b2i(rt[0].scopes.remove_context(UInt32(scope_id), UInt32(key)))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1761,9 +1744,7 @@ fn err_set_boundary(rt_ptr: Int64, scope_id: Int32, enabled: Int32):
 fn err_is_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Check whether the scope is an error boundary.  Returns 1 or 0."""
     var rt = _get_runtime(rt_ptr)
-    if rt[0].scopes.is_error_boundary(UInt32(scope_id)):
-        return 1
-    return 0
+    return _b2i(rt[0].scopes.is_error_boundary(UInt32(scope_id)))
 
 
 @export
@@ -1784,9 +1765,7 @@ fn err_clear(rt_ptr: Int64, scope_id: Int32):
 fn err_has_error(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Check whether the scope has a captured error.  Returns 1 or 0."""
     var rt = _get_runtime(rt_ptr)
-    if rt[0].scopes.has_error(UInt32(scope_id)):
-        return 1
-    return 0
+    return _b2i(rt[0].scopes.has_error(UInt32(scope_id)))
 
 
 @export
@@ -1820,9 +1799,7 @@ fn suspense_set_boundary(rt_ptr: Int64, scope_id: Int32, enabled: Int32):
 fn suspense_is_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Check whether the scope is a suspense boundary.  Returns 1 or 0."""
     var rt = _get_runtime(rt_ptr)
-    if rt[0].scopes.is_suspense_boundary(UInt32(scope_id)):
-        return 1
-    return 0
+    return _b2i(rt[0].scopes.is_suspense_boundary(UInt32(scope_id)))
 
 
 @export
@@ -1836,9 +1813,7 @@ fn suspense_set_pending(rt_ptr: Int64, scope_id: Int32, pending: Int32):
 fn suspense_is_pending(rt_ptr: Int64, scope_id: Int32) -> Int32:
     """Check whether the scope is in a pending state.  Returns 1 or 0."""
     var rt = _get_runtime(rt_ptr)
-    if rt[0].scopes.is_pending(UInt32(scope_id)):
-        return 1
-    return 0
+    return _b2i(rt[0].scopes.is_pending(UInt32(scope_id)))
 
 
 @export
@@ -1901,9 +1876,9 @@ fn counter_handle_event(
 ) -> Int32:
     """Dispatch an event to the counter app.  Returns 1 if action executed."""
     var app = _as_ptr[CounterApp](Int(app_ptr))
-    if counter_app_handle_event(app, UInt32(handler_id), UInt8(event_type)):
-        return 1
-    return 0
+    return _b2i(
+        counter_app_handle_event(app, UInt32(handler_id), UInt8(event_type))
+    )
 
 
 @export
@@ -1959,9 +1934,7 @@ fn counter_count_value(app_ptr: Int64) -> Int32:
 fn counter_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the counter app has dirty scopes.  Returns 1 or 0."""
     var app = _as_ptr[CounterApp](Int(app_ptr))
-    if app[0].shell.has_dirty():
-        return 1
-    return 0
+    return _b2i(app[0].shell.has_dirty())
 
 
 @export
@@ -2088,18 +2061,14 @@ fn todo_item_id_at(app_ptr: Int64, index: Int32) -> Int32:
 fn todo_item_completed_at(app_ptr: Int64, index: Int32) -> Int32:
     """Return 1 if the item at index is completed, 0 otherwise."""
     var app = _as_ptr[TodoApp](Int(app_ptr))
-    if app[0].items[Int(index)].completed:
-        return 1
-    return 0
+    return _b2i(app[0].items[Int(index)].completed)
 
 
 @export
 fn todo_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the todo app has dirty scopes.  Returns 1 or 0."""
     var app = _as_ptr[TodoApp](Int(app_ptr))
-    if app[0].shell.has_dirty():
-        return 1
-    return 0
+    return _b2i(app[0].shell.has_dirty())
 
 
 @export
@@ -2234,9 +2203,7 @@ fn bench_selected(app_ptr: Int64) -> Int32:
 fn bench_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the benchmark app has dirty scopes.  Returns 1 or 0."""
     var app = _as_ptr[BenchmarkApp](Int(app_ptr))
-    if app[0].shell.has_dirty():
-        return 1
-    return 0
+    return _b2i(app[0].shell.has_dirty())
 
 
 @export
@@ -2409,9 +2376,7 @@ fn scheduler_next(sched_ptr: Int64) -> Int32:
 fn scheduler_is_empty(sched_ptr: Int64) -> Int32:
     """Check if the scheduler has no pending dirty scopes.  Returns 1 or 0."""
     var sched = _as_ptr[Scheduler](Int(sched_ptr))
-    if sched[0].is_empty():
-        return 1
-    return 0
+    return _b2i(sched[0].is_empty())
 
 
 @export
@@ -2425,9 +2390,7 @@ fn scheduler_count(sched_ptr: Int64) -> Int32:
 fn scheduler_has_scope(sched_ptr: Int64, scope_id: Int32) -> Int32:
     """Check if a scope is already in the scheduler queue.  Returns 1 or 0."""
     var sched = _as_ptr[Scheduler](Int(sched_ptr))
-    if sched[0].has_scope(UInt32(scope_id)):
-        return 1
-    return 0
+    return _b2i(sched[0].has_scope(UInt32(scope_id)))
 
 
 @export
@@ -2464,9 +2427,7 @@ fn shell_destroy(shell_ptr: Int64):
 fn shell_is_alive(shell_ptr: Int64) -> Int32:
     """Check if the shell is alive.  Returns 1 or 0."""
     var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    if ptr[0].is_alive():
-        return 1
-    return 0
+    return _b2i(ptr[0].is_alive())
 
 
 @export
@@ -2529,9 +2490,7 @@ fn shell_end_render(shell_ptr: Int64, prev_scope: Int32):
 fn shell_has_dirty(shell_ptr: Int64) -> Int32:
     """Check if the shell has dirty scopes.  Returns 1 or 0."""
     var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    if ptr[0].has_dirty():
-        return 1
-    return 0
+    return _b2i(ptr[0].has_dirty())
 
 
 @export
@@ -2552,9 +2511,7 @@ fn shell_next_dirty(shell_ptr: Int64) -> Int32:
 fn shell_scheduler_empty(shell_ptr: Int64) -> Int32:
     """Check if the shell's scheduler is empty.  Returns 1 or 0."""
     var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    if ptr[0].scheduler_empty():
-        return 1
-    return 0
+    return _b2i(ptr[0].scheduler_empty())
 
 
 @export
@@ -2563,9 +2520,7 @@ fn shell_dispatch_event(
 ) -> Int32:
     """Dispatch an event via the AppShell.  Returns 1 if executed."""
     var ptr = _as_ptr[AppShell](Int(shell_ptr))
-    if ptr[0].dispatch_event(UInt32(handler_id), UInt8(event_type)):
-        return 1
-    return 0
+    return _b2i(ptr[0].dispatch_event(UInt32(handler_id), UInt8(event_type)))
 
 
 @export
@@ -2639,52 +2594,56 @@ fn _get_node(ptr: Int64) -> UnsafePointer[Node]:
     return _as_ptr[Node](Int(ptr))
 
 
+@always_inline
+fn _alloc_node(var val: Node) -> Int64:
+    """Heap-allocate a Node and return its address as Int64."""
+    var ptr = UnsafePointer[Node].alloc(1)
+    ptr.init_pointee_move(val^)
+    return Int64(Int(ptr))
+
+
+@always_inline
+fn _free_node(addr: Int64):
+    """Destroy and free a heap-allocated Node from its Int64 address."""
+    var ptr = _get_node(addr)
+    ptr.destroy_pointee()
+    ptr.free()
+
+
 @export
 fn dsl_node_text(s: String) -> Int64:
     """Create a text Node on the heap.  Returns a pointer handle."""
-    var ptr = UnsafePointer[Node].alloc(1)
-    ptr.init_pointee_move(text(s))
-    return Int64(Int(ptr))
+    return _alloc_node(text(s))
 
 
 @export
 fn dsl_node_dyn_text(index: Int32) -> Int64:
     """Create a dynamic text Node on the heap."""
-    var ptr = UnsafePointer[Node].alloc(1)
-    ptr.init_pointee_move(dyn_text(Int(index)))
-    return Int64(Int(ptr))
+    return _alloc_node(dyn_text(Int(index)))
 
 
 @export
 fn dsl_node_dyn_node(index: Int32) -> Int64:
     """Create a dynamic node placeholder on the heap."""
-    var ptr = UnsafePointer[Node].alloc(1)
-    ptr.init_pointee_move(dyn_node(Int(index)))
-    return Int64(Int(ptr))
+    return _alloc_node(dyn_node(Int(index)))
 
 
 @export
 fn dsl_node_attr(name: String, value: String) -> Int64:
     """Create a static attribute Node on the heap."""
-    var ptr = UnsafePointer[Node].alloc(1)
-    ptr.init_pointee_move(attr(name, value))
-    return Int64(Int(ptr))
+    return _alloc_node(attr(name, value))
 
 
 @export
 fn dsl_node_dyn_attr(index: Int32) -> Int64:
     """Create a dynamic attribute Node on the heap."""
-    var ptr = UnsafePointer[Node].alloc(1)
-    ptr.init_pointee_move(dyn_attr(Int(index)))
-    return Int64(Int(ptr))
+    return _alloc_node(dyn_attr(Int(index)))
 
 
 @export
 fn dsl_node_element(html_tag: Int32) -> Int64:
     """Create an empty element Node on the heap."""
-    var ptr = UnsafePointer[Node].alloc(1)
-    ptr.init_pointee_move(el_empty(UInt8(html_tag)))
-    return Int64(Int(ptr))
+    return _alloc_node(el_empty(UInt8(html_tag)))
 
 
 @export
@@ -2698,16 +2657,13 @@ fn dsl_node_add_item(parent_ptr: Int64, child_ptr: Int64):
     var child = _get_node(child_ptr)
     var child_val = child[0].copy()
     parent[0].add_item(child_val^)
-    child.destroy_pointee()
-    child.free()
+    _free_node(child_ptr)
 
 
 @export
 fn dsl_node_destroy(ptr: Int64):
     """Destroy and free a heap-allocated Node."""
-    var node_ptr = _get_node(ptr)
-    node_ptr.destroy_pointee()
-    node_ptr.free()
+    _free_node(ptr)
 
 
 @export
@@ -2801,10 +2757,7 @@ fn dsl_to_template(node_ptr: Int64, name: String, rt_ptr: Int64) -> Int32:
     var rt = _get_runtime(rt_ptr)
     var template = to_template(node[0], name)
     var tmpl_id = rt[0].templates.register(template^)
-
-    node.destroy_pointee()
-    node.free()
-
+    _free_node(node_ptr)
     return Int32(tmpl_id)
 
 
