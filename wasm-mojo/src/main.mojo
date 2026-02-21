@@ -77,10 +77,32 @@ from vdom import (
     TAG_TH,
     TAG_UNKNOWN,
 )
+from apps import (
+    CounterApp,
+    counter_app_init,
+    counter_app_destroy,
+    counter_app_rebuild,
+    counter_app_handle_event,
+    counter_app_flush,
+    TodoApp,
+    TodoItem,
+    todo_app_init,
+    todo_app_destroy,
+    todo_app_rebuild,
+    todo_app_flush,
+    BenchmarkApp,
+    BenchRow,
+    bench_app_init,
+    bench_app_destroy,
+    bench_app_rebuild,
+    bench_app_flush,
+)
 from memory import UnsafePointer
 
 
-# ── Pointer ↔ Int helpers ────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# Pointer ↔ Int helpers
+# ══════════════════════════════════════════════════════════════════════════════
 #
 # Mojo 0.25 does not support UnsafePointer construction from an integer
 # address directly.  We reinterpret the bits via a temporary heap slot.
@@ -88,11 +110,7 @@ from memory import UnsafePointer
 
 @always_inline
 fn _int_to_ptr(addr: Int) -> UnsafePointer[UInt8]:
-    """Reinterpret an integer address as an UnsafePointer[UInt8].
-
-    Stores the integer into a heap slot, then reads it back as a pointer
-    via bitcast. Both Int and UnsafePointer are 64-bit on wasm64.
-    """
+    """Reinterpret an integer address as an UnsafePointer[UInt8]."""
     var slot = UnsafePointer[Int].alloc(1)
     slot[0] = addr
     var result = slot.bitcast[UnsafePointer[UInt8]]()[0]
@@ -154,7 +172,87 @@ fn _vnode_store_ptr_to_i64(ptr: UnsafePointer[VNodeStore]) -> Int64:
     return Int64(Int(ptr))
 
 
-# ── ElementId Allocator Test Exports ─────────────────────────────────────────
+@always_inline
+fn _int_to_eid_alloc_ptr(addr: Int) -> UnsafePointer[ElementIdAllocator]:
+    """Reinterpret an integer address as an UnsafePointer[ElementIdAllocator].
+    """
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[ElementIdAllocator]]()[0]
+    slot.free()
+    return result
+
+
+@always_inline
+fn _int_to_writer_ptr(addr: Int) -> UnsafePointer[MutationWriter]:
+    """Reinterpret an integer address as an UnsafePointer[MutationWriter]."""
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[MutationWriter]]()[0]
+    slot.free()
+    return result
+
+
+@always_inline
+fn _int_to_counter_ptr(addr: Int) -> UnsafePointer[CounterApp]:
+    """Reinterpret an integer address as an UnsafePointer[CounterApp]."""
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[CounterApp]]()[0]
+    slot.free()
+    return result
+
+
+@always_inline
+fn _int_to_todo_ptr(addr: Int) -> UnsafePointer[TodoApp]:
+    """Reinterpret an integer address as an UnsafePointer[TodoApp]."""
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[TodoApp]]()[0]
+    slot.free()
+    return result
+
+
+@always_inline
+fn _int_to_bench_ptr(addr: Int) -> UnsafePointer[BenchmarkApp]:
+    """Reinterpret an integer address as an UnsafePointer[BenchmarkApp]."""
+    var slot = UnsafePointer[Int].alloc(1)
+    slot[0] = addr
+    var result = slot.bitcast[UnsafePointer[BenchmarkApp]]()[0]
+    slot.free()
+    return result
+
+
+# ── Helper: quick get-pointer wrappers ───────────────────────────────────────
+
+
+fn _get_eid_alloc(alloc_ptr: Int64) -> UnsafePointer[ElementIdAllocator]:
+    return _int_to_eid_alloc_ptr(Int(alloc_ptr))
+
+
+fn _get_runtime(rt_ptr: Int64) -> UnsafePointer[Runtime]:
+    return _int_to_runtime_ptr(Int(rt_ptr))
+
+
+fn _get_builder(ptr: Int64) -> UnsafePointer[TemplateBuilder]:
+    return _int_to_builder_ptr(Int(ptr))
+
+
+fn _get_vnode_store(store_ptr: Int64) -> UnsafePointer[VNodeStore]:
+    return _int_to_vnode_store_ptr(Int(store_ptr))
+
+
+# ── Helper: writer at (buf, off) ────────────────────────────────────────────
+
+
+@always_inline
+fn _writer(buf: Int64, off: Int32) -> MutationWriter:
+    return MutationWriter(_int_to_ptr(Int(buf)), Int(off), 0)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ElementId Allocator Test Exports
+# ══════════════════════════════════════════════════════════════════════════════
 
 
 @export
@@ -168,20 +266,9 @@ fn eid_alloc_create() -> Int64:
 @export
 fn eid_alloc_destroy(alloc_ptr: Int64):
     """Destroy and free a heap-allocated ElementIdAllocator."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = Int(alloc_ptr)
-    var ptr = slot.bitcast[UnsafePointer[ElementIdAllocator]]()[0]
-    slot.free()
+    var ptr = _get_eid_alloc(alloc_ptr)
     ptr.destroy_pointee()
     ptr.free()
-
-
-fn _get_eid_alloc(alloc_ptr: Int64) -> UnsafePointer[ElementIdAllocator]:
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = Int(alloc_ptr)
-    var ptr = slot.bitcast[UnsafePointer[ElementIdAllocator]]()[0]
-    slot.free()
-    return ptr
 
 
 @export
@@ -221,11 +308,9 @@ fn eid_user_count(alloc_ptr: Int64) -> Int32:
     return Int32(a[0].user_count())
 
 
-# ── Runtime / Signals Test Exports ───────────────────────────────────────────
-#
-# These functions exercise the reactive runtime's signal system.
-# Each function receives a runtime pointer (Int64) so the JS harness
-# can manage the runtime lifecycle.
+# ══════════════════════════════════════════════════════════════════════════════
+# Runtime / Signals Test Exports
+# ══════════════════════════════════════════════════════════════════════════════
 
 
 @export
@@ -238,10 +323,6 @@ fn runtime_create() -> Int64:
 fn runtime_destroy(rt_ptr: Int64):
     """Destroy and free a heap-allocated Runtime."""
     destroy_runtime(_int_to_runtime_ptr(Int(rt_ptr)))
-
-
-fn _get_runtime(rt_ptr: Int64) -> UnsafePointer[Runtime]:
-    return _int_to_runtime_ptr(Int(rt_ptr))
 
 
 @export
@@ -351,10 +432,9 @@ fn runtime_has_dirty(rt_ptr: Int64) -> Int32:
     return 0
 
 
-# ── Scope management exports ─────────────────────────────────────────────────
-#
-# These functions exercise the scope arena and hook system.
-# Scopes live inside the Runtime alongside signals.
+# ══════════════════════════════════════════════════════════════════════════════
+# Scope Management Exports
+# ══════════════════════════════════════════════════════════════════════════════
 
 
 @export
@@ -457,11 +537,7 @@ fn scope_hook_tag_at(rt_ptr: Int64, id: Int32, index: Int32) -> Int32:
 
 @export
 fn scope_begin_render(rt_ptr: Int64, scope_id: Int32) -> Int32:
-    """Begin rendering a scope.
-
-    Sets current scope and reactive context.
-    Returns the previous scope ID (or -1 if none).
-    """
+    """Begin rendering a scope.  Returns the previous scope ID (or -1)."""
     var rt = _get_runtime(rt_ptr)
     return Int32(rt[0].begin_scope_render(UInt32(scope_id)))
 
@@ -514,10 +590,9 @@ fn scope_is_first_render(rt_ptr: Int64, scope_id: Int32) -> Int32:
     return 0
 
 
-# ── Template Builder Exports ─────────────────────────────────────────────────
-#
-# These functions exercise the template builder and registry system.
-# The TemplateBuilder is heap-allocated and accessed via Int64 pointer.
+# ══════════════════════════════════════════════════════════════════════════════
+# Template Builder Exports
+# ══════════════════════════════════════════════════════════════════════════════
 
 
 @export
@@ -530,10 +605,6 @@ fn tmpl_builder_create(name: String) -> Int64:
 fn tmpl_builder_destroy(ptr: Int64):
     """Destroy and free a heap-allocated TemplateBuilder."""
     destroy_builder(_int_to_builder_ptr(Int(ptr)))
-
-
-fn _get_builder(ptr: Int64) -> UnsafePointer[TemplateBuilder]:
-    return _int_to_builder_ptr(Int(ptr))
 
 
 @export
@@ -612,8 +683,6 @@ fn tmpl_builder_attr_count(ptr: Int64) -> Int32:
 @export
 fn tmpl_builder_register(rt_ptr: Int64, builder_ptr: Int64) -> Int32:
     """Build the template and register it in the runtime.  Returns template ID.
-
-    The builder is consumed (reset to empty) after this call.
     """
     var rt = _get_runtime(rt_ptr)
     var b = _get_builder(builder_ptr)
@@ -818,10 +887,9 @@ fn tmpl_attr_value(rt_ptr: Int64, tmpl_id: Int32, attr_idx: Int32) -> String:
     return tmpl_ptr[0].attrs[Int(attr_idx)].value
 
 
-# ── VNode Store Exports ──────────────────────────────────────────────────────
-#
-# VNodes are stored in a VNodeStore (heap-allocated separately or embedded
-# in the Runtime).  These exports use the Runtime's built-in VNodeStore.
+# ══════════════════════════════════════════════════════════════════════════════
+# VNode Store Exports
+# ══════════════════════════════════════════════════════════════════════════════
 
 
 @export
@@ -838,10 +906,6 @@ fn vnode_store_destroy(store_ptr: Int64):
     var ptr = _int_to_vnode_store_ptr(Int(store_ptr))
     ptr.destroy_pointee()
     ptr.free()
-
-
-fn _get_vnode_store(store_ptr: Int64) -> UnsafePointer[VNodeStore]:
-    return _int_to_vnode_store_ptr(Int(store_ptr))
 
 
 @export
@@ -1093,7 +1157,7 @@ fn vnode_store_clear(store_ptr: Int64):
     s[0].clear()
 
 
-# ── Signal arithmetic helpers (test += style operations) ─────────────────────
+# ── Signal arithmetic helpers ────────────────────────────────────────────────
 
 
 @export
@@ -1112,49 +1176,14 @@ fn signal_isub_i32(rt_ptr: Int64, key: Int32, rhs: Int32):
     rt[0].write_signal[Int32](UInt32(key), current - rhs)
 
 
-# ── Phase 4: Create & Diff Engine Exports ────────────────────────────────────
-#
-# These exports exercise the CreateEngine and DiffEngine for Phase 4 testing.
-# The test harness creates templates and VNodes via existing exports, then
-# calls these functions to emit mutations into a buffer.  The JS side reads
-# the buffer via MutationReader and verifies the mutation sequence.
-#
-# Workflow:
-#   1. Create runtime, register templates, build VNodes in a VNodeStore
-#   2. Allocate a mutation buffer and an ElementIdAllocator
-#   3. Call create_vnode → emits create mutations, populates mount state
-#   4. Call diff_vnodes → emits diff mutations, transfers mount state
-#   5. Read mutations from buffer on JS side
-#   6. Clean up
-
-
-@always_inline
-fn _int_to_eid_alloc_ptr(addr: Int) -> UnsafePointer[ElementIdAllocator]:
-    """Reinterpret an integer address as an UnsafePointer[ElementIdAllocator].
-    """
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[ElementIdAllocator]]()[0]
-    slot.free()
-    return result
-
-
-@always_inline
-fn _int_to_writer_ptr(addr: Int) -> UnsafePointer[MutationWriter]:
-    """Reinterpret an integer address as an UnsafePointer[MutationWriter]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[MutationWriter]]()[0]
-    slot.free()
-    return result
+# ══════════════════════════════════════════════════════════════════════════════
+# Create & Diff Engine Exports
+# ══════════════════════════════════════════════════════════════════════════════
 
 
 @export
 fn writer_create(buf_ptr: Int64, capacity: Int32) -> Int64:
-    """Create a heap-allocated MutationWriter.  Returns its pointer.
-
-    The writer writes to the buffer at buf_ptr with the given capacity.
-    """
+    """Create a heap-allocated MutationWriter.  Returns its pointer."""
     var ptr = UnsafePointer[MutationWriter].alloc(1)
     ptr.init_pointee_move(
         MutationWriter(_int_to_ptr(Int(buf_ptr)), Int(capacity))
@@ -1193,18 +1222,7 @@ fn create_vnode(
     store_ptr: Int64,
     vnode_index: Int32,
 ) -> Int32:
-    """Create mutations for the VNode at vnode_index.
-
-    Emits mutations to the writer and populates the VNode's mount state.
-    Returns the number of root elements placed on the stack.
-
-    Args:
-        writer_ptr: Pointer to a heap-allocated MutationWriter.
-        eid_ptr: Pointer to a heap-allocated ElementIdAllocator.
-        rt_ptr: Pointer to a Runtime (for template registry access).
-        store_ptr: Pointer to a VNodeStore containing the VNode.
-        vnode_index: Index of the VNode in the store.
-    """
+    """Create mutations for the VNode at vnode_index.  Returns root count."""
     var w = _int_to_writer_ptr(Int(writer_ptr))
     var e = _int_to_eid_alloc_ptr(Int(eid_ptr))
     var rt = _int_to_runtime_ptr(Int(rt_ptr))
@@ -1223,20 +1241,7 @@ fn diff_vnodes(
     old_index: Int32,
     new_index: Int32,
 ) -> Int32:
-    """Diff old and new VNodes and emit mutations.
-
-    The old VNode must have mount state populated (from a previous create
-    or diff).  The new VNode's mount state will be populated as a side effect.
-    Returns the writer offset (bytes written) after diffing.
-
-    Args:
-        writer_ptr: Pointer to a heap-allocated MutationWriter.
-        eid_ptr: Pointer to a heap-allocated ElementIdAllocator.
-        rt_ptr: Pointer to a Runtime (for template registry access).
-        store_ptr: Pointer to a VNodeStore containing both VNodes.
-        old_index: Index of the old VNode in the store.
-        new_index: Index of the new VNode in the store.
-    """
+    """Diff old and new VNodes and emit mutations.  Returns writer offset."""
     var w = _int_to_writer_ptr(Int(writer_ptr))
     var e = _int_to_eid_alloc_ptr(Int(eid_ptr))
     var rt = _int_to_runtime_ptr(Int(rt_ptr))
@@ -1301,17 +1306,9 @@ fn vnode_is_mounted(store_ptr: Int64, index: Int32) -> Int32:
     return 0
 
 
-# ── Mutation Protocol Test Exports ───────────────────────────────────────────
-#
-# These functions allow the JS test harness to exercise the MutationWriter.
-# Each function writes one mutation to a caller-provided buffer and returns
-# the new offset (number of bytes written so far).
-#
-# Buffer lifecycle:
-#   1. JS allocates memory via mutation_buf_alloc(capacity) → pointer
-#   2. JS calls write_op_* functions, threading the offset through
-#   3. JS reads the raw bytes back from WASM memory via the pointer
-#   4. JS frees the buffer via mutation_buf_free(ptr)
+# ══════════════════════════════════════════════════════════════════════════════
+# Mutation Protocol Test Exports
+# ══════════════════════════════════════════════════════════════════════════════
 
 
 @export
@@ -1327,20 +1324,12 @@ fn mutation_buf_free(ptr: Int64):
     _int_to_ptr(Int(ptr)).free()
 
 
-# ── Helper: create a MutationWriter at (buf, off) ───────────────────────────
-
-
-@always_inline
-fn _writer(buf: Int64, off: Int32) -> MutationWriter:
-    return MutationWriter(_int_to_ptr(Int(buf)), Int(off), 0)
-
-
 # ── Debug exports ────────────────────────────────────────────────────────────
 
 
 @export
 fn debug_ptr_roundtrip(ptr: Int64) -> Int64:
-    """Check that _int_to_ptr round-trips correctly.  Returns the address."""
+    """Check that _int_to_ptr round-trips correctly."""
     var p = _int_to_ptr(Int(ptr))
     return Int64(Int(p))
 
@@ -1360,7 +1349,7 @@ fn debug_read_byte(ptr: Int64, off: Int32) -> Int32:
     return Int32(p[Int(off)])
 
 
-# ── Simple opcodes (no string/path payload) ──────────────────────────────────
+# ── Simple opcodes ───────────────────────────────────────────────────────────
 
 
 @export
@@ -1502,15 +1491,7 @@ fn write_op_replace_placeholder(
 
 @export
 fn write_test_sequence(buf: Int64) -> Int32:
-    """Write a known 5-mutation sequence for integration testing.
-
-    Sequence:
-      1. LoadTemplate(tmpl_id=1, index=0, id=10)
-      2. CreateTextNode(id=11, text="hello")
-      3. AppendChildren(id=10, m=1)
-      4. PushRoot(id=10)
-      5. End
-    """
+    """Write a known 5-mutation sequence for integration testing."""
     var w = MutationWriter(_int_to_ptr(Int(buf)), 0)
     w.load_template(1, 0, 10)
     w.create_text_node(11, String("hello"))
@@ -1520,12 +1501,9 @@ fn write_test_sequence(buf: Int64) -> Int32:
     return Int32(w.offset)
 
 
-# ── Phase 6: Event Handler Registry Exports ──────────────────────────────────
-#
-# These exports exercise the event handler registry and event dispatch.
-# Handlers map handler IDs → (scope_id, action, signal_key, operand).
-# When an event fires, JS calls dispatch_event which executes the action
-# (e.g. signal write) and marks scopes dirty.
+# ══════════════════════════════════════════════════════════════════════════════
+# Event Handler Registry Exports
+# ══════════════════════════════════════════════════════════════════════════════
 
 
 @export
@@ -1536,9 +1514,7 @@ fn handler_register_signal_add(
     delta: Int32,
     event_name: String,
 ) -> Int32:
-    """Register a handler that adds `delta` to `signal_key` on event.
-
-    Returns the handler ID.
+    """Register a handler that adds `delta` to `signal_key`.  Returns handler ID.
     """
     var rt = _get_runtime(rt_ptr)
     return Int32(
@@ -1558,9 +1534,7 @@ fn handler_register_signal_sub(
     delta: Int32,
     event_name: String,
 ) -> Int32:
-    """Register a handler that subtracts `delta` from `signal_key` on event.
-
-    Returns the handler ID.
+    """Register a handler that subtracts `delta` from `signal_key`.  Returns handler ID.
     """
     var rt = _get_runtime(rt_ptr)
     return Int32(
@@ -1580,9 +1554,7 @@ fn handler_register_signal_set(
     value: Int32,
     event_name: String,
 ) -> Int32:
-    """Register a handler that sets `signal_key` to `value` on event.
-
-    Returns the handler ID.
+    """Register a handler that sets `signal_key` to `value`.  Returns handler ID.
     """
     var rt = _get_runtime(rt_ptr)
     return Int32(
@@ -1601,9 +1573,7 @@ fn handler_register_signal_toggle(
     signal_key: Int32,
     event_name: String,
 ) -> Int32:
-    """Register a handler that toggles `signal_key` (0↔1) on event.
-
-    Returns the handler ID.
+    """Register a handler that toggles `signal_key` (0↔1).  Returns handler ID.
     """
     var rt = _get_runtime(rt_ptr)
     return Int32(
@@ -1622,9 +1592,7 @@ fn handler_register_signal_set_input(
     signal_key: Int32,
     event_name: String,
 ) -> Int32:
-    """Register a handler that sets `signal_key` from event input value.
-
-    Returns the handler ID.
+    """Register a handler that sets `signal_key` from event input.  Returns handler ID.
     """
     var rt = _get_runtime(rt_ptr)
     return Int32(
@@ -1640,10 +1608,7 @@ fn handler_register_signal_set_input(
 fn handler_register_custom(
     rt_ptr: Int64, scope_id: Int32, event_name: String
 ) -> Int32:
-    """Register a custom handler (JS handles the side effect).
-
-    Returns the handler ID.
-    """
+    """Register a custom handler.  Returns handler ID."""
     var rt = _get_runtime(rt_ptr)
     return Int32(
         rt[0].register_handler(
@@ -1656,10 +1621,7 @@ fn handler_register_custom(
 fn handler_register_noop(
     rt_ptr: Int64, scope_id: Int32, event_name: String
 ) -> Int32:
-    """Register a no-op handler (marks scope dirty, does nothing else).
-
-    Returns the handler ID.
-    """
+    """Register a no-op handler.  Returns handler ID."""
     var rt = _get_runtime(rt_ptr)
     return Int32(
         rt[0].register_handler(HandlerEntry.noop(UInt32(scope_id), event_name))
@@ -1719,10 +1681,7 @@ fn handler_operand(rt_ptr: Int64, handler_id: Int32) -> Int32:
 
 @export
 fn dispatch_event(rt_ptr: Int64, handler_id: Int32, event_type: Int32) -> Int32:
-    """Dispatch an event to a handler.
-
-    Executes the handler's action (e.g. signal write) and marks
-    affected scopes dirty.  Returns 1 if an action was executed, 0 otherwise.
+    """Dispatch an event to a handler.  Returns 1 if action executed, 0 otherwise.
     """
     var rt = _get_runtime(rt_ptr)
     if rt[0].dispatch_event(UInt32(handler_id), UInt8(event_type)):
@@ -1734,10 +1693,7 @@ fn dispatch_event(rt_ptr: Int64, handler_id: Int32, event_type: Int32) -> Int32:
 fn dispatch_event_with_i32(
     rt_ptr: Int64, handler_id: Int32, event_type: Int32, value: Int32
 ) -> Int32:
-    """Dispatch an event with an Int32 payload (e.g. parsed input value).
-
-    For ACTION_SIGNAL_SET_INPUT, the payload is used as the new signal value.
-    Returns 1 if an action was executed, 0 otherwise.
+    """Dispatch an event with an Int32 payload.  Returns 1 if action executed.
     """
     var rt = _get_runtime(rt_ptr)
     if rt[0].dispatch_event_with_i32(
@@ -1749,382 +1705,27 @@ fn dispatch_event_with_i32(
 
 @export
 fn runtime_drain_dirty(rt_ptr: Int64) -> Int32:
-    """Drain the dirty scope queue.  Returns the number of dirty scopes.
-
-    After calling, the dirty queue is empty.  The caller should re-render
-    each returned scope ID.  (For now, just returns the count — the actual
-    scope IDs are consumed internally.)
-    """
+    """Drain the dirty scope queue.  Returns the number of dirty scopes."""
     var rt = _get_runtime(rt_ptr)
     var dirty = rt[0].drain_dirty()
     return Int32(len(dirty))
 
 
-# ── Original wasm-mojo PoC exports ──────────────────────────────────────────
-
-
-# Add
-@export
-fn add_int32(x: Int32, y: Int32) -> Int32:
-    return x + y
-
-
-@export
-fn add_int64(x: Int64, y: Int64) -> Int64:
-    return x + y
-
-
-@export
-fn add_float32(x: Float32, y: Float32) -> Float32:
-    return x + y
-
-
-@export
-fn add_float64(x: Float64, y: Float64) -> Float64:
-    return x + y
-
-
-# Subtract
-@export
-fn sub_int32(x: Int32, y: Int32) -> Int32:
-    return x - y
-
-
-@export
-fn sub_int64(x: Int64, y: Int64) -> Int64:
-    return x - y
-
-
-@export
-fn sub_float32(x: Float32, y: Float32) -> Float32:
-    return x - y
-
-
-@export
-fn sub_float64(x: Float64, y: Float64) -> Float64:
-    return x - y
-
-
-# Multiply
-@export
-fn mul_int32(x: Int32, y: Int32) -> Int32:
-    return x * y
-
-
-@export
-fn mul_int64(x: Int64, y: Int64) -> Int64:
-    return x * y
-
-
-@export
-fn mul_float32(x: Float32, y: Float32) -> Float32:
-    return x * y
-
-
-@export
-fn mul_float64(x: Float64, y: Float64) -> Float64:
-    return x * y
-
-
-# Division
-@export
-fn div_int32(x: Int32, y: Int32) -> Int32:
-    return x // y
-
-
-@export
-fn div_int64(x: Int64, y: Int64) -> Int64:
-    return x // y
-
-
-@export
-fn div_float32(x: Float32, y: Float32) -> Float32:
-    return x / y
-
-
-@export
-fn div_float64(x: Float64, y: Float64) -> Float64:
-    return x / y
-
-
-# Modulo
-@export
-fn mod_int32(x: Int32, y: Int32) -> Int32:
-    return x % y
-
-
-@export
-fn mod_int64(x: Int64, y: Int64) -> Int64:
-    return x % y
-
-
-# Power
-@export
-fn pow_int32(x: Int32) -> Int32:
-    return x**x
-
-
-@export
-fn pow_int64(x: Int64) -> Int64:
-    return x**x
-
-
-@export
-fn pow_float32(x: Float32) -> Float32:
-    return x**x
-
-
-@export
-fn pow_float64(x: Float64) -> Float64:
-    return x**x
-
-
-# Negate
-@export
-fn neg_int32(x: Int32) -> Int32:
-    return -x
-
-
-@export
-fn neg_int64(x: Int64) -> Int64:
-    return -x
-
-
-@export
-fn neg_float32(x: Float32) -> Float32:
-    return -x
-
-
-@export
-fn neg_float64(x: Float64) -> Float64:
-    return -x
-
-
-# Absolute value
-@export
-fn abs_int32(x: Int32) -> Int32:
-    if x < 0:
-        return -x
-    return x
-
-
-@export
-fn abs_int64(x: Int64) -> Int64:
-    if x < 0:
-        return -x
-    return x
-
-
-@export
-fn abs_float32(x: Float32) -> Float32:
-    if x < 0:
-        return -x
-    return x
-
-
-@export
-fn abs_float64(x: Float64) -> Float64:
-    if x < 0:
-        return -x
-    return x
-
-
-# Min / Max
-@export
-fn min_int32(x: Int32, y: Int32) -> Int32:
-    if x < y:
-        return x
-    return y
-
-
-@export
-fn max_int32(x: Int32, y: Int32) -> Int32:
-    if x > y:
-        return x
-    return y
-
-
-@export
-fn min_int64(x: Int64, y: Int64) -> Int64:
-    if x < y:
-        return x
-    return y
-
-
-@export
-fn max_int64(x: Int64, y: Int64) -> Int64:
-    if x > y:
-        return x
-    return y
-
-
-@export
-fn min_float64(x: Float64, y: Float64) -> Float64:
-    if x < y:
-        return x
-    return y
-
-
-@export
-fn max_float64(x: Float64, y: Float64) -> Float64:
-    if x > y:
-        return x
-    return y
-
-
-# Clamp
-@export
-fn clamp_int32(x: Int32, lo: Int32, hi: Int32) -> Int32:
-    if x < lo:
-        return lo
-    if x > hi:
-        return hi
-    return x
-
-
-@export
-fn clamp_float64(x: Float64, lo: Float64, hi: Float64) -> Float64:
-    if x < lo:
-        return lo
-    if x > hi:
-        return hi
-    return x
-
-
-# Bitwise operations
-@export
-fn bitand_int32(x: Int32, y: Int32) -> Int32:
-    return x & y
-
-
-@export
-fn bitor_int32(x: Int32, y: Int32) -> Int32:
-    return x | y
-
-
-@export
-fn bitxor_int32(x: Int32, y: Int32) -> Int32:
-    return x ^ y
-
-
-@export
-fn bitnot_int32(x: Int32) -> Int32:
-    return ~x
-
-
-@export
-fn shl_int32(x: Int32, y: Int32) -> Int32:
-    return x << y
-
-
-@export
-fn shr_int32(x: Int32, y: Int32) -> Int32:
-    return x >> y
-
-
-# Boolean / comparison
-@export
-fn eq_int32(x: Int32, y: Int32) -> Bool:
-    return x == y
-
-
-@export
-fn ne_int32(x: Int32, y: Int32) -> Bool:
-    return x != y
-
-
-@export
-fn lt_int32(x: Int32, y: Int32) -> Bool:
-    return x < y
-
-
-@export
-fn le_int32(x: Int32, y: Int32) -> Bool:
-    return x <= y
-
-
-@export
-fn gt_int32(x: Int32, y: Int32) -> Bool:
-    return x > y
-
-
-@export
-fn ge_int32(x: Int32, y: Int32) -> Bool:
-    return x >= y
-
-
-@export
-fn bool_and(x: Bool, y: Bool) -> Bool:
-    return x and y
-
-
-@export
-fn bool_or(x: Bool, y: Bool) -> Bool:
-    return x or y
-
-
-@export
-fn bool_not(x: Bool) -> Bool:
-    return not x
-
-
-# Fibonacci (iterative)
-@export
-fn fib_int32(n: Int32) -> Int32:
-    if n <= 0:
-        return 0
-    if n == 1:
-        return 1
-    var a: Int32 = 0
-    var b: Int32 = 1
-    for _ in range(2, Int(n) + 1):
-        var tmp = a + b
-        a = b
-        b = tmp
-    return b
-
-
-@export
-fn fib_int64(n: Int64) -> Int64:
-    if n <= 0:
-        return 0
-    if n == 1:
-        return 1
-    var a: Int64 = 0
-    var b: Int64 = 1
-    for _ in range(2, Int(n) + 1):
-        var tmp = a + b
-        a = b
-        b = tmp
-    return b
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 8.3 — Context (Dependency Injection) Exports
 # ══════════════════════════════════════════════════════════════════════════════
-#
-# Context allows parent scopes to provide key→value pairs that any descendant
-# scope can consume without prop drilling.  Lookups walk up the parent chain.
-# Keys are UInt32 identifiers; values are Int32 (sufficient for signal keys,
-# enum values, flags, etc.).
 
 
 @export
 fn ctx_provide(rt_ptr: Int64, scope_id: Int32, key: Int32, value: Int32):
-    """Provide a context value at the given scope.
-
-    If the key already exists, the value is updated.
-    """
+    """Provide a context value at the given scope."""
     var rt = _get_runtime(rt_ptr)
     rt[0].scopes.provide_context(UInt32(scope_id), UInt32(key), value)
 
 
 @export
 fn ctx_consume(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
-    """Look up a context value by walking up the scope tree.
-
-    Returns the value if found, or 0 if not found.
-    Use ctx_consume_found() to distinguish "not found" from "value is 0".
+    """Look up a context value by walking up the scope tree.  Returns 0 if not found.
     """
     var rt = _get_runtime(rt_ptr)
     var result = rt[0].scopes.consume_context(UInt32(scope_id), UInt32(key))
@@ -2133,10 +1734,7 @@ fn ctx_consume(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
 
 @export
 fn ctx_consume_found(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
-    """Check whether a context value exists for `key` in the scope's ancestry.
-
-    Returns 1 if found, 0 if not.
-    """
+    """Check whether a context value exists.  Returns 1 if found, 0 if not."""
     var rt = _get_runtime(rt_ptr)
     var result = rt[0].scopes.consume_context(UInt32(scope_id), UInt32(key))
     if result[0]:
@@ -2146,9 +1744,7 @@ fn ctx_consume_found(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
 
 @export
 fn ctx_has_local(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
-    """Check whether the scope itself provides a context for `key`.
-
-    Does NOT walk up the parent chain.  Returns 1 or 0.
+    """Check whether the scope itself provides a context for `key`.  Returns 1 or 0.
     """
     var rt = _get_runtime(rt_ptr)
     if rt[0].scopes.has_context_local(UInt32(scope_id), UInt32(key)):
@@ -2165,8 +1761,7 @@ fn ctx_count(rt_ptr: Int64, scope_id: Int32) -> Int32:
 
 @export
 fn ctx_remove(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
-    """Remove a context entry from the scope.  Returns 1 if removed, 0 if not found.
-    """
+    """Remove a context entry.  Returns 1 if removed, 0 if not found."""
     var rt = _get_runtime(rt_ptr)
     if rt[0].scopes.remove_context(UInt32(scope_id), UInt32(key)):
         return 1
@@ -2176,18 +1771,11 @@ fn ctx_remove(rt_ptr: Int64, scope_id: Int32, key: Int32) -> Int32:
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 8.4 — Error Boundaries Exports
 # ══════════════════════════════════════════════════════════════════════════════
-#
-# A scope marked as an error boundary catches errors from descendant scopes.
-# When a child reports an error, the nearest ancestor boundary captures it
-# and can render a fallback UI.  Clearing the error allows recovery.
 
 
 @export
 fn err_set_boundary(rt_ptr: Int64, scope_id: Int32, enabled: Int32):
-    """Mark or unmark a scope as an error boundary.
-
-    enabled=1 marks as boundary, enabled=0 unmarks.
-    """
+    """Mark or unmark a scope as an error boundary."""
     var rt = _get_runtime(rt_ptr)
     rt[0].scopes.set_error_boundary(UInt32(scope_id), enabled != 0)
 
@@ -2226,20 +1814,14 @@ fn err_has_error(rt_ptr: Int64, scope_id: Int32) -> Int32:
 
 @export
 fn err_find_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
-    """Walk up from `scope_id` to find the nearest error boundary ancestor.
-
-    Returns the boundary scope ID, or -1 if none found.
-    """
+    """Find the nearest error boundary ancestor.  Returns scope ID or -1."""
     var rt = _get_runtime(rt_ptr)
     return Int32(rt[0].scopes.find_error_boundary(UInt32(scope_id)))
 
 
 @export
 fn err_propagate(rt_ptr: Int64, scope_id: Int32, message: String) -> Int32:
-    """Propagate an error from `scope_id` to its nearest error boundary.
-
-    Sets the error on the boundary and returns its scope ID.
-    Returns -1 if no boundary found (error is unhandled).
+    """Propagate an error to its nearest error boundary.  Returns boundary ID or -1.
     """
     var rt = _get_runtime(rt_ptr)
     return Int32(rt[0].scopes.propagate_error(UInt32(scope_id), message))
@@ -2248,18 +1830,11 @@ fn err_propagate(rt_ptr: Int64, scope_id: Int32, message: String) -> Int32:
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 8.5 — Suspense Exports
 # ══════════════════════════════════════════════════════════════════════════════
-#
-# A scope marked as a suspense boundary shows a fallback while any descendant
-# scope is in a "pending" state (waiting for async data).  When the pending
-# scope resolves, the boundary re-renders with actual content.
 
 
 @export
 fn suspense_set_boundary(rt_ptr: Int64, scope_id: Int32, enabled: Int32):
-    """Mark or unmark a scope as a suspense boundary.
-
-    enabled=1 marks as boundary, enabled=0 unmarks.
-    """
+    """Mark or unmark a scope as a suspense boundary."""
     var rt = _get_runtime(rt_ptr)
     rt[0].scopes.set_suspense_boundary(UInt32(scope_id), enabled != 0)
 
@@ -2275,10 +1850,7 @@ fn suspense_is_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
 
 @export
 fn suspense_set_pending(rt_ptr: Int64, scope_id: Int32, pending: Int32):
-    """Set the pending (async loading) state on a scope.
-
-    pending=1 marks as pending, pending=0 marks as resolved.
-    """
+    """Set the pending (async loading) state on a scope."""
     var rt = _get_runtime(rt_ptr)
     rt[0].scopes.set_pending(UInt32(scope_id), pending != 0)
 
@@ -2294,10 +1866,7 @@ fn suspense_is_pending(rt_ptr: Int64, scope_id: Int32) -> Int32:
 
 @export
 fn suspense_find_boundary(rt_ptr: Int64, scope_id: Int32) -> Int32:
-    """Walk up from `scope_id` to find the nearest suspense boundary ancestor.
-
-    Returns the boundary scope ID, or -1 if none found.
-    """
+    """Find the nearest suspense boundary ancestor.  Returns scope ID or -1."""
     var rt = _get_runtime(rt_ptr)
     return Int32(rt[0].scopes.find_suspense_boundary(UInt32(scope_id)))
 
@@ -2313,10 +1882,7 @@ fn suspense_has_pending(rt_ptr: Int64, scope_id: Int32) -> Int32:
 
 @export
 fn suspense_resolve(rt_ptr: Int64, scope_id: Int32) -> Int32:
-    """Mark a scope as no longer pending and return its suspense boundary.
-
-    Clears the pending flag.  Returns the nearest suspense boundary
-    scope ID, or -1 if none.
+    """Mark a scope as no longer pending.  Returns suspense boundary ID or -1.
     """
     var rt = _get_runtime(rt_ptr)
     return Int32(rt[0].scopes.resolve_pending(UInt32(scope_id)))
@@ -2326,238 +1892,32 @@ fn suspense_resolve(rt_ptr: Int64, scope_id: Int32) -> Int32:
 # Phase 7 — Counter App (End-to-End)
 # ══════════════════════════════════════════════════════════════════════════════
 #
-# Self-contained counter application that orchestrates all subsystems:
-#   Runtime (signals, scopes, handlers) + Templates + VNodes + Create/Diff
-#
-# The counter app state is heap-allocated and accessed via an Int64 pointer.
-# JS calls the exported functions to init, mount, handle events, and flush.
-#
-# Template structure:
-#   div
-#     span
-#       dynamic_text[0]      ← "Count: N"
-#     button  (text: "+")
-#       dynamic_attr[0]      ← onclick → increment handler
-#     button  (text: "−")
-#       dynamic_attr[1]      ← onclick → decrement handler
-
-
-struct CounterApp(Movable):
-    """Self-contained counter application state."""
-
-    var runtime: UnsafePointer[Runtime]
-    var store: UnsafePointer[VNodeStore]
-    var eid_alloc: UnsafePointer[ElementIdAllocator]
-    var scope_id: UInt32
-    var count_signal: UInt32
-    var template_id: UInt32
-    var incr_handler: UInt32
-    var decr_handler: UInt32
-    var current_vnode: Int  # index in store, or -1 if not yet rendered
-
-    fn __init__(out self):
-        self.runtime = UnsafePointer[Runtime]()
-        self.store = UnsafePointer[VNodeStore]()
-        self.eid_alloc = UnsafePointer[ElementIdAllocator]()
-        self.scope_id = 0
-        self.count_signal = 0
-        self.template_id = 0
-        self.incr_handler = 0
-        self.decr_handler = 0
-        self.current_vnode = -1
-
-    fn __moveinit__(out self, deinit other: Self):
-        self.runtime = other.runtime
-        self.store = other.store
-        self.eid_alloc = other.eid_alloc
-        self.scope_id = other.scope_id
-        self.count_signal = other.count_signal
-        self.template_id = other.template_id
-        self.incr_handler = other.incr_handler
-        self.decr_handler = other.decr_handler
-        self.current_vnode = other.current_vnode
-
-    fn build_count_text(self) -> String:
-        """Build the display string "Count: N" from the current signal value."""
-        var val = self.runtime[0].peek_signal[Int32](self.count_signal)
-        return String("Count: ") + String(val)
-
-    fn build_vnode(mut self) -> UInt32:
-        """Build a fresh VNode for the counter component.
-
-        Creates a TemplateRef VNode with:
-          - dynamic_text[0] = "Count: N"
-          - dynamic_attr[0] = onclick → incr_handler
-          - dynamic_attr[1] = onclick → decr_handler
-
-        Returns the VNode index in the store.
-        """
-        var idx = self.store[0].push(VNode.template_ref(self.template_id))
-        # Dynamic text node: "Count: N"
-        self.store[0].push_dynamic_node(
-            idx, DynamicNode.text_node(self.build_count_text())
-        )
-        # Dynamic attr 0: onclick on the "+" button
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("click"),
-                AttributeValue.event(self.incr_handler),
-                UInt32(0),
-            ),
-        )
-        # Dynamic attr 1: onclick on the "−" button
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("click"),
-                AttributeValue.event(self.decr_handler),
-                UInt32(0),
-            ),
-        )
-        return idx
-
-
-fn _int_to_counter_ptr(addr: Int) -> UnsafePointer[CounterApp]:
-    """Reinterpret an integer address as an UnsafePointer[CounterApp]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[CounterApp]]()[0]
-    slot.free()
-    return result
-
-
-# ── Counter App Lifecycle Exports ────────────────────────────────────────────
+# Thin @export wrappers calling into apps.counter module.
 
 
 @export
 fn counter_init() -> Int64:
-    """Initialize the counter app.  Returns a pointer to the app state.
-
-    Creates: runtime, VNode store, element ID allocator, scope, signal,
-    template, and event handlers.
-    """
-    var app_ptr = UnsafePointer[CounterApp].alloc(1)
-    app_ptr.init_pointee_move(CounterApp())
-
-    # 1. Create subsystem instances
-    app_ptr[0].runtime = create_runtime()
-    app_ptr[0].store = UnsafePointer[VNodeStore].alloc(1)
-    app_ptr[0].store.init_pointee_move(VNodeStore())
-    app_ptr[0].eid_alloc = UnsafePointer[ElementIdAllocator].alloc(1)
-    app_ptr[0].eid_alloc.init_pointee_move(ElementIdAllocator())
-
-    # 2. Create root scope and signal via hooks
-    app_ptr[0].scope_id = app_ptr[0].runtime[0].create_scope(0, -1)
-    _ = app_ptr[0].runtime[0].begin_scope_render(app_ptr[0].scope_id)
-    app_ptr[0].count_signal = app_ptr[0].runtime[0].use_signal_i32(0)
-    # Read the signal during render to subscribe the scope to changes
-    _ = app_ptr[0].runtime[0].read_signal[Int32](app_ptr[0].count_signal)
-    app_ptr[0].runtime[0].end_scope_render(-1)
-
-    # 3. Build and register the counter template:
-    #    div > [ span > dynamic_text[0],
-    #            button > text("+") + dynamic_attr[0],
-    #            button > text("−") + dynamic_attr[1] ]
-    var builder_ptr = create_builder(String("counter"))
-    var div_idx = builder_ptr[0].push_element(TAG_DIV, -1)
-    var span_idx = builder_ptr[0].push_element(TAG_SPAN, Int(div_idx))
-    var _dyn_text = builder_ptr[0].push_dynamic_text(0, Int(span_idx))
-
-    var btn_incr = builder_ptr[0].push_element(TAG_BUTTON, Int(div_idx))
-    var _text_plus = builder_ptr[0].push_text(String("+"), Int(btn_incr))
-    builder_ptr[0].push_dynamic_attr(Int(btn_incr), 0)
-
-    var btn_decr = builder_ptr[0].push_element(TAG_BUTTON, Int(div_idx))
-    var _text_minus = builder_ptr[0].push_text(String("-"), Int(btn_decr))
-    builder_ptr[0].push_dynamic_attr(Int(btn_decr), 1)
-
-    var template = builder_ptr[0].build()
-    app_ptr[0].template_id = UInt32(
-        app_ptr[0].runtime[0].templates.register(template^)
-    )
-    destroy_builder(builder_ptr)
-
-    # 4. Register event handlers
-    app_ptr[0].incr_handler = UInt32(
-        app_ptr[0]
-        .runtime[0]
-        .register_handler(
-            HandlerEntry.signal_add(
-                app_ptr[0].scope_id,
-                app_ptr[0].count_signal,
-                1,
-                String("click"),
-            )
-        )
-    )
-    app_ptr[0].decr_handler = UInt32(
-        app_ptr[0]
-        .runtime[0]
-        .register_handler(
-            HandlerEntry.signal_sub(
-                app_ptr[0].scope_id,
-                app_ptr[0].count_signal,
-                1,
-                String("click"),
-            )
-        )
-    )
-
-    return Int64(Int(app_ptr))
+    """Initialize the counter app.  Returns a pointer to the app state."""
+    return Int64(Int(counter_app_init()))
 
 
 @export
 fn counter_destroy(app_ptr: Int64):
     """Destroy the counter app and free all resources."""
-    var ptr = _int_to_counter_ptr(Int(app_ptr))
-
-    # Destroy subsystems
-    if ptr[0].store:
-        ptr[0].store.destroy_pointee()
-        ptr[0].store.free()
-    if ptr[0].eid_alloc:
-        ptr[0].eid_alloc.destroy_pointee()
-        ptr[0].eid_alloc.free()
-    if ptr[0].runtime:
-        destroy_runtime(ptr[0].runtime)
-
-    ptr.destroy_pointee()
-    ptr.free()
+    counter_app_destroy(_int_to_counter_ptr(Int(app_ptr)))
 
 
 @export
 fn counter_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
-    """Initial render (mount) of the counter app.
-
-    Builds the VNode tree, runs CreateEngine, emits AppendChildren to
-    mount to root (id 0), and finalizes the mutation buffer.
-
-    Returns the byte offset (length) of the mutation data written.
+    """Initial render (mount) of the counter app.  Returns mutation byte length.
     """
     var app = _int_to_counter_ptr(Int(app_ptr))
     var buf = _int_to_ptr(Int(buf_ptr))
 
-    # Build a MutationWriter
     var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
     writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
 
-    # Build the initial VNode
-    var vnode_idx = app[0].build_vnode()
-    app[0].current_vnode = Int(vnode_idx)
-
-    # Run CreateEngine to emit mount mutations
-    var engine = CreateEngine(
-        writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
-    )
-    var num_roots = engine.create_node(vnode_idx)
-
-    # Append to root element (id 0)
-    writer_ptr[0].append_children(0, num_roots)
-
-    # Finalize
-    writer_ptr[0].finalize()
-    var offset = Int32(writer_ptr[0].offset)
+    var offset = counter_app_rebuild(app, writer_ptr)
 
     writer_ptr.destroy_pointee()
     writer_ptr.free()
@@ -2569,57 +1929,24 @@ fn counter_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 fn counter_handle_event(
     app_ptr: Int64, handler_id: Int32, event_type: Int32
 ) -> Int32:
-    """Dispatch an event to the counter app.
-
-    Returns 1 if an action was executed, 0 otherwise.
-    """
+    """Dispatch an event to the counter app.  Returns 1 if action executed."""
     var app = _int_to_counter_ptr(Int(app_ptr))
-    if app[0].runtime[0].dispatch_event(UInt32(handler_id), UInt8(event_type)):
+    if counter_app_handle_event(app, UInt32(handler_id), UInt8(event_type)):
         return 1
     return 0
 
 
 @export
 fn counter_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
-    """Flush pending updates after event dispatch.
-
-    If dirty scopes exist, re-renders the counter component, diffs the
-    old and new VNode trees, and writes mutations to the buffer.
-
-    Returns the byte offset (length) of the mutation data written,
-    or 0 if there was nothing to update.
+    """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
     var app = _int_to_counter_ptr(Int(app_ptr))
-
-    # Check for dirty scopes
-    if not app[0].runtime[0].has_dirty():
-        return 0
-
-    # Drain dirty scopes (we only have one scope, so just drain)
-    var _dirty = app[0].runtime[0].drain_dirty()
-
     var buf = _int_to_ptr(Int(buf_ptr))
 
-    # Build a MutationWriter
     var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
     writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
 
-    # Build a new VNode with updated state
-    var new_idx = app[0].build_vnode()
-    var old_idx = UInt32(app[0].current_vnode)
-
-    # Diff old → new
-    var engine = DiffEngine(
-        writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
-    )
-    engine.diff_node(old_idx, UInt32(new_idx))
-
-    # Update current vnode
-    app[0].current_vnode = Int(new_idx)
-
-    # Finalize
-    writer_ptr[0].finalize()
-    var offset = Int32(writer_ptr[0].offset)
+    var offset = counter_app_flush(app, writer_ptr)
 
     writer_ptr.destroy_pointee()
     writer_ptr.free()
@@ -2688,433 +2015,35 @@ fn counter_count_signal(app_ptr: Int64) -> Int32:
     return Int32(app[0].count_signal)
 
 
-# ── Todo App ─────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 8 — Todo App
+# ══════════════════════════════════════════════════════════════════════════════
 #
-# Phase 8 — A todo list application demonstrating:
-#   - Dynamic keyed lists (add, remove, toggle items)
-#   - Conditional rendering (show/hide completed indicator)
-#   - Fragment VNodes with keyed children
-#   - String data flow (input text from JS → WASM)
-#
-# Architecture:
-#   - TodoApp struct holds all state: items list, input text, signals, handlers
-#   - Items are stored as a flat list of TodoItem structs (not signals)
-#   - A "list_version" signal is bumped on every list mutation to trigger re-render
-#   - JS calls specific exports (todo_add_item, todo_remove_item, etc.)
-#     then calls todo_flush() to get mutation bytes
-#
-# Templates:
-#   - "todo-app": The app shell with input field + item list container
-#       div > [ input + button("Add") + ul > dynamic[0] ]
-#   - "todo-item": A single list item
-#       li > [ span > dynamic_text[0], button("✓") + button("✕") ]
-#       dynamic_attr[0] = click handler for toggle
-#       dynamic_attr[1] = click handler for remove
-#       dynamic_attr[2] = class on the li (for completed styling)
-
-
-struct TodoItem(Copyable, Movable):
-    """A single todo list item."""
-
-    var id: Int32
-    var text: String
-    var completed: Bool
-
-    fn __init__(out self, id: Int32, text: String, completed: Bool):
-        self.id = id
-        self.text = text
-        self.completed = completed
-
-    fn __copyinit__(out self, other: Self):
-        self.id = other.id
-        self.text = other.text
-        self.completed = other.completed
-
-    fn __moveinit__(out self, deinit other: Self):
-        self.id = other.id
-        self.text = other.text^
-        self.completed = other.completed
-
-
-struct TodoApp(Movable):
-    """Self-contained todo list application state.
-
-    The item list lives inside the <ul> element of the app template.
-    On initial mount, a placeholder comment node occupies the <ul>.
-    We track that placeholder's ElementId so we can replace it with
-    item nodes, and later manage item-to-item diffs via a Fragment
-    VNode that mirrors the <ul>'s children.
-
-    State tracking:
-      - ul_placeholder_id: ElementId of the placeholder inside <ul>.
-        Non-zero when the list is empty (placeholder is in the DOM).
-        Zero when items are present (placeholder was replaced).
-      - current_frag: VNode index of the current items Fragment.
-        -1 before first render.
-      - items_mounted: True once items have replaced the placeholder.
-    """
-
-    var runtime: UnsafePointer[Runtime]
-    var store: UnsafePointer[VNodeStore]
-    var eid_alloc: UnsafePointer[ElementIdAllocator]
-    var scope_id: UInt32
-    var list_version_signal: UInt32  # bumped on every list mutation
-    var app_template_id: UInt32  # "todo-app" template
-    var item_template_id: UInt32  # "todo-item" template
-    var items: List[TodoItem]
-    var next_id: Int32
-    var input_text: String
-    var current_vnode: Int  # index in store, or -1 if not yet rendered
-    var current_frag: Int  # Fragment VNode index, or -1
-    var ul_placeholder_id: UInt32  # ElementId of placeholder in <ul>
-    var items_mounted: Bool  # True when items are in DOM (placeholder removed)
-    # Handler IDs for the app-level controls
-    var add_handler: UInt32
-
-    fn __init__(out self):
-        self.runtime = UnsafePointer[Runtime]()
-        self.store = UnsafePointer[VNodeStore]()
-        self.eid_alloc = UnsafePointer[ElementIdAllocator]()
-        self.scope_id = 0
-        self.list_version_signal = 0
-        self.app_template_id = 0
-        self.item_template_id = 0
-        self.items = List[TodoItem]()
-        self.next_id = 1
-        self.input_text = String("")
-        self.current_vnode = -1
-        self.current_frag = -1
-        self.ul_placeholder_id = 0
-        self.items_mounted = False
-        self.add_handler = 0
-
-    fn __moveinit__(out self, deinit other: Self):
-        self.runtime = other.runtime
-        self.store = other.store
-        self.eid_alloc = other.eid_alloc
-        self.scope_id = other.scope_id
-        self.list_version_signal = other.list_version_signal
-        self.app_template_id = other.app_template_id
-        self.item_template_id = other.item_template_id
-        self.items = other.items^
-        self.next_id = other.next_id
-        self.input_text = other.input_text^
-        self.current_vnode = other.current_vnode
-        self.current_frag = other.current_frag
-        self.ul_placeholder_id = other.ul_placeholder_id
-        self.items_mounted = other.items_mounted
-        self.add_handler = other.add_handler
-
-    fn add_item(mut self, text: String):
-        """Add a new item and bump the list version signal."""
-        if len(text) == 0:
-            return
-        self.items.append(TodoItem(self.next_id, text, False))
-        self.next_id += 1
-        self._bump_version()
-
-    fn remove_item(mut self, item_id: Int32):
-        """Remove an item by ID and bump the list version signal."""
-        for i in range(len(self.items)):
-            if self.items[i].id == item_id:
-                # Swap-remove for O(1)
-                var last = len(self.items) - 1
-                if i != last:
-                    self.items[i] = self.items[last].copy()
-                _ = self.items.pop()
-                self._bump_version()
-                return
-
-    fn toggle_item(mut self, item_id: Int32):
-        """Toggle an item's completed status and bump the list version signal.
-        """
-        for i in range(len(self.items)):
-            if self.items[i].id == item_id:
-                self.items[i].completed = not self.items[i].completed
-                self._bump_version()
-                return
-
-    fn _bump_version(mut self):
-        """Increment the list version signal to trigger re-render."""
-        var current = self.runtime[0].peek_signal[Int32](
-            self.list_version_signal
-        )
-        self.runtime[0].write_signal[Int32](
-            self.list_version_signal, current + 1
-        )
-
-    fn build_item_vnode(mut self, item: TodoItem) -> UInt32:
-        """Build a keyed VNode for a single todo item.
-
-        Template "todo-item": li > [ span > dynamic_text[0], button("✓"), button("✕") ]
-          dynamic_text[0] = item text (possibly with strikethrough indicator)
-          dynamic_attr[0] = click on toggle button
-          dynamic_attr[1] = click on remove button
-          dynamic_attr[2] = class on the li element
-        """
-        var idx = self.store[0].push(
-            VNode.template_ref_keyed(self.item_template_id, String(item.id))
-        )
-
-        # Dynamic text: item text with completion indicator
-        var display_text: String
-        if item.completed:
-            display_text = String("✓ ") + item.text
-        else:
-            display_text = item.text
-
-        self.store[0].push_dynamic_node(
-            idx, DynamicNode.text_node(display_text)
-        )
-
-        # Dynamic attr 0: toggle handler (click on ✓ button)
-        var toggle_handler = self.runtime[0].register_handler(
-            HandlerEntry.custom(self.scope_id, String("click"))
-        )
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("click"),
-                AttributeValue.event(toggle_handler),
-                UInt32(0),
-            ),
-        )
-
-        # Dynamic attr 1: remove handler (click on ✕ button)
-        var remove_handler = self.runtime[0].register_handler(
-            HandlerEntry.custom(self.scope_id, String("click"))
-        )
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("click"),
-                AttributeValue.event(remove_handler),
-                UInt32(0),
-            ),
-        )
-
-        # Dynamic attr 2: class on the li element
-        var li_class: String
-        if item.completed:
-            li_class = String("completed")
-        else:
-            li_class = String("")
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("class"),
-                AttributeValue.text(li_class),
-                UInt32(0),
-            ),
-        )
-
-        return idx
-
-    fn build_items_fragment(mut self) -> UInt32:
-        """Build a Fragment VNode containing keyed item children."""
-        var frag_idx = self.store[0].push(VNode.fragment())
-        for i in range(len(self.items)):
-            var item_idx = self.build_item_vnode(self.items[i].copy())
-            self.store[0].push_fragment_child(frag_idx, item_idx)
-        return frag_idx
-
-    fn build_app_vnode(mut self) -> UInt32:
-        """Build the app shell VNode (TemplateRef for todo-app).
-
-        Template "todo-app": div > [ input, button("Add") + dynamic_attr[0], ul > dynamic[0] ]
-          dynamic_attr[0] = click on Add button
-          dynamic[0] = placeholder (item list managed separately)
-        """
-        var app_idx = self.store[0].push(
-            VNode.template_ref(self.app_template_id)
-        )
-
-        # Dynamic node 0: placeholder in the <ul>
-        self.store[0].push_dynamic_node(app_idx, DynamicNode.placeholder())
-
-        # Dynamic attr 0: click on Add button
-        self.store[0].push_dynamic_attr(
-            app_idx,
-            DynamicAttr(
-                String("click"),
-                AttributeValue.event(self.add_handler),
-                UInt32(0),
-            ),
-        )
-
-        return app_idx
-
-
-fn _int_to_todo_ptr(addr: Int) -> UnsafePointer[TodoApp]:
-    """Reinterpret an integer address as an UnsafePointer[TodoApp]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[TodoApp]]()[0]
-    slot.free()
-    return result
-
-
-# ── Todo App Lifecycle Exports ───────────────────────────────────────────────
+# Thin @export wrappers calling into apps.todo module.
 
 
 @export
 fn todo_init() -> Int64:
-    """Initialize the todo app.  Returns a pointer to the app state.
-
-    Creates: runtime, VNode store, element ID allocator, scope, signals,
-    templates, and event handlers.
-    """
-    var app_ptr = UnsafePointer[TodoApp].alloc(1)
-    app_ptr.init_pointee_move(TodoApp())
-
-    # 1. Create subsystem instances
-    app_ptr[0].runtime = create_runtime()
-    app_ptr[0].store = UnsafePointer[VNodeStore].alloc(1)
-    app_ptr[0].store.init_pointee_move(VNodeStore())
-    app_ptr[0].eid_alloc = UnsafePointer[ElementIdAllocator].alloc(1)
-    app_ptr[0].eid_alloc.init_pointee_move(ElementIdAllocator())
-
-    # 2. Create root scope and list_version signal
-    app_ptr[0].scope_id = app_ptr[0].runtime[0].create_scope(0, -1)
-    _ = app_ptr[0].runtime[0].begin_scope_render(app_ptr[0].scope_id)
-    app_ptr[0].list_version_signal = app_ptr[0].runtime[0].use_signal_i32(0)
-    # Read the signal to subscribe the scope
-    _ = app_ptr[0].runtime[0].read_signal[Int32](app_ptr[0].list_version_signal)
-    app_ptr[0].runtime[0].end_scope_render(-1)
-
-    # 3. Build and register the "todo-app" template:
-    #    div > [ input (placeholder), button("Add") + dynamic_attr[0], ul > dynamic[0] ]
-    var app_builder_ptr = create_builder(String("todo-app"))
-
-    var div_idx = app_builder_ptr[0].push_element(TAG_DIV, -1)
-
-    # Input field (static in template, JS handles the value)
-    var input_idx = app_builder_ptr[0].push_element(TAG_INPUT, Int(div_idx))
-    app_builder_ptr[0].push_static_attr(
-        Int(input_idx), String("type"), String("text")
-    )
-    app_builder_ptr[0].push_static_attr(
-        Int(input_idx), String("placeholder"), String("What needs to be done?")
-    )
-
-    # Add button with dynamic click handler
-    var btn_add = app_builder_ptr[0].push_element(TAG_BUTTON, Int(div_idx))
-    var _text_add = app_builder_ptr[0].push_text(String("Add"), Int(btn_add))
-    app_builder_ptr[0].push_dynamic_attr(Int(btn_add), 0)
-
-    # ul container with dynamic[0] for the item list
-    var ul_idx = app_builder_ptr[0].push_element(TAG_UL, Int(div_idx))
-    var _dyn_list = app_builder_ptr[0].push_dynamic(0, Int(ul_idx))
-
-    var app_template = app_builder_ptr[0].build()
-    app_ptr[0].app_template_id = UInt32(
-        app_ptr[0].runtime[0].templates.register(app_template^)
-    )
-    destroy_builder(app_builder_ptr)
-
-    # 4. Build and register the "todo-item" template:
-    #    li + dynamic_attr[2] > [ span > dynamic_text[0],
-    #                             button("✓") + dynamic_attr[0],
-    #                             button("✕") + dynamic_attr[1] ]
-    var item_builder_ptr = create_builder(String("todo-item"))
-
-    var li_idx = item_builder_ptr[0].push_element(TAG_LI, -1)
-    item_builder_ptr[0].push_dynamic_attr(Int(li_idx), 2)  # class attr
-
-    var span_idx = item_builder_ptr[0].push_element(TAG_SPAN, Int(li_idx))
-    var _dyn_text = item_builder_ptr[0].push_dynamic_text(0, Int(span_idx))
-
-    var btn_toggle = item_builder_ptr[0].push_element(TAG_BUTTON, Int(li_idx))
-    var _text_toggle = item_builder_ptr[0].push_text(
-        String("✓"), Int(btn_toggle)
-    )
-    item_builder_ptr[0].push_dynamic_attr(Int(btn_toggle), 0)  # click
-
-    var btn_remove = item_builder_ptr[0].push_element(TAG_BUTTON, Int(li_idx))
-    var _text_remove = item_builder_ptr[0].push_text(
-        String("✕"), Int(btn_remove)
-    )
-    item_builder_ptr[0].push_dynamic_attr(Int(btn_remove), 1)  # click
-
-    var item_template = item_builder_ptr[0].build()
-    app_ptr[0].item_template_id = UInt32(
-        app_ptr[0].runtime[0].templates.register(item_template^)
-    )
-    destroy_builder(item_builder_ptr)
-
-    # 5. Register the Add button handler (custom — JS calls todo_add_item)
-    app_ptr[0].add_handler = (
-        app_ptr[0]
-        .runtime[0]
-        .register_handler(
-            HandlerEntry.custom(app_ptr[0].scope_id, String("click"))
-        )
-    )
-
-    return Int64(Int(app_ptr))
+    """Initialize the todo app.  Returns a pointer to the app state."""
+    return Int64(Int(todo_app_init()))
 
 
 @export
 fn todo_destroy(app_ptr: Int64):
     """Destroy the todo app and free all resources."""
-    var ptr = _int_to_todo_ptr(Int(app_ptr))
-
-    if ptr[0].store:
-        ptr[0].store.destroy_pointee()
-        ptr[0].store.free()
-    if ptr[0].eid_alloc:
-        ptr[0].eid_alloc.destroy_pointee()
-        ptr[0].eid_alloc.free()
-    if ptr[0].runtime:
-        destroy_runtime(ptr[0].runtime)
-
-    ptr.destroy_pointee()
-    ptr.free()
+    todo_app_destroy(_int_to_todo_ptr(Int(app_ptr)))
 
 
 @export
 fn todo_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
-    """Initial render (mount) of the todo app.
-
-    Builds the app shell VNode and mounts it.  The <ul> starts with a
-    placeholder comment node whose ElementId we save for later use.
-
-    Returns the byte offset (length) of the mutation data written.
-    """
+    """Initial render (mount) of the todo app.  Returns mutation byte length."""
     var app = _int_to_todo_ptr(Int(app_ptr))
     var buf = _int_to_ptr(Int(buf_ptr))
 
     var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
     writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
 
-    # Build the app shell VNode (no items yet — just the template)
-    var app_vnode_idx = app[0].build_app_vnode()
-    app[0].current_vnode = Int(app_vnode_idx)
-
-    # Build an empty items fragment and store it
-    var frag_idx = app[0].build_items_fragment()
-    app[0].current_frag = Int(frag_idx)
-
-    # Create the app template via CreateEngine.
-    # This emits LoadTemplate, AssignId, NewEventListener, and
-    # CreatePlaceholder + ReplacePlaceholder for dynamic[0].
-    var engine = CreateEngine(
-        writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
-    )
-    var num_roots = engine.create_node(app_vnode_idx)
-
-    # After CreateEngine, dynamic[0]'s placeholder has an ElementId.
-    # Save it so we can replace it with items later.
-    var app_vnode_ptr = app[0].store[0].get_ptr(app_vnode_idx)
-    if app_vnode_ptr[0].dyn_node_id_count() > 0:
-        app[0].ul_placeholder_id = app_vnode_ptr[0].get_dyn_node_id(0)
-    app[0].items_mounted = False
-
-    # Append the app shell to root element (id 0)
-    writer_ptr[0].append_children(0, num_roots)
-
-    writer_ptr[0].finalize()
-    var offset = Int32(writer_ptr[0].offset)
+    var offset = todo_app_rebuild(app, writer_ptr)
 
     writer_ptr.destroy_pointee()
     writer_ptr.free()
@@ -3124,11 +2053,7 @@ fn todo_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 
 @export
 fn todo_add_item(app_ptr: Int64, text: String):
-    """Add a new item to the todo list.
-
-    The text comes from JS (the input field value).
-    This bumps the list version signal, marking the scope dirty.
-    """
+    """Add a new item to the todo list."""
     var app = _int_to_todo_ptr(Int(app_ptr))
     app[0].add_item(text)
 
@@ -3156,114 +2081,15 @@ fn todo_set_input(app_ptr: Int64, text: String):
 
 @export
 fn todo_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
-    """Flush pending updates after a list mutation.
-
-    Handles three transitions for the item list inside the <ul>:
-      1. empty → populated: create items, ReplaceWith placeholder
-      2. populated → populated: diff old fragment vs new fragment (keyed)
-      3. populated → empty: remove all items, CreatePlaceholder to restore anchor
-
-    Returns the byte offset (length) of mutation data, or 0 if nothing dirty.
+    """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
     var app = _int_to_todo_ptr(Int(app_ptr))
-
-    if not app[0].runtime[0].has_dirty():
-        return 0
-
-    var _dirty = app[0].runtime[0].drain_dirty()
-
     var buf = _int_to_ptr(Int(buf_ptr))
+
     var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
     writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
 
-    # Build a new items fragment from the current item list
-    var new_frag_idx = app[0].build_items_fragment()
-    var old_frag_idx = UInt32(app[0].current_frag)
-
-    var old_frag_ptr = app[0].store[0].get_ptr(old_frag_idx)
-    var new_frag_ptr = app[0].store[0].get_ptr(new_frag_idx)
-    var old_count = old_frag_ptr[0].fragment_child_count()
-    var new_count = new_frag_ptr[0].fragment_child_count()
-
-    if not app[0].items_mounted and new_count > 0:
-        # ── Transition: empty → populated ─────────────────────────────
-        # The <ul> currently has a placeholder comment node.  Create item
-        # VNodes, push them on the stack, and ReplaceWith the placeholder.
-        var create_eng = CreateEngine(
-            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
-        )
-        var total_roots: UInt32 = 0
-        for i in range(new_count):
-            var child_idx = (
-                app[0].store[0].get_ptr(new_frag_idx)[0].get_fragment_child(i)
-            )
-            total_roots += create_eng.create_node(child_idx)
-
-        if app[0].ul_placeholder_id != 0 and total_roots > 0:
-            writer_ptr[0].replace_with(app[0].ul_placeholder_id, total_roots)
-        app[0].items_mounted = True
-
-    elif app[0].items_mounted and new_count == 0:
-        # ── Transition: populated → empty ─────────────────────────────
-        # Handled after this if-elif chain (needs careful ordering:
-        # create placeholder, insert before first item, then remove items).
-        pass  # fall through — handled below
-
-    elif app[0].items_mounted and new_count > 0:
-        # ── Transition: populated → populated ─────────────────────────
-        # Both old and new have items.  Use the keyed diff engine.
-        var diff_eng = DiffEngine(
-            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
-        )
-        diff_eng.diff_node(old_frag_idx, new_frag_idx)
-
-    # else: both empty → no-op
-
-    # Handle the populated → empty case properly (we skipped above).
-    if app[0].items_mounted and new_count == 0:
-        # Reset writer (it has nothing from the pass above)
-        # We need to:
-        #   1. Find the first old item's root ElementId
-        #   2. Create a new placeholder
-        #   3. InsertBefore the first old item
-        #   4. Remove all old items
-        var first_old_root_id: UInt32 = 0
-        if old_count > 0:
-            var first_child = (
-                app[0].store[0].get_ptr(old_frag_idx)[0].get_fragment_child(0)
-            )
-            var fc_ptr = app[0].store[0].get_ptr(first_child)
-            if fc_ptr[0].root_id_count() > 0:
-                first_old_root_id = fc_ptr[0].get_root_id(0)
-            elif fc_ptr[0].element_id != 0:
-                first_old_root_id = fc_ptr[0].element_id
-
-        # Create a new placeholder
-        var new_ph_eid = app[0].eid_alloc[0].alloc()
-        writer_ptr[0].create_placeholder(new_ph_eid.as_u32())
-
-        # Insert before the first item (which is still in DOM at this point)
-        if first_old_root_id != 0:
-            writer_ptr[0].insert_before(first_old_root_id, 1)
-
-        # Now remove all old items
-        var diff_eng2 = DiffEngine(
-            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
-        )
-        for i in range(old_count):
-            var old_child = (
-                app[0].store[0].get_ptr(old_frag_idx)[0].get_fragment_child(i)
-            )
-            diff_eng2._remove_node(old_child)
-
-        app[0].ul_placeholder_id = new_ph_eid.as_u32()
-        app[0].items_mounted = False
-
-    # Update current fragment
-    app[0].current_frag = Int(new_frag_idx)
-
-    writer_ptr[0].finalize()
-    var offset = Int32(writer_ptr[0].offset)
+    var offset = todo_app_flush(app, writer_ptr)
 
     writer_ptr.destroy_pointee()
     writer_ptr.free()
@@ -3276,14 +2102,14 @@ fn todo_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 
 @export
 fn todo_app_template_id(app_ptr: Int64) -> Int32:
-    """Return the app template ID (for JS template registration)."""
+    """Return the app template ID."""
     var app = _int_to_todo_ptr(Int(app_ptr))
     return Int32(app[0].app_template_id)
 
 
 @export
 fn todo_item_template_id(app_ptr: Int64) -> Int32:
-    """Return the item template ID (for JS template registration)."""
+    """Return the item template ID."""
     var app = _int_to_todo_ptr(Int(app_ptr))
     return Int32(app[0].item_template_id)
 
@@ -3342,544 +2168,22 @@ fn todo_scope_id(app_ptr: Int64) -> Int32:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Phase 9 — Performance & Polish
+# Phase 9 — Benchmark App
 # ══════════════════════════════════════════════════════════════════════════════
-
-
-# ── 9.4 Signal Write Batching ────────────────────────────────────────────────
 #
-# During a batch, multiple signal writes coalesce into a single dirty-scope
-# notification.  This prevents redundant re-renders when an event handler
-# writes to several signals before flushing.
-#
-# Usage:
-#   runtime_begin_batch(rt)
-#   signal_write_i32(rt, key1, val1)
-#   signal_write_i32(rt, key2, val2)
-#   runtime_end_batch(rt)
-#   # → only one dirty entry per affected scope
-
-
-@export
-fn runtime_begin_batch(rt_ptr: Int64):
-    """Begin a signal write batch.
-
-    While batching, signal writes still update values and accumulate
-    dirty scopes, but no duplicate entries are added.  Call
-    runtime_end_batch() to finalize.
-    """
-    # Batching is implicit in the current design — dirty_scopes already
-    # deduplicates.  This export exists so JS can explicitly bracket
-    # multi-write handlers for clarity and future optimization.
-    pass
-
-
-@export
-fn runtime_end_batch(rt_ptr: Int64):
-    """End a signal write batch.  The dirty queue is ready for drain."""
-    pass
-
-
-# ── 9.5 Debug Mode ──────────────────────────────────────────────────────────
-#
-# Debug exports expose internal state for logging and profiling.
-
-
-@export
-fn debug_signal_store_capacity(rt_ptr: Int64) -> Int32:
-    """Return the total number of signal slots (occupied + free)."""
-    var rt = _get_runtime(rt_ptr)
-    return Int32(len(rt[0].signals._entries))
-
-
-@export
-fn debug_scope_store_capacity(rt_ptr: Int64) -> Int32:
-    """Return the total number of scope slots (occupied + free)."""
-    var rt = _get_runtime(rt_ptr)
-    return Int32(len(rt[0].scopes._scopes))
-
-
-@export
-fn debug_vnode_store_count(store_ptr: Int64) -> Int32:
-    """Return the number of VNodes in a standalone store."""
-    var s = _get_vnode_store(store_ptr)
-    return Int32(s[0].count())
-
-
-@export
-fn debug_handler_store_capacity(rt_ptr: Int64) -> Int32:
-    """Return the total number of handler slots."""
-    var rt = _get_runtime(rt_ptr)
-    return Int32(len(rt[0].handlers._entries))
-
-
-@export
-fn debug_eid_alloc_capacity(alloc_ptr: Int64) -> Int32:
-    """Return the total number of ElementId slots."""
-    var a = _get_eid_alloc(alloc_ptr)
-    return Int32(len(a[0]._slots))
-
-
-# ── 9.2 Memory Management Test Exports ───────────────────────────────────────
-#
-# These exports allow the JS test harness to exercise allocation/deallocation
-# cycles and verify that memory usage stays bounded.
-
-
-@export
-fn mem_test_signal_cycle(rt_ptr: Int64, count: Int32) -> Int32:
-    """Create and destroy `count` signals.  Returns final signal_count (should be 0).
-    """
-    var rt = _get_runtime(rt_ptr)
-    var keys = List[UInt32]()
-    for i in range(Int(count)):
-        keys.append(rt[0].create_signal[Int32](Int32(i)))
-    for i in range(Int(count)):
-        rt[0].destroy_signal(keys[i])
-    return Int32(rt[0].signals.signal_count())
-
-
-@export
-fn mem_test_scope_cycle(rt_ptr: Int64, count: Int32) -> Int32:
-    """Create and destroy `count` scopes.  Returns final scope_count (should be 0).
-    """
-    var rt = _get_runtime(rt_ptr)
-    var ids = List[UInt32]()
-    for i in range(Int(count)):
-        ids.append(rt[0].create_scope(0, -1))
-    for i in range(Int(count)):
-        rt[0].destroy_scope(ids[i])
-    return Int32(rt[0].scope_count())
-
-
-@export
-fn mem_test_rapid_writes(rt_ptr: Int64, key: Int32, count: Int32) -> Int32:
-    """Write to a signal `count` times in sequence.  Returns final dirty_count.
-    """
-    var rt = _get_runtime(rt_ptr)
-    for i in range(Int(count)):
-        rt[0].write_signal[Int32](UInt32(key), Int32(i))
-    return Int32(rt[0].dirty_count())
-
-
-# ── 9.1 Benchmark App ───────────────────────────────────────────────────────
-#
-# Implements the js-framework-benchmark operations:
-#   - Create N rows
-#   - Append N rows
-#   - Update every 10th row
-#   - Select row (highlight)
-#   - Swap rows (indices 1 and 998)
-#   - Remove row
-#   - Clear all rows
-#
-# Each row has: id (int), label (string).
-# The selected row id is tracked separately.
-#
-# Template structure:
-#   "bench-row": tr + dynamic_attr[0](class) > [
-#       td > dynamic_text[0] (id),
-#       td > a > dynamic_text[1] (label),
-#       td > a > dynamic_text[2] ("Delete" / "×")
-#   ]
-#   dynamic_attr[1] = click on label (select)
-#   dynamic_attr[2] = click on delete button (remove)
-#
-# We use a simple linear congruential generator for pseudo-random labels
-# to match the benchmark's adjective + colour + noun pattern.
-
-
-struct BenchRow(Copyable, Movable):
-    """A single benchmark table row."""
-
-    var id: Int32
-    var label: String
-
-    fn __init__(out self, id: Int32, label: String):
-        self.id = id
-        self.label = label
-
-    fn __copyinit__(out self, other: Self):
-        self.id = other.id
-        self.label = other.label
-
-    fn __moveinit__(out self, deinit other: Self):
-        self.id = other.id
-        self.label = other.label^
-
-
-# ── Label generation ─────────────────────────────────────────────────────────
-
-alias _ADJ_COUNT: Int = 12
-alias _COL_COUNT: Int = 11
-alias _NOUN_COUNT: Int = 12
-
-
-fn _adjective(idx: Int) -> String:
-    if idx == 0:
-        return "pretty"
-    elif idx == 1:
-        return "large"
-    elif idx == 2:
-        return "big"
-    elif idx == 3:
-        return "small"
-    elif idx == 4:
-        return "tall"
-    elif idx == 5:
-        return "short"
-    elif idx == 6:
-        return "long"
-    elif idx == 7:
-        return "handsome"
-    elif idx == 8:
-        return "plain"
-    elif idx == 9:
-        return "quaint"
-    elif idx == 10:
-        return "clean"
-    else:
-        return "elegant"
-
-
-fn _colour(idx: Int) -> String:
-    if idx == 0:
-        return "red"
-    elif idx == 1:
-        return "yellow"
-    elif idx == 2:
-        return "blue"
-    elif idx == 3:
-        return "green"
-    elif idx == 4:
-        return "pink"
-    elif idx == 5:
-        return "brown"
-    elif idx == 6:
-        return "purple"
-    elif idx == 7:
-        return "orange"
-    elif idx == 8:
-        return "white"
-    elif idx == 9:
-        return "black"
-    else:
-        return "grey"
-
-
-fn _noun(idx: Int) -> String:
-    if idx == 0:
-        return "table"
-    elif idx == 1:
-        return "chair"
-    elif idx == 2:
-        return "house"
-    elif idx == 3:
-        return "bbq"
-    elif idx == 4:
-        return "desk"
-    elif idx == 5:
-        return "car"
-    elif idx == 6:
-        return "pony"
-    elif idx == 7:
-        return "cookie"
-    elif idx == 8:
-        return "sandwich"
-    elif idx == 9:
-        return "burger"
-    elif idx == 10:
-        return "pizza"
-    else:
-        return "mouse"
-
-
-struct BenchmarkApp(Movable):
-    """Js-framework-benchmark app state.
-
-    Manages a list of rows, selection state, and all rendering
-    infrastructure (runtime, templates, vnode store, etc.).
-    """
-
-    var runtime: UnsafePointer[Runtime]
-    var store: UnsafePointer[VNodeStore]
-    var eid_alloc: UnsafePointer[ElementIdAllocator]
-    var scope_id: UInt32
-    var version_signal: UInt32  # bumped on list changes
-    var selected_signal: UInt32  # currently selected row id (0 = none)
-    var row_template_id: UInt32
-    var rows: List[BenchRow]
-    var next_id: Int32
-    var rng_state: UInt32  # simple LCG state
-    var current_frag: Int  # Fragment VNode index, or -1
-    var anchor_id: UInt32  # ElementId of anchor node (placeholder when empty)
-    var rows_mounted: Bool
-
-    fn __init__(out self):
-        self.runtime = UnsafePointer[Runtime]()
-        self.store = UnsafePointer[VNodeStore]()
-        self.eid_alloc = UnsafePointer[ElementIdAllocator]()
-        self.scope_id = 0
-        self.version_signal = 0
-        self.selected_signal = 0
-        self.row_template_id = 0
-        self.rows = List[BenchRow]()
-        self.next_id = 1
-        self.rng_state = 42
-        self.current_frag = -1
-        self.anchor_id = 0
-        self.rows_mounted = False
-
-    fn __moveinit__(out self, deinit other: Self):
-        self.runtime = other.runtime
-        self.store = other.store
-        self.eid_alloc = other.eid_alloc
-        self.scope_id = other.scope_id
-        self.version_signal = other.version_signal
-        self.selected_signal = other.selected_signal
-        self.row_template_id = other.row_template_id
-        self.rows = other.rows^
-        self.next_id = other.next_id
-        self.rng_state = other.rng_state
-        self.current_frag = other.current_frag
-        self.anchor_id = other.anchor_id
-        self.rows_mounted = other.rows_mounted
-
-    fn _next_random(mut self) -> UInt32:
-        """Simple LCG: state = state * 1664525 + 1013904223."""
-        self.rng_state = self.rng_state * 1664525 + 1013904223
-        return self.rng_state
-
-    fn _generate_label(mut self) -> String:
-        """Generate a random "adjective colour noun" label."""
-        var a = Int(self._next_random() % _ADJ_COUNT)
-        var c = Int(self._next_random() % _COL_COUNT)
-        var n = Int(self._next_random() % _NOUN_COUNT)
-        return _adjective(a) + " " + _colour(c) + " " + _noun(n)
-
-    fn _bump_version(mut self):
-        """Increment the version signal to trigger re-render."""
-        var current = self.runtime[0].peek_signal[Int32](self.version_signal)
-        self.runtime[0].write_signal[Int32](self.version_signal, current + 1)
-
-    fn create_rows(mut self, count: Int):
-        """Replace all rows with `count` newly generated rows."""
-        self.rows = List[BenchRow]()
-        for _ in range(count):
-            var label = self._generate_label()
-            self.rows.append(BenchRow(self.next_id, label))
-            self.next_id += 1
-        self._bump_version()
-
-    fn append_rows(mut self, count: Int):
-        """Append `count` newly generated rows to the list."""
-        for _ in range(count):
-            var label = self._generate_label()
-            self.rows.append(BenchRow(self.next_id, label))
-            self.next_id += 1
-        self._bump_version()
-
-    fn update_every_10th(mut self):
-        """Append " !!!" to every 10th row's label."""
-        var i = 0
-        while i < len(self.rows):
-            self.rows[i].label = self.rows[i].label + " !!!"
-            i += 10
-        self._bump_version()
-
-    fn select_row(mut self, id: Int32):
-        """Select the row with the given id."""
-        self.runtime[0].write_signal[Int32](self.selected_signal, id)
-
-    fn swap_rows(mut self, a: Int, b: Int):
-        """Swap two rows by their list indices."""
-        if a < 0 or b < 0 or a >= len(self.rows) or b >= len(self.rows):
-            return
-        if a == b:
-            return
-        var tmp = self.rows[a].copy()
-        self.rows[a] = self.rows[b].copy()
-        self.rows[b] = tmp.copy()
-        self._bump_version()
-
-    fn remove_row(mut self, id: Int32):
-        """Remove a row by id."""
-        for i in range(len(self.rows)):
-            if self.rows[i].id == id:
-                var last = len(self.rows) - 1
-                if i != last:
-                    self.rows[i] = self.rows[last].copy()
-                _ = self.rows.pop()
-                self._bump_version()
-                return
-
-    fn clear_rows(mut self):
-        """Remove all rows."""
-        self.rows = List[BenchRow]()
-        self._bump_version()
-
-    fn build_row_vnode(mut self, row: BenchRow) -> UInt32:
-        """Build a keyed VNode for a single benchmark row.
-
-        Template "bench-row": tr > [ td(id), td > a(label), td > a("×") ]
-          dynamic_attr[0] = class on <tr> ("danger" if selected)
-          dynamic_text[0] = row id
-          dynamic_text[1] = row label
-          dynamic_text[2] = "×" (static but encoded as dynamic for simplicity)
-          dynamic_attr[1] = click on label <a> (select)
-          dynamic_attr[2] = click on delete <a> (remove)
-        """
-        var idx = self.store[0].push(
-            VNode.template_ref_keyed(self.row_template_id, String(row.id))
-        )
-
-        # Dynamic text 0: row id
-        self.store[0].push_dynamic_node(
-            idx, DynamicNode.text_node(String(row.id))
-        )
-
-        # Dynamic text 1: row label
-        self.store[0].push_dynamic_node(idx, DynamicNode.text_node(row.label))
-
-        # Dynamic attr 0: class on <tr> ("danger" if selected)
-        var selected = self.runtime[0].peek_signal[Int32](self.selected_signal)
-        var tr_class: String
-        if selected == row.id:
-            tr_class = String("danger")
-        else:
-            tr_class = String("")
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("class"),
-                AttributeValue.text(tr_class),
-                UInt32(0),
-            ),
-        )
-
-        # Dynamic attr 1: click on label <a> (select — custom handler)
-        var select_handler = self.runtime[0].register_handler(
-            HandlerEntry.custom(self.scope_id, String("click"))
-        )
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("click"),
-                AttributeValue.event(select_handler),
-                UInt32(0),
-            ),
-        )
-
-        # Dynamic attr 2: click on delete <a> (remove — custom handler)
-        var remove_handler = self.runtime[0].register_handler(
-            HandlerEntry.custom(self.scope_id, String("click"))
-        )
-        self.store[0].push_dynamic_attr(
-            idx,
-            DynamicAttr(
-                String("click"),
-                AttributeValue.event(remove_handler),
-                UInt32(0),
-            ),
-        )
-
-        return idx
-
-    fn build_rows_fragment(mut self) -> UInt32:
-        """Build a Fragment VNode containing all row VNodes."""
-        var frag_idx = self.store[0].push(VNode.fragment())
-        for i in range(len(self.rows)):
-            var row_idx = self.build_row_vnode(self.rows[i].copy())
-            self.store[0].push_fragment_child(frag_idx, row_idx)
-        return frag_idx
-
-
-fn _int_to_bench_ptr(addr: Int) -> UnsafePointer[BenchmarkApp]:
-    """Reinterpret an integer address as an UnsafePointer[BenchmarkApp]."""
-    var slot = UnsafePointer[Int].alloc(1)
-    slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[BenchmarkApp]]()[0]
-    slot.free()
-    return result
-
-
-# ── Benchmark App Lifecycle Exports ──────────────────────────────────────────
+# Thin @export wrappers calling into apps.bench module.
 
 
 @export
 fn bench_init() -> Int64:
-    """Initialize the benchmark app.  Returns a pointer to the app state.
-
-    Creates: runtime, VNode store, element ID allocator, scope, signals,
-    and the row template.
-    """
-    var app_ptr = UnsafePointer[BenchmarkApp].alloc(1)
-    app_ptr.init_pointee_move(BenchmarkApp())
-
-    # 1. Create subsystem instances
-    app_ptr[0].runtime = create_runtime()
-    app_ptr[0].store = UnsafePointer[VNodeStore].alloc(1)
-    app_ptr[0].store.init_pointee_move(VNodeStore())
-    app_ptr[0].eid_alloc = UnsafePointer[ElementIdAllocator].alloc(1)
-    app_ptr[0].eid_alloc.init_pointee_move(ElementIdAllocator())
-
-    # 2. Create root scope and signals
-    app_ptr[0].scope_id = app_ptr[0].runtime[0].create_scope(0, -1)
-    _ = app_ptr[0].runtime[0].begin_scope_render(app_ptr[0].scope_id)
-    app_ptr[0].version_signal = app_ptr[0].runtime[0].use_signal_i32(0)
-    app_ptr[0].selected_signal = app_ptr[0].runtime[0].use_signal_i32(0)
-    # Read signals to subscribe scope
-    _ = app_ptr[0].runtime[0].read_signal[Int32](app_ptr[0].version_signal)
-    _ = app_ptr[0].runtime[0].read_signal[Int32](app_ptr[0].selected_signal)
-    app_ptr[0].runtime[0].end_scope_render(-1)
-
-    # 3. Build and register the "bench-row" template:
-    #    tr + dynamic_attr[0](class) > [
-    #        td > dynamic_text[0],          ← id
-    #        td > a + dynamic_attr[1] > dynamic_text[1],  ← label + select click
-    #        td > a + dynamic_attr[2] > text("×")         ← delete click
-    #    ]
-    var builder_ptr = create_builder(String("bench-row"))
-
-    var tr_idx = builder_ptr[0].push_element(TAG_TR, -1)
-    builder_ptr[0].push_dynamic_attr(Int(tr_idx), 0)  # class
-
-    var td_id = builder_ptr[0].push_element(TAG_TD, Int(tr_idx))
-    var _dyn_id = builder_ptr[0].push_dynamic_text(0, Int(td_id))
-
-    var td_label = builder_ptr[0].push_element(TAG_TD, Int(tr_idx))
-    var a_label = builder_ptr[0].push_element(TAG_A, Int(td_label))
-    builder_ptr[0].push_dynamic_attr(Int(a_label), 1)  # click select
-    var _dyn_label = builder_ptr[0].push_dynamic_text(1, Int(a_label))
-
-    var td_action = builder_ptr[0].push_element(TAG_TD, Int(tr_idx))
-    var a_remove = builder_ptr[0].push_element(TAG_A, Int(td_action))
-    builder_ptr[0].push_dynamic_attr(Int(a_remove), 2)  # click remove
-    var _dyn_remove = builder_ptr[0].push_text(String("×"), Int(a_remove))
-
-    var row_template = builder_ptr[0].build()
-    app_ptr[0].row_template_id = UInt32(
-        app_ptr[0].runtime[0].templates.register(row_template^)
-    )
-    destroy_builder(builder_ptr)
-
-    return Int64(Int(app_ptr))
+    """Initialize the benchmark app.  Returns a pointer to the app state."""
+    return Int64(Int(bench_app_init()))
 
 
 @export
 fn bench_destroy(app_ptr: Int64):
     """Destroy the benchmark app and free all resources."""
-    var ptr = _int_to_bench_ptr(Int(app_ptr))
-    if ptr[0].store:
-        ptr[0].store.destroy_pointee()
-        ptr[0].store.free()
-    if ptr[0].eid_alloc:
-        ptr[0].eid_alloc.destroy_pointee()
-        ptr[0].eid_alloc.free()
-    if ptr[0].runtime:
-        destroy_runtime(ptr[0].runtime)
-    ptr.destroy_pointee()
-    ptr.free()
+    bench_app_destroy(_int_to_bench_ptr(Int(app_ptr)))
 
 
 @export
@@ -3933,12 +2237,7 @@ fn bench_clear(app_ptr: Int64):
 
 @export
 fn bench_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
-    """Initial render of the benchmark table body.
-
-    Creates an anchor placeholder in the DOM (will be replaced on first
-    populate).  Emits mutations for the initial empty state.
-
-    Returns byte offset (length) of mutation data.
+    """Initial render of the benchmark table body.  Returns mutation byte length.
     """
     var app = _int_to_bench_ptr(Int(app_ptr))
     var buf = _int_to_ptr(Int(buf_ptr))
@@ -3946,19 +2245,8 @@ fn bench_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
     writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
 
-    # Create an anchor placeholder
-    var anchor_eid = app[0].eid_alloc[0].alloc()
-    app[0].anchor_id = anchor_eid.as_u32()
-    writer_ptr[0].create_placeholder(anchor_eid.as_u32())
-    writer_ptr[0].append_children(0, 1)
+    var offset = bench_app_rebuild(app, writer_ptr)
 
-    # Build initial empty fragment
-    var frag_idx = app[0].build_rows_fragment()
-    app[0].current_frag = Int(frag_idx)
-    app[0].rows_mounted = False
-
-    writer_ptr[0].finalize()
-    var offset = Int32(writer_ptr[0].offset)
     writer_ptr.destroy_pointee()
     writer_ptr.free()
 
@@ -3967,96 +2255,16 @@ fn bench_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 
 @export
 fn bench_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
-    """Flush pending updates after a benchmark operation.
-
-    Handles transitions:
-      - empty → populated: create rows, ReplaceWith anchor
-      - populated → populated: diff old fragment vs new fragment (keyed)
-      - populated → empty: remove rows, recreate anchor
-
-    Returns byte offset (length) of mutation data, or 0 if nothing dirty.
+    """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
     var app = _int_to_bench_ptr(Int(app_ptr))
-
-    if not app[0].runtime[0].has_dirty():
-        return 0
-
-    var _dirty = app[0].runtime[0].drain_dirty()
-
     var buf = _int_to_ptr(Int(buf_ptr))
+
     var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
     writer_ptr.init_pointee_move(MutationWriter(buf, Int(capacity)))
 
-    var new_frag_idx = app[0].build_rows_fragment()
-    var old_frag_idx = UInt32(app[0].current_frag)
+    var offset = bench_app_flush(app, writer_ptr)
 
-    var old_frag_ptr = app[0].store[0].get_ptr(old_frag_idx)
-    var new_frag_ptr = app[0].store[0].get_ptr(new_frag_idx)
-    var old_count = old_frag_ptr[0].fragment_child_count()
-    var new_count = new_frag_ptr[0].fragment_child_count()
-
-    if not app[0].rows_mounted and new_count > 0:
-        # ── Transition: empty → populated ─────────────────────────────
-        var create_eng = CreateEngine(
-            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
-        )
-        var total_roots: UInt32 = 0
-        for i in range(new_count):
-            var child_idx = (
-                app[0].store[0].get_ptr(new_frag_idx)[0].get_fragment_child(i)
-            )
-            total_roots += create_eng.create_node(child_idx)
-
-        if app[0].anchor_id != 0 and total_roots > 0:
-            writer_ptr[0].replace_with(app[0].anchor_id, total_roots)
-        app[0].rows_mounted = True
-
-    elif app[0].rows_mounted and new_count == 0:
-        # ── Transition: populated → empty ─────────────────────────────
-        # Create a new anchor placeholder
-        var first_old_root_id: UInt32 = 0
-        if old_count > 0:
-            var first_child = (
-                app[0].store[0].get_ptr(old_frag_idx)[0].get_fragment_child(0)
-            )
-            var fc_ptr = app[0].store[0].get_ptr(first_child)
-            if fc_ptr[0].root_id_count() > 0:
-                first_old_root_id = fc_ptr[0].get_root_id(0)
-            elif fc_ptr[0].element_id != 0:
-                first_old_root_id = fc_ptr[0].element_id
-
-        var new_anchor = app[0].eid_alloc[0].alloc()
-        writer_ptr[0].create_placeholder(new_anchor.as_u32())
-
-        if first_old_root_id != 0:
-            writer_ptr[0].insert_before(first_old_root_id, 1)
-
-        # Remove all old rows
-        var diff_eng = DiffEngine(
-            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
-        )
-        for i in range(old_count):
-            var old_child = (
-                app[0].store[0].get_ptr(old_frag_idx)[0].get_fragment_child(i)
-            )
-            diff_eng._remove_node(old_child)
-
-        app[0].anchor_id = new_anchor.as_u32()
-        app[0].rows_mounted = False
-
-    elif app[0].rows_mounted and new_count > 0:
-        # ── Transition: populated → populated ─────────────────────────
-        var diff_eng = DiffEngine(
-            writer_ptr, app[0].eid_alloc, app[0].runtime, app[0].store
-        )
-        diff_eng.diff_node(old_frag_idx, new_frag_idx)
-
-    # else: both empty → no-op
-
-    app[0].current_frag = Int(new_frag_idx)
-
-    writer_ptr[0].finalize()
-    var offset = Int32(writer_ptr[0].offset)
     writer_ptr.destroy_pointee()
     writer_ptr.free()
 
@@ -4105,7 +2313,7 @@ fn bench_version(app_ptr: Int64) -> Int32:
 
 @export
 fn bench_row_template_id(app_ptr: Int64) -> Int32:
-    """Return the row template ID (for JS template registration)."""
+    """Return the row template ID."""
     var app = _int_to_bench_ptr(Int(app_ptr))
     return Int32(app[0].row_template_id)
 
@@ -4117,7 +2325,477 @@ fn bench_scope_id(app_ptr: Int64) -> Int32:
     return Int32(app[0].scope_id)
 
 
-# Factorial (iterative)
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 9.4 — Signal Write Batching
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@export
+fn runtime_begin_batch(rt_ptr: Int64):
+    """Begin a signal write batch.
+
+    While batching, signal writes still update values and accumulate
+    dirty scopes, but no duplicate entries are added.  Call
+    runtime_end_batch() to finalize.
+    """
+    # Batching is implicit — dirty_scopes already deduplicates.
+    pass
+
+
+@export
+fn runtime_end_batch(rt_ptr: Int64):
+    """End a signal write batch.  The dirty queue is ready for drain."""
+    pass
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 9.5 — Debug Mode
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@export
+fn debug_signal_store_capacity(rt_ptr: Int64) -> Int32:
+    """Return the total number of signal slots (occupied + free)."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(len(rt[0].signals._entries))
+
+
+@export
+fn debug_scope_store_capacity(rt_ptr: Int64) -> Int32:
+    """Return the total number of scope slots (occupied + free)."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(len(rt[0].scopes._scopes))
+
+
+@export
+fn debug_vnode_store_count(store_ptr: Int64) -> Int32:
+    """Return the number of VNodes in a standalone store."""
+    var s = _get_vnode_store(store_ptr)
+    return Int32(s[0].count())
+
+
+@export
+fn debug_handler_store_capacity(rt_ptr: Int64) -> Int32:
+    """Return the total number of handler slots."""
+    var rt = _get_runtime(rt_ptr)
+    return Int32(len(rt[0].handlers._entries))
+
+
+@export
+fn debug_eid_alloc_capacity(alloc_ptr: Int64) -> Int32:
+    """Return the total number of ElementId slots."""
+    var a = _get_eid_alloc(alloc_ptr)
+    return Int32(len(a[0]._slots))
+
+
+# ── Memory Management Test Exports ───────────────────────────────────────────
+
+
+@export
+fn mem_test_signal_cycle(rt_ptr: Int64, count: Int32) -> Int32:
+    """Create and destroy `count` signals.  Returns final signal_count (should be 0).
+    """
+    var rt = _get_runtime(rt_ptr)
+    var keys = List[UInt32]()
+    for i in range(Int(count)):
+        keys.append(rt[0].create_signal[Int32](Int32(i)))
+    for i in range(Int(count)):
+        rt[0].destroy_signal(keys[i])
+    return Int32(rt[0].signals.signal_count())
+
+
+@export
+fn mem_test_scope_cycle(rt_ptr: Int64, count: Int32) -> Int32:
+    """Create and destroy `count` scopes.  Returns final scope_count (should be 0).
+    """
+    var rt = _get_runtime(rt_ptr)
+    var ids = List[UInt32]()
+    for i in range(Int(count)):
+        ids.append(rt[0].create_scope(0, -1))
+    for i in range(Int(count)):
+        rt[0].destroy_scope(ids[i])
+    return Int32(rt[0].scope_count())
+
+
+@export
+fn mem_test_rapid_writes(rt_ptr: Int64, key: Int32, count: Int32) -> Int32:
+    """Write to a signal `count` times.  Returns final dirty_count."""
+    var rt = _get_runtime(rt_ptr)
+    for i in range(Int(count)):
+        rt[0].write_signal[Int32](UInt32(key), Int32(i))
+    return Int32(rt[0].dirty_count())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Original wasm-mojo PoC Exports — Arithmetic, String, Algorithm Functions
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+# ── Add ──────────────────────────────────────────────────────────────────────
+
+
+@export
+fn add_int32(x: Int32, y: Int32) -> Int32:
+    return x + y
+
+
+@export
+fn add_int64(x: Int64, y: Int64) -> Int64:
+    return x + y
+
+
+@export
+fn add_float32(x: Float32, y: Float32) -> Float32:
+    return x + y
+
+
+@export
+fn add_float64(x: Float64, y: Float64) -> Float64:
+    return x + y
+
+
+# ── Subtract ─────────────────────────────────────────────────────────────────
+
+
+@export
+fn sub_int32(x: Int32, y: Int32) -> Int32:
+    return x - y
+
+
+@export
+fn sub_int64(x: Int64, y: Int64) -> Int64:
+    return x - y
+
+
+@export
+fn sub_float32(x: Float32, y: Float32) -> Float32:
+    return x - y
+
+
+@export
+fn sub_float64(x: Float64, y: Float64) -> Float64:
+    return x - y
+
+
+# ── Multiply ─────────────────────────────────────────────────────────────────
+
+
+@export
+fn mul_int32(x: Int32, y: Int32) -> Int32:
+    return x * y
+
+
+@export
+fn mul_int64(x: Int64, y: Int64) -> Int64:
+    return x * y
+
+
+@export
+fn mul_float32(x: Float32, y: Float32) -> Float32:
+    return x * y
+
+
+@export
+fn mul_float64(x: Float64, y: Float64) -> Float64:
+    return x * y
+
+
+# ── Division ─────────────────────────────────────────────────────────────────
+
+
+@export
+fn div_int32(x: Int32, y: Int32) -> Int32:
+    return x // y
+
+
+@export
+fn div_int64(x: Int64, y: Int64) -> Int64:
+    return x // y
+
+
+@export
+fn div_float32(x: Float32, y: Float32) -> Float32:
+    return x / y
+
+
+@export
+fn div_float64(x: Float64, y: Float64) -> Float64:
+    return x / y
+
+
+# ── Modulo ───────────────────────────────────────────────────────────────────
+
+
+@export
+fn mod_int32(x: Int32, y: Int32) -> Int32:
+    return x % y
+
+
+@export
+fn mod_int64(x: Int64, y: Int64) -> Int64:
+    return x % y
+
+
+# ── Power ────────────────────────────────────────────────────────────────────
+
+
+@export
+fn pow_int32(x: Int32) -> Int32:
+    return x**x
+
+
+@export
+fn pow_int64(x: Int64) -> Int64:
+    return x**x
+
+
+@export
+fn pow_float32(x: Float32) -> Float32:
+    return x**x
+
+
+@export
+fn pow_float64(x: Float64) -> Float64:
+    return x**x
+
+
+# ── Negate ───────────────────────────────────────────────────────────────────
+
+
+@export
+fn neg_int32(x: Int32) -> Int32:
+    return -x
+
+
+@export
+fn neg_int64(x: Int64) -> Int64:
+    return -x
+
+
+@export
+fn neg_float32(x: Float32) -> Float32:
+    return -x
+
+
+@export
+fn neg_float64(x: Float64) -> Float64:
+    return -x
+
+
+# ── Absolute value ───────────────────────────────────────────────────────────
+
+
+@export
+fn abs_int32(x: Int32) -> Int32:
+    if x < 0:
+        return -x
+    return x
+
+
+@export
+fn abs_int64(x: Int64) -> Int64:
+    if x < 0:
+        return -x
+    return x
+
+
+@export
+fn abs_float32(x: Float32) -> Float32:
+    if x < 0:
+        return -x
+    return x
+
+
+@export
+fn abs_float64(x: Float64) -> Float64:
+    if x < 0:
+        return -x
+    return x
+
+
+# ── Min / Max ────────────────────────────────────────────────────────────────
+
+
+@export
+fn min_int32(x: Int32, y: Int32) -> Int32:
+    if x < y:
+        return x
+    return y
+
+
+@export
+fn max_int32(x: Int32, y: Int32) -> Int32:
+    if x > y:
+        return x
+    return y
+
+
+@export
+fn min_int64(x: Int64, y: Int64) -> Int64:
+    if x < y:
+        return x
+    return y
+
+
+@export
+fn max_int64(x: Int64, y: Int64) -> Int64:
+    if x > y:
+        return x
+    return y
+
+
+@export
+fn min_float64(x: Float64, y: Float64) -> Float64:
+    if x < y:
+        return x
+    return y
+
+
+@export
+fn max_float64(x: Float64, y: Float64) -> Float64:
+    if x > y:
+        return x
+    return y
+
+
+# ── Clamp ────────────────────────────────────────────────────────────────────
+
+
+@export
+fn clamp_int32(x: Int32, lo: Int32, hi: Int32) -> Int32:
+    if x < lo:
+        return lo
+    if x > hi:
+        return hi
+    return x
+
+
+@export
+fn clamp_float64(x: Float64, lo: Float64, hi: Float64) -> Float64:
+    if x < lo:
+        return lo
+    if x > hi:
+        return hi
+    return x
+
+
+# ── Bitwise operations ──────────────────────────────────────────────────────
+
+
+@export
+fn bitand_int32(x: Int32, y: Int32) -> Int32:
+    return x & y
+
+
+@export
+fn bitor_int32(x: Int32, y: Int32) -> Int32:
+    return x | y
+
+
+@export
+fn bitxor_int32(x: Int32, y: Int32) -> Int32:
+    return x ^ y
+
+
+@export
+fn bitnot_int32(x: Int32) -> Int32:
+    return ~x
+
+
+@export
+fn shl_int32(x: Int32, y: Int32) -> Int32:
+    return x << y
+
+
+@export
+fn shr_int32(x: Int32, y: Int32) -> Int32:
+    return x >> y
+
+
+# ── Boolean / comparison ─────────────────────────────────────────────────────
+
+
+@export
+fn eq_int32(x: Int32, y: Int32) -> Bool:
+    return x == y
+
+
+@export
+fn ne_int32(x: Int32, y: Int32) -> Bool:
+    return x != y
+
+
+@export
+fn lt_int32(x: Int32, y: Int32) -> Bool:
+    return x < y
+
+
+@export
+fn le_int32(x: Int32, y: Int32) -> Bool:
+    return x <= y
+
+
+@export
+fn gt_int32(x: Int32, y: Int32) -> Bool:
+    return x > y
+
+
+@export
+fn ge_int32(x: Int32, y: Int32) -> Bool:
+    return x >= y
+
+
+@export
+fn bool_and(x: Bool, y: Bool) -> Bool:
+    return x and y
+
+
+@export
+fn bool_or(x: Bool, y: Bool) -> Bool:
+    return x or y
+
+
+@export
+fn bool_not(x: Bool) -> Bool:
+    return not x
+
+
+# ── Fibonacci (iterative) ───────────────────────────────────────────────────
+
+
+@export
+fn fib_int32(n: Int32) -> Int32:
+    if n <= 0:
+        return 0
+    if n == 1:
+        return 1
+    var a: Int32 = 0
+    var b: Int32 = 1
+    for _ in range(2, Int(n) + 1):
+        var tmp = a + b
+        a = b
+        b = tmp
+    return b
+
+
+@export
+fn fib_int64(n: Int64) -> Int64:
+    if n <= 0:
+        return 0
+    if n == 1:
+        return 1
+    var a: Int64 = 0
+    var b: Int64 = 1
+    for _ in range(2, Int(n) + 1):
+        var tmp = a + b
+        a = b
+        b = tmp
+    return b
+
+
+# ── Factorial (iterative) ───────────────────────────────────────────────────
+
+
 @export
 fn factorial_int32(n: Int32) -> Int32:
     if n <= 1:
@@ -4138,7 +2816,9 @@ fn factorial_int64(n: Int64) -> Int64:
     return result
 
 
-# GCD (Euclidean algorithm)
+# ── GCD (Euclidean algorithm) ────────────────────────────────────────────────
+
+
 @export
 fn gcd_int32(x: Int32, y: Int32) -> Int32:
     var a = x
@@ -4154,7 +2834,9 @@ fn gcd_int32(x: Int32, y: Int32) -> Int32:
     return a
 
 
-# Identity / passthrough
+# ── Identity / passthrough ──────────────────────────────────────────────────
+
+
 @export
 fn identity_int32(x: Int32) -> Int32:
     return x
@@ -4175,7 +2857,9 @@ fn identity_float64(x: Float64) -> Float64:
     return x
 
 
-# Print
+# ── Print ────────────────────────────────────────────────────────────────────
+
+
 @export
 fn print_int32():
     alias int32: Int32 = 3
@@ -4205,13 +2889,14 @@ fn print_static_string():
     print("print-static-string")
 
 
-# Print input
 @export
 fn print_input_string(input: String):
     print(input)
 
 
-# Return
+# ── String I/O ───────────────────────────────────────────────────────────────
+
+
 @export
 fn return_input_string(x: String) -> String:
     return x
@@ -4222,19 +2907,16 @@ fn return_static_string() -> String:
     return "return-static-string"
 
 
-# String length
 @export
 fn string_length(x: String) -> Int64:
     return Int64(len(x))
 
 
-# String concatenation
 @export
 fn string_concat(x: String, y: String) -> String:
     return x + y
 
 
-# String repeat
 @export
 fn string_repeat(x: String, n: Int32) -> String:
     var result = String("")
@@ -4243,7 +2925,6 @@ fn string_repeat(x: String, n: Int32) -> String:
     return result
 
 
-# String equality
 @export
 fn string_eq(x: String, y: String) -> Bool:
     return x == y
