@@ -65,6 +65,7 @@
 | [NixOS-rs 🦀❄️](https://tangled.org/@overby.me/overby.me/tree/main/nixos-rs) | NixOS with Rust user space |
 | [Systemd-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/systemd-rs) | A Systemd replacement in Rust |
 | [Pkg-config-rs 🦀](https://tangled.org/@overby.me/overby.me/tree/main/pkg-config-rs) | A pkg-config implementation in Rust |
+| [Nu-plugin-tramp 🦀](https://tangled.org/@overby.me/overby.me/tree/main/nu-plugin-tramp) | A TRAMP-inspired remote filesystem plugin for Nushell |
 
 </details>
 

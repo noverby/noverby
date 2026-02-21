@@ -27,7 +27,7 @@
 
       meta = {
         description = "A TRAMP-inspired remote filesystem plugin for Nushell";
-        homepage = "https://tangled.org/overby.me/overby.me/tree/main/tramp-rs";
+        homepage = "https://tangled.org/overby.me/overby.me/tree/main/nu-plugin-tramp";
         license = lib.licenses.mit;
         maintainers = with lib.maintainers; [noverby];
         mainProgram = "nu_plugin_tramp";

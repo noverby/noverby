@@ -171,7 +171,7 @@
         ./nixos-rs
         ./systemd-rs
         ./pkg-config-rs
-        ./tramp-rs
+        ./nu-plugin-tramp
 
         ./slides
       ];

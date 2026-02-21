@@ -1,4 +1,4 @@
-# tramp-rs
+# nu-plugin-tramp
 
 > A TRAMP-inspired remote filesystem plugin for [Nushell](https://www.nushell.sh/), written in Rust.
 
@@ -206,7 +206,7 @@ Nushell command
       │
       ▼
 ┌─────────────────────────────────────────┐
-│           tramp-rs plugin               │
+│        nu-plugin-tramp plugin           │
 │                                         │
 │  ┌─────────────┐   ┌─────────────────┐  │
 │  │ Path Parser │──▶│ Backend Resolver│  │
