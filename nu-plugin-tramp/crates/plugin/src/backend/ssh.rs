@@ -303,16 +303,24 @@ impl Backend for SshBackend {
     async fn list(&self, path: &str) -> TrampResult<Vec<DirEntry>> {
         // Always use exec for listing — GNU stat gives us structured output
         // with permissions in a format consistent with our data model.
+        //
+        // Inspired by emacs-tramp-rpc: gather all metadata in a single
+        // remote command (batch stat) to minimise round-trips.
         let escaped = shell_escape(path.trim_end_matches('/'));
 
-        // Format: %n\t%F\t%s\t%Y\t%a
+        // Format: %n\t%F\t%s\t%Y\t%a\t%h\t%i\t%U\t%G
         //   %n = filename, %F = file type string, %s = size,
-        //   %Y = mtime (epoch seconds), %a = octal permissions
+        //   %Y = mtime (epoch seconds), %a = octal permissions,
+        //   %h = number of hard links, %i = inode number,
+        //   %U = owner user name, %G = owner group name
+        //
+        // Symlink targets are resolved in a second pass below only for
+        // entries that are symlinks, keeping the common case fast.
         let script = format!(
             r#"for f in {escaped}/* {escaped}/.*; do
   case "$(basename "$f")" in .|..) continue;; esac
   [ -e "$f" ] || [ -L "$f" ] || continue
-  stat --format='%n\t%F\t%s\t%Y\t%a' "$f" 2>/dev/null
+  stat --format='%n\t%F\t%s\t%Y\t%a\t%h\t%i\t%U\t%G' "$f" 2>/dev/null
 done"#
         );
 
@@ -330,12 +338,13 @@ done"#
 
         let stdout = String::from_utf8_lossy(&result.stdout);
         let mut entries = Vec::new();
+        let mut symlink_paths: Vec<(usize, String)> = Vec::new();
 
         for line in stdout.lines() {
             if line.is_empty() {
                 continue;
             }
-            let parts: Vec<&str> = line.splitn(5, '\t').collect();
+            let parts: Vec<&str> = line.splitn(9, '\t').collect();
             if parts.len() < 5 {
                 continue;
             }
@@ -353,6 +362,21 @@ done"#
                 .ok()
                 .map(|secs| UNIX_EPOCH + Duration::from_secs(secs));
             let permissions = parts[4].parse::<u32>().ok();
+            let nlinks = parts.get(5).and_then(|s| s.parse::<u64>().ok());
+            let inode = parts.get(6).and_then(|s| s.parse::<u64>().ok());
+            let owner = parts
+                .get(7)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+            let group = parts
+                .get(8)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+
+            let idx = entries.len();
+            if kind == EntryKind::Symlink {
+                symlink_paths.push((idx, full_name.to_string()));
+            }
 
             entries.push(DirEntry {
                 name,
@@ -360,7 +384,30 @@ done"#
                 size,
                 modified,
                 permissions,
+                nlinks,
+                inode,
+                owner,
+                group,
+                symlink_target: None,
             });
+        }
+
+        // Batch-resolve symlink targets in a single remote command.
+        if !symlink_paths.is_empty() {
+            let readlink_args: Vec<String> =
+                symlink_paths.iter().map(|(_, p)| shell_escape(p)).collect();
+            let readlink_script = format!("readlink -f {}", readlink_args.join(" "));
+            if let Ok(rl_result) = self.run_sh(&readlink_script).await
+                && rl_result.exit_code == 0
+            {
+                let rl_stdout = String::from_utf8_lossy(&rl_result.stdout);
+                for (target_line, (idx, _)) in rl_stdout.lines().zip(symlink_paths.iter()) {
+                    let target = target_line.trim();
+                    if !target.is_empty() {
+                        entries[*idx].symlink_target = Some(target.to_string());
+                    }
+                }
+            }
         }
 
         Ok(entries)
@@ -368,14 +415,15 @@ done"#
 
     async fn stat(&self, path: &str) -> TrampResult<Metadata> {
         // Use exec for stat — GNU stat gives consistent structured output.
+        // Gather all metadata in one shot (batch-stat pattern from tramp-rpc).
         let escaped = shell_escape(path);
-        let script = format!("stat --format='%F\\t%s\\t%Y\\t%a' {escaped}");
+        let script = format!("stat --format='%F\\t%s\\t%Y\\t%a\\t%h\\t%i\\t%U\\t%G' {escaped}");
         let result = self.run_sh(&script).await?;
         Self::check_result(&result, path, &self.host)?;
 
         let stdout = String::from_utf8_lossy(&result.stdout);
         let line = stdout.trim();
-        let parts: Vec<&str> = line.splitn(4, '\t').collect();
+        let parts: Vec<&str> = line.splitn(8, '\t').collect();
         if parts.len() < 4 {
             return Err(TrampError::RemoteError(format!(
                 "unexpected stat output: {line}"
@@ -389,12 +437,40 @@ done"#
             .ok()
             .map(|secs| UNIX_EPOCH + Duration::from_secs(secs));
         let permissions = parts[3].parse::<u32>().ok();
+        let nlinks = parts.get(4).and_then(|s| s.parse::<u64>().ok());
+        let inode = parts.get(5).and_then(|s| s.parse::<u64>().ok());
+        let owner = parts
+            .get(6)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        let group = parts
+            .get(7)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+
+        // Resolve symlink target if applicable.
+        let symlink_target = if kind == EntryKind::Symlink {
+            let rl_script = format!("readlink -f {escaped}");
+            self.run_sh(&rl_script)
+                .await
+                .ok()
+                .filter(|r| r.exit_code == 0)
+                .map(|r| String::from_utf8_lossy(&r.stdout).trim().to_string())
+                .filter(|s| !s.is_empty())
+        } else {
+            None
+        };
 
         Ok(Metadata {
             kind,
             size,
             modified,
             permissions,
+            nlinks,
+            inode,
+            owner,
+            group,
+            symlink_target,
         })
     }
 

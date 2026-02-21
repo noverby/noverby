@@ -17,10 +17,14 @@ a typed Nushell value; pipes operate locally; `tramp save` writes back remotely.
 - **ControlMaster multiplexing** — fast subsequent operations on the same host
 - **Connection pooling with health-checks** — sessions are reused across commands; stale connections are detected and transparently reconnected
 - **SFTP fast-path** — file read/write/delete uses the SFTP subsystem for efficient binary-safe transfer without base64 overhead or shell argument limits; falls back to exec transparently if SFTP is unavailable
-- **Stat & directory listing cache** — metadata is cached with a short TTL to avoid redundant remote round-trips
+- **Rich metadata** — `tramp ls` shows owner, group, nlinks, inode, and symlink targets (all gathered in a single remote command via batch-stat)
+- **Stat & directory listing cache** — metadata is cached with a configurable TTL (default 5s) to avoid redundant remote round-trips
+- **Configurable cache TTL** — set `$env.TRAMP_CACHE_TTL` to tune caching (supports durations like `10sec`, `500ms`, or `0` to disable)
+- **Glob/wildcard filtering** — `tramp ls --glob '*.log'` and `tramp cp --glob '*.conf'` for pattern-based operations
 - **Remote working directory** — `tramp cd` lets you navigate remote hosts with relative paths
 - **Cross-host copy** — `tramp cp` transfers files between any combination of local and remote paths
 - **Push execution** — `tramp exec` runs arbitrary commands on the remote
+- **Home Manager module** — auto-register the plugin with Nushell via `programs.nu-plugin-tramp.enable`
 
 ## Installation
 
@@ -45,6 +49,23 @@ The package is available as `nu-plugin-tramp` from the monorepo flake:
 nix build .#nu-plugin-tramp
 ```
 
+### With Home Manager
+
+Import the Home Manager module for automatic registration:
+
+```nix
+# home.nix
+{ inputs, ... }:
+{
+  imports = [ inputs.nu-plugin-tramp.homeManagerModules.default ];
+
+  programs.nu-plugin-tramp = {
+    enable = true;
+    # cacheTTL = "10sec";  # optional: override the default 5s cache TTL
+  };
+}
+```
+
 ## Usage
 
 ### Read a remote file
@@ -63,7 +84,7 @@ tramp open /ssh:admin@myvm:/app/config.toml | from toml
 ### List a remote directory
 
 ```nushell
-# List files in a remote directory
+# List files in a remote directory (includes owner, group, nlinks, inode, symlink targets)
 tramp ls /ssh:myvm:/var/log
 
 # Filter to only directories
@@ -71,6 +92,18 @@ tramp ls /ssh:myvm:/ | where type == dir
 
 # Sort by size
 tramp ls /ssh:myvm:/var/log | sort-by size --reverse
+
+# Filter by owner
+tramp ls /ssh:myvm:/var/log | where owner == root
+
+# Show only symlinks and their targets
+tramp ls /ssh:myvm:/usr/lib | where type == symlink | select name target
+
+# Glob/wildcard filtering — list only .log files
+tramp ls /ssh:myvm:/var/log --glob '*.log'
+
+# Match entries starting with "config"
+tramp ls /ssh:myvm:/etc -g 'config*'
 ```
 
 ### Write to a remote file
@@ -103,6 +136,12 @@ tramp cp ./config.toml /ssh:myvm:/app/config.toml
 
 # Remote → Remote (even across different hosts)
 tramp cp /ssh:vm1:/etc/config /ssh:vm2:/etc/config
+
+# Glob copy — copy all .log files from remote to a local directory
+tramp cp /ssh:myvm:/var/log ./logs --glob '*.log'
+
+# Glob copy — copy matching files between remotes
+tramp cp /ssh:vm1:/etc /ssh:vm2:/etc/backup --glob '*.conf'
 ```
 
 ### Execute remote commands
@@ -219,6 +258,40 @@ tramp cd --reset
 Non-TRAMP commands (e.g. `git`) receive `$env.PWD` as-is and are unaffected —
 only `tramp` subcommands participate in remote CWD resolution.
 
+### System information
+
+Gather remote system info in a single round-trip (inspired by emacs-tramp-rpc's
+`system.info` RPC method):
+
+```nushell
+# Show OS, arch, hostname, user, kernel, CPU count, and disk usage
+tramp info /ssh:myvm:/
+
+# Works with any backend
+tramp info /docker:mycontainer:/
+
+# Works with chained paths
+tramp info /ssh:myvm|docker:webapp:/
+```
+
+Example output:
+
+```text
+╭────────────────┬───────────────────────╮
+│ os             │ Linux                 │
+│ arch           │ x86_64                │
+│ hostname       │ myvm                  │
+│ user           │ admin                 │
+│ kernel         │ 6.1.0-18-amd64       │
+│ cpus           │ 4                     │
+│ disk_total     │ 50.0 GiB             │
+│ disk_used      │ 12.3 GiB             │
+│ disk_available │ 35.2 GiB             │
+│ disk_use_pct   │ 26%                   │
+│ connection     │ /ssh:myvm:/           │
+╰────────────────┴───────────────────────╯
+```
+
 ### Connection management
 
 ```nushell
@@ -234,6 +307,28 @@ tramp disconnect myvm
 # Disconnect everything
 tramp disconnect --all
 ```
+
+### Cache configuration
+
+The stat and directory listing caches default to a 5-second TTL. Override
+this at runtime via the `$env.TRAMP_CACHE_TTL` environment variable:
+
+```nushell
+# Set cache TTL to 10 seconds
+$env.TRAMP_CACHE_TTL = 10sec
+
+# Use a shorter TTL for rapid iteration
+$env.TRAMP_CACHE_TTL = 1sec
+
+# Disable caching entirely (every command hits the remote)
+$env.TRAMP_CACHE_TTL = 0sec
+
+# String values also work: "5", "2.5", "500ms", "10s", "3sec"
+$env.TRAMP_CACHE_TTL = "500ms"
+```
+
+The TTL is read from the environment on each command invocation, so you can
+change it on-the-fly without restarting the plugin.
 
 ## Path Format
 
@@ -287,13 +382,14 @@ tramp disconnect --all
 |-----------------------|----------------------------------------------------|
 | `tramp`               | Show help and usage information                    |
 | `tramp open`          | Read a remote file and return as Nushell value     |
-| `tramp ls`            | List a remote directory as a table                 |
+| `tramp ls`            | List a remote directory as a table (with rich metadata) |
 | `tramp save`          | Write piped data to a remote file                  |
 | `tramp rm`            | Delete a remote file                               |
 | `tramp cp`            | Copy files between local/remote locations          |
 | `tramp cd`            | Set the remote working directory                   |
 | `tramp pwd`           | Show the current remote working directory          |
 | `tramp exec`          | Execute a command on the remote (push execution)   |
+| `tramp info`          | Show remote system info (OS, arch, hostname, disk) |
 | `tramp ping`          | Test connectivity to a remote host                 |
 | `tramp connections`   | List active pooled connections                     |
 | `tramp disconnect`    | Close connections (by host or `--all`)             |
@@ -307,7 +403,22 @@ tramp disconnect --all
 - **sudo** configured for non-interactive use (`NOPASSWD`) — for Sudo backend
 - **GNU coreutils** on the remote/target (`stat` for listings; `cat`, `rm`, `base64` as fallback when SFTP is unavailable)
 
+When the `tramp-agent` binary is deployed on the remote host, GNU coreutils are no longer required — all operations use native syscalls.
+
 ## Architecture
+
+The project is organised as a Cargo workspace with two crates:
+
+```text
+nu-plugin-tramp/
+├── crates/
+│   ├── plugin/     # nu-plugin-tramp — Nushell plugin
+│   └── agent/      # tramp-agent — lightweight RPC agent
+├── Cargo.toml      # workspace root
+└── ...
+```
+
+### Plugin architecture
 
 ```text
 Nushell command
@@ -340,14 +451,61 @@ Nushell command
 └─────────────────────────────────────────────┘
 ```
 
+### RPC Agent architecture
+
+The `tramp-agent` binary runs on the remote host and replaces shell-command
+parsing with native syscalls over a single MsgPack-RPC pipe:
+
+```text
+┌──────────────────┐  SSH stdin/stdout  ┌───────────────────────────┐
+│  nu-plugin-tramp │ ◄───────────────► │      tramp-agent          │
+│  (local Nushell) │   MsgPack-RPC     │      (remote Rust)        │
+└──────────────────┘   4-byte len +    │                           │
+                       MessagePack     │  ┌──────┐ ┌─────────┐    │
+                                       │  │ file │ │   dir   │    │
+                                       │  └──────┘ └─────────┘    │
+                                       │  ┌──────┐ ┌─────────┐    │
+                                       │  │ proc │ │ system  │    │
+                                       │  └──────┘ └─────────┘    │
+                                       │  ┌──────┐ ┌─────────┐    │
+                                       │  │batch │ │  watch  │    │
+                                       │  └──────┘ └─────────┘    │
+                                       └───────────────────────────┘
+```
+
+| Category   | Methods                                                        |
+|------------|----------------------------------------------------------------|
+| File       | `file.stat`, `file.stat_batch`, `file.truename`, `file.read`,  |
+|            | `file.write`, `file.copy`, `file.rename`, `file.delete`,       |
+|            | `file.set_modes`                                               |
+| Directory  | `dir.list`, `dir.create`, `dir.remove`                         |
+| Process    | `process.run`, `process.start`, `process.read`,               |
+|            | `process.write`, `process.kill`                               |
+| System     | `system.info`, `system.getenv`, `system.statvfs`              |
+| Batch      | `batch` (N ops in 1 round-trip, sequential or parallel)        |
+| Watch      | `watch.add`, `watch.remove`, `watch.list` → `fs.changed`      |
+
+Key advantages over shell parsing:
+
+| Aspect             | Current (shell parsing)        | With tramp-agent              |
+|--------------------|-------------------------------|-------------------------------|
+| Communication      | Individual SSH exec commands   | MsgPack-RPC over single pipe  |
+| Latency            | N operations = N round-trips   | N operations = 1 round-trip   |
+| Binary data        | base64 encode/decode           | Native binary (MsgPack bin)   |
+| Stat + list        | Separate commands, text parse  | Native `lstat()` syscalls     |
+| Shell dependency   | Requires sh, stat, cat, etc.  | None (self-contained binary)  |
+| Cache invalidation | TTL-based (5s default)         | inotify/kqueue push events    |
+
 ### Layers
 
-1. **Path Parser** (`src/protocol.rs`) — Parses TRAMP URIs into structured types with round-trip fidelity; supports multi-hop chained paths
-2. **Backend Trait** (`src/backend/mod.rs`) — Async trait defining `read`, `write`, `list`, `stat`, `exec`, `delete`, and `check` (health-check)
-3. **CommandRunner** (`src/backend/runner.rs`) — Abstraction for executing commands locally (`LocalRunner`) or through a parent backend (`RemoteRunner`), enabling path chaining
-4. **ExecBackend** (`src/backend/exec.rs`) — Generic exec-based backend used by Docker, Kubernetes, and Sudo; wraps commands with a configurable prefix
-5. **SSH Backend** (`src/backend/ssh.rs`) — Uses SFTP for file read/write/delete (fast-path) with automatic fallback to remote command execution; listing and stat use exec for structured GNU `stat` output
-6. **VFS** (`src/vfs.rs`) — Resolves paths to backends, builds multi-hop chains, manages connection pooling with health-checks, provides stat/list caching with TTL, bridges async↔sync
+1. **Path Parser** (`crates/plugin/src/protocol.rs`) — Parses TRAMP URIs into structured types with round-trip fidelity; supports multi-hop chained paths
+2. **Backend Trait** (`crates/plugin/src/backend/mod.rs`) — Async trait defining `read`, `write`, `list`, `stat`, `exec`, `delete`, and `check` (health-check)
+3. **CommandRunner** (`crates/plugin/src/backend/runner.rs`) — Abstraction for executing commands locally (`LocalRunner`) or through a parent backend (`RemoteRunner`), enabling path chaining
+4. **ExecBackend** (`crates/plugin/src/backend/exec.rs`) — Generic exec-based backend used by Docker, Kubernetes, and Sudo; wraps commands with a configurable prefix
+5. **SSH Backend** (`crates/plugin/src/backend/ssh.rs`) — Uses SFTP for file read/write/delete (fast-path) with automatic fallback to remote command execution; listing and stat use batch-stat (single remote command for all metadata including owner, group, nlinks, inode, symlink targets)
+6. **VFS** (`crates/plugin/src/vfs.rs`) — Resolves paths to backends, builds multi-hop chains, manages connection pooling with health-checks, provides stat/list caching with TTL, bridges async↔sync
+7. **RPC Protocol** (`crates/agent/src/rpc.rs`) — Length-prefixed MsgPack framing with Request/Response/Notification message types
+8. **Agent Operations** (`crates/agent/src/ops/`) — Native implementations of file, directory, process, system, batch, and watch operations
 
 ### Chaining internals
 
@@ -388,13 +546,38 @@ This composable design means any combination of backends can be chained (except 
 - [x] Sudo backend
 - [x] Push execution model (`tramp exec`)
 
-### Phase 4 — Future
+### Phase 4 — Polish & Usability
 
-- [ ] Home Manager module for auto-registration
-- [ ] Streaming for very large files
-- [ ] Glob/wildcard support for `tramp ls` and `tramp cp`
+- [x] `tramp info` command — remote system info (OS, arch, hostname, user, disk) in one round-trip
+- [x] Richer `tramp ls` metadata — owner, group, nlinks, inode, symlink targets
+- [x] Batch stat in listings — all metadata gathered in a single remote command
+- [x] Configurable cache TTL via `$env.TRAMP_CACHE_TTL`
+- [x] Home Manager module for auto-registration (`hm-module.nix`)
+- [x] Glob/wildcard support for `tramp ls --glob` and `tramp cp --glob`
 - [ ] Tab completion for remote paths
-- [ ] Configurable cache TTL via environment variables
+
+### Phase 5 — RPC Agent (inspired by [emacs-tramp-rpc](https://github.com/ArthurHeymans/emacs-tramp-rpc))
+
+- [x] `tramp-agent` binary — lightweight Rust RPC server (MsgPack-RPC over stdin/stdout)
+- [x] Protocol design — 4-byte length-prefixed MessagePack framing with JSON-RPC 2.0-style messages
+- [x] File operations — `file.stat`, `file.stat_batch`, `file.truename`, `file.read`, `file.write`, `file.copy`, `file.rename`, `file.delete`, `file.set_modes`
+- [x] Directory operations — `dir.list` (with full lstat metadata), `dir.create`, `dir.remove`
+- [x] Process operations — `process.run`, `process.start`, `process.read`, `process.write`, `process.kill`
+- [x] System operations — `system.info`, `system.getenv`, `system.statvfs`
+- [x] Batch operations — `batch` (N ops in 1 round-trip, sequential or parallel)
+- [x] Filesystem watching — `watch.add`, `watch.remove`, `watch.list` via inotify/kqueue with `fs.changed` push notifications
+- [x] Cargo workspace restructure — plugin and agent as separate crates
+- [ ] Automatic agent deployment (detect arch, upload, fallback to shell-parsing)
+- [ ] Plugin RPC backend (switch SSH backend to use agent when available)
+- [ ] Agent for exec backends (deploy inside Docker/K8s containers)
+
+### Phase 6 — Future
+
+- [ ] Streaming for very large files (chunked RPC reads)
+- [ ] PTY support via agent (remote terminal emulation)
+- [ ] `tramp watch` command — subscribe to filesystem change notifications
+- [ ] Agent version management and auto-upgrade
+- [ ] TCP/Unix socket transport for agent (local Docker without SSH)
 
 ## License
 
