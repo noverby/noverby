@@ -75,3 +75,81 @@ from .vnode import (
     DNODE_TEXT,
     DNODE_PLACEHOLDER,
 )
+from .dsl import (
+    # Node type and kind tags
+    Node,
+    NODE_TEXT,
+    NODE_ELEMENT,
+    NODE_DYN_TEXT,
+    NODE_DYN_NODE,
+    NODE_STATIC_ATTR,
+    NODE_DYN_ATTR,
+    # Leaf constructors
+    text,
+    dyn_text,
+    dyn_node,
+    attr,
+    dyn_attr,
+    # Generic element constructors
+    el,
+    el_empty,
+    # Tag helpers — Layout / Sectioning
+    el_div,
+    el_span,
+    el_p,
+    el_section,
+    el_header,
+    el_footer,
+    el_nav,
+    el_main,
+    el_article,
+    el_aside,
+    # Tag helpers — Headings
+    el_h1,
+    el_h2,
+    el_h3,
+    el_h4,
+    el_h5,
+    el_h6,
+    # Tag helpers — Lists
+    el_ul,
+    el_ol,
+    el_li,
+    # Tag helpers — Interactive
+    el_button,
+    el_input,
+    el_form,
+    el_textarea,
+    el_select,
+    el_option,
+    el_label,
+    # Tag helpers — Links / Media
+    el_a,
+    el_img,
+    # Tag helpers — Table
+    el_table,
+    el_thead,
+    el_tbody,
+    el_tr,
+    el_td,
+    el_th,
+    # Tag helpers — Inline / Formatting
+    el_strong,
+    el_em,
+    el_br,
+    el_hr,
+    el_pre,
+    el_code,
+    # Template conversion
+    to_template,
+    to_template_multi,
+    # VNodeBuilder
+    VNodeBuilder,
+    # Utility helpers
+    count_nodes,
+    count_all_items,
+    count_dynamic_text_slots,
+    count_dynamic_node_slots,
+    count_dynamic_attr_slots,
+    count_static_attr_nodes,
+)

@@ -2486,14 +2486,19 @@ Each app previously hand-rolled scope/signal/template wiring. Extracted common i
 
 `main.mojo` now exposes `shell_*` WASM exports (create, destroy, mount, diff, signals, scopes, dirty tracking, event dispatch) and `scheduler_*` exports. Tests: `test_component.mojo` (26 tests) and `test_scheduler.mojo` (11 tests). All 641 Mojo + 790 JS tests pass.
 
-### 10.5 Ergonomic Builder API (Planned)
+### 10.5 Ergonomic Builder API (✅ Done)
 
-Implement the Tier 1 builder DSL from the plan's [Ergonomics-First API Design](#ergonomics-first-api-design) section:
+Implemented the Tier 1 builder DSL from the plan's [Ergonomics-First API Design](#ergonomics-first-api-design) section:
 
-- `div(class_="counter", children=[...])` style tag helpers
-- `signal(value)` shorthand
-- `Renderable` trait for heterogeneous children (String, Signal, Element)
-- Keyword arguments for attributes and events
+- **`Node` tagged union** (`vdom/dsl.mojo`): 6-variant type (`NODE_TEXT`, `NODE_ELEMENT`, `NODE_DYN_TEXT`, `NODE_DYN_NODE`, `NODE_STATIC_ATTR`, `NODE_DYN_ATTR`) enabling declarative element tree composition.
+- **Leaf constructors**: `text()`, `dyn_text()`, `dyn_node()`, `attr()`, `dyn_attr()` — concise helpers replacing verbose `TemplateBuilder` push calls.
+- **40 tag helpers**: `el_div()`, `el_span()`, `el_h1()`–`el_h6()`, `el_button()`, `el_input()`, `el_form()`, `el_ul()`, `el_li()`, `el_table()`, `el_tr()`, `el_td()`, `el_a()`, `el_img()`, `el_br()`, `el_hr()`, `el_pre()`, `el_code()`, `el_strong()`, `el_em()`, etc. — each with empty and `List[Node]` overloads.
+- **`to_template()` / `to_template_multi()`**: Converts `Node` trees to `Template` via 3-pass recursive walk (static attrs → dynamic attrs → children), producing identical output to manual `TemplateBuilder` calls.
+- **`VNodeBuilder`**: Ergonomic VNode construction with `add_dyn_text()`, `add_dyn_event()`, `add_dyn_text_attr()`, `add_dyn_int_attr()`, `add_dyn_bool_attr()`, `add_dyn_float_attr()`, `add_dyn_none_attr()`, `add_dyn_placeholder()`. Supports keyed VNodes.
+- **Utility functions**: `count_nodes()`, `count_all_items()`, `count_dynamic_text_slots()`, `count_dynamic_node_slots()`, `count_dynamic_attr_slots()`, `count_static_attr_nodes()`.
+- **Template equivalence verified**: DSL-built counter template matches manually-built template node-for-node (kinds, tags, child counts, dynamic slot counts, attribute counts).
+- **WASM exports**: `dsl_node_*` (Node lifecycle), `dsl_vb_*` (VNodeBuilder), `dsl_to_template()`, and 15 self-contained `dsl_test_*` functions.
+- **33 new Mojo tests + 69 new JS tests**. All 674 Mojo + 859 JS tests pass.
 
 ---
 
@@ -2513,4 +2518,4 @@ Implement the Tier 1 builder DSL from the plan's [Ergonomics-First API Design](#
 - [x] **M10.2:** PoC exports extracted to `poc/` package (`poc/arithmetic.mojo`, `poc/bitwise.mojo`, `poc/comparison.mojo`, `poc/algorithms.mojo`, `poc/strings.mojo`). `main.mojo` is now pure `@export` wrappers. All 602 Mojo + 790 JS tests pass.
 - [x] **M10.3:** Shared JS runtime extracted to `examples/lib/` (env, protocol, interpreter, strings, boot). Examples deduplicated: counter 81 lines, todo 194 lines, bench 160 lines. All 602 Mojo + 790 JS tests pass.
 - [x] **M10.4:** Component abstraction. `AppShell` struct (`component/app_shell.mojo`), lifecycle helpers (`component/lifecycle.mojo`), height-ordered scheduler (`scheduler/scheduler.mojo`). `shell_*` and `scheduler_*` WASM exports. 37 new tests. All 641 Mojo + 790 JS tests pass.
-- [ ] **M10.5:** Ergonomic builder API. Tag helpers, `signal()` shorthand, `Renderable` trait.
+- [x] **M10.5:** Ergonomic builder API. `Node` tagged union (`vdom/dsl.mojo`), 40 tag helpers (`el_div`, `el_h1`, …), `to_template()` conversion, `VNodeBuilder` for ergonomic VNode construction, count utilities. Template equivalence verified (DSL matches manual builder). 33 new Mojo + 69 new JS tests. All 674 Mojo + 859 JS tests pass.

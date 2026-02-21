@@ -1,0 +1,1212 @@
+# Ergonomic Builder DSL — High-level API for constructing Templates and VNodes.
+#
+# This module provides a declarative, tree-shaped API that replaces the
+# low-level step-by-step TemplateBuilder calls with composable helper
+# functions.  It is the Tier 1 "Runtime Builder" from the plan's
+# Ergonomics-First API Design section (M10.5).
+#
+# Instead of:
+#
+#     var b = TemplateBuilder("counter")
+#     var div_idx = b.push_element(TAG_DIV, -1)
+#     var span_idx = b.push_element(TAG_SPAN, Int(div_idx))
+#     var _dyn = b.push_dynamic_text(0, Int(span_idx))
+#     var btn = b.push_element(TAG_BUTTON, Int(div_idx))
+#     b.push_text("+", Int(btn))
+#     b.push_dynamic_attr(Int(btn), 0)
+#     var template = b.build()
+#
+# Developers write:
+#
+#     var view = el_div(List[Node](
+#         el_span(List[Node](dyn_text(0))),
+#         el_button(List[Node](text("+"), dyn_attr(0))),
+#         el_button(List[Node](text("-"), dyn_attr(1))),
+#     ))
+#     var template = to_template(view, "counter")
+#
+# And instead of:
+#
+#     var idx = store[0].push(VNode.template_ref(tmpl_id))
+#     store[0].push_dynamic_node(idx, DynamicNode.text_node("Count: 0"))
+#     store[0].push_dynamic_attr(idx, DynamicAttr("click", AttributeValue.event(h1), UInt32(0)))
+#     store[0].push_dynamic_attr(idx, DynamicAttr("click", AttributeValue.event(h2), UInt32(0)))
+#
+# Developers write:
+#
+#     var vb = VNodeBuilder(tmpl_id, store)
+#     vb.add_dyn_text("Count: 0")
+#     vb.add_dyn_event("click", h1)
+#     vb.add_dyn_event("click", h2)
+#     var vnode_idx = vb.index()
+#
+# Both forms produce identical Template and VNode structures.
+
+from memory import UnsafePointer
+from .builder import TemplateBuilder
+from .template import Template
+from .vnode import (
+    VNode,
+    VNodeStore,
+    DynamicNode,
+    DynamicAttr,
+    AttributeValue,
+)
+from .tags import (
+    TAG_DIV,
+    TAG_SPAN,
+    TAG_P,
+    TAG_SECTION,
+    TAG_HEADER,
+    TAG_FOOTER,
+    TAG_NAV,
+    TAG_MAIN,
+    TAG_ARTICLE,
+    TAG_ASIDE,
+    TAG_H1,
+    TAG_H2,
+    TAG_H3,
+    TAG_H4,
+    TAG_H5,
+    TAG_H6,
+    TAG_UL,
+    TAG_OL,
+    TAG_LI,
+    TAG_BUTTON,
+    TAG_INPUT,
+    TAG_FORM,
+    TAG_TEXTAREA,
+    TAG_SELECT,
+    TAG_OPTION,
+    TAG_LABEL,
+    TAG_A,
+    TAG_IMG,
+    TAG_TABLE,
+    TAG_THEAD,
+    TAG_TBODY,
+    TAG_TR,
+    TAG_TD,
+    TAG_TH,
+    TAG_STRONG,
+    TAG_EM,
+    TAG_BR,
+    TAG_HR,
+    TAG_PRE,
+    TAG_CODE,
+    TAG_UNKNOWN,
+)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Node — Tagged union for the declarative element tree
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Node kind tags ───────────────────────────────────────────────────────────
+
+alias NODE_TEXT: UInt8 = 0  # Static text content
+alias NODE_ELEMENT: UInt8 = 1  # HTML element with tag, children, attrs
+alias NODE_DYN_TEXT: UInt8 = 2  # Dynamic text placeholder (slot index)
+alias NODE_DYN_NODE: UInt8 = 3  # Dynamic node placeholder (slot index)
+alias NODE_STATIC_ATTR: UInt8 = 4  # Static attribute (name + value)
+alias NODE_DYN_ATTR: UInt8 = 5  # Dynamic attribute placeholder (slot index)
+
+
+struct Node(Copyable, Movable):
+    """A declarative description of a UI element tree node.
+
+    Node is a tagged union that can represent static text, HTML elements
+    (with children and attributes), dynamic text placeholders, dynamic
+    node placeholders, static attributes, or dynamic attribute
+    placeholders.
+
+    Nodes are composed into trees using the tag helper functions and then
+    converted to a Template via `to_template()`.
+
+    For ELEMENT nodes, `items` contains a mix of children (TEXT, ELEMENT,
+    DYN_TEXT, DYN_NODE) and attributes (STATIC_ATTR, DYN_ATTR).  The
+    `to_template()` function separates them automatically.
+    """
+
+    var kind: UInt8  # NODE_* tag
+    var tag: UInt8  # HTML tag constant (ELEMENT only)
+    var text: String  # text content (TEXT) or attr name (STATIC_ATTR)
+    var attr_value: String  # attr value (STATIC_ATTR only)
+    var dynamic_index: UInt32  # slot index (DYN_TEXT, DYN_NODE, DYN_ATTR)
+    var items: List[Node]  # children + inline attrs (ELEMENT only)
+
+    # ── Named constructors ───────────────────────────────────────────
+
+    @staticmethod
+    fn text_node(s: String) -> Self:
+        """Create a static text node."""
+        return Self(
+            kind=NODE_TEXT,
+            tag=TAG_UNKNOWN,
+            text=s,
+            attr_value=String(""),
+            dynamic_index=0,
+            items=List[Node](),
+        )
+
+    @staticmethod
+    fn element_node(html_tag: UInt8, var items: List[Node]) -> Self:
+        """Create an element node with the given tag and items.
+
+        Items can include children (text, element, dyn_text, dyn_node)
+        and attributes (static_attr, dyn_attr) in any order.
+        """
+        return Self(
+            kind=NODE_ELEMENT,
+            tag=html_tag,
+            text=String(""),
+            attr_value=String(""),
+            dynamic_index=0,
+            items=items^,
+        )
+
+    @staticmethod
+    fn element_node_empty(html_tag: UInt8) -> Self:
+        """Create an element node with no children or attributes."""
+        return Self(
+            kind=NODE_ELEMENT,
+            tag=html_tag,
+            text=String(""),
+            attr_value=String(""),
+            dynamic_index=0,
+            items=List[Node](),
+        )
+
+    @staticmethod
+    fn dynamic_text_node(index: UInt32) -> Self:
+        """Create a dynamic text placeholder (fills a DynamicText slot)."""
+        return Self(
+            kind=NODE_DYN_TEXT,
+            tag=TAG_UNKNOWN,
+            text=String(""),
+            attr_value=String(""),
+            dynamic_index=index,
+            items=List[Node](),
+        )
+
+    @staticmethod
+    fn dynamic_node_slot(index: UInt32) -> Self:
+        """Create a dynamic node placeholder (fills a Dynamic slot)."""
+        return Self(
+            kind=NODE_DYN_NODE,
+            tag=TAG_UNKNOWN,
+            text=String(""),
+            attr_value=String(""),
+            dynamic_index=index,
+            items=List[Node](),
+        )
+
+    @staticmethod
+    fn static_attr_node(name: String, value: String) -> Self:
+        """Create a static attribute (name=value)."""
+        return Self(
+            kind=NODE_STATIC_ATTR,
+            tag=TAG_UNKNOWN,
+            text=name,
+            attr_value=value,
+            dynamic_index=0,
+            items=List[Node](),
+        )
+
+    @staticmethod
+    fn dynamic_attr_node(index: UInt32) -> Self:
+        """Create a dynamic attribute placeholder (fills a dynamic attr slot).
+        """
+        return Self(
+            kind=NODE_DYN_ATTR,
+            tag=TAG_UNKNOWN,
+            text=String(""),
+            attr_value=String(""),
+            dynamic_index=index,
+            items=List[Node](),
+        )
+
+    # ── Construction ─────────────────────────────────────────────────
+
+    fn __init__(
+        out self,
+        kind: UInt8,
+        tag: UInt8,
+        text: String,
+        attr_value: String,
+        dynamic_index: UInt32,
+        var items: List[Node],
+    ):
+        self.kind = kind
+        self.tag = tag
+        self.text = text
+        self.attr_value = attr_value
+        self.dynamic_index = dynamic_index
+        self.items = items^
+
+    fn __copyinit__(out self, other: Self):
+        self.kind = other.kind
+        self.tag = other.tag
+        self.text = other.text
+        self.attr_value = other.attr_value
+        self.dynamic_index = other.dynamic_index
+        self.items = other.items.copy()
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.kind = other.kind
+        self.tag = other.tag
+        self.text = other.text^
+        self.attr_value = other.attr_value^
+        self.dynamic_index = other.dynamic_index
+        self.items = other.items^
+
+    # ── Queries ──────────────────────────────────────────────────────
+
+    fn is_text(self) -> Bool:
+        """Check whether this is a static text node."""
+        return self.kind == NODE_TEXT
+
+    fn is_element(self) -> Bool:
+        """Check whether this is an element node."""
+        return self.kind == NODE_ELEMENT
+
+    fn is_dyn_text(self) -> Bool:
+        """Check whether this is a dynamic text placeholder."""
+        return self.kind == NODE_DYN_TEXT
+
+    fn is_dyn_node(self) -> Bool:
+        """Check whether this is a dynamic node placeholder."""
+        return self.kind == NODE_DYN_NODE
+
+    fn is_static_attr(self) -> Bool:
+        """Check whether this is a static attribute."""
+        return self.kind == NODE_STATIC_ATTR
+
+    fn is_dyn_attr(self) -> Bool:
+        """Check whether this is a dynamic attribute placeholder."""
+        return self.kind == NODE_DYN_ATTR
+
+    fn is_attr(self) -> Bool:
+        """Check whether this is any kind of attribute (static or dynamic)."""
+        return self.kind == NODE_STATIC_ATTR or self.kind == NODE_DYN_ATTR
+
+    fn is_child(self) -> Bool:
+        """Check whether this is a child node (not an attribute)."""
+        return not self.is_attr()
+
+    fn item_count(self) -> Int:
+        """Return the number of items (children + attrs) in an element."""
+        return len(self.items)
+
+    fn child_count(self) -> Int:
+        """Return the number of child nodes (excluding attrs) in an element."""
+        var count = 0
+        for i in range(len(self.items)):
+            if self.items[i].is_child():
+                count += 1
+        return count
+
+    fn attr_count(self) -> Int:
+        """Return the number of attributes (excluding children) in an element.
+        """
+        var count = 0
+        for i in range(len(self.items)):
+            if self.items[i].is_attr():
+                count += 1
+        return count
+
+    fn static_attr_count(self) -> Int:
+        """Return the number of static attributes in an element."""
+        var count = 0
+        for i in range(len(self.items)):
+            if self.items[i].kind == NODE_STATIC_ATTR:
+                count += 1
+        return count
+
+    fn dynamic_attr_count(self) -> Int:
+        """Return the number of dynamic attribute placeholders in an element."""
+        var count = 0
+        for i in range(len(self.items)):
+            if self.items[i].kind == NODE_DYN_ATTR:
+                count += 1
+        return count
+
+    # ── Mutation ─────────────────────────────────────────────────────
+
+    fn add_item(mut self, var item: Node):
+        """Append an item (child or attribute) to this element node."""
+        self.items.append(item^)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Free-function helpers — The ergonomic API surface
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Leaf constructors ────────────────────────────────────────────────────────
+
+
+fn text(s: String) -> Node:
+    """Create a static text node.
+
+    Usage: `text("Hello, world!")`
+    """
+    return Node.text_node(s)
+
+
+fn dyn_text(index: Int) -> Node:
+    """Create a dynamic text placeholder.
+
+    The `index` identifies which slot in the VNode's dynamic_nodes list
+    this placeholder fills.
+
+    Usage: `dyn_text(0)` → first dynamic text slot
+    """
+    return Node.dynamic_text_node(UInt32(index))
+
+
+fn dyn_node(index: Int) -> Node:
+    """Create a dynamic node placeholder.
+
+    The `index` identifies which slot in the VNode's dynamic_nodes list
+    this placeholder fills.
+
+    Usage: `dyn_node(0)` → first dynamic node slot
+    """
+    return Node.dynamic_node_slot(UInt32(index))
+
+
+fn attr(name: String, value: String) -> Node:
+    """Create a static attribute.
+
+    Usage: `attr("class", "container")`
+    """
+    return Node.static_attr_node(name, value)
+
+
+fn dyn_attr(index: Int) -> Node:
+    """Create a dynamic attribute placeholder.
+
+    The `index` identifies which slot in the VNode's dynamic_attrs list
+    this placeholder fills.
+
+    Usage: `dyn_attr(0)` → first dynamic attribute slot
+    """
+    return Node.dynamic_attr_node(UInt32(index))
+
+
+# ── Generic element constructor ──────────────────────────────────────────────
+
+
+fn el(html_tag: UInt8, var items: List[Node]) -> Node:
+    """Create an element node with the given HTML tag and items.
+
+    Items can be a mix of children and attributes in any order.
+    The `to_template()` function sorts them appropriately.
+
+    Usage: `el(TAG_DIV, List[Node](text("hello"), attr("class", "x")))`
+    """
+    return Node.element_node(html_tag, items^)
+
+
+fn el_empty(html_tag: UInt8) -> Node:
+    """Create an empty element node (no children, no attributes).
+
+    Usage: `el_empty(TAG_BR)`
+    """
+    return Node.element_node_empty(html_tag)
+
+
+# ── Tag helpers — Layout / Sectioning ────────────────────────────────────────
+
+
+fn el_div(var items: List[Node]) -> Node:
+    """Create a `<div>` element."""
+    return Node.element_node(TAG_DIV, items^)
+
+
+fn el_div() -> Node:
+    """Create an empty `<div>` element."""
+    return Node.element_node_empty(TAG_DIV)
+
+
+fn el_span(var items: List[Node]) -> Node:
+    """Create a `<span>` element."""
+    return Node.element_node(TAG_SPAN, items^)
+
+
+fn el_span() -> Node:
+    """Create an empty `<span>` element."""
+    return Node.element_node_empty(TAG_SPAN)
+
+
+fn el_p(var items: List[Node]) -> Node:
+    """Create a `<p>` element."""
+    return Node.element_node(TAG_P, items^)
+
+
+fn el_p() -> Node:
+    """Create an empty `<p>` element."""
+    return Node.element_node_empty(TAG_P)
+
+
+fn el_section(var items: List[Node]) -> Node:
+    """Create a `<section>` element."""
+    return Node.element_node(TAG_SECTION, items^)
+
+
+fn el_section() -> Node:
+    """Create an empty `<section>` element."""
+    return Node.element_node_empty(TAG_SECTION)
+
+
+fn el_header(var items: List[Node]) -> Node:
+    """Create a `<header>` element."""
+    return Node.element_node(TAG_HEADER, items^)
+
+
+fn el_header() -> Node:
+    """Create an empty `<header>` element."""
+    return Node.element_node_empty(TAG_HEADER)
+
+
+fn el_footer(var items: List[Node]) -> Node:
+    """Create a `<footer>` element."""
+    return Node.element_node(TAG_FOOTER, items^)
+
+
+fn el_footer() -> Node:
+    """Create an empty `<footer>` element."""
+    return Node.element_node_empty(TAG_FOOTER)
+
+
+fn el_nav(var items: List[Node]) -> Node:
+    """Create a `<nav>` element."""
+    return Node.element_node(TAG_NAV, items^)
+
+
+fn el_nav() -> Node:
+    """Create an empty `<nav>` element."""
+    return Node.element_node_empty(TAG_NAV)
+
+
+fn el_main(var items: List[Node]) -> Node:
+    """Create a `<main>` element.
+
+    Named `el_main` (not `main_`) to follow the `el_` prefix convention.
+    """
+    return Node.element_node(TAG_MAIN, items^)
+
+
+fn el_main() -> Node:
+    """Create an empty `<main>` element."""
+    return Node.element_node_empty(TAG_MAIN)
+
+
+fn el_article(var items: List[Node]) -> Node:
+    """Create an `<article>` element."""
+    return Node.element_node(TAG_ARTICLE, items^)
+
+
+fn el_article() -> Node:
+    """Create an empty `<article>` element."""
+    return Node.element_node_empty(TAG_ARTICLE)
+
+
+fn el_aside(var items: List[Node]) -> Node:
+    """Create an `<aside>` element."""
+    return Node.element_node(TAG_ASIDE, items^)
+
+
+fn el_aside() -> Node:
+    """Create an empty `<aside>` element."""
+    return Node.element_node_empty(TAG_ASIDE)
+
+
+# ── Tag helpers — Headings ───────────────────────────────────────────────────
+
+
+fn el_h1(var items: List[Node]) -> Node:
+    """Create an `<h1>` element."""
+    return Node.element_node(TAG_H1, items^)
+
+
+fn el_h1() -> Node:
+    """Create an empty `<h1>` element."""
+    return Node.element_node_empty(TAG_H1)
+
+
+fn el_h2(var items: List[Node]) -> Node:
+    """Create an `<h2>` element."""
+    return Node.element_node(TAG_H2, items^)
+
+
+fn el_h2() -> Node:
+    """Create an empty `<h2>` element."""
+    return Node.element_node_empty(TAG_H2)
+
+
+fn el_h3(var items: List[Node]) -> Node:
+    """Create an `<h3>` element."""
+    return Node.element_node(TAG_H3, items^)
+
+
+fn el_h3() -> Node:
+    """Create an empty `<h3>` element."""
+    return Node.element_node_empty(TAG_H3)
+
+
+fn el_h4(var items: List[Node]) -> Node:
+    """Create an `<h4>` element."""
+    return Node.element_node(TAG_H4, items^)
+
+
+fn el_h4() -> Node:
+    """Create an empty `<h4>` element."""
+    return Node.element_node_empty(TAG_H4)
+
+
+fn el_h5(var items: List[Node]) -> Node:
+    """Create an `<h5>` element."""
+    return Node.element_node(TAG_H5, items^)
+
+
+fn el_h5() -> Node:
+    """Create an empty `<h5>` element."""
+    return Node.element_node_empty(TAG_H5)
+
+
+fn el_h6(var items: List[Node]) -> Node:
+    """Create an `<h6>` element."""
+    return Node.element_node(TAG_H6, items^)
+
+
+fn el_h6() -> Node:
+    """Create an empty `<h6>` element."""
+    return Node.element_node_empty(TAG_H6)
+
+
+# ── Tag helpers — Lists ──────────────────────────────────────────────────────
+
+
+fn el_ul(var items: List[Node]) -> Node:
+    """Create a `<ul>` element."""
+    return Node.element_node(TAG_UL, items^)
+
+
+fn el_ul() -> Node:
+    """Create an empty `<ul>` element."""
+    return Node.element_node_empty(TAG_UL)
+
+
+fn el_ol(var items: List[Node]) -> Node:
+    """Create an `<ol>` element."""
+    return Node.element_node(TAG_OL, items^)
+
+
+fn el_ol() -> Node:
+    """Create an empty `<ol>` element."""
+    return Node.element_node_empty(TAG_OL)
+
+
+fn el_li(var items: List[Node]) -> Node:
+    """Create a `<li>` element."""
+    return Node.element_node(TAG_LI, items^)
+
+
+fn el_li() -> Node:
+    """Create an empty `<li>` element."""
+    return Node.element_node_empty(TAG_LI)
+
+
+# ── Tag helpers — Interactive ────────────────────────────────────────────────
+
+
+fn el_button(var items: List[Node]) -> Node:
+    """Create a `<button>` element."""
+    return Node.element_node(TAG_BUTTON, items^)
+
+
+fn el_button() -> Node:
+    """Create an empty `<button>` element."""
+    return Node.element_node_empty(TAG_BUTTON)
+
+
+fn el_input(var items: List[Node]) -> Node:
+    """Create an `<input>` element."""
+    return Node.element_node(TAG_INPUT, items^)
+
+
+fn el_input() -> Node:
+    """Create an empty `<input>` element."""
+    return Node.element_node_empty(TAG_INPUT)
+
+
+fn el_form(var items: List[Node]) -> Node:
+    """Create a `<form>` element."""
+    return Node.element_node(TAG_FORM, items^)
+
+
+fn el_form() -> Node:
+    """Create an empty `<form>` element."""
+    return Node.element_node_empty(TAG_FORM)
+
+
+fn el_textarea(var items: List[Node]) -> Node:
+    """Create a `<textarea>` element."""
+    return Node.element_node(TAG_TEXTAREA, items^)
+
+
+fn el_textarea() -> Node:
+    """Create an empty `<textarea>` element."""
+    return Node.element_node_empty(TAG_TEXTAREA)
+
+
+fn el_select(var items: List[Node]) -> Node:
+    """Create a `<select>` element."""
+    return Node.element_node(TAG_SELECT, items^)
+
+
+fn el_select() -> Node:
+    """Create an empty `<select>` element."""
+    return Node.element_node_empty(TAG_SELECT)
+
+
+fn el_option(var items: List[Node]) -> Node:
+    """Create an `<option>` element."""
+    return Node.element_node(TAG_OPTION, items^)
+
+
+fn el_option() -> Node:
+    """Create an empty `<option>` element."""
+    return Node.element_node_empty(TAG_OPTION)
+
+
+fn el_label(var items: List[Node]) -> Node:
+    """Create a `<label>` element."""
+    return Node.element_node(TAG_LABEL, items^)
+
+
+fn el_label() -> Node:
+    """Create an empty `<label>` element."""
+    return Node.element_node_empty(TAG_LABEL)
+
+
+# ── Tag helpers — Links / Media ──────────────────────────────────────────────
+
+
+fn el_a(var items: List[Node]) -> Node:
+    """Create an `<a>` element."""
+    return Node.element_node(TAG_A, items^)
+
+
+fn el_a() -> Node:
+    """Create an empty `<a>` element."""
+    return Node.element_node_empty(TAG_A)
+
+
+fn el_img(var items: List[Node]) -> Node:
+    """Create an `<img>` element."""
+    return Node.element_node(TAG_IMG, items^)
+
+
+fn el_img() -> Node:
+    """Create an empty `<img>` element."""
+    return Node.element_node_empty(TAG_IMG)
+
+
+# ── Tag helpers — Table ──────────────────────────────────────────────────────
+
+
+fn el_table(var items: List[Node]) -> Node:
+    """Create a `<table>` element."""
+    return Node.element_node(TAG_TABLE, items^)
+
+
+fn el_table() -> Node:
+    """Create an empty `<table>` element."""
+    return Node.element_node_empty(TAG_TABLE)
+
+
+fn el_thead(var items: List[Node]) -> Node:
+    """Create a `<thead>` element."""
+    return Node.element_node(TAG_THEAD, items^)
+
+
+fn el_thead() -> Node:
+    """Create an empty `<thead>` element."""
+    return Node.element_node_empty(TAG_THEAD)
+
+
+fn el_tbody(var items: List[Node]) -> Node:
+    """Create a `<tbody>` element."""
+    return Node.element_node(TAG_TBODY, items^)
+
+
+fn el_tbody() -> Node:
+    """Create an empty `<tbody>` element."""
+    return Node.element_node_empty(TAG_TBODY)
+
+
+fn el_tr(var items: List[Node]) -> Node:
+    """Create a `<tr>` element."""
+    return Node.element_node(TAG_TR, items^)
+
+
+fn el_tr() -> Node:
+    """Create an empty `<tr>` element."""
+    return Node.element_node_empty(TAG_TR)
+
+
+fn el_td(var items: List[Node]) -> Node:
+    """Create a `<td>` element."""
+    return Node.element_node(TAG_TD, items^)
+
+
+fn el_td() -> Node:
+    """Create an empty `<td>` element."""
+    return Node.element_node_empty(TAG_TD)
+
+
+fn el_th(var items: List[Node]) -> Node:
+    """Create a `<th>` element."""
+    return Node.element_node(TAG_TH, items^)
+
+
+fn el_th() -> Node:
+    """Create an empty `<th>` element."""
+    return Node.element_node_empty(TAG_TH)
+
+
+# ── Tag helpers — Inline / Formatting ────────────────────────────────────────
+
+
+fn el_strong(var items: List[Node]) -> Node:
+    """Create a `<strong>` element."""
+    return Node.element_node(TAG_STRONG, items^)
+
+
+fn el_strong() -> Node:
+    """Create an empty `<strong>` element."""
+    return Node.element_node_empty(TAG_STRONG)
+
+
+fn el_em(var items: List[Node]) -> Node:
+    """Create an `<em>` element."""
+    return Node.element_node(TAG_EM, items^)
+
+
+fn el_em() -> Node:
+    """Create an empty `<em>` element."""
+    return Node.element_node_empty(TAG_EM)
+
+
+fn el_br() -> Node:
+    """Create a `<br>` element (void element, no children)."""
+    return Node.element_node_empty(TAG_BR)
+
+
+fn el_hr() -> Node:
+    """Create an `<hr>` element (void element, no children)."""
+    return Node.element_node_empty(TAG_HR)
+
+
+fn el_pre(var items: List[Node]) -> Node:
+    """Create a `<pre>` element."""
+    return Node.element_node(TAG_PRE, items^)
+
+
+fn el_pre() -> Node:
+    """Create an empty `<pre>` element."""
+    return Node.element_node_empty(TAG_PRE)
+
+
+fn el_code(var items: List[Node]) -> Node:
+    """Create a `<code>` element."""
+    return Node.element_node(TAG_CODE, items^)
+
+
+fn el_code() -> Node:
+    """Create an empty `<code>` element."""
+    return Node.element_node_empty(TAG_CODE)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# to_template — Convert a Node tree to a Template
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+fn to_template(node: Node, name: String) -> Template:
+    """Convert a Node tree into a Template.
+
+    The root node should typically be an ELEMENT node (e.g. from `el_div`).
+    Text-only roots and dynamic roots are also supported.
+
+    Attributes within ELEMENT nodes are separated from children and added
+    to the template's attribute system.  Static attributes are added first,
+    then dynamic attributes, then child nodes — matching the convention
+    expected by the diff engine.
+
+    Args:
+        node: The root Node of the element tree.
+        name: The template name (for registry deduplication).
+
+    Returns:
+        A fully-constructed Template ready for registration.
+    """
+    var builder = TemplateBuilder(name)
+    _build_node(builder, node, -1)
+    return builder.build()
+
+
+fn to_template_multi(roots: List[Node], name: String) -> Template:
+    """Convert multiple root Nodes into a single Template.
+
+    Used for templates that have more than one root node (e.g. a fragment
+    of adjacent elements without a wrapper).
+
+    Args:
+        roots: The root Node list.
+        name: The template name.
+
+    Returns:
+        A fully-constructed Template ready for registration.
+    """
+    var builder = TemplateBuilder(name)
+    for i in range(len(roots)):
+        _build_node(builder, roots[i], -1)
+    return builder.build()
+
+
+fn _build_node(mut builder: TemplateBuilder, node: Node, parent: Int):
+    """Recursively walk a Node tree and emit TemplateBuilder calls.
+
+    For ELEMENT nodes:
+      1. Push the element itself.
+      2. Add static attributes (pass 1).
+      3. Add dynamic attributes (pass 2).
+      4. Recurse into child nodes (pass 3).
+
+    The three-pass approach keeps attributes grouped before children,
+    matching the layout expected by the diff/create engines.
+    """
+    if node.kind == NODE_TEXT:
+        _ = builder.push_text(node.text, parent)
+
+    elif node.kind == NODE_ELEMENT:
+        var idx = builder.push_element(node.tag, parent)
+
+        # Pass 1: static attributes
+        for i in range(len(node.items)):
+            if node.items[i].kind == NODE_STATIC_ATTR:
+                builder.push_static_attr(
+                    idx, node.items[i].text, node.items[i].attr_value
+                )
+
+        # Pass 2: dynamic attributes
+        for i in range(len(node.items)):
+            if node.items[i].kind == NODE_DYN_ATTR:
+                builder.push_dynamic_attr(idx, node.items[i].dynamic_index)
+
+        # Pass 3: child nodes (recurse)
+        for i in range(len(node.items)):
+            if node.items[i].is_child():
+                _build_node(builder, node.items[i], idx)
+
+    elif node.kind == NODE_DYN_TEXT:
+        _ = builder.push_dynamic_text(node.dynamic_index, parent)
+
+    elif node.kind == NODE_DYN_NODE:
+        _ = builder.push_dynamic(node.dynamic_index, parent)
+
+    # NODE_STATIC_ATTR and NODE_DYN_ATTR at root level are silently
+    # ignored (they only make sense inside an ELEMENT node's items).
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# VNodeBuilder — Ergonomic VNode construction
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+struct VNodeBuilder(Movable):
+    """Ergonomic builder for constructing VNode instances.
+
+    Wraps a VNodeStore pointer and provides short methods for adding
+    dynamic text, events, and attributes to a TemplateRef VNode.
+
+    Usage:
+        var vb = VNodeBuilder(template_id, store_ptr)
+        vb.add_dyn_text("Count: 42")
+        vb.add_dyn_event("click", handler_id)
+        var idx = vb.index()
+    """
+
+    var _store: UnsafePointer[VNodeStore]
+    var _vnode_idx: UInt32
+
+    # ── Construction ─────────────────────────────────────────────────
+
+    fn __init__(
+        out self, template_id: UInt32, store: UnsafePointer[VNodeStore]
+    ):
+        """Create a new TemplateRef VNode in the store.
+
+        Args:
+            template_id: The registered template's ID.
+            store: Pointer to the VNodeStore to push the VNode into.
+        """
+        self._store = store
+        self._vnode_idx = store[0].push(VNode.template_ref(template_id))
+
+    fn __init__(
+        out self,
+        template_id: UInt32,
+        key: String,
+        store: UnsafePointer[VNodeStore],
+    ):
+        """Create a new keyed TemplateRef VNode in the store.
+
+        Args:
+            template_id: The registered template's ID.
+            key: The key string for keyed diffing.
+            store: Pointer to the VNodeStore.
+        """
+        self._store = store
+        self._vnode_idx = store[0].push(
+            VNode.template_ref_keyed(template_id, key)
+        )
+
+    fn __moveinit__(out self, deinit other: Self):
+        self._store = other._store
+        self._vnode_idx = other._vnode_idx
+
+    # ── Dynamic text nodes ───────────────────────────────────────────
+
+    fn add_dyn_text(mut self, value: String):
+        """Add a dynamic text node (fills the next DynamicText slot).
+
+        Call in order corresponding to DYN_TEXT placeholders in the template
+        (dyn_text(0), dyn_text(1), ...).
+        """
+        self._store[0].push_dynamic_node(
+            self._vnode_idx, DynamicNode.text_node(value)
+        )
+
+    fn add_dyn_placeholder(mut self):
+        """Add a dynamic placeholder node (fills the next Dynamic slot).
+
+        Used for conditional content that is currently absent.
+        """
+        self._store[0].push_dynamic_node(
+            self._vnode_idx, DynamicNode.placeholder()
+        )
+
+    # ── Dynamic attributes ───────────────────────────────────────────
+
+    fn add_dyn_event(mut self, event_name: String, handler_id: UInt32):
+        """Add a dynamic event handler attribute.
+
+        Args:
+            event_name: The event name (e.g. "click", "input").
+            handler_id: The handler ID from the HandlerRegistry.
+        """
+        self._store[0].push_dynamic_attr(
+            self._vnode_idx,
+            DynamicAttr(
+                event_name, AttributeValue.event(handler_id), UInt32(0)
+            ),
+        )
+
+    fn add_dyn_event_on(
+        mut self, event_name: String, handler_id: UInt32, element_id: UInt32
+    ):
+        """Add a dynamic event handler targeting a specific template element.
+
+        Args:
+            event_name: The event name.
+            handler_id: The handler ID.
+            element_id: The template element index this attr targets.
+        """
+        self._store[0].push_dynamic_attr(
+            self._vnode_idx,
+            DynamicAttr(
+                event_name, AttributeValue.event(handler_id), element_id
+            ),
+        )
+
+    fn add_dyn_text_attr(mut self, name: String, value: String):
+        """Add a dynamic text attribute (e.g. class, id, href).
+
+        Args:
+            name: The attribute name.
+            value: The attribute text value.
+        """
+        self._store[0].push_dynamic_attr(
+            self._vnode_idx,
+            DynamicAttr(name, AttributeValue.text(value), UInt32(0)),
+        )
+
+    fn add_dyn_text_attr_on(
+        mut self, name: String, value: String, element_id: UInt32
+    ):
+        """Add a dynamic text attribute targeting a specific template element.
+
+        Args:
+            name: The attribute name.
+            value: The attribute text value.
+            element_id: The template element index this attr targets.
+        """
+        self._store[0].push_dynamic_attr(
+            self._vnode_idx,
+            DynamicAttr(name, AttributeValue.text(value), element_id),
+        )
+
+    fn add_dyn_int_attr(mut self, name: String, value: Int64):
+        """Add a dynamic integer attribute.
+
+        Args:
+            name: The attribute name.
+            value: The integer value.
+        """
+        self._store[0].push_dynamic_attr(
+            self._vnode_idx,
+            DynamicAttr(name, AttributeValue.integer(value), UInt32(0)),
+        )
+
+    fn add_dyn_float_attr(mut self, name: String, value: Float64):
+        """Add a dynamic float attribute.
+
+        Args:
+            name: The attribute name.
+            value: The float value.
+        """
+        self._store[0].push_dynamic_attr(
+            self._vnode_idx,
+            DynamicAttr(name, AttributeValue.floating(value), UInt32(0)),
+        )
+
+    fn add_dyn_bool_attr(mut self, name: String, value: Bool):
+        """Add a dynamic boolean attribute (e.g. disabled, checked).
+
+        Args:
+            name: The attribute name.
+            value: The boolean value.
+        """
+        self._store[0].push_dynamic_attr(
+            self._vnode_idx,
+            DynamicAttr(name, AttributeValue.boolean(value), UInt32(0)),
+        )
+
+    fn add_dyn_none_attr(mut self, name: String):
+        """Add a dynamic none/removal attribute.
+
+        Used to remove a previously-set attribute during diffing.
+
+        Args:
+            name: The attribute name to remove.
+        """
+        self._store[0].push_dynamic_attr(
+            self._vnode_idx,
+            DynamicAttr(name, AttributeValue.none(), UInt32(0)),
+        )
+
+    # ── Queries ──────────────────────────────────────────────────────
+
+    fn index(self) -> UInt32:
+        """Return the VNode's index in the VNodeStore."""
+        return self._vnode_idx
+
+    fn store(self) -> UnsafePointer[VNodeStore]:
+        """Return the VNodeStore pointer."""
+        return self._store
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Utility helpers
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+fn count_nodes(node: Node) -> Int:
+    """Recursively count the total number of nodes in a tree.
+
+    Includes the node itself and all descendants.  Attribute nodes
+    inside elements are NOT counted (they are metadata, not tree nodes).
+    """
+    if node.kind == NODE_ELEMENT:
+        var total = 1  # this element
+        for i in range(len(node.items)):
+            if node.items[i].is_child():
+                total += count_nodes(node.items[i])
+        return total
+    elif node.is_attr():
+        return 0  # attrs are not tree nodes
+    else:
+        return 1  # TEXT, DYN_TEXT, DYN_NODE
+
+
+fn count_all_items(node: Node) -> Int:
+    """Recursively count all items (children + attrs) in the tree.
+
+    Includes every Node in the tree including attribute nodes.
+    """
+    if node.kind == NODE_ELEMENT:
+        var total = 1  # this element
+        for i in range(len(node.items)):
+            total += count_all_items(node.items[i])
+        return total
+    else:
+        return 1
+
+
+fn count_dynamic_text_slots(node: Node) -> Int:
+    """Count the total number of DYN_TEXT nodes in the tree."""
+    if node.kind == NODE_DYN_TEXT:
+        return 1
+    elif node.kind == NODE_ELEMENT:
+        var total = 0
+        for i in range(len(node.items)):
+            if node.items[i].is_child():
+                total += count_dynamic_text_slots(node.items[i])
+        return total
+    else:
+        return 0
+
+
+fn count_dynamic_node_slots(node: Node) -> Int:
+    """Count the total number of DYN_NODE nodes in the tree."""
+    if node.kind == NODE_DYN_NODE:
+        return 1
+    elif node.kind == NODE_ELEMENT:
+        var total = 0
+        for i in range(len(node.items)):
+            if node.items[i].is_child():
+                total += count_dynamic_node_slots(node.items[i])
+        return total
+    else:
+        return 0
+
+
+fn count_dynamic_attr_slots(node: Node) -> Int:
+    """Count the total number of DYN_ATTR nodes in the tree."""
+    if node.kind == NODE_ELEMENT:
+        var total = 0
+        for i in range(len(node.items)):
+            if node.items[i].kind == NODE_DYN_ATTR:
+                total += 1
+            elif node.items[i].is_child():
+                total += count_dynamic_attr_slots(node.items[i])
+        return total
+    else:
+        return 0
+
+
+fn count_static_attr_nodes(node: Node) -> Int:
+    """Count the total number of STATIC_ATTR nodes in the tree."""
+    if node.kind == NODE_ELEMENT:
+        var total = 0
+        for i in range(len(node.items)):
+            if node.items[i].kind == NODE_STATIC_ATTR:
+                total += 1
+            elif node.items[i].is_child():
+                total += count_static_attr_nodes(node.items[i])
+        return total
+    else:
+        return 0

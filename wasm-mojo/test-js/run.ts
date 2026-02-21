@@ -1,6 +1,7 @@
 import { instantiate } from "../runtime/mod.ts";
 import { testBench } from "./bench.test.ts";
 import { testCounter } from "./counter.test.ts";
+import { testDsl } from "./dsl.test.ts";
 import { summary } from "./harness.ts";
 import { testInterpreter } from "./interpreter.test.ts";
 import { testMutations } from "./mutations.test.ts";
@@ -21,6 +22,7 @@ async function run(): Promise<void> {
 	testTodo(fns);
 	testPhase8(fns);
 	testBench(fns);
+	testDsl(fns);
 
 	summary();
 }
