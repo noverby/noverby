@@ -2587,6 +2587,39 @@ Implemented precompiled test binaries to reduce Mojo test suite execution from ~
 
 ---
 
+### 10.11 README & Documentation Update (✅ Done)
+
+Updated the README to accurately reflect the current state of the project after Phase 10 completion. The README had fallen behind — referencing 790 tests (now 1,533), missing several packages added during Phase 10, and lacking documentation for the precompiled test binary workflow.
+
+- **Updated test counts**: 790 → 1,533 (674 Mojo + 859 JS) throughout the document.
+- **Added new packages to project structure**: `src/component/` (AppShell, lifecycle), `src/scheduler/` (height-ordered dirty queue), `src/vdom/dsl.mojo` (ergonomic DSL), `src/poc/` (extracted PoC modules with all submodules listed).
+- **Added `examples/lib/`**: Shared JS runtime (boot, env, interpreter, protocol, strings) that was extracted in M10.3.
+- **Added `scripts/` directory**: `build_test_binaries.sh`, `run_test_binaries.sh`, `precompile.mojo`.
+- **Added "Test infrastructure" section**: Documents the precompiled binary workflow (M10.10), including timing table (cold build ~92s, incremental <0.1s, run ~10s) and instructions for adding new tests.
+- **Added "Ergonomic DSL" section**: Shows the `el_*` tag helpers and `VNodeBuilder` API (M10.5).
+- **Updated features list**: Added ergonomic DSL, AppShell abstraction, and test count badge.
+- **Updated reactive model**: Added Scheduler step (step 3: dirty scopes collected into height-ordered scheduler) and updated the flow diagram to include `scheduler`.
+- **Updated build pipeline**: Added step 4 (wasmtime pre-compilation to `.cwasm`).
+- **Updated test results section**: Added DSL, Component, and Scheduler test categories.
+- **Updated prerequisites**: Added `wasmtime` to the Nix dev shell tools list.
+- **Alphabetized `src/` directory listing**: Reorganized from ad-hoc order to consistent alphabetical order for easier scanning.
+- **All 674 Mojo + 859 JS tests pass unchanged** (documentation-only change).
+
+---
+
+### 10.12 Test Filter Support (✅ Done)
+
+Added substring filter arguments to `build_test_binaries.sh`, `run_test_binaries.sh`, and the Justfile so developers can target specific test modules during iterative work instead of building/running all 26 binaries.
+
+- **`scripts/build_test_binaries.sh [FILTER...]`**: Positional arguments are matched as substrings against source file names. `bash scripts/build_test_binaries.sh signals` builds only `test_signals`; `bash scripts/build_test_binaries.sh signals mut` builds `test_signals` + `test_mutations`. When no filter is given, all modules are built (unchanged behavior). On no match, lists available test modules to stderr.
+- **`scripts/run_test_binaries.sh [FILTER...]`**: Same substring matching against binary names. `bash scripts/run_test_binaries.sh dsl` runs only `test_dsl` (~88ms instead of ~10s). Flags (`-v`, `--verbose`) still work and can be mixed with filters (`-v dsl`). On no match, lists available binaries to stderr.
+- **Justfile targets accept variadic filter**: `test-build`, `test-run`, and `test` now use `*FILTER` parameter syntax. `just test signals` builds + runs only `test_signals`. `just test signals mutations` targets both modules. `just test` (no args) runs everything as before.
+- **Performance improvement for single-module iteration**: Running one module takes ~100ms vs ~10s for all 26. This makes the edit → test → fix cycle significantly faster when working on a single subsystem.
+- **Help text updated**: Both scripts show filter usage examples in `--help` output.
+- **All 674 Mojo + 859 JS tests pass unchanged** (infrastructure-only change).
+
+---
+
 ## Milestone Checklist
 
 - [x] **M0:** Arena allocator + collections + ElementId + protocol defined. All existing tests still pass.
@@ -2609,3 +2642,5 @@ Implemented precompiled test binaries to reduce Mojo test suite execution from ~
 - [x] **M10.8:** Fragment lifecycle helpers. `FragmentSlot` struct + `flush_fragment()` extracted to `component/lifecycle.mojo`. Todo and bench apps refactored from ~90/~80 lines of manual fragment transition logic to single `flush_fragment()` call each. Apps reduced by −192 lines total (todo: 484→376, bench: 504→420). All 674 Mojo + 859 JS tests pass unchanged.
 - [x] **M10.9:** AppShell flush methods & scheduler integration. `consume_dirty()` routes dirty scope processing through the Scheduler instead of raw `drain_dirty()`. `flush_fragment()` method on AppShell wraps lifecycle helper using shell's own pointers (3 args instead of 6). All app flush paths simplified, no more raw subsystem pointer access in flush. Apps reduced by −15 lines (counter: 217→214, todo: 376→370, bench: 420→414). All 674 Mojo + 859 JS tests pass unchanged.
 - [x] **M10.10:** Precompiled test binary infrastructure. Each `test/test_*.mojo` has an inline `fn main()` sharing one `WasmInstance` across all tests — no code generation. `build_test_binaries.sh` compiles them in parallel with incremental timestamp checks, `run_test_binaries.sh` executes all binaries concurrently. Test suite reduced from ~5–6 min to ~11s (`just test`, no code change) or ~10s (`just test-run`, binaries pre-built). All 674 Mojo + 859 JS tests pass.
+- [x] **M10.11:** README & documentation update. Updated test counts (790 → 1,533), added missing packages (component, scheduler, DSL, poc, examples/lib, scripts), added "Test infrastructure" and "Ergonomic DSL" sections, updated reactive model with Scheduler step, alphabetized project structure. All 674 Mojo + 859 JS tests pass unchanged.
+- [x] **M10.12:** Test filter support. Substring filter arguments added to `build_test_binaries.sh`, `run_test_binaries.sh`, and Justfile (`just test signals`, `just test-run dsl`, `just test signals mut`). Single-module runs take ~100ms vs ~10s for all 26 binaries. All 674 Mojo + 859 JS tests pass unchanged.

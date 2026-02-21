@@ -32,15 +32,24 @@ precompile-if-changed: build-if-changed
 
 # Build precompiled test binaries (parallel, incremental).
 # Depends on precompile-if-changed so .cwasm exists for fast WASM loading.
-test-build: precompile-if-changed
-  bash scripts/build_test_binaries.sh
+# Pass optional filter args to build only matching modules:
+#   just test-build signals       # build only test_signals
+#   just test-build signals mut   # build test_signals + test_mutations
+test-build *FILTER: precompile-if-changed
+  bash scripts/build_test_binaries.sh {{FILTER}}
 
 # Run precompiled test binaries (parallel, ~10s).
-test-run:
-  bash scripts/run_test_binaries.sh
+# Pass optional filter args to run only matching modules:
+#   just test-run signals         # run only test_signals
+#   just test-run -v dsl          # verbose, only test_dsl
+test-run *FILTER:
+  bash scripts/run_test_binaries.sh {{FILTER}}
 
 # Build + run precompiled test binaries (fastest full Mojo test cycle).
-test: test-build test-run
+# Pass optional filter args to target specific modules:
+#   just test signals             # build + run only test_signals
+#   just test signals mutations   # build + run test_signals + test_mutations
+test *FILTER: (test-build FILTER) (test-run FILTER)
 
 test-js: build
   deno run --allow-read test-js/run.ts
