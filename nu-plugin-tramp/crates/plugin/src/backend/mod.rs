@@ -19,30 +19,51 @@ pub mod ssh;
 // ---------------------------------------------------------------------------
 
 /// The kind of a directory entry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EntryKind {
+    #[default]
     File,
     Dir,
     Symlink,
 }
 
 /// A single entry returned by [`Backend::list`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DirEntry {
     pub name: String,
     pub kind: EntryKind,
     pub size: Option<u64>,
     pub modified: Option<SystemTime>,
     pub permissions: Option<u32>,
+    /// Number of hard links.
+    pub nlinks: Option<u64>,
+    /// Inode number.
+    pub inode: Option<u64>,
+    /// Owner user name (resolved from uid when available).
+    pub owner: Option<String>,
+    /// Owner group name (resolved from gid when available).
+    pub group: Option<String>,
+    /// Symlink target path (only set when `kind == Symlink`).
+    pub symlink_target: Option<String>,
 }
 
 /// Metadata for a remote path returned by [`Backend::stat`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Metadata {
     pub kind: EntryKind,
     pub size: u64,
     pub modified: Option<SystemTime>,
     pub permissions: Option<u32>,
+    /// Number of hard links.
+    pub nlinks: Option<u64>,
+    /// Inode number.
+    pub inode: Option<u64>,
+    /// Owner user name.
+    pub owner: Option<String>,
+    /// Owner group name.
+    pub group: Option<String>,
+    /// Symlink target path (only set when `kind == Symlink`).
+    pub symlink_target: Option<String>,
 }
 
 /// Result of running a command on the remote via [`Backend::exec`].

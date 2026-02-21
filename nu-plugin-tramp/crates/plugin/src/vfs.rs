@@ -248,6 +248,11 @@ pub struct Vfs {
 impl Vfs {
     /// Create a new VFS with its own tokio runtime.
     pub fn new() -> TrampResult<Self> {
+        Self::new_with_ttl(DEFAULT_STAT_TTL, DEFAULT_LIST_TTL)
+    }
+
+    /// Create a new VFS with custom cache TTLs.
+    pub fn new_with_ttl(stat_ttl: Duration, list_ttl: Duration) -> TrampResult<Self> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
@@ -257,9 +262,22 @@ impl Vfs {
         Ok(Self {
             runtime,
             pool: Mutex::new(HashMap::new()),
-            stat_cache: Mutex::new(StatCache::new(DEFAULT_STAT_TTL)),
-            list_cache: Mutex::new(ListCache::new(DEFAULT_LIST_TTL)),
+            stat_cache: Mutex::new(StatCache::new(stat_ttl)),
+            list_cache: Mutex::new(ListCache::new(list_ttl)),
         })
+    }
+
+    /// Update the TTL for both stat and list caches.
+    ///
+    /// Existing cached entries retain their original insertion time, so
+    /// they will be re-evaluated against the new TTL on next access.
+    pub fn set_cache_ttl(&self, ttl: Duration) {
+        if let Ok(mut cache) = self.stat_cache.lock() {
+            cache.ttl = ttl;
+        }
+        if let Ok(mut cache) = self.list_cache.lock() {
+            cache.ttl = ttl;
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -926,6 +944,7 @@ mod tests {
             size: 1024,
             modified: None,
             permissions: Some(644),
+            ..Default::default()
         };
 
         cache.insert(&key, "/etc/config", meta.clone());
@@ -950,6 +969,7 @@ mod tests {
             size: 100,
             modified: None,
             permissions: None,
+            ..Default::default()
         };
 
         cache.insert(&key, "/tmp/file", meta);
@@ -967,6 +987,7 @@ mod tests {
             size: 100,
             modified: None,
             permissions: None,
+            ..Default::default()
         };
 
         cache.insert(&key, "/etc/config", meta);
@@ -985,6 +1006,7 @@ mod tests {
             size: 100,
             modified: None,
             permissions: None,
+            ..Default::default()
         };
 
         cache.insert(&key, "/app/config", meta.clone());
@@ -1007,6 +1029,7 @@ mod tests {
             size: 100,
             modified: None,
             permissions: None,
+            ..Default::default()
         };
 
         cache.insert(&key1, "/etc/config", meta.clone());
@@ -1026,6 +1049,7 @@ mod tests {
             size: 100,
             modified: None,
             permissions: None,
+            ..Default::default()
         };
 
         cache.insert(&key, "/a", meta.clone());
@@ -1049,6 +1073,7 @@ mod tests {
             size: Some(42),
             modified: None,
             permissions: Some(644),
+            ..Default::default()
         }];
 
         cache.insert(&key, "/app", entries.clone());
@@ -1083,12 +1108,14 @@ mod tests {
             size: 100,
             modified: None,
             permissions: None,
+            ..Default::default()
         };
         let meta2 = Metadata {
             kind: crate::backend::EntryKind::File,
             size: 200,
             modified: None,
             permissions: None,
+            ..Default::default()
         };
 
         cache.insert(&key_vm1, "/app/config", meta1);
@@ -1144,6 +1171,7 @@ mod tests {
                 size: 100,
                 modified: None,
                 permissions: None,
+                ..Default::default()
             };
             let mut cache = vfs.stat_cache.lock().unwrap();
             cache.insert(&key, "/test", meta);
@@ -1164,6 +1192,7 @@ mod tests {
             size: 100,
             modified: None,
             permissions: None,
+            ..Default::default()
         };
 
         {
@@ -1192,6 +1221,7 @@ mod tests {
             size: 100,
             modified: None,
             permissions: None,
+            ..Default::default()
         };
 
         {
@@ -1208,5 +1238,101 @@ mod tests {
         let mut cache = vfs.stat_cache.lock().unwrap();
         assert!(cache.get(&other_key, "/test").is_some());
         assert!(cache.get(&chained_key, "/test").is_none());
+    }
+
+    #[test]
+    fn vfs_new_with_ttl() {
+        let vfs = Vfs::new_with_ttl(Duration::from_secs(10), Duration::from_secs(20)).unwrap();
+        let key = make_key("myvm");
+        let meta = Metadata {
+            kind: crate::backend::EntryKind::File,
+            size: 42,
+            modified: None,
+            permissions: None,
+            ..Default::default()
+        };
+
+        // Insert and verify it's retrievable (TTL is 10s, well within range).
+        {
+            let mut cache = vfs.stat_cache.lock().unwrap();
+            cache.insert(&key, "/test", meta.clone());
+            assert!(cache.get(&key, "/test").is_some());
+        }
+    }
+
+    #[test]
+    fn vfs_set_cache_ttl_updates_both_caches() {
+        let vfs = Vfs::new().unwrap();
+        let key = make_key("myvm");
+        let meta = Metadata {
+            kind: crate::backend::EntryKind::File,
+            size: 100,
+            modified: None,
+            permissions: None,
+            ..Default::default()
+        };
+        let entries = vec![DirEntry {
+            name: "file.txt".to_string(),
+            kind: crate::backend::EntryKind::File,
+            size: Some(100),
+            ..Default::default()
+        }];
+
+        // Insert entries with the default TTL (5s).
+        {
+            let mut stat = vfs.stat_cache.lock().unwrap();
+            stat.insert(&key, "/test", meta);
+        }
+        {
+            let mut list = vfs.list_cache.lock().unwrap();
+            list.insert(&key, "/dir", entries);
+        }
+
+        // Set TTL to zero — all entries should now be expired.
+        vfs.set_cache_ttl(Duration::from_secs(0));
+
+        {
+            let mut stat = vfs.stat_cache.lock().unwrap();
+            assert!(
+                stat.get(&key, "/test").is_none(),
+                "stat entry should be expired after TTL=0"
+            );
+        }
+        {
+            let mut list = vfs.list_cache.lock().unwrap();
+            assert!(
+                list.get(&key, "/dir").is_none(),
+                "list entry should be expired after TTL=0"
+            );
+        }
+    }
+
+    #[test]
+    fn vfs_set_cache_ttl_extends_lifetime() {
+        let vfs = Vfs::new().unwrap();
+        let key = make_key("myvm");
+        let meta = Metadata {
+            kind: crate::backend::EntryKind::File,
+            size: 50,
+            modified: None,
+            permissions: None,
+            ..Default::default()
+        };
+
+        {
+            let mut cache = vfs.stat_cache.lock().unwrap();
+            cache.insert(&key, "/test", meta);
+        }
+
+        // Extend TTL to a very large value — entry should still be valid.
+        vfs.set_cache_ttl(Duration::from_secs(3600));
+
+        {
+            let mut cache = vfs.stat_cache.lock().unwrap();
+            assert!(
+                cache.get(&key, "/test").is_some(),
+                "entry should still be valid with extended TTL"
+            );
+        }
     }
 }

@@ -9,6 +9,7 @@
 //! - `tramp cp <src> <dst>`     — copy files between local/remote locations
 //! - `tramp cd <path>`          — set the remote working directory
 //! - `tramp exec <path> <cmd>`  — execute a command on the remote (push execution)
+//! - `tramp info <path>`        — show remote system info (OS, arch, hostname, disk)
 //! - `tramp ping <path>`        — test connectivity to a remote host
 //! - `tramp connections`        — list active connections
 //! - `tramp disconnect [host]`  — close connections
@@ -38,6 +39,7 @@ use nu_protocol::{
     Category, Example, LabeledError, PipelineData, Record, Signature, Span, SyntaxShape, Type,
     Value,
 };
+use std::time::Duration;
 
 use errors::TrampError;
 use protocol::TrampPath;
@@ -83,6 +85,7 @@ impl Plugin for TrampPlugin {
             Box::new(TrampCd),
             Box::new(TrampPwd),
             Box::new(TrampExec),
+            Box::new(TrampInfo),
             Box::new(TrampPing),
             Box::new(TrampConnections),
             Box::new(TrampDisconnect),
@@ -254,6 +257,73 @@ fn tramp_err(e: TrampError, span: Span) -> LabeledError {
     LabeledError::new(e.to_string()).with_label("tramp error", span)
 }
 
+/// Read `$env.TRAMP_CACHE_TTL` (in seconds) from the Nushell environment and
+/// apply it to the VFS cache.  If the variable is not set or cannot be parsed,
+/// the existing TTL is left unchanged.
+///
+/// Accepts integer seconds (`5`), float seconds (`2.5`), or a duration string
+/// with an `s` / `ms` / `sec` suffix (e.g. `500ms`).
+fn apply_cache_ttl(engine: &EngineInterface, vfs: &Vfs) {
+    let val = match engine.get_env_var("TRAMP_CACHE_TTL") {
+        Ok(Some(v)) => v,
+        _ => return,
+    };
+
+    let ttl = match &val {
+        Value::Int { val, .. } => {
+            if *val >= 0 {
+                Some(Duration::from_secs(*val as u64))
+            } else {
+                None
+            }
+        }
+        Value::Float { val, .. } => {
+            if *val >= 0.0 {
+                Some(Duration::from_secs_f64(*val))
+            } else {
+                None
+            }
+        }
+        Value::Duration { val, .. } => {
+            // Nushell durations are stored in nanoseconds.
+            if *val >= 0 {
+                Some(Duration::from_nanos(*val as u64))
+            } else {
+                None
+            }
+        }
+        Value::String { val, .. } => parse_ttl_string(val),
+        _ => None,
+    };
+
+    if let Some(ttl) = ttl {
+        vfs.set_cache_ttl(ttl);
+    }
+}
+
+/// Parse a human-friendly TTL string like `"5"`, `"2.5"`, `"500ms"`, `"10s"`, `"0"`.
+fn parse_ttl_string(s: &str) -> Option<Duration> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    if let Some(ms) = s.strip_suffix("ms") {
+        return ms
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|v| *v >= 0.0)
+            .map(|v| Duration::from_secs_f64(v / 1000.0));
+    }
+    let s = s.strip_suffix('s').or(Some(s)).unwrap_or(s);
+    let s = s.strip_suffix("sec").unwrap_or(s);
+    s.trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|v| *v >= 0.0)
+        .map(Duration::from_secs_f64)
+}
+
 // ---------------------------------------------------------------------------
 // `tramp` (main / help)
 // ---------------------------------------------------------------------------
@@ -289,6 +359,16 @@ Chained paths let you reach nested environments:
     tramp ls   /ssh:myvm|sudo:root:/etc
     tramp exec /ssh:myvm|docker:ctr:/ -- hostname
 
+Glob/wildcard filtering:
+
+    tramp ls /ssh:myvm:/var/log --glob '*.log'
+    tramp cp /ssh:myvm:/var/log ./logs --glob '*.log'
+
+System information (gathered in a single round-trip):
+
+    tramp info /ssh:myvm:/
+    tramp info /docker:mycontainer:/
+
 Set a remote working directory to use relative paths:
 
     tramp cd /ssh:myvm:/app
@@ -300,6 +380,11 @@ Connection management:
     tramp ping /ssh:myvm:/
     tramp connections
     tramp disconnect myvm
+
+Cache configuration (default TTL: 5 seconds):
+
+    $env.TRAMP_CACHE_TTL = 10sec   # longer cache
+    $env.TRAMP_CACHE_TTL = 0sec    # disable caching
 
 Path format: /<backend>:<user>@<host>#<port>:<remote-path>
 "#
@@ -393,11 +478,13 @@ impl PluginCommand for TrampOpen {
     fn run(
         &self,
         plugin: &TrampPlugin,
-        _engine: &EngineInterface,
+        engine: &EngineInterface,
         call: &EvaluatedCall,
         _input: PipelineData,
     ) -> Result<PipelineData, LabeledError> {
+        apply_cache_ttl(engine, &plugin.vfs);
         let path = parse_tramp_arg(call, &plugin.remote_cwd)?;
+
         let data = plugin
             .vfs
             .read(&path)
@@ -432,6 +519,12 @@ impl PluginCommand for TrampLs {
                 SyntaxShape::String,
                 "TRAMP URI of the remote directory (defaults to remote CWD if set)",
             )
+            .named(
+                "glob",
+                SyntaxShape::String,
+                "Filter entries by glob pattern (e.g. '*.log', 'config.*')",
+                Some('g'),
+            )
             .input_output_types(vec![(Type::Nothing, Type::table())])
             .category(Category::FileSystem)
     }
@@ -457,16 +550,28 @@ impl PluginCommand for TrampLs {
                 description: "List the current remote working directory",
                 result: None,
             },
+            Example {
+                example: "tramp ls /ssh:myvm:/var/log --glob '*.log'",
+                description: "List only .log files in a remote directory",
+                result: None,
+            },
+            Example {
+                example: "tramp ls /ssh:myvm:/etc -g 'host*'",
+                description: "List entries matching a glob pattern",
+                result: None,
+            },
         ]
     }
 
     fn run(
         &self,
         plugin: &TrampPlugin,
-        _engine: &EngineInterface,
+        engine: &EngineInterface,
         call: &EvaluatedCall,
         _input: PipelineData,
     ) -> Result<PipelineData, LabeledError> {
+        apply_cache_ttl(engine, &plugin.vfs);
+        let glob_pattern: Option<String> = call.get_flag("glob")?;
         let path = match call.opt::<String>(0)? {
             Some(raw) => resolve_tramp_path(&raw, &plugin.remote_cwd, call.head)?,
             None => {
@@ -492,6 +597,16 @@ impl PluginCommand for TrampLs {
             .vfs
             .list(&path)
             .map_err(|e| tramp_err(e, call.head))?;
+
+        // Apply glob filter if --glob / -g was provided.
+        let entries: Vec<_> = if let Some(ref pattern) = glob_pattern {
+            entries
+                .into_iter()
+                .filter(|e| glob_match::glob_match(pattern, &e.name))
+                .collect()
+        } else {
+            entries
+        };
 
         let span = call.head;
         let rows: Vec<Value> = entries
@@ -528,6 +643,39 @@ impl PluginCommand for TrampLs {
                     record.push("mode", Value::string(format!("{perms:o}"), span));
                 } else {
                     record.push("mode", Value::nothing(span));
+                }
+
+                // Richer metadata fields (inspired by emacs-tramp-rpc's
+                // native stat approach — all gathered in a single remote
+                // command to minimise round-trips).
+                if let Some(ref owner) = entry.owner {
+                    record.push("owner", Value::string(owner, span));
+                } else {
+                    record.push("owner", Value::nothing(span));
+                }
+
+                if let Some(ref group) = entry.group {
+                    record.push("group", Value::string(group, span));
+                } else {
+                    record.push("group", Value::nothing(span));
+                }
+
+                if let Some(nlinks) = entry.nlinks {
+                    record.push("nlinks", Value::int(nlinks as i64, span));
+                } else {
+                    record.push("nlinks", Value::nothing(span));
+                }
+
+                if let Some(inode) = entry.inode {
+                    record.push("inode", Value::int(inode as i64, span));
+                } else {
+                    record.push("inode", Value::nothing(span));
+                }
+
+                if let Some(ref target) = entry.symlink_target {
+                    record.push("target", Value::string(target, span));
+                } else {
+                    record.push("target", Value::nothing(span));
                 }
 
                 Value::record(record, span)
@@ -607,10 +755,11 @@ impl PluginCommand for TrampSave {
     fn run(
         &self,
         plugin: &TrampPlugin,
-        _engine: &EngineInterface,
+        engine: &EngineInterface,
         call: &EvaluatedCall,
         input: PipelineData,
     ) -> Result<PipelineData, LabeledError> {
+        apply_cache_ttl(engine, &plugin.vfs);
         let path = parse_tramp_arg(call, &plugin.remote_cwd)?;
 
         // Collect the pipeline input into bytes.
@@ -705,10 +854,11 @@ impl PluginCommand for TrampRm {
     fn run(
         &self,
         plugin: &TrampPlugin,
-        _engine: &EngineInterface,
+        engine: &EngineInterface,
         call: &EvaluatedCall,
         _input: PipelineData,
     ) -> Result<PipelineData, LabeledError> {
+        apply_cache_ttl(engine, &plugin.vfs);
         let path = parse_tramp_arg(call, &plugin.remote_cwd)?;
 
         plugin
@@ -741,10 +891,13 @@ impl PluginCommand for TrampCp {
         "Copies a file from source to destination. Both, one, or neither \
          may be TRAMP URIs. When a path is not a TRAMP URI, it is treated \
          as a local file path.\n\n\
+         Use --glob to copy multiple files matching a pattern from a remote \
+         directory to a local or remote destination directory.\n\n\
          Examples:\n\
          - Remote → Remote: tramp cp /ssh:vm1:/file /ssh:vm2:/file\n\
          - Remote → Local:  tramp cp /ssh:vm:/file ./local-copy\n\
-         - Local → Remote:  tramp cp ./local-file /ssh:vm:/file"
+         - Local → Remote:  tramp cp ./local-file /ssh:vm:/file\n\
+         - Glob copy:       tramp cp /ssh:vm:/var/log /tmp/logs --glob '*.log'"
     }
 
     fn signature(&self) -> Signature {
@@ -758,6 +911,12 @@ impl PluginCommand for TrampCp {
                 "destination",
                 SyntaxShape::String,
                 "Destination path (local or TRAMP URI)",
+            )
+            .named(
+                "glob",
+                SyntaxShape::String,
+                "Copy all files matching a glob pattern from the source directory",
+                Some('g'),
             )
             .input_output_types(vec![(Type::Nothing, Type::Nothing)])
             .category(Category::FileSystem)
@@ -784,18 +943,25 @@ impl PluginCommand for TrampCp {
                 description: "Copy a local file to remote",
                 result: None,
             },
+            Example {
+                example: "tramp cp /ssh:myvm:/var/log ./logs --glob '*.log'",
+                description: "Copy all .log files from remote to a local directory",
+                result: None,
+            },
         ]
     }
 
     fn run(
         &self,
         plugin: &TrampPlugin,
-        _engine: &EngineInterface,
+        engine: &EngineInterface,
         call: &EvaluatedCall,
         _input: PipelineData,
     ) -> Result<PipelineData, LabeledError> {
+        apply_cache_ttl(engine, &plugin.vfs);
         let src_raw: String = call.req(0)?;
         let dst_raw: String = call.req(1)?;
+        let glob_pattern: Option<String> = call.get_flag("glob")?;
 
         let src_tramp = protocol::parse(&src_raw).map_err(|e| {
             LabeledError::new(e.to_string()).with_label("source parse error", call.head)
@@ -813,6 +979,108 @@ impl PluginCommand for TrampCp {
             Some(p) => Some(p),
             None => resolve_tramp_path(&dst_raw, &plugin.remote_cwd, call.head).ok(),
         };
+
+        // ---- Glob mode: copy multiple files matching a pattern ----
+        if let Some(ref pattern) = glob_pattern {
+            // Source must be a directory; list it and filter by glob.
+            let src_dir = match &src_tramp {
+                Some(p) => p.clone(),
+                None => {
+                    return Err(LabeledError::new(
+                        "glob copy from local directories is not yet supported.\n\
+                         Use a TRAMP URI as the source with --glob.",
+                    )
+                    .with_label("unsupported", call.head));
+                }
+            };
+
+            let entries = plugin
+                .vfs
+                .list(&src_dir)
+                .map_err(|e| tramp_err(e, call.head))?;
+
+            let matched: Vec<_> = entries
+                .into_iter()
+                .filter(|e| {
+                    e.kind == backend::EntryKind::File && glob_match::glob_match(pattern, &e.name)
+                })
+                .collect();
+
+            if matched.is_empty() {
+                return Err(LabeledError::new(format!(
+                    "no files matching '{}' in {}",
+                    pattern, src_dir.remote_path,
+                ))
+                .with_label("no matches", call.head));
+            }
+
+            // Ensure the destination directory exists (for remote: best-effort mkdir).
+            if dst_tramp.is_none() {
+                std::fs::create_dir_all(&dst_raw).map_err(|e| {
+                    LabeledError::new(format!(
+                        "failed to create local directory '{}': {}",
+                        dst_raw, e
+                    ))
+                    .with_label("local dir error", call.head)
+                })?;
+            }
+
+            let mut copied = 0u64;
+            for entry in &matched {
+                // Build source path for this file.
+                let src_file_remote = format!(
+                    "{}/{}",
+                    src_dir.remote_path.trim_end_matches('/'),
+                    entry.name
+                );
+                let mut src_file_path = src_dir.clone();
+                src_file_path.remote_path = src_file_remote;
+
+                let data = plugin
+                    .vfs
+                    .read(&src_file_path)
+                    .map_err(|e| tramp_err(e, call.head))?;
+
+                // Build destination path for this file.
+                match &dst_tramp {
+                    Some(dst_dir) => {
+                        let dst_file_remote = format!(
+                            "{}/{}",
+                            dst_dir.remote_path.trim_end_matches('/'),
+                            entry.name
+                        );
+                        let mut dst_file_path = dst_dir.clone();
+                        dst_file_path.remote_path = dst_file_remote;
+                        plugin
+                            .vfs
+                            .write(&dst_file_path, data)
+                            .map_err(|e| tramp_err(e, call.head))?;
+                    }
+                    None => {
+                        let dst_file = std::path::Path::new(&dst_raw).join(&entry.name);
+                        std::fs::write(&dst_file, &data).map_err(|e| {
+                            LabeledError::new(format!(
+                                "failed to write local file '{}': {}",
+                                dst_file.display(),
+                                e
+                            ))
+                            .with_label("local write error", call.head)
+                        })?;
+                    }
+                }
+                copied += 1;
+            }
+
+            return Ok(PipelineData::Value(
+                Value::string(
+                    format!("copied {} file(s) matching '{}'", copied, pattern),
+                    call.head,
+                ),
+                None,
+            ));
+        }
+
+        // ---- Single-file copy (original behavior) ----
 
         // Read the source data.
         let data: bytes::Bytes = match src_tramp {
@@ -1455,6 +1723,159 @@ impl PluginCommand for TrampExec {
 }
 
 // ---------------------------------------------------------------------------
+// `tramp info` — remote system information
+// ---------------------------------------------------------------------------
+
+/// Gather remote system information in a single round-trip.
+///
+/// Inspired by emacs-tramp-rpc's `system.info` + `system.statvfs` RPC
+/// methods — collects hostname, OS, architecture, user, and disk usage
+/// from the remote in one batch command.
+struct TrampInfo;
+
+impl PluginCommand for TrampInfo {
+    type Plugin = TrampPlugin;
+
+    fn name(&self) -> &str {
+        "tramp info"
+    }
+
+    fn description(&self) -> &str {
+        "Show remote system information (OS, arch, hostname, user, disk usage)"
+    }
+
+    fn extra_description(&self) -> &str {
+        "Gathers all info in a single remote round-trip for efficiency.\n\
+         Inspired by emacs-tramp-rpc's system.info RPC method."
+    }
+
+    fn signature(&self) -> Signature {
+        Signature::build(self.name())
+            .required(
+                "path",
+                SyntaxShape::String,
+                "TRAMP URI of the remote target",
+            )
+            .input_output_types(vec![(Type::Nothing, Type::record())])
+            .category(Category::FileSystem)
+    }
+
+    fn search_terms(&self) -> Vec<&str> {
+        vec!["tramp", "info", "system", "remote", "uname", "hostname"]
+    }
+
+    fn examples(&self) -> Vec<Example<'_>> {
+        vec![
+            Example {
+                example: "tramp info /ssh:myvm:/",
+                description: "Show system info for a remote SSH host",
+                result: None,
+            },
+            Example {
+                example: "tramp info /docker:mycontainer:/",
+                description: "Show system info inside a Docker container",
+                result: None,
+            },
+            Example {
+                example: "tramp info /ssh:myvm|docker:webapp:/",
+                description: "Show system info inside a container on a remote host",
+                result: None,
+            },
+        ]
+    }
+
+    fn run(
+        &self,
+        plugin: &TrampPlugin,
+        engine: &EngineInterface,
+        call: &EvaluatedCall,
+        _input: PipelineData,
+    ) -> Result<PipelineData, LabeledError> {
+        apply_cache_ttl(engine, &plugin.vfs);
+        let path = parse_tramp_arg(call, &plugin.remote_cwd)?;
+
+        // Gather everything in a single remote exec call to minimise
+        // round-trips — this is the key pattern from emacs-tramp-rpc.
+        let script = r#"printf '%s\t' \
+  "$(uname -s)" \
+  "$(uname -m)" \
+  "$(hostname 2>/dev/null || cat /etc/hostname 2>/dev/null || echo unknown)" \
+  "$(whoami 2>/dev/null || id -un 2>/dev/null || echo unknown)" \
+  "$(uname -r)" \
+  "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo unknown)"
+# Disk usage for root filesystem (df -P for POSIX-portable output)
+df -P / 2>/dev/null | tail -1"#;
+
+        let result = plugin
+            .vfs
+            .exec(&path, "sh", &["-c", script])
+            .map_err(|e| tramp_err(e, call.head))?;
+
+        let stdout = String::from_utf8_lossy(&result.stdout);
+        let lines: Vec<&str> = stdout.lines().collect();
+
+        let span = call.head;
+        let mut record = Record::new();
+
+        // First line: tab-separated system fields
+        if let Some(info_line) = lines.first() {
+            let fields: Vec<&str> = info_line.split('\t').collect();
+
+            record.push(
+                "os",
+                Value::string(fields.first().unwrap_or(&"unknown").trim(), span),
+            );
+            record.push(
+                "arch",
+                Value::string(fields.get(1).unwrap_or(&"unknown").trim(), span),
+            );
+            record.push(
+                "hostname",
+                Value::string(fields.get(2).unwrap_or(&"unknown").trim(), span),
+            );
+            record.push(
+                "user",
+                Value::string(fields.get(3).unwrap_or(&"unknown").trim(), span),
+            );
+            record.push(
+                "kernel",
+                Value::string(fields.get(4).unwrap_or(&"unknown").trim(), span),
+            );
+            record.push(
+                "cpus",
+                Value::string(fields.get(5).unwrap_or(&"unknown").trim(), span),
+            );
+        }
+
+        // Second line: df output (filesystem  blocks  used  avail  capacity  mount)
+        if let Some(df_line) = lines.get(1) {
+            let df_fields: Vec<&str> = df_line.split_whitespace().collect();
+            if df_fields.len() >= 4 {
+                // df -P reports 1024-byte blocks
+                if let Ok(total_kb) = df_fields[1].parse::<i64>() {
+                    record.push("disk_total", Value::filesize(total_kb * 1024, span));
+                }
+                if let Ok(used_kb) = df_fields[2].parse::<i64>() {
+                    record.push("disk_used", Value::filesize(used_kb * 1024, span));
+                }
+                if let Ok(avail_kb) = df_fields[3].parse::<i64>() {
+                    record.push("disk_available", Value::filesize(avail_kb * 1024, span));
+                }
+                if let Some(pct) = df_fields.get(4) {
+                    record.push("disk_use_pct", Value::string(*pct, span));
+                }
+            }
+        }
+
+        // Include the connection chain for context
+        let chain = path.to_string();
+        record.push("connection", Value::string(chain, span));
+
+        Ok(PipelineData::Value(Value::record(record, span), None))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
@@ -1537,5 +1958,70 @@ mod tests {
     #[test]
     fn normalize_path_clean() {
         assert_eq!(normalize_path("/a/b/c"), "/a/b/c");
+    }
+
+    // -- parse_ttl_string ---------------------------------------------------
+
+    #[test]
+    fn ttl_integer_seconds() {
+        let d = parse_ttl_string("5").unwrap();
+        assert_eq!(d, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn ttl_float_seconds() {
+        let d = parse_ttl_string("2.5").unwrap();
+        assert_eq!(d, Duration::from_secs_f64(2.5));
+    }
+
+    #[test]
+    fn ttl_zero() {
+        let d = parse_ttl_string("0").unwrap();
+        assert_eq!(d, Duration::from_secs(0));
+    }
+
+    #[test]
+    fn ttl_with_s_suffix() {
+        let d = parse_ttl_string("10s").unwrap();
+        assert_eq!(d, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn ttl_with_sec_suffix() {
+        let d = parse_ttl_string("3sec").unwrap();
+        assert_eq!(d, Duration::from_secs(3));
+    }
+
+    #[test]
+    fn ttl_with_ms_suffix() {
+        let d = parse_ttl_string("500ms").unwrap();
+        // 500ms = 0.5s
+        assert!(d.as_millis() >= 499 && d.as_millis() <= 501);
+    }
+
+    #[test]
+    fn ttl_empty_string() {
+        assert!(parse_ttl_string("").is_none());
+    }
+
+    #[test]
+    fn ttl_whitespace_only() {
+        assert!(parse_ttl_string("   ").is_none());
+    }
+
+    #[test]
+    fn ttl_invalid_string() {
+        assert!(parse_ttl_string("abc").is_none());
+    }
+
+    #[test]
+    fn ttl_negative_rejected() {
+        assert!(parse_ttl_string("-1").is_none());
+    }
+
+    #[test]
+    fn ttl_with_whitespace_padding() {
+        let d = parse_ttl_string("  7  ").unwrap();
+        assert_eq!(d, Duration::from_secs(7));
     }
 }
