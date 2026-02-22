@@ -165,6 +165,8 @@
         ./flake/devenvModules.nix
         ./flake/devenvConfigurations.nix
 
+        ./nix-workspace
+
         ./backend
         ./homepage
         ./wiki
