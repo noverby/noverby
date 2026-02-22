@@ -94,8 +94,12 @@ struct Linker:
         param_kinds: List[UInt8],
         result_kinds: List[UInt8],
         callback: WasmtimeCallback,
-        env: UnsafePointer[NoneType, MutExternalOrigin] = UnsafePointer[NoneType, MutExternalOrigin](),
-        finalizer: UnsafePointer[NoneType, MutExternalOrigin] = UnsafePointer[NoneType, MutExternalOrigin](),
+        env: UnsafePointer[NoneType, MutExternalOrigin] = UnsafePointer[
+            NoneType, MutExternalOrigin
+        ](),
+        finalizer: UnsafePointer[NoneType, MutExternalOrigin] = UnsafePointer[
+            NoneType, MutExternalOrigin
+        ](),
     ) raises:
         """Define a host function to satisfy a WASM import.
 

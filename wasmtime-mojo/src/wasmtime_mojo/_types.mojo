@@ -462,4 +462,6 @@ alias WasmtimeCallback = fn (
 ) -> UnsafePointer[NoneType, MutExternalOrigin]
 
 # Finalizer callback: void (*)(void*)
-alias FinalizerCallback = fn (UnsafePointer[NoneType, MutExternalOrigin]) -> None
+alias FinalizerCallback = fn (
+    UnsafePointer[NoneType, MutExternalOrigin]
+) -> None
