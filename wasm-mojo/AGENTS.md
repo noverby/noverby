@@ -80,7 +80,7 @@
 - **`HandlerAction`** — Phase 17 result of `KeyedList.get_action(handler_id)`. Fields: `tag: UInt8` (app-defined action), `data: Int32` (e.g. item ID), `found: Bool`.
 - **Lifecycle helpers**: `mount_vnode()`, `diff_and_finalize()`, `flush_fragment()`.
 
-## App Architectures (`src/apps/`)
+## App Architectures (`examples/`)
 
 All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate.
 
@@ -157,9 +157,9 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 | `src/component/context.mojo` | ~950 | ComponentContext + RenderBuilder + tree processing |
 | `src/component/lifecycle.mojo` | ~350 | FragmentSlot + mount/diff helpers |
 | `src/component/app_shell.mojo` | ~350 | AppShell (low-level) |
-| `src/apps/counter.mojo` | ~115 | Counter app |
-| `src/apps/todo.mojo` | ~450 | Todo app (uses KeyedList + ItemBuilder) |
-| `src/apps/bench.mojo` | ~430 | Benchmark app (uses KeyedList + ItemBuilder) |
+| `examples/counter/counter.mojo` | ~115 | Counter app |
+| `examples/todo/todo.mojo` | ~450 | Todo app (uses KeyedList + ItemBuilder) |
+| `examples/bench/bench.mojo` | ~430 | Benchmark app (uses KeyedList + ItemBuilder) |
 | `src/component/keyed_list.mojo` | ~595 | KeyedList + ItemBuilder + HandlerAction |
 | `src/vdom/dsl.mojo` | ~2,870 | Node DSL + el_* helpers + multi-arg overloads + conditional helpers + to_template |
 | `src/vdom/vnode.mojo` | ~600 | VNode + VNodeStore + VNodeBuilder |

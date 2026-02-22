@@ -77,10 +77,6 @@ At runtime, the TypeScript side (`runtime/`) instantiates the WASM module and pr
 wasm-mojo/
 ├── src/
 │   ├── main.mojo                 # @export wrappers (WASM entry point, 3,476 lines, 419 exports)
-│   ├── apps/                     # Application modules (all use ComponentContext)
-│   │   ├── counter.mojo          # Counter app — simplest example (inline events via setup_view)
-│   │   ├── todo.mojo             # Todo list — keyed lists, multi-template, custom handlers
-│   │   └── bench.mojo            # js-framework-benchmark — keyed lists, 7 operations
 │   ├── arena/
 │   │   └── element_id.mojo       # ElementId type and allocator
 │   ├── bridge/
@@ -123,15 +119,24 @@ wasm-mojo/
 │   ├── tags.ts                   # HTML tag name mapping
 │   └── app.ts                    # App lifecycle helpers
 ├── examples/
-│   ├── lib/                      # Shared JS runtime for examples
-│   │   ├── boot.js               # Re-exports + convenience helpers
-│   │   ├── env.js                # WASM memory management, loadWasm()
-│   │   ├── interpreter.js        # DOM Interpreter class
-│   │   ├── protocol.js           # Op constants + MutationReader
-│   │   └── strings.js            # Mojo String ABI writeStringStruct()
-│   ├── counter/                  # Counter app (browser)
-│   ├── todo/                     # Todo list app (browser)
-│   └── bench/                    # js-framework-benchmark (browser)
+│   ├── counter/                  # Counter app — simplest example
+│   │   ├── counter.mojo          # Mojo app (inline events via setup_view)
+│   │   ├── index.html            # Browser entry point
+│   │   └── main.js               # JS harness
+│   ├── todo/                     # Todo list app
+│   │   ├── todo.mojo             # Mojo app (keyed lists, multi-template, custom handlers)
+│   │   ├── index.html            # Browser entry point
+│   │   └── main.js               # JS harness
+│   ├── bench/                    # js-framework-benchmark
+│   │   ├── bench.mojo            # Mojo app (keyed lists, 7 operations)
+│   │   ├── index.html            # Browser entry point
+│   │   └── main.js               # JS harness
+│   └── lib/                      # Shared JS runtime for examples
+│       ├── boot.js               # Re-exports + convenience helpers
+│       ├── env.js                # WASM memory management, loadWasm()
+│       ├── interpreter.js        # DOM Interpreter class
+│       ├── protocol.js           # Op constants + MutationReader
+│       └── strings.js            # Mojo String ABI writeStringStruct()
 ├── test/                         # Mojo tests (29 modules, 903 tests via wasmtime)
 │   ├── wasm_harness.mojo         # WasmInstance harness using wasmtime-mojo FFI
 │   ├── test_signals.mojo         # Reactive signals
