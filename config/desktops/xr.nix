@@ -26,4 +26,11 @@
     # Rule for HID Devices (hiddev)
     KERNEL=="hiddev[0-9]*", SUBSYSTEM=="usb", ATTRS{idVendor}=="3318", ATTRS{idProduct}=="0424|0428|0432", MODE="0666"
   '';
+
+  # ── Home-Manager ──────────────────────────────────────────────────────────
+  home-manager.sharedModules = [
+    {
+      xdg.configFile."openxr/1/active_runtime.json".source = "${pkgs.monado}/share/openxr/1/openxr_monado.json";
+    }
+  ];
 }

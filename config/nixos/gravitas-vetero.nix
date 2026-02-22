@@ -14,8 +14,8 @@
   modules = with inputs.self.nixosModules; [
     inputs.home-manager.nixosModules.home-manager
     inputs.self.hardware.dell-xps-9320
-    cosmic
-    gnome
+    inputs.self.desktops.cosmic
+    inputs.self.desktops.gnome
     core
     home-manager
   ];

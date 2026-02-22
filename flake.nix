@@ -161,6 +161,7 @@
         ./flake/secrets.nix
         ./flake/users.nix
         ./flake/hardware.nix
+        ./flake/desktops.nix
         ./flake/devenvModules.nix
         ./flake/devenvConfigurations.nix
 
@@ -182,14 +183,15 @@
         packages = ["pkgs"];
         flakelightModules = ["flake"];
         nixosConfigurations = ["config/nixos"];
-        nixosModules = ["nixos" "nixos/desktop"];
+        nixosModules = ["nixos"];
         homeConfigurations = ["config/home-manager"];
-        homeModules = ["home-manager" "home-manager/desktop"];
+        homeModules = ["home-manager"];
         devenvConfiguration = ["config/devenv"];
         devenvModules = ["devenv"];
         secrets = ["config/secrets"];
         users = ["config/users"];
         hardware = ["config/hardware"];
+        desktops = ["config/desktops"];
         withOverlays = ["config/with-overlays"];
       };
     };
