@@ -36,7 +36,6 @@
 #       ├── my-lib.ncl        → packages.<system>.my-lib  (built with rust)
 #       └── my-cli.ncl        → packages.<system>.my-cli  (built with rust)
 #
-
 {
   name = "nix-workspace-rust",
   description = "Rust/Cargo build support for nix-workspace",
@@ -53,16 +52,16 @@
     RustPackage = {
       edition
         | std.contract.from_validator (fun value =>
-            if !(std.is_string value) then
-              'Error { message = "expected a string, got %{std.typeof value}" }
-            else if std.array.elem value ["2015", "2018", "2021", "2024"] then
-              'Ok
-            else
-              'Error {
-                message = "invalid Rust edition \"%{value}\"",
-                notes = ["Valid editions: \"2015\", \"2018\", \"2021\", \"2024\""],
-              }
-          )
+          if !(std.is_string value) then
+            'Error { message = "expected a string, got %{std.typeof value}" }
+          else if std.array.elem value ["2015", "2018", "2021", "2024"] then
+            'Ok
+          else
+            'Error {
+              message = "invalid Rust edition \"%{value}\"",
+              notes = ["Valid editions: \"2015\", \"2018\", \"2021\", \"2024\""],
+            }
+        )
         | doc m%"
             Rust edition for this crate.
             Corresponds to the `edition` field in Cargo.toml.
@@ -178,16 +177,16 @@
     PackageConfig = {
       edition
         | std.contract.from_validator (fun value =>
-            if !(std.is_string value) then
-              'Error { message = "expected a string, got %{std.typeof value}" }
-            else if std.array.elem value ["2015", "2018", "2021", "2024"] then
-              'Ok
-            else
-              'Error {
-                message = "invalid Rust edition \"%{value}\"",
-                notes = ["Valid editions: \"2015\", \"2018\", \"2021\", \"2024\""],
-              }
-          )
+          if !(std.is_string value) then
+            'Error { message = "expected a string, got %{std.typeof value}" }
+          else if std.array.elem value ["2015", "2018", "2021", "2024"] then
+            'Ok
+          else
+            'Error {
+              message = "invalid Rust edition \"%{value}\"",
+              notes = ["Valid editions: \"2015\", \"2018\", \"2021\", \"2024\""],
+            }
+        )
         | doc "Rust edition (only used when build-system = \"rust\")"
         | optional,
 
@@ -230,16 +229,16 @@
     ShellConfig = {
       rust-toolchain
         | std.contract.from_validator (fun value =>
-            if !(std.is_string value) then
-              'Error { message = "expected a string, got %{std.typeof value}" }
-            else if std.array.elem value ["stable", "nightly", "minimal"] then
-              'Ok
-            else
-              'Error {
-                message = "invalid rust-toolchain \"%{value}\"",
-                notes = ["Valid toolchains: \"stable\", \"nightly\", \"minimal\""],
-              }
-          )
+          if !(std.is_string value) then
+            'Error { message = "expected a string, got %{std.typeof value}" }
+          else if std.array.elem value ["stable", "nightly", "minimal"] then
+            'Ok
+          else
+            'Error {
+              message = "invalid rust-toolchain \"%{value}\"",
+              notes = ["Valid toolchains: \"stable\", \"nightly\", \"minimal\""],
+            }
+        )
         | doc m%"
             Rust toolchain to include in the development shell.
             Only used when the nix-workspace-rust plugin is loaded.

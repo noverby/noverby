@@ -5,21 +5,30 @@
 # valid configurations, reject invalid ones, and apply defaults.
 #
 # Run with: nickel eval tests/unit/machine.ncl
-
-let { MachineConfig, UserConfig, FileSystemConfig, NetworkingConfig,
-      FirewallConfig, InterfaceConfig, StateVersion, .. } = import "../../contracts/machine.ncl" in
+let {
+  MachineConfig,
+  UserConfig,
+  FileSystemConfig,
+  NetworkingConfig,
+  FirewallConfig,
+  InterfaceConfig,
+  StateVersion,
+  ..
+} = import "../../contracts/machine.ncl"
+in
 let { System, .. } = import "../../contracts/common.ncl" in
 
 # ── Helpers ───────────────────────────────────────────────────────
-
 let passes = fun contract value =>
-  let wrapper = std.contract.custom (fun label v =>
-    std.contract.check contract label v
-    |> match {
-      'Ok _ => 'Ok true,
-      'Error _ => 'Ok false,
-    }
-  ) in
+  let wrapper =
+    std.contract.custom (fun label v =>
+      std.contract.check contract label v
+      |> match {
+        'Ok _ => 'Ok true,
+        'Error _ => 'Ok false,
+      }
+    )
+  in
   (value | wrapper)
 in
 
@@ -40,33 +49,32 @@ let assert_export = fun label expr =>
 in
 
 # ── StateVersion ──────────────────────────────────────────────────
-
 let state_version_tests = {
-  valid_25_05           = passes StateVersion "25.05",
-  valid_24_11           = passes StateVersion "24.11",
-  valid_23_05           = passes StateVersion "23.05",
-  valid_00_00           = passes StateVersion "00.00",
-  valid_99_99           = passes StateVersion "99.99",
+  valid_25_05 = passes StateVersion "25.05",
+  valid_24_11 = passes StateVersion "24.11",
+  valid_23_05 = passes StateVersion "23.05",
+  valid_00_00 = passes StateVersion "00.00",
+  valid_99_99 = passes StateVersion "99.99",
 
-  rejects_empty         = fails StateVersion "",
-  rejects_no_dot        = fails StateVersion "2505",
-  rejects_single_digit  = fails StateVersion "5.05",
-  rejects_three_digit   = fails StateVersion "025.05",
-  rejects_text          = fails StateVersion "unstable",
-  rejects_number        = fails StateVersion 25,
-  rejects_bool          = fails StateVersion true,
-  rejects_null          = fails StateVersion null,
-  rejects_extra_dot     = fails StateVersion "25.05.1",
-  rejects_leading_v     = fails StateVersion "v25.05",
+  rejects_empty = fails StateVersion "",
+  rejects_no_dot = fails StateVersion "2505",
+  rejects_single_digit = fails StateVersion "5.05",
+  rejects_three_digit = fails StateVersion "025.05",
+  rejects_text = fails StateVersion "unstable",
+  rejects_number = fails StateVersion 25,
+  rejects_bool = fails StateVersion true,
+  rejects_null = fails StateVersion null,
+  rejects_extra_dot = fails StateVersion "25.05.1",
+  rejects_leading_v = fails StateVersion "v25.05",
 }
 in
 
 # ── Minimal MachineConfig ────────────────────────────────────────
-
 let test_minimal =
   let config | MachineConfig = {
     system = "x86_64-linux",
-  } in
+  }
+  in
   [
     assert_ok "minimal machine has system" (config.system == "x86_64-linux"),
     assert_ok "minimal machine default state-version" (config.state-version == "25.05"),
@@ -81,7 +89,6 @@ let test_minimal =
 in
 
 # ── Full MachineConfig ───────────────────────────────────────────
-
 let test_full =
   let config | MachineConfig = {
     system = "aarch64-linux",
@@ -131,7 +138,8 @@ let test_full =
     extra-config = {
       services.openssh.enable = true,
     },
-  } in
+  }
+  in
   [
     assert_ok "full machine system" (config.system == "aarch64-linux"),
     assert_ok "full machine state-version" (config.state-version == "24.11"),
@@ -153,12 +161,12 @@ let test_full =
 in
 
 # ── Boot loader variants ─────────────────────────────────────────
-
 let test_boot_loader_systemd_boot =
   let config | MachineConfig = {
     system = "x86_64-linux",
     boot-loader = 'systemd-boot,
-  } in
+  }
+  in
   assert_ok "boot-loader systemd-boot" (config.boot-loader == 'systemd-boot)
 in
 
@@ -166,7 +174,8 @@ let test_boot_loader_grub =
   let config | MachineConfig = {
     system = "x86_64-linux",
     boot-loader = 'grub,
-  } in
+  }
+  in
   assert_ok "boot-loader grub" (config.boot-loader == 'grub)
 in
 
@@ -174,12 +183,12 @@ let test_boot_loader_none =
   let config | MachineConfig = {
     system = "x86_64-linux",
     boot-loader = 'none,
-  } in
+  }
+  in
   assert_ok "boot-loader none" (config.boot-loader == 'none)
 in
 
 # ── System variants ──────────────────────────────────────────────
-
 let test_all_systems =
   let mk = fun sys =>
     let config | MachineConfig = { system = sys } in
@@ -194,7 +203,6 @@ let test_all_systems =
 in
 
 # ── UserConfig ────────────────────────────────────────────────────
-
 let test_user_defaults =
   let user | UserConfig = {} in
   [
@@ -212,7 +220,8 @@ let test_user_full =
     extra-groups = ["wheel", "docker", "video"],
     shell = "fish",
     is-normal-user = true,
-  } in
+  }
+  in
   [
     assert_ok "user full home-manager" (user.home-manager == true),
     assert_ok "user full home-modules count" (std.array.length user.home-modules == 3),
@@ -226,7 +235,8 @@ let test_system_user =
   let user | UserConfig = {
     is-normal-user = false,
     home-manager = false,
-  } in
+  }
+  in
   [
     assert_ok "system user is-normal-user" (user.is-normal-user == false),
     assert_ok "system user no home-manager" (user.home-manager == false),
@@ -234,11 +244,11 @@ let test_system_user =
 in
 
 # ── FileSystemConfig ─────────────────────────────────────────────
-
 let test_fs_minimal =
   let fs | FileSystemConfig = {
     device = "/dev/sda1",
-  } in
+  }
+  in
   [
     assert_ok "fs minimal device" (fs.device == "/dev/sda1"),
     assert_ok "fs minimal default type" (fs.fs-type == "ext4"),
@@ -253,7 +263,8 @@ let test_fs_full =
     fs-type = "btrfs",
     options = ["compress=zstd", "noatime"],
     needed-for-boot = true,
-  } in
+  }
+  in
   [
     assert_ok "fs full device" (fs.device == "UUID=abcd-1234"),
     assert_ok "fs full type" (fs.fs-type == "btrfs"),
@@ -263,7 +274,6 @@ let test_fs_full =
 in
 
 # ── NetworkingConfig ──────────────────────────────────────────────
-
 let test_networking_defaults =
   let net | NetworkingConfig = {} in
   [
@@ -294,7 +304,8 @@ let test_networking_full =
       },
     },
     wireless = true,
-  } in
+  }
+  in
   [
     assert_ok "networking full use-dhcp" (net.use-dhcp == false),
     assert_ok "networking full firewall tcp count" (std.array.length net.firewall.allowed-tcp-ports == 4),
@@ -306,7 +317,6 @@ let test_networking_full =
 in
 
 # ── FirewallConfig ────────────────────────────────────────────────
-
 let test_firewall_defaults =
   let fw | FirewallConfig = {} in
   [
@@ -319,12 +329,12 @@ in
 let test_firewall_disabled =
   let fw | FirewallConfig = {
     enable = false,
-  } in
+  }
+  in
   assert_ok "firewall disabled" (fw.enable == false)
 in
 
 # ── InterfaceConfig ───────────────────────────────────────────────
-
 let test_interface_defaults =
   let iface | InterfaceConfig = {} in
   [
@@ -337,7 +347,8 @@ let test_interface_static =
   let iface | InterfaceConfig = {
     use-dhcp = false,
     ip-addresses = ["10.0.0.1/24", "10.0.0.2/24"],
-  } in
+  }
+  in
   [
     assert_ok "interface static use-dhcp" (iface.use-dhcp == false),
     assert_ok "interface static ip count" (std.array.length iface.ip-addresses == 2),
@@ -345,16 +356,15 @@ let test_interface_static =
 in
 
 # ── Invalid validator tests (passes/fails works for validator contracts) ──
-
 let invalid_validator_tests = {
   # StateVersion validator rejects bad formats
-  rejects_state_version_text    = fails StateVersion "unstable",
-  rejects_state_version_number  = fails StateVersion 25,
-  rejects_state_version_empty   = fails StateVersion "",
+  rejects_state_version_text = fails StateVersion "unstable",
+  rejects_state_version_number = fails StateVersion 25,
+  rejects_state_version_empty = fails StateVersion "",
 
   # System validator rejects bad values (used by MachineConfig.system)
-  rejects_system_powerpc        = fails System "powerpc-linux",
-  rejects_system_typo           = fails System "x86-linux",
+  rejects_system_powerpc = fails System "powerpc-linux",
+  rejects_system_typo = fails System "x86-linux",
 }
 in
 
@@ -364,11 +374,11 @@ in
 # These are tested via error snapshot tests in tests/errors/.
 
 # ── Export round-trip ─────────────────────────────────────────────
-
 let test_export_minimal =
   let config | MachineConfig = {
     system = "x86_64-linux",
-  } in
+  }
+  in
   assert_export "minimal machine exports to JSON" config
 in
 
@@ -396,12 +406,12 @@ let test_export_full =
         extra-groups = ["wheel"],
       },
     },
-  } in
+  }
+  in
   assert_export "full machine exports to JSON" config
 in
 
 # ── Collect all results ──────────────────────────────────────────
-
 let all_validator_tests =
   std.record.to_array state_version_tests
   @ std.record.to_array invalid_validator_tests
@@ -428,13 +438,13 @@ let all_assert_results =
   @ test_interface_defaults
   @ test_interface_static
   @ [
-      test_boot_loader_systemd_boot,
-      test_boot_loader_grub,
-      test_boot_loader_none,
-      test_firewall_disabled,
-      test_export_minimal,
-      test_export_full,
-    ]
+    test_boot_loader_systemd_boot,
+    test_boot_loader_grub,
+    test_boot_loader_none,
+    test_firewall_disabled,
+    test_export_minimal,
+    test_export_full,
+  ]
 in
 
 let total_count =

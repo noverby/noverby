@@ -12,7 +12,6 @@
 #   1. Place .ncl files in go-modules/ (auto-discovered via convention)
 #   2. Use build-system = "go" in packages/ .ncl files
 #   3. Use the GoPackage contract fields on any Go package config
-
 {
   name = "nix-workspace-go",
   description = "Go module build support for nix-workspace",
@@ -26,16 +25,16 @@
     GoPackage = {
       go-version
         | std.contract.from_validator (fun value =>
-            if !(std.is_string value) then
-              'Error { message = "expected a string, got %{std.typeof value}" }
-            else if std.array.elem value ["1_21", "1_22", "1_23", "1_24"] then
-              'Ok
-            else
-              'Error {
-                message = "invalid Go version \"%{value}\"",
-                notes = ["Valid versions: \"1_21\", \"1_22\", \"1_23\", \"1_24\""],
-              }
-          )
+          if !(std.is_string value) then
+            'Error { message = "expected a string, got %{std.typeof value}" }
+          else if std.array.elem value ["1_21", "1_22", "1_23", "1_24"] then
+            'Ok
+          else
+            'Error {
+              message = "invalid Go version \"%{value}\"",
+              notes = ["Valid versions: \"1_21\", \"1_22\", \"1_23\", \"1_24\""],
+            }
+        )
         | doc m%"
             Go toolchain version to use for building.
             Maps to the corresponding Go package in nixpkgs
@@ -157,16 +156,16 @@
     PackageConfig = {
       go-version
         | std.contract.from_validator (fun value =>
-            if !(std.is_string value) then
-              'Error { message = "expected a string, got %{std.typeof value}" }
-            else if std.array.elem value ["1_21", "1_22", "1_23", "1_24"] then
-              'Ok
-            else
-              'Error {
-                message = "invalid Go version \"%{value}\"",
-                notes = ["Valid versions: \"1_21\", \"1_22\", \"1_23\", \"1_24\""],
-              }
-          )
+          if !(std.is_string value) then
+            'Error { message = "expected a string, got %{std.typeof value}" }
+          else if std.array.elem value ["1_21", "1_22", "1_23", "1_24"] then
+            'Ok
+          else
+            'Error {
+              message = "invalid Go version \"%{value}\"",
+              notes = ["Valid versions: \"1_21\", \"1_22\", \"1_23\", \"1_24\""],
+            }
+        )
         | doc "Go toolchain version (requires nix-workspace-go plugin)"
         | optional,
 

@@ -16,7 +16,6 @@
 #
 # The root flake.nix does not need to list subworkspaces explicitly —
 # discovery is automatic and VCS-agnostic.
-
 {
   name = "submodule-example",
   description = "Example workspace with a git submodule as a subworkspace",

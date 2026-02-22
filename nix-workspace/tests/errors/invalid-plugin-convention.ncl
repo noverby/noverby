@@ -4,7 +4,6 @@
 # This test verifies that omitting `path` is rejected.
 #
 # Expected: contract violation (missing field `path`)
-
 let { PluginConfig, .. } = import "../../contracts/plugin.ncl" in
 
 ({
@@ -16,4 +15,5 @@ let { PluginConfig, .. } = import "../../contracts/plugin.ncl" in
       builder = "rust",
     },
   },
-}) | PluginConfig
+}
+) | PluginConfig

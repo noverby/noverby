@@ -5,7 +5,6 @@
 # Updated for v0.2 to cover machines, modules, and home fields.
 #
 # Run with: nickel eval tests/unit/workspace.ncl
-
 let { WorkspaceConfig, NixpkgsConfig, ConventionConfig, .. } = import "../../contracts/workspace.ncl" in
 let { System, Name, .. } = import "../../contracts/common.ncl" in
 let { MachineConfig, .. } = import "../../contracts/machine.ncl" in
@@ -27,7 +26,8 @@ in
 let test_minimal =
   let config | WorkspaceConfig = {
     name = "test-workspace",
-  } in
+  }
+  in
   assert_ok "minimal workspace with just a name" (config.name == "test-workspace")
 in
 
@@ -35,7 +35,8 @@ in
 let test_defaults =
   let config | WorkspaceConfig = {
     name = "defaults-test",
-  } in
+  }
+  in
   [
     assert_ok "default systems" (config.systems == ["x86_64-linux", "aarch64-linux"]),
     assert_ok "default nixpkgs" (config.nixpkgs.allow-unfree == false),
@@ -86,7 +87,8 @@ let test_full =
         auto-discover = true,
       },
     },
-  } in
+  }
+  in
   [
     assert_ok "full config name" (config.name == "full-test"),
     assert_ok "full config description" (config.description == "A fully specified workspace for testing"),
@@ -122,7 +124,8 @@ let test_package_fields =
         },
       },
     },
-  } in
+  }
+  in
   [
     assert_ok "package src" (config.packages.full-pkg.src == "./src"),
     assert_ok "package build-system" (config.packages.full-pkg.build-system == "go"),
@@ -151,7 +154,8 @@ let test_shell_fields =
         inputs-from = ["my-tool"],
       },
     },
-  } in
+  }
+  in
   [
     assert_ok "shell packages" (std.array.length config.shells.dev.packages == 3),
     assert_ok "shell env" (config.shells.dev.env.RUST_BACKTRACE == "1"),
@@ -177,7 +181,8 @@ let test_convention =
   let cfg | ConventionConfig = {
     path = "custom-packages",
     auto-discover = false,
-  } in
+  }
+  in
   [
     assert_ok "convention path" (cfg.path == "custom-packages"),
     assert_ok "convention auto-discover" (cfg.auto-discover == false),
@@ -233,7 +238,8 @@ let test_machines =
         boot-loader = 'grub,
       },
     },
-  } in
+  }
+  in
   [
     assert_ok "workspace has my-server" (std.record.has_field "my-server" config.machines),
     assert_ok "workspace has my-desktop" (std.record.has_field "my-desktop" config.machines),
@@ -278,7 +284,8 @@ let test_modules =
         platforms = ["x86_64-linux"],
       },
     },
-  } in
+  }
+  in
   [
     assert_ok "workspace has desktop module" (std.record.has_field "desktop" config.modules),
     assert_ok "workspace has networking module" (std.record.has_field "networking" config.modules),
@@ -314,7 +321,8 @@ let test_home =
         },
       },
     },
-  } in
+  }
+  in
   [
     assert_ok "workspace has shell home module" (std.record.has_field "shell" config.home),
     assert_ok "workspace has editor home module" (std.record.has_field "editor" config.home),
@@ -365,7 +373,8 @@ let test_all_output_types =
         description = "User dotfiles",
       },
     },
-  } in
+  }
+  in
   [
     assert_ok "full-stack has packages" (std.record.has_field "my-tool" config.packages),
     assert_ok "full-stack has shells" (std.record.has_field "default" config.shells),
@@ -386,7 +395,8 @@ let test_export =
         description = "hello world",
       },
     },
-  } in
+  }
+  in
   assert_export "workspace round-trips through JSON" config
 in
 
@@ -414,26 +424,28 @@ let test_export_with_machines =
         description = "Shell config",
       },
     },
-  } in
+  }
+  in
   assert_export "workspace with machines/modules/home round-trips through JSON" config
 in
 
 # ── Collect and run all tests ─────────────────────────────────────
 {
-  results = [
-    test_minimal,
-    test_export,
-    test_export_with_machines,
-    test_convention_defaults,
-  ]
-  @ test_defaults
-  @ test_full
-  @ test_package_fields
-  @ test_shell_fields
-  @ test_nixpkgs_defaults
-  @ test_convention
-  @ test_machines
-  @ test_modules
-  @ test_home
-  @ test_all_output_types,
+  results =
+    [
+      test_minimal,
+      test_export,
+      test_export_with_machines,
+      test_convention_defaults,
+    ]
+    @ test_defaults
+    @ test_full
+    @ test_package_fields
+    @ test_shell_fields
+    @ test_nixpkgs_defaults
+    @ test_convention
+    @ test_machines
+    @ test_modules
+    @ test_home
+    @ test_all_output_types,
 }

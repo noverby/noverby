@@ -5,7 +5,6 @@
 #
 # Each machine config maps to a nixosConfigurations.<name> flake output
 # and is built using nixpkgs.lib.nixosSystem.
-
 let { System, ModuleRef, NonEmptyString, .. } = import "./common.ncl" in
 
 {
@@ -14,25 +13,26 @@ let { System, ModuleRef, NonEmptyString, .. } = import "./common.ncl" in
       A NixOS state version string (e.g. "24.11", "25.05").
       Must match the pattern <major>.<minor> where both are two-digit numbers.
     "%
-    = std.contract.from_validator (fun value =>
-      if !(std.is_string value) then
-        'Error {
-          message = "expected a string, got %{std.typeof value}",
-          notes = [
-            "State version must be a string like \"25.05\".",
-          ],
-        }
-      else if std.string.is_match "^[0-9]{2}\\.[0-9]{2}$" value then
-        'Ok
-      else
-        'Error {
-          message = "invalid state version \"%{value}\"",
-          notes = [
-            "State version must match the pattern \"YY.MM\" (e.g. \"24.11\", \"25.05\").",
-            "This corresponds to the NixOS release version.",
-          ],
-        }
-    ),
+    =
+      std.contract.from_validator (fun value =>
+        if !(std.is_string value) then
+          'Error {
+            message = "expected a string, got %{std.typeof value}",
+            notes = [
+              "State version must be a string like \"25.05\".",
+            ],
+          }
+        else if std.string.is_match "^[0-9]{2}\\.[0-9]{2}$" value then
+          'Ok
+        else
+          'Error {
+            message = "invalid state version \"%{value}\"",
+            notes = [
+              "State version must match the pattern \"YY.MM\" (e.g. \"24.11\", \"25.05\").",
+              "This corresponds to the NixOS release version.",
+            ],
+          }
+      ),
 
   MachineConfig = {
     system

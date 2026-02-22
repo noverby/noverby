@@ -8,7 +8,6 @@
 #   crates/*.ncl → packages.<system>.<name> (built with rust)
 #
 # So this file produces: packages.<system>.my-lib
-
 {
   description = "A Rust library crate",
   src = "./crates/my-lib",

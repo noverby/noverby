@@ -10,7 +10,6 @@
 #
 # This subworkspace declares a dependency on the sibling subworkspace
 # "lib-a", which makes lib-a's outputs available for reference.
-
 {
   name = "app-b",
   description = "An application that depends on lib-a",

@@ -5,7 +5,6 @@
 #
 # Run: nickel export tests/errors/missing-machine-system.ncl
 # Expected: contract error about missing field `system`
-
 let { WorkspaceConfig, .. } = import "../../contracts/workspace.ncl" in
 
 {

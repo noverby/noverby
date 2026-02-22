@@ -6,7 +6,6 @@
 #
 # NixOS modules  → nixosModules.<name>  flake output
 # Home modules   → homeModules.<name>   flake output
-
 let { ModuleRef, NonEmptyString, .. } = import "./common.ncl" in
 
 {

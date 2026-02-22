@@ -15,7 +15,6 @@
 #   nix-workspace init --name standalone-example
 #
 # See: https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace
-
 {
   name = "standalone-example",
   description = "A workspace that works without a flake.nix",

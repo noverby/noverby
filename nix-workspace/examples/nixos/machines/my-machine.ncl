@@ -8,7 +8,6 @@
 #
 # This demonstrates the convention-based approach: drop a .ncl file in
 # machines/ and nix-workspace picks it up automatically.
-
 {
   system = "x86_64-linux",
   state-version = "25.05",

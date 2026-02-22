@@ -8,7 +8,6 @@
 #
 # Or if you have a flake.nix:
 #   nix build .#greeter
-
 {
   description = "A friendly greeter",
   build-system = "generic",

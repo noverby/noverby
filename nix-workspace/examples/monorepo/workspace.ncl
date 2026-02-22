@@ -17,7 +17,6 @@
 #   app-b/:
 #     packages/default.ncl     → packages.<system>.app-b
 #     packages/cli.ncl         → packages.<system>.app-b-cli
-
 {
   name = "my-monorepo",
   description = "A monorepo demonstrating nix-workspace subworkspaces",

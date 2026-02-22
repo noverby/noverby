@@ -8,7 +8,6 @@
 # contract violation from the Name validator.
 #
 # Expected: contract error on dependencies.bad — invalid name "3invalid"
-
 let { WorkspaceConfig, .. } = import "../../contracts/workspace.ncl" in
 
 (

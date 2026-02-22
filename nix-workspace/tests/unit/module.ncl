@@ -4,20 +4,20 @@
 # valid configurations, reject invalid ones, and apply defaults.
 #
 # Run with: nickel eval tests/unit/module.ncl
-
 let { ModuleConfig, HomeConfig, .. } = import "../../contracts/module.ncl" in
 let { ModuleRef, .. } = import "../../contracts/common.ncl" in
 
 # ── Helpers ───────────────────────────────────────────────────────
-
 let passes = fun contract value =>
-  let wrapper = std.contract.custom (fun label v =>
-    std.contract.check contract label v
-    |> match {
-      'Ok _ => 'Ok true,
-      'Error _ => 'Ok false,
-    }
-  ) in
+  let wrapper =
+    std.contract.custom (fun label v =>
+      std.contract.check contract label v
+      |> match {
+        'Ok _ => 'Ok true,
+        'Error _ => 'Ok false,
+      }
+    )
+  in
   (value | wrapper)
 in
 
@@ -42,7 +42,6 @@ in
 # ══════════════════════════════════════════════════════════════════
 
 # ── Minimal ModuleConfig ─────────────────────────────────────────
-
 let test_module_minimal =
   let config | ModuleConfig = {} in
   [
@@ -52,7 +51,6 @@ let test_module_minimal =
 in
 
 # ── Full ModuleConfig ────────────────────────────────────────────
-
 let test_module_full =
   let config | ModuleConfig = {
     description = "Desktop environment with GNOME",
@@ -63,7 +61,8 @@ let test_module_full =
     extra-config = {
       services.xserver.enable = true,
     },
-  } in
+  }
+  in
   [
     assert_ok "full module description" (config.description == "Desktop environment with GNOME"),
     assert_ok "full module imports count" (std.array.length config.imports == 2),
@@ -77,11 +76,11 @@ let test_module_full =
 in
 
 # ── ModuleConfig with description only ───────────────────────────
-
 let test_module_description_only =
   let config | ModuleConfig = {
     description = "A simple module",
-  } in
+  }
+  in
   [
     assert_ok "description-only module description" (config.description == "A simple module"),
     assert_ok "description-only module default imports" (config.imports == []),
@@ -90,11 +89,11 @@ let test_module_description_only =
 in
 
 # ── ModuleConfig with imports ────────────────────────────────────
-
 let test_module_with_imports =
   let config | ModuleConfig = {
     imports = ["networking", "security", "./custom/my-module.nix"],
-  } in
+  }
+  in
   [
     assert_ok "module with imports count" (std.array.length config.imports == 3),
     assert_ok "module with imports has networking" (std.array.elem "networking" config.imports),
@@ -104,20 +103,20 @@ let test_module_with_imports =
 in
 
 # ── ModuleConfig with options-namespace ──────────────────────────
-
 let test_module_namespace =
   let config | ModuleConfig = {
     options-namespace = "services.my-service",
-  } in
+  }
+  in
   assert_ok "module options-namespace" (config.options-namespace == "services.my-service")
 in
 
 # ── ModuleConfig with platforms ──────────────────────────────────
-
 let test_module_platforms =
   let config | ModuleConfig = {
     platforms = ["x86_64-linux"],
-  } in
+  }
+  in
   [
     assert_ok "module platforms count" (std.array.length config.platforms == 1),
     assert_ok "module platforms value" (std.array.first config.platforms == "x86_64-linux"),
@@ -127,28 +126,29 @@ in
 let test_module_all_platforms =
   let config | ModuleConfig = {
     platforms = ["x86_64-linux", "aarch64-linux", "x86_64-darwin", "aarch64-darwin"],
-  } in
+  }
+  in
   assert_ok "module all platforms count" (std.array.length config.platforms == 4)
 in
 
 # ── ModuleConfig with path ───────────────────────────────────────
-
 let test_module_with_relative_path =
   let config | ModuleConfig = {
     path = "./modules/desktop.nix",
-  } in
+  }
+  in
   assert_ok "module relative path" (config.path == "./modules/desktop.nix")
 in
 
 let test_module_with_plain_path =
   let config | ModuleConfig = {
     path = "modules/desktop.nix",
-  } in
+  }
+  in
   assert_ok "module plain path" (config.path == "modules/desktop.nix")
 in
 
 # ── ModuleConfig with extra-config ───────────────────────────────
-
 let test_module_extra_config =
   let config | ModuleConfig = {
     extra-config = {
@@ -159,7 +159,8 @@ let test_module_extra_config =
         deep = true,
       },
     },
-  } in
+  }
+  in
   [
     assert_ok "module extra-config has enable" (std.record.has_field "enable" config.extra-config),
     assert_ok "module extra-config has setting-a" (std.record.has_field "setting-a" config.extra-config),
@@ -168,7 +169,6 @@ let test_module_extra_config =
 in
 
 # ── ModuleConfig export round-trip ───────────────────────────────
-
 let test_module_export_minimal =
   let config | ModuleConfig = {} in
   assert_export "minimal module exports to JSON" config
@@ -184,7 +184,8 @@ let test_module_export_full =
     extra-config = {
       programs.my-tool.enable = true,
     },
-  } in
+  }
+  in
   assert_export "full module exports to JSON" config
 in
 
@@ -193,7 +194,6 @@ in
 # ══════════════════════════════════════════════════════════════════
 
 # ── Minimal HomeConfig ───────────────────────────────────────────
-
 let test_home_minimal =
   let config | HomeConfig = {} in
   [
@@ -203,7 +203,6 @@ let test_home_minimal =
 in
 
 # ── Full HomeConfig ──────────────────────────────────────────────
-
 let test_home_full =
   let config | HomeConfig = {
     description = "Shell configuration with zsh and starship",
@@ -216,7 +215,8 @@ let test_home_full =
       programs.zsh.enable = true,
       programs.starship.enable = true,
     },
-  } in
+  }
+  in
   [
     assert_ok "full home description" (config.description == "Shell configuration with zsh and starship"),
     assert_ok "full home imports count" (std.array.length config.imports == 2),
@@ -231,11 +231,11 @@ let test_home_full =
 in
 
 # ── HomeConfig with description only ─────────────────────────────
-
 let test_home_description_only =
   let config | HomeConfig = {
     description = "Git configuration module",
-  } in
+  }
+  in
   [
     assert_ok "home description-only description" (config.description == "Git configuration module"),
     assert_ok "home description-only default imports" (config.imports == []),
@@ -244,11 +244,11 @@ let test_home_description_only =
 in
 
 # ── HomeConfig with imports ──────────────────────────────────────
-
 let test_home_with_imports =
   let config | HomeConfig = {
     imports = ["base-home", "theme", "./custom/home-extra.nix"],
-  } in
+  }
+  in
   [
     assert_ok "home with imports count" (std.array.length config.imports == 3),
     assert_ok "home with imports has base-home" (std.array.elem "base-home" config.imports),
@@ -258,11 +258,11 @@ let test_home_with_imports =
 in
 
 # ── HomeConfig with state-version ────────────────────────────────
-
 let test_home_state_version =
   let config | HomeConfig = {
     state-version = "24.11",
-  } in
+  }
+  in
   assert_ok "home state-version" (config.state-version == "24.11")
 in
 
@@ -273,20 +273,20 @@ let test_home_no_state_version =
 in
 
 # ── HomeConfig with options-namespace ────────────────────────────
-
 let test_home_namespace =
   let config | HomeConfig = {
     options-namespace = "programs.my-editor",
-  } in
+  }
+  in
   assert_ok "home options-namespace" (config.options-namespace == "programs.my-editor")
 in
 
 # ── HomeConfig with platforms ────────────────────────────────────
-
 let test_home_platforms =
   let config | HomeConfig = {
     platforms = ["x86_64-linux", "x86_64-darwin"],
-  } in
+  }
+  in
   [
     assert_ok "home platforms count" (std.array.length config.platforms == 2),
     assert_ok "home platforms has linux" (std.array.elem "x86_64-linux" config.platforms),
@@ -295,16 +295,15 @@ let test_home_platforms =
 in
 
 # ── HomeConfig with path ─────────────────────────────────────────
-
 let test_home_with_path =
   let config | HomeConfig = {
     path = "./home/shell.nix",
-  } in
+  }
+  in
   assert_ok "home path" (config.path == "./home/shell.nix")
 in
 
 # ── HomeConfig with extra-config ─────────────────────────────────
-
 let test_home_extra_config =
   let config | HomeConfig = {
     extra-config = {
@@ -312,7 +311,8 @@ let test_home_extra_config =
       programs.git.userName = "Alice",
       programs.git.userEmail = "alice@example.com",
     },
-  } in
+  }
+  in
   [
     assert_ok "home extra-config has git enable" (config.extra-config.programs.git.enable == true),
     assert_ok "home extra-config has git userName" (config.extra-config.programs.git.userName == "Alice"),
@@ -321,7 +321,6 @@ let test_home_extra_config =
 in
 
 # ── HomeConfig export round-trip ─────────────────────────────────
-
 let test_home_export_minimal =
   let config | HomeConfig = {} in
   assert_export "minimal home exports to JSON" config
@@ -338,14 +337,14 @@ let test_home_export_full =
     extra-config = {
       programs.zsh.enable = true,
     },
-  } in
+  }
+  in
   assert_export "full home exports to JSON" config
 in
 
 # ══════════════════════════════════════════════════════════════════
 # Workspace integration tests — modules and home in WorkspaceConfig
 # ══════════════════════════════════════════════════════════════════
-
 let { WorkspaceConfig, .. } = import "../../contracts/workspace.ncl" in
 
 let test_workspace_with_modules =
@@ -361,7 +360,8 @@ let test_workspace_with_modules =
         options-namespace = "networking",
       },
     },
-  } in
+  }
+  in
   [
     assert_ok "workspace has modules" (std.record.has_field "desktop" config.modules),
     assert_ok "workspace has networking module" (std.record.has_field "networking" config.modules),
@@ -383,7 +383,8 @@ let test_workspace_with_home =
         imports = ["shell"],
       },
     },
-  } in
+  }
+  in
   [
     assert_ok "workspace has home modules" (std.record.has_field "shell" config.home),
     assert_ok "workspace has editor home module" (std.record.has_field "editor" config.home),
@@ -414,7 +415,8 @@ let test_workspace_with_machines =
         description = "Networking configuration",
       },
     },
-  } in
+  }
+  in
   [
     assert_ok "workspace has machines" (std.record.has_field "my-server" config.machines),
     assert_ok "workspace machine system" (config.machines.my-server.system == "x86_64-linux"),
@@ -426,7 +428,8 @@ in
 let test_workspace_defaults_empty_machines =
   let config | WorkspaceConfig = {
     name = "defaults-test",
-  } in
+  }
+  in
   [
     assert_ok "workspace default machines" (config.machines == {}),
     assert_ok "workspace default modules" (config.modules == {}),
@@ -467,7 +470,8 @@ let test_workspace_full_with_all_types =
         description = "Shell module",
       },
     },
-  } in
+  }
+  in
   [
     assert_ok "full workspace has packages" (std.record.has_field "my-tool" config.packages),
     assert_ok "full workspace has shells" (std.record.has_field "default" config.shells),
@@ -496,14 +500,14 @@ let test_workspace_export_with_machines =
         description = "Dotfiles management",
       },
     },
-  } in
+  }
+  in
   assert_export "workspace with machines/modules/home exports to JSON" config
 in
 
 # ══════════════════════════════════════════════════════════════════
 # Collect and run all tests
 # ══════════════════════════════════════════════════════════════════
-
 let all_assert_results =
   # ModuleConfig tests
   test_module_minimal
@@ -527,20 +531,20 @@ let all_assert_results =
   @ test_workspace_full_with_all_types
   # Singleton tests
   @ [
-      test_module_namespace,
-      test_module_all_platforms,
-      test_module_with_relative_path,
-      test_module_with_plain_path,
-      test_module_export_minimal,
-      test_module_export_full,
-      test_home_state_version,
-      test_home_no_state_version,
-      test_home_namespace,
-      test_home_with_path,
-      test_home_export_minimal,
-      test_home_export_full,
-      test_workspace_export_with_machines,
-    ]
+    test_module_namespace,
+    test_module_all_platforms,
+    test_module_with_relative_path,
+    test_module_with_plain_path,
+    test_module_export_minimal,
+    test_module_export_full,
+    test_home_state_version,
+    test_home_no_state_version,
+    test_home_namespace,
+    test_home_with_path,
+    test_home_export_minimal,
+    test_home_export_full,
+    test_workspace_export_with_machines,
+  ]
 in
 
 let total_count = std.array.length all_assert_results in

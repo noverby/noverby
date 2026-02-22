@@ -6,7 +6,6 @@
 # Run: nickel export tests/errors/invalid-state-version.ncl
 # Expected: contract error about invalid state version "unstable"
 # Expected hint: State version must match the pattern "YY.MM"
-
 let { WorkspaceConfig, .. } = import "../../contracts/workspace.ncl" in
 
 {

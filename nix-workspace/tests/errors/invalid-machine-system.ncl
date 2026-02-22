@@ -8,7 +8,6 @@
 #
 # Run: nickel export tests/errors/invalid-machine-system.ncl
 # Expected exit code: 1
-
 let { WorkspaceConfig, .. } = import "../../contracts/workspace.ncl" in
 
 {

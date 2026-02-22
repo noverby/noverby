@@ -2,7 +2,6 @@
 #
 # Defines the shape of package configuration entries discovered
 # from the packages/ convention directory or declared in workspace.ncl.
-
 let { System, .. } = import "./common.ncl" in
 
 {
@@ -14,22 +13,22 @@ let { System, .. } = import "./common.ncl" in
 
     build-system
       | std.contract.from_validator (fun value =>
-          if std.is_string value then
-            if std.array.elem value ["rust", "go", "generic"] then
-              'Ok
-            else
-              'Error {
-                message = "unknown build-system \"%{value}\"",
-                notes = [
-                  "Supported build systems: \"rust\", \"go\", \"generic\".",
-                  "Omit build-system to use generic (stdenv.mkDerivation).",
-                ],
-              }
+        if std.is_string value then
+          if std.array.elem value ["rust", "go", "generic"] then
+            'Ok
           else
             'Error {
-              message = "build-system must be a string, got %{std.typeof value}",
+              message = "unknown build-system \"%{value}\"",
+              notes = [
+                "Supported build systems: \"rust\", \"go\", \"generic\".",
+                "Omit build-system to use generic (stdenv.mkDerivation).",
+              ],
             }
-        )
+        else
+          'Error {
+            message = "build-system must be a string, got %{std.typeof value}",
+          }
+      )
       | doc "Build system to use for this package"
       | default
       = "generic",
@@ -67,12 +66,12 @@ let { System, .. } = import "./common.ncl" in
 
     meta
       | {
-          homepage | String | optional,
-          license | String | optional,
-          maintainers | Array String | optional,
-          platforms | Array String | optional,
-          ..
-        }
+        homepage | String | optional,
+        license | String | optional,
+        maintainers | Array String | optional,
+        platforms | Array String | optional,
+        ..
+      }
       | doc "Package metadata passed through to the Nix derivation"
       | default
       = {},
