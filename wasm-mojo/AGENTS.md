@@ -2,7 +2,7 @@
 
 > Compact quick-reference for AI agents. For project overview, architecture,
 > build commands, and test infrastructure see [README.md](README.md).
-> For development history and phase specs see [PLAN.md](PLAN.md).
+> For development history see [CHANGELOG.md](CHANGELOG.md).
 
 ## Mojo Constraints
 
@@ -149,7 +149,7 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 | `src/vdom/vnode.mojo` | ~600 | VNode + VNodeStore + VNodeBuilder |
 | `src/signals/runtime.mojo` | ~500 | Reactive runtime |
 | `src/mutations/diff.mojo` | ~500 | DiffEngine (keyed reconciliation) |
-| `PLAN.md` | ~4,000 | Full development plan (Phases 0–14) |
+| `CHANGELOG.md` | ~140 | Development history (Phases 0–14) |
 
 ## Common Patterns
 
