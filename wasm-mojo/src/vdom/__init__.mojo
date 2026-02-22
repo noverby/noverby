@@ -85,6 +85,8 @@ from .dsl import (
     NODE_STATIC_ATTR,
     NODE_DYN_ATTR,
     NODE_EVENT,
+    # Auto-numbering sentinel
+    DYN_TEXT_AUTO,
     # Leaf constructors
     text,
     dyn_text,
