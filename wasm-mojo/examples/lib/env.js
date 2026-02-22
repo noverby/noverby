@@ -1,30 +1,146 @@
 // Shared WASM environment — memory management + import object.
 //
 // Used by all browser examples to avoid duplicating ~70 lines each.
+//
+// This is the plain-JS port of the TypeScript allocator in runtime/memory.ts.
+// See PLAN.md P25.2 for details.
 
 // ── WASM memory state ───────────────────────────────────────────────────────
 
 let wasmMemory = null;
 let heapPointer = 0n;
 
+// ── Free-list allocator state ───────────────────────────────────────────────
+
+/**
+ * JS-side size-class map: keys are block sizes (bigint), values are LIFO
+ * stacks of free pointers.  Free = push, alloc = pop.  O(1) for both.
+ *
+ * Reuse is disabled by default because the compiled WASM code contains
+ * use-after-free patterns that were previously masked by the no-op free.
+ * See PLAN.md "Key insight (revised after P25.1)" for details.
+ *
+ * @type {Map<bigint, bigint[]>}
+ */
+let freeMap = new Map();
+
+/**
+ * JS-side pointer → size map.  Every pointer returned by alignedAlloc
+ * is registered here so that alignedFree can recover the block size
+ * without writing any header into WASM linear memory.
+ *
+ * @type {Map<bigint, bigint>}
+ */
+let ptrSize = new Map();
+
+/**
+ * Whether alignedAlloc may reuse freed blocks from freeMap.
+ * Disabled by default — see the note on freeMap above.
+ */
+let reuseEnabled = false;
+
+// ── Public API ──────────────────────────────────────────────────────────────
+
 /** Get the current WASM memory (after initMemory has been called). */
 export function getMemory() {
 	return wasmMemory;
 }
 
-/** Bump-allocate `size` bytes with the given alignment from the WASM heap. */
+/**
+ * Enable or disable free-list reuse.
+ *
+ * When enabled, alignedAlloc will pop matching blocks from the free map
+ * instead of always bumping.  Only enable this after confirming that the
+ * WASM code has no use-after-free bugs.
+ */
+export function setAllocatorReuse(on) {
+	reuseEnabled = on;
+}
+
+/**
+ * Allocate `size` bytes with the given alignment from the WASM heap.
+ *
+ * Strategy:
+ * 1. If reuse is enabled, check the size-class map for an exact match (O(1)).
+ * 2. Fall back to bump allocation from the heap frontier.
+ *
+ * No header is written into WASM memory — block sizes are tracked in a
+ * JS-side Map so the allocator is fully transparent to WASM code.
+ */
 export function alignedAlloc(align, size) {
+	const actual = size < 1n ? 1n : size;
+
+	// --- Size-class map path (O(1) pop) ---
+	if (reuseEnabled) {
+		const bucket = freeMap.get(actual);
+		if (bucket !== undefined && bucket.length > 0) {
+			return bucket.pop();
+		}
+	}
+
+	// --- Bump-allocator fallback ---
 	const remainder = heapPointer % align;
-	if (remainder !== 0n) heapPointer += align - remainder;
+	if (remainder !== 0n) {
+		heapPointer += align - remainder;
+	}
 	const ptr = heapPointer;
-	heapPointer += size;
+	heapPointer += actual;
+
+	// Track the size in JS so alignedFree can find it later.
+	ptrSize.set(ptr, actual);
+
 	return ptr;
+}
+
+/**
+ * Free a previously allocated block.
+ *
+ * Looks up the block size from the JS-side pointer map and pushes the
+ * pointer onto the size-class free list.  If reuse is disabled the block
+ * is still tracked (visible in heapStats) but won't be handed out.
+ */
+export function alignedFree(ptr) {
+	if (ptr === 0n) return 1;
+
+	const size = ptrSize.get(ptr);
+	if (size === undefined) return 1; // unknown pointer — ignore
+
+	// Push onto the size-class bucket (O(1)).
+	let bucket = freeMap.get(size);
+	if (bucket === undefined) {
+		bucket = [];
+		freeMap.set(size, bucket);
+	}
+	bucket.push(ptr);
+
+	return 1;
+}
+
+// ── Diagnostics ─────────────────────────────────────────────────────────────
+
+/**
+ * Walk the size-class map and return summary statistics.
+ *
+ * @returns {{ heapPointer: bigint, freeBlocks: number, freeBytes: bigint }}
+ */
+export function heapStats() {
+	let blocks = 0;
+	let bytes = 0n;
+
+	for (const [size, bucket] of freeMap) {
+		blocks += bucket.length;
+		bytes += size * BigInt(bucket.length);
+	}
+
+	return { heapPointer, freeBlocks: blocks, freeBytes: bytes };
 }
 
 /** Initialize memory state from WASM exports (called after instantiation). */
 export function initMemory(exports) {
 	wasmMemory = exports.memory;
 	heapPointer = exports.__heap_base.value;
+	freeMap = new Map();
+	ptrSize = new Map();
 }
 
 // ── WASM import object ──────────────────────────────────────────────────────
@@ -33,7 +149,7 @@ export const env = {
 	memory: new WebAssembly.Memory({ initial: 4096 }),
 	__cxa_atexit: () => 0,
 	KGEN_CompilerRT_AlignedAlloc: alignedAlloc,
-	KGEN_CompilerRT_AlignedFree: () => 1,
+	KGEN_CompilerRT_AlignedFree: alignedFree,
 	KGEN_CompilerRT_GetStackTrace: () => 0n,
 	KGEN_CompilerRT_fprintf: () => 0,
 	write: (_fd, ptr, len) => {
