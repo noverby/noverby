@@ -1,5 +1,8 @@
-nix-build host:
+build host:
     nixos-rebuild build --flake .#{{ host }} --print-build-logs
 
-nix-switch host:
+switch host:
     sudo nixos-rebuild switch --flake .#{{ host }} --print-build-logs
+
+rekey:
+    cd secrets && agenix --rekey
