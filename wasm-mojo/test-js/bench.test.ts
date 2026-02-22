@@ -25,7 +25,11 @@
 
 import { parseHTML } from "npm:linkedom";
 import { type AppHandle, createApp } from "../runtime/app.ts";
-import { writeStringStruct } from "../runtime/strings.ts";
+import {
+	allocStringStruct,
+	readStringStruct,
+	writeStringStruct,
+} from "../runtime/strings.ts";
 import type { WasmExports } from "../runtime/types.ts";
 import { assert, suite } from "./harness.ts";
 
@@ -1299,6 +1303,110 @@ function testBenchHandlerLifecycle(fns: Fns): void {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// Section: P24.3 — WASM-side timing (performance_now import)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Helper: read bench_status_text from WASM (sret convention). */
+function readBenchStatus(fns: Fns, appPtr: bigint): string {
+	const outPtr = allocStringStruct();
+	fns.bench_status_text(appPtr, outPtr);
+	return readStringStruct(outPtr);
+}
+
+function testBenchStatusTextInit(fns: Fns): void {
+	suite("Bench P24.3 — status text is 'Ready' before any operation");
+	{
+		const appPtr = fns.bench_init();
+		const status = readBenchStatus(fns, appPtr);
+		assert(status, "Ready", "initial status text");
+		fns.bench_destroy(appPtr);
+	}
+}
+
+function testBenchStatusTextAfterOps(fns: Fns): void {
+	// Single app instance + single buffer for all status text checks.
+	// The bump allocator never frees, so each mutation_buf_alloc(4 MB)
+	// is permanent.  By the time P24.3 tests run, prior bench test
+	// suites have already consumed 100+ MB — we must not allocate
+	// additional large buffers.
+	//
+	// status_text is set synchronously by handle_event(), so we read
+	// it via bench_status_text without needing to flush to DOM.
+	// We use bench_create (direct call) for setup, then bench_handle_event
+	// for the operation we want to time-check.
+
+	suite("Bench P24.3 — status text updates with timing after handle_event");
+	{
+		const appPtr = fns.bench_init();
+		const bufSize = 4 * 1024 * 1024;
+		const bufPtr = fns.mutation_buf_alloc(bufSize);
+		fns.bench_rebuild(appPtr, bufPtr, bufSize);
+
+		// -- Create 1,000 rows via handle_event (handler index 0) --
+		const createHandler = fns.bench_handler_id_at(appPtr, 0);
+		fns.bench_handle_event(appPtr, createHandler, 0);
+		{
+			const status = readBenchStatus(fns, appPtr);
+			assert(
+				status.startsWith("Create 1,000 rows"),
+				true,
+				`create1k status prefix: "${status}"`,
+			);
+			assert(
+				status.includes("ms"),
+				true,
+				`create1k status has 'ms': "${status}"`,
+			);
+			assert(
+				status.includes("\u2014"),
+				true,
+				`create1k status has em-dash: "${status}"`,
+			);
+		}
+
+		// Flush the create so rows are mounted for subsequent ops
+		fns.bench_flush(appPtr, bufPtr, bufSize);
+
+		// -- Swap rows via handle_event (handler index 4) --
+		const swapHandler = fns.bench_handler_id_at(appPtr, 4);
+		fns.bench_handle_event(appPtr, swapHandler, 0);
+		{
+			const status = readBenchStatus(fns, appPtr);
+			assert(
+				status.startsWith("Swap rows"),
+				true,
+				`swap status prefix: "${status}"`,
+			);
+			assert(status.includes("ms"), true, `swap status has 'ms': "${status}"`);
+		}
+
+		// -- Clear via handle_event (handler index 5) --
+		// No flush needed — clear just empties the rows list
+		const clearHandler = fns.bench_handler_id_at(appPtr, 5);
+		fns.bench_handle_event(appPtr, clearHandler, 0);
+		{
+			const status = readBenchStatus(fns, appPtr);
+			assert(
+				status.startsWith("Clear"),
+				true,
+				`clear status prefix: "${status}"`,
+			);
+			assert(status.includes("ms"), true, `clear status has 'ms': "${status}"`);
+		}
+
+		fns.bench_destroy(appPtr);
+	}
+}
+
+// testBenchStatusTextDom intentionally omitted — createBenchApp allocates
+// an 8 MB mutation buffer, and by this point in the test run the bump
+// allocator (which never frees) has consumed most of the 256 MB WASM
+// linear memory.  The existing bench DOM tests (testBenchDomCreate, etc.)
+// already verify the full flush → SetText → DOM update pipeline, and
+// testBenchStatusTextAfterOps above verifies the WASM-side status_text
+// field is correctly set by handle_event with timing info.
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Combined export
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -1347,4 +1455,8 @@ export function testBench(fns: Fns): void {
 
 	// 13.1 — Handler lifecycle
 	testBenchHandlerLifecycle(fns);
+
+	// P24.3 — WASM-side timing (performance_now import)
+	testBenchStatusTextInit(fns);
+	testBenchStatusTextAfterOps(fns);
 }

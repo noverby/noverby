@@ -2574,6 +2574,44 @@ fn bench_handler_map_count(app_ptr: Int64) -> Int32:
     return Int32(_get[BenchmarkApp](app_ptr)[0].rows_list.handler_count())
 
 
+@export
+fn bench_handler_id_at(app_ptr: Int64, index: Int32) -> Int32:
+    """Return the toolbar handler ID at the given index (0–5).
+
+    Phase 24.3: Enables JS tests to look up toolbar handler IDs by
+    tree-walk order index for programmatic dispatch:
+      0 = create1k, 1 = create10k, 2 = append,
+      3 = update, 4 = swap, 5 = clear.
+
+    Returns 0 for out-of-range indices.
+    """
+    var app = _get[BenchmarkApp](app_ptr)
+    if index == 0:
+        return Int32(app[0].create1k_handler)
+    elif index == 1:
+        return Int32(app[0].create10k_handler)
+    elif index == 2:
+        return Int32(app[0].append_handler)
+    elif index == 3:
+        return Int32(app[0].update_handler)
+    elif index == 4:
+        return Int32(app[0].swap_handler)
+    elif index == 5:
+        return Int32(app[0].clear_handler)
+    return 0
+
+
+@export
+fn bench_status_text(app_ptr: Int64) -> String:
+    """Return the current status bar text (P24.3).
+
+    After each toolbar operation, handle_event() stores the operation
+    name and elapsed time (e.g. "Create 1,000 rows — 12.3ms") in the
+    app's status_text field.  Before any operation, returns "Ready".
+    """
+    return _get[BenchmarkApp](app_ptr)[0].status_text
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 9.4 — Signal Write Batching
 # ══════════════════════════════════════════════════════════════════════════════

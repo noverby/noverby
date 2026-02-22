@@ -122,6 +122,9 @@ export const env: WebAssembly.ModuleImports = {
 	// compiler-rt arithmetic builtins (used by Dict/Set hashing)
 	__multi3,
 
+	// high-resolution timer (P24.3)
+	performance_now: (): number => performance.now(),
+
 	// math builtins
 	fmaf: (x: number, y: number, z: number): number =>
 		Math.fround(Math.fround(x * y) + z),
