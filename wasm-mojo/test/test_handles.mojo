@@ -17,6 +17,7 @@ from signals import (
     create_runtime,
     destroy_runtime,
     SignalI32,
+    SignalBool,
     MemoI32,
     EffectHandle,
 )
@@ -32,6 +33,9 @@ from vdom import (
     dyn_attr,
     onclick_add,
     onclick_sub,
+    class_if,
+    class_when,
+    text_when,
 )
 from bridge import MutationWriter
 
@@ -412,8 +416,258 @@ def test_effect_handle_copy():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SignalBool tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_signal_bool_get_false():
+    var rt = _create_runtime()
+    var key = rt[0].create_signal[Int32](0)
+    var sig = SignalBool(UInt32(key), rt)
+    assert_false(sig.get(), "signal initialized to 0 should be False")
+    _destroy_runtime(rt)
+
+
+def test_signal_bool_get_true():
+    var rt = _create_runtime()
+    var key = rt[0].create_signal[Int32](1)
+    var sig = SignalBool(UInt32(key), rt)
+    assert_true(sig.get(), "signal initialized to 1 should be True")
+    _destroy_runtime(rt)
+
+
+def test_signal_bool_set_true():
+    var rt = _create_runtime()
+    var key = rt[0].create_signal[Int32](0)
+    var sig = SignalBool(UInt32(key), rt)
+    sig.set(True)
+    assert_true(sig.get(), "after set(True) should be True")
+    _destroy_runtime(rt)
+
+
+def test_signal_bool_set_false():
+    var rt = _create_runtime()
+    var key = rt[0].create_signal[Int32](1)
+    var sig = SignalBool(UInt32(key), rt)
+    sig.set(False)
+    assert_false(sig.get(), "after set(False) should be False")
+    _destroy_runtime(rt)
+
+
+def test_signal_bool_toggle_from_false():
+    var rt = _create_runtime()
+    var key = rt[0].create_signal[Int32](0)
+    var sig = SignalBool(UInt32(key), rt)
+    sig.toggle()
+    assert_true(sig.get(), "toggle from False should be True")
+    _destroy_runtime(rt)
+
+
+def test_signal_bool_toggle_from_true():
+    var rt = _create_runtime()
+    var key = rt[0].create_signal[Int32](1)
+    var sig = SignalBool(UInt32(key), rt)
+    sig.toggle()
+    assert_false(sig.get(), "toggle from True should be False")
+    _destroy_runtime(rt)
+
+
+def test_signal_bool_toggle_round_trip():
+    var rt = _create_runtime()
+    var key = rt[0].create_signal[Int32](0)
+    var sig = SignalBool(UInt32(key), rt)
+    sig.toggle()
+    assert_true(sig.get(), "first toggle: True")
+    sig.toggle()
+    assert_false(sig.get(), "second toggle: False")
+    sig.toggle()
+    assert_true(sig.get(), "third toggle: True")
+    _destroy_runtime(rt)
+
+
+def test_signal_bool_read_subscribes():
+    var rt = _create_runtime()
+    var scope_id = rt[0].create_scope(0, -1)
+    _ = rt[0].begin_scope_render(scope_id)
+    var key = rt[0].create_signal[Int32](0)
+    var sig = SignalBool(UInt32(key), rt)
+    _ = sig.read()  # subscribe scope
+    rt[0].end_scope_render(-1)
+    assert_false(rt[0].has_dirty(), "no dirty scopes initially")
+    sig.set(True)
+    assert_true(
+        rt[0].has_dirty(),
+        "scope should be dirty after bool write",
+    )
+    _destroy_runtime(rt)
+
+
+def test_signal_bool_peek_i32():
+    var rt = _create_runtime()
+    var key = rt[0].create_signal[Int32](0)
+    var sig = SignalBool(UInt32(key), rt)
+    assert_equal(sig.peek_i32(), Int32(0), "peek_i32 should return 0 for False")
+    sig.set(True)
+    assert_equal(sig.peek_i32(), Int32(1), "peek_i32 should return 1 for True")
+    _destroy_runtime(rt)
+
+
+def test_signal_bool_version_increments():
+    var rt = _create_runtime()
+    var key = rt[0].create_signal[Int32](0)
+    var sig = SignalBool(UInt32(key), rt)
+    var v0 = sig.version()
+    sig.set(True)
+    var v1 = sig.version()
+    assert_true(v1 > v0, "version should increment after write")
+    sig.toggle()
+    var v2 = sig.version()
+    assert_true(v2 > v1, "version should increment after toggle")
+    _destroy_runtime(rt)
+
+
+def test_signal_bool_str_true():
+    var rt = _create_runtime()
+    var key = rt[0].create_signal[Int32](1)
+    var sig = SignalBool(UInt32(key), rt)
+    assert_equal(String(sig), String("true"), "__str__ should return 'true'")
+    _destroy_runtime(rt)
+
+
+def test_signal_bool_str_false():
+    var rt = _create_runtime()
+    var key = rt[0].create_signal[Int32](0)
+    var sig = SignalBool(UInt32(key), rt)
+    assert_equal(String(sig), String("false"), "__str__ should return 'false'")
+    _destroy_runtime(rt)
+
+
+def test_signal_bool_copy():
+    var rt = _create_runtime()
+    var key = rt[0].create_signal[Int32](0)
+    var sig1 = SignalBool(UInt32(key), rt)
+    var sig2 = sig1.copy()
+    sig1.set(True)
+    assert_true(sig2.get(), "copy shares underlying signal")
+    _destroy_runtime(rt)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Conditional helper tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_class_if_true():
+    var result = class_if(True, String("active"))
+    assert_equal(result, String("active"), "class_if(True) should return name")
+
+
+def test_class_if_false():
+    var result = class_if(False, String("active"))
+    assert_equal(result, String(""), "class_if(False) should return empty")
+
+
+def test_class_when_true():
+    var result = class_when(True, String("open"), String("closed"))
+    assert_equal(
+        result, String("open"), "class_when(True) should return true_class"
+    )
+
+
+def test_class_when_false():
+    var result = class_when(False, String("open"), String("closed"))
+    assert_equal(
+        result, String("closed"), "class_when(False) should return false_class"
+    )
+
+
+def test_text_when_true():
+    var result = text_when(True, String("yes"), String("no"))
+    assert_equal(
+        result, String("yes"), "text_when(True) should return true_text"
+    )
+
+
+def test_text_when_false():
+    var result = text_when(False, String("yes"), String("no"))
+    assert_equal(
+        result, String("no"), "text_when(False) should return false_text"
+    )
+
+
+def test_class_if_with_empty_name():
+    var result = class_if(True, String(""))
+    assert_equal(result, String(""), "class_if with empty name returns empty")
+
+
+def test_text_when_with_expression():
+    var x = 5
+    var result = text_when(x > 3, String("big"), String("small"))
+    assert_equal(result, String("big"), "text_when with expression condition")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # ComponentContext tests
 # ══════════════════════════════════════════════════════════════════════════════
+
+
+# ── ComponentContext — use_signal_bool / create_signal_bool ───────────────────
+
+
+def test_ctx_use_signal_bool_true():
+    var ctx = ComponentContext.create()
+    var flag = ctx.use_signal_bool(True)
+    ctx.end_setup()
+    assert_true(flag.get(), "use_signal_bool(True) should be True")
+    ctx.destroy()
+
+
+def test_ctx_use_signal_bool_false():
+    var ctx = ComponentContext.create()
+    var flag = ctx.use_signal_bool(False)
+    ctx.end_setup()
+    assert_false(flag.get(), "use_signal_bool(False) should be False")
+    ctx.destroy()
+
+
+def test_ctx_use_signal_bool_subscribes_scope():
+    var ctx = ComponentContext.create()
+    var flag = ctx.use_signal_bool(False)
+    ctx.end_setup()
+    # Writing should mark the scope dirty
+    flag.set(True)
+    assert_true(ctx.consume_dirty(), "scope should be dirty after bool write")
+    ctx.destroy()
+
+
+def test_ctx_create_signal_bool_true():
+    var ctx = ComponentContext.create()
+    ctx.end_setup()
+    var flag = ctx.create_signal_bool(True)
+    assert_true(flag.get(), "create_signal_bool(True) should be True")
+    ctx.destroy()
+
+
+def test_ctx_create_signal_bool_false():
+    var ctx = ComponentContext.create()
+    ctx.end_setup()
+    var flag = ctx.create_signal_bool(False)
+    assert_false(flag.get(), "create_signal_bool(False) should be False")
+    ctx.destroy()
+
+
+def test_ctx_signal_bool_toggle_lifecycle():
+    """Test full SignalBool lifecycle through ComponentContext."""
+    var ctx = ComponentContext.create()
+    var flag = ctx.use_signal_bool(False)
+    ctx.end_setup()
+    assert_false(flag.get(), "initial: False")
+    flag.toggle()
+    assert_true(flag.get(), "after toggle: True")
+    assert_true(ctx.consume_dirty(), "dirty after toggle")
+    flag.toggle()
+    assert_false(flag.get(), "after second toggle: False")
+    ctx.destroy()
 
 
 def test_ctx_create_destroy():
@@ -1542,6 +1796,198 @@ fn main() raises:
         pass_count += 1
     except e:
         print("FAIL test_ctx_vnode_builder_for:", e)
+        fail_count += 1
+
+    # -- SignalBool --
+    try:
+        test_signal_bool_get_false()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_bool_get_false:", e)
+        fail_count += 1
+
+    try:
+        test_signal_bool_get_true()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_bool_get_true:", e)
+        fail_count += 1
+
+    try:
+        test_signal_bool_set_true()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_bool_set_true:", e)
+        fail_count += 1
+
+    try:
+        test_signal_bool_set_false()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_bool_set_false:", e)
+        fail_count += 1
+
+    try:
+        test_signal_bool_toggle_from_false()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_bool_toggle_from_false:", e)
+        fail_count += 1
+
+    try:
+        test_signal_bool_toggle_from_true()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_bool_toggle_from_true:", e)
+        fail_count += 1
+
+    try:
+        test_signal_bool_toggle_round_trip()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_bool_toggle_round_trip:", e)
+        fail_count += 1
+
+    try:
+        test_signal_bool_read_subscribes()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_bool_read_subscribes:", e)
+        fail_count += 1
+
+    try:
+        test_signal_bool_peek_i32()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_bool_peek_i32:", e)
+        fail_count += 1
+
+    try:
+        test_signal_bool_version_increments()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_bool_version_increments:", e)
+        fail_count += 1
+
+    try:
+        test_signal_bool_str_true()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_bool_str_true:", e)
+        fail_count += 1
+
+    try:
+        test_signal_bool_str_false()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_bool_str_false:", e)
+        fail_count += 1
+
+    try:
+        test_signal_bool_copy()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_bool_copy:", e)
+        fail_count += 1
+
+    # -- Conditional helpers --
+    try:
+        test_class_if_true()
+        pass_count += 1
+    except e:
+        print("FAIL test_class_if_true:", e)
+        fail_count += 1
+
+    try:
+        test_class_if_false()
+        pass_count += 1
+    except e:
+        print("FAIL test_class_if_false:", e)
+        fail_count += 1
+
+    try:
+        test_class_when_true()
+        pass_count += 1
+    except e:
+        print("FAIL test_class_when_true:", e)
+        fail_count += 1
+
+    try:
+        test_class_when_false()
+        pass_count += 1
+    except e:
+        print("FAIL test_class_when_false:", e)
+        fail_count += 1
+
+    try:
+        test_text_when_true()
+        pass_count += 1
+    except e:
+        print("FAIL test_text_when_true:", e)
+        fail_count += 1
+
+    try:
+        test_text_when_false()
+        pass_count += 1
+    except e:
+        print("FAIL test_text_when_false:", e)
+        fail_count += 1
+
+    try:
+        test_class_if_with_empty_name()
+        pass_count += 1
+    except e:
+        print("FAIL test_class_if_with_empty_name:", e)
+        fail_count += 1
+
+    try:
+        test_text_when_with_expression()
+        pass_count += 1
+    except e:
+        print("FAIL test_text_when_with_expression:", e)
+        fail_count += 1
+
+    # -- ComponentContext SignalBool --
+    try:
+        test_ctx_use_signal_bool_true()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_use_signal_bool_true:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_use_signal_bool_false()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_use_signal_bool_false:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_use_signal_bool_subscribes_scope()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_use_signal_bool_subscribes_scope:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_create_signal_bool_true()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_create_signal_bool_true:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_create_signal_bool_false()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_create_signal_bool_false:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_signal_bool_toggle_lifecycle()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_signal_bool_toggle_lifecycle:", e)
         fail_count += 1
 
     var total = pass_count + fail_count

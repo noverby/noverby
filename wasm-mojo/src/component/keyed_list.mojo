@@ -302,6 +302,61 @@ struct ItemBuilder(Movable):
         # 3. Add the dynamic event attribute to the VNode
         self.vb.add_dyn_event(event_name, handler_id)
 
+    # ── Conditional class helpers ────────────────────────────────────
+
+    fn add_class_if(mut self, condition: Bool, class_name: String):
+        """Add a conditional CSS class attribute.
+
+        Shortcut for `add_dyn_text_attr("class", class_if(condition, name))`.
+        Adds the class name if condition is True, or an empty string
+        if False.
+
+        Replaces the common 4–5 line pattern:
+
+            var cls: String
+            if item.completed:
+                cls = String("completed")
+            else:
+                cls = String("")
+            ib.add_dyn_text_attr(String("class"), cls)
+
+        With a single call:
+
+            ib.add_class_if(item.completed, String("completed"))
+
+        Args:
+            condition: Whether to apply the class.
+            class_name: The CSS class name to apply when True.
+        """
+        if condition:
+            self.vb.add_dyn_text_attr(String("class"), class_name)
+        else:
+            self.vb.add_dyn_text_attr(String("class"), String(""))
+
+    fn add_class_when(
+        mut self,
+        condition: Bool,
+        true_class: String,
+        false_class: String,
+    ):
+        """Add one of two CSS class names based on a condition.
+
+        Shortcut for `add_dyn_text_attr("class", class_when(cond, a, b))`.
+        For binary class switching (e.g. "active" vs "inactive").
+
+        Example:
+            ib.add_class_when(is_selected, String("danger"), String(""))
+
+        Args:
+            condition: The boolean condition.
+            true_class: Class name when True.
+            false_class: Class name when False.
+        """
+        if condition:
+            self.vb.add_dyn_text_attr(String("class"), true_class)
+        else:
+            self.vb.add_dyn_text_attr(String("class"), false_class)
+
     # ── Placeholder (for dyn_node slots) ─────────────────────────────
 
     fn add_dyn_placeholder(mut self):

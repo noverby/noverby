@@ -293,7 +293,7 @@ Adding a new test:
 
 ## Test results
 
-2,068 tests across 29 Mojo modules and 9 JS test suites:
+2,095 tests across 29 Mojo modules and 9 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -352,10 +352,11 @@ struct CounterApp:
 ```
 
 Multi-template apps (todo, bench) use `KeyedList` with `ItemBuilder` for ergonomic
-per-item building and `HandlerAction` for event dispatch:
+per-item building, `HandlerAction` for event dispatch, and Phase 18 conditional
+helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate:
 
 ```mojo
-# Keyed list pattern (todo, bench) — Phase 17 ergonomics:
+# Keyed list pattern (todo, bench) — Phase 17 + 18 ergonomics:
 alias TODO_ACTION_TOGGLE: UInt8 = 1
 alias TODO_ACTION_REMOVE: UInt8 = 2
 
@@ -388,10 +389,12 @@ struct TodoApp:
 
     fn build_item(mut self, item: TodoItem) -> UInt32:
         var ib = self.items.begin_item(String(item.id), self.ctx)
-        ib.add_dyn_text(item.display_text())
+        # text_when() replaces 4-line if/else for conditional text
+        ib.add_dyn_text(text_when(item.completed, "✓ " + item.text, item.text))
         ib.add_custom_event(String("click"), TODO_ACTION_TOGGLE, item.id)
         ib.add_custom_event(String("click"), TODO_ACTION_REMOVE, item.id)
-        ib.add_dyn_text_attr(String("class"), item.class_name())
+        # add_class_if() replaces 4-line if/else for conditional class
+        ib.add_class_if(item.completed, String("completed"))
         return ib.index()
 
     fn build_items(mut self) -> UInt32:
@@ -412,6 +415,22 @@ struct TodoApp:
         return False
 ```
 
+Phase 18 also adds `SignalBool` for ergonomic boolean signals and standalone
+conditional helpers (`class_if`, `class_when`, `text_when`) usable anywhere:
+
+```mojo
+# SignalBool — proper boolean API over Int32 signals:
+var visible = ctx.use_signal_bool(True)
+visible.toggle()            # True ↔ False
+if visible.get(): ...       # read without subscribing
+visible.set(False)          # write (marks subscribers dirty)
+
+# Conditional helpers — eliminate if/else boilerplate:
+var cls = class_if(is_active, String("active"))           # "active" or ""
+var cls = class_when(is_open, String("open"), String("closed"))  # either/or
+var txt = text_when(done, String("✓ Done"), item.text)    # conditional text
+```
+
 ## Deferred abstractions
 
 Some Dioxus features cannot be idiomatically expressed in Mojo today due to
@@ -423,7 +442,7 @@ They are documented here so they can be revisited as Mojo evolves:
 | **Closure event handlers** (`onclick: move \|_\| count += 1`) | No closures/function pointers in WASM; handlers use action-based structs | Lambda syntax (Phase 1), Closure refinement (Phase 1) | 🚧 In progress |
 | **`rsx!` macro** (compile-time DSL) | No hygienic macros | Hygienic importable macros (Phase 2) | ⏰ Not started |
 | **`for` loops in views** (`for item in items { ... }`) | Views are static templates; iteration happens in build functions | Hygienic macros (Phase 2) | ⏰ Not started |
-| **Generic `Signal[T]`** (`use_signal(\|\| vec![])`) | Runtime stores fixed `Int32` signals; parametric stores need conditional conformance | Conditional conformance (Phase 1) | 🚧 In progress |
+| **Generic `Signal[T]`** (`use_signal(\|\| vec![])`) | Runtime stores fixed `Int32` signals; parametric stores need conditional conformance. Phase 18 added `SignalBool` as a manual workaround | Conditional conformance (Phase 1) | 🚧 In progress |
 | **Dynamic component dispatch** (trait objects for components) | No existentials/dynamic traits | Existentials / dynamic traits (Phase 2) | ⏰ Not started |
 | **Pattern matching on actions** | `if/elif` chains instead of `match` | Algebraic data types & pattern matching (Phase 2) | ⏰ Not started |
 | **Async data loading / suspense** | No `async`/`await` | First-class async support (Phase 2) | ⏰ Not started |
@@ -432,4 +451,5 @@ They are documented here so they can be revisited as Mojo evolves:
 When these Mojo features land, the corresponding Dioxus patterns can be
 adopted — closures would eliminate `ItemBuilder.add_custom_event()` + `get_action()`,
 macros would enable an `rsx!`-like DSL, and generic signals would replace the
-current `SignalI32` / `MemoI32` handles with `Signal[Int32]`, `Signal[String]`, etc.
+current `SignalI32` / `SignalBool` / `MemoI32` handles with `Signal[Int32]`,
+`Signal[Bool]`, `Signal[String]`, etc.
