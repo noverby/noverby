@@ -1,29 +1,8 @@
 # wasm-mojo — AI Agent Context
 
-> Read this file first before exploring the project. It replaces ~20 file reads.
-
-## What is this?
-
-A reactive UI framework for the browser, written in Mojo → compiled to WASM64.
-Signals, virtual DOM, template diffing, event handling, binary mutation protocol.
-Thin TypeScript runtime applies DOM mutations from a shared-memory byte buffer.
-Inspired by [Dioxus](https://dioxuslabs.com/) (Rust reactive framework).
-
-## Build & Test
-
-```sh
-just build          # Mojo → LLVM IR → wasm64 object → out.wasm
-just test           # 903 Mojo tests (precompiled binaries, ~10s)
-just test-js        # 1,152 JS tests (Deno)
-just test-all       # Both
-just serve          # http://localhost:4507/examples/{counter,todo,bench}/
-```
-
-Test modules: `test/test_*.mojo` each have `fn main()` that creates a shared
-`WasmInstance` (via wasmtime-mojo) and calls all test functions sequentially.
-Filter: `just test signals` builds+runs only matching modules.
-Adding a test: write `def test_foo(w)` → add `test_foo(w)` to `fn main()`.
-Build script needs `-I src/` for native tests importing project packages.
+> Compact quick-reference for AI agents. For project overview, architecture,
+> build commands, and test infrastructure see [README.md](README.md).
+> For development history and phase specs see [PLAN.md](PLAN.md).
 
 ## Mojo Constraints
 
@@ -32,7 +11,7 @@ Build script needs `-I src/` for native tests importing project packages.
 - **Single-threaded** — no sync needed.
 - **Operator overloading** works (SignalI32 has `+=`, `-=`, `peek()`, `set()`).
 - **Format**: `mojo format <file>` — pre-commit hooks run this automatically.
-- **Commit messages**: `feat(wasm-mojo): Uppercase description` (commitlint enforced).
+- **Commit messages**: `feat(wasm-mojo): Uppercase description` — commitlint enforced, allowed types: `feat`, `fix`, `chore`, `doc`.
 
 ## Key Abstractions (dependency order)
 
@@ -95,7 +74,7 @@ Build script needs `-I src/` for native tests importing project packages.
 - **`FragmentSlot`** — tracks empty↔populated transitions for dynamic keyed lists.
 - **Lifecycle helpers**: `mount_vnode()`, `diff_and_finalize()`, `flush_fragment()`.
 
-## Apps (`src/apps/`)
+## App Architectures (`src/apps/`)
 
 All three apps use `ComponentContext` with constructor-based setup.
 
@@ -105,7 +84,7 @@ All three apps use `ComponentContext` with constructor-based setup.
 struct CounterApp:
     var ctx: ComponentContext
     var count: SignalI32
-    fn __init__: ctx.create() → use_signal → setup_view(inline events) 
+    fn __init__: ctx.create() → use_signal → setup_view(inline events)
     fn render: ctx.render_builder() → add_dyn_text → build()
 ```
 
