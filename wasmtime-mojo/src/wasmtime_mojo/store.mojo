@@ -44,8 +44,8 @@ struct Store:
         """
         self._ptr = wasmtime_store_new(
             engine_ptr,
-            UnsafePointer[NoneType](),
-            UnsafePointer[NoneType](),
+            UnsafePointer[NoneType, MutExternalOrigin](),
+            UnsafePointer[NoneType, MutExternalOrigin](),
         )
         self._context = wasmtime_store_context(self._ptr)
 

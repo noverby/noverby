@@ -1,14 +1,14 @@
 """Wasmtime shared library loader and raw FFI function wrappers.
 
-This module loads libwasmtime.so via DLHandle and provides thin typed
+This module loads libwasmtime.so via OwnedDLHandle and provides thin typed
 wrappers around the C API functions needed by wasmtime-mojo.
 
-The DLHandle is loaded lazily on first use via `get_lib()`.
+The OwnedDLHandle is loaded lazily on first use via `get_lib()`.
 """
 
 from os import getenv
-from sys.ffi import DLHandle
-from memory import UnsafePointer
+from sys.ffi import OwnedDLHandle
+from memory import UnsafePointer, alloc
 
 from ._types import (
     EnginePtr,
@@ -34,11 +34,22 @@ from ._types import (
 )
 
 # ---------------------------------------------------------------------------
+# Origin cast helper
+# ---------------------------------------------------------------------------
+
+
+@always_inline
+fn _as_ext[T: AnyType, origin: Origin](ptr: UnsafePointer[T, origin]) -> UnsafePointer[T, MutExternalOrigin]:
+    """Cast any UnsafePointer to MutExternalOrigin for FFI calls."""
+    return UnsafePointer[T, MutExternalOrigin](unsafe_from_address=Int(ptr))
+
+
+# ---------------------------------------------------------------------------
 # Library loading
 # ---------------------------------------------------------------------------
 
 
-fn _find_lib_in_nix_ldflags() raises -> DLHandle:
+fn _find_lib_in_nix_ldflags() raises -> OwnedDLHandle:
     """Search NIX_LDFLAGS for a -L directory containing libwasmtime.so."""
     var flags = getenv("NIX_LDFLAGS", "")
     if not flags:
@@ -50,17 +61,17 @@ fn _find_lib_in_nix_ldflags() raises -> DLHandle:
             var dir_path = part[2:]
             var full = dir_path + "/libwasmtime.so"
             try:
-                return DLHandle(full)
+                return OwnedDLHandle(full)
             except:
                 pass
     raise Error("libwasmtime.so not found in NIX_LDFLAGS")
 
 
 @always_inline
-fn get_lib() raises -> DLHandle:
+fn get_lib() raises -> OwnedDLHandle:
     """Return a handle to the wasmtime shared library.
 
-    Creates a new DLHandle each call.  On Linux the underlying dlopen(3)
+    Creates a new OwnedDLHandle each call.  On Linux the underlying dlopen(3)
     caches library handles, so repeated calls are cheap and always return
     the same loaded library.
 
@@ -68,7 +79,7 @@ fn get_lib() raises -> DLHandle:
     library is not on the default search path.
     """
     try:
-        return DLHandle("libwasmtime.so")
+        return OwnedDLHandle("libwasmtime.so")
     except:
         return _find_lib_in_nix_ldflags()
 
@@ -96,7 +107,7 @@ fn wasm_engine_delete(engine: EnginePtr) raises:
 # Config (for cache support)
 # ═══════════════════════════════════════════════════════════════════════════
 
-alias ConfigPtr = UnsafePointer[NoneType]
+alias ConfigPtr = UnsafePointer[NoneType, MutExternalOrigin]
 
 
 fn wasm_config_new() raises -> ConfigPtr:
@@ -115,7 +126,7 @@ fn wasm_config_delete(config: ConfigPtr) raises:
 
 fn wasmtime_config_cache_config_load(
     config: ConfigPtr,
-    path: UnsafePointer[UInt8],
+    path: UnsafePointer[UInt8, MutExternalOrigin],
 ) raises -> ErrorPtr:
     """Load cache configuration.
 
@@ -123,7 +134,7 @@ fn wasmtime_config_cache_config_load(
     (~/.cache/wasmtime or equivalent).
     """
     var lib = get_lib()
-    var f = lib.get_function[fn (ConfigPtr, UnsafePointer[UInt8]) -> ErrorPtr](
+    var f = lib.get_function[fn (ConfigPtr, UnsafePointer[UInt8, MutExternalOrigin]) -> ErrorPtr](
         "wasmtime_config_cache_config_load"
     )
     return f(config, path)
@@ -149,14 +160,14 @@ fn wasm_engine_new_with_config(config: ConfigPtr) raises -> EnginePtr:
 
 fn wasmtime_store_new(
     engine: EnginePtr,
-    data: UnsafePointer[NoneType],
-    finalizer: UnsafePointer[NoneType],
+    data: UnsafePointer[NoneType, MutExternalOrigin],
+    finalizer: UnsafePointer[NoneType, MutExternalOrigin],
 ) raises -> StorePtr:
     """Create a new wasmtime store."""
     var lib = get_lib()
     var f = lib.get_function[
         fn (
-            EnginePtr, UnsafePointer[NoneType], UnsafePointer[NoneType]
+            EnginePtr, UnsafePointer[NoneType, MutExternalOrigin], UnsafePointer[NoneType, MutExternalOrigin]
         ) -> StorePtr
     ]("wasmtime_store_new")
     return f(engine, data, finalizer)
@@ -185,15 +196,15 @@ fn wasmtime_store_context(store: StorePtr) raises -> ContextPtr:
 
 fn wasmtime_module_new(
     engine: EnginePtr,
-    wasm: UnsafePointer[UInt8],
+    wasm: UnsafePointer[UInt8, MutExternalOrigin],
     wasm_len: Int,
-    ret: UnsafePointer[ModulePtr],
+    ret: UnsafePointer[ModulePtr, MutExternalOrigin],
 ) raises -> ErrorPtr:
     """Compile a WASM binary into a module."""
     var lib = get_lib()
     var f = lib.get_function[
         fn (
-            EnginePtr, UnsafePointer[UInt8], Int, UnsafePointer[ModulePtr]
+            EnginePtr, UnsafePointer[UInt8, MutExternalOrigin], Int, UnsafePointer[ModulePtr, MutExternalOrigin]
         ) -> ErrorPtr
     ]("wasmtime_module_new")
     return f(engine, wasm, wasm_len, ret)
@@ -208,7 +219,7 @@ fn wasmtime_module_delete(module: ModulePtr) raises:
 
 fn wasmtime_module_serialize(
     module: ModulePtr,
-    ret: UnsafePointer[WasmByteVec],
+    ret: UnsafePointer[WasmByteVec, MutExternalOrigin],
 ) raises -> ErrorPtr:
     """Serialize a compiled module to bytes.
 
@@ -216,15 +227,15 @@ fn wasmtime_module_serialize(
     """
     var lib = get_lib()
     var f = lib.get_function[
-        fn (ModulePtr, UnsafePointer[WasmByteVec]) -> ErrorPtr
+        fn (ModulePtr, UnsafePointer[WasmByteVec, MutExternalOrigin]) -> ErrorPtr
     ]("wasmtime_module_serialize")
     return f(module, ret)
 
 
 fn wasmtime_module_deserialize_file(
     engine: EnginePtr,
-    path: UnsafePointer[UInt8],
-    ret: UnsafePointer[ModulePtr],
+    path: UnsafePointer[UInt8, MutExternalOrigin],
+    ret: UnsafePointer[ModulePtr, MutExternalOrigin],
 ) raises -> ErrorPtr:
     """Deserialize a pre-compiled module directly from a file.
 
@@ -234,7 +245,7 @@ fn wasmtime_module_deserialize_file(
     var lib = get_lib()
     var f = lib.get_function[
         fn (
-            EnginePtr, UnsafePointer[UInt8], UnsafePointer[ModulePtr]
+            EnginePtr, UnsafePointer[UInt8, MutExternalOrigin], UnsafePointer[ModulePtr, MutExternalOrigin]
         ) -> ErrorPtr
     ]("wasmtime_module_deserialize_file")
     return f(engine, path, ret)
@@ -261,28 +272,28 @@ fn wasmtime_linker_delete(linker: LinkerPtr) raises:
 
 fn wasmtime_linker_define_func(
     linker: LinkerPtr,
-    module_name: UnsafePointer[UInt8],
+    module_name: UnsafePointer[UInt8, MutExternalOrigin],
     module_name_len: Int,
-    func_name: UnsafePointer[UInt8],
+    func_name: UnsafePointer[UInt8, MutExternalOrigin],
     func_name_len: Int,
     func_type: FuncTypePtr,
     callback: WasmtimeCallback,
-    env: UnsafePointer[NoneType],
-    finalizer: UnsafePointer[NoneType],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    finalizer: UnsafePointer[NoneType, MutExternalOrigin],
 ) raises -> ErrorPtr:
     """Define a host function in the linker."""
     var lib = get_lib()
     var f = lib.get_function[
         fn (
             LinkerPtr,
-            UnsafePointer[UInt8],
+            UnsafePointer[UInt8, MutExternalOrigin],
             Int,
-            UnsafePointer[UInt8],
+            UnsafePointer[UInt8, MutExternalOrigin],
             Int,
             FuncTypePtr,
             WasmtimeCallback,
-            UnsafePointer[NoneType],
-            UnsafePointer[NoneType],
+            UnsafePointer[NoneType, MutExternalOrigin],
+            UnsafePointer[NoneType, MutExternalOrigin],
         ) -> ErrorPtr
     ]("wasmtime_linker_define_func")
     return f(
@@ -302,8 +313,8 @@ fn wasmtime_linker_instantiate(
     linker: LinkerPtr,
     context: ContextPtr,
     module: ModulePtr,
-    instance: UnsafePointer[WasmtimeInstance],
-    trap: UnsafePointer[TrapPtr],
+    instance: UnsafePointer[WasmtimeInstance, MutExternalOrigin],
+    trap: UnsafePointer[TrapPtr, MutExternalOrigin],
 ) raises -> ErrorPtr:
     """Instantiate a module using the linker definitions."""
     var lib = get_lib()
@@ -312,8 +323,8 @@ fn wasmtime_linker_instantiate(
             LinkerPtr,
             ContextPtr,
             ModulePtr,
-            UnsafePointer[WasmtimeInstance],
-            UnsafePointer[TrapPtr],
+            UnsafePointer[WasmtimeInstance, MutExternalOrigin],
+            UnsafePointer[TrapPtr, MutExternalOrigin],
         ) -> ErrorPtr
     ]("wasmtime_linker_instantiate")
     return f(linker, context, module, instance, trap)
@@ -326,20 +337,20 @@ fn wasmtime_linker_instantiate(
 
 fn wasmtime_instance_export_get(
     context: ContextPtr,
-    instance: UnsafePointer[WasmtimeInstance],
-    name: UnsafePointer[UInt8],
+    instance: UnsafePointer[WasmtimeInstance, MutExternalOrigin],
+    name: UnsafePointer[UInt8, MutExternalOrigin],
     name_len: Int,
-    item: UnsafePointer[WasmtimeExtern],
+    item: UnsafePointer[WasmtimeExtern, MutExternalOrigin],
 ) raises -> Bool:
     """Look up an export from an instance by name."""
     var lib = get_lib()
     var f = lib.get_function[
         fn (
             ContextPtr,
-            UnsafePointer[WasmtimeInstance],
-            UnsafePointer[UInt8],
+            UnsafePointer[WasmtimeInstance, MutExternalOrigin],
+            UnsafePointer[UInt8, MutExternalOrigin],
             Int,
-            UnsafePointer[WasmtimeExtern],
+            UnsafePointer[WasmtimeExtern, MutExternalOrigin],
         ) -> Bool
     ]("wasmtime_instance_export_get")
     return f(context, instance, name, name_len, item)
@@ -352,24 +363,24 @@ fn wasmtime_instance_export_get(
 
 fn wasmtime_func_call(
     context: ContextPtr,
-    func: UnsafePointer[WasmtimeFunc],
-    args: UnsafePointer[WasmtimeVal],
+    func: UnsafePointer[WasmtimeFunc, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-    trap: UnsafePointer[TrapPtr],
+    trap: UnsafePointer[TrapPtr, MutExternalOrigin],
 ) raises -> ErrorPtr:
     """Call a WASM function."""
     var lib = get_lib()
     var f = lib.get_function[
         fn (
             ContextPtr,
-            UnsafePointer[WasmtimeFunc],
-            UnsafePointer[WasmtimeVal],
+            UnsafePointer[WasmtimeFunc, MutExternalOrigin],
+            UnsafePointer[WasmtimeVal, MutExternalOrigin],
             Int,
-            UnsafePointer[WasmtimeVal],
+            UnsafePointer[WasmtimeVal, MutExternalOrigin],
             Int,
-            UnsafePointer[TrapPtr],
+            UnsafePointer[TrapPtr, MutExternalOrigin],
         ) -> ErrorPtr
     ]("wasmtime_func_call")
     return f(context, func, args, nargs, results, nresults, trap)
@@ -382,16 +393,16 @@ fn wasmtime_func_call(
 
 fn wasmtime_global_get(
     context: ContextPtr,
-    global_: UnsafePointer[WasmtimeGlobal],
-    result: UnsafePointer[WasmtimeVal],
+    global_: UnsafePointer[WasmtimeGlobal, MutExternalOrigin],
+    result: UnsafePointer[WasmtimeVal, MutExternalOrigin],
 ) raises:
     """Read the value of a WASM global."""
     var lib = get_lib()
     var f = lib.get_function[
         fn (
             ContextPtr,
-            UnsafePointer[WasmtimeGlobal],
-            UnsafePointer[WasmtimeVal],
+            UnsafePointer[WasmtimeGlobal, MutExternalOrigin],
+            UnsafePointer[WasmtimeVal, MutExternalOrigin],
         ) -> None
     ]("wasmtime_global_get")
     f(context, global_, result)
@@ -404,24 +415,24 @@ fn wasmtime_global_get(
 
 fn wasmtime_memory_data(
     context: ContextPtr,
-    memory: UnsafePointer[WasmtimeMemory],
-) raises -> UnsafePointer[UInt8]:
+    memory: UnsafePointer[WasmtimeMemory, MutExternalOrigin],
+) raises -> UnsafePointer[UInt8, MutExternalOrigin]:
     """Get a pointer to WASM linear memory data."""
     var lib = get_lib()
     var f = lib.get_function[
-        fn (ContextPtr, UnsafePointer[WasmtimeMemory]) -> UnsafePointer[UInt8]
+        fn (ContextPtr, UnsafePointer[WasmtimeMemory, MutExternalOrigin]) -> UnsafePointer[UInt8, MutExternalOrigin]
     ]("wasmtime_memory_data")
     return f(context, memory)
 
 
 fn wasmtime_memory_data_size(
     context: ContextPtr,
-    memory: UnsafePointer[WasmtimeMemory],
+    memory: UnsafePointer[WasmtimeMemory, MutExternalOrigin],
 ) raises -> Int:
     """Get the current size of WASM linear memory in bytes."""
     var lib = get_lib()
     var f = lib.get_function[
-        fn (ContextPtr, UnsafePointer[WasmtimeMemory]) -> Int
+        fn (ContextPtr, UnsafePointer[WasmtimeMemory, MutExternalOrigin]) -> Int
     ]("wasmtime_memory_data_size")
     return f(context, memory)
 
@@ -446,8 +457,8 @@ fn wasm_valtype_delete(vt: ValTypePtr) raises:
 
 
 fn wasm_functype_new(
-    params: UnsafePointer[WasmValtypeVec],
-    results: UnsafePointer[WasmValtypeVec],
+    params: UnsafePointer[WasmValtypeVec, MutExternalOrigin],
+    results: UnsafePointer[WasmValtypeVec, MutExternalOrigin],
 ) raises -> FuncTypePtr:
     """Create a function type from param and result type vecs.
 
@@ -457,7 +468,7 @@ fn wasm_functype_new(
     var lib = get_lib()
     var f = lib.get_function[
         fn (
-            UnsafePointer[WasmValtypeVec], UnsafePointer[WasmValtypeVec]
+            UnsafePointer[WasmValtypeVec, MutExternalOrigin], UnsafePointer[WasmValtypeVec, MutExternalOrigin]
         ) -> FuncTypePtr
     ]("wasm_functype_new")
     return f(params, results)
@@ -471,33 +482,33 @@ fn wasm_functype_delete(ft: FuncTypePtr) raises:
 
 
 fn wasm_valtype_vec_new(
-    result: UnsafePointer[WasmValtypeVec],
+    result: UnsafePointer[WasmValtypeVec, MutExternalOrigin],
     size: Int,
-    data: UnsafePointer[ValTypePtr],
+    data: UnsafePointer[ValTypePtr, MutExternalOrigin],
 ) raises:
     """Create a new valtype vec from an array of valtype pointers."""
     var lib = get_lib()
     var f = lib.get_function[
         fn (
-            UnsafePointer[WasmValtypeVec], Int, UnsafePointer[ValTypePtr]
+            UnsafePointer[WasmValtypeVec, MutExternalOrigin], Int, UnsafePointer[ValTypePtr, MutExternalOrigin]
         ) -> None
     ]("wasm_valtype_vec_new")
     f(result, size, data)
 
 
-fn wasm_valtype_vec_new_empty(result: UnsafePointer[WasmValtypeVec]) raises:
+fn wasm_valtype_vec_new_empty(result: UnsafePointer[WasmValtypeVec, MutExternalOrigin]) raises:
     """Create a new empty valtype vec."""
     var lib = get_lib()
-    var f = lib.get_function[fn (UnsafePointer[WasmValtypeVec]) -> None](
+    var f = lib.get_function[fn (UnsafePointer[WasmValtypeVec, MutExternalOrigin]) -> None](
         "wasm_valtype_vec_new_empty"
     )
     f(result)
 
 
-fn wasm_valtype_vec_delete(vec: UnsafePointer[WasmValtypeVec]) raises:
+fn wasm_valtype_vec_delete(vec: UnsafePointer[WasmValtypeVec, MutExternalOrigin]) raises:
     """Delete a valtype vec."""
     var lib = get_lib()
-    var f = lib.get_function[fn (UnsafePointer[WasmValtypeVec]) -> None](
+    var f = lib.get_function[fn (UnsafePointer[WasmValtypeVec, MutExternalOrigin]) -> None](
         "wasm_valtype_vec_delete"
     )
     f(vec)
@@ -510,11 +521,11 @@ fn wasm_valtype_vec_delete(vec: UnsafePointer[WasmValtypeVec]) raises:
 
 fn wasmtime_error_message(
     error: ErrorPtr,
-    message: UnsafePointer[WasmByteVec],
+    message: UnsafePointer[WasmByteVec, MutExternalOrigin],
 ) raises:
     """Extract the error message from a wasmtime error."""
     var lib = get_lib()
-    var f = lib.get_function[fn (ErrorPtr, UnsafePointer[WasmByteVec]) -> None](
+    var f = lib.get_function[fn (ErrorPtr, UnsafePointer[WasmByteVec, MutExternalOrigin]) -> None](
         "wasmtime_error_message"
     )
     f(error, message)
@@ -527,10 +538,10 @@ fn wasmtime_error_delete(error: ErrorPtr) raises:
     f(error)
 
 
-fn wasm_byte_vec_delete(vec: UnsafePointer[WasmByteVec]) raises:
+fn wasm_byte_vec_delete(vec: UnsafePointer[WasmByteVec, MutExternalOrigin]) raises:
     """Delete a byte vec."""
     var lib = get_lib()
-    var f = lib.get_function[fn (UnsafePointer[WasmByteVec]) -> None](
+    var f = lib.get_function[fn (UnsafePointer[WasmByteVec, MutExternalOrigin]) -> None](
         "wasm_byte_vec_delete"
     )
     f(vec)
@@ -543,11 +554,11 @@ fn wasm_byte_vec_delete(vec: UnsafePointer[WasmByteVec]) raises:
 
 fn wasm_trap_message(
     trap: TrapPtr,
-    message: UnsafePointer[WasmByteVec],
+    message: UnsafePointer[WasmByteVec, MutExternalOrigin],
 ) raises:
     """Extract the message from a trap."""
     var lib = get_lib()
-    var f = lib.get_function[fn (TrapPtr, UnsafePointer[WasmByteVec]) -> None](
+    var f = lib.get_function[fn (TrapPtr, UnsafePointer[WasmByteVec, MutExternalOrigin]) -> None](
         "wasm_trap_message"
     )
     f(trap, message)
@@ -576,11 +587,11 @@ fn make_functype(
     """
     # Build params vec
     var params = WasmValtypeVec()
-    var params_ptr = UnsafePointer(to=params)
+    var params_ptr = _as_ext(UnsafePointer(to=params))
     if len(param_kinds) == 0:
         wasm_valtype_vec_new_empty(params_ptr)
     else:
-        var ptypes = UnsafePointer[ValTypePtr].alloc(len(param_kinds))
+        var ptypes = alloc[ValTypePtr](len(param_kinds))
         for i in range(len(param_kinds)):
             ptypes[i] = wasm_valtype_new(param_kinds[i])
         wasm_valtype_vec_new(params_ptr, len(param_kinds), ptypes)
@@ -588,11 +599,11 @@ fn make_functype(
 
     # Build results vec
     var results = WasmValtypeVec()
-    var results_ptr = UnsafePointer(to=results)
+    var results_ptr = _as_ext(UnsafePointer(to=results))
     if len(result_kinds) == 0:
         wasm_valtype_vec_new_empty(results_ptr)
     else:
-        var rtypes = UnsafePointer[ValTypePtr].alloc(len(result_kinds))
+        var rtypes = alloc[ValTypePtr](len(result_kinds))
         for i in range(len(result_kinds)):
             rtypes[i] = wasm_valtype_new(result_kinds[i])
         wasm_valtype_vec_new(results_ptr, len(result_kinds), rtypes)
@@ -611,7 +622,7 @@ fn error_message(error: ErrorPtr) raises -> String:
     """Extract the message from a wasmtime_error_t, delete it, and return
     the message as a Mojo String."""
     var msg = WasmByteVec()
-    var msg_ptr = UnsafePointer(to=msg)
+    var msg_ptr = _as_ext(UnsafePointer(to=msg))
     wasmtime_error_message(error, msg_ptr)
     var result = String("")
     if msg.size > 0 and msg.data:
@@ -629,7 +640,7 @@ fn trap_message(trap: TrapPtr) raises -> String:
     """Extract the message from a wasm_trap_t, delete it, and return
     the message as a Mojo String."""
     var msg = WasmByteVec()
-    var msg_ptr = UnsafePointer(to=msg)
+    var msg_ptr = _as_ext(UnsafePointer(to=msg))
     wasm_trap_message(trap, msg_ptr)
     var result = String("")
     if msg.size > 0 and msg.data:
@@ -648,7 +659,7 @@ fn trap_message(trap: TrapPtr) raises -> String:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-fn check_error(error: ErrorPtr, trap: UnsafePointer[TrapPtr]) raises:
+fn check_error(error: ErrorPtr, trap: UnsafePointer[TrapPtr, MutExternalOrigin]) raises:
     """Check the error and trap pointers returned from a wasmtime API call.
     If either is non-null, raises with the appropriate message."""
     if error:

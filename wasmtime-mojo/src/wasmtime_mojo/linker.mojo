@@ -37,6 +37,7 @@ from ._types import (
     WasmtimeCallback,
 )
 from ._lib import (
+    _as_ext,
     wasmtime_linker_new,
     wasmtime_linker_delete,
     wasmtime_linker_define_func,
@@ -93,8 +94,8 @@ struct Linker:
         param_kinds: List[UInt8],
         result_kinds: List[UInt8],
         callback: WasmtimeCallback,
-        env: UnsafePointer[NoneType] = UnsafePointer[NoneType](),
-        finalizer: UnsafePointer[NoneType] = UnsafePointer[NoneType](),
+        env: UnsafePointer[NoneType, MutExternalOrigin] = UnsafePointer[NoneType, MutExternalOrigin](),
+        finalizer: UnsafePointer[NoneType, MutExternalOrigin] = UnsafePointer[NoneType, MutExternalOrigin](),
     ) raises:
         """Define a host function to satisfy a WASM import.
 
@@ -119,12 +120,12 @@ struct Linker:
 
         # Convert module_name to raw bytes
         var mod_bytes = module_name.as_bytes()
-        var mod_ptr = mod_bytes.unsafe_ptr()
+        var mod_ptr = _as_ext(mod_bytes.unsafe_ptr())
         var mod_len = len(module_name)
 
         # Convert func_name to raw bytes
         var fn_bytes = func_name.as_bytes()
-        var fn_ptr = fn_bytes.unsafe_ptr()
+        var fn_ptr = _as_ext(fn_bytes.unsafe_ptr())
         var fn_len = len(func_name)
 
         var err = wasmtime_linker_define_func(
@@ -175,9 +176,9 @@ struct Linker:
             Error: If instantiation fails (e.g. unresolved imports).
         """
         var instance = WasmtimeInstance()
-        var instance_ptr = UnsafePointer(to=instance)
+        var instance_ptr = _as_ext(UnsafePointer(to=instance))
         var trap = TrapPtr()
-        var trap_ptr = UnsafePointer(to=trap)
+        var trap_ptr = _as_ext(UnsafePointer(to=trap))
 
         var err = wasmtime_linker_instantiate(
             self._ptr,

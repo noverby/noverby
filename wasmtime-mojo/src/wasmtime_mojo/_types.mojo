@@ -76,18 +76,18 @@ alias WASM_BYTE_VEC_SIZE = 16
 # Opaque pointer aliases — these wrap C types we never inspect directly
 # ---------------------------------------------------------------------------
 
-alias EnginePtr = UnsafePointer[NoneType]
-alias StorePtr = UnsafePointer[NoneType]
-alias ContextPtr = UnsafePointer[NoneType]
-alias ModulePtr = UnsafePointer[NoneType]
-alias LinkerPtr = UnsafePointer[NoneType]
-alias ErrorPtr = UnsafePointer[NoneType]
-alias TrapPtr = UnsafePointer[NoneType]
-alias FuncTypePtr = UnsafePointer[NoneType]
-alias ValTypePtr = UnsafePointer[NoneType]
-alias CallerPtr = UnsafePointer[NoneType]
-alias GlobalTypePtr = UnsafePointer[NoneType]
-alias ExternTypePtr = UnsafePointer[NoneType]
+alias EnginePtr = UnsafePointer[NoneType, MutExternalOrigin]
+alias StorePtr = UnsafePointer[NoneType, MutExternalOrigin]
+alias ContextPtr = UnsafePointer[NoneType, MutExternalOrigin]
+alias ModulePtr = UnsafePointer[NoneType, MutExternalOrigin]
+alias LinkerPtr = UnsafePointer[NoneType, MutExternalOrigin]
+alias ErrorPtr = UnsafePointer[NoneType, MutExternalOrigin]
+alias TrapPtr = UnsafePointer[NoneType, MutExternalOrigin]
+alias FuncTypePtr = UnsafePointer[NoneType, MutExternalOrigin]
+alias ValTypePtr = UnsafePointer[NoneType, MutExternalOrigin]
+alias CallerPtr = UnsafePointer[NoneType, MutExternalOrigin]
+alias GlobalTypePtr = UnsafePointer[NoneType, MutExternalOrigin]
+alias ExternTypePtr = UnsafePointer[NoneType, MutExternalOrigin]
 
 
 # ---------------------------------------------------------------------------
@@ -403,12 +403,12 @@ struct WasmByteVec:
     """Mirrors wasm_byte_vec_t (16 bytes)."""
 
     var size: Int
-    var data: UnsafePointer[UInt8]
+    var data: UnsafePointer[UInt8, MutExternalOrigin]
 
     @always_inline
     fn __init__(out self):
         self.size = 0
-        self.data = UnsafePointer[UInt8]()
+        self.data = UnsafePointer[UInt8, MutExternalOrigin]()
 
 
 # ---------------------------------------------------------------------------
@@ -427,12 +427,12 @@ struct WasmValtypeVec:
     """Mirrors wasm_valtype_vec_t (16 bytes)."""
 
     var size: Int
-    var data: UnsafePointer[ValTypePtr]
+    var data: UnsafePointer[ValTypePtr, MutExternalOrigin]
 
     @always_inline
     fn __init__(out self):
         self.size = 0
-        self.data = UnsafePointer[ValTypePtr]()
+        self.data = UnsafePointer[ValTypePtr, MutExternalOrigin]()
 
 
 # ---------------------------------------------------------------------------
@@ -453,13 +453,13 @@ struct WasmValtypeVec:
 # ---------------------------------------------------------------------------
 
 alias WasmtimeCallback = fn (
-    UnsafePointer[NoneType],  # env
-    UnsafePointer[NoneType],  # caller
-    UnsafePointer[WasmtimeVal],  # args
+    UnsafePointer[NoneType, MutExternalOrigin],  # env
+    UnsafePointer[NoneType, MutExternalOrigin],  # caller
+    UnsafePointer[WasmtimeVal, MutExternalOrigin],  # args
     Int,  # nargs
-    UnsafePointer[WasmtimeVal],  # results
+    UnsafePointer[WasmtimeVal, MutExternalOrigin],  # results
     Int,  # nresults
-) -> UnsafePointer[NoneType]
+) -> UnsafePointer[NoneType, MutExternalOrigin]
 
 # Finalizer callback: void (*)(void*)
-alias FinalizerCallback = fn (UnsafePointer[NoneType]) -> None
+alias FinalizerCallback = fn (UnsafePointer[NoneType, MutExternalOrigin]) -> None

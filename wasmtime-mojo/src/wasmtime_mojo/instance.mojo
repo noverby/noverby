@@ -16,7 +16,7 @@ Usage:
     var glob = instance_get_global(store.context(), inst, "__heap_base")
 """
 
-from memory import UnsafePointer, memcpy
+from memory import UnsafePointer, alloc, memcpy
 
 from ._types import (
     ContextPtr,
@@ -37,6 +37,7 @@ from ._types import (
     WASMTIME_F64,
 )
 from ._lib import (
+    _as_ext,
     wasmtime_instance_export_get,
     wasmtime_func_call,
     wasmtime_global_get,
@@ -71,12 +72,12 @@ fn instance_get_export(
         Error: If the export is not found.
     """
     var inst = instance  # mutable copy for address_of
-    var inst_ptr = UnsafePointer(to=inst)
+    var inst_ptr = _as_ext(UnsafePointer(to=inst))
     var ext = WasmtimeExtern()
-    var ext_ptr = UnsafePointer(to=ext)
+    var ext_ptr = _as_ext(UnsafePointer(to=ext))
 
     var name_bytes = name.as_bytes()
-    var name_ptr = name_bytes.unsafe_ptr()
+    var name_ptr = _as_ext(name_bytes.unsafe_ptr())
     var name_len = len(name)
 
     var found = wasmtime_instance_export_get(
@@ -189,9 +190,9 @@ fn global_get_i32(
 ) raises -> Int32:
     """Read an i32 value from a WASM global."""
     var g = `global`
-    var g_ptr = UnsafePointer(to=g)
+    var g_ptr = _as_ext(UnsafePointer(to=g))
     var val = WasmtimeVal()
-    var val_ptr = UnsafePointer(to=val)
+    var val_ptr = _as_ext(UnsafePointer(to=val))
     wasmtime_global_get(context, g_ptr, val_ptr)
     return val.get_i32()
 
@@ -201,9 +202,9 @@ fn global_get_i64(
 ) raises -> Int64:
     """Read an i64 value from a WASM global."""
     var g = `global`
-    var g_ptr = UnsafePointer(to=g)
+    var g_ptr = _as_ext(UnsafePointer(to=g))
     var val = WasmtimeVal()
-    var val_ptr = UnsafePointer(to=val)
+    var val_ptr = _as_ext(UnsafePointer(to=val))
     wasmtime_global_get(context, g_ptr, val_ptr)
     return val.get_i64()
 
@@ -234,21 +235,21 @@ fn func_call(
         Error: If the call fails or traps.
     """
     var f = func
-    var f_ptr = UnsafePointer(to=f)
+    var f_ptr = _as_ext(UnsafePointer(to=f))
 
     # Prepare args buffer
     var nargs = len(args)
-    var args_buf = UnsafePointer[WasmtimeVal].alloc(max(nargs, 1))
+    var args_buf = alloc[WasmtimeVal](max(nargs, 1))
     for i in range(nargs):
         args_buf[i] = args[i]
 
     # Prepare results buffer
-    var results_buf = UnsafePointer[WasmtimeVal].alloc(max(nresults, 1))
+    var results_buf = alloc[WasmtimeVal](max(nresults, 1))
     for i in range(nresults):
         results_buf[i] = WasmtimeVal()
 
-    var trap = UnsafePointer[NoneType]()
-    var trap_ptr = UnsafePointer(to=trap)
+    var trap = UnsafePointer[NoneType, MutExternalOrigin]()
+    var trap_ptr = _as_ext(UnsafePointer(to=trap))
 
     var err = wasmtime_func_call(
         context, f_ptr, args_buf, nargs, results_buf, nresults, trap_ptr
@@ -390,7 +391,7 @@ fn func_call_f64(
 
 fn memory_data_ptr(
     context: ContextPtr, memory: WasmtimeMemory
-) raises -> UnsafePointer[UInt8]:
+) raises -> UnsafePointer[UInt8, MutExternalOrigin]:
     """Return a raw pointer to the start of WASM linear memory.
 
     The pointer is only valid until the next memory-growing operation.
@@ -403,7 +404,7 @@ fn memory_data_ptr(
         Pointer to the first byte of linear memory.
     """
     var m = memory
-    var m_ptr = UnsafePointer(to=m)
+    var m_ptr = _as_ext(UnsafePointer(to=m))
     return wasmtime_memory_data(context, m_ptr)
 
 
@@ -418,7 +419,7 @@ fn memory_data_size(context: ContextPtr, memory: WasmtimeMemory) raises -> Int:
         The size in bytes.
     """
     var m = memory
-    var m_ptr = UnsafePointer(to=m)
+    var m_ptr = _as_ext(UnsafePointer(to=m))
     return wasmtime_memory_data_size(context, m_ptr)
 
 
