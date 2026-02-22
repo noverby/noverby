@@ -80,6 +80,24 @@ export interface AppConfig {
 		eventType: number,
 	) => number;
 
+	/**
+	 * Dispatch an event with a String payload (Phase 20, M20.2).
+	 *
+	 * Optional — if provided, the EventBridge will call this for
+	 * input/change events with the string value written to WASM memory
+	 * via `writeStringStruct()`.  Handles ACTION_SIGNAL_SET_STRING
+	 * handlers; falls back to normal dispatch for other action types.
+	 *
+	 * @returns 1 if handled, 0 otherwise.
+	 */
+	handleEventWithString?: (
+		fns: WasmExports,
+		appPtr: bigint,
+		handlerId: number,
+		eventType: number,
+		stringPtr: bigint,
+	) => number;
+
 	/** Destroy the WASM-side app and free resources. */
 	destroy: (fns: WasmExports, appPtr: bigint) => void;
 }
@@ -146,6 +164,7 @@ export function createApp(config: AppConfig): AppHandle {
 		rebuild,
 		flush,
 		handleEvent,
+		handleEventWithString,
 		destroy: destroyApp,
 		install = false,
 		bufCapacity = DEFAULT_BUF_CAPACITY,
@@ -191,6 +210,18 @@ export function createApp(config: AppConfig): AppHandle {
 		(handlerId: number, eventType: number, _value: number) => {
 			return handleEvent(fns, appPtr, handlerId, eventType);
 		},
+		// Phase 20 (M20.2): Wire string dispatch if the app supports it
+		handleEventWithString
+			? (handlerId: number, eventType: number, stringPtr: bigint) => {
+					return handleEventWithString(
+						fns,
+						appPtr,
+						handlerId,
+						eventType,
+						stringPtr,
+					);
+				}
+			: undefined,
 	);
 
 	// After-dispatch callback: flush and apply mutations

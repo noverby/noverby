@@ -3,6 +3,7 @@ import { testBench } from "./bench.test.ts";
 import { testCounter } from "./counter.test.ts";
 import { testDsl } from "./dsl.test.ts";
 import { testEffect } from "./effect.test.ts";
+import { testEvents } from "./events.test.ts";
 import { summary } from "./harness.ts";
 import { testInterpreter } from "./interpreter.test.ts";
 import { testMemo } from "./memo.test.ts";
@@ -27,6 +28,7 @@ async function run(): Promise<void> {
 	testMemo(fns);
 	testEffect(fns);
 	testDsl(fns);
+	testEvents(fns);
 
 	summary();
 }

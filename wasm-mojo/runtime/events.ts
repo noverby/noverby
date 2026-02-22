@@ -14,7 +14,16 @@
 // that is populated when the Interpreter processes NewEventListener
 // mutations and cleared when RemoveEventListener mutations arrive.
 //
+// For input/change events (Phase 20, M20.2), the bridge extracts the
+// string value from `event.target.value` and dispatches via the
+// `dispatchWithStringFn` callback (→ WASM `dispatch_event_with_string`).
+// This enables Dioxus-style `oninput → SignalString` two-way binding.
+// If the string dispatch is not handled (returns 0), the bridge falls
+// back to the numeric dispatch path and then the default no-payload path.
+//
 // Event type tags (must match Mojo's EVT_* constants):
+
+import { writeStringStruct } from "./strings.ts";
 
 export const EventType = {
 	Click: 0,
@@ -92,6 +101,25 @@ export type DispatchWithValueFn = (
 	value: number,
 ) => number;
 
+/**
+ * Dispatch-with-string function signature — matches the WASM export
+ * `dispatch_event_with_string`.
+ *
+ * Phase 20 (M20.2): The string value is written to WASM linear memory
+ * as a Mojo String struct (via `writeStringStruct()`) before calling
+ * this function.  The `stringPtr` is a pointer to the 24-byte struct.
+ *
+ * @param handlerId - The handler ID to invoke.
+ * @param eventType - The EventType numeric tag.
+ * @param stringPtr - Pointer to a Mojo String struct in WASM memory.
+ * @returns 1 if an action was executed, 0 otherwise.
+ */
+export type DispatchWithStringFn = (
+	handlerId: number,
+	eventType: number,
+	stringPtr: bigint,
+) => number;
+
 /** Composite key for the handler map: "elementId:eventName" */
 function handlerKey(elementId: number, eventName: string): string {
 	return `${elementId}:${eventName}`;
@@ -102,7 +130,7 @@ function handlerKey(elementId: number, eventName: string): string {
  *
  * Usage:
  *   const bridge = new EventBridge(rootElement);
- *   bridge.setDispatch(dispatchFn, dispatchWithValueFn);
+ *   bridge.setDispatch(dispatchFn, dispatchWithValueFn, dispatchWithStringFn);
  *   bridge.install();
  *
  *   // When Interpreter processes NewEventListener:
@@ -130,6 +158,9 @@ export class EventBridge {
 	/** WASM dispatch-with-value function (set after WASM init). */
 	private dispatchWithValueFn: DispatchWithValueFn | null = null;
 
+	/** WASM dispatch-with-string function (set after WASM init). Phase 20. */
+	private dispatchWithStringFn: DispatchWithStringFn | null = null;
+
 	/** Installed AbortController for cleanup. */
 	private abortController: AbortController | null = null;
 
@@ -149,13 +180,19 @@ export class EventBridge {
 	/**
 	 * Set the WASM dispatch functions.
 	 * Must be called before events can be dispatched.
+	 *
+	 * @param dispatch           - Default dispatch (no payload).
+	 * @param dispatchWithValue  - Dispatch with Int32 payload (numeric inputs).
+	 * @param dispatchWithString - Dispatch with String payload (Phase 20).
 	 */
 	setDispatch(
 		dispatch: DispatchFn,
 		dispatchWithValue?: DispatchWithValueFn,
+		dispatchWithString?: DispatchWithStringFn,
 	): void {
 		this.dispatchFn = dispatch;
 		this.dispatchWithValueFn = dispatchWithValue ?? null;
+		this.dispatchWithStringFn = dispatchWithString ?? null;
 	}
 
 	// ── Handler management ───────────────────────────────────────────
@@ -246,6 +283,15 @@ export class EventBridge {
 	/**
 	 * Core event handler: find the element ID, look up the handler,
 	 * and dispatch to WASM.
+	 *
+	 * For input/change events (Phase 20, M20.2):
+	 *   1. Try string dispatch first (if `dispatchWithStringFn` is set).
+	 *      Extracts `event.target.value` as a string, writes it to WASM
+	 *      memory via `writeStringStruct()`, and calls the string dispatch.
+	 *      If handled (returns 1), done.
+	 *   2. Fall back to numeric dispatch (if `dispatchWithValueFn` is set
+	 *      and the value parses as an integer).
+	 *   3. Fall back to default no-payload dispatch.
 	 */
 	private handleEvent(e: Event, eventName: string): void {
 		if (!this.dispatchFn) return;
@@ -259,22 +305,37 @@ export class EventBridge {
 		const eventType = EVENT_NAME_TO_TYPE[eventName];
 		if (eventType === undefined) return;
 
-		// For input/change events, extract the value and dispatch with payload
-		if (
-			(eventName === "input" || eventName === "change") &&
-			this.dispatchWithValueFn
-		) {
+		// For input/change events, extract the value and try dispatch paths
+		if (eventName === "input" || eventName === "change") {
 			const target = e.target as
 				| HTMLInputElement
 				| HTMLTextAreaElement
 				| HTMLSelectElement;
 			if (target && "value" in target) {
-				// For numeric inputs, try to parse as int
-				const numValue = parseInt(target.value, 10);
-				if (!isNaN(numValue)) {
-					this.dispatchWithValueFn(hid, eventType, numValue);
-					this.onAfterDispatch?.();
-					return;
+				const strValue = String(target.value);
+
+				// Phase 20 (M20.2): Try string dispatch first.
+				// This handles ACTION_SIGNAL_SET_STRING handlers directly.
+				// For other action types, the WASM side falls back to
+				// dispatch_event internally (without the string payload).
+				if (this.dispatchWithStringFn) {
+					const stringPtr = writeStringStruct(strValue);
+					const handled = this.dispatchWithStringFn(hid, eventType, stringPtr);
+					if (handled) {
+						this.onAfterDispatch?.();
+						return;
+					}
+				}
+
+				// Numeric fallback: for ACTION_SIGNAL_SET_INPUT handlers
+				// that expect an Int32 payload.
+				if (this.dispatchWithValueFn) {
+					const numValue = parseInt(strValue, 10);
+					if (!Number.isNaN(numValue)) {
+						this.dispatchWithValueFn(hid, eventType, numValue);
+						this.onAfterDispatch?.();
+						return;
+					}
 				}
 			}
 		}
