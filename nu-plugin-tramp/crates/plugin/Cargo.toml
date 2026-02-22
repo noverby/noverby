@@ -13,8 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 # Nushell plugin API
-nu-plugin = "0.110"
-nu-protocol = "0.110"
+nu-plugin = "0.108.0"
+nu-protocol = "0.108.0"
 
 # SSH transport (shells out to system OpenSSH)
 openssh = { version = "0.11", features = ["native-mux"] }
