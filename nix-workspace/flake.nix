@@ -33,6 +33,9 @@
 
       # Contracts source for consumers
       contracts = ./contracts;
+
+      # Plugin definitions for consumers
+      plugins = ./plugins;
     }
     // eachSystem (
       system: let
@@ -69,6 +72,25 @@
                 nickel eval "$test"
               done
 
+              echo "==> Typechecking plugin contracts..."
+              nickel typecheck ${./contracts/plugin.ncl}
+              echo "  -> plugin.ncl OK"
+
+              echo "==> Validating plugin definitions..."
+              cat > validate-plugin-rust.ncl << NICKEL
+              let { PluginConfig, .. } = import "${./contracts/plugin.ncl}" in
+              (import "${./plugins/rust/plugin.ncl}") | PluginConfig
+              NICKEL
+              nickel export validate-plugin-rust.ncl > /dev/null
+              echo "  -> plugins/rust OK"
+
+              cat > validate-plugin-go.ncl << NICKEL
+              let { PluginConfig, .. } = import "${./contracts/plugin.ncl}" in
+              (import "${./plugins/go/plugin.ncl}") | PluginConfig
+              NICKEL
+              nickel export validate-plugin-go.ncl > /dev/null
+              echo "  -> plugins/go OK"
+
               echo "==> Validating example workspaces..."
               # Build a wrapper that applies the WorkspaceConfig contract to the example
               cat > validate-minimal.ncl << NICKEL
@@ -77,6 +99,17 @@
               NICKEL
               nickel export validate-minimal.ncl > /dev/null
               echo "  -> examples/minimal OK"
+
+              echo "==> Validating workspace with plugins field..."
+              cat > validate-with-plugins.ncl << NICKEL
+              let { WorkspaceConfig, .. } = import "${./contracts/workspace.ncl}" in
+              ({
+                name = "test-with-plugins",
+                plugins = ["nix-workspace-rust", "nix-workspace-go"],
+              }) | WorkspaceConfig
+              NICKEL
+              nickel export validate-with-plugins.ncl > /dev/null
+              echo "  -> workspace with plugins field OK"
 
               cat > validate-nixos.ncl << NICKEL
               let { WorkspaceConfig, .. } = import "${./contracts/workspace.ncl}" in
@@ -152,6 +185,21 @@
               nix eval --extra-experimental-features nix-command \
                 --file ${./tests/integration/discovery.nix}
               echo "All integration tests passed."
+              touch $out
+            '';
+
+          # v0.4: Integration tests for plugin system (Nix-side)
+          plugins =
+            pkgs.runCommand "nix-workspace-plugin-tests"
+            {
+              nativeBuildInputs = [pkgs.nix];
+            }
+            ''
+              echo "==> Running plugin integration tests..."
+              export NIX_PATH="nixpkgs=${pkgs.path}"
+              nix eval --extra-experimental-features nix-command \
+                --file ${./tests/integration/plugins.nix}
+              echo "All plugin integration tests passed."
               touch $out
             '';
         };

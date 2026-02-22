@@ -17,8 +17,8 @@
 #   6. Dependency validation — check cross-subworkspace references (NW3xx)
 #   7. Building   — construct flake outputs from the validated config
 #
-# Updated for v0.3 to support subworkspaces with automatic namespacing,
-# cross-subworkspace dependencies, and namespace conflict detection.
+# Updated for v0.4 to support plugins with contract extensions,
+# custom convention directories, and plugin-provided builders.
 #
 {
   nixpkgs,
@@ -31,13 +31,15 @@
   evalNickel = import ./eval-nickel.nix {inherit lib;};
   systemsLib = import ./systems.nix {inherit lib;};
   namespacingLib = import ./namespacing.nix {inherit lib;};
+  pluginsLib = import ./plugins.nix {inherit lib;};
   packageBuilder = import ./builders/packages.nix {inherit lib;};
   shellBuilder = import ./builders/shells.nix {inherit lib;};
   machineBuilder = import ./builders/machines.nix {inherit lib;};
   moduleBuilder = import ./builders/modules.nix {inherit lib;};
 
-  # The contracts directory shipped with nix-workspace.
+  # The contracts and plugins directories shipped with nix-workspace.
   contractsDir = nix-workspace.contracts;
+  pluginsDir = nix-workspace.plugins;
 
   # ── mkWorkspace ─────────────────────────────────────────────────
   #
@@ -75,6 +77,53 @@
       || (discoveredHome != {})
       || builtins.pathExists (workspaceRoot + "/workspace.ncl");
 
+    # ── Phase 1c: Plugin resolution ─────────────────────────────
+    #
+    # Peek at workspace.ncl to determine which plugins are requested.
+    # We need the plugin list BEFORE full Nickel evaluation because
+    # plugin .ncl paths must be passed to the wrapper generator.
+    #
+    # Strategy: do a lightweight Nickel eval of just the plugins field,
+    # or read it from the config. For simplicity, we support plugins
+    # declared in the Nix-side config as well as in workspace.ncl.
+    #
+    # The Nix-side `config.plugins` takes precedence if provided.
+    # Otherwise, we'll pass plugin paths to the Nickel evaluator and
+    # let it handle validation.
+    requestedPlugins = config.plugins or [];
+
+    # Resolve plugin names to their .ncl definition file paths
+    pluginNclPaths =
+      map (name: pluginsLib.resolvePluginNcl pluginsDir name)
+      requestedPlugins;
+
+    # Load plugin Nix-side builders and shell extras
+    loadedPlugins =
+      if requestedPlugins != []
+      then pluginsLib.loadPlugins pluginsDir requestedPlugins
+      else {
+        builders = {};
+        shellExtras = {};
+        pluginNames = [];
+      };
+
+    # Validate plugins (check for duplicates, etc.)
+    pluginValidation = pluginsLib.validatePlugins requestedPlugins;
+    pluginsValid =
+      if pluginValidation != []
+      then let
+        formatDiag = d:
+          "[${d.code}] ${d.message}"
+          + (
+            if d ? hint
+            then "\n  hint: ${d.hint}"
+            else ""
+          );
+        msg = builtins.concatStringsSep "\n\n" (map formatDiag pluginValidation);
+      in
+        throw "nix-workspace: plugin errors:\n\n${msg}"
+      else true;
+
     # Discover .nix implementation files alongside .ncl configs for modules.
     # Modules have a dual structure: .ncl for Nickel config, .nix for NixOS implementation.
     discoveredModuleNixFiles = moduleBuilder.discoverNixFiles workspaceRoot "modules";
@@ -98,7 +147,7 @@
     bootstrapSystem = builtins.currentSystem or "x86_64-linux";
     bootstrapPkgs = import userNixpkgs {system = bootstrapSystem;};
 
-    workspaceConfig =
+    workspaceConfig = assert pluginsValid;
       if hasNclFiles
       then
         evalNickel.evalWorkspace {
@@ -111,9 +160,45 @@
             discoveredMachines
             discoveredModules
             discoveredHome
+            pluginNclPaths
             ;
         }
       else evalNickel.emptyConfig;
+
+    # ── Phase 2c: Plugin config evaluation ──────────────────────
+    #
+    # Evaluate each plugin's plugin.ncl through Nickel to extract
+    # convention mappings and builder metadata as JSON.
+    evaluatedPluginConfigs =
+      if requestedPlugins != []
+      then
+        evalNickel.evalAllPlugins {
+          inherit bootstrapPkgs contractsDir;
+          pluginNclPaths = builtins.listToAttrs (
+            map (name: {
+              inherit name;
+              value = pluginsLib.resolvePluginNcl pluginsDir name;
+            })
+            requestedPlugins
+          );
+        }
+      else {};
+
+    # Extract plugin convention directory mappings
+    pluginConventions =
+      if evaluatedPluginConfigs != {}
+      then pluginsLib.extractConventions evaluatedPluginConfigs
+      else {};
+
+    # Discover items from plugin convention directories
+    pluginDiscovered =
+      if pluginConventions != {}
+      then
+        pluginsLib.discoverPluginConventions
+        discover.discoverNclFiles
+        workspaceRoot
+        pluginConventions
+      else {};
 
     # ── Phase 2b: Subworkspace Nickel evaluation ────────────────
     #
@@ -123,7 +208,7 @@
       if hasSubworkspaces
       then
         evalNickel.evalAllSubworkspaces {
-          inherit bootstrapPkgs contractsDir subworkspaceMap;
+          inherit bootstrapPkgs contractsDir subworkspaceMap pluginNclPaths;
         }
       else {};
 
@@ -195,6 +280,35 @@
       else true;
 
     # Allow the Nix-side config to override certain fields from workspace.ncl.
+    # Merge plugin-discovered items into the effective outputs.
+    # Items from plugin convention directories (e.g. crates/) are added
+    # to the packages config with their plugin builder defaults applied.
+    pluginPackageConfigs = let
+      # Flatten all plugin convention discoveries that map to "packages"
+      pkgConventions =
+        lib.filterAttrs (
+          _name: conv: conv.output == "packages"
+        )
+        pluginConventions;
+
+      # Collect all discovered items from package-targeting conventions
+      allPluginPkgs =
+        builtins.foldl' (
+          acc: convName: let
+            items = pluginDiscovered.${convName} or {};
+          in
+            acc
+            // (lib.mapAttrs (
+                _name: item: {
+                  build-system = item.builder;
+                }
+              )
+              items)
+        ) {}
+        (builtins.attrNames pkgConventions);
+    in
+      allPluginPkgs;
+
     effectiveConfig = assert dependenciesValid;
       workspaceConfig
       // (lib.optionalAttrs (config ? systems) {inherit (config) systems;})
@@ -209,8 +323,9 @@
       (lib.optionalAttrs (ncl ? allow-unfree) {allowUnfree = ncl.allow-unfree;})
       // (ncl.config or {});
 
-    # Use merged outputs (root + namespaced subworkspaces) for all config maps
-    packageConfigs = mergedOutputs.packages or {};
+    # Use merged outputs (root + namespaced subworkspaces) for all config maps,
+    # plus items discovered from plugin convention directories.
+    packageConfigs = (mergedOutputs.packages or {}) // pluginPackageConfigs;
     shellConfigs = mergedOutputs.shells or {};
     machineConfigs = mergedOutputs.machines or {};
     moduleConfigs = mergedOutputs.modules or {};
@@ -228,27 +343,31 @@
           config = nixpkgsConfig;
         };
 
-        # Build packages for this system
+        # Core builders — these are always available
+        coreBuilders = {
+          generic = packageBuilder.buildGeneric;
+          rust = packageBuilder.buildRust;
+          go = packageBuilder.buildGo;
+        };
+
+        # Build packages for this system, routing to plugin builders when available
         builtPackages =
           lib.mapAttrs (
             name: cfg: let
-              buildSystem = cfg.build-system or "generic";
-              builder =
-                {
-                  generic = packageBuilder.buildGeneric;
-                  rust = packageBuilder.buildRust;
-                  go = packageBuilder.buildGo;
-                }
-                .${
-                  buildSystem
-                }
-                or (throw "nix-workspace: unknown build-system '${buildSystem}' for package '${name}'");
+              # Apply plugin builder defaults to the config
+              effectiveCfg = pluginsLib.applyBuilderDefaults loadedPlugins.builders cfg;
 
               # Resolve the workspace root for this package:
               # if it came from a subworkspace, use that subworkspace's root.
               effectiveRoot = resolvePackageRoot name;
             in
-              builder pkgs effectiveRoot name cfg
+              pluginsLib.routeBuilder
+              loadedPlugins.builders
+              coreBuilders
+              pkgs
+              effectiveRoot
+              name
+              effectiveCfg
           )
           (
             lib.filterAttrs (
@@ -258,11 +377,14 @@
             packageConfigs
           );
 
+        # Collect extra shell packages from loaded plugins
+        pluginShellExtras = pluginsLib.collectShellExtras loadedPlugins.shellExtras pkgs;
+
         # Build dev shells for this system
         builtShells =
           lib.mapAttrs (
             name: cfg:
-              shellBuilder.buildShell pkgs name cfg builtPackages
+              shellBuilder.buildShell pkgs name cfg builtPackages pluginShellExtras
           )
           (
             lib.filterAttrs (
@@ -474,6 +596,18 @@
     })
     // (lib.optionalAttrs (homeModules != {}) {
       inherit homeModules;
+    })
+    // (lib.optionalAttrs (requestedPlugins != []) {
+      # Expose loaded plugin metadata for debugging/introspection
+      _pluginMeta =
+        lib.mapAttrs (
+          _name: cfg: {
+            name = cfg.name or "unknown";
+            description = cfg.description or "";
+            conventions = builtins.attrNames (cfg.conventions or {});
+          }
+        )
+        evaluatedPluginConfigs;
     });
 in {
   inherit mkWorkspace;

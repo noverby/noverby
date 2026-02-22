@@ -9,10 +9,19 @@
 # builder layer. All contract checking happens inside the Nickel evaluation;
 # the Nix side receives a fully validated configuration tree.
 #
-# Updated for v0.3 to support subworkspace evaluation. Each subworkspace
-# gets its own Nickel evaluation pass, producing an independent validated
-# config tree that is later merged with namespacing by the Nix layer.
+# Updated for v0.4 to support plugin-aware evaluation. When plugins are
+# loaded, the wrapper Nickel code:
+#   1. Imports each plugin's plugin.ncl and validates it against PluginConfig
+#   2. Merges plugin contract extensions into extended PackageConfig/ShellConfig
+#   3. Uses `mkWorkspaceConfig ExtPkg ExtShell` to produce a workspace contract
+#      that validates plugin-specific fields
+#   4. Applies the extended contract to the merged workspace config
+#
+# Without plugins, the wrapper uses `WorkspaceConfig` directly (which is
+# defined as `mkWorkspaceConfig PackageConfig ShellConfig`), producing
+# identical behavior to pre-v0.4.
 {lib}: let
+  # ── Helpers ─────────────────────────────────────────────────────
   # Generate the Nickel source for a single discovered entry.
   # Each entry becomes a field in the discovered record.
   #   e.g. { hello = import "/nix/store/.../packages/hello.ncl" }
@@ -22,12 +31,94 @@
   mkImportBlock = entries:
     lib.concatStringsSep "\n" (lib.mapAttrsToList mkImportField entries);
 
-  # Build the wrapper .ncl source that ties everything together:
-  #   - Imports the nix-workspace contracts
-  #   - Imports discovered .ncl files from convention directories
-  #   - Imports the user's workspace.ncl (if present)
-  #   - Merges discovered config with workspace config
-  #   - Applies the WorkspaceConfig contract
+  # ── Plugin-aware wrapper generation ─────────────────────────────
+  #
+  # When plugins are loaded, the wrapper:
+  #   1. Imports PluginConfig contract
+  #   2. Imports and validates each plugin's plugin.ncl
+  #   3. Merges all plugin extensions for PackageConfig and ShellConfig
+  #   4. Calls mkWorkspaceConfig with the extended sub-contracts
+  #   5. Applies the resulting contract to the merged config
+  #
+  # When no plugins are loaded, it simply applies WorkspaceConfig directly.
+  #
+  # The key design insight: workspace.ncl exports `mkWorkspaceConfig`,
+  # a factory function that takes (pkg_contract, shell_contract) and
+  # returns a full workspace config contract. This lets us swap in
+  # extended sub-contracts without duplicating the workspace structure.
+
+  # Generate Nickel source for plugin imports and contract extension.
+  #
+  # Type: Path -> [Path] -> String
+  #
+  # Arguments:
+  #   contractsDir   — Path to nix-workspace contracts/
+  #   pluginNclPaths — List of plugin .ncl file paths
+  #
+  # Returns: A Nickel code fragment with:
+  #   - let plugin_0 = ... in
+  #   - let plugin_1 = ... in
+  #   - let ExtPkg = PackageConfig & ext0 & ext1 in
+  #   - let ExtShell = ShellConfig & ext0 & ext1 in
+  #   - let EffectiveWorkspaceConfig = mkWorkspaceConfig ExtPkg ExtShell in
+  #
+  mkPluginPreamble = contractsDir: pluginNclPaths: let
+    # Generate plugin variable names: plugin_0, plugin_1, ...
+    indexed =
+      lib.imap0 (i: path: {
+        varName = "plugin_${toString i}";
+        inherit path;
+      })
+      pluginNclPaths;
+
+    # Import and validate each plugin
+    pluginImports =
+      lib.concatMapStringsSep "" (
+        entry: ''
+          let ${entry.varName} =
+            let { PluginConfig, .. } = import "${toString contractsDir}/plugin.ncl" in
+            (import "${toString entry.path}") | PluginConfig
+          in
+        ''
+      )
+      indexed;
+
+    # Build the extension chain for a given contract name.
+    # Each plugin's extend.<ContractName> is merged in (defaulting to {} if absent).
+    mkExtChain = contractName: baseContract: let
+      extExprs =
+        map (
+          entry: ''(if std.record.has_field "${contractName}" ${entry.varName}.extend then ${entry.varName}.extend."${contractName}" else {})''
+        )
+        indexed;
+    in
+      if indexed == []
+      then baseContract
+      else "${baseContract} & ${lib.concatStringsSep " & " extExprs}";
+
+    extPkgExpr = mkExtChain "PackageConfig" "PackageConfig";
+    extShellExpr = mkExtChain "ShellConfig" "ShellConfig";
+  in
+    pluginImports
+    + ''
+      let ExtPkg = ${extPkgExpr} in
+      let ExtShell = ${extShellExpr} in
+      let EffectiveWorkspaceConfig = mkWorkspaceConfig ExtPkg ExtShell in
+    '';
+
+  # ── Wrapper generation ──────────────────────────────────────────
+
+  # Build the wrapper .ncl source that ties everything together.
+  #
+  # The wrapper:
+  #   1. Imports contracts from the nix-workspace contracts/ directory
+  #   2. Imports discovered .ncl files from convention directories
+  #   3. Imports the user's workspace.ncl (if present)
+  #   4. Merges discovered config with workspace config
+  #   5. Applies the (possibly extended) WorkspaceConfig contract
+  #
+  # When pluginNclPaths is non-empty, it uses mkWorkspaceConfig with
+  # extended sub-contracts. When empty, it uses WorkspaceConfig directly.
   generateWrapperSource = {
     contractsDir,
     workspaceRoot,
@@ -37,12 +128,27 @@
     discoveredModules ? {},
     discoveredHome ? {},
     hasWorkspaceNcl ? false,
+    pluginNclPaths ? [],
   }: let
     packageFields = mkImportBlock discoveredPackages;
     shellFields = mkImportBlock discoveredShells;
     machineFields = mkImportBlock discoveredMachines;
     moduleFields = mkImportBlock discoveredModules;
     homeFields = mkImportBlock discoveredHome;
+
+    hasPlugins = pluginNclPaths != [];
+
+    # Plugin preamble: imports, validation, extension chains, effective contract
+    pluginPreamble =
+      if hasPlugins
+      then mkPluginPreamble contractsDir pluginNclPaths
+      else "";
+
+    # The contract to apply at the end
+    finalContract =
+      if hasPlugins
+      then "EffectiveWorkspaceConfig"
+      else "WorkspaceConfig";
 
     # If workspace.ncl exists, import and merge it; otherwise use empty record
     workspaceMerge =
@@ -53,8 +159,10 @@
       ''
       else "discovered";
   in ''
-    let { WorkspaceConfig, .. } = import "${toString contractsDir}/workspace.ncl" in
-    let discovered = {
+    let { WorkspaceConfig, mkWorkspaceConfig, .. } = import "${toString contractsDir}/workspace.ncl" in
+    let { PackageConfig, .. } = import "${toString contractsDir}/package.ncl" in
+    let { ShellConfig, .. } = import "${toString contractsDir}/shell.ncl" in
+    ${pluginPreamble}let discovered = {
       packages = {
     ${packageFields}
       },
@@ -71,7 +179,7 @@
     ${homeFields}
       },
     } in
-    (${lib.strings.trim workspaceMerge}) | WorkspaceConfig
+    (${lib.strings.trim workspaceMerge}) | ${finalContract}
   '';
 
   # Generate a wrapper .ncl source for a subworkspace.
@@ -79,7 +187,10 @@
   # This is similar to generateWrapperSource but tailored for subworkspaces:
   #   - Uses the subworkspace's own workspace.ncl
   #   - Discovers from the subworkspace's convention directories
-  #   - Applies the same WorkspaceConfig contract
+  #   - Applies the same (possibly extended) contract
+  #
+  # Plugin extensions from the root workspace are propagated to subworkspaces
+  # so they benefit from the same extended contracts.
   #
   # The result is an independent config tree. Namespacing is applied
   # on the Nix side after evaluation.
@@ -93,12 +204,25 @@
     discoveredModules ? {},
     discoveredHome ? {},
     hasWorkspaceNcl ? true,
+    pluginNclPaths ? [],
   }: let
     packageFields = mkImportBlock discoveredPackages;
     shellFields = mkImportBlock discoveredShells;
     machineFields = mkImportBlock discoveredMachines;
     moduleFields = mkImportBlock discoveredModules;
     homeFields = mkImportBlock discoveredHome;
+
+    hasPlugins = pluginNclPaths != [];
+
+    pluginPreamble =
+      if hasPlugins
+      then mkPluginPreamble contractsDir pluginNclPaths
+      else "";
+
+    finalContract =
+      if hasPlugins
+      then "EffectiveWorkspaceConfig"
+      else "WorkspaceConfig";
 
     workspaceMerge =
       if hasWorkspaceNcl
@@ -110,8 +234,10 @@
         (discovered & { name = "${subworkspaceName}" })
       '';
   in ''
-    let { WorkspaceConfig, .. } = import "${toString contractsDir}/workspace.ncl" in
-    let discovered = {
+    let { WorkspaceConfig, mkWorkspaceConfig, .. } = import "${toString contractsDir}/workspace.ncl" in
+    let { PackageConfig, .. } = import "${toString contractsDir}/package.ncl" in
+    let { ShellConfig, .. } = import "${toString contractsDir}/shell.ncl" in
+    ${pluginPreamble}let discovered = {
       packages = {
     ${packageFields}
       },
@@ -128,8 +254,10 @@
     ${homeFields}
       },
     } in
-    (${lib.strings.trim workspaceMerge}) | WorkspaceConfig
+    (${lib.strings.trim workspaceMerge}) | ${finalContract}
   '';
+
+  # ── Evaluation functions ────────────────────────────────────────
 
   # Evaluate a workspace by running Nickel and reading back JSON via IFD.
   #
@@ -142,6 +270,7 @@
   #   discoveredMachines — Attrset of { name = /path/to/name.ncl; ... }
   #   discoveredModules  — Attrset of { name = /path/to/name.ncl; ... }
   #   discoveredHome     — Attrset of { name = /path/to/name.ncl; ... }
+  #   pluginNclPaths     — List of paths to plugin .ncl files (optional, default [])
   #
   # Returns: An attribute set (the validated workspace configuration).
   evalWorkspace = {
@@ -153,6 +282,7 @@
     discoveredMachines ? {},
     discoveredModules ? {},
     discoveredHome ? {},
+    pluginNclPaths ? [],
   }: let
     hasWorkspaceNcl = builtins.pathExists (workspaceRoot + "/workspace.ncl");
 
@@ -166,6 +296,7 @@
         discoveredModules
         discoveredHome
         hasWorkspaceNcl
+        pluginNclPaths
         ;
     };
 
@@ -177,17 +308,26 @@
       text = wrapperSource;
     };
 
+    # Collect plugin directories for sandbox access
+    pluginDirRefs = map (p: builtins.dirOf p) pluginNclPaths;
+
     # Run nickel export inside a derivation (IFD).
     # The output is a single JSON file representing the validated config.
     evalDrv =
-      bootstrapPkgs.runCommand "nix-workspace-eval" {
-        nativeBuildInputs = [bootstrapPkgs.nickel];
+      bootstrapPkgs.runCommand "nix-workspace-eval" (
+        {
+          nativeBuildInputs = [bootstrapPkgs.nickel];
 
-        # Explicitly reference source paths so they appear in the build sandbox.
-        # Even though wrapperFile already references them textually, being
-        # explicit avoids any edge-case sandbox issues.
-        inherit contractsDir workspaceRoot;
-      } ''
+          # Explicitly reference source paths so they appear in the build sandbox.
+          # Even though wrapperFile already references them textually, being
+          # explicit avoids any edge-case sandbox issues.
+          inherit contractsDir workspaceRoot;
+        }
+        // (lib.optionalAttrs (pluginNclPaths != []) {
+          # Reference plugin directories so they are available in the sandbox
+          pluginDirs = pluginDirRefs;
+        })
+      ) ''
         nickel export ${wrapperFile} > $out
       '';
   in
@@ -199,6 +339,9 @@
   # an independent validated config tree for a single subworkspace.
   # The caller is responsible for namespacing the outputs after evaluation.
   #
+  # Plugin extensions from the root workspace are propagated to subworkspaces
+  # so they benefit from the same extended contracts.
+  #
   # Arguments:
   #   bootstrapPkgs      — A nixpkgs package set (for nickel binary)
   #   contractsDir       — Path to nix-workspace contracts/
@@ -209,6 +352,7 @@
   #   discoveredMachines — { name = path; ... }
   #   discoveredModules  — { name = path; ... }
   #   discoveredHome     — { name = path; ... }
+  #   pluginNclPaths     — Plugin .ncl paths from the root workspace (optional)
   #
   # Returns: An attribute set (the validated subworkspace configuration).
   evalSubworkspace = {
@@ -221,6 +365,7 @@
     discoveredMachines ? {},
     discoveredModules ? {},
     discoveredHome ? {},
+    pluginNclPaths ? [],
   }: let
     hasWorkspaceNcl = builtins.pathExists (subworkspaceRoot + "/workspace.ncl");
 
@@ -235,6 +380,7 @@
         discoveredModules
         discoveredHome
         hasWorkspaceNcl
+        pluginNclPaths
         ;
     };
 
@@ -243,11 +389,18 @@
       text = wrapperSource;
     };
 
+    pluginDirRefs = map (p: builtins.dirOf p) pluginNclPaths;
+
     evalDrv =
-      bootstrapPkgs.runCommand "nix-workspace-eval-${subworkspaceName}" {
-        nativeBuildInputs = [bootstrapPkgs.nickel];
-        inherit contractsDir subworkspaceRoot;
-      } ''
+      bootstrapPkgs.runCommand "nix-workspace-eval-${subworkspaceName}" (
+        {
+          nativeBuildInputs = [bootstrapPkgs.nickel];
+          inherit contractsDir subworkspaceRoot;
+        }
+        // (lib.optionalAttrs (pluginNclPaths != []) {
+          pluginDirs = pluginDirRefs;
+        })
+      ) ''
         nickel export ${wrapperFile} > $out
       '';
   in
@@ -262,6 +415,7 @@
   #   contractsDir     — Path to nix-workspace contracts/
   #   subworkspaceMap  — Output of discover.discoverAllSubworkspaces
   #                      { name = { path, discovered, hasWorkspaceNcl }; ... }
+  #   pluginNclPaths   — Plugin .ncl paths from the root workspace (optional)
   #
   # Returns:
   #   { name = evaluatedConfig; ... }
@@ -271,13 +425,14 @@
     bootstrapPkgs,
     contractsDir,
     subworkspaceMap,
+    pluginNclPaths ? [],
   }:
     lib.mapAttrs (
       name: info: let
         inherit (info) discovered;
       in
         evalSubworkspace {
-          inherit bootstrapPkgs contractsDir;
+          inherit bootstrapPkgs contractsDir pluginNclPaths;
           subworkspaceRoot = info.path;
           subworkspaceName = name;
           discoveredPackages = discovered.packages or {};
@@ -288,6 +443,74 @@
         }
     )
     subworkspaceMap;
+
+  # ── Plugin evaluation ───────────────────────────────────────────
+  #
+  # Evaluate a plugin's plugin.ncl through Nickel to obtain its
+  # configuration (conventions, contracts, extensions, etc.) as JSON.
+  #
+  # This is used by the Nix-side plugin system to extract convention
+  # mappings and builder metadata from plugin definitions.
+  #
+  # Type: AttrSet -> AttrSet
+  #
+  # Arguments:
+  #   bootstrapPkgs — A nixpkgs package set (for nickel binary)
+  #   contractsDir  — Path to nix-workspace contracts/
+  #   pluginNclPath — Path to the plugin's plugin.ncl file
+  #   pluginName    — Plugin name (for derivation naming)
+  #
+  # Returns: The evaluated plugin config as a Nix attribute set.
+  evalPlugin = {
+    bootstrapPkgs,
+    contractsDir,
+    pluginNclPath,
+    pluginName,
+  }: let
+    wrapperSource = ''
+      let { PluginConfig, .. } = import "${toString contractsDir}/plugin.ncl" in
+      (import "${toString pluginNclPath}") | PluginConfig
+    '';
+
+    wrapperFile = bootstrapPkgs.writeTextFile {
+      name = "nix-workspace-plugin-eval-${pluginName}.ncl";
+      text = wrapperSource;
+    };
+
+    evalDrv =
+      bootstrapPkgs.runCommand "nix-workspace-plugin-eval-${pluginName}" {
+        nativeBuildInputs = [bootstrapPkgs.nickel];
+        inherit contractsDir;
+        pluginDir = builtins.dirOf pluginNclPath;
+      } ''
+        nickel export ${wrapperFile} > $out
+      '';
+  in
+    builtins.fromJSON (builtins.readFile evalDrv);
+
+  # Evaluate all plugins referenced in the workspace config.
+  #
+  # Type: AttrSet -> AttrSet
+  #
+  # Arguments:
+  #   bootstrapPkgs   — A nixpkgs package set (for nickel binary)
+  #   contractsDir    — Path to nix-workspace contracts/
+  #   pluginNclPaths  — { pluginName = /path/to/plugin.ncl; ... }
+  #
+  # Returns:
+  #   { pluginName = evaluatedPluginConfig; ... }
+  evalAllPlugins = {
+    bootstrapPkgs,
+    contractsDir,
+    pluginNclPaths,
+  }:
+    lib.mapAttrs (
+      pluginName: pluginNclPath:
+        evalPlugin {
+          inherit bootstrapPkgs contractsDir pluginNclPath pluginName;
+        }
+    )
+    pluginNclPaths;
 
   # Light-weight evaluation: skip Nickel entirely and return a minimal
   # default config. Used as a fallback when there is no workspace.ncl
@@ -304,12 +527,15 @@
     home = {};
     conventions = {};
     dependencies = {};
+    plugins = [];
   };
 in {
   inherit
     evalWorkspace
     evalSubworkspace
     evalAllSubworkspaces
+    evalPlugin
+    evalAllPlugins
     generateWrapperSource
     generateSubworkspaceWrapperSource
     emptyConfig
