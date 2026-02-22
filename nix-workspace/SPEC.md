@@ -470,23 +470,32 @@ nix-workspace/
 ├── lib/                       # Nix library (flake output builders)
 │   ├── default.nix            # Main entry point: nix-workspace function
 │   ├── discover.nix           # Directory auto-discovery
+│   ├── eval-nickel.nix        # Nickel evaluation (IFD bridge)
 │   ├── systems.nix            # System multiplexing
 │   ├── namespacing.nix        # Subworkspace name resolution
+│   ├── plugins.nix            # Plugin loading, routing, and merging
 │   └── builders/              # Output-type-specific builders
 │       ├── packages.nix
 │       ├── shells.nix
 │       ├── machines.nix
-│       ├── modules.nix
-│       ├── overlays.nix
-│       └── checks.nix
+│       └── modules.nix
 │
 ├── contracts/                 # Nickel contracts
-│   ├── workspace.ncl          # Top-level workspace contract
+│   ├── workspace.ncl          # Top-level workspace contract + mkWorkspaceConfig
 │   ├── package.ncl            # Package contracts
 │   ├── machine.ncl            # NixOS machine contracts
 │   ├── shell.ncl              # Dev shell contracts
 │   ├── module.ncl             # Module contracts
+│   ├── plugin.ncl             # Plugin definition contract (PluginConfig)
 │   └── common.ncl             # Shared types (System, ModuleRef, etc.)
+│
+├── plugins/                   # Built-in plugin definitions
+│   ├── rust/                  # nix-workspace-rust plugin
+│   │   ├── plugin.ncl         # Rust contracts, crates/ convention, extensions
+│   │   └── builder.nix        # Enhanced Rust builder (features, workspace-member, etc.)
+│   └── go/                    # nix-workspace-go plugin
+│       ├── plugin.ncl         # Go contracts, go-modules/ convention, extensions
+│       └── builder.nix        # Enhanced Go builder (tags, ldflags, CGO, etc.)
 │
 ├── src/                       # Rust CLI (standalone mode)
 │   ├── Cargo.toml
@@ -509,28 +518,36 @@ nix-workspace/
 │   │       ├── workspace.ncl
 │   │       └── packages/
 │   │           └── default.ncl
-│   └── nixos/                 # NixOS machine configuration
+│   ├── nixos/                 # NixOS machine configuration
+│   │   ├── flake.nix
+│   │   ├── workspace.ncl
+│   │   ├── machines/
+│   │   │   └── my-machine.ncl
+│   │   └── modules/
+│   │       └── desktop.ncl
+│   └── rust-project/          # Rust project with plugin support
 │       ├── flake.nix
-│       ├── workspace.ncl
-│       ├── machines/
-│       │   └── my-machine.ncl
-│       └── modules/
-│           └── desktop.ncl
+│       ├── workspace.ncl      # plugins = ["nix-workspace-rust"]
+│       ├── packages/
+│       │   └── my-cli.ncl     # Package with Rust plugin fields
+│       └── crates/
+│           └── my-lib.ncl     # Auto-discovered via crates/ convention
 │
 └── tests/                     # Test suite
     ├── unit/                  # Nickel contract tests
     │   ├── workspace.ncl
     │   ├── package.ncl
-    │   └── machine.ncl
+    │   ├── machine.ncl
+    │   └── plugin.ncl         # Plugin contract tests
     ├── integration/           # Full workspace evaluation tests
     │   ├── discovery.nix
     │   ├── namespacing.nix
-    │   ├── systems.nix
-    │   └── subworkspaces.nix
+    │   └── plugins.nix        # Plugin system integration tests
     └── errors/                # Error message snapshot tests
         ├── invalid-system.ncl
         ├── missing-field.ncl
-        ├── namespace-conflict.ncl
+        ├── invalid-plugin-name.ncl
+        ├── invalid-plugin-convention.ncl
         └── expected/          # Expected error output
             ├── invalid-system.json
             ├── missing-field.json
@@ -574,11 +591,11 @@ nix-workspace/
 
 ### v0.4 — Plugin system
 
-- [ ] Plugin interface definition (contracts, conventions, builders)
-- [ ] Plugin loading and merging
-- [ ] Built-in plugins: `nix-workspace-rust`, `nix-workspace-go`
-- [ ] Custom convention directory support
-- [ ] Plugin contract extension mechanism
+- [x] Plugin interface definition (contracts, conventions, builders)
+- [x] Plugin loading and merging
+- [x] Built-in plugins: `nix-workspace-rust`, `nix-workspace-go`
+- [x] Custom convention directory support
+- [x] Plugin contract extension mechanism
 
 ### v0.5 — Standalone CLI
 

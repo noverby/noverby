@@ -1,7 +1,12 @@
 # Top-level workspace configuration contract
 # This is the primary contract applied to workspace.ncl files.
 #
-# Updated for v0.3 to support subworkspace dependencies.
+# Updated for v0.4 to support plugins.
+#
+# The `mkWorkspaceConfig` function allows the plugin system to create
+# a variant of WorkspaceConfig that uses extended sub-contracts
+# (e.g. PackageConfig with plugin-specific fields). This avoids
+# duplicating the workspace structure in generated wrapper code.
 
 let { System, Name, .. } = import "./common.ncl" in
 let { PackageConfig, .. } = import "./package.ncl" in
@@ -43,7 +48,23 @@ let { ModuleConfig, HomeConfig, .. } = import "./module.ncl" in
       = true,
   },
 
-  WorkspaceConfig = {
+  # Factory function for building workspace config contracts.
+  #
+  # When plugins are loaded, the Nickel evaluation wrapper calls this
+  # function with extended sub-contracts to produce a workspace config
+  # contract that validates plugin-specific fields.
+  #
+  # Without plugins, `WorkspaceConfig` (defined below) is used directly,
+  # which is equivalent to `mkWorkspaceConfig PackageConfig ShellConfig`.
+  #
+  # Usage in generated wrapper code:
+  #
+  #   let ExtPkg = PackageConfig & plugin_0.extend.PackageConfig in
+  #   let ExtShell = ShellConfig & plugin_0.extend.ShellConfig in
+  #   let ExtWorkspaceConfig = mkWorkspaceConfig ExtPkg ExtShell in
+  #   merged | ExtWorkspaceConfig
+  #
+  mkWorkspaceConfig = fun pkg_contract shell_contract => {
     name
       | Name
       | doc "Workspace name (used for namespacing in subworkspaces)",
@@ -66,13 +87,13 @@ let { ModuleConfig, HomeConfig, .. } = import "./module.ncl" in
       = {},
 
     packages
-      | { _ : PackageConfig }
+      | { _ : pkg_contract }
       | doc "Package definitions (auto-discovered from packages/ or declared here)"
       | default
       = {},
 
     shells
-      | { _ : ShellConfig }
+      | { _ : shell_contract }
       | doc "Development shell definitions (auto-discovered from shells/ or declared here)"
       | default
       = {},
@@ -130,7 +151,28 @@ let { ModuleConfig, HomeConfig, .. } = import "./module.ncl" in
       "%
       | default
       = {},
+
+    plugins
+      | Array String
+      | doc m%"
+        Plugins to load for this workspace.
+        Each entry is a plugin name (e.g. "nix-workspace-rust", "nix-workspace-go").
+        Plugins can add contracts, conventions, builders, and extend existing contracts.
+
+        Built-in plugins:
+          - "nix-workspace-rust" — Rust/Cargo build support (crates/ convention)
+          - "nix-workspace-go"   — Go module build support (go-modules/ convention)
+
+        Example:
+          plugins = ["nix-workspace-rust", "nix-workspace-go"]
+      "%
+      | default
+      = [],
   },
+
+  # The default WorkspaceConfig contract — uses base PackageConfig and ShellConfig.
+  # This is what workspace.ncl files are validated against when no plugins are loaded.
+  WorkspaceConfig = mkWorkspaceConfig PackageConfig ShellConfig,
 
   DependencyRef
     | doc m%"

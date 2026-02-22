@@ -3,6 +3,10 @@
 # Transforms ShellConfig records (from Nickel evaluation) into
 # mkShell derivations that become devShells flake outputs.
 #
+# Updated for v0.4 to support plugin shell extras. When plugins are
+# loaded, they can contribute extra packages to dev shells (e.g. the
+# Rust plugin adds cargo/rustc/clippy when `rust-toolchain` is set).
+#
 # Input shape (from evaluated workspace.ncl):
 #   {
 #     packages = ["cargo" "rustc" "rust-analyzer"];
@@ -16,15 +20,16 @@
 {lib}: let
   # Build a single devShell derivation from a ShellConfig.
   #
-  # Type: Pkgs -> String -> AttrSet -> AttrSet -> Derivation
+  # Type: Pkgs -> String -> AttrSet -> AttrSet -> [Derivation] -> Derivation
   #
   # Arguments:
-  #   pkgs         — The nixpkgs package set for the target system
-  #   name         — The shell name (e.g. "default")
-  #   shellConfig  — The evaluated ShellConfig from Nickel
+  #   pkgs              — The nixpkgs package set for the target system
+  #   name              — The shell name (e.g. "default")
+  #   shellConfig       — The evaluated ShellConfig from Nickel
   #   workspacePackages — Built packages from this workspace (for inputs-from)
+  #   pluginExtras      — Extra packages from loaded plugins (default [])
   #
-  buildShell = pkgs: name: shellConfig: workspacePackages: let
+  buildShell = pkgs: name: shellConfig: workspacePackages: pluginExtras: let
     # Resolve package names to actual nixpkgs derivations.
     # Names are dot-path attribute lookups into pkgs (e.g. "cargo" → pkgs.cargo).
     resolvePackage = attrName: let
@@ -64,7 +69,7 @@
 
         name = "nix-workspace-${name}";
 
-        packages = shellPackages ++ toolPackages;
+        packages = shellPackages ++ toolPackages ++ pluginExtras;
 
         inputsFrom = inputsFromPackages;
       }
@@ -73,20 +78,21 @@
 
   # Build all shells for a given system.
   #
-  # Type: Pkgs -> AttrSet -> AttrSet -> AttrSet
+  # Type: Pkgs -> AttrSet -> AttrSet -> [Derivation] -> AttrSet
   #
   # Arguments:
   #   pkgs              — The nixpkgs package set for the target system
   #   shellConfigs      — { name = ShellConfig; ... } from workspace evaluation
   #   workspacePackages — { name = derivation; ... } built packages for inputs-from
+  #   pluginExtras      — Extra packages from loaded plugins (default [])
   #
   # Returns:
   #   { name = derivation; ... } suitable for devShells.${system}
   #
-  buildShells = pkgs: shellConfigs: workspacePackages:
+  buildShells = pkgs: shellConfigs: workspacePackages: pluginExtras:
     lib.mapAttrs (
       name: cfg:
-        buildShell pkgs name cfg workspacePackages
+        buildShell pkgs name cfg workspacePackages pluginExtras
     )
     shellConfigs;
 in {
