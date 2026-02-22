@@ -8,8 +8,6 @@
     # AI
     mistral-vibe
     # AI tools/languages
-    jq
-    python3
 
     # System dev
     #lldb
