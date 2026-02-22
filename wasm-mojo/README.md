@@ -322,7 +322,7 @@ All apps use `ComponentContext` for Dioxus-style ergonomics — constructor-base
 `use_signal()` with operator overloading, inline event handlers, and auto-numbered
 dynamic text slots:
 
-```txt
+```mojo
 # Dioxus (Rust):
 #     fn App() -> Element {
 #         let mut count = use_signal(|| 0);
