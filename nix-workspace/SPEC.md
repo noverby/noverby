@@ -514,24 +514,24 @@ nix-workspace/
 
 ### v0.1 — Foundation
 
-- [ ] Nickel contracts for core workspace config (`WorkspaceConfig`, `System`)
-- [ ] Nix library entry point (`nix-workspace` function callable from `flake.nix`)
-- [ ] Package auto-discovery from `packages/` directory
-- [ ] Dev shell auto-discovery from `shells/` directory
-- [ ] System multiplexing
-- [ ] Basic structured error output
-- [ ] Example: minimal workspace
-- [ ] Unit tests for contracts
+- [x] Nickel contracts for core workspace config (`WorkspaceConfig`, `System`)
+- [x] Nix library entry point (`nix-workspace` function callable from `flake.nix`)
+- [x] Package auto-discovery from `packages/` directory
+- [x] Dev shell auto-discovery from `shells/` directory
+- [x] System multiplexing
+- [x] Basic structured error output
+- [x] Example: minimal workspace
+- [x] Unit tests for contracts
 
 ### v0.2 — NixOS integration
 
-- [ ] `MachineConfig` contract with full validation
-- [ ] `ModuleConfig` contract
-- [ ] Machine auto-discovery from `machines/` directory
-- [ ] Module auto-discovery from `modules/` directory
-- [ ] Home-manager module support (`home/` directory)
-- [ ] Example: NixOS machine configuration
-- [ ] Integration tests for machine building
+- [x] `MachineConfig` contract with full validation
+- [x] `ModuleConfig` contract
+- [x] Machine auto-discovery from `machines/` directory
+- [x] Module auto-discovery from `modules/` directory
+- [x] Home-manager module support (`home/` directory)
+- [x] Example: NixOS machine configuration
+- [x] Integration tests for machine building
 
 ### v0.3 — Subworkspaces
 

@@ -29,10 +29,16 @@
     workspaceRoot,
     discoveredPackages ? {},
     discoveredShells ? {},
+    discoveredMachines ? {},
+    discoveredModules ? {},
+    discoveredHome ? {},
     hasWorkspaceNcl ? false,
   }: let
     packageFields = mkImportBlock discoveredPackages;
     shellFields = mkImportBlock discoveredShells;
+    machineFields = mkImportBlock discoveredMachines;
+    moduleFields = mkImportBlock discoveredModules;
+    homeFields = mkImportBlock discoveredHome;
 
     # If workspace.ncl exists, import and merge it; otherwise use empty record
     workspaceMerge =
@@ -51,6 +57,15 @@
       shells = {
     ${shellFields}
       },
+      machines = {
+    ${machineFields}
+      },
+      modules = {
+    ${moduleFields}
+      },
+      home = {
+    ${homeFields}
+      },
     } in
     (${lib.strings.trim workspaceMerge}) | WorkspaceConfig
   '';
@@ -58,11 +73,14 @@
   # Evaluate a workspace by running Nickel and reading back JSON via IFD.
   #
   # Arguments:
-  #   bootstrapPkgs   — A nixpkgs package set used to obtain the `nickel` binary
-  #   contractsDir    — Path to the nix-workspace contracts/ directory
-  #   workspaceRoot   — Path to the user's workspace root
+  #   bootstrapPkgs      — A nixpkgs package set used to obtain the `nickel` binary
+  #   contractsDir       — Path to the nix-workspace contracts/ directory
+  #   workspaceRoot      — Path to the user's workspace root
   #   discoveredPackages — Attrset of { name = /path/to/name.ncl; ... }
   #   discoveredShells   — Attrset of { name = /path/to/name.ncl; ... }
+  #   discoveredMachines — Attrset of { name = /path/to/name.ncl; ... }
+  #   discoveredModules  — Attrset of { name = /path/to/name.ncl; ... }
+  #   discoveredHome     — Attrset of { name = /path/to/name.ncl; ... }
   #
   # Returns: An attribute set (the validated workspace configuration).
   evalWorkspace = {
@@ -71,11 +89,23 @@
     workspaceRoot,
     discoveredPackages ? {},
     discoveredShells ? {},
+    discoveredMachines ? {},
+    discoveredModules ? {},
+    discoveredHome ? {},
   }: let
     hasWorkspaceNcl = builtins.pathExists (workspaceRoot + "/workspace.ncl");
 
     wrapperSource = generateWrapperSource {
-      inherit contractsDir workspaceRoot discoveredPackages discoveredShells hasWorkspaceNcl;
+      inherit
+        contractsDir
+        workspaceRoot
+        discoveredPackages
+        discoveredShells
+        discoveredMachines
+        discoveredModules
+        discoveredHome
+        hasWorkspaceNcl
+        ;
     };
 
     # Write the generated wrapper to the store so Nickel can import from it.
@@ -112,6 +142,9 @@
     nixpkgs = {};
     packages = {};
     shells = {};
+    machines = {};
+    modules = {};
+    home = {};
     conventions = {};
   };
 in {

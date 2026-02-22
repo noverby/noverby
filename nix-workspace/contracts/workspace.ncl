@@ -4,6 +4,8 @@
 let { System, Name, .. } = import "./common.ncl" in
 let { PackageConfig, .. } = import "./package.ncl" in
 let { ShellConfig, .. } = import "./shell.ncl" in
+let { MachineConfig, .. } = import "./machine.ncl" in
+let { ModuleConfig, HomeConfig, .. } = import "./module.ncl" in
 
 {
   NixpkgsConfig = {
@@ -73,11 +75,38 @@ let { ShellConfig, .. } = import "./shell.ncl" in
       | default
       = {},
 
+    machines
+      | { _ : MachineConfig }
+      | doc m%"
+        NixOS machine configurations (auto-discovered from machines/ or declared here).
+        Each entry produces a nixosConfigurations.<name> flake output.
+      "%
+      | default
+      = {},
+
+    modules
+      | { _ : ModuleConfig }
+      | doc m%"
+        NixOS module definitions (auto-discovered from modules/ or declared here).
+        Each entry produces a nixosModules.<name> flake output.
+      "%
+      | default
+      = {},
+
+    home
+      | { _ : HomeConfig }
+      | doc m%"
+        Home-manager module definitions (auto-discovered from home/ or declared here).
+        Each entry produces a homeModules.<name> flake output.
+      "%
+      | default
+      = {},
+
     conventions
       | { _ : ConventionConfig }
       | doc m%"
         Override directory conventions for auto-discovery.
-        Keys are convention names (e.g. "packages", "shells").
+        Keys are convention names (e.g. "packages", "shells", "machines", "modules", "home").
       "%
       | default
       = {},
