@@ -113,6 +113,8 @@ from .dsl import (
     class_if,
     class_when,
     text_when,
+    attr_if,
+    attr_when,
     # Generic element constructors
     el,
     el_empty,

@@ -38,6 +38,7 @@ comptime OP_REMOVE_EVENT_LISTENER = UInt8(0x0D)
 comptime OP_REMOVE = UInt8(0x0E)
 comptime OP_PUSH_ROOT = UInt8(0x0F)
 comptime OP_REGISTER_TEMPLATE = UInt8(0x10)
+comptime OP_REMOVE_ATTRIBUTE = UInt8(0x11)
 
 
 # ── MutationWriter ───────────────────────────────────────────────────────────
@@ -251,6 +252,22 @@ struct MutationWriter(Movable):
         self._write_u8(ns)
         self._write_short_str(name)
         self._write_str(value)
+
+    fn remove_attribute(mut self, id: UInt32, ns: UInt8, name: String):
+        """Remove an attribute from the element with the given id.
+
+        Used for boolean attributes (disabled, checked, hidden, etc.)
+        where removing the attribute is semantically different from
+        setting it to an empty string.
+
+        `ns` is a namespace tag (0 = no namespace, 1 = xlink, etc.).
+
+        | op (u8) | id (u32) | ns (u8) | name_len (u16) | name ([u8]) |
+        """
+        self._write_u8(OP_REMOVE_ATTRIBUTE)
+        self._write_u32_le(id)
+        self._write_u8(ns)
+        self._write_short_str(name)
 
     fn set_text(mut self, id: UInt32, text: String):
         """Update the text content of node `id`.

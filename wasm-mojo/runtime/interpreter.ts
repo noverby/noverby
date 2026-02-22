@@ -143,6 +143,10 @@ export class Interpreter {
 				this.opSetAttribute(m.id, m.ns, m.name, m.value);
 				break;
 
+			case Op.RemoveAttribute:
+				this.opRemoveAttribute(m.id, m.ns, m.name);
+				break;
+
 			case Op.SetText:
 				this.opSetText(m.id, m.text);
 				break;
@@ -369,6 +373,32 @@ export class Interpreter {
 	/**
 	 * SetText: update the text content of nodes[id].
 	 */
+	private opRemoveAttribute(id: number, ns: number, name: string): void {
+		const node = this.nodes.get(id);
+		if (!node) {
+			throw new Error(`Interpreter: RemoveAttribute — unknown id ${id}`);
+		}
+
+		// Must be an Element to have attributes
+		if (node.nodeType !== 1 /* ELEMENT_NODE */) {
+			// Silently skip for non-elements (defensive)
+			return;
+		}
+
+		const el = node as Element;
+
+		if (ns === 0) {
+			el.removeAttribute(name);
+		} else {
+			const nsUri = this.resolveNs(ns);
+			if (nsUri) {
+				el.removeAttributeNS(nsUri, name);
+			} else {
+				el.removeAttribute(name);
+			}
+		}
+	}
+
 	private opSetText(id: number, text: string): void {
 		const node = this.nodes.get(id);
 		if (!node) {
@@ -737,6 +767,14 @@ export class MutationBuilder {
 		this.writeU8(ns);
 		this.writeShortStr(name);
 		this.writeStr(value);
+		return this;
+	}
+
+	removeAttribute(id: number, ns: number, name: string): this {
+		this.writeU8(Op.RemoveAttribute);
+		this.writeU32(id);
+		this.writeU8(ns);
+		this.writeShortStr(name);
 		return this;
 	}
 

@@ -2,6 +2,22 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 27 — RemoveAttribute Mutation
+
+Added a proper `RemoveAttribute` opcode (`0x11`) to the mutation protocol, replacing the previous workaround of setting attributes to empty strings. This is semantically correct for HTML boolean attributes (`disabled`, `checked`, `hidden`, `selected`, `open`, etc.) where presence means "on" and absence means "off" — setting `disabled=""` still means disabled, only removing the attribute truly disables it.
+
+- **P27.1** — Protocol + MutationWriter. Added `OP_REMOVE_ATTRIBUTE = 0x11` opcode to `src/bridge/protocol.mojo` with wire format `| op (u8) | id (u32) | ns (u8) | name_len (u16) | name ([u8]) |` (same as `SetAttribute` but without the value payload). Added `remove_attribute(id, ns, name)` method to `MutationWriter`. Added `write_op_remove_attribute` WASM export for test access. Added `Op.RemoveAttribute = 0x11` to both `runtime/protocol.ts` and `examples/lib/protocol.js`. Added `MutationRemoveAttribute` interface and parser case to `MutationReader.next()` in both TS and JS. Added `removeAttribute()` method to `MutationBuilder` in `runtime/interpreter.ts`. Protocol round-trip tests: 3 new suites in `test-js/protocol.test.ts` (basic RemoveAttribute, with namespace, Set→Remove sequence) plus updated "all opcodes" test (now 16 opcodes). 2 new Mojo protocol tests (`test_remove_attribute`, `test_remove_attribute_with_namespace`) plus updated all-opcodes test. Protocol test count: 39/39.
+
+- **P27.2** — Interpreter. Added `Op.RemoveAttribute` case to `handleMutation()` in TS `Interpreter` class with `opRemoveAttribute()` private method — calls `element.removeAttribute(name)` or `element.removeAttributeNS(ns, name)` for namespaced attributes. Added `Op.RemoveAttribute` case to browser JS `Interpreter.handle()`. 7 new interpreter test suites in `test-js/interpreter.test.ts`: basic RemoveAttribute, boolean attribute (disabled set→remove), full cycle (Set→Remove→Set re-add), non-existent attribute is no-op, interleaved Set/Remove on multiple attrs, MutationBuilder round-trip for RemoveAttribute.
+
+- **P27.3** — DiffEngine integration. Updated `_diff_dynamic_attrs()` in `src/mutations/diff.mojo`: when new attr is `AVAL_NONE` and old was a real attribute value (not event), emit `remove_attribute()` instead of `set_attribute(name, "")`. This means the diff engine now produces semantically correct DOM mutations for attribute removal. Updated existing `test_diff_attr_removed_text_to_none` Mojo test to expect `OP_REMOVE_ATTRIBUTE`. Added 2 new diff tests: `test_diff_attr_none_to_text` (attribute appearing: AVAL_NONE→AVAL_TEXT emits SetAttribute, no RemoveAttribute) and `test_diff_bool_attr_true_to_false_remove` (HTML boolean pattern: AVAL_TEXT("")→AVAL_NONE emits RemoveAttribute, no SetAttribute). Updated JS diff test "Attribute removed (text → none)" to expect `Op.RemoveAttribute`. Mutation test count: 36/36.
+
+- **P27.4** — DSL helpers for boolean attributes. Updated `VNodeBuilder.add_dyn_bool_attr()` in `src/vdom/dsl.mojo`: when `value` is True, stores `AVAL_TEXT("")` (HTML boolean presence convention); when False, stores `AVAL_NONE` (triggers RemoveAttribute during diff). `ItemBuilder.add_dyn_bool_attr()` and `RenderContext.add_dyn_bool_attr()` delegate to VNodeBuilder so they inherit the new behavior automatically. Added `attr_if(condition, value)` and `attr_when(condition, true_value, false_value)` runtime string helpers to DSL, analogous to `class_if` / `class_when` but for arbitrary attributes. Exported from `vdom/__init__.mojo`.
+
+**Test count after P27.4:** 960 Mojo + 1,477 JS = 2,437 tests.
+
+---
+
 ## Phase 26 — App Lifecycle (Destroy / Recreate)
 
 Proved the full app destroy→recreate loop works end-to-end across all three apps (counter, todo, bench). Added `destroy()` to both the browser `launch()` AppHandle and the TS test `createApp()` AppHandle, with proper resource cleanup and double-destroy safety.

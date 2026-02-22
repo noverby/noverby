@@ -25,6 +25,7 @@ export const Op = {
 	Remove: 0x0e,
 	PushRoot: 0x0f,
 	RegisterTemplate: 0x10,
+	RemoveAttribute: 0x11,
 } as const;
 
 export type OpCode = (typeof Op)[keyof typeof Op];
@@ -91,6 +92,13 @@ export interface MutationSetAttribute {
 	ns: number;
 	name: string;
 	value: string;
+}
+
+export interface MutationRemoveAttribute {
+	op: typeof Op.RemoveAttribute;
+	id: number;
+	ns: number;
+	name: string;
 }
 
 export interface MutationSetText {
@@ -189,6 +197,7 @@ export type Mutation =
 	| MutationInsertAfter
 	| MutationInsertBefore
 	| MutationSetAttribute
+	| MutationRemoveAttribute
 	| MutationSetText
 	| MutationNewEventListener
 	| MutationRemoveEventListener
@@ -331,6 +340,13 @@ export class MutationReader {
 				const name = this.readShortStr();
 				const value = this.readStr();
 				return { op, id, ns, name, value };
+			}
+
+			case Op.RemoveAttribute: {
+				const id = this.readU32();
+				const ns = this.readU8();
+				const name = this.readShortStr();
+				return { op, id, ns, name };
 			}
 
 			case Op.SetText:
