@@ -208,11 +208,17 @@ struct SharedState(Movable):
         """Return (heap_pointer, free_blocks, free_bytes)."""
         var blocks = 0
         var bytes = 0
-        for entry in self.free_map.items():
-            var size = entry[].key
-            var bucket = entry[].value
-            blocks += len(bucket)
-            bytes += size * len(bucket)
+        # Collect keys into a list to avoid dict iterator subscript issues.
+        var keys = List[Int]()
+        for key_ref in self.free_map.keys():
+            keys.append(key_ref)
+        for i in range(len(keys)):
+            var size = keys[i]
+            var bucket = self.free_map.get(size)
+            if bucket:
+                var b = bucket.value().copy()
+                blocks += len(b)
+                bytes += size * len(b)
         return Tuple(self.bump_ptr, blocks, bytes)
 
 
@@ -811,6 +817,11 @@ struct WasmInstance(Movable):
     fn aligned_alloc(self, align: Int, size: Int) -> Int:
         """Bump-allocate *size* bytes with the given alignment."""
         return self._state_ptr[].aligned_alloc(align, size)
+
+    fn heap_stats(self) raises -> Tuple[Int, Int, Int]:
+        """Return (heap_pointer, free_blocks, free_bytes) from the JS-side allocator.
+        """
+        return self._state_ptr[].heap_stats()
 
     # ------------------------------------------------------------------
     # String struct operations (mirrors runtime/strings.ts)

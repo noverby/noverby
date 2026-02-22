@@ -1,5 +1,8 @@
 // App Shell — Orchestrates WASM runtime, DOM interpreter, and event bridge.
 //
+// Phase 26: destroy() now frees the mutation buffer, clears the root DOM,
+// and sets a `destroyed` flag to guard against double-destroy.
+//
 // Provides a generic `createApp()` factory that wires together:
 //
 //   1. WASM app exports (init, rebuild, handle_event, flush, destroy)
@@ -20,7 +23,7 @@
 
 import { EventBridge, EventType } from "./events.ts";
 import { Interpreter } from "./interpreter.ts";
-import { alignedAlloc, getMemory } from "./memory.ts";
+import { alignedAlloc, alignedFree, getMemory } from "./memory.ts";
 import { TemplateCache } from "./templates.ts";
 import type { WasmExports } from "./types.ts";
 
@@ -139,7 +142,10 @@ export interface AppHandle {
 	/** Flush pending updates and apply mutations to the DOM. */
 	flushAndApply(): void;
 
-	/** Destroy the app and free WASM resources. */
+	/** Whether the app has been destroyed. */
+	destroyed: boolean;
+
+	/** Destroy the app and free WASM resources. Idempotent. */
 	destroy(): void;
 }
 
@@ -261,7 +267,7 @@ export function createApp(config: AppConfig): AppHandle {
 
 	// ── Public handle ─────────────────────────────────────────────────
 
-	return {
+	const handle: AppHandle = {
 		fns,
 		interpreter,
 		events,
@@ -270,14 +276,33 @@ export function createApp(config: AppConfig): AppHandle {
 		appPtr,
 		bufPtr,
 		bufCapacity,
+		destroyed: false,
 		dispatchAndFlush,
 		flushAndApply,
 
 		destroy(): void {
+			if (handle.destroyed) return;
+			handle.destroyed = true;
+
+			// Remove DOM event delegation
 			events.uninstall();
+
+			// Free the mutation buffer in the JS-side allocator
+			alignedFree(bufPtr);
+
+			// Destroy the WASM-side app state
 			destroyApp(fns, appPtr);
+
+			// Clear rendered DOM (removes child elements and their listeners)
+			root.replaceChildren();
+
+			// Null out fields to prevent use-after-destroy
+			handle.appPtr = 0n;
+			handle.bufPtr = 0n;
 		},
 	};
+
+	return handle;
 }
 
 // ── CounterApp handle ───────────────────────────────────────────────────────
@@ -345,10 +370,31 @@ export function createCounterApp(
 	const incrHandler = fns.counter_incr_handler(handle.appPtr);
 	const decrHandler = fns.counter_decr_handler(handle.appPtr);
 
-	return {
+	const counterHandle: CounterAppHandle = {
 		...handle,
 		incrHandler,
 		decrHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
 
 		getCount(): number {
 			return fns.counter_count_value(handle.appPtr);
@@ -365,5 +411,11 @@ export function createCounterApp(
 		decrement(): void {
 			handle.dispatchAndFlush(decrHandler);
 		},
+
+		destroy(): void {
+			handle.destroy();
+		},
 	};
+
+	return counterHandle;
 }
