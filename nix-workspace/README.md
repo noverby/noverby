@@ -441,6 +441,14 @@ Workspace
 ├── ModuleConfig                 # NixOS module definition
 ├── HomeConfig                   # Home-manager module definition
 │
+├── OverlayConfig                # Nixpkgs overlay definition
+├── CheckConfig                  # CI check definition
+├── TemplateConfig               # Flake template definition
+│
+├── PluginConfig                 # Plugin definition contract
+│   ├── PluginConvention         # Convention directory mapping
+│   └── PluginBuilder            # Builder metadata + defaults
+│
 └── Common
     ├── System                   # Valid Nix system triple
     ├── Name                     # Valid derivation name
@@ -604,6 +612,18 @@ cd cli && cargo build
 nix build
 ```
 
+## Documentation
+
+Detailed guides are available in the `docs/` directory:
+
+| Document | Description |
+|----------|-------------|
+| [Error Catalog](docs/error-catalog.md) | Comprehensive reference for all `NWxxx` diagnostic codes |
+| [Migration Guide](docs/migration-guide.md) | Migrating from flakelight or flake-parts |
+| [Editor Integration](docs/editor-integration.md) | LSP setup for VS Code, Neovim, Helix, Zed, and Emacs |
+| [CI Integration](docs/ci-integration.md) | GitHub Actions, GitLab CI, and generic CI setup |
+| [Stability Guarantees](docs/stability.md) | Contract and API stability commitments from v1.0 |
+
 ## Roadmap
 
 See [SPEC.md](./SPEC.md) for the full specification and milestone details.
@@ -613,7 +633,7 @@ See [SPEC.md](./SPEC.md) for the full specification and milestone details.
 - **v0.3 — Subworkspaces** — Monorepo support with auto-namespacing ✅
 - **v0.4 — Plugin system** — Extensible build systems and conventions ✅
 - **v0.5 — Standalone CLI** — `nix-workspace init`, `check`, `build`, `shell` ✅
-- **v1.0 — Production ready** — Full coverage, migration guides, editor integration
+- **v1.0 — Production ready** — Full coverage, migration guides, editor integration ✅
 
 ## License
 

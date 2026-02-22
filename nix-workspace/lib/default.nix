@@ -36,6 +36,9 @@
   shellBuilder = import ./builders/shells.nix {inherit lib;};
   machineBuilder = import ./builders/machines.nix {inherit lib;};
   moduleBuilder = import ./builders/modules.nix {inherit lib;};
+  overlayBuilder = import ./builders/overlays.nix {inherit lib;};
+  checkBuilder = import ./builders/checks.nix {inherit lib;};
+  templateBuilder = import ./builders/templates.nix {inherit lib;};
 
   # The contracts and plugins directories shipped with nix-workspace.
   contractsDir = nix-workspace.contracts;
@@ -68,6 +71,9 @@
     discoveredMachines = discovered.machines or {};
     discoveredModules = discovered.modules or {};
     discoveredHome = discovered.home or {};
+    discoveredOverlays = discovered.overlays or {};
+    discoveredChecks = discovered.checks or {};
+    discoveredTemplates = discovered.templates or {};
 
     hasNclFiles =
       (discoveredPackages != {})
@@ -75,6 +81,9 @@
       || (discoveredMachines != {})
       || (discoveredModules != {})
       || (discoveredHome != {})
+      || (discoveredOverlays != {})
+      || (discoveredChecks != {})
+      || (discoveredTemplates != {})
       || builtins.pathExists (workspaceRoot + "/workspace.ncl");
 
     # ── Phase 1c: Plugin resolution ─────────────────────────────
@@ -160,6 +169,9 @@
             discoveredMachines
             discoveredModules
             discoveredHome
+            discoveredOverlays
+            discoveredChecks
+            discoveredTemplates
             pluginNclPaths
             ;
         }
@@ -228,6 +240,9 @@
             machines = subConfig.machines or {};
             modules = subConfig.modules or {};
             home = subConfig.home or {};
+            overlays = subConfig.overlays or {};
+            checks = subConfig.checks or {};
+            templates = subConfig.templates or {};
           };
         }
       )
@@ -239,6 +254,9 @@
       machines = workspaceConfig.machines or {};
       modules = workspaceConfig.modules or {};
       home = workspaceConfig.home or {};
+      overlays = workspaceConfig.overlays or {};
+      checks = workspaceConfig.checks or {};
+      templates = workspaceConfig.templates or {};
     };
 
     # Merge root + subworkspace outputs with namespacing and conflict detection
@@ -330,6 +348,9 @@
     machineConfigs = mergedOutputs.machines or {};
     moduleConfigs = mergedOutputs.modules or {};
     homeConfigs = mergedOutputs.home or {};
+    overlayConfigs = mergedOutputs.overlays or {};
+    checkConfigs = mergedOutputs.checks or {};
+    templateConfigs = mergedOutputs.templates or {};
 
     # ── Phase 4: Build outputs ──────────────────────────────────
     #
@@ -415,6 +436,15 @@
         })
         // (lib.optionalAttrs (builtShells != {} || autoDefaultShell != {}) {
           devShells.${system} = builtShells // autoDefaultShell;
+        })
+        // (lib.optionalAttrs (checkConfigs != {}) {
+          checks.${system} = checkBuilder.buildAllChecks {
+            inherit pkgs workspaceRoot system;
+            workspaceSystems = systems;
+            inherit checkConfigs;
+            workspacePackages = builtPackages;
+            discoveredPaths = {};
+          };
         })
     );
 
@@ -586,6 +616,24 @@
           discoveredPaths = allHomePaths;
         }
       else {};
+
+    # Build overlay flake outputs
+    overlays =
+      if overlayConfigs != {}
+      then
+        overlayBuilder.buildAllOverlays {
+          inherit workspaceRoot overlayConfigs;
+        }
+      else {};
+
+    # Build template flake outputs
+    templates =
+      if templateConfigs != {}
+      then
+        templateBuilder.buildAllTemplates {
+          inherit workspaceRoot templateConfigs;
+        }
+      else {};
   in
     perSystemOutputs
     // (lib.optionalAttrs (nixosConfigurations != {}) {
@@ -596,6 +644,12 @@
     })
     // (lib.optionalAttrs (homeModules != {}) {
       inherit homeModules;
+    })
+    // (lib.optionalAttrs (overlays != {}) {
+      inherit overlays;
+    })
+    // (lib.optionalAttrs (templates != {}) {
+      inherit templates;
     })
     // (lib.optionalAttrs (requestedPlugins != []) {
       # Expose loaded plugin metadata for debugging/introspection

@@ -1,7 +1,7 @@
 # Top-level workspace configuration contract
 # This is the primary contract applied to workspace.ncl files.
 #
-# Updated for v0.4 to support plugins.
+# Updated for v1.0 to support overlays, checks, and templates.
 #
 # The `mkWorkspaceConfig` function allows the plugin system to create
 # a variant of WorkspaceConfig that uses extended sub-contracts
@@ -12,6 +12,9 @@ let { PackageConfig, .. } = import "./package.ncl" in
 let { ShellConfig, .. } = import "./shell.ncl" in
 let { MachineConfig, .. } = import "./machine.ncl" in
 let { ModuleConfig, HomeConfig, .. } = import "./module.ncl" in
+let { OverlayConfig, .. } = import "./overlay.ncl" in
+let { CheckConfig, .. } = import "./check.ncl" in
+let { TemplateConfig, .. } = import "./template.ncl" in
 
 {
   NixpkgsConfig = {
@@ -121,6 +124,37 @@ let { ModuleConfig, HomeConfig, .. } = import "./module.ncl" in
         | doc m%"
         Home-manager module definitions (auto-discovered from home/ or declared here).
         Each entry produces a homeModules.<name> flake output.
+      "%
+        | default
+        = {},
+
+      overlays
+        | { _ : OverlayConfig }
+        | doc m%"
+        Nixpkgs overlay definitions (auto-discovered from overlays/ or declared here).
+        Each entry produces an overlays.<name> flake output.
+        Overlays are functions (final: prev: { ... }) that extend or override nixpkgs packages.
+      "%
+        | default
+        = {},
+
+      checks
+        | { _ : CheckConfig }
+        | doc m%"
+        CI check definitions (auto-discovered from checks/ or declared here).
+        Each entry produces a checks.<system>.<name> flake output.
+        Checks are derivations that succeed when the check passes and fail otherwise.
+        Run by `nix flake check`.
+      "%
+        | default
+        = {},
+
+      templates
+        | { _ : TemplateConfig }
+        | doc m%"
+        Flake template definitions (auto-discovered from templates/ or declared here).
+        Each entry produces a templates.<name> flake output.
+        Templates are used by `nix flake init -t` to scaffold new projects.
       "%
         | default
         = {},

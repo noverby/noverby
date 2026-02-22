@@ -280,21 +280,20 @@ Workspace
 ├── HomeConfig               # Home-manager module definition
 ├── ModuleConfig             # NixOS module definition
 │
+├── OverlayConfig            # Nixpkgs overlay definition
+├── CheckConfig              # CI check definition
+├── TemplateConfig           # Flake template definition
+│
 ├── PluginConfig             # Plugin definition contract
 │   ├── PluginConvention     # Convention directory mapping
 │   └── PluginBuilder        # Builder metadata + defaults
 │
-├── Common types             # Shared across all contracts
-│   ├── System               # Valid Nix system triple
-│   ├── Name                 # Valid workspace/output name
-│   ├── NonEmptyString       # Non-empty string
-│   ├── RelativePath         # Relative file path (no leading /)
-│   └── ModuleRef            # Module reference (name or path)
-│
-└── Planned (v1.0)
-    ├── OverlayConfig        # Nixpkgs overlay
-    ├── CheckConfig          # CI check definition
-    └── TemplateConfig       # Flake template
+└── Common types             # Shared across all contracts
+    ├── System               # Valid Nix system triple
+    ├── Name                 # Valid workspace/output name
+    ├── NonEmptyString       # Non-empty string
+    ├── RelativePath         # Relative file path (no leading /)
+    └── ModuleRef            # Module reference (name or path)
 ```
 
 ### Example contract
@@ -512,6 +511,13 @@ nix-workspace/
 ├── default.nix                # Package + dev shell for external consumers
 ├── justfile                   # Development task runner (build, test, run)
 │
+├── docs/                      # Documentation
+│   ├── error-catalog.md       # Comprehensive NWxxx error catalog
+│   ├── migration-guide.md     # Migration from flakelight / flake-parts
+│   ├── editor-integration.md  # Editor LSP integration (Nickel LSP)
+│   ├── ci-integration.md      # CI integration (GitHub Actions, GitLab CI, etc.)
+│   └── stability.md           # Stability guarantees for contracts and APIs
+│
 ├── lib/                       # Nix library (flake output builders)
 │   ├── default.nix            # Main entry point: mkWorkspace function
 │   ├── discover.nix           # Directory auto-discovery + subworkspace scanning
@@ -523,7 +529,10 @@ nix-workspace/
 │       ├── packages.nix
 │       ├── shells.nix
 │       ├── machines.nix
-│       └── modules.nix
+│       ├── modules.nix
+│       ├── overlays.nix       # Overlay builder (v1.0)
+│       ├── checks.nix         # Check builder (v1.0)
+│       └── templates.nix      # Template builder (v1.0)
 │
 ├── contracts/                 # Nickel contracts
 │   ├── workspace.ncl          # Top-level workspace contract + mkWorkspaceConfig
@@ -531,6 +540,9 @@ nix-workspace/
 │   ├── machine.ncl            # NixOS machine contracts (MachineConfig + sub-types)
 │   ├── shell.ncl              # Dev shell contracts (ShellConfig)
 │   ├── module.ncl             # Module contracts (ModuleConfig, HomeConfig)
+│   ├── overlay.ncl            # Overlay contracts (OverlayConfig) (v1.0)
+│   ├── check.ncl              # Check contracts (CheckConfig) (v1.0)
+│   ├── template.ncl           # Template contracts (TemplateConfig) (v1.0)
 │   ├── plugin.ncl             # Plugin definition contract (PluginConfig)
 │   └── common.ncl             # Shared types (System, Name, ModuleRef, etc.)
 │
@@ -608,7 +620,10 @@ nix-workspace/
     │   ├── module.ncl
     │   ├── common.ncl         # Shared type contract tests
     │   ├── subworkspace.ncl   # Subworkspace contract tests
-    │   └── plugin.ncl         # Plugin contract tests
+    │   ├── plugin.ncl         # Plugin contract tests
+    │   ├── overlay.ncl        # Overlay contract tests (v1.0)
+    │   ├── check.ncl          # Check contract tests (v1.0)
+    │   └── template.ncl       # Template contract tests (v1.0)
     ├── integration/           # Full workspace evaluation tests (Nix)
     │   ├── discovery.nix
     │   ├── namespacing.nix
@@ -624,7 +639,17 @@ nix-workspace/
         ├── invalid-plugin-convention.ncl
         ├── invalid-dependency-name.ncl
         ├── invalid-dependency-ref.ncl
-        └── expected/          # Expected error output (snapshots)
+        └── expected/          # Expected error output (JSON snapshots)
+            ├── invalid-system.json
+            ├── invalid-machine-system.json
+            ├── missing-machine-system.json
+            ├── missing-field.json
+            ├── invalid-build-system.json
+            ├── invalid-state-version.json
+            ├── invalid-plugin-name.json
+            ├── invalid-plugin-convention.json
+            ├── invalid-dependency-name.json
+            └── invalid-dependency-ref.json
 ```
 
 ## Non-goals
@@ -713,11 +738,11 @@ The following are explicitly out of scope for `nix-workspace`:
 
 ### v1.0 — Production ready
 
-- [ ] Contract coverage for remaining flake output types (`OverlayConfig`, `CheckConfig`, `TemplateConfig`)
-- [ ] Comprehensive error catalog with all `NWxxx` codes documented and tested
-- [ ] Error snapshot tests with expected JSON output in `tests/errors/expected/`
-- [ ] Migration guide from flakelight / flake-parts
-- [ ] Editor integration (LSP diagnostics via Nickel LSP)
-- [ ] CI integration guide (GitHub Actions, etc.)
-- [ ] Full documentation and examples
-- [ ] Stability guarantees for core contracts and plugin API
+- [x] Contract coverage for remaining flake output types (`OverlayConfig`, `CheckConfig`, `TemplateConfig`)
+- [x] Comprehensive error catalog with all `NWxxx` codes documented and tested (`docs/error-catalog.md`)
+- [x] Error snapshot tests with expected JSON output in `tests/errors/expected/`
+- [x] Migration guide from flakelight / flake-parts (`docs/migration-guide.md`)
+- [x] Editor integration (LSP diagnostics via Nickel LSP) (`docs/editor-integration.md`)
+- [x] CI integration guide (GitHub Actions, etc.) (`docs/ci-integration.md`)
+- [x] Full documentation and examples (`docs/`)
+- [x] Stability guarantees for core contracts and plugin API (`docs/stability.md`)
