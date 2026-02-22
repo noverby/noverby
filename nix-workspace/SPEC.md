@@ -562,15 +562,15 @@ nix-workspace/
 
 ### v0.3 — Subworkspaces
 
-- [ ] Subworkspace discovery and config merging
-- [ ] Automatic output namespacing with hyphen separator
-- [ ] Cross-subworkspace dependency resolution
-- [ ] Namespace conflict detection with `NW2xx` diagnostics
-- [ ] Git submodule support (discover `workspace.ncl` in submodules)
-- [ ] VCS-agnostic discovery (any directory with `workspace.ncl`, not git-specific)
-- [ ] Example: monorepo with subworkspaces
-- [ ] Example: git submodule as subworkspace
-- [ ] Integration tests for namespacing
+- [x] Subworkspace discovery and config merging
+- [x] Automatic output namespacing with hyphen separator
+- [x] Cross-subworkspace dependency resolution
+- [x] Namespace conflict detection with `NW2xx` diagnostics
+- [x] Git submodule support (discover `workspace.ncl` in submodules)
+- [x] VCS-agnostic discovery (any directory with `workspace.ncl`, not git-specific)
+- [x] Example: monorepo with subworkspaces
+- [x] Example: git submodule as subworkspace
+- [x] Integration tests for namespacing
 
 ### v0.4 — Plugin system
 

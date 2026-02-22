@@ -1,5 +1,7 @@
 # Top-level workspace configuration contract
 # This is the primary contract applied to workspace.ncl files.
+#
+# Updated for v0.3 to support subworkspace dependencies.
 
 let { System, Name, .. } = import "./common.ncl" in
 let { PackageConfig, .. } = import "./package.ncl" in
@@ -102,6 +104,24 @@ let { ModuleConfig, HomeConfig, .. } = import "./module.ncl" in
       | default
       = {},
 
+    dependencies
+      | { _ : DependencyRef }
+      | doc m%"
+        Cross-subworkspace dependency declarations.
+        Keys are local aliases; values are sibling subworkspace names.
+        Only meaningful for subworkspaces — ignored for the root workspace.
+
+        Example:
+          dependencies = {
+            wasm = "mojo-wasm",
+          }
+
+        This declares that this subworkspace depends on a sibling
+        subworkspace named "mojo-wasm", referenced locally as "wasm".
+      "%
+      | default
+      = {},
+
     conventions
       | { _ : ConventionConfig }
       | doc m%"
@@ -111,4 +131,12 @@ let { ModuleConfig, HomeConfig, .. } = import "./module.ncl" in
       | default
       = {},
   },
+
+  DependencyRef
+    | doc m%"
+      A reference to a sibling subworkspace by its directory name.
+      Must be a valid Name (alphanumeric, hyphens, underscores, starts
+      with a letter or underscore).
+    "%
+    = Name,
 }

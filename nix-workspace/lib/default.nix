@@ -10,8 +10,15 @@
 #
 # The function orchestrates the full pipeline:
 #   1. Discovery  — scan convention directories for .ncl files
-#   2. Evaluation — run Nickel to validate and export the config as JSON (IFD)
-#   3. Building   — construct flake outputs from the validated config
+#   2. Subworkspace discovery — find subdirectories with workspace.ncl
+#   3. Evaluation — run Nickel to validate and export configs as JSON (IFD)
+#   4. Namespacing — prefix subworkspace outputs with directory names
+#   5. Conflict detection — check for naming collisions (NW2xx diagnostics)
+#   6. Dependency validation — check cross-subworkspace references (NW3xx)
+#   7. Building   — construct flake outputs from the validated config
+#
+# Updated for v0.3 to support subworkspaces with automatic namespacing,
+# cross-subworkspace dependencies, and namespace conflict detection.
 #
 {
   nixpkgs,
@@ -23,6 +30,7 @@
   discover = import ./discover.nix {inherit lib;};
   evalNickel = import ./eval-nickel.nix {inherit lib;};
   systemsLib = import ./systems.nix {inherit lib;};
+  namespacingLib = import ./namespacing.nix {inherit lib;};
   packageBuilder = import ./builders/packages.nix {inherit lib;};
   shellBuilder = import ./builders/shells.nix {inherit lib;};
   machineBuilder = import ./builders/machines.nix {inherit lib;};
@@ -72,6 +80,14 @@
     discoveredModuleNixFiles = moduleBuilder.discoverNixFiles workspaceRoot "modules";
     discoveredHomeNixFiles = moduleBuilder.discoverNixFiles workspaceRoot "home";
 
+    # ── Phase 1b: Subworkspace discovery ────────────────────────
+    #
+    # Scan for subdirectories containing workspace.ncl files.
+    # This is VCS-agnostic: git submodules, jj checkouts, plain dirs,
+    # and symlinks all work identically.
+    subworkspaceMap = discover.discoverAllSubworkspaces workspaceRoot;
+    hasSubworkspaces = subworkspaceMap != {};
+
     # ── Phase 2: Nickel evaluation ──────────────────────────────
     #
     # Evaluate workspace.ncl (and discovered .ncl files) through Nickel
@@ -99,8 +115,87 @@
         }
       else evalNickel.emptyConfig;
 
+    # ── Phase 2b: Subworkspace Nickel evaluation ────────────────
+    #
+    # Each subworkspace gets its own Nickel evaluation pass.
+    # This produces independent validated config trees.
+    subworkspaceConfigs =
+      if hasSubworkspaces
+      then
+        evalNickel.evalAllSubworkspaces {
+          inherit bootstrapPkgs contractsDir subworkspaceMap;
+        }
+      else {};
+
+    # ── Phase 3: Namespacing and conflict detection ─────────────
+    #
+    # Apply automatic namespacing to subworkspace outputs and check
+    # for naming collisions.
+
+    # Build the subworkspace entries for the namespacing module
+    subworkspaceEntries =
+      lib.mapAttrsToList (
+        name: subConfig: {
+          inherit name;
+          outputs = {
+            packages = subConfig.packages or {};
+            shells = subConfig.shells or {};
+            machines = subConfig.machines or {};
+            modules = subConfig.modules or {};
+            home = subConfig.home or {};
+          };
+        }
+      )
+      subworkspaceConfigs;
+
+    rootOutputsForConflictCheck = {
+      packages = workspaceConfig.packages or {};
+      shells = workspaceConfig.shells or {};
+      machines = workspaceConfig.machines or {};
+      modules = workspaceConfig.modules or {};
+      home = workspaceConfig.home or {};
+    };
+
+    # Merge root + subworkspace outputs with namespacing and conflict detection
+    mergedOutputs =
+      if hasSubworkspaces
+      then namespacingLib.mergeOutputs rootOutputsForConflictCheck subworkspaceEntries
+      else rootOutputsForConflictCheck;
+
+    # ── Phase 3b: Dependency validation ─────────────────────────
+    #
+    # Validate cross-subworkspace dependency declarations.
+    # Throws if any dependency references a nonexistent subworkspace or
+    # if there are circular dependencies.
+    dependenciesValid =
+      if hasSubworkspaces
+      then let
+        subConfigsForValidation =
+          lib.mapAttrs (
+            _name: subConfig: {
+              dependencies = subConfig.dependencies or {};
+            }
+          )
+          subworkspaceConfigs;
+        diagnostics = namespacingLib.validateAllDependencies subConfigsForValidation;
+      in
+        if diagnostics != []
+        then let
+          formatDiag = d:
+            "[${d.code}] ${d.message}"
+            + (
+              if d ? hint
+              then "\n  hint: ${d.hint}"
+              else ""
+            );
+          msg = builtins.concatStringsSep "\n\n" (map formatDiag diagnostics);
+        in
+          throw "nix-workspace: dependency errors:\n\n${msg}"
+        else true
+      else true;
+
     # Allow the Nix-side config to override certain fields from workspace.ncl.
-    effectiveConfig =
+    effectiveConfig = assert dependenciesValid;
       workspaceConfig
       // (lib.optionalAttrs (config ? systems) {inherit (config) systems;})
       // (lib.optionalAttrs (config ? nixpkgs) {
@@ -114,13 +209,14 @@
       (lib.optionalAttrs (ncl ? allow-unfree) {allowUnfree = ncl.allow-unfree;})
       // (ncl.config or {});
 
-    packageConfigs = effectiveConfig.packages or {};
-    shellConfigs = effectiveConfig.shells or {};
-    machineConfigs = effectiveConfig.machines or {};
-    moduleConfigs = effectiveConfig.modules or {};
-    homeConfigs = effectiveConfig.home or {};
+    # Use merged outputs (root + namespaced subworkspaces) for all config maps
+    packageConfigs = mergedOutputs.packages or {};
+    shellConfigs = mergedOutputs.shells or {};
+    machineConfigs = mergedOutputs.machines or {};
+    moduleConfigs = mergedOutputs.modules or {};
+    homeConfigs = mergedOutputs.home or {};
 
-    # ── Phase 3: Build outputs ──────────────────────────────────
+    # ── Phase 4: Build outputs ──────────────────────────────────
     #
     # Construct standard flake outputs with system multiplexing.
 
@@ -147,8 +243,12 @@
                   buildSystem
                 }
                 or (throw "nix-workspace: unknown build-system '${buildSystem}' for package '${name}'");
+
+              # Resolve the workspace root for this package:
+              # if it came from a subworkspace, use that subworkspace's root.
+              effectiveRoot = resolvePackageRoot name;
             in
-              builder pkgs workspaceRoot name cfg
+              builder pkgs effectiveRoot name cfg
           )
           (
             lib.filterAttrs (
@@ -196,19 +296,52 @@
         })
     );
 
+    # ── Resolve workspace root for namespaced outputs ───────────
+    #
+    # When a package/module came from a subworkspace, we need to use
+    # that subworkspace's root for source resolution, not the root
+    # workspace's root.
+
+    # Build a mapping: namespacedOutputName → subworkspaceRoot
+    # for all subworkspace outputs across all conventions
+    subworkspaceOutputRoots = let
+      # For each subworkspace, compute its namespaced output names
+      subEntries = lib.concatLists (
+        lib.mapAttrsToList (
+          subName: subConfig: let
+            subPkgs = subConfig.packages or {};
+            namespacedNames =
+              lib.mapAttrsToList (
+                outputName: _:
+                  namespacingLib.namespacedName subName outputName
+              )
+              subPkgs;
+          in
+            map (nsName: {
+              name = nsName;
+              value = subworkspaceMap.${subName}.path;
+            })
+            namespacedNames
+        )
+        subworkspaceConfigs
+      );
+    in
+      builtins.listToAttrs subEntries;
+
+    resolvePackageRoot = pkgName:
+      subworkspaceOutputRoots.${pkgName} or workspaceRoot;
+
     # ── Non-per-system outputs (nixosConfigurations, modules) ───
     #
     # NixOS configurations are not per-system in the flake output schema —
     # each configuration declares its own system internally.
 
     # Merge discovered .nix files with any paths declared in Nickel module configs.
-    # The .nix files serve as the implementation; the .ncl configs provide metadata.
+    # For root workspace modules:
     resolvedModulePaths = let
-      # Start with discovered .nix files
       nixPaths = discoveredModuleNixFiles;
-      # Overlay with paths from Nickel configs (if any)
       nclPaths =
-        lib.filterAttrs (_: cfg: cfg ? path) moduleConfigs;
+        lib.filterAttrs (_: cfg: cfg ? path) (workspaceConfig.modules or {});
       nclResolvedPaths =
         lib.mapAttrs (
           _: cfg:
@@ -225,7 +358,7 @@
     resolvedHomePaths = let
       nixPaths = discoveredHomeNixFiles;
       nclPaths =
-        lib.filterAttrs (_: cfg: cfg ? path) homeConfigs;
+        lib.filterAttrs (_: cfg: cfg ? path) (workspaceConfig.home or {});
       nclResolvedPaths =
         lib.mapAttrs (
           _: cfg:
@@ -239,6 +372,56 @@
     in
       nixPaths // nclResolvedPaths;
 
+    # Also discover and resolve module paths from subworkspaces
+    subworkspaceModulePaths = let
+      allSubModulePaths = lib.concatLists (
+        lib.mapAttrsToList (
+          subName: subInfo: let
+            subRoot = subInfo.path;
+            subNixFiles = moduleBuilder.discoverNixFiles subRoot "modules";
+            # Namespace the module names
+            namespacedNixFiles =
+              lib.mapAttrs' (
+                name: path: {
+                  name = namespacingLib.namespacedName subName name;
+                  value = path;
+                }
+              )
+              subNixFiles;
+          in
+            lib.mapAttrsToList (name: value: {inherit name value;}) namespacedNixFiles
+        )
+        subworkspaceMap
+      );
+    in
+      builtins.listToAttrs allSubModulePaths;
+
+    subworkspaceHomePaths = let
+      allSubHomePaths = lib.concatLists (
+        lib.mapAttrsToList (
+          subName: subInfo: let
+            subRoot = subInfo.path;
+            subNixFiles = moduleBuilder.discoverNixFiles subRoot "home";
+            namespacedNixFiles =
+              lib.mapAttrs' (
+                name: path: {
+                  name = namespacingLib.namespacedName subName name;
+                  value = path;
+                }
+              )
+              subNixFiles;
+          in
+            lib.mapAttrsToList (name: value: {inherit name value;}) namespacedNixFiles
+        )
+        subworkspaceMap
+      );
+    in
+      builtins.listToAttrs allSubHomePaths;
+
+    # Combine root and subworkspace module paths
+    allModulePaths = resolvedModulePaths // subworkspaceModulePaths;
+    allHomePaths = resolvedHomePaths // subworkspaceHomePaths;
+
     # Build NixOS machine configurations
     nixosConfigurations =
       if machineConfigs != {}
@@ -246,40 +429,39 @@
         machineBuilder.buildAllMachines {
           nixpkgs = userNixpkgs;
           inherit workspaceRoot machineConfigs;
-          workspaceModules = resolvedModulePaths;
-          homeModules = resolvedHomePaths;
+          workspaceModules = allModulePaths;
+          homeModules = allHomePaths;
           extraInputs = inputs;
         }
       else {};
 
     # Build NixOS module flake outputs
     nixosModules =
-      if moduleConfigs != {} || resolvedModulePaths != {}
+      if moduleConfigs != {} || allModulePaths != {}
       then let
-        # Ensure every discovered .nix module has a config entry (even if empty)
         effectiveModuleConfigs =
-          (lib.mapAttrs (_: _: {}) resolvedModulePaths)
+          (lib.mapAttrs (_: _: {}) allModulePaths)
           // moduleConfigs;
       in
         moduleBuilder.buildAllNixosModules {
           inherit workspaceRoot;
           moduleConfigs = effectiveModuleConfigs;
-          discoveredPaths = resolvedModulePaths;
+          discoveredPaths = allModulePaths;
         }
       else {};
 
     # Build home-manager module flake outputs
     homeModules =
-      if homeConfigs != {} || resolvedHomePaths != {}
+      if homeConfigs != {} || allHomePaths != {}
       then let
         effectiveHomeConfigs =
-          (lib.mapAttrs (_: _: {}) resolvedHomePaths)
+          (lib.mapAttrs (_: _: {}) allHomePaths)
           // homeConfigs;
       in
         moduleBuilder.buildAllHomeModules {
           inherit workspaceRoot;
           homeConfigs = effectiveHomeConfigs;
-          discoveredPaths = resolvedHomePaths;
+          discoveredPaths = allHomePaths;
         }
       else {};
   in
@@ -297,5 +479,5 @@ in {
   inherit mkWorkspace;
 
   # Re-export sub-modules for advanced usage / testing
-  inherit discover systemsLib packageBuilder shellBuilder machineBuilder moduleBuilder evalNickel;
+  inherit discover systemsLib namespacingLib packageBuilder shellBuilder machineBuilder moduleBuilder evalNickel;
 }
