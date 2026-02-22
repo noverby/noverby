@@ -159,6 +159,7 @@
       imports = [
         ./flake/libBuiltins.nix
         ./flake/secrets.nix
+        ./flake/users.nix
         ./flake/devenvModules.nix
         ./flake/devenvConfigurations.nix
 
