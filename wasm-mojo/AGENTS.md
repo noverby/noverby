@@ -142,6 +142,13 @@ Two signals: `version` (list changes), `selected` (highlight row).
 Operations: create_rows, append_rows, update_every_10th, select_row, swap_rows, remove_row, clear_rows.
 Per-row build uses `begin_item()` + `add_custom_event()` (Phase 17) + `add_class_if()` (Phase 18).
 
+**Phase 24 TODO — Bench zero app-specific JS convergence** (see also `examples/bench/main.js` header):
+
+- **P24.1** — `bench_handle_event` with handler_map dispatch. The KeyedList handler_map already stores `BENCH_ACTION_SELECT` (1) and `BENCH_ACTION_REMOVE` (2) with row IDs via `add_custom_event()`. Add `handle_event(handler_id) -> Bool` to `BenchmarkApp` that calls `rows_list.get_action(handler_id)` and routes to `select_row`/`remove_row` (same pattern as `TodoApp.handle_event`). Add `bench_handle_event` WASM export in `main.mojo`. Eliminates tbody event delegation JS. ~15 lines Mojo + export wrapper. No runtime changes.
+- **P24.2** — WASM-rendered toolbar with `onclick_custom` handlers. Move toolbar (h1, 6 buttons, status div, table) into the WASM template tree. Change root from `#tbody` to `#root`. Extend `handle_event` to route each button's handler ID. Needs per-button discrimination — either: (a) one handler ID per button with hardcoded routing, or (b) new `onclick_custom_data(operand)` DSL helper storing an Int32 payload retrievable via handler action lookup. Eliminates toolbar button wiring JS.
+- **P24.3** — `performance.now()` WASM import for timing. Add `performance_now() -> Float64` to `env.js` imports + Mojo FFI declaration. Add timing wrapper in `BenchmarkApp` that stores result in a `SignalString`. Requires float-to-string formatting with 1 decimal place (verify Mojo WASM support or write manual formatter). Eliminates `timeOp`/`setStatus` JS.
+- **P24.4** — Status bar as WASM template with dynamic text. Include status bar in WASM template (part of P24.2 restructure). Use `dyn_text` nodes for operation name, timing, and row count — replaces `innerHTML` with proper elements + `SignalString` updates. After P24.1–P24.4, `onBoot` is empty and `bench/main.js` reduces to `launch({ app: "bench", wasm: ... })`.
+
 ## WASM Export Pattern (`src/main.mojo`)
 
 All exports follow this pattern — thin wrappers forwarding to app modules:
