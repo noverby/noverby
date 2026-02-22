@@ -12,16 +12,13 @@ let memory: WebAssembly.Memory | null = null;
  * JS-side size-class map: keys are block sizes (bigint), values are LIFO
  * stacks of free pointers.  Free = push, alloc = pop.  O(1) for both.
  *
- * Reuse is disabled by default because the compiled WASM code contains
- * use-after-free patterns that were previously masked by the no-op free.
- * Specifically, `create_vnode` frees internal vnode storage (e.g. 32-byte
- * list backing buffers) that is still referenced by the vnode for future
- * diffs.  Enabling reuse causes those freed blocks to be handed out for
- * new allocations, corrupting the old vnode's data.
- *
- * The tracking infrastructure is kept so that:
- * - `heapStats()` reports how much memory is reclaimable.
- * - Reuse can be enabled once the Mojo vnode code is fixed.
+ * Reuse is enabled by default.  The compiled WASM code emits double-free
+ * calls (the same pointer freed more than once) due to Mojo's destructor
+ * mechanics.  The allocator handles this safely: `alignedFree` removes
+ * the pointer from `ptrSize` on first free, so subsequent frees of the
+ * same pointer are detected as "unknown" and silently ignored.  This
+ * prevents duplicate entries in the free list that would hand the same
+ * block to two different allocations.
  */
 let freeMap: Map<bigint, bigint[]> = new Map();
 
@@ -34,9 +31,16 @@ let ptrSize: Map<bigint, bigint> = new Map();
 
 /**
  * Whether `alignedAlloc` may reuse freed blocks from `freeMap`.
- * Disabled by default — see the note on `freeMap` above.
+ * Enabled by default — double-free protection in `alignedFree` ensures
+ * safe reuse even with WASM code that frees the same pointer twice.
  */
-let reuseEnabled = false;
+let reuseEnabled = true;
+
+/**
+ * When true, every alignedAlloc / alignedFree call is logged to the console.
+ * Heavy — only enable for targeted debugging of use-after-free issues.
+ */
+let traceEnabled = false;
 
 // --- Scratch arena state ---
 
@@ -59,6 +63,7 @@ export const initialize = (instance: WebAssembly.Instance): void => {
 	freeMap = new Map();
 	ptrSize = new Map();
 	scratchPtrs = [];
+	traceEnabled = false;
 };
 
 /** Get the current WASM exports (throws if not initialized). */
@@ -80,11 +85,23 @@ export const getView = (): DataView => new DataView(getMemory().buffer);
  * Enable or disable free-list reuse.
  *
  * When enabled, `alignedAlloc` will pop matching blocks from the free map
- * instead of always bumping.  Only enable this after confirming that the
- * WASM code has no use-after-free bugs (see `freeMap` note above).
+ * instead of always bumping.  Enabled by default — the allocator's
+ * double-free protection makes reuse safe even with WASM code that
+ * emits duplicate free calls.
  */
 export const setAllocatorReuse = (on: boolean): void => {
 	reuseEnabled = on;
+};
+
+/**
+ * Enable or disable allocation tracing.
+ *
+ * When enabled, every alignedAlloc and alignedFree call is logged to
+ * stderr with the pointer, size, and whether a free-list block was reused.
+ * Very verbose — use only for targeted debugging sessions.
+ */
+export const setAllocatorTrace = (on: boolean): void => {
+	traceEnabled = on;
 };
 
 // --- Allocator entry points ---
@@ -106,7 +123,15 @@ export const alignedAlloc = (align: bigint, size: bigint): bigint => {
 	if (reuseEnabled) {
 		const bucket = freeMap.get(actual);
 		if (bucket !== undefined && bucket.length > 0) {
-			return bucket.pop()!;
+			const reused = bucket.pop()!;
+			// Re-register in ptrSize so a future free can look up the size.
+			ptrSize.set(reused, actual);
+			if (traceEnabled) {
+				console.error(
+					`[alloc] REUSE ptr=${reused} size=${actual} align=${align}`,
+				);
+			}
+			return reused;
 		}
 	}
 
@@ -120,6 +145,10 @@ export const alignedAlloc = (align: bigint, size: bigint): bigint => {
 
 	// Track the size in JS so alignedFree can find it later.
 	ptrSize.set(ptr, actual);
+
+	if (traceEnabled) {
+		console.error(`[alloc] BUMP  ptr=${ptr} size=${actual} align=${align}`);
+	}
 
 	return ptr;
 };
@@ -135,7 +164,22 @@ export const alignedFree = (ptr: bigint): number => {
 	if (ptr === 0n) return 1;
 
 	const size = ptrSize.get(ptr);
-	if (size === undefined) return 1; // unknown pointer — ignore
+	if (size === undefined) {
+		if (traceEnabled) {
+			console.error(
+				`[free]  UNKNOWN ptr=${ptr} (not in ptrSize map — likely double-free)`,
+			);
+		}
+		return 1; // unknown or already-freed pointer — ignore
+	}
+
+	// Remove from ptrSize so that a second free of the same pointer
+	// (double-free from WASM) is detected as "unknown" and ignored.
+	ptrSize.delete(ptr);
+
+	if (traceEnabled) {
+		console.error(`[free]  ptr=${ptr} size=${size}`);
+	}
 
 	// Push onto the size-class bucket (O(1)).
 	let bucket = freeMap.get(size);
@@ -245,4 +289,5 @@ export const initTestAllocator = (
 	freeMap = new Map();
 	ptrSize = new Map();
 	scratchPtrs = [];
+	traceEnabled = false;
 };

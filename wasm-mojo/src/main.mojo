@@ -94,7 +94,7 @@ from bench import (
     bench_app_rebuild,
     bench_app_flush,
 )
-from memory import UnsafePointer
+from memory import UnsafePointer, memset_zero
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1309,8 +1309,15 @@ fn vnode_is_mounted(store_ptr: Int64, index: Int32) -> Int32:
 
 @export
 fn mutation_buf_alloc(capacity: Int32) -> Int64:
-    """Allocate a mutation buffer. Returns a pointer into WASM linear memory."""
-    var ptr = UnsafePointer[UInt8].alloc(Int(capacity))
+    """Allocate a mutation buffer. Returns a pointer into WASM linear memory.
+
+    The buffer is zero-initialized so that unwritten positions read as
+    OP_END (0x00).  This is necessary because the allocator may reuse
+    previously freed blocks that contain stale data.
+    """
+    var cap = Int(capacity)
+    var ptr = UnsafePointer[UInt8].alloc(cap)
+    memset_zero(ptr, cap)
     return _to_i64(ptr)
 
 

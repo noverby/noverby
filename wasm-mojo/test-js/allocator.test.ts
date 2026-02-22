@@ -3,10 +3,14 @@
 // Tests the size-class map allocator in isolation using a raw
 // WebAssembly.Memory (no WASM module required). Exercises: alignment,
 // reuse, bump fallback, minimum block size, and rapid alloc/free stability.
+//
+// Also includes WASM-integrated reuse tests that verify the double-free
+// protection works correctly when real WASM code emits duplicate frees.
 
 import {
 	alignedAlloc,
 	alignedFree,
+	getMemory,
 	heapStats,
 	initTestAllocator,
 	restoreAllocator,
@@ -15,7 +19,12 @@ import {
 	scratchFreeAll,
 	setAllocatorReuse,
 } from "../runtime/memory.ts";
+import { MutationReader, Op } from "../runtime/protocol.ts";
+import { writeStringStruct } from "../runtime/strings.ts";
+import type { WasmExports } from "../runtime/types.ts";
 import { assert, suite } from "./harness.ts";
+
+type Fns = WasmExports & Record<string, unknown>;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -535,4 +544,439 @@ function runAllocatorTests(): void {
 		// Scratch 32-byte bucket still has its freed block.
 		assert(heapStats().freeBlocks, 2, "scratch free blocks untouched");
 	}
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WASM-integrated reuse tests
+//
+// These run against the real WASM module to verify that the double-free
+// protection in alignedFree prevents memory corruption when the compiled
+// WASM code frees the same pointer more than once.
+// ══════════════════════════════════════════════════════════════════════════════
+
+const WASM_TAG_DIV = 0;
+const WASM_BUF_SIZE = 8192;
+
+function wasmAllocBuf(fns: Fns): bigint {
+	return fns.mutation_buf_alloc(WASM_BUF_SIZE);
+}
+
+function wasmFreeBuf(fns: Fns, ptr: bigint): void {
+	fns.mutation_buf_free(ptr);
+}
+
+function wasmReadMutations(ptr: bigint, len: number) {
+	const mem = getMemory();
+	const reader = new MutationReader(mem.buffer, Number(ptr), len);
+	return reader.readAll();
+}
+
+function wasmCreateCtx(fns: Fns) {
+	const rt = fns.runtime_create();
+	const eid = fns.eid_alloc_create();
+	const store = fns.vnode_store_create();
+	const buf = wasmAllocBuf(fns);
+	const writer = fns.writer_create(buf, WASM_BUF_SIZE);
+	return { rt, eid, store, buf, writer };
+}
+
+function wasmDestroyCtx(
+	fns: Fns,
+	ctx: { rt: bigint; eid: bigint; store: bigint; buf: bigint; writer: bigint },
+) {
+	fns.writer_destroy(ctx.writer);
+	wasmFreeBuf(fns, ctx.buf);
+	fns.vnode_store_destroy(ctx.store);
+	fns.eid_alloc_destroy(ctx.eid);
+	fns.runtime_destroy(ctx.rt);
+}
+
+function wasmRegisterDivWithDynText(
+	fns: Fns,
+	rt: bigint,
+	name: string,
+): number {
+	const namePtr = writeStringStruct(name);
+	const builder = fns.tmpl_builder_create(namePtr);
+	const divIdx = fns.tmpl_builder_push_element(builder, WASM_TAG_DIV, -1);
+	fns.tmpl_builder_push_dynamic_text(builder, 0, divIdx);
+	const tmplId = fns.tmpl_builder_register(rt, builder);
+	fns.tmpl_builder_destroy(builder);
+	return tmplId;
+}
+
+function wasmRegisterDivWithDynAttr(
+	fns: Fns,
+	rt: bigint,
+	name: string,
+): number {
+	const namePtr = writeStringStruct(name);
+	const builder = fns.tmpl_builder_create(namePtr);
+	const divIdx = fns.tmpl_builder_push_element(builder, WASM_TAG_DIV, -1);
+	fns.tmpl_builder_push_dynamic_attr(builder, divIdx, 0);
+	const tmplId = fns.tmpl_builder_register(rt, builder);
+	fns.tmpl_builder_destroy(builder);
+	return tmplId;
+}
+
+function runWasmReuseTests(fns: Fns): void {
+	// ── Reuse ON: diff with changed dynamic text ─────────────────────
+	suite("Reuse WASM — diff text changed → SetText");
+	{
+		setAllocatorReuse(true);
+		const ctx = wasmCreateCtx(fns);
+		const tmplId = wasmRegisterDivWithDynText(fns, ctx.rt, "reuse-txt");
+
+		const oldIdx = fns.vnode_push_template_ref(ctx.store, tmplId);
+		const dt1 = writeStringStruct("old text");
+		fns.vnode_push_dynamic_text_node(ctx.store, oldIdx, dt1);
+		fns.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, oldIdx);
+
+		const newIdx = fns.vnode_push_template_ref(ctx.store, tmplId);
+		const dt2 = writeStringStruct("new text");
+		fns.vnode_push_dynamic_text_node(ctx.store, newIdx, dt2);
+
+		fns.writer_destroy(ctx.writer);
+		const buf2 = wasmAllocBuf(fns);
+		const writer2 = fns.writer_create(buf2, WASM_BUF_SIZE);
+		fns.diff_vnodes(writer2, ctx.eid, ctx.rt, ctx.store, oldIdx, newIdx);
+		const offset = fns.writer_finalize(writer2);
+		const mutations = wasmReadMutations(buf2, offset);
+
+		assert(mutations.length, 1, "reuse ON → 1 mutation");
+		assert(mutations[0]?.op, Op.SetText, "reuse ON → SetText");
+		if (mutations[0]?.op === Op.SetText) {
+			assert(mutations[0].text, "new text", "reuse ON → correct text");
+		}
+
+		fns.writer_destroy(writer2);
+		wasmFreeBuf(fns, buf2);
+		wasmDestroyCtx(fns, ctx);
+		setAllocatorReuse(false);
+	}
+
+	// ── Reuse ON: same values → 0 mutations ─────────────────────────
+	suite("Reuse WASM — same dynamic text → 0 mutations");
+	{
+		setAllocatorReuse(true);
+		const ctx = wasmCreateCtx(fns);
+		const tmplId = wasmRegisterDivWithDynText(fns, ctx.rt, "reuse-same");
+
+		const oldIdx = fns.vnode_push_template_ref(ctx.store, tmplId);
+		const dt1 = writeStringStruct("same");
+		fns.vnode_push_dynamic_text_node(ctx.store, oldIdx, dt1);
+		fns.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, oldIdx);
+
+		const newIdx = fns.vnode_push_template_ref(ctx.store, tmplId);
+		const dt2 = writeStringStruct("same");
+		fns.vnode_push_dynamic_text_node(ctx.store, newIdx, dt2);
+
+		fns.writer_destroy(ctx.writer);
+		const buf2 = wasmAllocBuf(fns);
+		const writer2 = fns.writer_create(buf2, WASM_BUF_SIZE);
+		fns.diff_vnodes(writer2, ctx.eid, ctx.rt, ctx.store, oldIdx, newIdx);
+		const offset = fns.writer_finalize(writer2);
+		const mutations = wasmReadMutations(buf2, offset);
+
+		assert(mutations.length, 0, "reuse ON → 0 mutations (same text)");
+
+		fns.writer_destroy(writer2);
+		wasmFreeBuf(fns, buf2);
+		wasmDestroyCtx(fns, ctx);
+		setAllocatorReuse(false);
+	}
+
+	// ── Reuse ON: attribute diff ─────────────────────────────────────
+	suite("Reuse WASM — dynamic attribute changed → SetAttribute");
+	{
+		setAllocatorReuse(true);
+		const ctx = wasmCreateCtx(fns);
+		const tmplId = wasmRegisterDivWithDynAttr(fns, ctx.rt, "reuse-attr");
+
+		const oldIdx = fns.vnode_push_template_ref(ctx.store, tmplId);
+		const n1 = writeStringStruct("class");
+		const v1 = writeStringStruct("old-class");
+		fns.vnode_push_dynamic_attr_text(ctx.store, oldIdx, n1, v1, 0);
+		fns.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, oldIdx);
+
+		const newIdx = fns.vnode_push_template_ref(ctx.store, tmplId);
+		const n2 = writeStringStruct("class");
+		const v2 = writeStringStruct("new-class");
+		fns.vnode_push_dynamic_attr_text(ctx.store, newIdx, n2, v2, 0);
+
+		fns.writer_destroy(ctx.writer);
+		const buf2 = wasmAllocBuf(fns);
+		const writer2 = fns.writer_create(buf2, WASM_BUF_SIZE);
+		fns.diff_vnodes(writer2, ctx.eid, ctx.rt, ctx.store, oldIdx, newIdx);
+		const offset = fns.writer_finalize(writer2);
+		const mutations = wasmReadMutations(buf2, offset);
+
+		assert(mutations.length, 1, "reuse ON attr → 1 mutation");
+		assert(mutations[0]?.op, Op.SetAttribute, "reuse ON → SetAttribute");
+
+		fns.writer_destroy(writer2);
+		wasmFreeBuf(fns, buf2);
+		wasmDestroyCtx(fns, ctx);
+		setAllocatorReuse(false);
+	}
+
+	// ── Reuse ON: sequential diffs (state chain) ─────────────────────
+	suite("Reuse WASM — sequential diffs (state chain)");
+	{
+		setAllocatorReuse(true);
+		const ctx = wasmCreateCtx(fns);
+		const tmplId = wasmRegisterDivWithDynText(fns, ctx.rt, "reuse-chain");
+
+		const texts = ["count: 0", "count: 1", "count: 2", "count: 3", "count: 4"];
+		let prevIdx = -1;
+		let currentWriter = ctx.writer;
+		let currentBuf = ctx.buf;
+
+		for (let i = 0; i < texts.length; i++) {
+			const idx = fns.vnode_push_template_ref(ctx.store, tmplId);
+			const dt = writeStringStruct(texts[i]);
+			fns.vnode_push_dynamic_text_node(ctx.store, idx, dt);
+
+			if (prevIdx === -1) {
+				fns.create_vnode(currentWriter, ctx.eid, ctx.rt, ctx.store, idx);
+			} else {
+				fns.writer_destroy(currentWriter);
+				wasmFreeBuf(fns, currentBuf);
+				currentBuf = wasmAllocBuf(fns);
+				currentWriter = fns.writer_create(currentBuf, WASM_BUF_SIZE);
+
+				fns.diff_vnodes(
+					currentWriter,
+					ctx.eid,
+					ctx.rt,
+					ctx.store,
+					prevIdx,
+					idx,
+				);
+				const off = fns.writer_finalize(currentWriter);
+				const muts = wasmReadMutations(currentBuf, off);
+
+				assert(muts.length, 1, `diff ${i - 1}→${i} → 1 mutation`);
+				if (muts[0]?.op === Op.SetText) {
+					assert(muts[0].text, texts[i], `diff ${i - 1}→${i} → correct text`);
+				}
+			}
+
+			prevIdx = idx;
+		}
+
+		fns.writer_destroy(currentWriter);
+		wasmFreeBuf(fns, currentBuf);
+		fns.vnode_store_destroy(ctx.store);
+		fns.eid_alloc_destroy(ctx.eid);
+		fns.runtime_destroy(ctx.rt);
+		setAllocatorReuse(false);
+	}
+
+	// ── Reuse ON: text VNode diff (both before create — the original
+	//    failing pattern that exposed the double-free bug) ────────────
+	suite("Reuse WASM — text VNode diff (both created before create_vnode)");
+	{
+		setAllocatorReuse(true);
+		const ctx = wasmCreateCtx(fns);
+
+		const t1 = writeStringStruct("aaa");
+		const t2 = writeStringStruct("bbb");
+		const oldIdx = fns.vnode_push_text(ctx.store, t1);
+		const newIdx = fns.vnode_push_text(ctx.store, t2);
+
+		fns.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, oldIdx);
+
+		fns.writer_destroy(ctx.writer);
+		const buf2 = wasmAllocBuf(fns);
+		const writer2 = fns.writer_create(buf2, WASM_BUF_SIZE);
+		fns.diff_vnodes(writer2, ctx.eid, ctx.rt, ctx.store, oldIdx, newIdx);
+		const offset = fns.writer_finalize(writer2);
+		const mutations = wasmReadMutations(buf2, offset);
+
+		assert(mutations.length, 1, "text diff (both before) → 1 mutation");
+		assert(mutations[0]?.op, Op.SetText, "text diff (both before) → SetText");
+		if (mutations[0]?.op === Op.SetText) {
+			assert(
+				mutations[0].text,
+				"bbb",
+				"text diff (both before) → correct text",
+			);
+		}
+
+		fns.writer_destroy(writer2);
+		wasmFreeBuf(fns, buf2);
+		wasmDestroyCtx(fns, ctx);
+		setAllocatorReuse(false);
+	}
+
+	// ── Reuse ON: text VNode diff (new after create) ─────────────────
+	suite("Reuse WASM — text VNode diff (new created after create_vnode)");
+	{
+		setAllocatorReuse(true);
+		const ctx = wasmCreateCtx(fns);
+
+		const t1 = writeStringStruct("aaa");
+		const oldIdx = fns.vnode_push_text(ctx.store, t1);
+
+		fns.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, oldIdx);
+
+		const t2 = writeStringStruct("bbb");
+		const newIdx = fns.vnode_push_text(ctx.store, t2);
+
+		fns.writer_destroy(ctx.writer);
+		const buf2 = wasmAllocBuf(fns);
+		const writer2 = fns.writer_create(buf2, WASM_BUF_SIZE);
+		fns.diff_vnodes(writer2, ctx.eid, ctx.rt, ctx.store, oldIdx, newIdx);
+		const offset = fns.writer_finalize(writer2);
+		const mutations = wasmReadMutations(buf2, offset);
+
+		assert(mutations.length, 1, "text diff (new after) → 1 mutation");
+		assert(mutations[0]?.op, Op.SetText, "text diff (new after) → SetText");
+		if (mutations[0]?.op === Op.SetText) {
+			assert(mutations[0].text, "bbb", "text diff (new after) → correct text");
+		}
+
+		fns.writer_destroy(writer2);
+		wasmFreeBuf(fns, buf2);
+		wasmDestroyCtx(fns, ctx);
+		setAllocatorReuse(false);
+	}
+
+	// ── Reuse ON: fragment diff ──────────────────────────────────────
+	suite("Reuse WASM — fragment children text changed");
+	{
+		setAllocatorReuse(true);
+		const ctx = wasmCreateCtx(fns);
+
+		const oldFrag = fns.vnode_push_fragment(ctx.store);
+		const oa = writeStringStruct("alpha");
+		const ob = writeStringStruct("beta");
+		const oaIdx = fns.vnode_push_text(ctx.store, oa);
+		const obIdx = fns.vnode_push_text(ctx.store, ob);
+		fns.vnode_push_fragment_child(ctx.store, oldFrag, oaIdx);
+		fns.vnode_push_fragment_child(ctx.store, oldFrag, obIdx);
+
+		fns.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, oldFrag);
+
+		const newFrag = fns.vnode_push_fragment(ctx.store);
+		const na = writeStringStruct("alpha");
+		const nc = writeStringStruct("gamma");
+		const naIdx = fns.vnode_push_text(ctx.store, na);
+		const ncIdx = fns.vnode_push_text(ctx.store, nc);
+		fns.vnode_push_fragment_child(ctx.store, newFrag, naIdx);
+		fns.vnode_push_fragment_child(ctx.store, newFrag, ncIdx);
+
+		fns.writer_destroy(ctx.writer);
+		const buf2 = wasmAllocBuf(fns);
+		const writer2 = fns.writer_create(buf2, WASM_BUF_SIZE);
+		fns.diff_vnodes(writer2, ctx.eid, ctx.rt, ctx.store, oldFrag, newFrag);
+		const offset = fns.writer_finalize(writer2);
+		const mutations = wasmReadMutations(buf2, offset);
+
+		assert(mutations.length, 1, "fragment diff → 1 mutation");
+		assert(mutations[0]?.op, Op.SetText, "fragment diff → SetText");
+		if (mutations[0]?.op === Op.SetText) {
+			assert(mutations[0].text, "gamma", "fragment diff → correct text");
+		}
+
+		fns.writer_destroy(writer2);
+		wasmFreeBuf(fns, buf2);
+		wasmDestroyCtx(fns, ctx);
+		setAllocatorReuse(false);
+	}
+
+	// ── Heap stats: frees tracked during WASM operations ─────────────
+	suite("Reuse WASM — heap stats track frees during WASM ops");
+	{
+		setAllocatorReuse(false);
+		const statsBefore = heapStats();
+
+		const ctx = wasmCreateCtx(fns);
+		const tmplId = wasmRegisterDivWithDynText(fns, ctx.rt, "heap-track");
+
+		const idx = fns.vnode_push_template_ref(ctx.store, tmplId);
+		const dt = writeStringStruct("heap test");
+		fns.vnode_push_dynamic_text_node(ctx.store, idx, dt);
+		fns.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, idx);
+
+		const statsAfter = heapStats();
+
+		assert(
+			statsAfter.heapPointer > statsBefore.heapPointer,
+			true,
+			"heap pointer advanced",
+		);
+		assert(
+			statsAfter.freeBlocks >= statsBefore.freeBlocks,
+			true,
+			"free blocks did not decrease",
+		);
+
+		wasmDestroyCtx(fns, ctx);
+	}
+
+	// ── Reuse ON: placeholder diff → 0 mutations ────────────────────
+	suite("Reuse WASM — placeholder diff → 0 mutations");
+	{
+		setAllocatorReuse(true);
+		const ctx = wasmCreateCtx(fns);
+
+		const oldIdx = fns.vnode_push_placeholder(ctx.store, 0);
+		const newIdx = fns.vnode_push_placeholder(ctx.store, 0);
+
+		fns.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, oldIdx);
+
+		fns.writer_destroy(ctx.writer);
+		const buf2 = wasmAllocBuf(fns);
+		const writer2 = fns.writer_create(buf2, WASM_BUF_SIZE);
+		fns.diff_vnodes(writer2, ctx.eid, ctx.rt, ctx.store, oldIdx, newIdx);
+		const offset = fns.writer_finalize(writer2);
+		const mutations = wasmReadMutations(buf2, offset);
+
+		assert(mutations.length, 0, "placeholder diff → 0 mutations");
+
+		fns.writer_destroy(writer2);
+		wasmFreeBuf(fns, buf2);
+		wasmDestroyCtx(fns, ctx);
+		setAllocatorReuse(false);
+	}
+
+	// ── Reuse ON: TemplateRef diff (both before create) ──────────────
+	suite("Reuse WASM — TemplateRef diff (both created before create_vnode)");
+	{
+		setAllocatorReuse(true);
+		const ctx = wasmCreateCtx(fns);
+		const tmplId = wasmRegisterDivWithDynText(fns, ctx.rt, "reuse-both-tmpl");
+
+		const oldIdx = fns.vnode_push_template_ref(ctx.store, tmplId);
+		const dt1 = writeStringStruct("old tmpl");
+		fns.vnode_push_dynamic_text_node(ctx.store, oldIdx, dt1);
+
+		const newIdx = fns.vnode_push_template_ref(ctx.store, tmplId);
+		const dt2 = writeStringStruct("new tmpl");
+		fns.vnode_push_dynamic_text_node(ctx.store, newIdx, dt2);
+
+		fns.create_vnode(ctx.writer, ctx.eid, ctx.rt, ctx.store, oldIdx);
+
+		fns.writer_destroy(ctx.writer);
+		const buf2 = wasmAllocBuf(fns);
+		const writer2 = fns.writer_create(buf2, WASM_BUF_SIZE);
+		fns.diff_vnodes(writer2, ctx.eid, ctx.rt, ctx.store, oldIdx, newIdx);
+		const offset = fns.writer_finalize(writer2);
+		const mutations = wasmReadMutations(buf2, offset);
+
+		assert(mutations.length, 1, "tmplref (both before) → 1 mutation");
+		assert(mutations[0]?.op, Op.SetText, "tmplref (both before) → SetText");
+
+		fns.writer_destroy(writer2);
+		wasmFreeBuf(fns, buf2);
+		wasmDestroyCtx(fns, ctx);
+		setAllocatorReuse(false);
+	}
+}
+
+/** Run WASM-integrated reuse tests (requires a live WASM instance). */
+export function testAllocatorReuse(fns: WasmExports): void {
+	runWasmReuseTests(fns as Fns);
 }
