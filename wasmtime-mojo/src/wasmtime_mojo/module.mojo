@@ -19,7 +19,7 @@ Usage:
     var fast_module = Module.deserialize_file(engine.ptr(), "module.cwasm")
 """
 
-from memory import UnsafePointer, alloc
+from memory import UnsafePointer, alloc, free
 from pathlib import Path
 
 from ._types import EnginePtr, ModulePtr, ErrorPtr, WasmByteVec
@@ -119,18 +119,27 @@ struct Module:
         Raises:
             Error: If serialization fails.
         """
-        var byte_vec = WasmByteVec()
-        var byte_vec_ptr = UnsafePointer(to=byte_vec)
-        var err = wasmtime_module_serialize(self._ptr, byte_vec_ptr)
+        # Heap-allocate the output buffer so the FFI write is visible.
+        # (WasmByteVec is @register_passable("trivial"); a stack local
+        # may stay in registers after a write through a cast pointer.)
+        var bv_buf = alloc[WasmByteVec](1)
+        bv_buf[] = WasmByteVec()
+        var bv_ext = _as_ext(bv_buf)
+        var err = wasmtime_module_serialize(self._ptr, bv_ext)
         if err:
+            bv_buf.free()
             var msg = error_message(err)
             raise Error("Failed to serialize module: " + msg)
+
+        # Read back the filled-in byte vec from the heap buffer
+        var byte_vec = bv_buf[]
+        bv_buf.free()
 
         # Write the serialized bytes to a file
         var data = List[UInt8](capacity=byte_vec.size)
         for i in range(byte_vec.size):
             data.append(byte_vec.data[i])
-        wasm_byte_vec_delete(byte_vec_ptr)
+        wasm_byte_vec_delete(bv_ext)
 
         Path(path).write_bytes(data)
 

@@ -28,66 +28,66 @@ from sys.info import sizeof
 # Wasmtime val kind constants (wasmtime_valkind_t)
 # ---------------------------------------------------------------------------
 
-alias WASMTIME_I32: UInt8 = 0
-alias WASMTIME_I64: UInt8 = 1
-alias WASMTIME_F32: UInt8 = 2
-alias WASMTIME_F64: UInt8 = 3
-alias WASMTIME_V128: UInt8 = 4
-alias WASMTIME_FUNCREF: UInt8 = 5
-alias WASMTIME_EXTERNREF: UInt8 = 6
+comptime WASMTIME_I32: UInt8 = 0
+comptime WASMTIME_I64: UInt8 = 1
+comptime WASMTIME_F32: UInt8 = 2
+comptime WASMTIME_F64: UInt8 = 3
+comptime WASMTIME_V128: UInt8 = 4
+comptime WASMTIME_FUNCREF: UInt8 = 5
+comptime WASMTIME_EXTERNREF: UInt8 = 6
 
 # ---------------------------------------------------------------------------
 # WASM val kind constants (wasm_valkind_t) — used by wasm_valtype_new
 # ---------------------------------------------------------------------------
 
-alias WASM_I32: UInt8 = 0
-alias WASM_I64: UInt8 = 1
-alias WASM_F32: UInt8 = 2
-alias WASM_F64: UInt8 = 3
-alias WASM_EXTERNREF: UInt8 = 128
-alias WASM_FUNCREF: UInt8 = 129
+comptime WASM_I32: UInt8 = 0
+comptime WASM_I64: UInt8 = 1
+comptime WASM_F32: UInt8 = 2
+comptime WASM_F64: UInt8 = 3
+comptime WASM_EXTERNREF: UInt8 = 128
+comptime WASM_FUNCREF: UInt8 = 129
 
 # ---------------------------------------------------------------------------
 # Wasmtime extern kind constants (wasmtime_extern_kind_t)
 # ---------------------------------------------------------------------------
 
-alias WASMTIME_EXTERN_FUNC: UInt8 = 0
-alias WASMTIME_EXTERN_GLOBAL: UInt8 = 1
-alias WASMTIME_EXTERN_TABLE: UInt8 = 2
-alias WASMTIME_EXTERN_MEMORY: UInt8 = 3
-alias WASMTIME_EXTERN_SHAREDMEMORY: UInt8 = 4
+comptime WASMTIME_EXTERN_FUNC: UInt8 = 0
+comptime WASMTIME_EXTERN_GLOBAL: UInt8 = 1
+comptime WASMTIME_EXTERN_TABLE: UInt8 = 2
+comptime WASMTIME_EXTERN_MEMORY: UInt8 = 3
+comptime WASMTIME_EXTERN_SHAREDMEMORY: UInt8 = 4
 
 # ---------------------------------------------------------------------------
 # Sizes of C structs (bytes)
 # ---------------------------------------------------------------------------
 
-alias WASMTIME_VAL_SIZE = 32
-alias WASMTIME_EXTERN_SIZE = 32
-alias WASMTIME_FUNC_SIZE = 16
-alias WASMTIME_INSTANCE_SIZE = 16
-alias WASMTIME_GLOBAL_SIZE = 24
-alias WASMTIME_MEMORY_SIZE = 24
-alias WASMTIME_TABLE_SIZE = 24
-alias WASM_VALTYPE_VEC_SIZE = 16
-alias WASM_BYTE_VEC_SIZE = 16
+comptime WASMTIME_VAL_SIZE = 32
+comptime WASMTIME_EXTERN_SIZE = 32
+comptime WASMTIME_FUNC_SIZE = 16
+comptime WASMTIME_INSTANCE_SIZE = 16
+comptime WASMTIME_GLOBAL_SIZE = 24
+comptime WASMTIME_MEMORY_SIZE = 24
+comptime WASMTIME_TABLE_SIZE = 24
+comptime WASM_VALTYPE_VEC_SIZE = 16
+comptime WASM_BYTE_VEC_SIZE = 16
 
 
 # ---------------------------------------------------------------------------
 # Opaque pointer aliases — these wrap C types we never inspect directly
 # ---------------------------------------------------------------------------
 
-alias EnginePtr = UnsafePointer[NoneType, MutExternalOrigin]
-alias StorePtr = UnsafePointer[NoneType, MutExternalOrigin]
-alias ContextPtr = UnsafePointer[NoneType, MutExternalOrigin]
-alias ModulePtr = UnsafePointer[NoneType, MutExternalOrigin]
-alias LinkerPtr = UnsafePointer[NoneType, MutExternalOrigin]
-alias ErrorPtr = UnsafePointer[NoneType, MutExternalOrigin]
-alias TrapPtr = UnsafePointer[NoneType, MutExternalOrigin]
-alias FuncTypePtr = UnsafePointer[NoneType, MutExternalOrigin]
-alias ValTypePtr = UnsafePointer[NoneType, MutExternalOrigin]
-alias CallerPtr = UnsafePointer[NoneType, MutExternalOrigin]
-alias GlobalTypePtr = UnsafePointer[NoneType, MutExternalOrigin]
-alias ExternTypePtr = UnsafePointer[NoneType, MutExternalOrigin]
+comptime EnginePtr = UnsafePointer[NoneType, MutExternalOrigin]
+comptime StorePtr = UnsafePointer[NoneType, MutExternalOrigin]
+comptime ContextPtr = UnsafePointer[NoneType, MutExternalOrigin]
+comptime ModulePtr = UnsafePointer[NoneType, MutExternalOrigin]
+comptime LinkerPtr = UnsafePointer[NoneType, MutExternalOrigin]
+comptime ErrorPtr = UnsafePointer[NoneType, MutExternalOrigin]
+comptime TrapPtr = UnsafePointer[NoneType, MutExternalOrigin]
+comptime FuncTypePtr = UnsafePointer[NoneType, MutExternalOrigin]
+comptime ValTypePtr = UnsafePointer[NoneType, MutExternalOrigin]
+comptime CallerPtr = UnsafePointer[NoneType, MutExternalOrigin]
+comptime GlobalTypePtr = UnsafePointer[NoneType, MutExternalOrigin]
+comptime ExternTypePtr = UnsafePointer[NoneType, MutExternalOrigin]
 
 
 # ---------------------------------------------------------------------------
@@ -452,7 +452,7 @@ struct WasmValtypeVec:
 # a wasm_trap_t* where NULL means success.
 # ---------------------------------------------------------------------------
 
-alias WasmtimeCallback = fn (
+comptime WasmtimeCallback = fn (
     UnsafePointer[NoneType, MutExternalOrigin],  # env
     UnsafePointer[NoneType, MutExternalOrigin],  # caller
     UnsafePointer[WasmtimeVal, MutExternalOrigin],  # args
@@ -462,6 +462,6 @@ alias WasmtimeCallback = fn (
 ) -> UnsafePointer[NoneType, MutExternalOrigin]
 
 # Finalizer callback: void (*)(void*)
-alias FinalizerCallback = fn (
+comptime FinalizerCallback = fn (
     UnsafePointer[NoneType, MutExternalOrigin]
 ) -> None

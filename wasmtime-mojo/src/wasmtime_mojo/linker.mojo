@@ -1,5 +1,18 @@
 """High-level wrapper for wasmtime_linker_t.
 
+NOTE on FFI output parameters:
+    Wasmtime C API functions write results through pointers (e.g. the
+    instance handle from wasmtime_linker_instantiate).  For Mojo types
+    marked @register_passable("trivial"), the compiler may keep local
+    variables in registers.  If we take the address of such a local with
+    UnsafePointer(to=var) and pass it to FFI, the write goes to a stack
+    spill slot — but the compiler may never reload the register from that
+    slot, so the local still has its old (zero) value.
+
+    The fix: heap-allocate output buffers with alloc(), let FFI write
+    there, then read back with ptr[].  Heap pointers are opaque to the
+    optimizer so reads always hit memory.
+
 A Linker is used to define host-provided imports (functions, globals, memories,
 tables) before instantiating a WebAssembly module.  It resolves import names
 to concrete definitions so the module can be linked and run.
@@ -23,7 +36,7 @@ Usage:
     var instance = linker.instantiate(store.context(), module.ptr())
 """
 
-from memory import UnsafePointer, memcpy
+from memory import UnsafePointer, memcpy, alloc
 
 from ._types import (
     EnginePtr,
@@ -179,28 +192,37 @@ struct Linker:
         Raises:
             Error: If instantiation fails (e.g. unresolved imports).
         """
-        var instance = WasmtimeInstance()
-        var instance_ptr = _as_ext(UnsafePointer(to=instance))
-        var trap = TrapPtr()
-        var trap_ptr = _as_ext(UnsafePointer(to=trap))
+        # Heap-allocate output buffers so FFI writes are visible
+        # (see module docstring on register-passable aliasing).
+        var instance_buf = alloc[WasmtimeInstance](1)
+        instance_buf[] = WasmtimeInstance()
+        var trap_buf = alloc[TrapPtr](1)
+        trap_buf[] = TrapPtr()
 
         var err = wasmtime_linker_instantiate(
             self._ptr,
             context,
             module_ptr,
-            instance_ptr,
-            trap_ptr,
+            _as_ext(instance_buf),
+            _as_ext(trap_buf),
         )
+
+        var trap = trap_buf[]
+        trap_buf.free()
 
         if err:
             var msg = error_message(err)
             if trap:
                 # Also consume the trap if both are set
                 _ = trap_message(trap)
+            instance_buf.free()
             raise Error("Instantiation failed: " + msg)
 
         if trap:
             var msg = trap_message(trap)
+            instance_buf.free()
             raise Error("Instantiation trapped: " + msg)
 
+        var instance = instance_buf[]
+        instance_buf.free()
         return instance

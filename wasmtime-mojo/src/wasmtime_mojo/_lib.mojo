@@ -69,21 +69,43 @@ fn _find_lib_in_nix_ldflags() raises -> OwnedDLHandle:
     raise Error("libwasmtime.so not found in NIX_LDFLAGS")
 
 
-@always_inline
-fn get_lib() raises -> OwnedDLHandle:
-    """Return a handle to the wasmtime shared library.
-
-    Creates a new OwnedDLHandle each call.  On Linux the underlying dlopen(3)
-    caches library handles, so repeated calls are cheap and always return
-    the same loaded library.
-
-    Falls back to searching NIX_LDFLAGS (Nix environments) when the
-    library is not on the default search path.
-    """
+fn _open_lib() raises -> OwnedDLHandle:
+    """Open libwasmtime.so, falling back to NIX_LDFLAGS."""
     try:
         return OwnedDLHandle("libwasmtime.so")
     except:
         return _find_lib_in_nix_ldflags()
+
+
+fn _pin_lib() raises:
+    """Pin the wasmtime library by leaking one OwnedDLHandle on the heap.
+
+    This prevents dlclose from ever unloading the library, which would
+    invalidate internal function pointers held by wasmtime objects
+    (Engine, Store, Module, etc.) that outlive individual FFI calls.
+
+    Safe to call repeatedly — dlopen is reference-counted so each leaked
+    handle only costs ~16 bytes of heap, which is negligible.
+    """
+    var p = alloc[OwnedDLHandle](1)
+    p.init_pointee_move(_open_lib())
+    # Intentionally leak `p` — never free, never dlclose.
+
+
+@always_inline
+fn get_lib() raises -> OwnedDLHandle:
+    """Return a handle to the wasmtime shared library.
+
+    Pins the library in memory on each call so that it is never unloaded
+    by dlclose.  This is necessary because wasmtime objects (engines,
+    stores, modules) hold internal function pointers into the library
+    that must remain valid for the lifetime of the process.
+
+    Falls back to searching NIX_LDFLAGS (Nix environments) when the
+    library is not on the default search path.
+    """
+    _pin_lib()
+    return _open_lib()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -109,7 +131,7 @@ fn wasm_engine_delete(engine: EnginePtr) raises:
 # Config (for cache support)
 # ═══════════════════════════════════════════════════════════════════════════
 
-alias ConfigPtr = UnsafePointer[NoneType, MutExternalOrigin]
+comptime ConfigPtr = UnsafePointer[NoneType, MutExternalOrigin]
 
 
 fn wasm_config_new() raises -> ConfigPtr:
@@ -643,17 +665,23 @@ fn make_functype(
 fn error_message(error: ErrorPtr) raises -> String:
     """Extract the message from a wasmtime_error_t, delete it, and return
     the message as a Mojo String."""
-    var msg = WasmByteVec()
-    var msg_ptr = _as_ext(UnsafePointer(to=msg))
-    wasmtime_error_message(error, msg_ptr)
+    # Heap-allocate the output buffer so the FFI write is visible.
+    # (WasmByteVec is @register_passable("trivial"); a stack local
+    # may stay in registers after a write through a cast pointer.)
+    var msg_buf = alloc[WasmByteVec](1)
+    msg_buf[] = WasmByteVec()
+    var msg_ext = _as_ext(msg_buf)
+    wasmtime_error_message(error, msg_ext)
+    var msg = msg_buf[]
+    msg_buf.free()
     var result = String("")
     if msg.size > 0 and msg.data:
         var buf = List[UInt8](capacity=msg.size + 1)
         for i in range(msg.size):
             buf.append(msg.data[i])
         buf.append(0)  # null-terminate
-        result = String(bytes=buf)
-    wasm_byte_vec_delete(msg_ptr)
+        result = String(unsafe_from_utf8=buf)
+    wasm_byte_vec_delete(msg_ext)
     wasmtime_error_delete(error)
     return result
 
@@ -661,17 +689,21 @@ fn error_message(error: ErrorPtr) raises -> String:
 fn trap_message(trap: TrapPtr) raises -> String:
     """Extract the message from a wasm_trap_t, delete it, and return
     the message as a Mojo String."""
-    var msg = WasmByteVec()
-    var msg_ptr = _as_ext(UnsafePointer(to=msg))
-    wasm_trap_message(trap, msg_ptr)
+    # Heap-allocate the output buffer so the FFI write is visible.
+    var msg_buf = alloc[WasmByteVec](1)
+    msg_buf[] = WasmByteVec()
+    var msg_ext = _as_ext(msg_buf)
+    wasm_trap_message(trap, msg_ext)
+    var msg = msg_buf[]
+    msg_buf.free()
     var result = String("")
     if msg.size > 0 and msg.data:
         var buf = List[UInt8](capacity=msg.size + 1)
         for i in range(msg.size):
             buf.append(msg.data[i])
         buf.append(0)  # null-terminate
-        result = String(bytes=buf)
-    wasm_byte_vec_delete(msg_ptr)
+        result = String(unsafe_from_utf8=buf)
+    wasm_byte_vec_delete(msg_ext)
     wasm_trap_delete(trap)
     return result
 
