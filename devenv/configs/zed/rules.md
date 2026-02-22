@@ -1,5 +1,7 @@
 # Git commit rules
 
+- **Follow `.commitlintrc.yml` for commit message format.** Before committing, read `.commitlintrc.yml` and ensure the commit message conforms to its rules.
+
 - **Never use `git commit --amend` after a pre-commit hook failure.** A failed commit does not land — just fix the issue and run `git commit` again with the same message. Using `--amend` will squash over the previous unrelated commit and destroy history.
 - Only use `git commit --amend` when explicitly asked to amend, or when fixing the *current* (most recent, already landed) commit intentionally.
 
