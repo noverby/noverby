@@ -1011,6 +1011,1840 @@ fn el_code() -> Node:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Multi-arg el_* overloads — Dioxus-style ergonomic element construction
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# These overloads eliminate the need for `List[Node](...)` wrappers,
+# bringing the DSL much closer to Dioxus's `rsx!` macro syntax.
+#
+# Instead of:
+#
+#     el_div(List[Node](
+#         el_h1(List[Node](dyn_text())),
+#         el_button(List[Node](text("Up high!"), onclick_add(count, 1))),
+#         el_button(List[Node](text("Down low!"), onclick_sub(count, 1))),
+#     ))
+#
+# Developers write:
+#
+#     el_div(
+#         el_h1(dyn_text()),
+#         el_button(text("Up high!"), onclick_add(count, 1)),
+#         el_button(text("Down low!"), onclick_sub(count, 1)),
+#     )
+#
+# Overloads are provided for 1–5 Node arguments per element.  For more
+# than 5 children, use the `List[Node](...)` form.
+
+
+# ── Layout / Sectioning — multi-arg overloads ────────────────────────────────
+
+
+fn el_div(var a: Node) -> Node:
+    """Create a `<div>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_DIV, items^)
+
+
+fn el_div(var a: Node, var b: Node) -> Node:
+    """Create a `<div>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_DIV, items^)
+
+
+fn el_div(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<div>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_DIV, items^)
+
+
+fn el_div(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<div>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_DIV, items^)
+
+
+fn el_div(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<div>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_DIV, items^)
+
+
+fn el_span(var a: Node) -> Node:
+    """Create a `<span>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_SPAN, items^)
+
+
+fn el_span(var a: Node, var b: Node) -> Node:
+    """Create a `<span>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_SPAN, items^)
+
+
+fn el_span(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<span>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_SPAN, items^)
+
+
+fn el_span(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<span>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_SPAN, items^)
+
+
+fn el_span(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<span>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_SPAN, items^)
+
+
+fn el_p(var a: Node) -> Node:
+    """Create a `<p>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_P, items^)
+
+
+fn el_p(var a: Node, var b: Node) -> Node:
+    """Create a `<p>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_P, items^)
+
+
+fn el_p(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<p>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_P, items^)
+
+
+fn el_p(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<p>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_P, items^)
+
+
+fn el_p(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<p>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_P, items^)
+
+
+fn el_section(var a: Node) -> Node:
+    """Create a `<section>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_SECTION, items^)
+
+
+fn el_section(var a: Node, var b: Node) -> Node:
+    """Create a `<section>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_SECTION, items^)
+
+
+fn el_section(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<section>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_SECTION, items^)
+
+
+fn el_section(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<section>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_SECTION, items^)
+
+
+fn el_section(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<section>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_SECTION, items^)
+
+
+fn el_header(var a: Node) -> Node:
+    """Create a `<header>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_HEADER, items^)
+
+
+fn el_header(var a: Node, var b: Node) -> Node:
+    """Create a `<header>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_HEADER, items^)
+
+
+fn el_header(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<header>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_HEADER, items^)
+
+
+fn el_header(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<header>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_HEADER, items^)
+
+
+fn el_header(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<header>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_HEADER, items^)
+
+
+fn el_footer(var a: Node) -> Node:
+    """Create a `<footer>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_FOOTER, items^)
+
+
+fn el_footer(var a: Node, var b: Node) -> Node:
+    """Create a `<footer>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_FOOTER, items^)
+
+
+fn el_footer(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<footer>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_FOOTER, items^)
+
+
+fn el_footer(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<footer>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_FOOTER, items^)
+
+
+fn el_footer(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<footer>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_FOOTER, items^)
+
+
+fn el_nav(var a: Node) -> Node:
+    """Create a `<nav>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_NAV, items^)
+
+
+fn el_nav(var a: Node, var b: Node) -> Node:
+    """Create a `<nav>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_NAV, items^)
+
+
+fn el_nav(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<nav>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_NAV, items^)
+
+
+fn el_nav(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<nav>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_NAV, items^)
+
+
+fn el_nav(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<nav>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_NAV, items^)
+
+
+fn el_main(var a: Node) -> Node:
+    """Create a `<main>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_MAIN, items^)
+
+
+fn el_main(var a: Node, var b: Node) -> Node:
+    """Create a `<main>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_MAIN, items^)
+
+
+fn el_main(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<main>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_MAIN, items^)
+
+
+fn el_main(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<main>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_MAIN, items^)
+
+
+fn el_main(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<main>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_MAIN, items^)
+
+
+fn el_article(var a: Node) -> Node:
+    """Create an `<article>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_ARTICLE, items^)
+
+
+fn el_article(var a: Node, var b: Node) -> Node:
+    """Create an `<article>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_ARTICLE, items^)
+
+
+fn el_article(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create an `<article>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_ARTICLE, items^)
+
+
+fn el_article(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create an `<article>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_ARTICLE, items^)
+
+
+fn el_article(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create an `<article>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_ARTICLE, items^)
+
+
+fn el_aside(var a: Node) -> Node:
+    """Create an `<aside>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_ASIDE, items^)
+
+
+fn el_aside(var a: Node, var b: Node) -> Node:
+    """Create an `<aside>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_ASIDE, items^)
+
+
+fn el_aside(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create an `<aside>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_ASIDE, items^)
+
+
+fn el_aside(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create an `<aside>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_ASIDE, items^)
+
+
+fn el_aside(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create an `<aside>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_ASIDE, items^)
+
+
+# ── Headings — multi-arg overloads ───────────────────────────────────────────
+
+
+fn el_h1(var a: Node) -> Node:
+    """Create an `<h1>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_H1, items^)
+
+
+fn el_h1(var a: Node, var b: Node) -> Node:
+    """Create an `<h1>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_H1, items^)
+
+
+fn el_h1(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create an `<h1>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_H1, items^)
+
+
+fn el_h1(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create an `<h1>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_H1, items^)
+
+
+fn el_h1(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create an `<h1>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_H1, items^)
+
+
+fn el_h2(var a: Node) -> Node:
+    """Create an `<h2>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_H2, items^)
+
+
+fn el_h2(var a: Node, var b: Node) -> Node:
+    """Create an `<h2>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_H2, items^)
+
+
+fn el_h2(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create an `<h2>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_H2, items^)
+
+
+fn el_h2(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create an `<h2>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_H2, items^)
+
+
+fn el_h2(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create an `<h2>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_H2, items^)
+
+
+fn el_h3(var a: Node) -> Node:
+    """Create an `<h3>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_H3, items^)
+
+
+fn el_h3(var a: Node, var b: Node) -> Node:
+    """Create an `<h3>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_H3, items^)
+
+
+fn el_h3(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create an `<h3>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_H3, items^)
+
+
+fn el_h3(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create an `<h3>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_H3, items^)
+
+
+fn el_h3(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create an `<h3>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_H3, items^)
+
+
+fn el_h4(var a: Node) -> Node:
+    """Create an `<h4>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_H4, items^)
+
+
+fn el_h4(var a: Node, var b: Node) -> Node:
+    """Create an `<h4>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_H4, items^)
+
+
+fn el_h4(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create an `<h4>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_H4, items^)
+
+
+fn el_h4(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create an `<h4>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_H4, items^)
+
+
+fn el_h4(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create an `<h4>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_H4, items^)
+
+
+fn el_h5(var a: Node) -> Node:
+    """Create an `<h5>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_H5, items^)
+
+
+fn el_h5(var a: Node, var b: Node) -> Node:
+    """Create an `<h5>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_H5, items^)
+
+
+fn el_h5(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create an `<h5>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_H5, items^)
+
+
+fn el_h5(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create an `<h5>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_H5, items^)
+
+
+fn el_h5(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create an `<h5>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_H5, items^)
+
+
+fn el_h6(var a: Node) -> Node:
+    """Create an `<h6>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_H6, items^)
+
+
+fn el_h6(var a: Node, var b: Node) -> Node:
+    """Create an `<h6>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_H6, items^)
+
+
+fn el_h6(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create an `<h6>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_H6, items^)
+
+
+fn el_h6(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create an `<h6>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_H6, items^)
+
+
+fn el_h6(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create an `<h6>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_H6, items^)
+
+
+# ── Lists — multi-arg overloads ──────────────────────────────────────────────
+
+
+fn el_ul(var a: Node) -> Node:
+    """Create a `<ul>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_UL, items^)
+
+
+fn el_ul(var a: Node, var b: Node) -> Node:
+    """Create a `<ul>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_UL, items^)
+
+
+fn el_ul(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<ul>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_UL, items^)
+
+
+fn el_ul(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<ul>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_UL, items^)
+
+
+fn el_ul(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<ul>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_UL, items^)
+
+
+fn el_ol(var a: Node) -> Node:
+    """Create an `<ol>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_OL, items^)
+
+
+fn el_ol(var a: Node, var b: Node) -> Node:
+    """Create an `<ol>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_OL, items^)
+
+
+fn el_ol(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create an `<ol>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_OL, items^)
+
+
+fn el_ol(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create an `<ol>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_OL, items^)
+
+
+fn el_ol(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create an `<ol>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_OL, items^)
+
+
+fn el_li(var a: Node) -> Node:
+    """Create a `<li>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_LI, items^)
+
+
+fn el_li(var a: Node, var b: Node) -> Node:
+    """Create a `<li>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_LI, items^)
+
+
+fn el_li(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<li>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_LI, items^)
+
+
+fn el_li(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<li>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_LI, items^)
+
+
+fn el_li(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<li>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_LI, items^)
+
+
+# ── Interactive — multi-arg overloads ────────────────────────────────────────
+
+
+fn el_button(var a: Node) -> Node:
+    """Create a `<button>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_BUTTON, items^)
+
+
+fn el_button(var a: Node, var b: Node) -> Node:
+    """Create a `<button>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_BUTTON, items^)
+
+
+fn el_button(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<button>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_BUTTON, items^)
+
+
+fn el_button(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<button>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_BUTTON, items^)
+
+
+fn el_button(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<button>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_BUTTON, items^)
+
+
+fn el_input(var a: Node) -> Node:
+    """Create an `<input>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_INPUT, items^)
+
+
+fn el_input(var a: Node, var b: Node) -> Node:
+    """Create an `<input>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_INPUT, items^)
+
+
+fn el_input(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create an `<input>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_INPUT, items^)
+
+
+fn el_input(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create an `<input>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_INPUT, items^)
+
+
+fn el_input(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create an `<input>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_INPUT, items^)
+
+
+fn el_form(var a: Node) -> Node:
+    """Create a `<form>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_FORM, items^)
+
+
+fn el_form(var a: Node, var b: Node) -> Node:
+    """Create a `<form>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_FORM, items^)
+
+
+fn el_form(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<form>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_FORM, items^)
+
+
+fn el_form(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<form>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_FORM, items^)
+
+
+fn el_form(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<form>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_FORM, items^)
+
+
+fn el_textarea(var a: Node) -> Node:
+    """Create a `<textarea>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_TEXTAREA, items^)
+
+
+fn el_textarea(var a: Node, var b: Node) -> Node:
+    """Create a `<textarea>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_TEXTAREA, items^)
+
+
+fn el_textarea(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<textarea>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_TEXTAREA, items^)
+
+
+fn el_textarea(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<textarea>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_TEXTAREA, items^)
+
+
+fn el_textarea(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<textarea>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_TEXTAREA, items^)
+
+
+fn el_select(var a: Node) -> Node:
+    """Create a `<select>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_SELECT, items^)
+
+
+fn el_select(var a: Node, var b: Node) -> Node:
+    """Create a `<select>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_SELECT, items^)
+
+
+fn el_select(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<select>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_SELECT, items^)
+
+
+fn el_select(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<select>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_SELECT, items^)
+
+
+fn el_select(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<select>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_SELECT, items^)
+
+
+fn el_option(var a: Node) -> Node:
+    """Create an `<option>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_OPTION, items^)
+
+
+fn el_option(var a: Node, var b: Node) -> Node:
+    """Create an `<option>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_OPTION, items^)
+
+
+fn el_option(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create an `<option>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_OPTION, items^)
+
+
+fn el_option(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create an `<option>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_OPTION, items^)
+
+
+fn el_option(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create an `<option>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_OPTION, items^)
+
+
+fn el_label(var a: Node) -> Node:
+    """Create a `<label>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_LABEL, items^)
+
+
+fn el_label(var a: Node, var b: Node) -> Node:
+    """Create a `<label>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_LABEL, items^)
+
+
+fn el_label(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<label>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_LABEL, items^)
+
+
+fn el_label(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<label>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_LABEL, items^)
+
+
+fn el_label(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<label>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_LABEL, items^)
+
+
+# ── Links / Media — multi-arg overloads ──────────────────────────────────────
+
+
+fn el_a(var a: Node) -> Node:
+    """Create an `<a>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_A, items^)
+
+
+fn el_a(var a: Node, var b: Node) -> Node:
+    """Create an `<a>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_A, items^)
+
+
+fn el_a(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create an `<a>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_A, items^)
+
+
+fn el_a(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create an `<a>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_A, items^)
+
+
+fn el_a(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create an `<a>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_A, items^)
+
+
+fn el_img(var a: Node) -> Node:
+    """Create an `<img>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_IMG, items^)
+
+
+fn el_img(var a: Node, var b: Node) -> Node:
+    """Create an `<img>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_IMG, items^)
+
+
+fn el_img(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create an `<img>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_IMG, items^)
+
+
+fn el_img(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create an `<img>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_IMG, items^)
+
+
+fn el_img(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create an `<img>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_IMG, items^)
+
+
+# ── Table — multi-arg overloads ──────────────────────────────────────────────
+
+
+fn el_table(var a: Node) -> Node:
+    """Create a `<table>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_TABLE, items^)
+
+
+fn el_table(var a: Node, var b: Node) -> Node:
+    """Create a `<table>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_TABLE, items^)
+
+
+fn el_table(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<table>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_TABLE, items^)
+
+
+fn el_table(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<table>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_TABLE, items^)
+
+
+fn el_table(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<table>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_TABLE, items^)
+
+
+fn el_thead(var a: Node) -> Node:
+    """Create a `<thead>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_THEAD, items^)
+
+
+fn el_thead(var a: Node, var b: Node) -> Node:
+    """Create a `<thead>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_THEAD, items^)
+
+
+fn el_thead(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<thead>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_THEAD, items^)
+
+
+fn el_thead(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<thead>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_THEAD, items^)
+
+
+fn el_thead(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<thead>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_THEAD, items^)
+
+
+fn el_tbody(var a: Node) -> Node:
+    """Create a `<tbody>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_TBODY, items^)
+
+
+fn el_tbody(var a: Node, var b: Node) -> Node:
+    """Create a `<tbody>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_TBODY, items^)
+
+
+fn el_tbody(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<tbody>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_TBODY, items^)
+
+
+fn el_tbody(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<tbody>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_TBODY, items^)
+
+
+fn el_tbody(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<tbody>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_TBODY, items^)
+
+
+fn el_tr(var a: Node) -> Node:
+    """Create a `<tr>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_TR, items^)
+
+
+fn el_tr(var a: Node, var b: Node) -> Node:
+    """Create a `<tr>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_TR, items^)
+
+
+fn el_tr(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<tr>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_TR, items^)
+
+
+fn el_tr(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<tr>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_TR, items^)
+
+
+fn el_tr(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<tr>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_TR, items^)
+
+
+fn el_td(var a: Node) -> Node:
+    """Create a `<td>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_TD, items^)
+
+
+fn el_td(var a: Node, var b: Node) -> Node:
+    """Create a `<td>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_TD, items^)
+
+
+fn el_td(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<td>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_TD, items^)
+
+
+fn el_td(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<td>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_TD, items^)
+
+
+fn el_td(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<td>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_TD, items^)
+
+
+fn el_th(var a: Node) -> Node:
+    """Create a `<th>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_TH, items^)
+
+
+fn el_th(var a: Node, var b: Node) -> Node:
+    """Create a `<th>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_TH, items^)
+
+
+fn el_th(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<th>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_TH, items^)
+
+
+fn el_th(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<th>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_TH, items^)
+
+
+fn el_th(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<th>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_TH, items^)
+
+
+# ── Inline / Formatting — multi-arg overloads ────────────────────────────────
+
+
+fn el_strong(var a: Node) -> Node:
+    """Create a `<strong>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_STRONG, items^)
+
+
+fn el_strong(var a: Node, var b: Node) -> Node:
+    """Create a `<strong>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_STRONG, items^)
+
+
+fn el_strong(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<strong>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_STRONG, items^)
+
+
+fn el_strong(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<strong>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_STRONG, items^)
+
+
+fn el_strong(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<strong>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_STRONG, items^)
+
+
+fn el_em(var a: Node) -> Node:
+    """Create an `<em>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_EM, items^)
+
+
+fn el_em(var a: Node, var b: Node) -> Node:
+    """Create an `<em>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_EM, items^)
+
+
+fn el_em(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create an `<em>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_EM, items^)
+
+
+fn el_em(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create an `<em>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_EM, items^)
+
+
+fn el_em(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create an `<em>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_EM, items^)
+
+
+fn el_pre(var a: Node) -> Node:
+    """Create a `<pre>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_PRE, items^)
+
+
+fn el_pre(var a: Node, var b: Node) -> Node:
+    """Create a `<pre>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_PRE, items^)
+
+
+fn el_pre(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<pre>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_PRE, items^)
+
+
+fn el_pre(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<pre>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_PRE, items^)
+
+
+fn el_pre(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<pre>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_PRE, items^)
+
+
+fn el_code(var a: Node) -> Node:
+    """Create a `<code>` with 1 child/attr."""
+    var items = List[Node]()
+    items.append(a^)
+    return Node.element_node(TAG_CODE, items^)
+
+
+fn el_code(var a: Node, var b: Node) -> Node:
+    """Create a `<code>` with 2 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    return Node.element_node(TAG_CODE, items^)
+
+
+fn el_code(var a: Node, var b: Node, var c: Node) -> Node:
+    """Create a `<code>` with 3 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    return Node.element_node(TAG_CODE, items^)
+
+
+fn el_code(var a: Node, var b: Node, var c: Node, var d: Node) -> Node:
+    """Create a `<code>` with 4 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    return Node.element_node(TAG_CODE, items^)
+
+
+fn el_code(
+    var a: Node, var b: Node, var c: Node, var d: Node, var e: Node
+) -> Node:
+    """Create a `<code>` with 5 children/attrs."""
+    var items = List[Node]()
+    items.append(a^)
+    items.append(b^)
+    items.append(c^)
+    items.append(d^)
+    items.append(e^)
+    return Node.element_node(TAG_CODE, items^)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # to_template — Convert a Node tree to a Template
 # ══════════════════════════════════════════════════════════════════════════════
 

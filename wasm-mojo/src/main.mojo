@@ -2140,7 +2140,7 @@ fn todo_app_template_id(app_ptr: Int64) -> Int32:
 @export
 fn todo_item_template_id(app_ptr: Int64) -> Int32:
     """Return the item template ID."""
-    return Int32(_get[TodoApp](app_ptr)[0].item_template_id)
+    return Int32(_get[TodoApp](app_ptr)[0].items.template_id)
 
 
 @export
@@ -2152,19 +2152,19 @@ fn todo_add_handler(app_ptr: Int64) -> Int32:
 @export
 fn todo_item_count(app_ptr: Int64) -> Int32:
     """Return the number of items in the list."""
-    return Int32(len(_get[TodoApp](app_ptr)[0].items))
+    return Int32(len(_get[TodoApp](app_ptr)[0].data))
 
 
 @export
 fn todo_item_id_at(app_ptr: Int64, index: Int32) -> Int32:
     """Return the ID of the item at the given index."""
-    return _get[TodoApp](app_ptr)[0].items[Int(index)].id
+    return _get[TodoApp](app_ptr)[0].data[Int(index)].id
 
 
 @export
 fn todo_item_completed_at(app_ptr: Int64, index: Int32) -> Int32:
     """Return 1 if the item at index is completed, 0 otherwise."""
-    return _b2i(_get[TodoApp](app_ptr)[0].items[Int(index)].completed)
+    return _b2i(_get[TodoApp](app_ptr)[0].data[Int(index)].completed)
 
 
 @export
@@ -2308,7 +2308,7 @@ fn bench_version(app_ptr: Int64) -> Int32:
 @export
 fn bench_row_template_id(app_ptr: Int64) -> Int32:
     """Return the row template ID."""
-    return Int32(_get[BenchmarkApp](app_ptr)[0].row_template_id)
+    return Int32(_get[BenchmarkApp](app_ptr)[0].rows_list.template_id)
 
 
 @export

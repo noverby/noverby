@@ -30,6 +30,7 @@
 ### Virtual DOM (`src/vdom/`)
 
 - `Node` (DSL union) — `text()`, `dyn_text()`, `dyn_node()`, `attr()`, `dyn_attr()`, `el_div()`, `el_button()`, etc.
+- **Multi-arg `el_*` overloads** — 1–5 `Node` argument overloads for all 38 element helpers, eliminating `List[Node](...)` wrappers. Uses `var` ownership + `^` transfer. Example: `el_div(el_h1(dyn_text()), el_button(text("Up!"), onclick_add(count, 1)))`.
 - Inline event constructors: `onclick_add(signal, delta)`, `onclick_sub()`, `onclick_set()`, `onclick_toggle()`, `on_event()`.
 - `dyn_text()` with no args → auto-numbered (sentinel `DYN_TEXT_AUTO`).
 - `to_template(node, name)` → `Template` (static structure for DOM cloning).
@@ -72,11 +73,12 @@
   - `ctx.flush_fragment(writer, slot, frag_idx)` / `ctx.build_empty_fragment()` / `ctx.push_fragment_child()` — fragment lifecycle.
   - `ctx.vnode_builder()` / `ctx.vnode_builder_for(tmpl_id)` — VNode construction.
 - **`FragmentSlot`** — tracks empty↔populated transitions for dynamic keyed lists.
+- **`KeyedList`** (`src/component/keyed_list.mojo`) — bundles `FragmentSlot` + child scope IDs + item template ID for keyed-list components. Methods: `begin_rebuild(ctx)` (destroy old scopes, return empty fragment), `create_scope(ctx)` (create + track child scope), `item_builder(key, ctx)` (keyed VNodeBuilder), `push_child(ctx, frag, child)`, `flush(ctx, writer, frag)` (fragment transitions), `init_slot(anchor, frag)`.
 - **Lifecycle helpers**: `mount_vnode()`, `diff_and_finalize()`, `flush_fragment()`.
 
 ## App Architectures (`src/apps/`)
 
-All three apps use `ComponentContext` with constructor-based setup.
+All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads.
 
 ### CounterApp (`counter.mojo`) — simplest example
 
@@ -84,7 +86,7 @@ All three apps use `ComponentContext` with constructor-based setup.
 struct CounterApp:
     var ctx: ComponentContext
     var count: SignalI32
-    fn __init__: ctx.create() → use_signal → setup_view(inline events)
+    fn __init__: ctx.create() → use_signal → setup_view(inline events, multi-arg el_*)
     fn render: ctx.render_builder() → add_dyn_text → build()
 ```
 
@@ -96,18 +98,25 @@ Lifecycle: `counter_app_init()` → `counter_app_rebuild()` → `counter_app_han
 struct TodoApp:
     var ctx: ComponentContext
     var list_version: SignalI32
-    var item_template_id: UInt32
-    var items: List[TodoItem]
-    var item_slot: FragmentSlot
+    var items: KeyedList          # bundles template_id + FragmentSlot + scope_ids
+    var data: List[TodoItem]
     var handler_map: List[HandlerItemMapping]
-    var item_scope_ids: List[UInt32]
-    fn __init__: register_template("todo-app") + register_extra_template("todo-item")
-    fn build_item_vnode: per-item child scope + VNodeBuilder + handler registration
-    fn build_items_fragment: destroy old scopes → empty fragment → build each item
+    fn __init__: register_template("todo-app") + KeyedList(register_extra_template("todo-item"))
+    fn build_item_vnode: items.create_scope + items.item_builder + handler registration
+    fn build_items_fragment: items.begin_rebuild → build each item → items.push_child
     fn handle_event: lookup handler_map → toggle/remove item
 ```
 
 ### BenchmarkApp (`bench.mojo`) — js-framework-benchmark, same pattern as todo
+
+```txt
+struct BenchmarkApp:
+    var ctx: ComponentContext
+    var version: SignalI32
+    var selected: SignalI32
+    var rows_list: KeyedList      # bundles template_id + FragmentSlot + scope_ids
+    var rows: List[BenchRow]
+```
 
 Two signals: `version` (list changes), `selected` (highlight row).
 Operations: create_rows, append_rows, update_every_10th, select_row, swap_rows, remove_row, clear_rows.
@@ -142,14 +151,15 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 | `src/component/context.mojo` | ~950 | ComponentContext + RenderBuilder + tree processing |
 | `src/component/lifecycle.mojo` | ~350 | FragmentSlot + mount/diff helpers |
 | `src/component/app_shell.mojo` | ~350 | AppShell (low-level) |
-| `src/apps/counter.mojo` | ~120 | Counter app |
-| `src/apps/todo.mojo` | ~475 | Todo app |
-| `src/apps/bench.mojo` | ~475 | Benchmark app |
-| `src/vdom/dsl.mojo` | ~800 | Node DSL + el_* helpers + to_template |
+| `src/apps/counter.mojo` | ~115 | Counter app |
+| `src/apps/todo.mojo` | ~490 | Todo app (uses KeyedList) |
+| `src/apps/bench.mojo` | ~465 | Benchmark app (uses KeyedList) |
+| `src/component/keyed_list.mojo` | ~215 | KeyedList abstraction |
+| `src/vdom/dsl.mojo` | ~2,775 | Node DSL + el_* helpers + multi-arg overloads + to_template |
 | `src/vdom/vnode.mojo` | ~600 | VNode + VNodeStore + VNodeBuilder |
 | `src/signals/runtime.mojo` | ~500 | Reactive runtime |
 | `src/mutations/diff.mojo` | ~500 | DiffEngine (keyed reconciliation) |
-| `CHANGELOG.md` | ~145 | Development history (Phases 0–15) |
+| `CHANGELOG.md` | ~155 | Development history (Phases 0–16) |
 
 ## Common Patterns
 
@@ -157,10 +167,12 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 
 **Bump version signal**: `self.version += 1` (triggers re-render via scope subscription).
 
-**Inline events in DSL**: `el_button(List[Node](text("Up!"), onclick_add(count, 1)))` — extracted by `register_view()` / `setup_view()`.
+**Inline events in DSL**: `el_button(text("Up!"), onclick_add(count, 1))` — multi-arg overloads, extracted by `register_view()` / `setup_view()`.
 
 **Manual events**: `var hid = ctx.register_handler(HandlerEntry.custom(scope_id, "click"))`, then `vb.add_dyn_event("click", hid)`.
 
-**Keyed list rebuild**: destroy_child_scopes → clear handler_map → build_empty_fragment → for each item: create_child_scope → VNodeBuilder → register handlers → push_fragment_child.
+**Keyed list rebuild (via KeyedList)**: `var frag = self.items.begin_rebuild(ctx)` → for each item: `items.create_scope(ctx)` → `items.item_builder(key, ctx)` → register handlers → `items.push_child(ctx, frag, idx)`.
 
-**Flush lifecycle**: `if not ctx.consume_dirty(): return 0` → rebuild → `ctx.flush(writer, new_idx)` or `ctx.flush_fragment(writer, slot, frag_idx)` + `writer.finalize()`.
+**Keyed list flush (via KeyedList)**: `items.flush(ctx, writer, frag_idx)` + `writer.finalize()`.
+
+**Flush lifecycle**: `if not ctx.consume_dirty(): return 0` → rebuild → `ctx.flush(writer, new_idx)` or `items.flush(ctx, writer, frag_idx)` + `writer.finalize()`.

@@ -1,12 +1,10 @@
 # BenchmarkApp — js-framework-benchmark implementation.
 #
-# Migrated to ComponentContext for Dioxus-like ergonomics:
+# Migrated to Dioxus-style ergonomics with Phase 16 abstractions:
+#   - Multi-arg el_* overloads (no List[Node]() wrappers)
+#   - KeyedList abstraction (bundles FragmentSlot + scope IDs + template ID)
 #   - Constructor-based setup (all init in __init__)
 #   - ctx.use_signal() for automatic scope subscription
-#   - ctx.register_extra_template() for the row template
-#   - ctx.create_child_scope() / ctx.destroy_child_scopes()
-#   - ctx.flush_fragment() for keyed list lifecycle
-#   - ctx.build_empty_fragment() / ctx.push_fragment_child()
 #   - SignalI32 handles with operator overloading
 #
 # Implements the standard benchmark operations:
@@ -21,7 +19,7 @@
 # Each row has: id (int), label (string).
 # The selected row id is tracked separately.
 #
-# Template structure (built via DSL):
+# Template structure (built via DSL with multi-arg overloads):
 #   "bench-row": tr + dynamic_attr[0](class) > [
 #       td > dynamic_text[0] (id),
 #       td > a > dynamic_text[1] (label),
@@ -33,35 +31,50 @@
 # We use a simple linear congruential generator for pseudo-random labels
 # to match the benchmark's adjective + colour + noun pattern.
 #
-# Compare with old API:
+# Compare with Dioxus (Rust):
 #
-#     # Old — manual AppShell + scope + signal + template registration:
-#     app_ptr[0].shell = app_shell_create()
-#     app_ptr[0].scope_id = app_ptr[0].shell.create_root_scope()
-#     _ = app_ptr[0].shell.begin_render(app_ptr[0].scope_id)
-#     app_ptr[0].version_signal = app_ptr[0].shell.use_signal_i32(0)
-#     app_ptr[0].selected_signal = app_ptr[0].shell.use_signal_i32(0)
-#     _ = app_ptr[0].shell.read_signal_i32(app_ptr[0].version_signal)
-#     _ = app_ptr[0].shell.read_signal_i32(app_ptr[0].selected_signal)
-#     app_ptr[0].shell.end_render(-1)
-#     var row_template = to_template(row_view, String("bench-row"))
-#     app_ptr[0].row_template_id = UInt32(
-#         app_ptr[0].shell.runtime[0].templates.register(row_template^)
-#     )
+#     fn App() -> Element {
+#         let mut rows = use_signal(|| vec![]);
+#         let mut selected = use_signal(|| 0usize);
+#         rsx! {
+#             for row in rows.read().iter() {
+#                 tr { class: if selected() == row.id { "danger" } else { "" },
+#                     td { "{row.id}" }
+#                     td { a { onclick: move |_| selected.set(row.id), "{row.label}" } }
+#                     td { a { onclick: move |_| remove(row.id), "×" } }
+#                 }
+#             }
+#         }
+#     }
 #
-#     # New — ComponentContext ergonomic API:
-#     self.ctx = ComponentContext.create()
-#     self.version = self.ctx.use_signal(0)
-#     self.selected = self.ctx.use_signal(0)
-#     self.row_template_id = self.ctx.register_extra_template(
-#         row_view, String("bench-row"),
-#     )
+# Mojo equivalent (with Phase 16 abstractions):
+#
+#     struct BenchmarkApp:
+#         var ctx: ComponentContext
+#         var version: SignalI32
+#         var selected: SignalI32
+#         var rows_list: KeyedList   # bundles template_id + FragmentSlot + scope_ids
+#
+#         fn __init__(out self):
+#             self.ctx = ComponentContext.create()
+#             self.version = self.ctx.use_signal(0)
+#             self.selected = self.ctx.use_signal(0)
+#             self.ctx.end_setup()
+#             self.rows_list = KeyedList(self.ctx.register_extra_template(
+#                 el_tr(
+#                     dyn_attr(0),
+#                     el_td(dyn_text(0)),
+#                     el_td(el_a(dyn_attr(1), dyn_text(1))),
+#                     el_td(el_a(dyn_attr(2), text("×"))),
+#                 ),
+#                 String("bench-row"),
+#             ))
 
 from memory import UnsafePointer
 from bridge import MutationWriter
 
 from events import HandlerEntry
-from component import ComponentContext, FragmentSlot
+from component import ComponentContext, KeyedList
 from signals import SignalI32
 from vdom import (
     VNode,
@@ -190,6 +203,9 @@ struct BenchmarkApp(Movable):
     registration — happens in __init__.  The lifecycle functions are
     thin delegations to ComponentContext.
 
+    Uses KeyedList to bundle the row template, FragmentSlot, and child
+    scope tracking into a single abstraction.
+
     Manages a list of rows, selection state, and all rendering
     infrastructure via ComponentContext (runtime, templates, vnode
     store, etc.).
@@ -198,26 +214,25 @@ struct BenchmarkApp(Movable):
     var ctx: ComponentContext
     var version: SignalI32  # bumped on list changes
     var selected: SignalI32  # currently selected row id (0 = none)
-    var row_template_id: UInt32
+    var rows_list: KeyedList  # bundles template_id + FragmentSlot + scope_ids
     var rows: List[BenchRow]
     var next_id: Int32
     var rng_state: UInt32  # simple LCG state
-    var row_slot: FragmentSlot  # tracks row list fragment lifecycle
-    # Child scope IDs for per-row handler lifecycle (one scope per row)
-    var row_scope_ids: List[UInt32]
 
     fn __init__(out self):
         """Initialize the benchmark app with all reactive state and templates.
 
         Creates: ComponentContext (runtime, VNode store, element ID
         allocator, scheduler), root scope, version and selected signals,
-        and the row template.
+        and the row template via KeyedList.
 
         Template "bench-row": tr + dyn_attr[0](class) > [
-            td > dyn_text[0],          ← id
-            td > a + dyn_attr[1] > dyn_text[1],  ← label + select click
-            td > a + dyn_attr[2] > text("×")      ← delete click
+            td > dyn_text[0],          <- id
+            td > a + dyn_attr[1] > dyn_text[1],  <- label + select click
+            td > a + dyn_attr[2] > text("×")      <- delete click
         ]
+
+        Uses multi-arg el_* overloads — no List[Node]() wrappers needed.
         """
         # 1. Create context and signals
         self.ctx = ComponentContext.create()
@@ -225,42 +240,32 @@ struct BenchmarkApp(Movable):
         self.selected = self.ctx.use_signal(0)
         self.ctx.end_setup()
 
-        # 2. Register the "bench-row" template (extra template — no primary)
-        self.row_template_id = self.ctx.register_extra_template(
-            el_tr(
-                List[Node](
+        # 2. Register the "bench-row" template via KeyedList
+        self.rows_list = KeyedList(
+            self.ctx.register_extra_template(
+                el_tr(
                     dyn_attr(0),  # class on <tr>
-                    el_td(List[Node](dyn_text(0))),
-                    el_td(
-                        List[Node](el_a(List[Node](dyn_attr(1), dyn_text(1))))
-                    ),
-                    el_td(
-                        List[Node](
-                            el_a(List[Node](dyn_attr(2), text(String("×"))))
-                        )
-                    ),
-                )
-            ),
-            String("bench-row"),
+                    el_td(dyn_text(0)),
+                    el_td(el_a(dyn_attr(1), dyn_text(1))),
+                    el_td(el_a(dyn_attr(2), text(String("×")))),
+                ),
+                String("bench-row"),
+            )
         )
 
         # 3. Initialize remaining state
         self.rows = List[BenchRow]()
         self.next_id = 1
         self.rng_state = 42
-        self.row_slot = FragmentSlot()
-        self.row_scope_ids = List[UInt32]()
 
     fn __moveinit__(out self, deinit other: Self):
         self.ctx = other.ctx^
         self.version = other.version^
         self.selected = other.selected^
-        self.row_template_id = other.row_template_id
+        self.rows_list = other.rows_list^
         self.rows = other.rows^
         self.next_id = other.next_id
         self.rng_state = other.rng_state
-        self.row_slot = other.row_slot^
-        self.row_scope_ids = other.row_scope_ids^
 
     fn _next_random(mut self) -> UInt32:
         """Simple LCG: state = state * 1664525 + 1013904223."""
@@ -343,14 +348,14 @@ struct BenchmarkApp(Movable):
           dynamic_text[1] = row label
           dynamic_attr[1] = click on label <a> (select)
           dynamic_attr[2] = click on delete <a> (remove)
-        """
-        # Create a child scope for this row's handlers
-        var child_scope = self.ctx.create_child_scope()
-        self.row_scope_ids.append(child_scope)
 
-        var vb = VNodeBuilder(
-            self.row_template_id, String(row.id), self.ctx.store_ptr()
-        )
+        Uses KeyedList.create_scope() and KeyedList.item_builder() for
+        ergonomic child scope and VNode construction.
+        """
+        # Create a child scope for this row's handlers (tracked by KeyedList)
+        var child_scope = self.rows_list.create_scope(self.ctx)
+
+        var vb = self.rows_list.item_builder(String(row.id), self.ctx)
 
         # Dynamic text 0: row id
         vb.add_dyn_text(String(row.id))
@@ -384,16 +389,14 @@ struct BenchmarkApp(Movable):
     fn build_rows_fragment(mut self) -> UInt32:
         """Build a Fragment VNode containing all row VNodes.
 
-        Destroys old per-row child scopes (cleaning up their handlers),
-        then creates new child scopes for each row.
+        Uses KeyedList.begin_rebuild() to destroy old child scopes and
+        create a new empty fragment, then builds each row VNode and
+        pushes it as a fragment child.
         """
-        # Destroy old child scopes — cleans up their handlers automatically
-        self.ctx.destroy_child_scopes(self.row_scope_ids)
-        self.row_scope_ids.clear()
-        var frag_idx = self.ctx.build_empty_fragment()
+        var frag_idx = self.rows_list.begin_rebuild(self.ctx)
         for i in range(len(self.rows)):
             var row_idx = self.build_row_vnode(self.rows[i].copy())
-            self.ctx.push_fragment_child(frag_idx, row_idx)
+            self.rows_list.push_child(self.ctx, frag_idx, row_idx)
         return frag_idx
 
 
@@ -434,9 +437,9 @@ fn bench_app_rebuild(
     writer_ptr[0].create_placeholder(anchor_eid.as_u32())
     writer_ptr[0].append_children(0, 1)
 
-    # Build initial empty fragment and initialize the FragmentSlot
+    # Build initial empty fragment and initialize the KeyedList's slot
     var frag_idx = app[0].build_rows_fragment()
-    app[0].row_slot = FragmentSlot(anchor_eid.as_u32(), Int(frag_idx))
+    app[0].rows_list.init_slot(anchor_eid.as_u32(), frag_idx)
 
     writer_ptr[0].finalize()
     return Int32(writer_ptr[0].offset)
@@ -448,8 +451,8 @@ fn bench_app_flush(
 ) -> Int32:
     """Flush pending updates after a benchmark operation.
 
-    Delegates fragment transitions (empty↔populated) to the reusable
-    `flush_fragment` lifecycle helper via the app's `FragmentSlot`.
+    Uses KeyedList.flush() which delegates fragment transitions
+    (empty↔populated) to the reusable flush_fragment lifecycle helper.
 
     Returns byte offset (length) of mutation data, or 0 if nothing dirty.
     """
@@ -459,10 +462,8 @@ fn bench_app_flush(
 
     var new_frag_idx = app[0].build_rows_fragment()
 
-    # Flush via ComponentContext method (handles all three transitions)
-    app[0].row_slot = app[0].ctx.flush_fragment(
-        writer_ptr, app[0].row_slot, new_frag_idx
-    )
+    # Flush via KeyedList (handles all three transitions)
+    app[0].rows_list.flush(app[0].ctx, writer_ptr, new_frag_idx)
 
     writer_ptr[0].finalize()
     return Int32(writer_ptr[0].offset)
