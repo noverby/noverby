@@ -16,8 +16,9 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **Scoped components** — hierarchical scopes with hooks, context, error boundaries, and suspense
 - **Ergonomic DSL** — `el_div`, `el_button`, `dyn_text` tag helpers with `to_template()` conversion
 - **AppShell abstraction** — single struct bundling runtime, store, allocator, and scheduler
-- **Three working apps** — counter, todo list, and js-framework-benchmark
-- **1,868 tests** — 775 Mojo (via wasmtime) + 1,093 JS (via Deno), all passing
+- **ComponentContext** — ergonomic Dioxus-style API with `use_signal()`, `setup_view()`, inline events, auto-numbered `dyn_text()`
+- **Three working apps** — counter, todo list, and js-framework-benchmark (all using ComponentContext)
+- **2,055 tests** — 903 Mojo (via wasmtime) + 1,152 JS (via Deno), all passing
 
 ## How it works
 
@@ -75,16 +76,17 @@ At runtime, the TypeScript side (`runtime/`) instantiates the WASM module and pr
 wasm-mojo/
 ├── src/
 │   ├── main.mojo                 # @export wrappers (WASM entry point, 3,476 lines, 419 exports)
-│   ├── apps/                     # Application modules
-│   │   ├── counter.mojo          # Counter app (Phase 7)
-│   │   ├── todo.mojo             # Todo list app (Phase 8)
-│   │   └── bench.mojo            # js-framework-benchmark (Phase 9)
+│   ├── apps/                     # Application modules (all use ComponentContext)
+│   │   ├── counter.mojo          # Counter app — simplest example (inline events via setup_view)
+│   │   ├── todo.mojo             # Todo list — keyed lists, multi-template, custom handlers
+│   │   └── bench.mojo            # js-framework-benchmark — keyed lists, 7 operations
 │   ├── arena/
 │   │   └── element_id.mojo       # ElementId type and allocator
 │   ├── bridge/
 │   │   └── protocol.mojo         # Opcode constants, MutationWriter
 │   ├── component/                # Reusable app infrastructure
 │   │   ├── app_shell.mojo        # AppShell struct (runtime + store + allocator + scheduler)
+│   │   ├── context.mojo          # ComponentContext — ergonomic API, RenderBuilder, view tree processing
 │   │   └── lifecycle.mojo        # mount, diff, finalize helpers; FragmentSlot + flush_fragment
 │   ├── events/
 │   │   └── registry.mojo         # Handler registry and dispatch
@@ -135,7 +137,7 @@ wasm-mojo/
 │   ├── counter/                  # Counter app (browser)
 │   ├── todo/                     # Todo list app (browser)
 │   └── bench/                    # js-framework-benchmark (browser)
-├── test/                         # Mojo tests (27 modules, 775 tests via wasmtime)
+├── test/                         # Mojo tests (29 modules, 903 tests via wasmtime)
 │   ├── wasm_harness.mojo         # WasmInstance harness using wasmtime-mojo FFI
 │   ├── test_signals.mojo         # Reactive signals
 │   ├── test_scopes.mojo          # Scope arena and hooks
@@ -148,7 +150,7 @@ wasm-mojo/
 │   ├── test_memo.mojo            # Memo store, runtime API, hooks, propagation
 │   ├── test_scheduler.mojo       # Scheduler ordering and dedup
 │   └── ...                       # + arithmetic, strings, boundaries, etc.
-├── test-js/                      # JS runtime integration tests (1,093 tests via Deno)
+├── test-js/                      # JS runtime integration tests (1,152 tests via Deno)
 │   ├── harness.ts                # Shared WASM loading and test helpers
 │   ├── counter.test.ts           # Full counter app lifecycle with DOM
 │   ├── todo.test.ts              # Todo app: add, remove, toggle, clear
@@ -296,7 +298,7 @@ Adding a new test:
 
 ## Test results
 
-1,868 tests across 27 Mojo modules and 9 JS test suites:
+2,055 tests across 29 Mojo modules and 9 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -314,29 +316,46 @@ Adding a new test:
 - **Memory** — allocation cycles, bounded growth, rapid write stability
 - **Arithmetic/strings** — original PoC interop regression suite
 
-## Ergonomic DSL
+## Ergonomic API
 
-The framework provides an ergonomic builder DSL for declaring UI templates:
-
-```txt
-# Tag helpers: el_div, el_span, el_button, el_h1, ... (40 tags)
-# Content:    text("Hello"), dyn_text(), dyn_node()
-# Attributes: attr("class", "active"), dyn_attr("onclick")
-
-var view = el_div(List(
-    el_h1(List(text("Counter"))),
-    el_span(List(dyn_text())),
-    el_button(List(text("+"), dyn_attr("onclick"))),
-))
-
-var template = to_template(view, String("counter"))
-```
-
-The `VNodeBuilder` provides ergonomic VNode construction with typed dynamic slots:
+All apps use `ComponentContext` for Dioxus-style ergonomics — constructor-based setup,
+`use_signal()` with operator overloading, inline event handlers, and auto-numbered
+dynamic text slots:
 
 ```txt
-var vb = VNodeBuilder(store, template_id, scope_id)
-vb.add_dyn_text(String("0"))
-vb.add_dyn_event(handler_id)
-var vnode_id = vb.build()
+# Dioxus (Rust):
+#     fn App() -> Element {
+#         let mut count = use_signal(|| 0);
+#         rsx! {
+#             h1 { "High-Five counter: {count}" }
+#             button { onclick: move |_| count += 1, "Up high!" }
+#             button { onclick: move |_| count -= 1, "Down low!" }
+#         }
+#     }
+
+# Mojo equivalent:
+struct CounterApp:
+    var ctx: ComponentContext
+    var count: SignalI32
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.count = self.ctx.use_signal(0)
+        self.ctx.setup_view(
+            el_div(List[Node](
+                el_h1(List[Node](dyn_text())),
+                el_button(List[Node](text("Up high!"), onclick_add(self.count, 1))),
+                el_button(List[Node](text("Down low!"), onclick_sub(self.count, 1))),
+            )),
+            String("counter"),
+        )
+
+    fn render(mut self) -> UInt32:
+        var vb = self.ctx.render_builder()
+        vb.add_dyn_text("High-Five counter: " + String(self.count.peek()))
+        return vb.build()
 ```
+
+Multi-template apps (todo, bench) use `register_extra_template()` for item templates,
+`create_child_scope()` / `destroy_child_scopes()` for per-item handler lifecycle,
+and `flush_fragment()` for keyed list transitions.
