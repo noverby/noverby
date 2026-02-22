@@ -245,6 +245,42 @@ launch({
 - `strings.ts` — Mojo `String` ABI (SSO layout: inline ≤23 bytes, heap pointer otherwise).
 - `memory.ts` — size-class free-list allocator for WASM linear memory. Tracks every allocation in a JS-side `ptrSize` map and recycles freed blocks via `freeMap` size-class buckets. Double-free protection (pointer removed from `ptrSize` on first free) ensures safe reuse even with WASM code that frees the same pointer twice. Reuse is enabled by default. Includes a scratch arena (`scratchAlloc`/`scratchFreeAll`) for transient `writeStringStruct` allocations.
 
+## Memory Allocator (Phase 25)
+
+All three runtimes use a **JS-side size-class free-list allocator** — no headers in WASM linear memory.
+
+**Why JS-side, not WASM headers?** Some allocations happen during WASM instantiation before JS has a memory reference (can't write headers). Headers also waste 16 bytes per allocation and require slow `DataView` reads on every free. A JS-side `Map.get()` is O(1) with zero WASM memory overhead.
+
+**Design:**
+
+```txt
+alignedAlloc(align, size)
+  ├─ if reuseEnabled: check freeMap[size] for a cached pointer (O(1) pop)
+  │    └─ re-register ptr in ptrSize (so future free works)
+  └─ else: bump allocator fallback (O(1))
+       └─ record ptr→size in ptrSize Map
+
+alignedFree(ptr)
+  ├─ look up size = ptrSize.get(ptr)
+  ├─ if not found → ignore (double-free or unknown pointer)
+  ├─ delete ptr from ptrSize (prevents double-free stacking)
+  └─ push ptr onto freeMap[size] bucket
+```
+
+**State:**
+
+- `ptrSize: Map<bigint, bigint>` — every live pointer → its allocation size.
+- `freeMap: Map<bigint, bigint[]>` — size-class buckets of freed pointers (LIFO stacks).
+- `reuseEnabled: boolean` — gates whether `alignedAlloc` pops from `freeMap` (default: true).
+
+**Double-free protection:** Compiled WASM emits double-free calls (same pointer freed twice) due to Mojo destructor mechanics. `alignedFree` removes the pointer from `ptrSize` on first free, so subsequent frees are detected as "unknown" and silently ignored — no duplicate entries in the free list.
+
+**Scratch arena:** `scratchAlloc` / `scratchFreeAll` for transient `writeStringStruct` allocations. `writeStringStruct()` uses `scratchAlloc`; the arena is bulk-freed after each event dispatch (TS runtime) or flush cycle (JS browser runtime). WASM consumes string data synchronously before free.
+
+**Mojo harness:** `SharedState.aligned_alloc` / `aligned_free` in `test/wasm_harness.mojo` mirrors the JS design using `Dict[Int, Int]` for `ptr_size` and `Dict[Int, List[Int]]` for `free_map`.
+
+**Mutation buffer zero-init:** `mutation_buf_alloc` in `src/main.mojo` calls `memset_zero` on the allocated buffer because reused blocks may contain stale protocol data (OP_END = 0x00 must be the default).
+
 ## String Event Dispatch (Phase 20)
 
 Phase 20 adds the infrastructure for passing string values from DOM events to WASM `SignalString` signals, culminating in Dioxus-style two-way input binding. Phase 20.5 completes the story by migrating TodoApp to a fully WASM-driven Add flow.
@@ -338,13 +374,17 @@ el_button(text("Add"), onclick_custom()),
 | `src/vdom/dsl.mojo` | ~2,900 | Node DSL + el_* helpers + multi-arg overloads + conditional helpers + onclick_custom + to_template |
 | `src/vdom/vnode.mojo` | ~600 | VNode + VNodeStore + VNodeBuilder |
 | `src/mutations/diff.mojo` | ~500 | DiffEngine (keyed reconciliation) |
+| `runtime/memory.ts` | ~290 | Free-list allocator + scratch arena (Phase 25) |
 | `runtime/events.ts` | ~375 | EventBridge + DispatchWithStringFn (M20.2) |
 | `runtime/app.ts` | ~370 | createApp + createCounterApp + AppConfig with handleEventWithString |
 | `runtime/types.ts` | ~690 | WasmExports interface (Phase 20 string dispatch exports) |
+| `examples/lib/env.js` | ~250 | Browser free-list allocator + WASM imports (Phase 25) |
+| `test-js/allocator.test.ts` | ~980 | Allocator unit tests + WASM-integrated reuse tests (Phase 25) |
 | `test-js/events.test.ts` | ~650 | EventBridge string dispatch tests (unit + WASM integration) |
 | `test-js/dsl.test.ts` | ~620 | DSL tests incl. M20.3/M20.4/M20.5 binding + onclick_custom tests |
 | `test-js/todo.test.ts` | ~1,060 | Todo app tests incl. M20.5 WASM-driven Add flow tests |
-| `CHANGELOG.md` | ~230 | Development history (Phases 0–20) |
+| `test/wasm_harness.mojo` | ~1,440 | Mojo WASM test harness (includes free-list allocator, Phase 25) |
+| `CHANGELOG.md` | ~270 | Development history (Phases 0–25) |
 
 ## Common Patterns
 
