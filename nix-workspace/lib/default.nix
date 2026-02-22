@@ -25,6 +25,8 @@
   systemsLib = import ./systems.nix {inherit lib;};
   packageBuilder = import ./builders/packages.nix {inherit lib;};
   shellBuilder = import ./builders/shells.nix {inherit lib;};
+  machineBuilder = import ./builders/machines.nix {inherit lib;};
+  moduleBuilder = import ./builders/modules.nix {inherit lib;};
 
   # The contracts directory shipped with nix-workspace.
   contractsDir = nix-workspace.contracts;
@@ -53,11 +55,22 @@
 
     discoveredPackages = discovered.packages or {};
     discoveredShells = discovered.shells or {};
+    discoveredMachines = discovered.machines or {};
+    discoveredModules = discovered.modules or {};
+    discoveredHome = discovered.home or {};
 
     hasNclFiles =
       (discoveredPackages != {})
       || (discoveredShells != {})
+      || (discoveredMachines != {})
+      || (discoveredModules != {})
+      || (discoveredHome != {})
       || builtins.pathExists (workspaceRoot + "/workspace.ncl");
+
+    # Discover .nix implementation files alongside .ncl configs for modules.
+    # Modules have a dual structure: .ncl for Nickel config, .nix for NixOS implementation.
+    discoveredModuleNixFiles = moduleBuilder.discoverNixFiles workspaceRoot "modules";
+    discoveredHomeNixFiles = moduleBuilder.discoverNixFiles workspaceRoot "home";
 
     # ── Phase 2: Nickel evaluation ──────────────────────────────
     #
@@ -73,7 +86,16 @@
       if hasNclFiles
       then
         evalNickel.evalWorkspace {
-          inherit bootstrapPkgs contractsDir workspaceRoot discoveredPackages discoveredShells;
+          inherit
+            bootstrapPkgs
+            contractsDir
+            workspaceRoot
+            discoveredPackages
+            discoveredShells
+            discoveredMachines
+            discoveredModules
+            discoveredHome
+            ;
         }
       else evalNickel.emptyConfig;
 
@@ -94,10 +116,15 @@
 
     packageConfigs = effectiveConfig.packages or {};
     shellConfigs = effectiveConfig.shells or {};
+    machineConfigs = effectiveConfig.machines or {};
+    moduleConfigs = effectiveConfig.modules or {};
+    homeConfigs = effectiveConfig.home or {};
 
     # ── Phase 3: Build outputs ──────────────────────────────────
     #
     # Construct standard flake outputs with system multiplexing.
+
+    # ── Per-system outputs (packages, devShells) ────────────────
     perSystemOutputs = systemsLib.eachSystem systems (
       system: let
         pkgs = import userNixpkgs {
@@ -168,11 +195,107 @@
           devShells.${system} = builtShells // autoDefaultShell;
         })
     );
+
+    # ── Non-per-system outputs (nixosConfigurations, modules) ───
+    #
+    # NixOS configurations are not per-system in the flake output schema —
+    # each configuration declares its own system internally.
+
+    # Merge discovered .nix files with any paths declared in Nickel module configs.
+    # The .nix files serve as the implementation; the .ncl configs provide metadata.
+    resolvedModulePaths = let
+      # Start with discovered .nix files
+      nixPaths = discoveredModuleNixFiles;
+      # Overlay with paths from Nickel configs (if any)
+      nclPaths =
+        lib.filterAttrs (_: cfg: cfg ? path) moduleConfigs;
+      nclResolvedPaths =
+        lib.mapAttrs (
+          _: cfg:
+            if lib.hasPrefix "./" cfg.path || lib.hasPrefix "../" cfg.path
+            then workspaceRoot + "/${cfg.path}"
+            else if lib.hasPrefix "/" cfg.path
+            then /. + cfg.path
+            else workspaceRoot + "/${cfg.path}"
+        )
+        nclPaths;
+    in
+      nixPaths // nclResolvedPaths;
+
+    resolvedHomePaths = let
+      nixPaths = discoveredHomeNixFiles;
+      nclPaths =
+        lib.filterAttrs (_: cfg: cfg ? path) homeConfigs;
+      nclResolvedPaths =
+        lib.mapAttrs (
+          _: cfg:
+            if lib.hasPrefix "./" cfg.path || lib.hasPrefix "../" cfg.path
+            then workspaceRoot + "/${cfg.path}"
+            else if lib.hasPrefix "/" cfg.path
+            then /. + cfg.path
+            else workspaceRoot + "/${cfg.path}"
+        )
+        nclPaths;
+    in
+      nixPaths // nclResolvedPaths;
+
+    # Build NixOS machine configurations
+    nixosConfigurations =
+      if machineConfigs != {}
+      then
+        machineBuilder.buildAllMachines {
+          nixpkgs = userNixpkgs;
+          inherit workspaceRoot machineConfigs;
+          workspaceModules = resolvedModulePaths;
+          homeModules = resolvedHomePaths;
+          extraInputs = inputs;
+        }
+      else {};
+
+    # Build NixOS module flake outputs
+    nixosModules =
+      if moduleConfigs != {} || resolvedModulePaths != {}
+      then let
+        # Ensure every discovered .nix module has a config entry (even if empty)
+        effectiveModuleConfigs =
+          (lib.mapAttrs (_: _: {}) resolvedModulePaths)
+          // moduleConfigs;
+      in
+        moduleBuilder.buildAllNixosModules {
+          inherit workspaceRoot;
+          moduleConfigs = effectiveModuleConfigs;
+          discoveredPaths = resolvedModulePaths;
+        }
+      else {};
+
+    # Build home-manager module flake outputs
+    homeModules =
+      if homeConfigs != {} || resolvedHomePaths != {}
+      then let
+        effectiveHomeConfigs =
+          (lib.mapAttrs (_: _: {}) resolvedHomePaths)
+          // homeConfigs;
+      in
+        moduleBuilder.buildAllHomeModules {
+          inherit workspaceRoot;
+          homeConfigs = effectiveHomeConfigs;
+          discoveredPaths = resolvedHomePaths;
+        }
+      else {};
   in
-    perSystemOutputs;
+    perSystemOutputs
+    // (lib.optionalAttrs (nixosConfigurations != {}) {
+      inherit nixosConfigurations;
+    })
+    // (lib.optionalAttrs (nixosModules != {}) {
+      inherit nixosModules;
+    })
+    // (lib.optionalAttrs (homeModules != {}) {
+      inherit homeModules;
+    });
 in {
   inherit mkWorkspace;
 
   # Re-export sub-modules for advanced usage / testing
-  inherit discover systemsLib packageBuilder shellBuilder evalNickel;
+  inherit discover systemsLib packageBuilder shellBuilder machineBuilder moduleBuilder evalNickel;
 }

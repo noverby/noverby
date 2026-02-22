@@ -59,6 +59,8 @@
               nickel typecheck ${./contracts/common.ncl}
               nickel typecheck ${./contracts/package.ncl}
               nickel typecheck ${./contracts/shell.ncl}
+              nickel typecheck ${./contracts/machine.ncl}
+              nickel typecheck ${./contracts/module.ncl}
               nickel typecheck ${./contracts/workspace.ncl}
 
               echo "==> Running unit tests..."
@@ -75,6 +77,13 @@
               NICKEL
               nickel export validate-minimal.ncl > /dev/null
               echo "  -> examples/minimal OK"
+
+              cat > validate-nixos.ncl << NICKEL
+              let { WorkspaceConfig, .. } = import "${./contracts/workspace.ncl}" in
+              (import "${./examples/nixos/workspace.ncl}") | WorkspaceConfig
+              NICKEL
+              nickel export validate-nixos.ncl > /dev/null
+              echo "  -> examples/nixos OK"
 
               echo "==> Running error snapshot tests (expecting failures)..."
               for errtest in ${./tests/errors}/*.ncl; do
