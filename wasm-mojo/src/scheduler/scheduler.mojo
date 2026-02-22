@@ -21,15 +21,12 @@ from memory import UnsafePointer
 from signals import Runtime
 
 
-struct SchedulerEntry(Copyable):
+@fieldwise_init
+struct SchedulerEntry(Copyable, Equatable, Writable):
     """A dirty scope entry with its height for sorting."""
 
     var scope_id: UInt32
     var height: UInt32
-
-    fn __init__(out self, scope_id: UInt32, height: UInt32):
-        self.scope_id = scope_id
-        self.height = height
 
     fn __copyinit__(out self, other: Self):
         self.scope_id = other.scope_id

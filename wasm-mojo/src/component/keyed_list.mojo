@@ -73,22 +73,20 @@ from vdom import VNodeBuilder
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-struct _HandlerMapping(Copyable):
+@fieldwise_init
+struct _HandlerMapping(Copyable, Equatable, Writable):
     """Maps a handler ID to an app-defined action tag and data value.
 
     This is the internal storage type used by KeyedList's handler_map.
     Apps never see this directly — they use `HandlerAction` from
     `get_action()` instead.
+
+    `Equatable` and `Writable` are auto-derived from fields.
     """
 
     var handler_id: UInt32
     var tag: UInt8
     var data: Int32
-
-    fn __init__(out self, handler_id: UInt32, tag: UInt8, data: Int32):
-        self.handler_id = handler_id
-        self.tag = tag
-        self.data = data
 
     fn __copyinit__(out self, other: Self):
         self.handler_id = other.handler_id
@@ -106,13 +104,15 @@ struct _HandlerMapping(Copyable):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-struct HandlerAction(Copyable):
+struct HandlerAction(Copyable, Equatable, Writable):
     """Result of looking up a handler ID via `KeyedList.get_action()`.
 
     Fields:
         tag:   The app-defined action tag (e.g. ACTION_TOGGLE, ACTION_REMOVE).
         data:  The associated data value (e.g. item ID).
         found: Whether the handler ID was found in the map.
+
+    `Equatable` and `Writable` are auto-derived from fields.
 
     Usage:
         var action = self.items.get_action(handler_id)

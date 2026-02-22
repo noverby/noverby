@@ -15,11 +15,14 @@
 
 
 @fieldwise_init
-struct ElementId(Copyable, Equatable, Stringable):
+struct ElementId(Copyable, Equatable, Hashable, Stringable, Writable):
     """A lightweight handle identifying a DOM node.
 
     Internally just a `UInt32`.  ElementId(0) is reserved for the root
     node and should not be allocated by the user.
+
+    `Equatable`, `Hashable`, and `Writable` are auto-derived from the
+    single `id` field.
     """
 
     var id: UInt32
@@ -56,15 +59,6 @@ struct ElementId(Copyable, Equatable, Stringable):
     fn __str__(self) -> String:
         return String("ElementId(") + String(self.id) + String(")")
 
-    fn __eq__(self, other: Self) -> Bool:
-        return self.id == other.id
-
-    fn __ne__(self, other: Self) -> Bool:
-        return self.id != other.id
-
-    fn __hash__(self) -> UInt:
-        return UInt(self.id)
-
 
 # ── Sentinels ────────────────────────────────────────────────────────────────
 
@@ -76,7 +70,7 @@ comptime INVALID_ELEMENT_ID = ElementId(UInt32(0))
 
 
 @fieldwise_init
-struct _SlotState(Copyable):
+struct _SlotState(Copyable, Equatable, Writable):
     """Tracks whether an ID slot is occupied or vacant."""
 
     var occupied: Bool

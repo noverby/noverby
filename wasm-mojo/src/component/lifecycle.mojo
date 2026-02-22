@@ -54,7 +54,7 @@ from vdom import VNodeStore
 # ── FragmentSlot — State tracker for a dynamic fragment in the DOM ────────────
 
 
-struct FragmentSlot(Copyable):
+struct FragmentSlot(Copyable, Equatable, Writable):
     """Tracks the state of a fragment-based dynamic list in the DOM.
 
     A FragmentSlot manages the lifecycle of a list of keyed VNodes that

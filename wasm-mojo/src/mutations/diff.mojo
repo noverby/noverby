@@ -61,22 +61,12 @@ from .create import CreateEngine
 
 
 fn _attr_values_equal(a: AttributeValue, b: AttributeValue) -> Bool:
-    """Check whether two AttributeValues are semantically equal."""
-    if a.kind != b.kind:
-        return False
-    if a.kind == AVAL_TEXT:
-        return a.text_value == b.text_value
-    elif a.kind == AVAL_INT:
-        return a.int_value == b.int_value
-    elif a.kind == AVAL_FLOAT:
-        return a.float_value == b.float_value
-    elif a.kind == AVAL_BOOL:
-        return a.bool_value == b.bool_value
-    elif a.kind == AVAL_EVENT:
-        return a.handler_id == b.handler_id
-    elif a.kind == AVAL_NONE:
-        return True
-    return False
+    """Check whether two AttributeValues are semantically equal.
+
+    Now delegates to the auto-derived `Equatable` conformance on
+    `AttributeValue`.  Kept as a thin wrapper so call sites read clearly.
+    """
+    return a == b
 
 
 fn _attr_value_to_string(value: AttributeValue) -> String:

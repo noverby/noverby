@@ -33,7 +33,7 @@ from memory import UnsafePointer
 # ── MemoEntry ────────────────────────────────────────────────────────────────
 
 
-struct MemoEntry(Copyable):
+struct MemoEntry(Copyable, Equatable, Writable):
     """A cached derived value with dependency tracking.
 
     A memo has its own reactive context (context_id) that records which
@@ -98,7 +98,7 @@ struct MemoEntry(Copyable):
 
 
 @fieldwise_init
-struct MemoSlotState(Copyable):
+struct MemoSlotState(Copyable, Equatable, Writable):
     """Tracks whether a memo slot is occupied or vacant."""
 
     var occupied: Bool

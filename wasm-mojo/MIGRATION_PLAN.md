@@ -200,7 +200,10 @@ fn dispatch_event(handler_id: UInt32) raises EventError -> Bool:
 
 **Priority:** Medium — adopt incrementally as error paths are touched.
 
-**Status:** 🟡 Not yet adopted — available for incremental use.
+**Status:** 🟡 Deferred — the codebase currently uses no `raises` functions.
+Event dispatch, diff, and mutation paths use `Bool` returns for error
+signaling. Typed errors will be adopted when error paths are refactored
+to use `raises`, but there is no natural application point today.
 
 ---
 
@@ -217,7 +220,10 @@ guarantees when constructing strings from shared memory buffers.
 
 **Priority:** Medium — apply when touching string bridge code.
 
-**Status:** 🟡 Not yet adopted — available for use when touching bridge code.
+**Status:** 🟡 Deferred — no Mojo code currently constructs `String` from raw
+WASM memory bytes. The `@export` FFI layer handles `String` parameters
+natively, and `MutationWriter` only writes strings *to* the buffer (not
+reads). Will adopt when a Mojo-side string-from-bytes path is added.
 
 ---
 
@@ -239,7 +245,30 @@ struct ElementId(Equatable, Writable):
 
 **Priority:** Medium — improves debugging and test assertions.
 
-**Status:** 🟡 Not yet adopted — available for incremental use.
+**Status:** ✅ Done — auto-derived `Equatable` and `Writable` added to ~20
+structs across `src/`. Changes by category:
+
+- **Slot state structs** (`_SlotState`, `HandlerSlotState`, `_ScopeSlotState`,
+  `SignalSlotState`, `MemoSlotState`, `EffectSlotState`, `_StringSlotState`):
+  Added `Equatable, Writable`. `_StringSlotState` converted to
+  `@fieldwise_init`, removing manual `__init__`/`__copyinit__`/`__moveinit__`.
+
+- **ElementId**: Added `Hashable, Writable`. Removed manual `__eq__`,
+  `__ne__`, `__hash__` (now auto-derived from the single `id` field).
+  Kept custom `__str__` for the `"ElementId(N)"` format.
+
+- **Core data structs** (`HandlerEntry`, `SchedulerEntry`, `HandlerAction`,
+  `_HandlerMapping`, `EventBinding`, `DynamicNode`, `DynamicAttr`,
+  `FragmentSlot`, `EffectEntry`, `MemoEntry`, `_EventInfo`,
+  `_ValueBindingInfo`): Added `Equatable, Writable`.
+
+- **AttributeValue**: Added `Equatable, Writable`. Since named constructors
+  always set inactive fields to defaults, field-by-field equality is
+  semantically correct. The manual `_attr_values_equal()` helper in
+  `diff.mojo` now delegates to `==`.
+
+- **`_HandlerMapping`**, **`SchedulerEntry`**: Converted to `@fieldwise_init`,
+  removing redundant manual `__init__`.
 
 ---
 
@@ -293,6 +322,13 @@ the wasm64-wasi target.
 the `alias` → `comptime` migration period.
 
 **Priority:** Low — add to CI after migration is complete.
+
+**Status:** ✅ Done — added `-Werror` to the `mojo build` command in `justfile`.
+The WASM binary (`src/main.mojo` and all transitive `src/` imports) compiles
+with zero warnings. Note: the Mojo test binaries (which import the external
+`wasmtime-mojo` dependency) are built by `scripts/build_test_binaries.sh`
+without `-Werror` because `wasmtime-mojo` still has `alias` deprecation
+warnings that are outside this project's control.
 
 ---
 
@@ -376,15 +412,18 @@ Recommended sequence to minimize churn and test breakage:
 4. ✅ **B2 — `alias` → `comptime`** — do this last as a bulk find-replace,
    since it touches every file and is purely mechanical.
 
-5. 🟡 **F1–F3 — Adopt new features** — typed errors, UTF-8 constructors,
-   default trait impls. Do incrementally as code is touched.
+5. ✅ **F3 — Default trait impls** — auto-derived `Equatable` and `Writable`
+   on ~20 structs; removed manual `__eq__`/`__ne__`/`__hash__` boilerplate
+   from `ElementId`; simplified `_attr_values_equal` to use `==`.
 
-6. 🟡 **F7 — `-Werror` in CI** — enable after all warnings are resolved.
+6. ✅ **F7 — `-Werror` in build** — enabled in `justfile` `build` target.
 
 ### Also completed
 
 - ✅ **F4 — Remove redundant `Movable`** — cleaned up ~40 struct declarations
   and generic constraints.
+- 🟡 **F1 — Typed errors** — deferred, no `raises` functions in codebase.
+- 🟡 **F2 — UTF-8 constructors** — deferred, no raw-bytes string construction.
 
 ---
 
@@ -393,7 +432,7 @@ Recommended sequence to minimize churn and test breakage:
 After migration, the full test suite must pass:
 
 ```bash
-just test-all    # 996 Mojo tests + 1,222 JS tests
+just test-all    # 996 Mojo tests + 1,385 JS tests
 ```
 
 Additionally, verify the three example apps render correctly:
@@ -404,3 +443,10 @@ just serve
 # Open http://localhost:4507/examples/todo/
 # Open http://localhost:4507/examples/bench/
 ```
+
+### Current status
+
+- ✅ `just build` — compiles with `-Werror`, zero warnings.
+- ✅ `just test-js` — 1,385 JS tests pass.
+- ⚠️ `just test` — blocked by pre-existing `wasmtime-mojo` compile error
+  (pointer origin mismatch in `module.mojo:124`, unrelated to wasm-mojo).
