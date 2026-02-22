@@ -181,23 +181,32 @@ These names are inspired by Cargo (`packages/`) and Deno (`modules/`) convention
 
 ### Subworkspaces
 
-A subdirectory with its own `workspace.ncl` is a subworkspace. Outputs are automatically namespaced:
+Any directory containing a `workspace.ncl` is a subworkspace. The boundary is the `workspace.ncl` file itself — **not** the git repository structure. This means subworkspaces work equally well as:
+
+- **Plain subdirectories** within a monorepo
+- **Git submodules** pointing to external repositories
+- **Checkouts from other VCS** (Mercurial, Jujutsu, Pijul, etc.) — anything that produces a directory with a `workspace.ncl`
+- **Symlinks** to directories elsewhere on the filesystem
+
+This design deliberately avoids coupling to git. A subworkspace is discovered by scanning for `workspace.ncl` files, not by parsing `.gitmodules` or any VCS metadata. As long as the directory exists at evaluation time and contains a `workspace.ncl`, it participates in the workspace.
+
+Outputs are automatically namespaced:
 
 ```text
 my-monorepo/
 ├── workspace.ncl              # Root workspace
 ├── packages/
 │   └── shared-lib.ncl         # → packages.<system>.shared-lib
-├── rust-nixos/
+├── rust-nixos/                # Plain subdirectory
 │   ├── workspace.ncl          # Subworkspace
 │   └── packages/
 │       └── default.ncl        # → packages.<system>.rust-nixos
-├── mojo-zed/
+├── mojo-zed/                  # Could be a git submodule
 │   ├── workspace.ncl          # Subworkspace
 │   └── packages/
 │       └── default.ncl        # → packages.<system>.mojo-zed
 │       └── lsp.ncl            # → packages.<system>.mojo-zed-lsp
-└── backend/
+└── backend/                   # Could be a jj/pijul checkout
     ├── workspace.ncl          # Subworkspace
     └── packages/
         └── default.ncl        # → packages.<system>.backend
@@ -222,6 +231,24 @@ Subworkspaces can declare dependencies on sibling subworkspaces:
   },
 }
 ```
+
+#### Git submodule example
+
+A typical setup with git submodules:
+
+```shell
+# Add an external project as a subworkspace
+git submodule add https://github.com/example/mojo-zed.git mojo-zed
+
+# The submodule just needs a workspace.ncl to participate
+ls mojo-zed/workspace.ncl  # ✓ discovered as a subworkspace
+```
+
+The root `flake.nix` does not need to change — `nix-workspace` discovers the subworkspace automatically at evaluation time. The submodule's `workspace.ncl` declares its own name, packages, and dependencies just like any other subworkspace.
+
+#### Source considerations
+
+When a subworkspace comes from a git submodule or external VCS, the Nix store path for its sources is determined by the flake's `self` input (which includes submodules when `git+file:.?submodules=1` is used). For non-git sources, the root flake may need to use `path:.` or a fetcher that captures the full directory tree. This is a Nix flake concern, not a `nix-workspace` concern — the workspace layer only requires that the paths resolve at evaluation time.
 
 ## Nickel contracts
 
@@ -539,7 +566,10 @@ nix-workspace/
 - [ ] Automatic output namespacing with hyphen separator
 - [ ] Cross-subworkspace dependency resolution
 - [ ] Namespace conflict detection with `NW2xx` diagnostics
+- [ ] Git submodule support (discover `workspace.ncl` in submodules)
+- [ ] VCS-agnostic discovery (any directory with `workspace.ncl`, not git-specific)
 - [ ] Example: monorepo with subworkspaces
+- [ ] Example: git submodule as subworkspace
 - [ ] Integration tests for namespacing
 
 ### v0.4 — Plugin system
