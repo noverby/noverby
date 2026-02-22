@@ -6,7 +6,7 @@
   ...
 }: {
   home-manager = {
-    users = inputs.self.users;
+    inherit (inputs.self) users;
     useGlobalPkgs = true;
     useUserPackages = true;
     extraSpecialArgs = {

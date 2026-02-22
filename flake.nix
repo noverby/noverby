@@ -160,6 +160,7 @@
         ./flake/libBuiltins.nix
         ./flake/secrets.nix
         ./flake/users.nix
+        ./flake/hardware.nix
         ./flake/devenvModules.nix
         ./flake/devenvConfigurations.nix
 
@@ -181,13 +182,14 @@
         packages = ["pkgs"];
         flakelightModules = ["flake"];
         nixosConfigurations = ["config/nixos"];
-        nixosModules = ["nixos" "nixos/hardware" "nixos/desktop"];
+        nixosModules = ["nixos" "nixos/desktop"];
         homeConfigurations = ["config/home-manager"];
         homeModules = ["home-manager" "home-manager/desktop"];
         devenvConfiguration = ["config/devenv"];
         devenvModules = ["devenv"];
         secrets = ["config/secrets"];
         users = ["config/users"];
+        hardware = ["config/hardware"];
         withOverlays = ["config/with-overlays"];
       };
     };

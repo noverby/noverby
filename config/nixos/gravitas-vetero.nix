@@ -13,7 +13,7 @@
 
   modules = with inputs.self.nixosModules; [
     inputs.home-manager.nixosModules.home-manager
-    dell-xps-9320
+    inputs.self.hardware.dell-xps-9320
     cosmic
     gnome
     core
