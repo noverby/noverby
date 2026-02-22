@@ -10,7 +10,7 @@ This module is designed to be imported from Mojo test files:
 
 Import signatures are derived from `wasm-objdump -j Import -x build/out.wasm`:
 
-  Import[17]:
+  Import[15]:
    - func[0]  sig=0  (i64, i64) -> i64      KGEN_CompilerRT_AlignedAlloc
    - func[1]  sig=1  (i64) -> nil            KGEN_CompilerRT_AlignedFree
    - func[2]  sig=2  (f32, f32, f32) -> f32  fmaf
@@ -19,15 +19,13 @@ Import signatures are derived from `wasm-objdump -j Import -x build/out.wasm`:
    - func[5]  sig=4  (f64, f64, f64) -> f64  fma
    - func[6]  sig=5  (f64, f64) -> f64       fmin
    - func[7]  sig=5  (f64, f64) -> f64       fmax
-   - func[8]  sig=0  (i64, i64) -> i64       KGEN_CompilerRT_GetStackTrace
-   - func[9]  sig=1  (i64) -> nil            free
-   - func[10] sig=6  (i32) -> i32            dup
-   - func[11] sig=7  (i32, i64) -> i64       fdopen
-   - func[12] sig=8  (i64) -> i32            fflush
-   - func[13] sig=8  (i64) -> i32            fclose
-   - func[14] sig=9  (i64, i64, i64) -> i32  KGEN_CompilerRT_fprintf
-   - func[15] sig=9  (i64, i64, i64) -> i32  write
-   - func[16] sig=10 () -> f64               performance_now
+   - func[8]  sig=6  (i64, i64, i64) -> i64  write
+   - func[9]  sig=7  (i32) -> i32            dup
+   - func[10] sig=8  (i32, i64) -> i64       fdopen
+   - func[11] sig=9  (i64) -> i32            fflush
+   - func[12] sig=9  (i64) -> i32            fclose
+   - func[13] sig=10 (i64, i64, i64) -> i32  KGEN_CompilerRT_fprintf
+   - func[14] sig=11 () -> f64               performance_now
 """
 
 from collections import Dict
@@ -383,37 +381,11 @@ fn _cb_fmax(
     return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
-# -- func[8] KGEN_CompilerRT_GetStackTrace: (i64, i64) -> i64 -------------
+# -- func[8] write: (i64, i64, i64) -> i64 --------------------------------
+# (moved up; was func[15] with i32 return in older Mojo)
 
 
-fn _cb_get_stack_trace(
-    env: UnsafePointer[NoneType, MutExternalOrigin],
-    caller: UnsafePointer[NoneType, MutExternalOrigin],
-    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
-    nargs: Int,
-    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
-    nresults: Int,
-) -> UnsafePointer[NoneType, MutExternalOrigin]:
-    results[0] = WasmtimeVal.from_i64(0)
-    return UnsafePointer[NoneType, MutExternalOrigin]()
-
-
-# -- func[9] free: (i64) -> nil -------------------------------------------
-
-
-fn _cb_free(
-    env: UnsafePointer[NoneType, MutExternalOrigin],
-    caller: UnsafePointer[NoneType, MutExternalOrigin],
-    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
-    nargs: Int,
-    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
-    nresults: Int,
-) -> UnsafePointer[NoneType, MutExternalOrigin]:
-    # Bump allocator never reclaims.
-    return UnsafePointer[NoneType, MutExternalOrigin]()
-
-
-# -- func[10] dup: (i32) -> i32 -------------------------------------------
+# -- func[9] dup: (i32) -> i32 --------------------------------------------
 
 
 fn _cb_dup(
@@ -488,7 +460,7 @@ fn _cb_fprintf(
     return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
-# -- func[15] write: (i64, i64, i64) -> i32 -------------------------------
+# -- func[8] write: (i64, i64, i64) -> i64 --------------------------------
 
 
 fn _cb_write(
@@ -505,11 +477,11 @@ fn _cb_write(
     var length = Int(args[2].get_i64())
 
     if length == 0:
-        results[0] = WasmtimeVal.from_i32(0)
+        results[0] = WasmtimeVal.from_i64(0)
         return UnsafePointer[NoneType, MutExternalOrigin]()
 
     if not state[].has_memory:
-        results[0] = WasmtimeVal.from_i32(-1)
+        results[0] = WasmtimeVal.from_i64(-1)
         return UnsafePointer[NoneType, MutExternalOrigin]()
 
     if fd == 1:
@@ -518,21 +490,19 @@ fn _cb_write(
             var bytes = memory_read_bytes(
                 state[].context, state[].memory, ptr, length
             )
-            # Build a String from the raw bytes (no null — String(bytes=)
-            # treats every byte as content in Mojo 0.25.6)
             var buf = List[UInt8](capacity=length)
             for i in range(length):
                 buf.append(bytes[i])
-            var text = String(bytes=buf)
+            var text = String(unsafe_from_utf8=buf)
             state[].captured_stdout.append(text)
-            results[0] = WasmtimeVal.from_i32(Int32(length))
+            results[0] = WasmtimeVal.from_i64(Int64(length))
         except:
-            results[0] = WasmtimeVal.from_i32(-1)
+            results[0] = WasmtimeVal.from_i64(-1)
     elif fd == 2:
         # stderr — just report length, don't capture
-        results[0] = WasmtimeVal.from_i32(Int32(length))
+        results[0] = WasmtimeVal.from_i64(Int64(length))
     else:
-        results[0] = WasmtimeVal.from_i32(-1)
+        results[0] = WasmtimeVal.from_i64(-1)
 
     return UnsafePointer[NoneType, MutExternalOrigin]()
 
@@ -689,27 +659,7 @@ struct WasmInstance(Movable):
             env,
         )
 
-        # func[8] KGEN_CompilerRT_GetStackTrace: (i64, i64) -> i64
-        self._linker.define_func(
-            "env",
-            "KGEN_CompilerRT_GetStackTrace",
-            [WASM_I64, WASM_I64],
-            [WASM_I64],
-            _cb_get_stack_trace,
-            env,
-        )
-
-        # func[9] free: (i64) -> nil
-        self._linker.define_func(
-            "env",
-            "free",
-            [WASM_I64],
-            List[UInt8](),
-            _cb_free,
-            env,
-        )
-
-        # func[10] dup: (i32) -> i32
+        # func[9] dup: (i32) -> i32
         self._linker.define_func(
             "env",
             "dup",
@@ -719,7 +669,7 @@ struct WasmInstance(Movable):
             env,
         )
 
-        # func[11] fdopen: (i32, i64) -> i64
+        # func[10] fdopen: (i32, i64) -> i64
         self._linker.define_func(
             "env",
             "fdopen",
@@ -729,7 +679,7 @@ struct WasmInstance(Movable):
             env,
         )
 
-        # func[12] fflush: (i64) -> i32
+        # func[11] fflush: (i64) -> i32
         self._linker.define_func(
             "env",
             "fflush",
@@ -739,7 +689,7 @@ struct WasmInstance(Movable):
             env,
         )
 
-        # func[13] fclose: (i64) -> i32
+        # func[12] fclose: (i64) -> i32
         self._linker.define_func(
             "env",
             "fclose",
@@ -749,7 +699,7 @@ struct WasmInstance(Movable):
             env,
         )
 
-        # func[14] KGEN_CompilerRT_fprintf: (i64, i64, i64) -> i32
+        # func[13] KGEN_CompilerRT_fprintf: (i64, i64, i64) -> i32
         self._linker.define_func(
             "env",
             "KGEN_CompilerRT_fprintf",
@@ -759,17 +709,17 @@ struct WasmInstance(Movable):
             env,
         )
 
-        # func[15] write: (i64, i64, i64) -> i32
+        # func[8] write: (i64, i64, i64) -> i64
         self._linker.define_func(
             "env",
             "write",
             [WASM_I64, WASM_I64, WASM_I64],
-            [WASM_I32],
+            [WASM_I64],
             _cb_write,
             env,
         )
 
-        # func[16] performance_now: () -> f64 (P24.3)
+        # func[14] performance_now: () -> f64 (P24.3)
         self._linker.define_func(
             "env",
             "performance_now",
@@ -939,7 +889,7 @@ struct WasmInstance(Movable):
         var buf = List[UInt8](capacity=length)
         for i in range(length):
             buf.append(raw[i])
-        return String(bytes=buf)
+        return String(unsafe_from_utf8=buf)
 
     # ------------------------------------------------------------------
     # Captured stdout access
