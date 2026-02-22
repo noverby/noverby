@@ -131,11 +131,18 @@ Ported P25.1 to plain JS for the browser examples runtime.
 
 **Verify**: `just test-js` — 1,338 tests pass, 0 failures.
 
-### P25.3 — Size-class map allocator in Mojo (`test/wasm_harness.mojo`)
+### P25.3 — Size-class map allocator in Mojo (`test/wasm_harness.mojo`) ✅
 
-Port to the Mojo test harness (`SharedState.aligned_alloc` + `_cb_aligned_free`).
+Ported the size-class map allocator to the Mojo test harness.
 
-**Verify**: `just test` — all Mojo tests pass. Memory usage stays bounded.
+- `SharedState.aligned_alloc(align, size)` with size-class reuse (gated) + bump fallback.
+- `SharedState.aligned_free(ptr)` with `Dict`-based size lookup and free-list push.
+- `SharedState.heap_stats()` reports (heap_pointer, free_blocks, free_bytes).
+- `ptr_size: Dict[Int, Int]` and `free_map: Dict[Int, List[Int]]` for tracking.
+- `reuse_enabled: Bool` toggle (disabled by default).
+- `_cb_aligned_free` wired to `state[].aligned_free(ptr)` (was no-op).
+
+**Verify**: `just test` — 29 modules, 946 tests, 0 failures (~16s).
 
 ### P25.4 — JS-side string struct frees
 
@@ -164,7 +171,7 @@ Investigate and fix the use-after-free in the Mojo vnode/diff code:
 |-------|----------------------------------|--------|--------|
 | P25.1 | TS allocator + tests             | ~250   | ✅ Done |
 | P25.2 | JS allocator port                | ~50    | ✅ Done |
-| P25.3 | Mojo allocator port              | ~80    | |
+| P25.3 | Mojo allocator port              | ~80    | ✅ Done |
 | P25.4 | Scratch arena + string frees     | ~100   | |
 | P25.5 | Fix use-after-free + validation  | ~200   | |
 | **Total** |                              | **~680** | |
