@@ -127,6 +127,9 @@
     discoveredMachines ? {},
     discoveredModules ? {},
     discoveredHome ? {},
+    discoveredOverlays ? {},
+    discoveredChecks ? {},
+    discoveredTemplates ? {},
     hasWorkspaceNcl ? false,
     pluginNclPaths ? [],
   }: let
@@ -135,6 +138,9 @@
     machineFields = mkImportBlock discoveredMachines;
     moduleFields = mkImportBlock discoveredModules;
     homeFields = mkImportBlock discoveredHome;
+    overlayFields = mkImportBlock discoveredOverlays;
+    checkFields = mkImportBlock discoveredChecks;
+    templateFields = mkImportBlock discoveredTemplates;
 
     hasPlugins = pluginNclPaths != [];
 
@@ -178,6 +184,15 @@
       home = {
     ${homeFields}
       },
+      overlays = {
+    ${overlayFields}
+      },
+      checks = {
+    ${checkFields}
+      },
+      templates = {
+    ${templateFields}
+      },
     } in
     (${lib.strings.trim workspaceMerge}) | ${finalContract}
   '';
@@ -203,6 +218,9 @@
     discoveredMachines ? {},
     discoveredModules ? {},
     discoveredHome ? {},
+    discoveredOverlays ? {},
+    discoveredChecks ? {},
+    discoveredTemplates ? {},
     hasWorkspaceNcl ? true,
     pluginNclPaths ? [],
   }: let
@@ -211,6 +229,9 @@
     machineFields = mkImportBlock discoveredMachines;
     moduleFields = mkImportBlock discoveredModules;
     homeFields = mkImportBlock discoveredHome;
+    overlayFields = mkImportBlock discoveredOverlays;
+    checkFields = mkImportBlock discoveredChecks;
+    templateFields = mkImportBlock discoveredTemplates;
 
     hasPlugins = pluginNclPaths != [];
 
@@ -253,6 +274,15 @@
       home = {
     ${homeFields}
       },
+      overlays = {
+    ${overlayFields}
+      },
+      checks = {
+    ${checkFields}
+      },
+      templates = {
+    ${templateFields}
+      },
     } in
     (${lib.strings.trim workspaceMerge}) | ${finalContract}
   '';
@@ -282,6 +312,9 @@
     discoveredMachines ? {},
     discoveredModules ? {},
     discoveredHome ? {},
+    discoveredOverlays ? {},
+    discoveredChecks ? {},
+    discoveredTemplates ? {},
     pluginNclPaths ? [],
   }: let
     hasWorkspaceNcl = builtins.pathExists (workspaceRoot + "/workspace.ncl");
@@ -295,6 +328,9 @@
         discoveredMachines
         discoveredModules
         discoveredHome
+        discoveredOverlays
+        discoveredChecks
+        discoveredTemplates
         hasWorkspaceNcl
         pluginNclPaths
         ;
@@ -347,12 +383,15 @@
   #   contractsDir       — Path to nix-workspace contracts/
   #   subworkspaceRoot   — Absolute path to the subworkspace directory
   #   subworkspaceName   — Directory name of the subworkspace (e.g. "mojo-zed")
-  #   discoveredPackages — { name = path; ... } from subworkspace discovery
-  #   discoveredShells   — { name = path; ... }
-  #   discoveredMachines — { name = path; ... }
-  #   discoveredModules  — { name = path; ... }
-  #   discoveredHome     — { name = path; ... }
-  #   pluginNclPaths     — Plugin .ncl paths from the root workspace (optional)
+  #   discoveredPackages  — { name = path; ... } from subworkspace discovery
+  #   discoveredShells    — { name = path; ... }
+  #   discoveredMachines  — { name = path; ... }
+  #   discoveredModules   — { name = path; ... }
+  #   discoveredHome      — { name = path; ... }
+  #   discoveredOverlays  — { name = path; ... }
+  #   discoveredChecks    — { name = path; ... }
+  #   discoveredTemplates — { name = path; ... }
+  #   pluginNclPaths      — Plugin .ncl paths from the root workspace (optional)
   #
   # Returns: An attribute set (the validated subworkspace configuration).
   evalSubworkspace = {
@@ -365,6 +404,9 @@
     discoveredMachines ? {},
     discoveredModules ? {},
     discoveredHome ? {},
+    discoveredOverlays ? {},
+    discoveredChecks ? {},
+    discoveredTemplates ? {},
     pluginNclPaths ? [],
   }: let
     hasWorkspaceNcl = builtins.pathExists (subworkspaceRoot + "/workspace.ncl");
@@ -379,6 +421,9 @@
         discoveredMachines
         discoveredModules
         discoveredHome
+        discoveredOverlays
+        discoveredChecks
+        discoveredTemplates
         hasWorkspaceNcl
         pluginNclPaths
         ;
@@ -440,6 +485,9 @@
           discoveredMachines = discovered.machines or {};
           discoveredModules = discovered.modules or {};
           discoveredHome = discovered.home or {};
+          discoveredOverlays = discovered.overlays or {};
+          discoveredChecks = discovered.checks or {};
+          discoveredTemplates = discovered.templates or {};
         }
     )
     subworkspaceMap;
@@ -517,7 +565,7 @@
   # and no discovered .ncl files, so we can still produce outputs from
   # the Nix-side config alone.
   emptyConfig = {
-    name = "workspace";
+    name = "unnamed";
     systems = ["x86_64-linux" "aarch64-linux"];
     nixpkgs = {};
     packages = {};
@@ -525,6 +573,9 @@
     machines = {};
     modules = {};
     home = {};
+    overlays = {};
+    checks = {};
+    templates = {};
     conventions = {};
     dependencies = {};
     plugins = [];

@@ -92,6 +92,9 @@
               nickel typecheck ${./contracts/shell.ncl}
               nickel typecheck ${./contracts/machine.ncl}
               nickel typecheck ${./contracts/module.ncl}
+              nickel typecheck ${./contracts/overlay.ncl}
+              nickel typecheck ${./contracts/check.ncl}
+              nickel typecheck ${./contracts/template.ncl}
               nickel typecheck ${./contracts/workspace.ncl}
 
               echo "==> Running unit tests..."
@@ -103,6 +106,71 @@
               echo "==> Typechecking plugin contracts..."
               nickel typecheck ${./contracts/plugin.ncl}
               echo "  -> plugin.ncl OK"
+
+              echo "==> Validating v1.0 output type contracts..."
+              cat > validate-overlay.ncl << NICKEL
+              let { OverlayConfig, .. } = import "${./contracts/overlay.ncl}" in
+              ({
+                description = "Test overlay",
+                priority = 50,
+                packages = ["my-tool"],
+              }) | OverlayConfig
+              NICKEL
+              nickel export validate-overlay.ncl > /dev/null
+              echo "  -> OverlayConfig OK"
+
+              cat > validate-check.ncl << NICKEL
+              let { CheckConfig, .. } = import "${./contracts/check.ncl}" in
+              ({
+                description = "Run tests",
+                command = "cargo test",
+                packages = ["cargo", "rustc"],
+                timeout = 300,
+              }) | CheckConfig
+              NICKEL
+              nickel export validate-check.ncl > /dev/null
+              echo "  -> CheckConfig OK"
+
+              cat > validate-template.ncl << NICKEL
+              let { TemplateConfig, .. } = import "${./contracts/template.ncl}" in
+              ({
+                description = "Minimal Rust project",
+                path = "./templates/rust-minimal",
+                welcome-text = "Run nix develop to get started.",
+                tags = ["rust", "minimal"],
+              }) | TemplateConfig
+              NICKEL
+              nickel export validate-template.ncl > /dev/null
+              echo "  -> TemplateConfig OK"
+
+              echo "==> Validating workspace with v1.0 output types..."
+              cat > validate-v1-workspace.ncl << NICKEL
+              let { WorkspaceConfig, .. } = import "${./contracts/workspace.ncl}" in
+              ({
+                name = "test-v1",
+                overlays = {
+                  custom = {
+                    description = "Custom overlay",
+                    priority = 50,
+                  },
+                },
+                checks = {
+                  test = {
+                    description = "Unit tests",
+                    command = "echo ok",
+                    timeout = 60,
+                  },
+                },
+                templates = {
+                  starter = {
+                    description = "Starter template",
+                    tags = ["starter"],
+                  },
+                },
+              }) | WorkspaceConfig
+              NICKEL
+              nickel export validate-v1-workspace.ncl > /dev/null
+              echo "  -> workspace with overlays/checks/templates OK"
 
               echo "==> Validating plugin definitions..."
               cat > validate-plugin-rust.ncl << NICKEL
@@ -191,6 +259,18 @@
                   exit 1
                 else
                   echo "  -> $name correctly rejected"
+                fi
+              done
+
+              echo "==> Verifying error snapshot expected files exist..."
+              expected_dir="${./tests/errors/expected}"
+              for errtest in ${./tests/errors}/*.ncl; do
+                name="$(basename "$errtest" .ncl)"
+                expected="$expected_dir/$name.json"
+                if [ -f "$expected" ]; then
+                  echo "  -> $name.json snapshot exists"
+                else
+                  echo "  WARN: no expected snapshot for $name (expected $expected)"
                 fi
               done
 
