@@ -93,12 +93,6 @@ wasm-mojo/
 │   ├── mutations/
 │   │   ├── create.mojo           # CreateEngine (initial mount)
 │   │   └── diff.mojo             # DiffEngine (keyed reconciliation)
-│   ├── poc/                      # Original proof-of-concept exports
-│   │   ├── arithmetic.mojo       # add, sub, mul, div, mod, pow, neg, abs, min, max, clamp
-│   │   ├── bitwise.mojo          # and, or, xor, not, shl, shr
-│   │   ├── comparison.mojo       # eq, ne, lt, le, gt, ge, bool ops
-│   │   ├── algorithms.mojo       # fibonacci, factorial, gcd
-│   │   └── strings.mojo          # identity, print, return, length, concat, repeat, eq
 │   ├── scheduler/
 │   │   └── scheduler.mojo        # Height-ordered dirty scope queue with deduplication
 │   ├── scope/
