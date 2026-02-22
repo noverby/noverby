@@ -1,7 +1,12 @@
-// Counter App End-to-End Tests — Phase 7 (M7)
+// Counter App End-to-End Tests
 //
-// Tests the full counter app lifecycle:
+// Tests the full counter app lifecycle with the Dioxus-like ergonomic API:
 //   init → rebuild → mount → click → flush → DOM update
+//
+// The counter app uses register_view() with inline event handlers:
+//   div > [ h1 > dyn_text("High-Five counter: N"),
+//           button("Up high!") + onclick_add(count, 1),
+//           button("Down low!") + onclick_sub(count, 1) ]
 //
 // Uses linkedom for headless DOM and the WASM counter_* exports
 // orchestrated through createCounterApp().
@@ -100,12 +105,16 @@ export function testCounter(fns: Fns): void {
 		const appendChildren = mutations.filter((m) => m.op === 0x01);
 		assert(appendChildren.length > 0, true, "contains AppendChildren mutation");
 
-		// Verify we have a SetText mutation for "Count: 0"
+		// Verify we have a SetText mutation for "High-Five counter: 0"
 		const setTexts = mutations.filter(
 			(m) => m.op === 0x0b && "text" in m,
 		) as Array<{ op: number; id: number; text: string }>;
-		const countText = setTexts.find((m) => m.text === "Count: 0");
-		assert(countText !== undefined, true, 'SetText with "Count: 0" found');
+		const countText = setTexts.find((m) => m.text === "High-Five counter: 0");
+		assert(
+			countText !== undefined,
+			true,
+			'SetText with "High-Five counter: 0" found',
+		);
 
 		// Verify we have NewEventListener mutations for click handlers
 		const newListeners = mutations.filter((m) => m.op === 0x0c);
@@ -185,12 +194,16 @@ export function testCounter(fns: Fns): void {
 			flushLen,
 		).readAll();
 
-		// Should contain a SetText mutation for "Count: 1"
+		// Should contain a SetText mutation for "High-Five counter: 1"
 		const setTexts = mutations.filter(
 			(m) => m.op === 0x0b && "text" in m,
 		) as Array<{ op: number; id: number; text: string }>;
-		const countText = setTexts.find((m) => m.text === "Count: 1");
-		assert(countText !== undefined, true, 'flush contains SetText "Count: 1"');
+		const countText = setTexts.find((m) => m.text === "High-Five counter: 1");
+		assert(
+			countText !== undefined,
+			true,
+			'flush contains SetText "High-Five counter: 1"',
+		);
 
 		// After flush, no more dirty scopes
 		assert(fns.counter_has_dirty(app), 0, "clean after flush");
@@ -244,7 +257,7 @@ export function testCounter(fns: Fns): void {
 			const setTexts = mutations.filter(
 				(m) => m.op === 0x0b && "text" in m,
 			) as Array<{ op: number; id: number; text: string }>;
-			const expected = `Count: ${i}`;
+			const expected = `High-Five counter: ${i}`;
 			const found = setTexts.find((m) => m.text === expected);
 			assert(
 				found !== undefined,
@@ -299,8 +312,12 @@ export function testCounter(fns: Fns): void {
 		const setTexts = mutations.filter(
 			(m) => m.op === 0x0b && "text" in m,
 		) as Array<{ op: number; id: number; text: string }>;
-		const found = setTexts.find((m) => m.text === "Count: 1");
-		assert(found !== undefined, true, 'final flush has SetText "Count: 1"');
+		const found = setTexts.find((m) => m.text === "High-Five counter: 1");
+		assert(
+			found !== undefined,
+			true,
+			'final flush has SetText "High-Five counter: 1"',
+		);
 
 		fns.counter_destroy(app);
 	}
@@ -332,43 +349,35 @@ export function testCounter(fns: Fns): void {
 		// Root is a div (TAG_DIV = 0)
 		assert(fns.tmpl_node_tag(rtPtr, tmplId, rootIdx), 0, "root tag is div");
 
-		// Root has 3 children: span, button, button
+		// Root has 3 children: h1, button, button
 		const childCount = fns.tmpl_node_child_count(rtPtr, tmplId, rootIdx);
-		assert(childCount, 4, "root div has 4 children");
+		assert(childCount, 3, "root div has 3 children");
 
-		// First child is span (TAG_SPAN = 1) — "Count: N"
-		const spanIdx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 0);
-		assert(fns.tmpl_node_tag(rtPtr, tmplId, spanIdx), 1, "first child is span");
+		// First child is h1 (TAG_H1 = 10) — "High-Five counter: N"
+		const h1Idx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 0);
+		assert(fns.tmpl_node_tag(rtPtr, tmplId, h1Idx), 10, "first child is h1");
 
-		// Second child is span (TAG_SPAN = 1) — "Doubled: 2N"
-		const span2Idx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 1);
-		assert(
-			fns.tmpl_node_tag(rtPtr, tmplId, span2Idx),
-			1,
-			"second child is span",
-		);
-
-		// Third child is button (TAG_BUTTON = 19)
-		const btn1Idx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 2);
+		// Second child is button (TAG_BUTTON = 19)
+		const btn1Idx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 1);
 		assert(
 			fns.tmpl_node_tag(rtPtr, tmplId, btn1Idx),
+			19,
+			"second child is button",
+		);
+
+		// Third child is button
+		const btn2Idx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 2);
+		assert(
+			fns.tmpl_node_tag(rtPtr, tmplId, btn2Idx),
 			19,
 			"third child is button",
 		);
 
-		// Fourth child is button
-		const btn2Idx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 3);
-		assert(
-			fns.tmpl_node_tag(rtPtr, tmplId, btn2Idx),
-			19,
-			"fourth child is button",
-		);
-
 		// Template has dynamic text nodes
 		assert(
-			fns.tmpl_dynamic_text_count(rtPtr, tmplId) >= 2,
+			fns.tmpl_dynamic_text_count(rtPtr, tmplId) >= 1,
 			true,
-			"template has at least 2 dynamic text slots",
+			"template has at least 1 dynamic text slot",
 		);
 
 		// Template has dynamic attrs
@@ -401,42 +410,32 @@ export function testCounter(fns: Fns): void {
 		const divEl = dom.root.childNodes[0] as Element;
 		assert(divEl.nodeName.toLowerCase(), "div", "first child is a div");
 
-		// Div should have 4 children: span, span, button, button
-		assert(divEl.childNodes.length, 4, "div has 4 children");
+		// Div should have 3 children: h1, button, button
+		assert(divEl.childNodes.length, 3, "div has 3 children");
 
-		const spanEl = divEl.childNodes[0] as Element;
-		assert(spanEl.nodeName.toLowerCase(), "span", "first div child is span");
+		const h1El = divEl.childNodes[0] as Element;
+		assert(h1El.nodeName.toLowerCase(), "h1", "first div child is h1");
 
-		const span2El = divEl.childNodes[1] as Element;
-		assert(
-			span2El.nodeName.toLowerCase(),
-			"span",
-			"second div child is span (doubled)",
-		);
+		const btn1 = divEl.childNodes[1] as Element;
+		assert(btn1.nodeName.toLowerCase(), "button", "second div child is button");
 
-		const btn1 = divEl.childNodes[2] as Element;
-		assert(btn1.nodeName.toLowerCase(), "button", "third div child is button");
-
-		const btn2 = divEl.childNodes[3] as Element;
-		assert(btn2.nodeName.toLowerCase(), "button", "fourth div child is button");
+		const btn2 = divEl.childNodes[2] as Element;
+		assert(btn2.nodeName.toLowerCase(), "button", "third div child is button");
 
 		// Button text content
-		assert(btn1.textContent, "+", 'first button text is "+"');
-		assert(btn2.textContent, "-", 'second button text is "-"');
+		assert(btn1.textContent, "Up high!", 'first button text is "Up high!"');
+		assert(btn2.textContent, "Down low!", 'second button text is "Down low!"');
 
-		// Span should display "Count: 0"
-		assert(spanEl.textContent, "Count: 0", 'span displays "Count: 0"');
-
-		// Doubled span should display "Doubled: 0"
+		// H1 should display "High-Five counter: 0"
 		assert(
-			span2El.textContent,
-			"Doubled: 0",
-			'doubled span displays "Doubled: 0"',
+			h1El.textContent,
+			"High-Five counter: 0",
+			'h1 displays "High-Five counter: 0"',
 		);
 
-		// Initial count and doubled
+		// Initial count
 		assert(handle.getCount(), 0, "getCount() returns 0");
-		assert(handle.getDoubled(), 0, "getDoubled() returns 0");
+		assert(handle.getDoubled(), 0, "getDoubled() returns 0 (computed inline)");
 
 		handle.destroy();
 	}
@@ -451,16 +450,16 @@ export function testCounter(fns: Fns): void {
 		const handle = createCounterApp(fns, dom.root, dom.document);
 
 		const divEl = dom.root.childNodes[0] as Element;
-		const spanEl = divEl.childNodes[0] as Element;
+		const h1El = divEl.childNodes[0] as Element;
 
 		// Click increment
 		handle.increment();
 
 		assert(handle.getCount(), 1, "count is 1 after increment");
 		assert(
-			spanEl.textContent,
-			"Count: 1",
-			'span displays "Count: 1" after increment',
+			h1El.textContent,
+			"High-Five counter: 1",
+			'h1 displays "High-Five counter: 1" after increment',
 		);
 
 		handle.destroy();
@@ -476,14 +475,18 @@ export function testCounter(fns: Fns): void {
 		const handle = createCounterApp(fns, dom.root, dom.document);
 
 		const divEl = dom.root.childNodes[0] as Element;
-		const spanEl = divEl.childNodes[0] as Element;
+		const h1El = divEl.childNodes[0] as Element;
 
 		for (let i = 0; i < 10; i++) {
 			handle.increment();
 		}
 
 		assert(handle.getCount(), 10, "count is 10 after 10 increments");
-		assert(spanEl.textContent, "Count: 10", 'span displays "Count: 10"');
+		assert(
+			h1El.textContent,
+			"High-Five counter: 10",
+			'h1 displays "High-Five counter: 10"',
+		);
 
 		handle.destroy();
 	}
@@ -498,7 +501,7 @@ export function testCounter(fns: Fns): void {
 		const handle = createCounterApp(fns, dom.root, dom.document);
 
 		const divEl = dom.root.childNodes[0] as Element;
-		const spanEl = divEl.childNodes[0] as Element;
+		const h1El = divEl.childNodes[0] as Element;
 
 		// Increment 3 times, decrement once → 2
 		handle.increment();
@@ -507,7 +510,11 @@ export function testCounter(fns: Fns): void {
 		handle.decrement();
 
 		assert(handle.getCount(), 2, "count is 2 after +3 -1");
-		assert(spanEl.textContent, "Count: 2", 'span displays "Count: 2"');
+		assert(
+			h1El.textContent,
+			"High-Five counter: 2",
+			'h1 displays "High-Five counter: 2"',
+		);
 
 		handle.destroy();
 	}
@@ -522,13 +529,17 @@ export function testCounter(fns: Fns): void {
 		const handle = createCounterApp(fns, dom.root, dom.document);
 
 		const divEl = dom.root.childNodes[0] as Element;
-		const spanEl = divEl.childNodes[0] as Element;
+		const h1El = divEl.childNodes[0] as Element;
 
 		handle.decrement();
 		handle.decrement();
 
 		assert(handle.getCount(), -2, "count is -2 after 2 decrements");
-		assert(spanEl.textContent, "Count: -2", 'span displays "Count: -2"');
+		assert(
+			h1El.textContent,
+			"High-Five counter: -2",
+			'h1 displays "High-Five counter: -2"',
+		);
 
 		handle.destroy();
 	}
@@ -564,11 +575,7 @@ export function testCounter(fns: Fns): void {
 			"flush contains only SetText mutations (minimal diff)",
 		);
 
-		assert(
-			mutations.length,
-			2,
-			"exactly 2 mutations (SetText for count + doubled)",
-		);
+		assert(mutations.length, 1, "exactly 1 mutation (SetText for count)");
 
 		fns.counter_destroy(app);
 	}
@@ -582,7 +589,6 @@ export function testCounter(fns: Fns): void {
 		const dom = createDOM();
 		const handle = createCounterApp(fns, dom.root, dom.document);
 
-		const divEl = dom.root.childNodes[0] as Element;
 		// Update 5 times
 		for (let i = 0; i < 5; i++) {
 			handle.increment();
@@ -590,32 +596,25 @@ export function testCounter(fns: Fns): void {
 
 		// Structure should be the same objects (no re-creation)
 		const newDiv = dom.root.childNodes[0] as Element;
-		assert(newDiv.childNodes.length, 4, "div still has 4 children");
+		assert(newDiv.childNodes.length, 3, "div still has 3 children");
 
 		// Buttons should still have their text
 		assert(
-			(newDiv.childNodes[2] as Element).textContent,
-			"+",
-			'button 1 still says "+"',
+			(newDiv.childNodes[1] as Element).textContent,
+			"Up high!",
+			'button 1 still says "Up high!"',
 		);
 		assert(
-			(newDiv.childNodes[3] as Element).textContent,
-			"-",
-			'button 2 still says "-"',
+			(newDiv.childNodes[2] as Element).textContent,
+			"Down low!",
+			'button 2 still says "Down low!"',
 		);
 
-		// Span should show updated count
+		// H1 should show updated count
 		assert(
 			(newDiv.childNodes[0] as Element).textContent,
-			"Count: 5",
-			'span says "Count: 5"',
-		);
-
-		// Doubled span should show updated doubled value
-		assert(
-			(newDiv.childNodes[1] as Element).textContent,
-			"Doubled: 10",
-			'doubled span says "Doubled: 10"',
+			"High-Five counter: 5",
+			'h1 says "High-Five counter: 5"',
 		);
 
 		handle.destroy();
@@ -647,8 +646,16 @@ export function testCounter(fns: Fns): void {
 		const span1 = (dom1.root.childNodes[0] as Element).childNodes[0] as Element;
 		const span2 = (dom2.root.childNodes[0] as Element).childNodes[0] as Element;
 
-		assert(span1.textContent, "Count: 3", 'app1 span shows "Count: 3"');
-		assert(span2.textContent, "Count: 1", 'app2 span shows "Count: 1"');
+		assert(
+			span1.textContent,
+			"High-Five counter: 3",
+			'app1 h1 shows "High-Five counter: 3"',
+		);
+		assert(
+			span2.textContent,
+			"High-Five counter: 1",
+			'app2 h1 shows "High-Five counter: 1"',
+		);
 
 		h1.destroy();
 		h2.destroy();
@@ -669,8 +676,12 @@ export function testCounter(fns: Fns): void {
 
 		assert(handle.getCount(), 100, "count is 100 after 100 increments");
 
-		const spanEl = (dom.root.childNodes[0] as Element).childNodes[0] as Element;
-		assert(spanEl.textContent, "Count: 100", 'span displays "Count: 100"');
+		const h1El = (dom.root.childNodes[0] as Element).childNodes[0] as Element;
+		assert(
+			h1El.textContent,
+			"High-Five counter: 100",
+			'h1 displays "High-Five counter: 100"',
+		);
 
 		handle.destroy();
 	}
@@ -683,64 +694,21 @@ export function testCounter(fns: Fns): void {
 	// Section 19: Memo demo — doubled value
 	// ═════════════════════════════════════════════════════════════════════
 
-	suite("Counter — initial mount: doubled text shows Doubled: 0");
+	suite("Counter — getDoubled returns computed inline value");
 	{
 		const dom = createDOM();
 		const handle = createCounterApp(fns, dom.root, dom.document);
-		const divEl = dom.root.childNodes[0] as Element;
-		const doubledSpan = divEl.childNodes[1] as Element;
-		assert(
-			doubledSpan.textContent,
-			"Doubled: 0",
-			'doubled span shows "Doubled: 0"',
-		);
-		assert(handle.getDoubled(), 0, "getDoubled() is 0");
-		handle.destroy();
-	}
-
-	suite("Counter — increment updates doubled text");
-	{
-		const dom = createDOM();
-		const handle = createCounterApp(fns, dom.root, dom.document);
+		assert(handle.getDoubled(), 0, "getDoubled() is 0 initially");
 		handle.increment();
-		const divEl = dom.root.childNodes[0] as Element;
-		const countSpan = divEl.childNodes[0] as Element;
-		const doubledSpan = divEl.childNodes[1] as Element;
-		assert(countSpan.textContent, "Count: 1", 'count is "Count: 1"');
-		assert(doubledSpan.textContent, "Doubled: 2", 'doubled is "Doubled: 2"');
-		assert(handle.getCount(), 1, "getCount() is 1");
-		assert(handle.getDoubled(), 2, "getDoubled() is 2");
-		handle.destroy();
-	}
-
-	suite("Counter — decrement updates doubled text");
-	{
-		const dom = createDOM();
-		const handle = createCounterApp(fns, dom.root, dom.document);
+		assert(handle.getDoubled(), 2, "getDoubled() is 2 after increment");
+		handle.increment();
+		assert(handle.getDoubled(), 4, "getDoubled() is 4 after 2 increments");
 		handle.decrement();
-		const divEl = dom.root.childNodes[0] as Element;
-		const doubledSpan = divEl.childNodes[1] as Element;
-		assert(doubledSpan.textContent, "Doubled: -2", 'doubled is "Doubled: -2"');
-		assert(handle.getDoubled(), -2, "getDoubled() is -2");
+		assert(handle.getDoubled(), 2, "getDoubled() is 2 after decrement");
 		handle.destroy();
 	}
 
-	suite("Counter — 10 increments: doubled is 20");
-	{
-		const dom = createDOM();
-		const handle = createCounterApp(fns, dom.root, dom.document);
-		for (let i = 0; i < 10; i++) {
-			handle.increment();
-		}
-		const divEl = dom.root.childNodes[0] as Element;
-		const doubledSpan = divEl.childNodes[1] as Element;
-		assert(handle.getCount(), 10, "count is 10");
-		assert(handle.getDoubled(), 20, "doubled is 20");
-		assert(doubledSpan.textContent, "Doubled: 20", 'DOM shows "Doubled: 20"');
-		handle.destroy();
-	}
-
-	suite("Counter — DOM structure: second span contains doubled text");
+	suite("Counter — DOM structure: buttons are second and third children");
 	{
 		const dom = createDOM();
 		const handle = createCounterApp(fns, dom.root, dom.document);
@@ -748,12 +716,16 @@ export function testCounter(fns: Fns): void {
 		handle.increment();
 		handle.increment();
 		const divEl = dom.root.childNodes[0] as Element;
-		const secondSpan = divEl.childNodes[1] as Element;
-		assert(secondSpan.nodeName.toLowerCase(), "span", "second child is a span");
+		const secondChild = divEl.childNodes[1] as Element;
 		assert(
-			secondSpan.textContent,
-			"Doubled: 6",
-			'second span contains "Doubled: 6"',
+			secondChild.nodeName.toLowerCase(),
+			"button",
+			"second child is a button",
+		);
+		assert(
+			secondChild.textContent,
+			"Up high!",
+			'second child (button) contains "Up high!"',
 		);
 		handle.destroy();
 	}

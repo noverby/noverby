@@ -49,10 +49,131 @@ from bridge import MutationWriter
 from .app_shell import AppShell, app_shell_create
 from vdom import (
     Node,
+    NODE_EVENT,
+    NODE_ELEMENT,
+    NODE_DYN_ATTR,
     to_template,
     VNodeBuilder,
     VNodeStore,
 )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EventBinding — Stored handler info for auto-populating VNode event attrs
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+struct EventBinding(Copyable, Movable):
+    """A registered event handler binding for use by RenderBuilder.
+
+    Stores the event name and handler ID so that `RenderBuilder.build()`
+    can automatically add dynamic event attributes to the VNode without
+    the component author needing to track handler IDs manually.
+    """
+
+    var event_name: String
+    var handler_id: UInt32
+
+    fn __init__(out self, event_name: String, handler_id: UInt32):
+        self.event_name = event_name
+        self.handler_id = handler_id
+
+    fn __copyinit__(out self, other: Self):
+        self.event_name = other.event_name
+        self.handler_id = other.handler_id
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.event_name = other.event_name^
+        self.handler_id = other.handler_id
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# RenderBuilder — VNodeBuilder wrapper that auto-adds registered events
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+struct RenderBuilder(Movable):
+    """Ergonomic VNode builder that auto-populates event handler attributes.
+
+    Created by `ComponentContext.render_builder()`.  The component author
+    only needs to call `add_dyn_text()` for each dynamic text slot — the
+    event handlers registered via `register_view()` are added automatically
+    when `build()` is called.
+
+    Usage (in a component's render method):
+
+        fn render(self) -> UInt32:
+            var vb = self.ctx.render_builder()
+            vb.add_dyn_text("Count: " + str(self.count.peek()))
+            return vb.build()
+
+    Compare with manual VNodeBuilder:
+
+        fn build_vnode(self) -> UInt32:
+            var vb = self.ctx.vnode_builder()
+            vb.add_dyn_text("Count: " + str(self.count.peek()))
+            vb.add_dyn_event("click", self.incr_handler)
+            vb.add_dyn_event("click", self.decr_handler)
+            return vb.index()
+    """
+
+    var _vb: VNodeBuilder
+    var _events: List[EventBinding]
+
+    fn __init__(
+        out self,
+        var vb: VNodeBuilder,
+        var events: List[EventBinding],
+    ):
+        self._vb = vb^
+        self._events = events^
+
+    fn __moveinit__(out self, deinit other: Self):
+        self._vb = other._vb^
+        self._events = other._events^
+
+    # ── Dynamic text ─────────────────────────────────────────────────
+
+    fn add_dyn_text(mut self, value: String):
+        """Add a dynamic text node (fills the next DynamicText slot).
+
+        Call in order corresponding to `dyn_text(0)`, `dyn_text(1)`, ...
+        placeholders in the template.
+        """
+        self._vb.add_dyn_text(value)
+
+    fn add_dyn_placeholder(mut self):
+        """Add a dynamic placeholder node."""
+        self._vb.add_dyn_placeholder()
+
+    # ── Dynamic attributes (manual) ─────────────────────────────────
+
+    fn add_dyn_text_attr(mut self, name: String, value: String):
+        """Add a dynamic text attribute (e.g. class, id, href)."""
+        self._vb.add_dyn_text_attr(name, value)
+
+    fn add_dyn_bool_attr(mut self, name: String, value: Bool):
+        """Add a dynamic boolean attribute (e.g. disabled, checked)."""
+        self._vb.add_dyn_bool_attr(name, value)
+
+    # ── Build ────────────────────────────────────────────────────────
+
+    fn build(mut self) -> UInt32:
+        """Finalize the VNode by auto-adding all registered event handlers.
+
+        Adds dynamic event attributes for each EventBinding registered
+        via `register_view()`, then returns the VNode index.
+
+        Returns:
+            The VNode's index in the VNodeStore.
+        """
+        # Auto-add all registered event handler attributes
+        for i in range(len(self._events)):
+            self._vb.add_dyn_event(
+                self._events[i].event_name,
+                self._events[i].handler_id,
+            )
+        return self._vb.index()
 
 
 struct ComponentContext(Movable):
@@ -62,15 +183,33 @@ struct ComponentContext(Movable):
     signals, memos, effects, handlers, and managing the component
     lifecycle.
 
-    Usage:
+    Basic usage (manual handlers):
         var ctx = ComponentContext.create()
         var count = ctx.use_signal(0)
-        var doubled = ctx.use_memo(0)
         ctx.end_setup()
 
         ctx.register_template(view, "counter")
         var incr = ctx.on_click_add(count, 1)
         var decr = ctx.on_click_sub(count, 1)
+
+    Ergonomic usage (inline events via register_view):
+        var ctx = ComponentContext.create()
+        var count = ctx.use_signal(0)
+        ctx.end_setup()
+
+        ctx.register_view(
+            el_div(List[Node](
+                el_h1(List[Node](dyn_text(0))),
+                el_button(List[Node](text("Up high!"), onclick_add(count, 1))),
+                el_button(List[Node](text("Down low!"), onclick_sub(count, 1))),
+            )),
+            "counter",
+        )
+
+        # In render:
+        var vb = ctx.render_builder()
+        vb.add_dyn_text("High-Five counter: " + str(count.peek()))
+        var idx = vb.build()  # auto-adds event handlers
     """
 
     var shell: AppShell
@@ -78,6 +217,7 @@ struct ComponentContext(Movable):
     var template_id: UInt32
     var current_vnode: Int
     var _setup_done: Bool
+    var _view_events: List[EventBinding]
 
     # ── Construction ─────────────────────────────────────────────────
 
@@ -88,6 +228,7 @@ struct ComponentContext(Movable):
         self.template_id = 0
         self.current_vnode = -1
         self._setup_done = False
+        self._view_events = List[EventBinding]()
 
     fn __moveinit__(out self, deinit other: Self):
         self.shell = other.shell^
@@ -95,6 +236,7 @@ struct ComponentContext(Movable):
         self.template_id = other.template_id
         self.current_vnode = other.current_vnode
         self._setup_done = other._setup_done
+        self._view_events = other._view_events^
 
     @staticmethod
     fn create() -> Self:
@@ -233,6 +375,9 @@ struct ComponentContext(Movable):
         Stores the template ID in `self.template_id` for later use
         in VNode building.
 
+        This is the low-level method — use `register_view()` for the
+        ergonomic API that also handles inline event handlers.
+
         Args:
             view: The root Node of the template tree (from DSL helpers).
             name: The template name (for deduplication).
@@ -241,6 +386,70 @@ struct ComponentContext(Movable):
         self.template_id = UInt32(
             self.shell.runtime[0].templates.register(template^)
         )
+
+    fn register_view(mut self, view: Node, name: String):
+        """Build a template from a Node tree with inline event handlers.
+
+        Processes the Node tree to:
+        1. Find all NODE_EVENT nodes and assign dynamic attr indices
+        2. Register event handlers for each NODE_EVENT
+        3. Build and register the template
+
+        The registered event handlers are stored internally and
+        auto-populated by `render_builder().build()`.
+
+        This is the ergonomic alternative to `register_template()` +
+        manual `on_click_add()`/`on_click_sub()` calls.
+
+        Equivalent Dioxus pattern:
+            rsx! {
+                h1 { "High-Five counter: {count}" }
+                button { onclick: move |_| count += 1, "Up high!" }
+                button { onclick: move |_| count -= 1, "Down low!" }
+            }
+
+        Mojo equivalent:
+            ctx.register_view(
+                el_div(List[Node](
+                    el_h1(List[Node](dyn_text(0))),
+                    el_button(List[Node](text("Up high!"), onclick_add(count, 1))),
+                    el_button(List[Node](text("Down low!"), onclick_sub(count, 1))),
+                )),
+                "counter",
+            )
+
+        Args:
+            view: The root Node of the template tree (may contain
+                  NODE_EVENT nodes from onclick_add, onclick_sub, etc.).
+            name: The template name (for deduplication).
+        """
+        # 1. Collect events and reindex: replace NODE_EVENT with
+        #    NODE_DYN_ATTR(auto_index) in a copy of the tree.
+        var events = List[_EventInfo]()
+        var attr_idx = UInt32(0)
+        var processed = _collect_and_reindex_events(view, events, attr_idx)
+
+        # 2. Build and register template from processed tree
+        var template = to_template(processed, name)
+        self.template_id = UInt32(
+            self.shell.runtime[0].templates.register(template^)
+        )
+
+        # 3. Register handlers and store bindings
+        self._view_events = List[EventBinding]()
+        for i in range(len(events)):
+            var handler_id = self.shell.runtime[0].register_handler(
+                HandlerEntry(
+                    self.scope_id,
+                    events[i].action,
+                    events[i].signal_key,
+                    events[i].operand,
+                    events[i].event_name,
+                )
+            )
+            self._view_events.append(
+                EventBinding(events[i].event_name, handler_id)
+            )
 
     # ── Handler registration — click events ──────────────────────────
 
@@ -414,6 +623,24 @@ struct ComponentContext(Movable):
         """
         return VNodeBuilder(self.template_id, self.shell.store)
 
+    fn render_builder(mut self) -> RenderBuilder:
+        """Create a RenderBuilder that auto-adds registered event handlers.
+
+        Use this with `register_view()` for the ergonomic rendering API.
+        Call `add_dyn_text()` for each dynamic text slot, then `build()`
+        to finalize (events are added automatically).
+
+        Usage:
+            var vb = ctx.render_builder()
+            vb.add_dyn_text("High-Five counter: " + str(count.peek()))
+            var idx = vb.build()
+
+        Returns:
+            A RenderBuilder wrapping a VNodeBuilder with auto-event support.
+        """
+        var vb = VNodeBuilder(self.template_id, self.shell.store)
+        return RenderBuilder(vb^, self._view_events.copy())
+
     fn vnode_builder_keyed(self, key: String) -> VNodeBuilder:
         """Create a keyed VNodeBuilder for the context's template.
 
@@ -524,3 +751,107 @@ struct ComponentContext(Movable):
     fn store_ptr(self) -> UnsafePointer[VNodeStore]:
         """Return the VNode store pointer."""
         return self.shell.store
+
+    fn view_events(self) -> List[EventBinding]:
+        """Return a copy of the registered view event bindings.
+
+        Useful for testing and introspection.
+        """
+        return self._view_events.copy()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Private helpers — Event collection and tree reindexing
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+struct _EventInfo(Copyable, Movable):
+    """Internal: collected event handler info from a NODE_EVENT node."""
+
+    var event_name: String
+    var action: UInt8
+    var signal_key: UInt32
+    var operand: Int32
+
+    fn __init__(
+        out self,
+        event_name: String,
+        action: UInt8,
+        signal_key: UInt32,
+        operand: Int32,
+    ):
+        self.event_name = event_name
+        self.action = action
+        self.signal_key = signal_key
+        self.operand = operand
+
+    fn __copyinit__(out self, other: Self):
+        self.event_name = other.event_name
+        self.action = other.action
+        self.signal_key = other.signal_key
+        self.operand = other.operand
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.event_name = other.event_name^
+        self.action = other.action
+        self.signal_key = other.signal_key
+        self.operand = other.operand
+
+
+fn _collect_and_reindex_events(
+    node: Node,
+    mut events: List[_EventInfo],
+    mut attr_idx: UInt32,
+) -> Node:
+    """Recursively clone a Node tree, replacing NODE_EVENT with NODE_DYN_ATTR.
+
+    Each NODE_EVENT is:
+    1. Collected into `events` (preserving tree-order traversal)
+    2. Replaced with a NODE_DYN_ATTR node with an auto-assigned index
+
+    All other nodes are cloned unchanged.  ELEMENT nodes have their
+    items recursively processed.
+
+    Args:
+        node: The current node to process.
+        events: Accumulator for collected event info (mutated in place).
+        attr_idx: Running counter for dynamic attr indices (mutated).
+
+    Returns:
+        A new Node tree with NODE_EVENT replaced by NODE_DYN_ATTR.
+    """
+    if node.kind == NODE_EVENT:
+        # Collect the event info
+        events.append(
+            _EventInfo(
+                event_name=node.text,
+                action=node.tag,
+                signal_key=node.dynamic_index,
+                operand=node.operand,
+            )
+        )
+        # Replace with a dyn_attr at the current index
+        var idx = attr_idx
+        attr_idx += 1
+        return Node.dynamic_attr_node(idx)
+
+    elif node.kind == NODE_ELEMENT:
+        # Recursively process items (children + attrs)
+        var new_items = List[Node]()
+        for i in range(len(node.items)):
+            new_items.append(
+                _collect_and_reindex_events(node.items[i], events, attr_idx)
+            )
+        return Node(
+            kind=NODE_ELEMENT,
+            tag=node.tag,
+            text=String(""),
+            attr_value=String(""),
+            dynamic_index=0,
+            operand=0,
+            items=new_items^,
+        )
+
+    else:
+        # Pass through unchanged (TEXT, DYN_TEXT, DYN_NODE, STATIC_ATTR, DYN_ATTR)
+        return node.copy()

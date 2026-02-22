@@ -109,6 +109,7 @@ alias NODE_DYN_TEXT: UInt8 = 2  # Dynamic text placeholder (slot index)
 alias NODE_DYN_NODE: UInt8 = 3  # Dynamic node placeholder (slot index)
 alias NODE_STATIC_ATTR: UInt8 = 4  # Static attribute (name + value)
 alias NODE_DYN_ATTR: UInt8 = 5  # Dynamic attribute placeholder (slot index)
+alias NODE_EVENT: UInt8 = 6  # Inline event handler (action + signal + operand)
 
 
 struct Node(Copyable, Movable):
@@ -116,22 +117,27 @@ struct Node(Copyable, Movable):
 
     Node is a tagged union that can represent static text, HTML elements
     (with children and attributes), dynamic text placeholders, dynamic
-    node placeholders, static attributes, or dynamic attribute
-    placeholders.
+    node placeholders, static attributes, dynamic attribute placeholders,
+    or inline event handler bindings.
 
     Nodes are composed into trees using the tag helper functions and then
     converted to a Template via `to_template()`.
 
     For ELEMENT nodes, `items` contains a mix of children (TEXT, ELEMENT,
-    DYN_TEXT, DYN_NODE) and attributes (STATIC_ATTR, DYN_ATTR).  The
-    `to_template()` function separates them automatically.
+    DYN_TEXT, DYN_NODE) and attributes (STATIC_ATTR, DYN_ATTR, EVENT).
+    The `to_template()` function separates them automatically.
+
+    EVENT nodes carry handler metadata (action type, signal key, operand)
+    and are processed by `ComponentContext.register_view()` which
+    auto-assigns dynamic attribute indices and registers handlers.
     """
 
     var kind: UInt8  # NODE_* tag
-    var tag: UInt8  # HTML tag constant (ELEMENT only)
-    var text: String  # text content (TEXT) or attr name (STATIC_ATTR)
+    var tag: UInt8  # HTML tag constant (ELEMENT) or action tag (EVENT)
+    var text: String  # text content (TEXT), attr name (STATIC_ATTR), event name (EVENT)
     var attr_value: String  # attr value (STATIC_ATTR only)
-    var dynamic_index: UInt32  # slot index (DYN_TEXT, DYN_NODE, DYN_ATTR)
+    var dynamic_index: UInt32  # slot index (DYN_TEXT, DYN_NODE, DYN_ATTR) or signal key (EVENT)
+    var operand: Int32  # event handler operand (EVENT only, 0 otherwise)
     var items: List[Node]  # children + inline attrs (ELEMENT only)
 
     # ── Named constructors ───────────────────────────────────────────
@@ -145,6 +151,7 @@ struct Node(Copyable, Movable):
             text=s,
             attr_value=String(""),
             dynamic_index=0,
+            operand=0,
             items=List[Node](),
         )
 
@@ -153,7 +160,7 @@ struct Node(Copyable, Movable):
         """Create an element node with the given tag and items.
 
         Items can include children (text, element, dyn_text, dyn_node)
-        and attributes (static_attr, dyn_attr) in any order.
+        and attributes (static_attr, dyn_attr, event) in any order.
         """
         return Self(
             kind=NODE_ELEMENT,
@@ -161,6 +168,7 @@ struct Node(Copyable, Movable):
             text=String(""),
             attr_value=String(""),
             dynamic_index=0,
+            operand=0,
             items=items^,
         )
 
@@ -173,6 +181,7 @@ struct Node(Copyable, Movable):
             text=String(""),
             attr_value=String(""),
             dynamic_index=0,
+            operand=0,
             items=List[Node](),
         )
 
@@ -185,6 +194,7 @@ struct Node(Copyable, Movable):
             text=String(""),
             attr_value=String(""),
             dynamic_index=index,
+            operand=0,
             items=List[Node](),
         )
 
@@ -197,6 +207,7 @@ struct Node(Copyable, Movable):
             text=String(""),
             attr_value=String(""),
             dynamic_index=index,
+            operand=0,
             items=List[Node](),
         )
 
@@ -209,6 +220,7 @@ struct Node(Copyable, Movable):
             text=name,
             attr_value=value,
             dynamic_index=0,
+            operand=0,
             items=List[Node](),
         )
 
@@ -222,6 +234,37 @@ struct Node(Copyable, Movable):
             text=String(""),
             attr_value=String(""),
             dynamic_index=index,
+            operand=0,
+            items=List[Node](),
+        )
+
+    @staticmethod
+    fn event_node(
+        event_name: String, action: UInt8, signal_key: UInt32, operand: Int32
+    ) -> Self:
+        """Create an inline event handler node.
+
+        EVENT nodes carry the full handler specification (action type,
+        signal key, operand) and are processed by
+        `ComponentContext.register_view()` which auto-assigns dynamic
+        attribute indices and registers the handler.
+
+        Args:
+            event_name: DOM event name (e.g. "click", "input").
+            action: Handler action tag (ACTION_SIGNAL_ADD_I32, etc.).
+            signal_key: The signal key to modify.
+            operand: The operand value for the action.
+
+        Returns:
+            A NODE_EVENT node.
+        """
+        return Self(
+            kind=NODE_EVENT,
+            tag=action,
+            text=event_name,
+            attr_value=String(""),
+            dynamic_index=signal_key,
+            operand=operand,
             items=List[Node](),
         )
 
@@ -234,6 +277,7 @@ struct Node(Copyable, Movable):
         text: String,
         attr_value: String,
         dynamic_index: UInt32,
+        operand: Int32,
         var items: List[Node],
     ):
         self.kind = kind
@@ -241,6 +285,7 @@ struct Node(Copyable, Movable):
         self.text = text
         self.attr_value = attr_value
         self.dynamic_index = dynamic_index
+        self.operand = operand
         self.items = items^
 
     fn __copyinit__(out self, other: Self):
@@ -249,6 +294,7 @@ struct Node(Copyable, Movable):
         self.text = other.text
         self.attr_value = other.attr_value
         self.dynamic_index = other.dynamic_index
+        self.operand = other.operand
         self.items = other.items.copy()
 
     fn __moveinit__(out self, deinit other: Self):
@@ -257,6 +303,7 @@ struct Node(Copyable, Movable):
         self.text = other.text^
         self.attr_value = other.attr_value^
         self.dynamic_index = other.dynamic_index
+        self.operand = other.operand
         self.items = other.items^
 
     # ── Queries ──────────────────────────────────────────────────────
@@ -285,9 +332,18 @@ struct Node(Copyable, Movable):
         """Check whether this is a dynamic attribute placeholder."""
         return self.kind == NODE_DYN_ATTR
 
+    fn is_event(self) -> Bool:
+        """Check whether this is an inline event handler node."""
+        return self.kind == NODE_EVENT
+
     fn is_attr(self) -> Bool:
-        """Check whether this is any kind of attribute (static or dynamic)."""
-        return self.kind == NODE_STATIC_ATTR or self.kind == NODE_DYN_ATTR
+        """Check whether this is any kind of attribute (static, dynamic, or event).
+        """
+        return (
+            self.kind == NODE_STATIC_ATTR
+            or self.kind == NODE_DYN_ATTR
+            or self.kind == NODE_EVENT
+        )
 
     fn is_child(self) -> Bool:
         """Check whether this is a child node (not an attribute)."""
@@ -322,11 +378,25 @@ struct Node(Copyable, Movable):
                 count += 1
         return count
 
-    fn dynamic_attr_count(self) -> Int:
-        """Return the number of dynamic attribute placeholders in an element."""
+    fn event_count(self) -> Int:
+        """Return the number of inline event handler nodes in an element."""
         var count = 0
         for i in range(len(self.items)):
-            if self.items[i].kind == NODE_DYN_ATTR:
+            if self.items[i].kind == NODE_EVENT:
+                count += 1
+        return count
+
+    fn dynamic_attr_count(self) -> Int:
+        """Return the number of dynamic attribute placeholders in an element.
+
+        Includes both explicit dyn_attr and inline event nodes.
+        """
+        var count = 0
+        for i in range(len(self.items)):
+            if (
+                self.items[i].kind == NODE_DYN_ATTR
+                or self.items[i].kind == NODE_EVENT
+            ):
                 count += 1
         return count
 
@@ -391,6 +461,93 @@ fn dyn_attr(index: Int) -> Node:
     Usage: `dyn_attr(0)` → first dynamic attribute slot
     """
     return Node.dynamic_attr_node(UInt32(index))
+
+
+# ── Inline event handler constructors ────────────────────────────────────────
+#
+# These create NODE_EVENT nodes that carry handler metadata (action type,
+# signal key, operand).  They are processed by ComponentContext.register_view()
+# which auto-assigns dynamic attribute indices and registers handlers.
+#
+# Import action tags from events.registry for the action constants.
+from events.registry import (
+    ACTION_SIGNAL_ADD_I32,
+    ACTION_SIGNAL_SUB_I32,
+    ACTION_SIGNAL_SET_I32,
+    ACTION_SIGNAL_TOGGLE,
+    ACTION_SIGNAL_SET_INPUT,
+)
+from signals.handle import SignalI32
+
+
+fn onclick_add(signal: SignalI32, delta: Int32) -> Node:
+    """Create an inline click handler that adds `delta` to a signal.
+
+    Equivalent to Dioxus: `onclick: move |_| signal += delta`
+
+    Usage:
+        el_button(List[Node](text("Up high!"), onclick_add(count, 1)))
+    """
+    return Node.event_node(
+        String("click"), ACTION_SIGNAL_ADD_I32, signal.key, delta
+    )
+
+
+fn onclick_sub(signal: SignalI32, delta: Int32) -> Node:
+    """Create an inline click handler that subtracts `delta` from a signal.
+
+    Equivalent to Dioxus: `onclick: move |_| signal -= delta`
+
+    Usage:
+        el_button(List[Node](text("Down low!"), onclick_sub(count, 1)))
+    """
+    return Node.event_node(
+        String("click"), ACTION_SIGNAL_SUB_I32, signal.key, delta
+    )
+
+
+fn onclick_set(signal: SignalI32, value: Int32) -> Node:
+    """Create an inline click handler that sets a signal to a fixed value.
+
+    Equivalent to Dioxus: `onclick: move |_| signal.set(value)`
+
+    Usage:
+        el_button(List[Node](text("Reset"), onclick_set(count, 0)))
+    """
+    return Node.event_node(
+        String("click"), ACTION_SIGNAL_SET_I32, signal.key, value
+    )
+
+
+fn onclick_toggle(signal: SignalI32) -> Node:
+    """Create an inline click handler that toggles a boolean signal (0 ↔ 1).
+
+    Equivalent to Dioxus: `onclick: move |_| signal.toggle()`
+
+    Usage:
+        el_button(List[Node](text("Toggle"), onclick_toggle(flag)))
+    """
+    return Node.event_node(String("click"), ACTION_SIGNAL_TOGGLE, signal.key, 0)
+
+
+fn on_event(
+    event_name: String, signal: SignalI32, action: UInt8, operand: Int32
+) -> Node:
+    """Create an inline event handler for any event type and action.
+
+    This is the generic form — use the convenience helpers (onclick_add,
+    onclick_sub, etc.) for common patterns.
+
+    Args:
+        event_name: DOM event name (e.g. "click", "input", "change").
+        signal: The signal to modify.
+        action: Handler action tag (ACTION_SIGNAL_ADD_I32, etc.).
+        operand: The operand value for the action.
+
+    Usage:
+        el_input(List[Node](on_event("input", text_sig, ACTION_SIGNAL_SET_INPUT, 0)))
+    """
+    return Node.event_node(event_name, action, signal.key, operand)
 
 
 # ── Generic element constructor ──────────────────────────────────────────────
@@ -901,9 +1058,12 @@ fn _build_node(mut builder: TemplateBuilder, node: Node, parent: Int):
                     idx, node.items[i].text, node.items[i].attr_value
                 )
 
-        # Pass 2: dynamic attributes
+        # Pass 2: dynamic attributes (explicit dyn_attr + event nodes)
         for i in range(len(node.items)):
-            if node.items[i].kind == NODE_DYN_ATTR:
+            if (
+                node.items[i].kind == NODE_DYN_ATTR
+                or node.items[i].kind == NODE_EVENT
+            ):
                 builder.push_dynamic_attr(idx, node.items[i].dynamic_index)
 
         # Pass 3: child nodes (recurse)
@@ -916,6 +1076,13 @@ fn _build_node(mut builder: TemplateBuilder, node: Node, parent: Int):
 
     elif node.kind == NODE_DYN_NODE:
         _ = builder.push_dynamic(node.dynamic_index, parent)
+
+    elif node.kind == NODE_EVENT:
+        # EVENT nodes in _build_node are treated as dynamic attrs.
+        # Their dynamic_index is used as the attr slot index (set by
+        # register_view's reindexing pass, or by the caller).
+        if parent >= 0:
+            builder.push_dynamic_attr(parent, node.dynamic_index)
 
     # NODE_STATIC_ATTR and NODE_DYN_ATTR at root level are silently
     # ignored (they only make sense inside an ELEMENT node's items).
@@ -1185,11 +1352,14 @@ fn count_dynamic_node_slots(node: Node) -> Int:
 
 
 fn count_dynamic_attr_slots(node: Node) -> Int:
-    """Count the total number of DYN_ATTR nodes in the tree."""
+    """Count the total number of DYN_ATTR and EVENT nodes in the tree."""
     if node.kind == NODE_ELEMENT:
         var total = 0
         for i in range(len(node.items)):
-            if node.items[i].kind == NODE_DYN_ATTR:
+            if (
+                node.items[i].kind == NODE_DYN_ATTR
+                or node.items[i].kind == NODE_EVENT
+            ):
                 total += 1
             elif node.items[i].is_child():
                 total += count_dynamic_attr_slots(node.items[i])

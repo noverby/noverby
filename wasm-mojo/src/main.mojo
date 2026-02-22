@@ -2077,14 +2077,20 @@ fn counter_tmpl_id(app_ptr: Int64) -> Int32:
 
 @export
 fn counter_incr_handler(app_ptr: Int64) -> Int32:
-    """Return the increment handler ID."""
-    return Int32(_get[CounterApp](app_ptr)[0].incr_handler)
+    """Return the increment handler ID (from view_events[0])."""
+    var events = _get[CounterApp](app_ptr)[0].ctx.view_events()
+    if len(events) > 0:
+        return Int32(events[0].handler_id)
+    return -1
 
 
 @export
 fn counter_decr_handler(app_ptr: Int64) -> Int32:
-    """Return the decrement handler ID."""
-    return Int32(_get[CounterApp](app_ptr)[0].decr_handler)
+    """Return the decrement handler ID (from view_events[1])."""
+    var events = _get[CounterApp](app_ptr)[0].ctx.view_events()
+    if len(events) > 1:
+        return Int32(events[1].handler_id)
+    return -1
 
 
 @export
@@ -2113,14 +2119,14 @@ fn counter_count_signal(app_ptr: Int64) -> Int32:
 
 @export
 fn counter_doubled_value(app_ptr: Int64) -> Int32:
-    """Read the doubled memo's cached value directly."""
-    return _get[CounterApp](app_ptr)[0].doubled.read()
+    """Return doubled count value (computed inline, no memo)."""
+    return _get[CounterApp](app_ptr)[0].count.peek() * 2
 
 
 @export
 fn counter_doubled_memo(app_ptr: Int64) -> Int32:
-    """Return the counter app's doubled memo ID."""
-    return Int32(_get[CounterApp](app_ptr)[0].doubled.id)
+    """Return -1 (doubled memo removed in ergonomic counter rewrite)."""
+    return -1
 
 
 # ══════════════════════════════════════════════════════════════════════════════
