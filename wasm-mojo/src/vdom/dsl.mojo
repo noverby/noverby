@@ -606,6 +606,7 @@ from events.registry import (
     ACTION_SIGNAL_TOGGLE,
     ACTION_SIGNAL_SET_INPUT,
     ACTION_SIGNAL_SET_STRING,
+    ACTION_KEY_ENTER_CUSTOM,
     ACTION_CUSTOM,
 )
 from signals.handle import SignalI32, SignalString
@@ -681,6 +682,34 @@ fn onclick_custom() -> Node:
         A NODE_EVENT node for "click" with ACTION_CUSTOM.
     """
     return Node.event_node(String("click"), ACTION_CUSTOM, 0, 0)
+
+
+fn onkeydown_enter_custom() -> Node:
+    """Create an inline keydown handler that fires only on Enter key.
+
+    Phase 22: Enables WASM-driven Enter key handling.  The handler is
+    registered with ACTION_KEY_ENTER_CUSTOM.  When dispatched via
+    `dispatch_event_with_string()`, the runtime checks the string
+    payload (the key name) — only "Enter" triggers the action, all
+    other keys are silently ignored.
+
+    When "Enter" is detected, the runtime marks the scope dirty
+    (same as ACTION_CUSTOM).  The app's `handle_event()` then performs
+    custom routing based on the handler ID.
+
+    Use `ctx.view_event_handler_id(index)` after `register_view()` /
+    `setup_view()` to retrieve the auto-registered handler ID.
+
+    Usage:
+        el_input(
+            oninput_set_string(text),
+            onkeydown_enter_custom(),  # fires Add on Enter
+        )
+
+    Returns:
+        A NODE_EVENT node for "keydown" with ACTION_KEY_ENTER_CUSTOM.
+    """
+    return Node.event_node(String("keydown"), ACTION_KEY_ENTER_CUSTOM, 0, 0)
 
 
 fn on_event(

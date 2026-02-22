@@ -610,4 +610,29 @@ export function testDsl(fns: Fns): void {
 		1,
 		"onclick_custom + bind_value + oninput_set_string in sibling elements",
 	);
+
+	// ═════════════════════════════════════════════════════════════════════
+	// Section 9: Phase 22 — onkeydown_enter_custom
+	// ═════════════════════════════════════════════════════════════════════
+
+	suite("DSL — onkeydown_enter_custom node");
+	assert(
+		fns.dsl_test_onkeydown_enter_custom_node(),
+		1,
+		"onkeydown_enter_custom creates NODE_EVENT with ACTION_KEY_ENTER_CUSTOM",
+	);
+
+	suite("DSL — onkeydown_enter_custom in element");
+	assert(
+		fns.dsl_test_onkeydown_enter_custom_in_element(),
+		1,
+		"onkeydown_enter_custom counts as dynamic attr inside input element",
+	);
+
+	suite("DSL — onkeydown_enter_custom with binding pattern");
+	assert(
+		fns.dsl_test_onkeydown_enter_custom_with_binding(),
+		1,
+		"onkeydown_enter_custom + bind_value + oninput + onclick_custom (Phase 22 TodoApp pattern)",
+	);
 }

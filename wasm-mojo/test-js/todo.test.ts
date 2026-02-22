@@ -827,10 +827,10 @@ export function testTodo(fns: Fns): void {
 		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
 		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
 
-		// Before adding items: 2 app-level handlers from register_view
-		// (oninput_set_string + onclick_custom)
+		// Before adding items: 3 app-level handlers from register_view
+		// (oninput_set_string + onkeydown_enter_custom + onclick_custom)
 		const hcBefore = fns.todo_handler_count(appPtr);
-		assert(hcBefore, 2, "2 handlers (oninput + add) before any items");
+		assert(hcBefore, 3, "3 handlers (oninput + enter + add) before any items");
 
 		// Add 5 items — each gets 2 handlers (toggle + remove)
 		for (let i = 0; i < 5; i++) {
@@ -839,8 +839,8 @@ export function testTodo(fns: Fns): void {
 		fns.todo_flush(appPtr, bufPtr, BUF_CAPACITY);
 
 		const hcAfter = fns.todo_handler_count(appPtr);
-		// 2 (oninput + add) + 5 * 2 (toggle + remove per item) = 12
-		assert(hcAfter, 12, "12 handlers after adding 5 items (2 app + 10 item)");
+		// 3 (oninput + enter + add) + 5 * 2 (toggle + remove per item) = 13
+		assert(hcAfter, 13, "13 handlers after adding 5 items (3 app + 10 item)");
 
 		fns.todo_destroy(appPtr);
 	}
@@ -862,9 +862,9 @@ export function testTodo(fns: Fns): void {
 		}
 
 		// After 10 add/remove cycles with 0 items remaining:
-		// Should be 2 (oninput + add handlers only), NOT 2 + 10*2 = 22 (leaked)
+		// Should be 3 (oninput + enter + add handlers only), NOT 3 + 10*2 = 23 (leaked)
 		const hc = fns.todo_handler_count(appPtr);
-		assert(hc, 2, "2 handlers after 10 add/remove cycles (no leak)");
+		assert(hc, 3, "3 handlers after 10 add/remove cycles (no leak)");
 
 		fns.todo_destroy(appPtr);
 	}
@@ -882,7 +882,7 @@ export function testTodo(fns: Fns): void {
 		fns.todo_flush(appPtr, bufPtr, BUF_CAPACITY);
 
 		const hc1 = fns.todo_handler_count(appPtr);
-		assert(hc1, 8, "8 handlers: 2 app + 3*2 item handlers");
+		assert(hc1, 9, "9 handlers: 3 app + 3*2 item handlers");
 
 		// Add 2 more items, flush again — old item handlers should be cleaned up
 		// and re-registered (total = 1 add + 5*2 item = 11)
@@ -893,8 +893,8 @@ export function testTodo(fns: Fns): void {
 		const hc2 = fns.todo_handler_count(appPtr);
 		assert(
 			hc2,
-			12,
-			"12 handlers: 2 app + 5*2 item handlers (no leak from previous flush)",
+			13,
+			"13 handlers: 3 app + 5*2 item handlers (no leak from previous flush)",
 		);
 
 		fns.todo_destroy(appPtr);
@@ -910,17 +910,18 @@ export function testTodo(fns: Fns): void {
 		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
 		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
 
-		// Get the Add handler ID (2nd event in register_view tree-walk order)
+		// Get the Add handler ID (3rd event in register_view tree-walk order)
 		const addHandler = fns.todo_add_handler_id(appPtr);
 		assert(addHandler >= 0, true, "add handler ID is non-negative");
 
 		// Dispatch string event to the oninput_set_string handler
 		// (the handler for input events writes to the SignalString)
+		// oninput is the 1st event (index 0), enter is 2nd, add is 3rd
+		// so oninput handler ID = addHandler - 2
 		const strPtr = writeStringStruct("Buy milk");
-		fns.todo_dispatch_string(appPtr, addHandler - 1, 0, strPtr);
+		fns.todo_dispatch_string(appPtr, addHandler - 2, 0, strPtr);
 
-		// Signal should NOT be updated (wrong handler — that was oninput handler)
-		// Actually, addHandler - 1 IS the oninput handler since it's the 1st event
+		// The oninput handler (addHandler - 2) writes to the SignalString
 		// Let's verify the signal was updated by checking input version
 		const version = fns.todo_input_version(appPtr);
 		assert(version > 0, true, "input version bumped after string dispatch");
@@ -1034,10 +1035,10 @@ export function testTodo(fns: Fns): void {
 		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
 
 		// Dispatch a string to the oninput handler
-		// The oninput handler is 1 less than the add handler
-		// (1st event in tree-walk order)
+		// The oninput handler is 2 less than the add handler
+		// (1st event in tree-walk order: oninput, then enter, then add)
 		const addHandler = fns.todo_add_handler_id(appPtr);
-		const oninputHandler = addHandler - 1;
+		const oninputHandler = addHandler - 2;
 
 		const strPtr = writeStringStruct("test dispatch");
 		const result = fns.todo_dispatch_string(appPtr, oninputHandler, 0, strPtr);
@@ -1049,6 +1050,166 @@ export function testTodo(fns: Fns): void {
 			0,
 			"input not empty after dispatch_string",
 		);
+
+		fns.todo_destroy(appPtr);
+	}
+
+	// ── Phase 22: Enter key handler tests ───────────────────────────────────
+
+	suite("Todo — Phase 22: todo_enter_handler_id returns valid handler");
+	{
+		const appPtr = fns.todo_init();
+		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
+		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
+
+		const enterHandler = fns.todo_enter_handler_id(appPtr);
+		assert(enterHandler >= 0, true, "enter handler ID is non-negative");
+
+		const addHandler = fns.todo_add_handler_id(appPtr);
+		assert(
+			enterHandler !== addHandler,
+			true,
+			"enter and add handler IDs are different",
+		);
+
+		// Enter handler should be between oninput and add in tree-walk order
+		assert(
+			enterHandler,
+			addHandler - 1,
+			"enter handler is one before add handler (tree-walk order)",
+		);
+
+		fns.todo_destroy(appPtr);
+	}
+
+	suite("Todo — Phase 22: dispatch_string with Enter key marks scope dirty");
+	{
+		const appPtr = fns.todo_init();
+		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
+		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
+
+		const enterHandler = fns.todo_enter_handler_id(appPtr);
+
+		// Dispatch "Enter" key string to the enter handler
+		const strPtr = writeStringStruct("Enter");
+		const result = fns.todo_dispatch_string(appPtr, enterHandler, 0, strPtr);
+		assert(result, 1, "dispatch_string returns 1 (accepted) for Enter key");
+
+		fns.todo_destroy(appPtr);
+	}
+
+	suite("Todo — Phase 22: dispatch_string with non-Enter key is ignored");
+	{
+		const appPtr = fns.todo_init();
+		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
+		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
+
+		const enterHandler = fns.todo_enter_handler_id(appPtr);
+
+		// Dispatch a non-Enter key — should be rejected
+		const strPtr = writeStringStruct("a");
+		const result = fns.todo_dispatch_string(appPtr, enterHandler, 0, strPtr);
+		assert(result, 0, "dispatch_string returns 0 (rejected) for non-Enter key");
+
+		fns.todo_destroy(appPtr);
+	}
+
+	suite(
+		"Todo — Phase 22: Enter key triggers Add (dispatch_string + handle_event)",
+	);
+	{
+		const appPtr = fns.todo_init();
+		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
+		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
+
+		const enterHandler = fns.todo_enter_handler_id(appPtr);
+
+		// Simulate typing via signal
+		fns.todo_set_input(appPtr, writeStringStruct("Enter key todo"));
+
+		// Step 1: dispatch_string with "Enter" → accepted, marks scope dirty
+		const strPtr = writeStringStruct("Enter");
+		const accepted = fns.todo_dispatch_string(appPtr, enterHandler, 0, strPtr);
+		assert(accepted, 1, "Enter key accepted");
+
+		// Step 2: handle_event routes the enter handler to Add logic
+		const handled = fns.todo_handle_event(appPtr, enterHandler, 0);
+		assert(handled, 1, "handle_event returns 1 for enter handler (Add)");
+
+		// Item should be added and input cleared
+		const count = fns.todo_item_count(appPtr);
+		assert(count, 1, "1 item added via Enter key");
+
+		assert(fns.todo_input_is_empty(appPtr), 1, "input cleared after Enter Add");
+
+		fns.todo_destroy(appPtr);
+	}
+
+	suite("Todo — Phase 22: Enter key with empty input is a no-op");
+	{
+		const appPtr = fns.todo_init();
+		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
+		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
+
+		const enterHandler = fns.todo_enter_handler_id(appPtr);
+
+		// Don't set any input text — signal is empty
+		const strPtr = writeStringStruct("Enter");
+		fns.todo_dispatch_string(appPtr, enterHandler, 0, strPtr);
+		fns.todo_handle_event(appPtr, enterHandler, 0);
+
+		const count = fns.todo_item_count(appPtr);
+		assert(count, 0, "no item added when input is empty");
+
+		fns.todo_destroy(appPtr);
+	}
+
+	suite("Todo — Phase 22: Enter key Add with DOM rendering");
+	{
+		const { document, root } = createDOM();
+		const app = createTodoApp(fns, root, document);
+
+		const enterHandler = fns.todo_enter_handler_id(app.appPtr);
+
+		// Simulate typing via signal
+		fns.todo_set_input(app.appPtr, writeStringStruct("DOM enter test"));
+
+		// Dispatch Enter key → accepted → handle_event routes to Add
+		const strPtr = writeStringStruct("Enter");
+		fns.todo_dispatch_string(app.appPtr, enterHandler, 0, strPtr);
+		fns.todo_handle_event(app.appPtr, enterHandler, 0);
+		app.flush();
+
+		// Verify DOM
+		const ul = root.querySelector("ul");
+		const lis = ul ? Array.from(ul.querySelectorAll("li")) : [];
+		assert(lis.length, 1, "1 li rendered after Enter key Add");
+
+		const span = lis[0]?.querySelector("span");
+		assert(span?.textContent, "DOM enter test", "li text matches entered text");
+
+		app.destroy();
+	}
+
+	suite("Todo — Phase 22: Shift key does not trigger Add");
+	{
+		const appPtr = fns.todo_init();
+		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
+		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
+
+		const enterHandler = fns.todo_enter_handler_id(appPtr);
+
+		// Set input and dispatch a non-Enter key
+		fns.todo_set_input(appPtr, writeStringStruct("Should not add"));
+
+		const strPtr = writeStringStruct("Shift");
+		const rejected = fns.todo_dispatch_string(appPtr, enterHandler, 0, strPtr);
+		assert(rejected, 0, "Shift key rejected");
+
+		// Even if we call handle_event, no item should be added because
+		// the scope was not marked dirty by the rejected key
+		const count = fns.todo_item_count(appPtr);
+		assert(count, 0, "no item added for Shift key");
 
 		fns.todo_destroy(appPtr);
 	}

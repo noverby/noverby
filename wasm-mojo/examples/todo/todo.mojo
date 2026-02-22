@@ -1,9 +1,10 @@
 # TodoApp — Self-contained todo list application.
 #
-# Migrated to Phase 20.5 — fully WASM-driven input binding:
+# Migrated to Phase 22 — fully WASM-driven input binding + Enter key:
 #   - `bind_value(input_text)` — two-way value binding (M20.4)
 #   - `oninput_set_string(input_text)` — inline input→signal binding (M20.3)
 #   - `onclick_custom()` — inline custom click handler (M20.5)
+#   - `onkeydown_enter_custom()` — inline Enter key handler (Phase 22)
 #   - `register_view()` — auto-registers handlers + value bindings
 #   - `render_builder()` — auto-populates events + bind_value at render time
 #   - `SignalString` for reactive input text (Phase 19)
@@ -17,12 +18,13 @@
 #   - Constructor-based setup (all init in __init__)
 #   - ctx.use_signal() for automatic scope subscription
 #
-# Phase 20.5 — WASM-Driven Add Flow:
+# Phase 22 — WASM-Driven Add + Enter Key:
 #   - Input value is synced to WASM SignalString via oninput_set_string (every keystroke)
 #   - Input's value attribute is bound to the signal via bind_value (auto-updated on render)
 #   - Add button click dispatches ACTION_CUSTOM → WASM reads signal, adds item, clears signal
+#   - Enter key dispatches ACTION_KEY_ENTER_CUSTOM → runtime checks key == "Enter" → Add
 #   - JS has NO special-casing — uniform event dispatch for all handlers
-#   - Enter key → dispatches Add handler directly (signal already has current text)
+#   - main.js is identical to counter's — zero app-specific JS
 #
 # Architecture:
 #   - TodoApp struct holds all state: items list, input text, signals, handlers
@@ -33,10 +35,11 @@
 #
 # Templates (built via DSL with inline events):
 #   - "todo-app": The app shell with input field + item list container
-#       div > [ input(bind_value + oninput) + button("Add", onclick_custom) + ul > dyn_node[0] ]
+#       div > [ input(bind_value + oninput + onkeydown_enter) + button("Add", onclick_custom) + ul > dyn_node[0] ]
 #       auto dyn_attr[0] = bind_value (value attr)
 #       auto dyn_attr[1] = oninput_set_string handler
-#       auto dyn_attr[2] = onclick_custom handler (Add button)
+#       auto dyn_attr[2] = onkeydown_enter_custom handler (Enter key)
+#       auto dyn_attr[3] = onclick_custom handler (Add button)
 #   - "todo-item": A single list item (unchanged from Phase 17)
 #       li > [ span > dynamic_text[0], button("✓") + button("✕") ]
 #       dynamic_attr[0] = click handler for toggle
@@ -85,13 +88,15 @@
 #                         attr("placeholder", "What needs to be done?"),
 #                         bind_value(self.input_text),
 #                         oninput_set_string(self.input_text),
+#                         onkeydown_enter_custom(),
 #                     ),
 #                     el_button(text("Add"), onclick_custom()),
 #                     el_ul(dyn_node(0)),
 #                 ),
 #                 String("todo-app"),
 #             )
-#             self.add_handler = self.ctx.view_event_handler_id(1)
+#             self.enter_handler = self.ctx.view_event_handler_id(1)
+#             self.add_handler = self.ctx.view_event_handler_id(2)
 #             self.items = KeyedList(self.ctx.register_extra_template(...))
 #
 #         fn handle_event(mut self, handler_id: UInt32) -> Bool:
@@ -138,6 +143,7 @@ from vdom import (
     bind_value,
     oninput_set_string,
     onclick_custom,
+    onkeydown_enter_custom,
 )
 
 
@@ -198,8 +204,9 @@ struct TodoApp(Movable):
     var data: List[TodoItem]
     var next_id: Int32
     var input_text: SignalString  # Phase 19: reactive string signal (no subscription)
-    # Handler ID for the app-level Add button (auto-registered by register_view)
+    # Handler IDs for the app-level actions (auto-registered by register_view)
     var add_handler: UInt32
+    var enter_handler: UInt32  # Phase 22: Enter key on input → same as Add
 
     fn __init__(out self):
         """Initialize the todo app with all reactive state, templates, and handlers.
@@ -208,17 +215,18 @@ struct TodoApp(Movable):
         allocator, scheduler), root scope, list_version signal, the
         app shell and item templates.
 
-        Phase 20.5: Uses register_view() for the app template with inline
-        event/binding helpers.  The Add button handler is auto-registered
-        via onclick_custom() and retrieved via view_event_handler_id().
+        Phase 22: Uses register_view() for the app template with inline
+        event/binding helpers.  The Add button and Enter key handlers are
+        auto-registered and retrieved via view_event_handler_id().
 
         Template "todo-app" (via register_view with auto dyn_attr):
-            div > [ input(bind_value + oninput_set_string),
+            div > [ input(bind_value + oninput_set_string + onkeydown_enter),
                     button("Add", onclick_custom),
                     ul > dyn_node[0] ]
             auto dyn_attr[0] = bind_value (value attr from signal)
             auto dyn_attr[1] = oninput_set_string handler
-            auto dyn_attr[2] = onclick_custom handler (Add button)
+            auto dyn_attr[2] = onkeydown_enter_custom handler (Enter key)
+            auto dyn_attr[3] = onclick_custom handler (Add button)
 
         Template "todo-item" (via register_extra_template):
             li + dyn_attr[2] > [ span > dyn_text[0],
@@ -250,6 +258,7 @@ struct TodoApp(Movable):
                     ),
                     bind_value(self.input_text),
                     oninput_set_string(self.input_text),
+                    onkeydown_enter_custom(),
                 ),
                 el_button(text(String("Add")), onclick_custom()),
                 el_ul(dyn_node(0)),
@@ -257,9 +266,11 @@ struct TodoApp(Movable):
             String("todo-app"),
         )
 
-        # 4. Extract the Add button handler ID (2nd event in tree-walk
-        #    order: oninput_set_string is 1st, onclick_custom is 2nd)
-        self.add_handler = self.ctx.view_event_handler_id(1)
+        # 4. Extract handler IDs from tree-walk order:
+        #    oninput_set_string is 0th, onkeydown_enter_custom is 1st,
+        #    onclick_custom is 2nd.
+        self.enter_handler = self.ctx.view_event_handler_id(1)
+        self.add_handler = self.ctx.view_event_handler_id(2)
 
         # 5. Register the "todo-item" template via KeyedList
         self.items = KeyedList(
@@ -288,6 +299,7 @@ struct TodoApp(Movable):
             other.input_text.copy()
         )  # SignalString is Copyable (not ImplicitlyCopyable)
         self.add_handler = other.add_handler
+        self.enter_handler = other.enter_handler
 
     fn add_item(mut self, text: String):
         """Add a new item and bump the list version signal."""
@@ -373,11 +385,12 @@ struct TodoApp(Movable):
         return frag_idx
 
     fn handle_event(mut self, handler_id: UInt32) -> Bool:
-        """Dispatch a click event by handler ID.
+        """Dispatch an event by handler ID.
 
-        Phase 20.5: The Add handler is now fully WASM-driven — reads
+        Phase 22: Both the Add button (onclick_custom) and Enter key
+        (onkeydown_enter_custom) trigger the same Add logic — reads
         the input text from the SignalString, adds the item, and clears
-        the signal.  JS no longer needs to read the DOM input value.
+        the signal.  JS no longer needs any app-specific wiring.
 
         Uses Phase 17 `get_action()` to look up toggle/remove handlers
         in the KeyedList's handler map.
@@ -385,7 +398,7 @@ struct TodoApp(Movable):
         Returns True if the handler was found and the action executed,
         False otherwise.
         """
-        if handler_id == self.add_handler:
+        if handler_id == self.add_handler or handler_id == self.enter_handler:
             # Phase 20.5: WASM-driven Add — read signal, add item, clear
             var input = self.input_text.peek()
             if len(input) > 0:
@@ -495,7 +508,7 @@ fn todo_app_flush(
 ) -> Int32:
     """Flush pending updates after a list mutation or input clear.
 
-    Phase 20.5: Re-renders the app shell VNode (to update bind_value
+    Phase 22: Re-renders the app shell VNode (to update bind_value
     attribute when the signal changes, e.g. after Add clears input)
     and flushes the item list via KeyedList.
 
