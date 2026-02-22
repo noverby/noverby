@@ -8,7 +8,7 @@
     bluetooth-quick-connect
     light-style
     #current-screen-only-for-alternate-tab
-    system76-scheduler
+    #system76-scheduler
     pkgs.breezy-desktop
   ];
 in {
