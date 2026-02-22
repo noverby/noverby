@@ -10,5 +10,12 @@ from .lifecycle import (
     diff_no_finalize,
     create_no_finalize,
 )
-from .context import ComponentContext, EventBinding, RenderBuilder
+from .context import (
+    ComponentContext,
+    EventBinding,
+    AutoBinding,
+    AUTO_BIND_EVENT,
+    AUTO_BIND_VALUE,
+    RenderBuilder,
+)
 from .keyed_list import KeyedList, ItemBuilder, HandlerAction

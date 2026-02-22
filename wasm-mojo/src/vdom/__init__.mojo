@@ -85,6 +85,7 @@ from .dsl import (
     NODE_STATIC_ATTR,
     NODE_DYN_ATTR,
     NODE_EVENT,
+    NODE_BIND_VALUE,
     # Auto-numbering sentinel
     DYN_TEXT_AUTO,
     # Leaf constructors
@@ -99,6 +100,12 @@ from .dsl import (
     onclick_set,
     onclick_toggle,
     on_event,
+    # Inline string event handler constructors (Phase 20 — M20.3)
+    oninput_set_string,
+    onchange_set_string,
+    # Value binding constructors (Phase 20 — M20.4)
+    bind_value,
+    bind_attr,
     # Conditional helpers
     class_if,
     class_when,

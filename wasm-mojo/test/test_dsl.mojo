@@ -496,6 +496,76 @@ fn test_dsl_multi_root_via_wasm(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(result, 1, "multi-root template test passed")
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 20 — M20.3: oninput_set_string / onchange_set_string
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+fn test_dsl_oninput_set_string_node(w: UnsafePointer[WasmInstance]) raises:
+    """Oninput_set_string creates NODE_EVENT with correct fields."""
+    var result = Int(
+        w[].call_i32("dsl_test_oninput_set_string_node", no_args())
+    )
+    assert_equal(result, 1, "oninput_set_string_node passed")
+
+
+fn test_dsl_onchange_set_string_node(w: UnsafePointer[WasmInstance]) raises:
+    """Onchange_set_string creates NODE_EVENT with correct fields."""
+    var result = Int(
+        w[].call_i32("dsl_test_onchange_set_string_node", no_args())
+    )
+    assert_equal(result, 1, "onchange_set_string_node passed")
+
+
+fn test_dsl_oninput_in_element(w: UnsafePointer[WasmInstance]) raises:
+    """Oninput_set_string inside an element counts as dynamic attr."""
+    var result = Int(w[].call_i32("dsl_test_oninput_in_element", no_args()))
+    assert_equal(result, 1, "oninput_in_element passed")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 20 — M20.4: bind_value / bind_attr
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+fn test_dsl_bind_value_node(w: UnsafePointer[WasmInstance]) raises:
+    """Bind_value creates NODE_BIND_VALUE with attr_name='value'."""
+    var result = Int(w[].call_i32("dsl_test_bind_value_node", no_args()))
+    assert_equal(result, 1, "bind_value_node passed")
+
+
+fn test_dsl_bind_attr_node(w: UnsafePointer[WasmInstance]) raises:
+    """Bind_attr creates NODE_BIND_VALUE with custom attr name."""
+    var result = Int(w[].call_i32("dsl_test_bind_attr_node", no_args()))
+    assert_equal(result, 1, "bind_attr_node passed")
+
+
+fn test_dsl_bind_value_in_element(w: UnsafePointer[WasmInstance]) raises:
+    """Bind_value inside an element counts as dynamic attr."""
+    var result = Int(w[].call_i32("dsl_test_bind_value_in_element", no_args()))
+    assert_equal(result, 1, "bind_value_in_element passed")
+
+
+fn test_dsl_two_way_binding_element(w: UnsafePointer[WasmInstance]) raises:
+    """Bind_value + oninput_set_string together produce 2 dynamic attrs."""
+    var result = Int(
+        w[].call_i32("dsl_test_two_way_binding_element", no_args())
+    )
+    assert_equal(result, 1, "two_way_binding_element passed")
+
+
+fn test_dsl_bind_value_to_template(w: UnsafePointer[WasmInstance]) raises:
+    """Bind_value converts to TATTR_DYNAMIC in template."""
+    var result = Int(w[].call_i32("dsl_test_bind_value_to_template", no_args()))
+    assert_equal(result, 1, "bind_value_to_template passed")
+
+
+fn test_dsl_two_way_to_template(w: UnsafePointer[WasmInstance]) raises:
+    """Bind_value + oninput_set_string converts to 2 TATTR_DYNAMICs."""
+    var result = Int(w[].call_i32("dsl_test_two_way_to_template", no_args()))
+    assert_equal(result, 1, "two_way_to_template passed")
+
+
 fn main() raises:
     from wasm_harness import get_instance
 
@@ -534,4 +604,15 @@ fn main() raises:
     test_dsl_template_equivalence_via_wasm(w)
     test_dsl_counter_template_via_wasm(w)
     test_dsl_multi_root_via_wasm(w)
-    print("dsl: 34/34 passed")
+    # Phase 20 — M20.3: oninput_set_string / onchange_set_string
+    test_dsl_oninput_set_string_node(w)
+    test_dsl_onchange_set_string_node(w)
+    test_dsl_oninput_in_element(w)
+    # Phase 20 — M20.4: bind_value / bind_attr
+    test_dsl_bind_value_node(w)
+    test_dsl_bind_attr_node(w)
+    test_dsl_bind_value_in_element(w)
+    test_dsl_two_way_binding_element(w)
+    test_dsl_bind_value_to_template(w)
+    test_dsl_two_way_to_template(w)
+    print("dsl: 43/43 passed")

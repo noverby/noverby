@@ -49,6 +49,17 @@ from vdom.dsl_tests import (
     test_all_tag_helpers as _dsl_test_all_tag_helpers,
     test_count_utilities as _dsl_test_count_utilities,
     test_template_equivalence as _dsl_test_template_equivalence,
+    # Phase 20 — M20.3: oninput_set_string / onchange_set_string tests
+    test_oninput_set_string_node as _dsl_test_oninput_set_string_node,
+    test_onchange_set_string_node as _dsl_test_onchange_set_string_node,
+    test_oninput_in_element as _dsl_test_oninput_in_element,
+    # Phase 20 — M20.4: bind_value / bind_attr tests
+    test_bind_value_node as _dsl_test_bind_value_node,
+    test_bind_attr_node as _dsl_test_bind_attr_node,
+    test_bind_value_in_element as _dsl_test_bind_value_in_element,
+    test_two_way_binding_element as _dsl_test_two_way_binding_element,
+    test_bind_value_to_template as _dsl_test_bind_value_to_template,
+    test_two_way_to_template as _dsl_test_two_way_to_template,
 )
 from scheduler import Scheduler
 from component import AppShell, app_shell_create
@@ -3276,6 +3287,57 @@ fn dsl_test_count_utilities() -> Int32:
 @export
 fn dsl_test_template_equivalence() -> Int32:
     return _dsl_test_template_equivalence()
+
+
+# ── Phase 20 — M20.3: oninput_set_string / onchange_set_string ───────────────
+
+
+@export
+fn dsl_test_oninput_set_string_node() -> Int32:
+    return _dsl_test_oninput_set_string_node()
+
+
+@export
+fn dsl_test_onchange_set_string_node() -> Int32:
+    return _dsl_test_onchange_set_string_node()
+
+
+@export
+fn dsl_test_oninput_in_element() -> Int32:
+    return _dsl_test_oninput_in_element()
+
+
+# ── Phase 20 — M20.4: bind_value / bind_attr ─────────────────────────────────
+
+
+@export
+fn dsl_test_bind_value_node() -> Int32:
+    return _dsl_test_bind_value_node()
+
+
+@export
+fn dsl_test_bind_attr_node() -> Int32:
+    return _dsl_test_bind_attr_node()
+
+
+@export
+fn dsl_test_bind_value_in_element() -> Int32:
+    return _dsl_test_bind_value_in_element()
+
+
+@export
+fn dsl_test_two_way_binding_element() -> Int32:
+    return _dsl_test_two_way_binding_element()
+
+
+@export
+fn dsl_test_bind_value_to_template() -> Int32:
+    return _dsl_test_bind_value_to_template()
+
+
+@export
+fn dsl_test_two_way_to_template() -> Int32:
+    return _dsl_test_two_way_to_template()
 
 
 # ══════════════════════════════════════════════════════════════════════════════

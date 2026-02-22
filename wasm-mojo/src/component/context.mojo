@@ -71,6 +71,7 @@ from vdom import (
     NODE_ELEMENT,
     NODE_DYN_TEXT,
     NODE_DYN_ATTR,
+    NODE_BIND_VALUE,
     DYN_TEXT_AUTO,
     VNode,
     to_template,
@@ -109,17 +110,123 @@ struct EventBinding(Copyable, Movable):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# AutoBinding — Tagged union for auto-populated dynamic attributes (M20.4)
+# ══════════════════════════════════════════════════════════════════════════════
+
+alias AUTO_BIND_EVENT: UInt8 = 0
+alias AUTO_BIND_VALUE: UInt8 = 1
+
+
+struct AutoBinding(Copyable, Movable):
+    """A single auto-populated dynamic attribute for RenderBuilder.
+
+    Tagged union with two variants:
+
+    - **EVENT** (`AUTO_BIND_EVENT`): An event handler attribute.
+      Uses `event_name` and `handler_id`.
+
+    - **VALUE** (`AUTO_BIND_VALUE`): A value binding attribute.
+      Uses `attr_name`, `string_key`, and `version_key`.
+      At render time, `build()` reads the SignalString and emits
+      a dynamic text attribute.
+
+    Auto-bindings are stored in tree-walk order (matching dyn_attr
+    slot indices) so `build()` can emit them sequentially.
+    """
+
+    var kind: UInt8
+    # Event fields
+    var event_name: String
+    var handler_id: UInt32
+    # Value binding fields
+    var attr_name: String
+    var string_key: UInt32
+    var version_key: UInt32
+
+    @staticmethod
+    fn event(event_name: String, handler_id: UInt32) -> Self:
+        """Create an event auto-binding."""
+        return Self(
+            kind=AUTO_BIND_EVENT,
+            event_name=event_name,
+            handler_id=handler_id,
+            attr_name=String(""),
+            string_key=0,
+            version_key=0,
+        )
+
+    @staticmethod
+    fn value(
+        attr_name: String, string_key: UInt32, version_key: UInt32
+    ) -> Self:
+        """Create a value binding auto-binding."""
+        return Self(
+            kind=AUTO_BIND_VALUE,
+            event_name=String(""),
+            handler_id=0,
+            attr_name=attr_name,
+            string_key=string_key,
+            version_key=version_key,
+        )
+
+    fn __init__(
+        out self,
+        kind: UInt8,
+        event_name: String,
+        handler_id: UInt32,
+        attr_name: String,
+        string_key: UInt32,
+        version_key: UInt32,
+    ):
+        self.kind = kind
+        self.event_name = event_name
+        self.handler_id = handler_id
+        self.attr_name = attr_name
+        self.string_key = string_key
+        self.version_key = version_key
+
+    fn __copyinit__(out self, other: Self):
+        self.kind = other.kind
+        self.event_name = other.event_name
+        self.handler_id = other.handler_id
+        self.attr_name = other.attr_name
+        self.string_key = other.string_key
+        self.version_key = other.version_key
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.kind = other.kind
+        self.event_name = other.event_name^
+        self.handler_id = other.handler_id
+        self.attr_name = other.attr_name^
+        self.string_key = other.string_key
+        self.version_key = other.version_key
+
+    fn is_event(self) -> Bool:
+        """Check whether this is an event binding."""
+        return self.kind == AUTO_BIND_EVENT
+
+    fn is_value(self) -> Bool:
+        """Check whether this is a value binding."""
+        return self.kind == AUTO_BIND_VALUE
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # RenderBuilder — VNodeBuilder wrapper that auto-adds registered events
 # ══════════════════════════════════════════════════════════════════════════════
 
 
 struct RenderBuilder(Movable):
-    """Ergonomic VNode builder that auto-populates event handler attributes.
+    """Ergonomic VNode builder that auto-populates event handler attributes
+    and value binding attributes.
 
     Created by `ComponentContext.render_builder()`.  The component author
     only needs to call `add_dyn_text()` for each dynamic text slot — the
-    event handlers registered via `register_view()` are added automatically
-    when `build()` is called.
+    event handlers and value bindings registered via `register_view()` are
+    added automatically when `build()` is called.
+
+    Phase 20 (M20.4): Value bindings from `bind_value()` / `bind_attr()`
+    are auto-populated by reading the SignalString's current value at
+    render time and emitting a dynamic text attribute.
 
     Usage (in a component's render method):
 
@@ -140,18 +247,37 @@ struct RenderBuilder(Movable):
 
     var _vb: VNodeBuilder
     var _events: List[EventBinding]
+    var _auto_bindings: List[AutoBinding]
+    var _runtime: UnsafePointer[Runtime]
 
     fn __init__(
         out self,
         var vb: VNodeBuilder,
         var events: List[EventBinding],
     ):
+        """Legacy constructor for backward compatibility (no auto-bindings)."""
         self._vb = vb^
         self._events = events^
+        self._auto_bindings = List[AutoBinding]()
+        self._runtime = UnsafePointer[Runtime]()
+
+    fn __init__(
+        out self,
+        var vb: VNodeBuilder,
+        var auto_bindings: List[AutoBinding],
+        runtime: UnsafePointer[Runtime],
+    ):
+        """Construct with auto-bindings (events + value bindings)."""
+        self._vb = vb^
+        self._events = List[EventBinding]()
+        self._auto_bindings = auto_bindings^
+        self._runtime = runtime
 
     fn __moveinit__(out self, deinit other: Self):
         self._vb = other._vb^
         self._events = other._events^
+        self._auto_bindings = other._auto_bindings^
+        self._runtime = other._runtime
 
     # ── Dynamic text ─────────────────────────────────────────────────
 
@@ -234,20 +360,43 @@ struct RenderBuilder(Movable):
     # ── Build ────────────────────────────────────────────────────────
 
     fn build(mut self) -> UInt32:
-        """Finalize the VNode by auto-adding all registered event handlers.
+        """Finalize the VNode by auto-adding all registered bindings.
 
-        Adds dynamic event attributes for each EventBinding registered
-        via `register_view()`, then returns the VNode index.
+        Adds dynamic attributes for each AutoBinding (events + value
+        bindings) registered via `register_view()` in tree-walk order,
+        then returns the VNode index.
+
+        For value bindings, reads the SignalString's current value
+        from the Runtime and emits a dynamic text attribute.
+
+        Falls back to legacy EventBinding list if no auto-bindings
+        are present (backward compatibility).
 
         Returns:
             The VNode's index in the VNodeStore.
         """
-        # Auto-add all registered event handler attributes
-        for i in range(len(self._events)):
-            self._vb.add_dyn_event(
-                self._events[i].event_name,
-                self._events[i].handler_id,
-            )
+        if len(self._auto_bindings) > 0:
+            # Phase 20 (M20.4): unified auto-binding path
+            for i in range(len(self._auto_bindings)):
+                if self._auto_bindings[i].is_event():
+                    self._vb.add_dyn_event(
+                        self._auto_bindings[i].event_name,
+                        self._auto_bindings[i].handler_id,
+                    )
+                elif self._auto_bindings[i].is_value():
+                    var value = self._runtime[0].peek_signal_string(
+                        self._auto_bindings[i].string_key
+                    )
+                    self._vb.add_dyn_text_attr(
+                        self._auto_bindings[i].attr_name, value
+                    )
+        else:
+            # Legacy path: event-only auto-population
+            for i in range(len(self._events)):
+                self._vb.add_dyn_event(
+                    self._events[i].event_name,
+                    self._events[i].handler_id,
+                )
         return self._vb.index()
 
 
@@ -293,6 +442,7 @@ struct ComponentContext(Movable):
     var current_vnode: Int
     var _setup_done: Bool
     var _view_events: List[EventBinding]
+    var _auto_bindings: List[AutoBinding]
 
     # ── Construction ─────────────────────────────────────────────────
 
@@ -304,6 +454,7 @@ struct ComponentContext(Movable):
         self.current_vnode = -1
         self._setup_done = False
         self._view_events = List[EventBinding]()
+        self._auto_bindings = List[AutoBinding]()
 
     fn __moveinit__(out self, deinit other: Self):
         self.shell = other.shell^
@@ -312,6 +463,7 @@ struct ComponentContext(Movable):
         self.current_vnode = other.current_vnode
         self._setup_done = other._setup_done
         self._view_events = other._view_events^
+        self._auto_bindings = other._auto_bindings^
 
     @staticmethod
     fn create() -> Self:
@@ -645,12 +797,15 @@ struct ComponentContext(Movable):
                   and auto-numbered dyn_text() nodes).
             name: The template name (for deduplication).
         """
-        # 1. Process tree: auto-number dyn_text, replace NODE_EVENT with
-        #    NODE_DYN_ATTR(auto_index), collect event info.
+        # 1. Process tree: auto-number dyn_text, replace NODE_EVENT and
+        #    NODE_BIND_VALUE with NODE_DYN_ATTR(auto_index), collect info.
         var events = List[_EventInfo]()
+        var value_bindings = List[_ValueBindingInfo]()
         var attr_idx = UInt32(0)
         var text_idx = UInt32(0)
-        var processed = _process_view_tree(view, events, attr_idx, text_idx)
+        var processed = _process_view_tree(
+            view, events, value_bindings, attr_idx, text_idx
+        )
 
         # 2. Build and register template from processed tree
         var template = to_template(processed, name)
@@ -660,19 +815,54 @@ struct ComponentContext(Movable):
 
         # 3. Register handlers and store bindings
         self._view_events = List[EventBinding]()
-        for i in range(len(events)):
-            var handler_id = self.shell.runtime[0].register_handler(
-                HandlerEntry(
-                    self.scope_id,
-                    events[i].action,
-                    events[i].signal_key,
-                    events[i].operand,
-                    events[i].event_name,
+        self._auto_bindings = List[AutoBinding]()
+
+        # Build combined auto-binding list from events + value bindings
+        # in tree-walk order.  We track indices to interleave correctly.
+        var ev_idx = 0
+        var vb_idx = 0
+        var total_auto = len(events) + len(value_bindings)
+        for _ in range(total_auto):
+            # Determine which comes next by comparing original attr indices.
+            # Events and value bindings were collected in tree-walk order,
+            # so we interleave by checking which has the lower index.
+            var use_event: Bool
+            if ev_idx < len(events) and vb_idx < len(value_bindings):
+                # Both available — compare stored attr_idx to determine order.
+                use_event = (
+                    events[ev_idx].attr_idx <= value_bindings[vb_idx].attr_idx
                 )
-            )
-            self._view_events.append(
-                EventBinding(events[i].event_name, handler_id)
-            )
+            elif ev_idx < len(events):
+                use_event = True
+            else:
+                use_event = False
+
+            if use_event:
+                var handler_id = self.shell.runtime[0].register_handler(
+                    HandlerEntry(
+                        self.scope_id,
+                        events[ev_idx].action,
+                        events[ev_idx].signal_key,
+                        events[ev_idx].operand,
+                        events[ev_idx].event_name,
+                    )
+                )
+                self._view_events.append(
+                    EventBinding(events[ev_idx].event_name, handler_id)
+                )
+                self._auto_bindings.append(
+                    AutoBinding.event(events[ev_idx].event_name, handler_id)
+                )
+                ev_idx += 1
+            else:
+                self._auto_bindings.append(
+                    AutoBinding.value(
+                        value_bindings[vb_idx].attr_name,
+                        value_bindings[vb_idx].string_key,
+                        value_bindings[vb_idx].version_key,
+                    )
+                )
+                vb_idx += 1
 
     # ── Flush convenience ────────────────────────────────────────────
 
@@ -874,11 +1064,16 @@ struct ComponentContext(Movable):
         return VNodeBuilder(self.template_id, self.shell.store)
 
     fn render_builder(mut self) -> RenderBuilder:
-        """Create a RenderBuilder that auto-adds registered event handlers.
+        """Create a RenderBuilder that auto-adds registered event handlers
+        and value bindings.
 
         Use this with `register_view()` for the ergonomic rendering API.
         Call `add_dyn_text()` for each dynamic text slot, then `build()`
-        to finalize (events are added automatically).
+        to finalize (events and value bindings are added automatically).
+
+        Phase 20 (M20.4): If auto-bindings are present (from `bind_value()`
+        or `bind_attr()` nodes in the view), uses the unified auto-binding
+        path.  Otherwise falls back to legacy event-only path.
 
         Usage:
             var vb = ctx.render_builder()
@@ -886,10 +1081,15 @@ struct ComponentContext(Movable):
             var idx = vb.build()
 
         Returns:
-            A RenderBuilder wrapping a VNodeBuilder with auto-event support.
+            A RenderBuilder wrapping a VNodeBuilder with auto-binding support.
         """
         var vb = VNodeBuilder(self.template_id, self.shell.store)
-        return RenderBuilder(vb^, self._view_events.copy())
+        if len(self._auto_bindings) > 0:
+            return RenderBuilder(
+                vb^, self._auto_bindings.copy(), self.shell.runtime
+            )
+        else:
+            return RenderBuilder(vb^, self._view_events.copy())
 
     fn vnode_builder_keyed(self, key: String) -> VNodeBuilder:
         """Create a keyed VNodeBuilder for the context's template.
@@ -1108,6 +1308,13 @@ struct ComponentContext(Movable):
         """
         return self._view_events.copy()
 
+    fn auto_bindings(self) -> List[AutoBinding]:
+        """Return a copy of the registered auto-bindings (events + values).
+
+        Useful for testing and introspection.  Phase 20 (M20.4).
+        """
+        return self._auto_bindings.copy()
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Private helpers — Event collection and tree reindexing
@@ -1121,6 +1328,7 @@ struct _EventInfo(Copyable, Movable):
     var action: UInt8
     var signal_key: UInt32
     var operand: Int32
+    var attr_idx: UInt32  # The dyn_attr slot index assigned in _process_view_tree
 
     fn __init__(
         out self,
@@ -1128,40 +1336,83 @@ struct _EventInfo(Copyable, Movable):
         action: UInt8,
         signal_key: UInt32,
         operand: Int32,
+        attr_idx: UInt32,
     ):
         self.event_name = event_name
         self.action = action
         self.signal_key = signal_key
         self.operand = operand
+        self.attr_idx = attr_idx
 
     fn __copyinit__(out self, other: Self):
         self.event_name = other.event_name
         self.action = other.action
         self.signal_key = other.signal_key
         self.operand = other.operand
+        self.attr_idx = other.attr_idx
 
     fn __moveinit__(out self, deinit other: Self):
         self.event_name = other.event_name^
         self.action = other.action
         self.signal_key = other.signal_key
         self.operand = other.operand
+        self.attr_idx = other.attr_idx
+
+
+struct _ValueBindingInfo(Copyable, Movable):
+    """Internal: collected value binding info from a NODE_BIND_VALUE node."""
+
+    var attr_name: String
+    var string_key: UInt32
+    var version_key: UInt32
+    var attr_idx: UInt32  # The dyn_attr slot index assigned in _process_view_tree
+
+    fn __init__(
+        out self,
+        attr_name: String,
+        string_key: UInt32,
+        version_key: UInt32,
+        attr_idx: UInt32,
+    ):
+        self.attr_name = attr_name
+        self.string_key = string_key
+        self.version_key = version_key
+        self.attr_idx = attr_idx
+
+    fn __copyinit__(out self, other: Self):
+        self.attr_name = other.attr_name
+        self.string_key = other.string_key
+        self.version_key = other.version_key
+        self.attr_idx = other.attr_idx
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.attr_name = other.attr_name^
+        self.string_key = other.string_key
+        self.version_key = other.version_key
+        self.attr_idx = other.attr_idx
 
 
 fn _process_view_tree(
     node: Node,
     mut events: List[_EventInfo],
+    mut value_bindings: List[_ValueBindingInfo],
     mut attr_idx: UInt32,
     mut text_idx: UInt32,
 ) -> Node:
-    """Recursively clone a Node tree, processing events and auto-numbered text.
+    """Recursively clone a Node tree, processing events, value bindings,
+    and auto-numbered text.
 
-    Performs two transformations in a single tree walk:
+    Performs three transformations in a single tree walk:
 
     1. **NODE_EVENT → NODE_DYN_ATTR**: Each NODE_EVENT is collected into
        `events` and replaced with a NODE_DYN_ATTR with an auto-assigned
        dynamic attribute index.
 
-    2. **Auto-numbered dyn_text**: Any NODE_DYN_TEXT node with
+    2. **NODE_BIND_VALUE → NODE_DYN_ATTR**: Each NODE_BIND_VALUE is
+       collected into `value_bindings` and replaced with a NODE_DYN_ATTR
+       with an auto-assigned dynamic attribute index.  (Phase 20, M20.4)
+
+    3. **Auto-numbered dyn_text**: Any NODE_DYN_TEXT node with
        `dynamic_index == DYN_TEXT_AUTO` (the sentinel from `dyn_text()`)
        is replaced with a properly numbered NODE_DYN_TEXT node using the
        next sequential text index.
@@ -1172,25 +1423,42 @@ fn _process_view_tree(
     Args:
         node: The current node to process.
         events: Accumulator for collected event info (mutated in place).
+        value_bindings: Accumulator for collected value binding info (mutated).
         attr_idx: Running counter for dynamic attr indices (mutated).
         text_idx: Running counter for auto-numbered dyn_text indices (mutated).
 
     Returns:
-        A new Node tree with events replaced and dyn_text auto-numbered.
+        A new Node tree with events/bindings replaced and dyn_text auto-numbered.
     """
     if node.kind == NODE_EVENT:
         # Collect the event info
+        var idx = attr_idx
+        attr_idx += 1
         events.append(
             _EventInfo(
                 event_name=node.text,
                 action=node.tag,
                 signal_key=node.dynamic_index,
                 operand=node.operand,
+                attr_idx=idx,
             )
         )
         # Replace with a dyn_attr at the current index
+        return Node.dynamic_attr_node(idx)
+
+    elif node.kind == NODE_BIND_VALUE:
+        # Collect the value binding info (Phase 20 — M20.4)
         var idx = attr_idx
         attr_idx += 1
+        value_bindings.append(
+            _ValueBindingInfo(
+                attr_name=node.text,
+                string_key=node.dynamic_index,
+                version_key=UInt32(node.operand),
+                attr_idx=idx,
+            )
+        )
+        # Replace with a dyn_attr at the current index
         return Node.dynamic_attr_node(idx)
 
     elif node.kind == NODE_DYN_TEXT:
@@ -1211,7 +1479,9 @@ fn _process_view_tree(
         var new_items = List[Node]()
         for i in range(len(node.items)):
             new_items.append(
-                _process_view_tree(node.items[i], events, attr_idx, text_idx)
+                _process_view_tree(
+                    node.items[i], events, value_bindings, attr_idx, text_idx
+                )
             )
         return Node(
             kind=NODE_ELEMENT,
