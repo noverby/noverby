@@ -5,7 +5,6 @@
 #
 # Expected error: NW0xx contract violation on `systems` field
 # Expected hint: "did you mean x86_64-linux?"
-
 let { WorkspaceConfig, .. } = import "../../contracts/workspace.ncl" in
 
 {

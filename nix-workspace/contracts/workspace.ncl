@@ -7,7 +7,6 @@
 # a variant of WorkspaceConfig that uses extended sub-contracts
 # (e.g. PackageConfig with plugin-specific fields). This avoids
 # duplicating the workspace structure in generated wrapper code.
-
 let { System, Name, .. } = import "./common.ncl" in
 let { PackageConfig, .. } = import "./package.ncl" in
 let { ShellConfig, .. } = import "./shell.ncl" in
@@ -64,70 +63,71 @@ let { ModuleConfig, HomeConfig, .. } = import "./module.ncl" in
   #   let ExtWorkspaceConfig = mkWorkspaceConfig ExtPkg ExtShell in
   #   merged | ExtWorkspaceConfig
   #
-  mkWorkspaceConfig = fun pkg_contract shell_contract => {
-    name
-      | Name
-      | doc "Workspace name (used for namespacing in subworkspaces)",
+  mkWorkspaceConfig = fun pkg_contract shell_contract =>
+    {
+      name
+        | Name
+        | doc "Workspace name (used for namespacing in subworkspaces)",
 
-    description
-      | String
-      | doc "Human-readable description of the workspace"
-      | optional,
+      description
+        | String
+        | doc "Human-readable description of the workspace"
+        | optional,
 
-    systems
-      | Array System
-      | doc "Target systems for system-multiplexed outputs"
-      | default
-      = ["x86_64-linux", "aarch64-linux"],
+      systems
+        | Array System
+        | doc "Target systems for system-multiplexed outputs"
+        | default
+        = ["x86_64-linux", "aarch64-linux"],
 
-    nixpkgs
-      | NixpkgsConfig
-      | doc "Nixpkgs configuration"
-      | default
-      = {},
+      nixpkgs
+        | NixpkgsConfig
+        | doc "Nixpkgs configuration"
+        | default
+        = {},
 
-    packages
-      | { _ : pkg_contract }
-      | doc "Package definitions (auto-discovered from packages/ or declared here)"
-      | default
-      = {},
+      packages
+        | { _ : pkg_contract }
+        | doc "Package definitions (auto-discovered from packages/ or declared here)"
+        | default
+        = {},
 
-    shells
-      | { _ : shell_contract }
-      | doc "Development shell definitions (auto-discovered from shells/ or declared here)"
-      | default
-      = {},
+      shells
+        | { _ : shell_contract }
+        | doc "Development shell definitions (auto-discovered from shells/ or declared here)"
+        | default
+        = {},
 
-    machines
-      | { _ : MachineConfig }
-      | doc m%"
+      machines
+        | { _ : MachineConfig }
+        | doc m%"
         NixOS machine configurations (auto-discovered from machines/ or declared here).
         Each entry produces a nixosConfigurations.<name> flake output.
       "%
-      | default
-      = {},
+        | default
+        = {},
 
-    modules
-      | { _ : ModuleConfig }
-      | doc m%"
+      modules
+        | { _ : ModuleConfig }
+        | doc m%"
         NixOS module definitions (auto-discovered from modules/ or declared here).
         Each entry produces a nixosModules.<name> flake output.
       "%
-      | default
-      = {},
+        | default
+        = {},
 
-    home
-      | { _ : HomeConfig }
-      | doc m%"
+      home
+        | { _ : HomeConfig }
+        | doc m%"
         Home-manager module definitions (auto-discovered from home/ or declared here).
         Each entry produces a homeModules.<name> flake output.
       "%
-      | default
-      = {},
+        | default
+        = {},
 
-    dependencies
-      | { _ : DependencyRef }
-      | doc m%"
+      dependencies
+        | { _ : DependencyRef }
+        | doc m%"
         Cross-subworkspace dependency declarations.
         Keys are local aliases; values are sibling subworkspace names.
         Only meaningful for subworkspaces — ignored for the root workspace.
@@ -140,21 +140,21 @@ let { ModuleConfig, HomeConfig, .. } = import "./module.ncl" in
         This declares that this subworkspace depends on a sibling
         subworkspace named "mojo-wasm", referenced locally as "wasm".
       "%
-      | default
-      = {},
+        | default
+        = {},
 
-    conventions
-      | { _ : ConventionConfig }
-      | doc m%"
+      conventions
+        | { _ : ConventionConfig }
+        | doc m%"
         Override directory conventions for auto-discovery.
         Keys are convention names (e.g. "packages", "shells", "machines", "modules", "home").
       "%
-      | default
-      = {},
+        | default
+        = {},
 
-    plugins
-      | Array String
-      | doc m%"
+      plugins
+        | Array String
+        | doc m%"
         Plugins to load for this workspace.
         Each entry is a plugin name (e.g. "nix-workspace-rust", "nix-workspace-go").
         Plugins can add contracts, conventions, builders, and extend existing contracts.
@@ -166,9 +166,9 @@ let { ModuleConfig, HomeConfig, .. } = import "./module.ncl" in
         Example:
           plugins = ["nix-workspace-rust", "nix-workspace-go"]
       "%
-      | default
-      = [],
-  },
+        | default
+        = [],
+    },
 
   # The default WorkspaceConfig contract — uses base PackageConfig and ShellConfig.
   # This is what workspace.ncl files are validated against when no plugins are loaded.

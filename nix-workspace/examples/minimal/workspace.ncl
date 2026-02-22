@@ -3,7 +3,6 @@
 # This workspace defines a single package and a default dev shell.
 # It demonstrates the basic workspace.ncl structure that nix-workspace
 # evaluates and validates against the WorkspaceConfig contract.
-
 {
   name = "minimal-example",
   description = "A minimal nix-workspace example",

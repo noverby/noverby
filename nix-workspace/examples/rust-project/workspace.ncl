@@ -15,7 +15,6 @@
 #
 # The crates/ directory is registered by the nix-workspace-rust plugin.
 # Items discovered there are automatically built with build-system = "rust".
-
 {
   name = "rust-project-example",
   description = "A Rust project demonstrating nix-workspace plugin support",

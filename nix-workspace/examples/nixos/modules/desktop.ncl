@@ -8,7 +8,6 @@
 #   1. Validates this config against the ModuleConfig contract
 #   2. Looks for a matching modules/desktop.nix for the implementation
 #   3. Produces a nixosModules.desktop flake output
-
 {
   description = "Desktop environment with basic GUI applications",
 

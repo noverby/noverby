@@ -8,7 +8,6 @@
 #   packages/default.ncl → packages.<system>.lib-a
 #
 # This subworkspace has no dependencies on other subworkspaces.
-
 {
   name = "lib-a",
   description = "A shared library subworkspace",

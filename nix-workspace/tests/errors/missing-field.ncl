@@ -5,7 +5,6 @@
 #
 # Run: nickel export tests/errors/missing-field.ncl
 # Expected: contract error about missing field `name`
-
 let { WorkspaceConfig, .. } = import "../../contracts/workspace.ncl" in
 
 {

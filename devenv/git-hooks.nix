@@ -12,6 +12,13 @@
       statix.enable = true;
       taplo.enable = true;
       typos.enable = true;
+      nickel-format = {
+        enable = true;
+        name = "nickel-format";
+        entry = "${pkgs.pkgsUnstable.nickel}/bin/nickel format";
+        files = "\\.ncl$";
+        pass_filenames = true;
+      };
       mojo-format = {
         enable = true;
         name = "mojo-format";

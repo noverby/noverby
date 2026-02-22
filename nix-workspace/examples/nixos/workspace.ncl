@@ -7,7 +7,6 @@
 # Usage:
 #   nix build .#nixosConfigurations.my-machine.config.system.build.toplevel
 #   nix develop
-
 {
   name = "nixos-example",
   description = "Example NixOS machine configuration using nix-workspace",

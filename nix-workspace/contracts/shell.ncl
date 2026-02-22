@@ -1,6 +1,5 @@
 # Shell contracts for nix-workspace
 # Defines the ShellConfig contract for development shell definitions.
-
 let { System, .. } = import "./common.ncl" in
 
 {

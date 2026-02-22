@@ -16,7 +16,6 @@
 # independently if it had its own flake.nix. When used as a
 # subworkspace, its outputs are merged into the parent's flake outputs
 # with automatic namespacing.
-
 {
   name = "external-tool",
   description = "An external tool included as a git submodule",
