@@ -1,12 +1,13 @@
 # TodoApp — Self-contained todo list application.
 #
-# Migrated to Dioxus-style ergonomics with Phase 16 abstractions:
+# Migrated to Phase 17 Dioxus-style ergonomics:
+#   - `begin_item()` replaces manual `create_scope()` + `item_builder()`
+#   - `add_custom_event()` replaces manual `register_handler()` + `add_dyn_event()` + `handler_map.append()`
+#   - `get_action()` replaces manual handler_map lookup loop
 #   - Multi-arg el_* overloads (no List[Node]() wrappers)
-#   - KeyedList abstraction (bundles FragmentSlot + scope IDs + template ID)
+#   - KeyedList abstraction (bundles FragmentSlot + scope IDs + template ID + handler map)
 #   - Constructor-based setup (all init in __init__)
 #   - ctx.use_signal() for automatic scope subscription
-#   - ctx.register_template() + KeyedList for multi-template apps
-#   - ctx.register_handler() for event handler registration
 #
 # Phase 8 — Demonstrates:
 #   - Dynamic keyed lists (add, remove, toggle items)
@@ -49,7 +50,7 @@
 #         }
 #     }
 #
-# Mojo equivalent (with Phase 16 abstractions):
+# Mojo equivalent (with Phase 17 abstractions):
 #
 #     struct TodoApp:
 #         var ctx: ComponentContext
@@ -77,6 +78,24 @@
 #                 ),
 #                 String("todo-item"),
 #             ))
+#
+#         fn build_item_vnode(mut self, item: TodoItem) -> UInt32:
+#             var ib = self.items.begin_item(String(item.id), self.ctx)
+#             ib.add_dyn_text(display_text)
+#             ib.add_custom_event(String("click"), TODO_ACTION_TOGGLE, item.id)
+#             ib.add_custom_event(String("click"), TODO_ACTION_REMOVE, item.id)
+#             ib.add_dyn_text_attr(String("class"), class_name)
+#             return ib.index()
+#
+#         fn handle_event(mut self, handler_id: UInt32) -> Bool:
+#             var action = self.items.get_action(handler_id)
+#             if action.found:
+#                 if action.tag == TODO_ACTION_TOGGLE:
+#                     self.toggle_item(action.data)
+#                 elif action.tag == TODO_ACTION_REMOVE:
+#                     self.remove_item(action.data)
+#                 return True
+#             return False
 
 from memory import UnsafePointer
 from bridge import MutationWriter
@@ -127,33 +146,10 @@ struct TodoItem(Copyable, Movable):
         self.completed = other.completed
 
 
-# Handler-to-item action tags for EventBridge dispatch.
-alias TODO_ACTION_ADD: UInt8 = 0
+# App-defined action tags for ItemBuilder.add_custom_event() dispatch.
+# These are retrieved via KeyedList.get_action().
 alias TODO_ACTION_TOGGLE: UInt8 = 1
 alias TODO_ACTION_REMOVE: UInt8 = 2
-
-
-struct HandlerItemMapping(Copyable, Movable):
-    """Maps a handler ID to an item action and item ID."""
-
-    var handler_id: UInt32
-    var action: UInt8  # TODO_ACTION_TOGGLE or TODO_ACTION_REMOVE
-    var item_id: Int32
-
-    fn __init__(out self, handler_id: UInt32, action: UInt8, item_id: Int32):
-        self.handler_id = handler_id
-        self.action = action
-        self.item_id = item_id
-
-    fn __copyinit__(out self, other: Self):
-        self.handler_id = other.handler_id
-        self.action = other.action
-        self.item_id = other.item_id
-
-    fn __moveinit__(out self, deinit other: Self):
-        self.handler_id = other.handler_id
-        self.action = other.action
-        self.item_id = other.item_id
 
 
 struct TodoApp(Movable):
@@ -163,8 +159,8 @@ struct TodoApp(Movable):
     and event handler binding — happens in __init__.  The lifecycle
     functions are thin delegations to ComponentContext.
 
-    Uses KeyedList to bundle the item template, FragmentSlot, and child
-    scope tracking into a single abstraction.
+    Uses KeyedList with Phase 17 ItemBuilder for ergonomic per-item
+    building and HandlerAction for dispatch.
 
     The item list lives inside the <ul> element of the app template.
     On initial mount, a placeholder comment node occupies the <ul>.
@@ -174,14 +170,12 @@ struct TodoApp(Movable):
 
     var ctx: ComponentContext
     var list_version: SignalI32
-    var items: KeyedList  # bundles template_id + FragmentSlot + scope_ids
+    var items: KeyedList  # bundles template_id + FragmentSlot + scope_ids + handler_map
     var data: List[TodoItem]
     var next_id: Int32
     var input_text: String
-    # Handler IDs for the app-level controls
+    # Handler ID for the app-level Add button
     var add_handler: UInt32
-    # Handler → item action mapping (rebuilt on every flush)
-    var handler_map: List[HandlerItemMapping]
 
     fn __init__(out self):
         """Initialize the todo app with all reactive state, templates, and handlers.
@@ -240,7 +234,6 @@ struct TodoApp(Movable):
         self.data = List[TodoItem]()
         self.next_id = 1
         self.input_text = String("")
-        self.handler_map = List[HandlerItemMapping]()
 
     fn __moveinit__(out self, deinit other: Self):
         self.ctx = other.ctx^
@@ -250,7 +243,6 @@ struct TodoApp(Movable):
         self.next_id = other.next_id
         self.input_text = other.input_text^
         self.add_handler = other.add_handler
-        self.handler_map = other.handler_map^
 
     fn add_item(mut self, text: String):
         """Add a new item and bump the list version signal."""
@@ -288,22 +280,18 @@ struct TodoApp(Movable):
     fn build_item_vnode(mut self, item: TodoItem) -> UInt32:
         """Build a keyed VNode for a single todo item.
 
+        Uses Phase 17 ItemBuilder for ergonomic per-item construction:
+          - `begin_item()` creates child scope + keyed VNodeBuilder
+          - `add_custom_event()` registers handler + maps action + adds event attr
+          - `get_action()` retrieves the action tag + data for dispatch
+
         Template "todo-item": li > [ span > dynamic_text[0], button("✓"), button("✕") ]
-          dynamic_text[0] = item text (possibly with strikethrough indicator)
-          dynamic_attr[0] = click on toggle button
-          dynamic_attr[1] = click on remove button
+          dynamic_text[0] = item text (possibly with completion indicator)
+          dynamic_attr[0] = click on toggle button → TODO_ACTION_TOGGLE
+          dynamic_attr[1] = click on remove button → TODO_ACTION_REMOVE
           dynamic_attr[2] = class on the li element
-
-        Uses KeyedList.create_scope() and KeyedList.item_builder() for
-        ergonomic child scope and VNode construction.
-
-        Registers toggle/remove handler IDs in handler_map so the
-        EventBridge dispatch can call the correct WASM action.
         """
-        # Create a child scope for this item's handlers (tracked by KeyedList)
-        var child_scope = self.items.create_scope(self.ctx)
-
-        var vb = self.items.item_builder(String(item.id), self.ctx)
+        var ib = self.items.begin_item(String(item.id), self.ctx)
 
         # Dynamic text: item text with completion indicator
         var display_text: String
@@ -311,25 +299,13 @@ struct TodoApp(Movable):
             display_text = String("✓ ") + item.text
         else:
             display_text = item.text
-        vb.add_dyn_text(display_text)
+        ib.add_dyn_text(display_text)
 
         # Dynamic attr 0: toggle handler (click on ✓ button)
-        var toggle_handler = self.ctx.register_handler(
-            HandlerEntry.custom(child_scope, String("click"))
-        )
-        vb.add_dyn_event(String("click"), toggle_handler)
-        self.handler_map.append(
-            HandlerItemMapping(toggle_handler, TODO_ACTION_TOGGLE, item.id)
-        )
+        ib.add_custom_event(String("click"), TODO_ACTION_TOGGLE, item.id)
 
         # Dynamic attr 1: remove handler (click on ✕ button)
-        var remove_handler = self.ctx.register_handler(
-            HandlerEntry.custom(child_scope, String("click"))
-        )
-        vb.add_dyn_event(String("click"), remove_handler)
-        self.handler_map.append(
-            HandlerItemMapping(remove_handler, TODO_ACTION_REMOVE, item.id)
-        )
+        ib.add_custom_event(String("click"), TODO_ACTION_REMOVE, item.id)
 
         # Dynamic attr 2: class on the li element
         var li_class: String
@@ -337,21 +313,17 @@ struct TodoApp(Movable):
             li_class = String("completed")
         else:
             li_class = String("")
-        vb.add_dyn_text_attr(String("class"), li_class)
+        ib.add_dyn_text_attr(String("class"), li_class)
 
-        return vb.index()
+        return ib.index()
 
     fn build_items_fragment(mut self) -> UInt32:
         """Build a Fragment VNode containing keyed item children.
 
-        Uses KeyedList.begin_rebuild() to destroy old child scopes and
-        create a new empty fragment, then builds each item VNode and
-        pushes it as a fragment child.
-
-        Also clears the handler_map so it reflects the current set of
-        item handler IDs.
+        Uses KeyedList.begin_rebuild() to destroy old child scopes,
+        clear the handler map, and create a new empty fragment, then
+        builds each item VNode and pushes it as a fragment child.
         """
-        self.handler_map.clear()
         var frag_idx = self.items.begin_rebuild(self.ctx)
         for i in range(len(self.data)):
             var item_idx = self.build_item_vnode(self.data[i].copy())
@@ -361,25 +333,25 @@ struct TodoApp(Movable):
     fn handle_event(mut self, handler_id: UInt32) -> Bool:
         """Dispatch a click event by handler ID.
 
-        Looks up the handler in the handler_map to determine the action
-        (toggle/remove) and the target item ID.  Returns True if the
-        handler was found and the action executed, False otherwise
-        (e.g. the add_handler which JS handles specially).
+        Uses Phase 17 `get_action()` to look up the handler in the
+        KeyedList's handler map and determine the action (toggle/remove)
+        and target item ID.
+
+        Returns True if the handler was found and the action executed,
+        False otherwise (e.g. the add_handler which JS handles specially).
         """
         if handler_id == self.add_handler:
             # Add handler — JS must read the input value and call add_item
             return False
 
-        for i in range(len(self.handler_map)):
-            if self.handler_map[i].handler_id == handler_id:
-                var action = self.handler_map[i].action
-                var item_id = self.handler_map[i].item_id
-                if action == TODO_ACTION_TOGGLE:
-                    self.toggle_item(item_id)
-                    return True
-                elif action == TODO_ACTION_REMOVE:
-                    self.remove_item(item_id)
-                    return True
+        var action = self.items.get_action(handler_id)
+        if action.found:
+            if action.tag == TODO_ACTION_TOGGLE:
+                self.toggle_item(action.data)
+                return True
+            elif action.tag == TODO_ACTION_REMOVE:
+                self.remove_item(action.data)
+                return True
         return False
 
     fn build_app_vnode(mut self) -> UInt32:

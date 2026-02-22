@@ -2191,6 +2191,43 @@ fn todo_handler_count(app_ptr: Int64) -> Int32:
     return Int32(_get[TodoApp](app_ptr)[0].ctx.handler_count())
 
 
+@export
+fn todo_handler_map_count(app_ptr: Int64) -> Int32:
+    """Return the number of handler→action mappings in the todo KeyedList.
+
+    Phase 17: This reflects the number of custom events registered via
+    ItemBuilder.add_custom_event() since the last begin_rebuild().
+    Each item registers 2 handlers (toggle + remove), so this should
+    equal 2 * item_count after a rebuild.
+    """
+    return Int32(_get[TodoApp](app_ptr)[0].items.handler_count())
+
+
+@export
+fn todo_handler_action(app_ptr: Int64, handler_id: Int32) -> Int32:
+    """Look up a handler ID in the todo KeyedList's handler map.
+
+    Phase 17: Returns the action tag (1=toggle, 2=remove) if found,
+    or -1 if the handler ID is not in the map.
+    """
+    var action = _get[TodoApp](app_ptr)[0].items.get_action(UInt32(handler_id))
+    if action.found:
+        return Int32(action.tag)
+    return -1
+
+
+@export
+fn todo_handler_action_data(app_ptr: Int64, handler_id: Int32) -> Int32:
+    """Return the data (item ID) for a handler in the todo KeyedList's map.
+
+    Phase 17: Returns the item ID if found, or -1 if not found.
+    """
+    var action = _get[TodoApp](app_ptr)[0].items.get_action(UInt32(handler_id))
+    if action.found:
+        return action.data
+    return -1
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 9 — Benchmark App
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2321,6 +2358,18 @@ fn bench_scope_id(app_ptr: Int64) -> Int32:
 fn bench_handler_count(app_ptr: Int64) -> Int32:
     """Return the number of live event handlers in the bench app's runtime."""
     return Int32(_get[BenchmarkApp](app_ptr)[0].ctx.handler_count())
+
+
+@export
+fn bench_handler_map_count(app_ptr: Int64) -> Int32:
+    """Return the number of handler→action mappings in the bench KeyedList.
+
+    Phase 17: This reflects the number of custom events registered via
+    ItemBuilder.add_custom_event() since the last begin_rebuild().
+    Each row registers 2 handlers (select + remove), so this should
+    equal 2 * row_count after a rebuild.
+    """
+    return Int32(_get[BenchmarkApp](app_ptr)[0].rows_list.handler_count())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
