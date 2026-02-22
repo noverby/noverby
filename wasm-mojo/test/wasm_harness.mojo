@@ -10,7 +10,7 @@ This module is designed to be imported from Mojo test files:
 
 Import signatures are derived from `wasm-objdump -j Import -x build/out.wasm`:
 
-  Import[16]:
+  Import[17]:
    - func[0]  sig=0  (i64, i64) -> i64      KGEN_CompilerRT_AlignedAlloc
    - func[1]  sig=1  (i64) -> nil            KGEN_CompilerRT_AlignedFree
    - func[2]  sig=2  (f32, f32, f32) -> f32  fmaf
@@ -27,6 +27,7 @@ Import signatures are derived from `wasm-objdump -j Import -x build/out.wasm`:
    - func[13] sig=8  (i64) -> i32            fclose
    - func[14] sig=9  (i64, i64, i64) -> i32  KGEN_CompilerRT_fprintf
    - func[15] sig=9  (i64, i64, i64) -> i32  write
+   - func[16] sig=10 () -> f64               performance_now
 """
 
 from memory import UnsafePointer, memcpy, memset_zero
@@ -105,6 +106,7 @@ struct SharedState(Movable):
     var memory: WasmtimeMemory
     var captured_stdout: List[String]
     var has_memory: Bool
+    var mock_time: Float64  # P24.3: deterministic clock for performance_now
 
     fn __init__(out self):
         self.bump_ptr = 0
@@ -112,6 +114,7 @@ struct SharedState(Movable):
         self.memory = WasmtimeMemory()
         self.captured_stdout = List[String]()
         self.has_memory = False
+        self.mock_time = 0.0
 
     fn __moveinit__(out self, deinit other: Self):
         self.bump_ptr = other.bump_ptr
@@ -119,6 +122,7 @@ struct SharedState(Movable):
         self.memory = other.memory
         self.captured_stdout = other.captured_stdout^
         self.has_memory = other.has_memory
+        self.mock_time = other.mock_time
 
     fn aligned_alloc(mut self, align: Int, size: Int) -> Int:
         """Bump-allocate *size* bytes with the given alignment."""
@@ -447,6 +451,27 @@ fn _cb_write(
     return UnsafePointer[NoneType]()
 
 
+# -- func[16] performance_now: () -> f64 -----------------------------------
+# P24.3: Deterministic mock clock for benchmark timing tests.
+# Each call returns the current mock_time and advances it by 1.0,
+# so before/after pairs always yield a predictable delta.
+
+
+fn _cb_performance_now(
+    env: UnsafePointer[NoneType],
+    caller: UnsafePointer[NoneType],
+    args: UnsafePointer[WasmtimeVal],
+    nargs: Int,
+    results: UnsafePointer[WasmtimeVal],
+    nresults: Int,
+) -> UnsafePointer[NoneType]:
+    var state = _state(env)
+    var t = state[].mock_time
+    state[].mock_time += 1.0
+    results[0] = WasmtimeVal.from_f64(t)
+    return UnsafePointer[NoneType]()
+
+
 # ---------------------------------------------------------------------------
 # WasmInstance — high-level harness wrapping engine, store, linker, instance
 # ---------------------------------------------------------------------------
@@ -655,6 +680,16 @@ struct WasmInstance(Movable):
             List[UInt8](WASM_I64, WASM_I64, WASM_I64),
             List[UInt8](WASM_I32),
             _cb_write,
+            env,
+        )
+
+        # func[16] performance_now: () -> f64 (P24.3)
+        self._linker.define_func(
+            "env",
+            "performance_now",
+            List[UInt8](),
+            List[UInt8](WASM_F64),
+            _cb_performance_now,
             env,
         )
 

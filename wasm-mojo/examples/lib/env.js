@@ -59,6 +59,7 @@ export const env = {
 		view.setBigInt64(Number(resultPtr), product & mask, true);
 		view.setBigInt64(Number(resultPtr) + 8, (product >> 64n) & mask, true);
 	},
+	performance_now: () => performance.now(),
 	fmaf: (x, y, z) => Math.fround(Math.fround(x * y) + z),
 	fminf: (x, y) => (x > y ? y : x),
 	fmaxf: (x, y) => (x > y ? x : y),

@@ -136,6 +136,7 @@ struct BenchmarkApp:
     var selected: SignalI32
     var rows_list: KeyedList      # bundles template_id + FragmentSlot + scope_ids + handler_map
     var rows: List[BenchRow]
+    var status_text: String       # P24.3: latest operation name + timing for status bar
     var create1k_handler: UInt32  # auto-registered by register_view() via onclick_custom()
     var create10k_handler: UInt32
     var append_handler: UInt32
@@ -146,15 +147,17 @@ struct BenchmarkApp:
                  with 6 onclick_custom buttons, dyn_text status, dyn_node(1) for rows)
                  → view_event_handler_id(0..5) for toolbar handlers
                  + KeyedList(register_extra_template("bench-row"))
-    fn render: ctx.render_builder() → add_dyn_text(status) → add_dyn_placeholder → build()
+                 + status_text = "Ready"
+    fn render: ctx.render_builder() → add_dyn_text(status_text) → add_dyn_placeholder → build()
     fn build_row_vnode: rows_list.begin_item(key, ctx) → ib.add_custom_event() (Phase 17)
     fn build_rows_fragment: rows_list.begin_rebuild → build each row → rows_list.push_child
-    fn handle_event: if create1k_handler → create_rows(1000)
-                     elif create10k_handler → create_rows(10000)
-                     elif append_handler → append_rows(1000)
-                     elif update_handler → update_every_10th()
-                     elif swap_handler → swap_rows(1, 998)
-                     elif clear_handler → clear_rows()
+    fn handle_event: t0 = performance_now()
+                     if create1k_handler → create_rows(1000) → status_text = format_timing(...)
+                     elif create10k_handler → create_rows(10000) → status_text = format_timing(...)
+                     elif append_handler → append_rows(1000) → status_text = format_timing(...)
+                     elif update_handler → update_every_10th() → status_text = format_timing(...)
+                     elif swap_handler → swap_rows(1, 998) → status_text = format_timing(...)
+                     elif clear_handler → clear_rows() → status_text = format_timing(...)
                      else → rows_list.get_action(handler_id) → select/remove row
 ```
 
@@ -162,14 +165,16 @@ Two signals: `version` (list changes), `selected` (highlight row).
 Operations: create_rows, append_rows, update_every_10th, select_row, swap_rows, remove_row, clear_rows.
 Per-row build uses `begin_item()` + `add_custom_event()` (Phase 17) + `add_class_if()` (Phase 18).
 
+Phase 24.3: `performance_now() -> Float64` WASM import via `external_call["performance_now", Float64]()`. Each toolbar operation in `handle_event()` is wrapped with before/after `performance_now()` calls; the elapsed time is formatted to 1 decimal place via `format_timing(op_name, ms) -> String` and stored in `status_text`. `render()` emits `status_text` as `dyn_text[0]` — on flush, the diff engine detects the changed text and emits a `SetText` mutation, updating the status bar automatically. Zero JS-side timing code.
+
 Phase 24.2: Uses `setup_view()` for the app shell template ("bench-app") with inline `onclick_custom()` for 6 toolbar buttons. The entire UI — heading, buttons, status bar, table with thead + tbody — is rendered from WASM. Root is `#root` (not `#tbody`). `handle_event()` routes both toolbar button clicks (via handler ID comparison) and row clicks (via `get_action()`). `render()` uses `render_builder()` which auto-populates event handlers; provides `dyn_text()` for status (dynamic_nodes[0]) and `dyn_placeholder()` for the keyed row list (dynamic_nodes[1]). **Important:** `dyn_text` and `dyn_node` share the same `dynamic_nodes` index space — auto-numbered `dyn_text()` gets index 0, so `dyn_node` must use index 1. `bench_app_rebuild()` follows the todo pattern: emit templates → render shell → CreateEngine → extract `dyn_node[1]` anchor → init KeyedList slot. `bench_app_flush()` diffs app shell + flushes KeyedList. `bench/main.js` is now a 7-line `launch()` call (only `bufferCapacity` is bench-specific).
 
 **Phase 24 — Bench zero app-specific JS convergence** (see also `examples/bench/main.js` header):
 
 - **P24.1** ✅ — `bench_handle_event` with handler_map dispatch. `BenchmarkApp.handle_event(handler_id)` calls `rows_list.get_action(handler_id)` and routes to `select_row`/`remove_row` (same pattern as `TodoApp.handle_event`). `bench_handle_event` WASM export in `main.mojo`. EventBridge now dispatches row clicks directly — tbody event delegation JS eliminated.
 - **P24.2** ✅ — WASM-rendered toolbar with `onclick_custom` handlers. Entire app shell (h1, 6 buttons, status `dyn_text` at dynamic_nodes[0], table with thead + tbody > `dyn_node(1)` at dynamic_nodes[1]) rendered from WASM via `setup_view()`. Root changed from `#tbody` to `#root`. 6 handler IDs extracted via `view_event_handler_id()`. `handle_event()` routes toolbar button clicks to benchmark operations + existing row click dispatch. `bench/index.html` simplified to `<div id="root">` + styles. `bench/main.js` reduced to 7-line `launch()` call. Tests updated: `createDOM()` creates root div, DOM tests query rendered tbody, handler lifecycle tests account for 6 toolbar base handlers. **Gotcha:** `dyn_text` and `dyn_node` share the `dynamic_nodes` index space — auto-numbered `dyn_text()` gets index 0, so `dyn_node` must use 1.
-- **P24.3** — `performance.now()` WASM import for timing. Add `performance_now() -> Float64` to `env.js` imports + Mojo FFI declaration. Add timing wrapper in `BenchmarkApp` that stores result in a `SignalString`. Requires float-to-string formatting with 1 decimal place (verify Mojo WASM support or write manual formatter). Eliminates the need for any JS-side timing code.
-- **P24.4** — Status bar as WASM template with dynamic text. The status bar div is already in the WASM template (P24.2). Use `dyn_text` nodes for operation name, timing, and row count — replaces the static "Ready" text with proper `SignalString` updates. After P24.3 + P24.4, `bench/main.js` is identical to counter/todo (no `bufferCapacity` override needed if default is sufficient, or kept as the only bench-specific config).
+- **P24.3** ✅ — `performance.now()` WASM import for timing. `performance_now() -> Float64` via `external_call` — Mojo compiler emits unresolved symbol, `wasm-ld --allow-undefined` turns it into WASM import from `env` module, JS host provides `performance_now: () => performance.now()`. `format_timing(op_name, ms) -> String` formats elapsed time to 1 decimal place. `status_text: String` field on `BenchmarkApp`, initialized to `"Ready"`. `handle_event()` wraps each toolbar op with before/after `performance_now()`, stores formatted result in `status_text`. `render()` emits `status_text` as `dyn_text[0]` — diff detects change on flush, emits `SetText`. Added to `env.js` (browser), `env.ts` (Deno runtime), and `wasm_harness.mojo` (func[16]: deterministic mock clock, increments by 1.0 per call). WASM import count: 16 → 17. New exports: `bench_status_text(app_ptr) -> String`, `bench_handler_id_at(app_ptr, index) -> i32`.
+- **P24.4** — Status bar as WASM template with dynamic text. The status bar div is already in the WASM template (P24.2) and timing is now computed in WASM (P24.3). Remaining: use separate `dyn_text` nodes for operation name, timing, and row count if finer granularity is desired. After P24.4, `bench/main.js` is identical to counter/todo (only `bufferCapacity` override remains as bench-specific config).
 
 ## WASM Export Pattern (`src/main.mojo`)
 
@@ -315,7 +320,7 @@ el_button(text("Add"), onclick_custom()),
 
 | File | Lines | Role |
 |------|-------|------|
-| `src/main.mojo` | ~2,560 | All @export wrappers |
+| `src/main.mojo` | ~2,600 | All @export wrappers |
 | `src/signals/handle.mojo` | ~670 | SignalI32 + SignalBool + SignalString + MemoI32 + EffectHandle |
 | `src/signals/runtime.mojo` | ~630 | Reactive runtime + SignalStore + StringStore |
 | `src/component/context.mojo` | ~1,040 | ComponentContext + RenderBuilder + tree processing + view_event_handler_id |
@@ -323,7 +328,7 @@ el_button(text("Add"), onclick_custom()),
 | `src/component/app_shell.mojo` | ~350 | AppShell (low-level) |
 | `examples/counter/counter.mojo` | ~115 | Counter app |
 | `examples/todo/todo.mojo` | ~520 | Todo app (M20.5: WASM-driven Add, bind_value, oninput_set_string, onclick_custom) |
-| `examples/bench/bench.mojo` | ~430 | Benchmark app (uses KeyedList + ItemBuilder) |
+| `examples/bench/bench.mojo` | ~480 | Benchmark app (uses KeyedList + ItemBuilder + performance_now timing) |
 | `src/component/keyed_list.mojo` | ~595 | KeyedList + ItemBuilder + HandlerAction |
 | `src/vdom/dsl.mojo` | ~2,900 | Node DSL + el_* helpers + multi-arg overloads + conditional helpers + onclick_custom + to_template |
 | `src/vdom/vnode.mojo` | ~600 | VNode + VNodeStore + VNodeBuilder |

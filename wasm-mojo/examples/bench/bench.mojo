@@ -1,5 +1,15 @@
 # BenchmarkApp — js-framework-benchmark implementation.
 #
+# Phase 24.3: performance.now() WASM import for timing.
+#
+# Adds a `performance_now() -> Float64` WASM import (declared via
+# external_call) that maps to `performance.now()` on the JS side.
+# Each toolbar operation in handle_event() is wrapped with before/after
+# performance_now() calls; the elapsed time is formatted to 1 decimal
+# place and stored in `status_text`, which render() emits as dyn_text[0].
+# This eliminates the need for any JS-side timing code — the status bar
+# updates automatically on every flush.
+#
 # Phase 24.2: WASM-rendered toolbar with onclick_custom handlers.
 #
 # The entire app shell — heading, toolbar buttons, status bar, table
@@ -21,6 +31,13 @@
 #   - Constructor-based setup (all init in __init__)
 #   - ctx.use_signal() for automatic scope subscription
 #   - SignalI32 handles with operator overloading
+#
+# Phase 24.3: performance_now() WASM import + timing in handle_event()
+#   - external_call["performance_now", Float64]() → env.performance_now
+#   - format_timing() formats Float64 ms to "12.3ms" (1 decimal place)
+#   - status_text field stores the latest operation + timing string
+#   - handle_event() wraps each toolbar op with before/after timing
+#   - render() uses status_text for dyn_text[0] (status bar)
 #
 # Phase 24.2: register_view() with inline onclick_custom() for toolbar
 #   - App shell template "bench-app" includes h1, 6 buttons, status, table
@@ -148,6 +165,7 @@
 #             return False
 
 from memory import UnsafePointer
+from sys.ffi import external_call
 from bridge import MutationWriter
 from mutations import CreateEngine
 
@@ -195,6 +213,44 @@ struct BenchRow(Copyable, Movable):
     fn __moveinit__(out self, deinit other: Self):
         self.id = other.id
         self.label = other.label^
+
+
+# ── performance.now() WASM import ────────────────────────────────────────────
+#
+# Declared via external_call so the Mojo compiler emits an unresolved symbol.
+# wasm-ld --allow-undefined turns this into a WASM import from the "env"
+# module.  The JS host provides `performance_now: () => performance.now()`.
+
+
+fn performance_now() -> Float64:
+    """Return high-resolution timestamp in milliseconds via WASM import.
+
+    Maps to `performance.now()` in the browser and Deno runtimes.
+    In the Mojo test harness (wasmtime), returns a deterministic mock
+    clock that increments by 1.0 on each call.
+    """
+    return external_call["performance_now", Float64]()
+
+
+# ── Timing formatter ─────────────────────────────────────────────────────────
+
+
+fn format_timing(op_name: String, ms: Float64) -> String:
+    """Format an operation name and elapsed milliseconds for the status bar.
+
+    Produces "{op_name} — {whole}.{frac}ms" with 1 decimal place.
+    Example: "Create 1,000 rows — 12.3ms"
+    """
+    var abs_ms = ms
+    if abs_ms < 0.0:
+        abs_ms = 0.0
+    # Decompose into whole and tenths with rounding
+    var whole = Int(abs_ms)
+    var frac = Int((abs_ms - Float64(whole)) * 10.0 + 0.5)
+    if frac >= 10:
+        whole += 1
+        frac = 0
+    return op_name + " — " + String(whole) + "." + String(frac) + "ms"
 
 
 # ── Label generation ─────────────────────────────────────────────────────────
@@ -293,6 +349,13 @@ alias BENCH_ACTION_REMOVE: UInt8 = 2
 struct BenchmarkApp(Movable):
     """Js-framework-benchmark app state.
 
+    Phase 24.3: WASM-side timing via performance_now() import.
+
+    Each toolbar operation in handle_event() is wrapped with before/after
+    performance_now() calls.  The elapsed time is formatted and stored
+    in `status_text`, which render() emits as dyn_text[0].  The diff
+    engine detects the changed text on flush and emits a SetText mutation.
+
     Phase 24.2: Full WASM-rendered app shell with toolbar buttons.
 
     All setup — context creation, signal creation, template registration,
@@ -318,6 +381,7 @@ struct BenchmarkApp(Movable):
     var rows: List[BenchRow]
     var next_id: Int32
     var rng_state: UInt32  # simple LCG state
+    var status_text: String  # P24.3: latest operation + timing for status bar
     # Toolbar handler IDs (auto-registered by register_view)
     var create1k_handler: UInt32
     var create10k_handler: UInt32
@@ -334,6 +398,9 @@ struct BenchmarkApp(Movable):
         allocator, scheduler), root scope, version and selected signals,
         the app shell template (with 6 onclick_custom toolbar buttons),
         and the row template via KeyedList.
+
+        Phase 24.3: Initializes status_text to "Ready" for the initial
+        render.  handle_event() updates it with timing on each operation.
 
         Phase 24.2: Uses setup_view() for the app shell template.
         The app shell includes the heading, 6 toolbar buttons with
@@ -471,6 +538,7 @@ struct BenchmarkApp(Movable):
         self.rows = List[BenchRow]()
         self.next_id = 1
         self.rng_state = 42
+        self.status_text = String("Ready")
 
     fn __moveinit__(out self, deinit other: Self):
         self.ctx = other.ctx^
@@ -480,6 +548,7 @@ struct BenchmarkApp(Movable):
         self.rows = other.rows^
         self.next_id = other.next_id
         self.rng_state = other.rng_state
+        self.status_text = other.status_text^
         self.create1k_handler = other.create1k_handler
         self.create10k_handler = other.create10k_handler
         self.append_handler = other.append_handler
@@ -562,6 +631,11 @@ struct BenchmarkApp(Movable):
     fn handle_event(mut self, handler_id: UInt32) -> Bool:
         """Dispatch an event by handler ID.
 
+        Phase 24.3: Each toolbar operation is wrapped with before/after
+        performance_now() calls.  The elapsed time is formatted and
+        stored in status_text.  On the next flush, diff detects the
+        changed dyn_text[0] and emits a SetText mutation.
+
         Phase 24.2: Routes both toolbar button clicks and row clicks.
 
         Toolbar buttons (from register_view onclick_custom handlers):
@@ -579,24 +653,48 @@ struct BenchmarkApp(Movable):
         Returns True if the handler was found and the action executed,
         False otherwise.
         """
-        # Toolbar button routing
+        # Toolbar button routing — each operation timed via performance_now()
         if handler_id == self.create1k_handler:
+            var t0 = performance_now()
             self.create_rows(1000)
+            self.status_text = format_timing(
+                String("Create 1,000 rows"), performance_now() - t0
+            )
             return True
         elif handler_id == self.create10k_handler:
+            var t0 = performance_now()
             self.create_rows(10000)
+            self.status_text = format_timing(
+                String("Create 10,000 rows"), performance_now() - t0
+            )
             return True
         elif handler_id == self.append_handler:
+            var t0 = performance_now()
             self.append_rows(1000)
+            self.status_text = format_timing(
+                String("Append 1,000 rows"), performance_now() - t0
+            )
             return True
         elif handler_id == self.update_handler:
+            var t0 = performance_now()
             self.update_every_10th()
+            self.status_text = format_timing(
+                String("Update every 10th"), performance_now() - t0
+            )
             return True
         elif handler_id == self.swap_handler:
+            var t0 = performance_now()
             self.swap_rows(1, 998)
+            self.status_text = format_timing(
+                String("Swap rows"), performance_now() - t0
+            )
             return True
         elif handler_id == self.clear_handler:
+            var t0 = performance_now()
             self.clear_rows()
+            self.status_text = format_timing(
+                String("Clear"), performance_now() - t0
+            )
             return True
 
         # Row event routing (select/remove via KeyedList handler_map)
@@ -661,6 +759,11 @@ struct BenchmarkApp(Movable):
     fn render(mut self) -> UInt32:
         """Build the app shell VNode using render_builder (auto-populates).
 
+        Phase 24.3: dyn_text[0] now reads from self.status_text, which
+        is updated by handle_event() with timing info after each toolbar
+        operation.  On flush, diff detects the text change and emits
+        SetText.
+
         Phase 24.2: Uses render_builder() which auto-populates all
         event handlers registered by setup_view() in tree-walk order:
           auto dyn_attr[0..5] = onclick_custom handlers (6 toolbar buttons)
@@ -672,8 +775,8 @@ struct BenchmarkApp(Movable):
         """
         var vb = self.ctx.render_builder()
 
-        # Dynamic text 0: status message
-        vb.add_dyn_text(String("Ready — click a button to start benchmarking"))
+        # Dynamic text 0: status message (updated by handle_event timing)
+        vb.add_dyn_text(self.status_text)
 
         # Dynamic node 1: placeholder in the <tbody>
         # (index 1 because dyn_text occupies index 0 in the shared space)

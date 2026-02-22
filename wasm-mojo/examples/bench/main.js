@@ -13,20 +13,20 @@
 //
 // ── Phase 24 TODO: Remaining steps toward full parity ───────────────
 //
-// TODO(P24.3): performance.now() WASM import for timing.
-//   Add a `performance_now() -> Float64` import to env.js and a
-//   corresponding Mojo FFI declaration.  Add a timeOp-style wrapper in
-//   BenchmarkApp that calls performance_now before/after each operation
-//   and stores the result in a SignalString for the status display.
-//   Requires float-to-string formatting with 1 decimal place (verify
-//   Mojo WASM target support or write a simple manual formatter).
-//   Eliminates the need for any JS-side timing code.
+// DONE(P24.3): performance.now() WASM import for timing.
+//   Added `performance_now() -> Float64` import to env.js and a
+//   corresponding Mojo FFI declaration via external_call.  Each toolbar
+//   operation in handle_event() is wrapped with before/after
+//   performance_now() calls; elapsed time is formatted to 1 decimal
+//   place and stored in status_text, emitted as dyn_text[0] on flush.
+//   Zero JS-side timing code needed.
 //
 // TODO(P24.4): Status bar as WASM template with dynamic text.
-//   The status bar div is already in the WASM template (P24.2).
-//   Use dyn_text nodes for operation name, timing, and row count —
-//   replaces the static "Ready" text with proper SignalString updates.
-//   After P24.3 + P24.4, bench main.js is identical to counter/todo.
+//   The status bar div is already in the WASM template (P24.2) and
+//   timing is now computed in WASM (P24.3).  Remaining: use separate
+//   dyn_text nodes for operation name, timing, and row count if finer
+//   granularity is desired.  After P24.4, bench main.js is identical
+//   to counter/todo (only bufferCapacity override remains).
 
 import { launch } from "../lib/app.js";
 
