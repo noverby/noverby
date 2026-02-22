@@ -7,6 +7,7 @@ import { testEffect } from "./effect.test.ts";
 import { testEvents } from "./events.test.ts";
 import { summary } from "./harness.ts";
 import { testInterpreter } from "./interpreter.test.ts";
+import { testLifecycle } from "./lifecycle.test.ts";
 import { testMemo } from "./memo.test.ts";
 import { testMutations } from "./mutations.test.ts";
 import { testPhase8 } from "./phase8.test.ts";
@@ -32,6 +33,7 @@ async function run(): Promise<void> {
 	testDsl(fns);
 	testEvents(fns);
 	testAllocatorReuse(fns);
+	testLifecycle(fns);
 
 	summary();
 }

@@ -36,7 +36,13 @@
 //     bufferCapacity: 8 * 1024 * 1024,
 //   });
 
-import { alignedAlloc, getMemory, loadWasm, scratchFreeAll } from "./env.js";
+import {
+	alignedAlloc,
+	alignedFree,
+	getMemory,
+	loadWasm,
+	scratchFreeAll,
+} from "./env.js";
 import { EventBridge } from "./events.js";
 import { Interpreter } from "./interpreter.js";
 import { writeStringStruct } from "./strings.js";
@@ -73,6 +79,8 @@ const EVT_CLICK = 0;
  * @property {number}  bufferCapacity - Mutation buffer capacity in bytes.
  * @property {Element} rootEl  - The mount-point DOM element.
  * @property {() => void} flush - Flush pending WASM updates and apply mutations to the DOM.
+ * @property {() => void} destroy - Destroy the app: free WASM resources, clear DOM, remove listeners.
+ * @property {boolean} destroyed - Whether the app has been destroyed.
  */
 
 // ── Launcher ────────────────────────────────────────────────────────────────
@@ -128,6 +136,7 @@ export async function launch(options) {
 		const initFn = fns[`${appName}_init`];
 		const rebuildFn = fns[`${appName}_rebuild`];
 		const flushFn = fns[`${appName}_flush`];
+		const destroyFn = fns[`${appName}_destroy`]; // optional but expected
 		const handleEventFn = fns[`${appName}_handle_event`]; // optional
 		const dispatchStringFn = fns[`${appName}_dispatch_string`]; // optional
 
@@ -215,6 +224,38 @@ export async function launch(options) {
 			bufferCapacity,
 			rootEl,
 			flush,
+			destroyed: false,
+
+			/**
+			 * Destroy the app: free WASM resources, clear DOM, prevent reuse.
+			 *
+			 * 1. Free the mutation buffer (JS-side allocator).
+			 * 2. Destroy the WASM-side app state (if export exists).
+			 * 3. Clear the root element (removes all rendered DOM + listeners).
+			 * 4. Null out handle fields to prevent use-after-destroy.
+			 *
+			 * Idempotent — calling destroy() twice is a safe no-op.
+			 */
+			destroy() {
+				if (handle.destroyed) return;
+				handle.destroyed = true;
+
+				// Free the mutation buffer in the JS-side allocator
+				alignedFree(handle.bufPtr);
+
+				// Destroy the WASM-side app state
+				if (destroyFn) {
+					destroyFn(handle.appPtr);
+				}
+
+				// Clear rendered DOM (also removes event listeners on child elements)
+				rootEl.replaceChildren();
+
+				// Null out fields to prevent use-after-destroy
+				handle.appPtr = 0n;
+				handle.bufPtr = 0n;
+				handle.interp = null;
+			},
 		};
 
 		// 8. App-specific post-boot wiring

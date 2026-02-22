@@ -2,6 +2,22 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 26 — App Lifecycle (Destroy / Recreate)
+
+Proved the full app destroy→recreate loop works end-to-end across all three apps (counter, todo, bench). Added `destroy()` to both the browser `launch()` AppHandle and the TS test `createApp()` AppHandle, with proper resource cleanup and double-destroy safety.
+
+- **P26.1** — Wired `destroy()` into `launch()` AppHandle (`examples/lib/app.js`). Discovers `{app}_destroy` WASM export alongside `_init`, `_rebuild`, `_flush`. `destroy()` method: frees mutation buffer via `alignedFree(bufPtr)`, calls `{app}_destroy(appPtr)` to free WASM-side state, clears root DOM via `rootEl.replaceChildren()`, nulls out `appPtr`/`bufPtr`/`interp` fields to prevent use-after-destroy. Idempotent — `destroyed` flag guards against double-destroy. Extended TS `createApp().destroy()` (`runtime/app.ts`) to also free the mutation buffer, clear the root element, null out pointer fields, and set a `destroyed` flag. `CounterAppHandle` now properly proxies `destroyed`, `appPtr`, and `bufPtr` via getters/setters to the inner `AppHandle`.
+
+- **P26.2** — Multi-app lifecycle JS tests (`test-js/lifecycle.test.ts`). 56 new assertions across 14 test suites: counter create→click→destroy→verify root empty; counter destroy→recreate→click→verify DOM correct; counter 10 create/destroy cycles with `heapStats()` — heap growth bounded, free list populated; double-destroy is a safe no-op; destroy with dirty (unflushed) state doesn't crash; todo add items→destroy→recreate→clean slate (0 items, version 0); todo 5 create/add/destroy cycles — heap bounded; bench create rows→destroy→recreate→correct row count; bench warmup pattern (create→1k→destroy→create→1k→measure) validates js-framework-benchmark warmup requirement; bench 5 create/destroy cycles — heap bounded; cross-app lifecycle (counter→destroy→todo→destroy→counter on same root); simultaneous counter instances with independent destroy; `AppHandle.destroyed` flag tracking; pointer fields nulled after destroy.
+
+- **P26.3** — Multi-app lifecycle Mojo tests (`test/test_lifecycle.mojo`). 10 new tests: counter create→use→destroy; counter destroy→recreate cycle with state verification; 10 counter create/destroy cycles with heap stats checks (growth < 1 MB, free blocks > 0); counter destroy with dirty state; todo create→add→destroy→create cycle (clean slate); 5 todo cycles with heap bounded; bench create→rows→destroy→create cycle; bench warmup pattern (create→1k→destroy→create→1k, growth < 50 MB); free list integrity across destroys (reuse still works); interleaved counter→todo→counter on same WASM instance. Added `heap_stats()` method to `WasmInstance` (delegates to `SharedState.heap_stats()`). Fixed dict iteration in `SharedState.heap_stats()` for Mojo 26.1 compatibility.
+
+- **P26.4** — Bench warmup pattern validated in both JS and Mojo test suites. Create bench app → create 1k rows → destroy → create bench app → create 1k rows → verify heap stays bounded and row count is correct. This proves the js-framework-benchmark warmup requirement (create→destroy→create→measure) works end-to-end.
+
+**Test count after P26.4:** 956 Mojo + 1,441 JS = 2,397 tests.
+
+---
+
 ## Phase 25 — Freeing Allocator
 
 Replaced the bump allocator (which never reclaimed memory) with a size-class free-list allocator across all three runtimes (TypeScript, JavaScript browser, Mojo test harness), enabling safe memory reuse.
