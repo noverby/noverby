@@ -85,6 +85,43 @@
               nickel export validate-nixos.ncl > /dev/null
               echo "  -> examples/nixos OK"
 
+              # v0.3: Validate monorepo root and subworkspace configs
+              cat > validate-monorepo-root.ncl << NICKEL
+              let { WorkspaceConfig, .. } = import "${./contracts/workspace.ncl}" in
+              (import "${./examples/monorepo/workspace.ncl}") | WorkspaceConfig
+              NICKEL
+              nickel export validate-monorepo-root.ncl > /dev/null
+              echo "  -> examples/monorepo (root) OK"
+
+              cat > validate-monorepo-lib-a.ncl << NICKEL
+              let { WorkspaceConfig, .. } = import "${./contracts/workspace.ncl}" in
+              (import "${./examples/monorepo/lib-a/workspace.ncl}") | WorkspaceConfig
+              NICKEL
+              nickel export validate-monorepo-lib-a.ncl > /dev/null
+              echo "  -> examples/monorepo/lib-a OK"
+
+              cat > validate-monorepo-app-b.ncl << NICKEL
+              let { WorkspaceConfig, .. } = import "${./contracts/workspace.ncl}" in
+              (import "${./examples/monorepo/app-b/workspace.ncl}") | WorkspaceConfig
+              NICKEL
+              nickel export validate-monorepo-app-b.ncl > /dev/null
+              echo "  -> examples/monorepo/app-b OK"
+
+              # v0.3: Validate submodule example configs
+              cat > validate-submodule-root.ncl << NICKEL
+              let { WorkspaceConfig, .. } = import "${./contracts/workspace.ncl}" in
+              (import "${./examples/submodule/workspace.ncl}") | WorkspaceConfig
+              NICKEL
+              nickel export validate-submodule-root.ncl > /dev/null
+              echo "  -> examples/submodule (root) OK"
+
+              cat > validate-submodule-external.ncl << NICKEL
+              let { WorkspaceConfig, .. } = import "${./contracts/workspace.ncl}" in
+              (import "${./examples/submodule/external-tool/workspace.ncl}") | WorkspaceConfig
+              NICKEL
+              nickel export validate-submodule-external.ncl > /dev/null
+              echo "  -> examples/submodule/external-tool OK"
+
               echo "==> Running error snapshot tests (expecting failures)..."
               for errtest in ${./tests/errors}/*.ncl; do
                 name="$(basename $errtest)"
@@ -97,6 +134,24 @@
               done
 
               echo "All checks passed."
+              touch $out
+            '';
+
+          # v0.3: Integration tests for namespacing and discovery (Nix-side)
+          namespacing =
+            pkgs.runCommand "nix-workspace-namespacing-tests"
+            {
+              nativeBuildInputs = [pkgs.nix];
+            }
+            ''
+              echo "==> Running namespacing integration tests..."
+              export NIX_PATH="nixpkgs=${pkgs.path}"
+              nix eval --extra-experimental-features nix-command \
+                --file ${./tests/integration/namespacing.nix}
+              echo "==> Running discovery integration tests..."
+              nix eval --extra-experimental-features nix-command \
+                --file ${./tests/integration/discovery.nix}
+              echo "All integration tests passed."
               touch $out
             '';
         };

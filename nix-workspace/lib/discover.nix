@@ -8,6 +8,12 @@
 #   packages/default.ncl    → packages.<workspace-name> (in subworkspaces)
 #   shells/default.ncl      → devShells.default
 #
+# Updated for v0.3 to support recursive subworkspace discovery.
+# A subworkspace is any subdirectory containing a `workspace.ncl` file.
+# Discovery is VCS-agnostic — it does not parse `.gitmodules` or any
+# VCS metadata. As long as the directory exists and contains
+# `workspace.ncl`, it participates in the workspace.
+#
 {lib}: let
   # Default convention directory mappings
   # Maps convention name → { dir, output }
@@ -121,13 +127,39 @@
     )
     activeConventions;
 
+  # ── Subworkspace discovery ──────────────────────────────────────
+  #
+  # Subworkspaces are discovered by scanning the workspace root for
+  # subdirectories that contain a `workspace.ncl` file. This is
+  # VCS-agnostic — git submodules, jujutsu checkouts, plain dirs,
+  # and symlinks all work identically.
+
   # Discover subworkspaces: subdirectories that contain a workspace.ncl file.
   #
-  # Returns a list of { name, path } records.
+  # Returns: { name = path; ... } where name is the directory name
+  # and path is the absolute path to the subworkspace root.
+  #
+  # Skips hidden directories (starting with ".") and well-known
+  # non-workspace directories (node_modules, .git, result, etc.)
   #
   discoverSubworkspaces = workspaceRoot: let
-    entries = builtins.readDir workspaceRoot;
-    dirs = lib.filterAttrs (_: type: type == "directory") entries;
+    entries =
+      if builtins.pathExists workspaceRoot
+      then builtins.readDir workspaceRoot
+      else {};
+
+    # Filter to directories only, excluding hidden dirs and known non-workspace dirs
+    skipDirs = [".git" ".github" ".gitlab" "node_modules" "result" ".direnv" ".devenv"];
+
+    dirs =
+      lib.filterAttrs (
+        name: type:
+          (type == "directory" || type == "symlink")
+          && !(lib.hasPrefix "." name && builtins.elem name skipDirs)
+          # Also skip convention directories — they are not subworkspaces
+          && !(builtins.elem name (map (c: c.dir) (builtins.attrValues defaultConventions)))
+      )
+      entries;
   in
     lib.filterAttrs (
       name: _:
@@ -138,6 +170,57 @@
       )
       dirs
     );
+
+  # Discover all convention outputs for a single subworkspace.
+  #
+  # Type: Path -> AttrSet -> AttrSet
+  #
+  # Arguments:
+  #   subworkspaceRoot    — Absolute path to the subworkspace directory
+  #   conventionOverrides — Convention overrides from the subworkspace's config (or null)
+  #
+  # Returns:
+  #   {
+  #     packages = { default = /path/to/packages/default.ncl; lsp = ...; };
+  #     shells = { ... };
+  #     ...
+  #   }
+  #
+  discoverSubworkspaceOutputs = subworkspaceRoot: conventionOverrides:
+    discoverAll subworkspaceRoot conventionOverrides;
+
+  # Full subworkspace discovery: find all subworkspaces and scan their contents.
+  #
+  # Type: Path -> AttrSet
+  #
+  # Arguments:
+  #   workspaceRoot — Absolute path to the root workspace
+  #
+  # Returns:
+  #   {
+  #     <dir-name> = {
+  #       path = /absolute/path/to/subworkspace;
+  #       hasWorkspaceNcl = true;
+  #       discovered = {
+  #         packages = { ... };
+  #         shells = { ... };
+  #         ...
+  #       };
+  #     };
+  #     ...
+  #   }
+  #
+  discoverAllSubworkspaces = workspaceRoot: let
+    subworkspaces = discoverSubworkspaces workspaceRoot;
+  in
+    lib.mapAttrs (
+      _name: path: {
+        inherit path;
+        hasWorkspaceNcl = true; # by definition — we only discover dirs with workspace.ncl
+        discovered = discoverSubworkspaceOutputs path null;
+      }
+    )
+    subworkspaces;
 
   # Generate a mapping of discovered output names.
   #
@@ -170,6 +253,149 @@
         )
     )
     discovered;
+
+  # Apply namespacing to discovered subworkspace outputs.
+  #
+  # Type: String -> AttrSet -> AttrSet
+  #
+  # Given a subworkspace directory name and its raw discovered outputs,
+  # returns the same structure with output names namespaced:
+  #   default   → subworkspaceName
+  #   otherName → subworkspaceName-otherName
+  #
+  namespaceSubworkspaceDiscovered = subworkspaceName: discovered:
+    resolveNames {
+      workspaceName = subworkspaceName;
+      isSubworkspace = true;
+    }
+    discovered;
+
+  # Merge root and subworkspace discovered outputs into a single tree.
+  #
+  # Type: AttrSet -> AttrSet -> AttrSet
+  #
+  # Arguments:
+  #   rootDiscovered      — { convention = { name = path; }; ... } from root workspace
+  #   subworkspaceMap     — Output of discoverAllSubworkspaces
+  #
+  # Returns:
+  #   {
+  #     merged = { convention = { name = path; }; ... };
+  #     subworkspaceNames = [ "sub-a" "sub-b" ];
+  #     subworkspaceInfo = { name = { path, discovered, namespaced }; ... };
+  #   }
+  #
+  mergeDiscovered = rootDiscovered: subworkspaceMap: let
+    subNames = builtins.attrNames subworkspaceMap;
+
+    # Namespace each subworkspace's discovered outputs
+    namespacedSubs =
+      lib.mapAttrs (
+        name: info:
+          info
+          // {
+            namespaced = namespaceSubworkspaceDiscovered name info.discovered;
+          }
+      )
+      subworkspaceMap;
+
+    # Merge all namespaced subworkspace outputs into the root
+    merged =
+      builtins.foldl' (
+        acc: subName: let
+          sub = namespacedSubs.${subName};
+          subOutputs = sub.namespaced;
+        in
+          lib.mapAttrs (
+            convention: rootOutputs: let
+              subConvOutputs = subOutputs.${convention} or {};
+            in
+              rootOutputs // subConvOutputs
+          )
+          acc
+      )
+      rootDiscovered
+      subNames;
+  in {
+    inherit merged;
+    subworkspaceNames = subNames;
+    subworkspaceInfo = namespacedSubs;
+  };
+
+  # Check for naming conflicts between root outputs and subworkspace outputs,
+  # and between subworkspaces.
+  #
+  # Type: AttrSet -> AttrSet -> [AttrSet]
+  #
+  # Arguments:
+  #   rootDiscovered  — Root workspace discovered outputs
+  #   subworkspaceMap — Output of discoverAllSubworkspaces
+  #
+  # Returns: List of conflict diagnostic records
+  #
+  checkDiscoveryConflicts = rootDiscovered: subworkspaceMap: let
+    subNames = builtins.attrNames subworkspaceMap;
+
+    # Build a registry: { convention.outputName = ["source1", "source2"] }
+    # First, register root outputs
+    rootRegistry =
+      lib.mapAttrs (
+        _convention: outputs:
+          lib.mapAttrs (_name: _: ["root"]) outputs
+      )
+      rootDiscovered;
+
+    # Then, for each subworkspace, namespace its outputs and register them
+    registryWithSubs =
+      builtins.foldl' (
+        registry: subName: let
+          subInfo = subworkspaceMap.${subName};
+          namespacedOutputs = namespaceSubworkspaceDiscovered subName subInfo.discovered;
+        in
+          lib.mapAttrs (
+            convention: existingNames: let
+              subConv = namespacedOutputs.${convention} or {};
+            in
+              lib.foldlAttrs (
+                acc: name: _value: let
+                  existing = acc.${name} or [];
+                in
+                  acc // {${name} = existing ++ ["subworkspace:${subName}"];}
+              )
+              existingNames
+              subConv
+          )
+          registry
+      )
+      rootRegistry
+      subNames;
+
+    # Find entries with multiple sources
+    conflicts = lib.concatLists (
+      lib.mapAttrsToList (
+        convention: names:
+          lib.concatLists (
+            lib.mapAttrsToList (
+              name: sources:
+                if builtins.length sources > 1
+                then [
+                  {
+                    code = "NW200";
+                    severity = "error";
+                    inherit convention name sources;
+                    message = "Namespace conflict: output '${name}' in '${convention}' is produced by ${builtins.toString (builtins.length sources)} sources: ${builtins.concatStringsSep ", " sources}";
+                    hint = "Rename one of the conflicting outputs or use a different subworkspace directory name.";
+                  }
+                ]
+                else []
+            )
+            names
+          )
+      )
+      registryWithSubs
+    );
+  in
+    conflicts;
 in {
   inherit
     defaultConventions
@@ -177,7 +403,12 @@ in {
     discoverNclFiles
     discoverAll
     discoverSubworkspaces
+    discoverSubworkspaceOutputs
+    discoverAllSubworkspaces
     resolveNames
+    namespaceSubworkspaceDiscovered
+    mergeDiscovered
+    checkDiscoveryConflicts
     dirExists
     ;
 }
