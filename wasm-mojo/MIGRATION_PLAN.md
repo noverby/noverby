@@ -299,6 +299,13 @@ inline compile-time values are cleaner than separate declarations.
 
 **Priority:** Low — convenience improvement.
 
+**Status:** 🟡 Deferred — all compile-time values in the codebase are named
+constants (`comptime TAG_DIV`, `comptime OP_END`, etc.) where a named
+declaration is clearer than an inline `comptime(x)` expression. No call
+sites were found where an anonymous inline compile-time evaluation would
+be more readable than the existing named constants. Will adopt if inline
+compile-time expressions become useful in future template or DSL code.
+
 ---
 
 ### F6 — `-Xlinker` flag
@@ -311,6 +318,12 @@ configured to invoke `wasm-ld` directly. Investigate whether this is viable for
 the wasm64-wasi target.
 
 **Priority:** Low — investigate only.
+
+**Status:** 🟡 Deferred — not applicable to the current build pipeline. The
+`justfile` uses `mojo build --emit llvm` → `llc` → `wasm-ld` because Mojo
+does not natively target `wasm64-wasi`. The `-Xlinker` flag passes options
+to Mojo's *internal* linker (for native targets), not to an external
+`wasm-ld` invocation. The custom multi-step pipeline remains necessary.
 
 ---
 
@@ -354,6 +367,13 @@ fn store_value[T: AnyType](ref value: T):
 
 **Priority:** Low — experimental, explore when tackling generic `Signal[T]`.
 
+**Status:** 🟡 Deferred — the `SignalStore` currently uses type-erased raw-byte
+storage with separate `SignalStore` (Int32 via memcpy) and `StringStore`
+(heap Strings via `List[String]`). There are no generic `[T: AnyType]`
+store paths that need runtime trait-based dispatch. `conforms_to()` will
+become useful when building a unified `Signal[T]` store, which is still
+blocked on full conditional conformance for parametric types.
+
 ---
 
 ### F9 — Expanded reflection module
@@ -366,6 +386,12 @@ debug formatters, or generic serialization for VNode/mutation types.
 
 **Priority:** Low — explore for future phases.
 
+**Status:** 🟡 Deferred — the binary mutation protocol is hand-written for
+performance (`MutationWriter` writes opcodes + payloads directly). Debug
+formatting is now covered by auto-derived `Writable` (F3). No clear
+application for reflection-based serialization exists today. Will revisit
+if a generic encode/decode layer is needed for new struct types.
+
 ---
 
 ### F10 — `Never` type
@@ -377,6 +403,12 @@ compile with the same ABI as non-raising functions.
 **Opportunity:** Annotate unreachable code paths and `abort()` wrappers.
 
 **Priority:** Low — minor type safety improvement.
+
+**Status:** 🟡 Deferred — the codebase has no `abort()` calls, `panic()`
+calls, or functions guaranteed to never return. Error paths use early
+`return` with default/sentinel values rather than aborting. The `Never`
+type has no natural application point today. Will adopt if abort-style
+error handlers or unreachable-code annotations are introduced.
 
 ---
 
@@ -422,8 +454,16 @@ Recommended sequence to minimize churn and test breakage:
 
 - ✅ **F4 — Remove redundant `Movable`** — cleaned up ~40 struct declarations
   and generic constraints.
-- 🟡 **F1 — Typed errors** — deferred, no `raises` functions in codebase.
-- 🟡 **F2 — UTF-8 constructors** — deferred, no raw-bytes string construction.
+
+### Deferred (no natural application point)
+
+- 🟡 **F1 — Typed errors** — no `raises` functions in codebase.
+- 🟡 **F2 — UTF-8 constructors** — no raw-bytes string construction.
+- 🟡 **F5 — `comptime(x)` expression** — all constants are named; no inline use case.
+- 🟡 **F6 — `-Xlinker` flag** — not applicable; build uses custom `llc` + `wasm-ld` pipeline.
+- 🟡 **F8 — `conforms_to()` / `trait_downcast()`** — no generic store paths yet.
+- 🟡 **F9 — Reflection module** — protocol is hand-written; debug via `Writable` (F3).
+- 🟡 **F10 — `Never` type** — no abort/panic/unreachable code paths.
 
 ---
 
@@ -450,3 +490,23 @@ just serve
 - ✅ `just test-js` — 1,385 JS tests pass.
 - ⚠️ `just test` — blocked by pre-existing `wasmtime-mojo` compile error
   (pointer origin mismatch in `module.mojo:124`, unrelated to wasm-mojo).
+
+---
+
+## ✅ Migration Complete
+
+All breaking changes (B1–B8) have been resolved. All new features with
+actionable application points (F3, F4, F7) have been adopted. The remaining
+features (F1, F2, F5, F6, F8, F9, F10) have been evaluated and deferred —
+none have natural application points in the current codebase architecture.
+They will be revisited when their prerequisites are met (e.g. `raises`-based
+error paths for F1, raw-bytes string construction for F2, generic `Signal[T]`
+for F8).
+
+**Summary:**
+
+- 8 breaking changes resolved (4 required code changes, 4 no changes needed)
+- 3 new features adopted (F3: auto-derived traits, F4: redundant Movable cleanup, F7: -Werror)
+- 7 new features deferred with documented rationale
+- Build: zero warnings with `-Werror`
+- Tests: 1,385 JS tests passing
