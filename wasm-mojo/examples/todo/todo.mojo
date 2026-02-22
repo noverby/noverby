@@ -13,7 +13,7 @@
 #   - `get_action()` replaces manual handler_map lookup loop
 #   - `add_class_if()` replaces 4-line if/else class pattern (Phase 18)
 #   - `text_when()` replaces 4-line if/else text pattern (Phase 18)
-#   - Multi-arg el_* overloads (no List[Node]() wrappers)
+#   - Multi-arg el_* overloads (no [...] list literal wrappers)
 #   - KeyedList abstraction (bundles FragmentSlot + scope IDs + template ID + handler map)
 #   - Constructor-based setup (all init in __init__)
 #   - ctx.use_signal() for automatic scope subscription
@@ -115,7 +115,7 @@
 #                 return True
 #             return False
 
-from memory import UnsafePointer
+from memory import UnsafePointer, alloc
 from bridge import MutationWriter
 from mutations import CreateEngine
 from events import HandlerEntry
@@ -147,7 +147,7 @@ from vdom import (
 )
 
 
-struct TodoItem(Copyable, Movable):
+struct TodoItem(Copyable):
     """A single todo list item."""
 
     var id: Int32
@@ -172,8 +172,8 @@ struct TodoItem(Copyable, Movable):
 
 # App-defined action tags for ItemBuilder.add_custom_event() dispatch.
 # These are retrieved via KeyedList.get_action().
-alias TODO_ACTION_TOGGLE: UInt8 = 1
-alias TODO_ACTION_REMOVE: UInt8 = 2
+comptime TODO_ACTION_TOGGLE: UInt8 = 1
+comptime TODO_ACTION_REMOVE: UInt8 = 2
 
 
 struct TodoApp(Movable):
@@ -233,7 +233,7 @@ struct TodoApp(Movable):
                                   button("✓") + dyn_attr[0],
                                   button("✕") + dyn_attr[1] ]
 
-        Uses multi-arg el_* overloads — no List[Node]() wrappers needed.
+        Uses multi-arg el_* overloads — no [...] list literal wrappers needed.
         """
         # 1. Create context and signal
         self.ctx = ComponentContext.create()
@@ -434,18 +434,18 @@ struct TodoApp(Movable):
         return vb.build()
 
 
-fn todo_app_init() -> UnsafePointer[TodoApp]:
+fn todo_app_init() -> UnsafePointer[TodoApp, MutExternalOrigin]:
     """Initialize the todo app.  Returns a pointer to the app state.
 
     All setup happens in TodoApp.__init__() — this function just
     allocates the heap slot and moves the app into it.
     """
-    var app_ptr = UnsafePointer[TodoApp].alloc(1)
+    var app_ptr = alloc[TodoApp](1)
     app_ptr.init_pointee_move(TodoApp())
     return app_ptr
 
 
-fn todo_app_destroy(app_ptr: UnsafePointer[TodoApp]):
+fn todo_app_destroy(app_ptr: UnsafePointer[TodoApp, MutExternalOrigin]):
     """Destroy the todo app and free all resources."""
     app_ptr[0].ctx.destroy()
     app_ptr.destroy_pointee()
@@ -453,8 +453,8 @@ fn todo_app_destroy(app_ptr: UnsafePointer[TodoApp]):
 
 
 fn todo_app_rebuild(
-    app: UnsafePointer[TodoApp],
-    writer_ptr: UnsafePointer[MutationWriter],
+    app: UnsafePointer[TodoApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the todo app.
 
@@ -503,8 +503,8 @@ fn todo_app_rebuild(
 
 
 fn todo_app_flush(
-    app: UnsafePointer[TodoApp],
-    writer_ptr: UnsafePointer[MutationWriter],
+    app: UnsafePointer[TodoApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates after a list mutation or input clear.
 

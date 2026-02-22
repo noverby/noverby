@@ -21,23 +21,23 @@ from vdom.template import (
 
 # ── Opcodes ──────────────────────────────────────────────────────────────────
 
-alias OP_END = UInt8(0x00)
-alias OP_APPEND_CHILDREN = UInt8(0x01)
-alias OP_ASSIGN_ID = UInt8(0x02)
-alias OP_CREATE_PLACEHOLDER = UInt8(0x03)
-alias OP_CREATE_TEXT_NODE = UInt8(0x04)
-alias OP_LOAD_TEMPLATE = UInt8(0x05)
-alias OP_REPLACE_WITH = UInt8(0x06)
-alias OP_REPLACE_PLACEHOLDER = UInt8(0x07)
-alias OP_INSERT_AFTER = UInt8(0x08)
-alias OP_INSERT_BEFORE = UInt8(0x09)
-alias OP_SET_ATTRIBUTE = UInt8(0x0A)
-alias OP_SET_TEXT = UInt8(0x0B)
-alias OP_NEW_EVENT_LISTENER = UInt8(0x0C)
-alias OP_REMOVE_EVENT_LISTENER = UInt8(0x0D)
-alias OP_REMOVE = UInt8(0x0E)
-alias OP_PUSH_ROOT = UInt8(0x0F)
-alias OP_REGISTER_TEMPLATE = UInt8(0x10)
+comptime OP_END = UInt8(0x00)
+comptime OP_APPEND_CHILDREN = UInt8(0x01)
+comptime OP_ASSIGN_ID = UInt8(0x02)
+comptime OP_CREATE_PLACEHOLDER = UInt8(0x03)
+comptime OP_CREATE_TEXT_NODE = UInt8(0x04)
+comptime OP_LOAD_TEMPLATE = UInt8(0x05)
+comptime OP_REPLACE_WITH = UInt8(0x06)
+comptime OP_REPLACE_PLACEHOLDER = UInt8(0x07)
+comptime OP_INSERT_AFTER = UInt8(0x08)
+comptime OP_INSERT_BEFORE = UInt8(0x09)
+comptime OP_SET_ATTRIBUTE = UInt8(0x0A)
+comptime OP_SET_TEXT = UInt8(0x0B)
+comptime OP_NEW_EVENT_LISTENER = UInt8(0x0C)
+comptime OP_REMOVE_EVENT_LISTENER = UInt8(0x0D)
+comptime OP_REMOVE = UInt8(0x0E)
+comptime OP_PUSH_ROOT = UInt8(0x0F)
+comptime OP_REGISTER_TEMPLATE = UInt8(0x10)
 
 
 # ── MutationWriter ───────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ struct MutationWriter(Movable):
     written before `finalize()` is called.
     """
 
-    var buf: UnsafePointer[UInt8]
+    var buf: UnsafePointer[UInt8, MutExternalOrigin]
     var offset: Int
     var capacity: Int
 
@@ -63,14 +63,14 @@ struct MutationWriter(Movable):
 
     # ── Construction ─────────────────────────────────────────────────────
 
-    fn __init__(out self, buf: UnsafePointer[UInt8], capacity: Int):
+    fn __init__(out self, buf: UnsafePointer[UInt8, MutExternalOrigin], capacity: Int):
         """Create a writer that starts at the beginning of `buf`."""
         self.buf = buf
         self.offset = 0
         self.capacity = capacity
 
     fn __init__(
-        out self, buf: UnsafePointer[UInt8], offset: Int, capacity: Int
+        out self, buf: UnsafePointer[UInt8, MutExternalOrigin], offset: Int, capacity: Int
     ):
         """Create a writer that starts at `offset` within `buf`."""
         self.buf = buf
@@ -117,7 +117,7 @@ struct MutationWriter(Movable):
             self.buf[self.offset + i] = ptr[i]
         self.offset += text_len
 
-    fn _write_path(mut self, path_ptr: UnsafePointer[UInt8], path_len: Int):
+    fn _write_path[origin: Origin](mut self, path_ptr: UnsafePointer[UInt8, origin], path_len: Int):
         """Write a u8-length-prefixed byte path (template traversal indices)."""
         self._write_u8(UInt8(path_len))
         for i in range(path_len):
@@ -144,8 +144,8 @@ struct MutationWriter(Movable):
         self._write_u32_le(id)
         self._write_u32_le(m)
 
-    fn assign_id(
-        mut self, path_ptr: UnsafePointer[UInt8], path_len: Int, id: UInt32
+    fn assign_id[origin: Origin](
+        mut self, path_ptr: UnsafePointer[UInt8, origin], path_len: Int, id: UInt32
     ):
         """Assign an ElementId to the node at `path` inside the current template.
 
@@ -191,8 +191,8 @@ struct MutationWriter(Movable):
         self._write_u32_le(id)
         self._write_u32_le(m)
 
-    fn replace_placeholder(
-        mut self, path_ptr: UnsafePointer[UInt8], path_len: Int, m: UInt32
+    fn replace_placeholder[origin: Origin](
+        mut self, path_ptr: UnsafePointer[UInt8, origin], path_len: Int, m: UInt32
     ):
         """Replace the placeholder at `path` with `m` nodes from the stack.
 

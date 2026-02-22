@@ -73,7 +73,7 @@ from vdom import VNodeBuilder
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-struct _HandlerMapping(Copyable, Movable):
+struct _HandlerMapping(Copyable):
     """Maps a handler ID to an app-defined action tag and data value.
 
     This is the internal storage type used by KeyedList's handler_map.
@@ -106,7 +106,7 @@ struct _HandlerMapping(Copyable, Movable):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-struct HandlerAction(Copyable, Movable):
+struct HandlerAction(Copyable):
     """Result of looking up a handler ID via `KeyedList.get_action()`.
 
     Fields:
@@ -190,15 +190,15 @@ struct ItemBuilder(Movable):
 
     var vb: VNodeBuilder
     var scope_id: UInt32
-    var _runtime: UnsafePointer[Runtime]
-    var _handler_map_ptr: UnsafePointer[List[_HandlerMapping]]
+    var _runtime: UnsafePointer[Runtime, MutExternalOrigin]
+    var _handler_map_ptr: UnsafePointer[List[_HandlerMapping], MutExternalOrigin]
 
     fn __init__(
         out self,
         var vb: VNodeBuilder,
         scope_id: UInt32,
-        runtime: UnsafePointer[Runtime],
-        handler_map_ptr: UnsafePointer[List[_HandlerMapping]],
+        runtime: UnsafePointer[Runtime, MutExternalOrigin],
+        handler_map_ptr: UnsafePointer[List[_HandlerMapping], MutExternalOrigin],
     ):
         """Create an ItemBuilder (called internally by KeyedList.begin_item).
 
@@ -535,11 +535,12 @@ struct KeyedList(Movable):
         var scope_id = ctx.create_child_scope()
         self.scope_ids.append(scope_id)
         var vb = VNodeBuilder(self.template_id, key, ctx.store_ptr())
+        var handler_map_ptr = UnsafePointer(to=self.handler_map)
         return ItemBuilder(
             vb^,
             scope_id,
             ctx.runtime_ptr(),
-            UnsafePointer(to=self.handler_map),
+            UnsafePointer[List[_HandlerMapping], MutExternalOrigin](unsafe_from_address=Int(handler_map_ptr)),
         )
 
     # ── Phase 17 — Handler action dispatch ───────────────────────────
@@ -624,7 +625,7 @@ struct KeyedList(Movable):
     fn flush(
         mut self,
         mut ctx: ComponentContext,
-        writer_ptr: UnsafePointer[MutationWriter],
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
         new_frag_idx: UInt32,
     ):
         """Flush the keyed list: diff old vs new fragment, emit mutations.

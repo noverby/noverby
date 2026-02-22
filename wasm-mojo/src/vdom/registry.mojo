@@ -85,13 +85,14 @@ struct TemplateRegistry(Movable):
 
     # ── Lookup ───────────────────────────────────────────────────────
 
-    fn get_ptr(self, id: UInt32) -> UnsafePointer[Template]:
+    fn get_ptr(self, id: UInt32) -> UnsafePointer[Template, MutExternalOrigin]:
         """Return a pointer to the template at `id`.
 
         The pointer is valid until the next mutation of the registry.
         Precondition: `id` < `count()`.
         """
-        return self._templates.unsafe_ptr() + Int(id)
+        var ptr = self._templates.unsafe_ptr() + Int(id)
+        return UnsafePointer[Template, MutExternalOrigin](unsafe_from_address=Int(ptr))
 
     fn find_by_name(self, name: String) -> Int:
         """Find a template by name.  Returns its ID as Int, or -1 if not found.

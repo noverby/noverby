@@ -5,7 +5,7 @@
 #   - dyn_text()   — auto-numbered dynamic text (no manual index tracking)
 #   - flush()      — combines diff + finalize in one call
 #   - __init__     — all setup happens in the constructor
-#   - Multi-arg el_* overloads — no List[Node]() wrappers needed
+#   - Multi-arg el_* overloads — no [...] list literal wrappers needed
 #
 # Compare with the Dioxus equivalent:
 #
@@ -50,7 +50,7 @@
 #     button  (text: "Down low!")
 #       dynamic_attr[1]      ← onclick → decrement handler (auto-registered)
 
-from memory import UnsafePointer
+from memory import UnsafePointer, alloc
 from bridge import MutationWriter
 from component import ComponentContext
 from signals import SignalI32
@@ -93,7 +93,7 @@ struct CounterApp(Movable):
 
         dyn_text() uses auto-numbering — no manual index needed.
 
-        Multi-arg el_* overloads eliminate List[Node]() wrappers,
+        Multi-arg el_* overloads eliminate [...] list literal wrappers,
         bringing the DSL closer to Dioxus's rsx! macro.
         """
         self.ctx = ComponentContext.create()
@@ -133,18 +133,18 @@ struct CounterApp(Movable):
         return vb.build()
 
 
-fn counter_app_init() -> UnsafePointer[CounterApp]:
+fn counter_app_init() -> UnsafePointer[CounterApp, MutExternalOrigin]:
     """Initialize the counter app.  Returns a pointer to the app state.
 
     All setup happens in CounterApp.__init__() — this function just
     allocates the heap slot and moves the app into it.
     """
-    var app_ptr = UnsafePointer[CounterApp].alloc(1)
+    var app_ptr = alloc[CounterApp](1)
     app_ptr.init_pointee_move(CounterApp())
     return app_ptr
 
 
-fn counter_app_destroy(app_ptr: UnsafePointer[CounterApp]):
+fn counter_app_destroy(app_ptr: UnsafePointer[CounterApp, MutExternalOrigin]):
     """Destroy the counter app and free all resources."""
     app_ptr[0].ctx.destroy()
     app_ptr.destroy_pointee()
@@ -152,8 +152,8 @@ fn counter_app_destroy(app_ptr: UnsafePointer[CounterApp]):
 
 
 fn counter_app_rebuild(
-    app: UnsafePointer[CounterApp],
-    writer_ptr: UnsafePointer[MutationWriter],
+    app: UnsafePointer[CounterApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the counter app.
 
@@ -168,7 +168,7 @@ fn counter_app_rebuild(
 
 
 fn counter_app_handle_event(
-    app: UnsafePointer[CounterApp], handler_id: UInt32, event_type: UInt8
+    app: UnsafePointer[CounterApp, MutExternalOrigin], handler_id: UInt32, event_type: UInt8
 ) -> Bool:
     """Dispatch an event to the counter app.
 
@@ -178,8 +178,8 @@ fn counter_app_handle_event(
 
 
 fn counter_app_flush(
-    app: UnsafePointer[CounterApp],
-    writer_ptr: UnsafePointer[MutationWriter],
+    app: UnsafePointer[CounterApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates after event dispatch.
 

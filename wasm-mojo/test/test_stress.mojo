@@ -30,7 +30,7 @@ from wasm_harness import (
 )
 
 
-fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
+fn _get_wasm() raises -> UnsafePointer[WasmInstance, MutExternalOrigin]:
     return get_instance()
 
 
@@ -72,7 +72,7 @@ fn _repeat_char(ch: String, n: Int) -> String:
 
 
 fn test_200_sequential_string_allocations(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Write 200 distinct strings and verify they all read back correctly."""
     var ptrs = List[Int]()
@@ -98,7 +98,7 @@ fn test_200_sequential_string_allocations(
 
 
 fn test_100_return_input_string_roundtrips(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     for i in range(100):
         var s = "roundtrip-" + String(i)
@@ -118,7 +118,7 @@ fn test_100_return_input_string_roundtrips(
 # ---------------------------------------------------------------------------
 
 
-fn test_50_sequential_concats(w: UnsafePointer[WasmInstance]) raises:
+fn test_50_sequential_concats(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Build a string by concatenating 'ab' 50 times through WASM."""
     var current_ptr = w[].write_string_struct("")
     for _ in range(50):
@@ -149,7 +149,7 @@ fn test_50_sequential_concats(w: UnsafePointer[WasmInstance]) raises:
 
 
 fn test_50_interleaved_numeric_string_ops(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     for i in range(50):
         # Do some numeric work
@@ -186,7 +186,7 @@ fn test_50_interleaved_numeric_string_ops(
 
 
 fn test_300_alloc_string_struct_non_overlapping(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Verify no two struct pointers overlap (each struct is 24 bytes)."""
     var ptrs = List[Int]()
@@ -213,9 +213,9 @@ fn test_300_alloc_string_struct_non_overlapping(
 
 
 fn test_mixed_size_strings_report_correct_length(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
-    var sizes = List[Int](0, 1, 5, 22, 23, 24, 25, 50, 100, 255, 1, 0, 23, 24)
+    var sizes: List[Int] = [0, 1, 5, 22, 23, 24, 25, 50, 100, 255, 1, 0, 23, 24]
     var ptrs = List[Int]()
 
     for i in range(len(sizes)):
@@ -238,7 +238,7 @@ fn test_mixed_size_strings_report_correct_length(
 # ---------------------------------------------------------------------------
 
 
-fn test_fib_recurrence_2_to_40(w: UnsafePointer[WasmInstance]) raises:
+fn test_fib_recurrence_2_to_40(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Verify fib(n) = fib(n-1) + fib(n-2) for n = 2..40."""
     for n in range(2, 41):
         var fn0 = Int(w[].call_i32("fib_int32", args_i32(n)))
@@ -264,8 +264,8 @@ fn test_fib_recurrence_2_to_40(w: UnsafePointer[WasmInstance]) raises:
 # ---------------------------------------------------------------------------
 
 
-fn test_string_eq_reflexive(w: UnsafePointer[WasmInstance]) raises:
-    var test_strings = List[String](
+fn test_string_eq_reflexive(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+    var test_strings: List[String] = [
         "",
         "a",
         "hello",
@@ -274,7 +274,7 @@ fn test_string_eq_reflexive(w: UnsafePointer[WasmInstance]) raises:
         String("café"),
         String("Hello, World! "),
         _repeat_char("z", 100),
-    )
+    ]
     for i in range(len(test_strings)):
         var s = test_strings[i]
         var a_ptr = w[].write_string_struct(s)

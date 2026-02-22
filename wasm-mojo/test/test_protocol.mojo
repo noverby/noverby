@@ -34,55 +34,55 @@ from wasm_harness import (
 )
 
 
-fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
+fn _get_wasm() raises -> UnsafePointer[WasmInstance, MutExternalOrigin]:
     return get_instance()
 
 
 # ── Constants (matching bridge/protocol) ─────────────────────────────────────
 
-alias OP_END = 0x00
-alias OP_APPEND_CHILDREN = 0x01
-alias OP_ASSIGN_ID = 0x02
-alias OP_CREATE_PLACEHOLDER = 0x03
-alias OP_CREATE_TEXT_NODE = 0x04
-alias OP_LOAD_TEMPLATE = 0x05
-alias OP_REPLACE_WITH = 0x06
-alias OP_REPLACE_PLACEHOLDER = 0x07
-alias OP_INSERT_AFTER = 0x08
-alias OP_INSERT_BEFORE = 0x09
-alias OP_SET_ATTRIBUTE = 0x0A
-alias OP_SET_TEXT = 0x0B
-alias OP_NEW_EVENT_LISTENER = 0x0C
-alias OP_REMOVE_EVENT_LISTENER = 0x0D
-alias OP_REMOVE = 0x0E
-alias OP_PUSH_ROOT = 0x0F
-alias OP_REGISTER_TEMPLATE = 0x10
+comptime OP_END = 0x00
+comptime OP_APPEND_CHILDREN = 0x01
+comptime OP_ASSIGN_ID = 0x02
+comptime OP_CREATE_PLACEHOLDER = 0x03
+comptime OP_CREATE_TEXT_NODE = 0x04
+comptime OP_LOAD_TEMPLATE = 0x05
+comptime OP_REPLACE_WITH = 0x06
+comptime OP_REPLACE_PLACEHOLDER = 0x07
+comptime OP_INSERT_AFTER = 0x08
+comptime OP_INSERT_BEFORE = 0x09
+comptime OP_SET_ATTRIBUTE = 0x0A
+comptime OP_SET_TEXT = 0x0B
+comptime OP_NEW_EVENT_LISTENER = 0x0C
+comptime OP_REMOVE_EVENT_LISTENER = 0x0D
+comptime OP_REMOVE = 0x0E
+comptime OP_PUSH_ROOT = 0x0F
+comptime OP_REGISTER_TEMPLATE = 0x10
 
-alias BUF_CAP = 4096
+comptime BUF_CAP = 4096
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-fn _alloc_buf(w: UnsafePointer[WasmInstance]) raises -> Int:
+fn _alloc_buf(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises -> Int:
     """Allocate a mutation buffer in WASM linear memory."""
     return Int(w[].call_i64("mutation_buf_alloc", args_i32(BUF_CAP)))
 
 
-fn _free_buf(w: UnsafePointer[WasmInstance], buf: Int) raises:
+fn _free_buf(w: UnsafePointer[WasmInstance, MutExternalOrigin], buf: Int) raises:
     """Free a mutation buffer."""
     w[].call_void("mutation_buf_free", args_ptr(buf))
 
 
 fn _read_u8(
-    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], buf: Int, offset: Int
 ) raises -> Int:
     """Read a single byte from WASM memory."""
     return Int(w[].call_i32("debug_read_byte", args_ptr_i32(buf, offset)))
 
 
 fn _read_u16_le(
-    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], buf: Int, offset: Int
 ) raises -> Int:
     """Read a little-endian u16 from WASM memory."""
     var lo = _read_u8(w, buf, offset)
@@ -91,7 +91,7 @@ fn _read_u16_le(
 
 
 fn _read_u32_le(
-    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], buf: Int, offset: Int
 ) raises -> Int:
     """Read a little-endian u32 from WASM memory."""
     var b0 = _read_u8(w, buf, offset)
@@ -104,7 +104,7 @@ fn _read_u32_le(
 # ── End sentinel ─────────────────────────────────────────────────────────────
 
 
-fn test_end_sentinel(w: UnsafePointer[WasmInstance]) raises:
+fn test_end_sentinel(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var off = Int(w[].call_i32("write_op_end", args_ptr_i32(buf, 0)))
@@ -115,7 +115,7 @@ fn test_end_sentinel(w: UnsafePointer[WasmInstance]) raises:
     _free_buf(w, buf)
 
 
-fn test_empty_buffer_starts_at_zero(w: UnsafePointer[WasmInstance]) raises:
+fn test_empty_buffer_starts_at_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     # Writer starts at offset 0 (the write_op functions take off as input)
@@ -125,7 +125,7 @@ fn test_empty_buffer_starts_at_zero(w: UnsafePointer[WasmInstance]) raises:
     _free_buf(w, buf)
 
 
-fn test_writer_with_initial_offset(w: UnsafePointer[WasmInstance]) raises:
+fn test_writer_with_initial_offset(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var off = Int(w[].call_i32("write_op_end", args_ptr_i32(buf, 10)))
@@ -138,7 +138,7 @@ fn test_writer_with_initial_offset(w: UnsafePointer[WasmInstance]) raises:
 # ── AppendChildren ───────────────────────────────────────────────────────────
 
 
-fn test_append_children(w: UnsafePointer[WasmInstance]) raises:
+fn test_append_children(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var off = Int(
@@ -159,7 +159,7 @@ fn test_append_children(w: UnsafePointer[WasmInstance]) raises:
     _free_buf(w, buf)
 
 
-fn test_append_children_zero(w: UnsafePointer[WasmInstance]) raises:
+fn test_append_children_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     _ = w[].call_i32(
@@ -177,7 +177,7 @@ fn test_append_children_zero(w: UnsafePointer[WasmInstance]) raises:
 # ── CreatePlaceholder ────────────────────────────────────────────────────────
 
 
-fn test_create_placeholder(w: UnsafePointer[WasmInstance]) raises:
+fn test_create_placeholder(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var off = Int(
@@ -202,7 +202,7 @@ fn test_create_placeholder(w: UnsafePointer[WasmInstance]) raises:
 # ── CreateTextNode ───────────────────────────────────────────────────────────
 
 
-fn test_create_text_node(w: UnsafePointer[WasmInstance]) raises:
+fn test_create_text_node(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var text_ptr = w[].write_string_struct("hello")
@@ -231,7 +231,7 @@ fn test_create_text_node(w: UnsafePointer[WasmInstance]) raises:
     _free_buf(w, buf)
 
 
-fn test_create_text_node_empty_string(w: UnsafePointer[WasmInstance]) raises:
+fn test_create_text_node_empty_string(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var text_ptr = w[].write_string_struct("")
@@ -251,7 +251,7 @@ fn test_create_text_node_empty_string(w: UnsafePointer[WasmInstance]) raises:
     _free_buf(w, buf)
 
 
-fn test_create_text_node_unicode(w: UnsafePointer[WasmInstance]) raises:
+fn test_create_text_node_unicode(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var text = String("héllo")
@@ -277,7 +277,7 @@ fn test_create_text_node_unicode(w: UnsafePointer[WasmInstance]) raises:
 # ── LoadTemplate ─────────────────────────────────────────────────────────────
 
 
-fn test_load_template(w: UnsafePointer[WasmInstance]) raises:
+fn test_load_template(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var off = Int(
@@ -303,7 +303,7 @@ fn test_load_template(w: UnsafePointer[WasmInstance]) raises:
 # ── ReplaceWith ──────────────────────────────────────────────────────────────
 
 
-fn test_replace_with(w: UnsafePointer[WasmInstance]) raises:
+fn test_replace_with(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var off = Int(
@@ -324,7 +324,7 @@ fn test_replace_with(w: UnsafePointer[WasmInstance]) raises:
 # ── InsertAfter ──────────────────────────────────────────────────────────────
 
 
-fn test_insert_after(w: UnsafePointer[WasmInstance]) raises:
+fn test_insert_after(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var off = Int(
@@ -345,7 +345,7 @@ fn test_insert_after(w: UnsafePointer[WasmInstance]) raises:
 # ── InsertBefore ─────────────────────────────────────────────────────────────
 
 
-fn test_insert_before(w: UnsafePointer[WasmInstance]) raises:
+fn test_insert_before(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var off = Int(
@@ -368,7 +368,7 @@ fn test_insert_before(w: UnsafePointer[WasmInstance]) raises:
 # ── Remove ───────────────────────────────────────────────────────────────────
 
 
-fn test_remove(w: UnsafePointer[WasmInstance]) raises:
+fn test_remove(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var off = Int(w[].call_i32("write_op_remove", args_ptr_i32_i32(buf, 0, 15)))
@@ -385,7 +385,7 @@ fn test_remove(w: UnsafePointer[WasmInstance]) raises:
 # ── PushRoot ─────────────────────────────────────────────────────────────────
 
 
-fn test_push_root(w: UnsafePointer[WasmInstance]) raises:
+fn test_push_root(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var off = Int(
@@ -403,7 +403,7 @@ fn test_push_root(w: UnsafePointer[WasmInstance]) raises:
 # ── SetText ──────────────────────────────────────────────────────────────────
 
 
-fn test_set_text(w: UnsafePointer[WasmInstance]) raises:
+fn test_set_text(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var text_ptr = w[].write_string_struct("world")
@@ -430,7 +430,7 @@ fn test_set_text(w: UnsafePointer[WasmInstance]) raises:
 # ── SetAttribute ─────────────────────────────────────────────────────────────
 
 
-fn test_set_attribute(w: UnsafePointer[WasmInstance]) raises:
+fn test_set_attribute(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var name_ptr = w[].write_string_struct("class")
@@ -481,7 +481,7 @@ fn test_set_attribute(w: UnsafePointer[WasmInstance]) raises:
     _free_buf(w, buf)
 
 
-fn test_set_attribute_with_namespace(w: UnsafePointer[WasmInstance]) raises:
+fn test_set_attribute_with_namespace(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var name_ptr = w[].write_string_struct("href")
@@ -498,7 +498,7 @@ fn test_set_attribute_with_namespace(w: UnsafePointer[WasmInstance]) raises:
     _free_buf(w, buf)
 
 
-fn test_set_attribute_empty_value(w: UnsafePointer[WasmInstance]) raises:
+fn test_set_attribute_empty_value(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var name_ptr = w[].write_string_struct("disabled")
@@ -528,7 +528,7 @@ fn test_set_attribute_empty_value(w: UnsafePointer[WasmInstance]) raises:
 # ── NewEventListener ─────────────────────────────────────────────────────────
 
 
-fn test_new_event_listener(w: UnsafePointer[WasmInstance]) raises:
+fn test_new_event_listener(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var name_ptr = w[].write_string_struct("click")
@@ -572,7 +572,7 @@ fn test_new_event_listener(w: UnsafePointer[WasmInstance]) raises:
 # ── RemoveEventListener ─────────────────────────────────────────────────────
 
 
-fn test_remove_event_listener(w: UnsafePointer[WasmInstance]) raises:
+fn test_remove_event_listener(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var name_ptr = w[].write_string_struct("click")
@@ -606,7 +606,7 @@ fn test_remove_event_listener(w: UnsafePointer[WasmInstance]) raises:
 # ── AssignId ─────────────────────────────────────────────────────────────────
 
 
-fn test_assign_id(w: UnsafePointer[WasmInstance]) raises:
+fn test_assign_id(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     # Build a path in WASM memory: [0, 1, 2]
@@ -647,7 +647,7 @@ fn test_assign_id(w: UnsafePointer[WasmInstance]) raises:
     _free_buf(w, buf)
 
 
-fn test_assign_id_empty_path(w: UnsafePointer[WasmInstance]) raises:
+fn test_assign_id_empty_path(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var path_ptr = Int(w[].call_i64("mutation_buf_alloc", args_i32(1)))
@@ -668,7 +668,7 @@ fn test_assign_id_empty_path(w: UnsafePointer[WasmInstance]) raises:
     _free_buf(w, buf)
 
 
-fn test_assign_id_single_element_path(w: UnsafePointer[WasmInstance]) raises:
+fn test_assign_id_single_element_path(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var path_ptr = Int(w[].call_i64("mutation_buf_alloc", args_i32(1)))
@@ -695,7 +695,7 @@ fn test_assign_id_single_element_path(w: UnsafePointer[WasmInstance]) raises:
 # ── ReplacePlaceholder ───────────────────────────────────────────────────────
 
 
-fn test_replace_placeholder(w: UnsafePointer[WasmInstance]) raises:
+fn test_replace_placeholder(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var path_ptr = Int(w[].call_i64("mutation_buf_alloc", args_i32(2)))
@@ -737,7 +737,7 @@ fn test_replace_placeholder(w: UnsafePointer[WasmInstance]) raises:
 # ── Multiple mutations in sequence ───────────────────────────────────────────
 
 
-fn test_multiple_mutations_in_sequence(w: UnsafePointer[WasmInstance]) raises:
+fn test_multiple_mutations_in_sequence(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var off = Int(
@@ -783,7 +783,7 @@ fn test_multiple_mutations_in_sequence(w: UnsafePointer[WasmInstance]) raises:
 # ── Mixed mutations with strings ─────────────────────────────────────────────
 
 
-fn test_mixed_mutations_with_strings(w: UnsafePointer[WasmInstance]) raises:
+fn test_mixed_mutations_with_strings(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var off = Int(
@@ -854,7 +854,7 @@ fn test_mixed_mutations_with_strings(w: UnsafePointer[WasmInstance]) raises:
 # ── Max u32 values ───────────────────────────────────────────────────────────
 
 
-fn test_max_u32_values(w: UnsafePointer[WasmInstance]) raises:
+fn test_max_u32_values(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Ensure the writer correctly encodes the maximum u32 value."""
     var buf = _alloc_buf(w)
 
@@ -872,7 +872,7 @@ fn test_max_u32_values(w: UnsafePointer[WasmInstance]) raises:
     _free_buf(w, buf)
 
 
-fn test_zero_ids(w: UnsafePointer[WasmInstance]) raises:
+fn test_zero_ids(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     var off = Int(
@@ -889,7 +889,7 @@ fn test_zero_ids(w: UnsafePointer[WasmInstance]) raises:
 # ── Long string payload ─────────────────────────────────────────────────────
 
 
-fn test_long_string_payload(w: UnsafePointer[WasmInstance]) raises:
+fn test_long_string_payload(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Test encoding a 1KB string in a text node."""
     var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(8192)))
 
@@ -929,7 +929,7 @@ fn test_long_string_payload(w: UnsafePointer[WasmInstance]) raises:
 # ── Test sequence (composite integration test) ───────────────────────────────
 
 
-fn test_write_test_sequence(w: UnsafePointer[WasmInstance]) raises:
+fn test_write_test_sequence(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Test the write_test_sequence composite helper that writes 5 mutations."""
     var buf = _alloc_buf(w)
 
@@ -992,7 +992,7 @@ fn test_write_test_sequence(w: UnsafePointer[WasmInstance]) raises:
 # ── Debug ptr roundtrip ──────────────────────────────────────────────────────
 
 
-fn test_debug_ptr_roundtrip(w: UnsafePointer[WasmInstance]) raises:
+fn test_debug_ptr_roundtrip(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Verify that debug_ptr_roundtrip correctly round-trips a pointer."""
     var buf = _alloc_buf(w)
 
@@ -1005,7 +1005,7 @@ fn test_debug_ptr_roundtrip(w: UnsafePointer[WasmInstance]) raises:
 # ── Debug read/write byte ────────────────────────────────────────────────────
 
 
-fn test_debug_read_write_byte(w: UnsafePointer[WasmInstance]) raises:
+fn test_debug_read_write_byte(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var buf = _alloc_buf(w)
 
     # Write various bytes and read them back
@@ -1023,7 +1023,7 @@ fn test_debug_read_write_byte(w: UnsafePointer[WasmInstance]) raises:
 # ── All opcodes in one buffer ────────────────────────────────────────────────
 
 
-fn test_all_opcodes_in_one_buffer(w: UnsafePointer[WasmInstance]) raises:
+fn test_all_opcodes_in_one_buffer(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Write one of each opcode into a single buffer and verify opcodes appear
     in the correct order."""
     var buf = _alloc_buf(w)
@@ -1190,31 +1190,31 @@ fn test_all_opcodes_in_one_buffer(w: UnsafePointer[WasmInstance]) raises:
 
 # ── Template node / attr kind constants ──────────────────────────────────────
 
-alias TNODE_ELEMENT = 0x00
-alias TNODE_TEXT = 0x01
-alias TNODE_DYNAMIC = 0x02
-alias TNODE_DYNAMIC_TEXT = 0x03
-alias TATTR_STATIC = 0x00
-alias TATTR_DYNAMIC = 0x01
+comptime TNODE_ELEMENT = 0x00
+comptime TNODE_TEXT = 0x01
+comptime TNODE_DYNAMIC = 0x02
+comptime TNODE_DYNAMIC_TEXT = 0x03
+comptime TATTR_STATIC = 0x00
+comptime TATTR_DYNAMIC = 0x01
 
 # HTML tag constants (matching src/vdom/tags.mojo)
-alias TAG_DIV = 0
-alias TAG_SPAN = 1
-alias TAG_BUTTON = 19
+comptime TAG_DIV = 0
+comptime TAG_SPAN = 1
+comptime TAG_BUTTON = 19
 
 
 # ── Template registration helpers ────────────────────────────────────────────
 
 
-fn _create_runtime(w: UnsafePointer[WasmInstance]) raises -> Int:
+fn _create_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises -> Int:
     return Int(w[].call_i64("runtime_create", no_args()))
 
 
-fn _destroy_runtime(w: UnsafePointer[WasmInstance], rt: Int) raises:
+fn _destroy_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int) raises:
     w[].call_void("runtime_destroy", args_ptr(rt))
 
 
-fn _create_builder(w: UnsafePointer[WasmInstance], name: String) raises -> Int:
+fn _create_builder(w: UnsafePointer[WasmInstance, MutExternalOrigin], name: String) raises -> Int:
     return Int(
         w[].call_i64(
             "tmpl_builder_create", args_ptr(w[].write_string_struct(name))
@@ -1222,36 +1222,36 @@ fn _create_builder(w: UnsafePointer[WasmInstance], name: String) raises -> Int:
     )
 
 
-fn _destroy_builder(w: UnsafePointer[WasmInstance], b: Int) raises:
+fn _destroy_builder(w: UnsafePointer[WasmInstance, MutExternalOrigin], b: Int) raises:
     w[].call_void("tmpl_builder_destroy", args_ptr(b))
 
 
 fn _read_short_str_bytes(
-    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
-) raises -> (Int, Int):
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], buf: Int, offset: Int
+) raises -> Tuple[Int, Int]:
     """Read a u16-length-prefixed string's length and return (length, new_offset).
 
     Does NOT read the string content itself — caller should verify byte-by-byte.
     """
     var slen = _read_u16_le(w, buf, offset)
-    return (slen, offset + 2 + slen)
+    return Tuple(slen, offset + 2 + slen)
 
 
 fn _read_str_bytes(
-    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
-) raises -> (Int, Int):
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], buf: Int, offset: Int
+) raises -> Tuple[Int, Int]:
     """Read a u32-length-prefixed string's length and return (length, new_offset).
 
     Does NOT read the string content itself — caller should verify byte-by-byte.
     """
     var slen = _read_u32_le(w, buf, offset)
-    return (slen, offset + 4 + slen)
+    return Tuple(slen, offset + 4 + slen)
 
 
 # ── Register Template tests ──────────────────────────────────────────────────
 
 
-fn test_register_template_minimal(w: UnsafePointer[WasmInstance]) raises:
+fn test_register_template_minimal(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Serialize a minimal template: div > dyn_text[0].
 
     Template structure:
@@ -1364,7 +1364,7 @@ fn test_register_template_minimal(w: UnsafePointer[WasmInstance]) raises:
 
 
 fn test_register_template_with_text_and_attrs(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Serialize a template with static text, static attrs, and dynamic attrs.
 
@@ -1552,7 +1552,7 @@ fn test_register_template_with_text_and_attrs(
 
 
 fn test_register_template_with_dynamic_node(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Serialize a template with a Dynamic node slot (not DynamicText).
 

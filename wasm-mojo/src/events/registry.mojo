@@ -38,41 +38,41 @@ from memory import UnsafePointer
 # They are sent as part of the dispatch call so Mojo knows which kind
 # of event data to expect.
 
-alias EVT_CLICK: UInt8 = 0
-alias EVT_INPUT: UInt8 = 1
-alias EVT_KEY_DOWN: UInt8 = 2
-alias EVT_KEY_UP: UInt8 = 3
-alias EVT_MOUSE_MOVE: UInt8 = 4
-alias EVT_FOCUS: UInt8 = 5
-alias EVT_BLUR: UInt8 = 6
-alias EVT_SUBMIT: UInt8 = 7
-alias EVT_CHANGE: UInt8 = 8
-alias EVT_MOUSE_DOWN: UInt8 = 9
-alias EVT_MOUSE_UP: UInt8 = 10
-alias EVT_MOUSE_ENTER: UInt8 = 11
-alias EVT_MOUSE_LEAVE: UInt8 = 12
-alias EVT_CUSTOM: UInt8 = 255
+comptime EVT_CLICK: UInt8 = 0
+comptime EVT_INPUT: UInt8 = 1
+comptime EVT_KEY_DOWN: UInt8 = 2
+comptime EVT_KEY_UP: UInt8 = 3
+comptime EVT_MOUSE_MOVE: UInt8 = 4
+comptime EVT_FOCUS: UInt8 = 5
+comptime EVT_BLUR: UInt8 = 6
+comptime EVT_SUBMIT: UInt8 = 7
+comptime EVT_CHANGE: UInt8 = 8
+comptime EVT_MOUSE_DOWN: UInt8 = 9
+comptime EVT_MOUSE_UP: UInt8 = 10
+comptime EVT_MOUSE_ENTER: UInt8 = 11
+comptime EVT_MOUSE_LEAVE: UInt8 = 12
+comptime EVT_CUSTOM: UInt8 = 255
 
 
 # ── Handler action tags ──────────────────────────────────────────────────────
 #
 # Describe the Mojo-side effect of an event handler.
 
-alias ACTION_NONE: UInt8 = 0
-alias ACTION_SIGNAL_SET_I32: UInt8 = 1
-alias ACTION_SIGNAL_ADD_I32: UInt8 = 2
-alias ACTION_SIGNAL_SUB_I32: UInt8 = 3
-alias ACTION_SIGNAL_TOGGLE: UInt8 = 4
-alias ACTION_SIGNAL_SET_INPUT: UInt8 = 5
-alias ACTION_SIGNAL_SET_STRING: UInt8 = 6
-alias ACTION_KEY_ENTER_CUSTOM: UInt8 = 7
-alias ACTION_CUSTOM: UInt8 = 255
+comptime ACTION_NONE: UInt8 = 0
+comptime ACTION_SIGNAL_SET_I32: UInt8 = 1
+comptime ACTION_SIGNAL_ADD_I32: UInt8 = 2
+comptime ACTION_SIGNAL_SUB_I32: UInt8 = 3
+comptime ACTION_SIGNAL_TOGGLE: UInt8 = 4
+comptime ACTION_SIGNAL_SET_INPUT: UInt8 = 5
+comptime ACTION_SIGNAL_SET_STRING: UInt8 = 6
+comptime ACTION_KEY_ENTER_CUSTOM: UInt8 = 7
+comptime ACTION_CUSTOM: UInt8 = 255
 
 
 # ── HandlerEntry ─────────────────────────────────────────────────────────────
 
 
-struct HandlerEntry(Copyable, Movable):
+struct HandlerEntry(Copyable):
     """A single event handler entry in the registry.
 
     Fields:
@@ -255,7 +255,7 @@ struct HandlerEntry(Copyable, Movable):
 
 
 @fieldwise_init
-struct HandlerSlotState(Copyable, Movable):
+struct HandlerSlotState(Copyable):
     """Tracks whether a handler slot is occupied or vacant."""
 
     var occupied: Bool
@@ -347,7 +347,7 @@ struct HandlerRegistry(Movable):
         """
         return self._entries[Int(id)].copy()
 
-    fn get_ptr(self, id: UInt32) -> UnsafePointer[HandlerEntry]:
+    fn get_ptr(self, id: UInt32) -> UnsafePointer[HandlerEntry, MutExternalOrigin]:
         """Return a pointer to the handler entry at `id`.
 
         Precondition: `contains(id)` is True.

@@ -14,7 +14,7 @@
 #     on_input_set, vnode_builder, render_builder, mount, dispatch_event, flush,
 #     has_dirty, consume_dirty, diff, finalize, destroy
 
-from memory import UnsafePointer
+from memory import UnsafePointer, alloc
 from testing import assert_equal, assert_true, assert_false
 from signals import (
     Runtime,
@@ -51,22 +51,22 @@ from bridge import MutationWriter
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn _create_runtime() -> UnsafePointer[Runtime]:
+fn _create_runtime() -> UnsafePointer[Runtime, MutExternalOrigin]:
     return create_runtime()
 
 
-fn _destroy_runtime(rt: UnsafePointer[Runtime]):
+fn _destroy_runtime(rt: UnsafePointer[Runtime, MutExternalOrigin]):
     destroy_runtime(rt)
 
 
-fn _alloc_writer() -> UnsafePointer[MutationWriter]:
-    var buf_ptr = UnsafePointer[UInt8].alloc(8192)
-    var writer_ptr = UnsafePointer[MutationWriter].alloc(1)
+fn _alloc_writer() -> UnsafePointer[MutationWriter, MutExternalOrigin]:
+    var buf_ptr = alloc[UInt8](8192)
+    var writer_ptr = alloc[MutationWriter](1)
     writer_ptr.init_pointee_move(MutationWriter(buf_ptr, 8192))
     return writer_ptr
 
 
-fn _free_writer(writer_ptr: UnsafePointer[MutationWriter]):
+fn _free_writer(writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin]):
     writer_ptr[0].buf.free()
     writer_ptr.destroy_pointee()
     writer_ptr.free()
@@ -780,9 +780,9 @@ def test_ctx_register_template():
     var ctx = ComponentContext.create()
     ctx.end_setup()
     var view = el_div(
-        List[Node](
-            el_span(List[Node](dyn_text(0))),
-        )
+        [
+            el_span([dyn_text(0)]),
+        ]
     )
     ctx.register_template(view, String("test-tmpl"))
     assert_true(Int(ctx.template_id) >= 0, "template ID should be non-negative")
@@ -847,10 +847,10 @@ def test_ctx_vnode_builder():
     var ctx = ComponentContext.create()
     ctx.end_setup()
     var view = el_div(
-        List[Node](
-            el_span(List[Node](dyn_text(0))),
-            el_button(List[Node](text(String("+")), dyn_attr(0))),
-        )
+        [
+            el_span([dyn_text(0)]),
+            el_button([text(String("+")), dyn_attr(0)]),
+        ]
     )
     ctx.register_template(view, String("vb-test"))
     var vb = ctx.vnode_builder()
@@ -865,9 +865,9 @@ def test_ctx_mount_produces_mutations():
     var ctx = ComponentContext.create()
     ctx.end_setup()
     var view = el_div(
-        List[Node](
-            el_span(List[Node](dyn_text(0))),
-        )
+        [
+            el_span([dyn_text(0)]),
+        ]
     )
     ctx.register_template(view, String("mount-test"))
     var vb = ctx.vnode_builder()
@@ -909,11 +909,11 @@ def test_ctx_full_counter_lifecycle():
 
     # Register template
     var view = el_div(
-        List[Node](
-            el_span(List[Node](dyn_text(0))),
-            el_button(List[Node](text(String("+")), dyn_attr(0))),
-            el_button(List[Node](text(String("-")), dyn_attr(1))),
-        )
+        [
+            el_span([dyn_text(0)]),
+            el_button([text(String("+")), dyn_attr(0)]),
+            el_button([text(String("-")), dyn_attr(1)]),
+        ]
     )
     ctx.register_template(view, String("counter-lc"))
 
@@ -1098,15 +1098,15 @@ def test_ctx_setup_view_basic():
     # setup_view combines end_setup + register_view
     ctx.setup_view(
         el_div(
-            List[Node](
-                el_h1(List[Node](dyn_text(0))),
+            [
+                el_h1([dyn_text(0)]),
                 el_button(
-                    List[Node](
+                    [
                         text(String("Up")),
                         onclick_add(count, 1),
-                    )
+                    ]
                 ),
-            )
+            ]
         ),
         String("setup-view-test"),
     )
@@ -1124,10 +1124,10 @@ def test_ctx_setup_view_auto_dyn_text():
     # Use dyn_text() without explicit index — auto-numbered
     ctx.setup_view(
         el_div(
-            List[Node](
-                el_h1(List[Node](dyn_text())),
-                el_span(List[Node](dyn_text())),
-            )
+            [
+                el_h1([dyn_text()]),
+                el_span([dyn_text()]),
+            ]
         ),
         String("auto-dyn-text-test"),
     )
@@ -1147,21 +1147,21 @@ def test_ctx_setup_view_with_render_builder():
     var count = ctx.use_signal(0)
     ctx.setup_view(
         el_div(
-            List[Node](
-                el_h1(List[Node](dyn_text())),
+            [
+                el_h1([dyn_text()]),
                 el_button(
-                    List[Node](
+                    [
                         text(String("Up high!")),
                         onclick_add(count, 1),
-                    )
+                    ]
                 ),
                 el_button(
-                    List[Node](
+                    [
                         text(String("Down low!")),
                         onclick_sub(count, 1),
-                    )
+                    ]
                 ),
-            )
+            ]
         ),
         String("render-builder-test"),
     )
@@ -1182,15 +1182,15 @@ def test_ctx_flush_convenience():
     var count = ctx.use_signal(0)
     ctx.setup_view(
         el_div(
-            List[Node](
-                el_h1(List[Node](dyn_text())),
+            [
+                el_h1([dyn_text()]),
                 el_button(
-                    List[Node](
+                    [
                         text(String("+")),
                         onclick_add(count, 1),
-                    )
+                    ]
                 ),
-            )
+            ]
         ),
         String("flush-test"),
     )
@@ -1233,21 +1233,21 @@ def test_ctx_dioxus_style_counter_lifecycle():
     var count = ctx.use_signal(0)
     ctx.setup_view(
         el_div(
-            List[Node](
-                el_h1(List[Node](dyn_text())),
+            [
+                el_h1([dyn_text()]),
                 el_button(
-                    List[Node](
+                    [
                         text(String("Up high!")),
                         onclick_add(count, 1),
-                    )
+                    ]
                 ),
                 el_button(
-                    List[Node](
+                    [
                         text(String("Down low!")),
                         onclick_sub(count, 1),
-                    )
+                    ]
                 ),
-            )
+            ]
         ),
         String("dioxus-counter"),
     )
@@ -1304,7 +1304,7 @@ def test_ctx_dioxus_style_counter_lifecycle():
 def test_ctx_vnode_builder_keyed():
     var ctx = ComponentContext.create()
     ctx.end_setup()
-    var view = el_div(List[Node](dyn_text(0)))
+    var view = el_div([dyn_text(0)])
     ctx.register_template(view, String("keyed-test"))
     var vb = ctx.vnode_builder_keyed(String("item-1"))
     vb.add_dyn_text(String("hello"))
@@ -1318,11 +1318,11 @@ def test_ctx_vnode_builder_for():
     var ctx = ComponentContext.create()
     ctx.end_setup()
     # Register two templates
-    var view1 = el_div(List[Node](dyn_text(0)))
+    var view1 = el_div([dyn_text(0)])
     ctx.register_template(view1, String("tmpl-1"))
     var tmpl1_id = ctx.template_id
 
-    var view2 = el_span(List[Node](dyn_text(0)))
+    var view2 = el_span([dyn_text(0)])
     # Register second template manually
     from vdom import to_template
 

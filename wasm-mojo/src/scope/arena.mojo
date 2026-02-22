@@ -17,7 +17,7 @@ from .scope import ScopeState
 
 
 @fieldwise_init
-struct _ScopeSlotState(Copyable, Movable):
+struct _ScopeSlotState(Copyable):
     """Tracks whether a scope slot is occupied or vacant."""
 
     var occupied: Bool
@@ -128,7 +128,7 @@ struct ScopeArena(Movable):
 
     # ── Access ───────────────────────────────────────────────────────
 
-    fn get_ptr(self, id: UInt32) -> UnsafePointer[ScopeState]:
+    fn get_ptr(self, id: UInt32) -> UnsafePointer[ScopeState, MutExternalOrigin]:
         """Return a pointer to the ScopeState at `id`.
 
         The caller must ensure `id` refers to a live scope.
@@ -238,7 +238,7 @@ struct ScopeArena(Movable):
         """
         self._scopes[Int(scope_id)].provide_context(key, value)
 
-    fn consume_context(self, scope_id: UInt32, key: UInt32) -> (Bool, Int32):
+    fn consume_context(self, scope_id: UInt32, key: UInt32) -> Tuple[Bool, Int32]:
         """Look up a context value by walking up the scope tree.
 
         Starts at `scope_id` and checks each ancestor scope until a
@@ -262,7 +262,7 @@ struct ScopeArena(Movable):
             if result[0]:
                 return result
             current = self._scopes[idx].parent_id
-        return (False, Int32(0))
+        return Tuple(False, Int32(0))
 
     fn has_context_local(self, scope_id: UInt32, key: UInt32) -> Bool:
         """Check whether the scope itself provides a context for `key`.

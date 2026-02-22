@@ -42,15 +42,15 @@ from memory import UnsafePointer
 
 # ── Hook type tags ───────────────────────────────────────────────────────────
 
-alias HOOK_SIGNAL: UInt8 = 0
-alias HOOK_MEMO: UInt8 = 1
-alias HOOK_EFFECT: UInt8 = 2
+comptime HOOK_SIGNAL: UInt8 = 0
+comptime HOOK_MEMO: UInt8 = 1
+comptime HOOK_EFFECT: UInt8 = 2
 
 
 # ── ScopeState ───────────────────────────────────────────────────────────────
 
 
-struct ScopeState(Copyable, Movable):
+struct ScopeState(Copyable):
     """Per-component instance state.
 
     Tracks the component's position in the tree, its dirty status,
@@ -230,7 +230,7 @@ struct ScopeState(Copyable, Movable):
         self.context_keys.append(key)
         self.context_values.append(value)
 
-    fn get_context(self, key: UInt32) -> (Bool, Int32):
+    fn get_context(self, key: UInt32) -> Tuple[Bool, Int32]:
         """Look up a context value in THIS scope only.
 
         Returns (True, value) if found, (False, 0) if not.
@@ -244,8 +244,8 @@ struct ScopeState(Copyable, Movable):
         """
         for i in range(len(self.context_keys)):
             if self.context_keys[i] == key:
-                return (True, self.context_values[i])
-        return (False, Int32(0))
+                return Tuple(True, self.context_values[i])
+        return Tuple(False, Int32(0))
 
     fn has_context(self, key: UInt32) -> Bool:
         """Check whether this scope provides a context for `key`.

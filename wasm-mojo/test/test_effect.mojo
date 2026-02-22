@@ -22,25 +22,25 @@ from wasm_harness import (
 )
 
 
-fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
+fn _get_wasm() raises -> UnsafePointer[WasmInstance, MutExternalOrigin]:
     return get_instance()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-fn _create_runtime(w: UnsafePointer[WasmInstance]) raises -> Int:
+fn _create_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises -> Int:
     """Create a heap-allocated Runtime via WASM."""
     return Int(w[].call_i64("runtime_create", no_args()))
 
 
-fn _destroy_runtime(w: UnsafePointer[WasmInstance], rt: Int) raises:
+fn _destroy_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int) raises:
     """Destroy a heap-allocated Runtime via WASM."""
     w[].call_void("runtime_destroy", args_ptr(rt))
 
 
 fn _scope_create(
-    w: UnsafePointer[WasmInstance], rt: Int, height: Int32, parent: Int32
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, height: Int32, parent: Int32
 ) raises -> Int:
     """Create a scope and return its ID as Int."""
     return Int(
@@ -48,13 +48,13 @@ fn _scope_create(
     )
 
 
-fn _scope_destroy(w: UnsafePointer[WasmInstance], rt: Int, id: Int) raises:
+fn _scope_destroy(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, id: Int) raises:
     """Destroy a scope."""
     w[].call_void("scope_destroy", args_ptr_i32(rt, Int32(id)))
 
 
 fn _begin_render(
-    w: UnsafePointer[WasmInstance], rt: Int, scope_id: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, scope_id: Int
 ) raises -> Int:
     """Begin rendering a scope. Returns previous scope ID."""
     return Int(
@@ -62,34 +62,34 @@ fn _begin_render(
     )
 
 
-fn _end_render(w: UnsafePointer[WasmInstance], rt: Int, prev: Int) raises:
+fn _end_render(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, prev: Int) raises:
     """End rendering a scope."""
     w[].call_void("scope_end_render", args_ptr_i32(rt, Int32(prev)))
 
 
 fn _signal_create(
-    w: UnsafePointer[WasmInstance], rt: Int, initial: Int32
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, initial: Int32
 ) raises -> Int:
     """Create an Int32 signal and return its key as Int."""
     return Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, initial)))
 
 
 fn _signal_read(
-    w: UnsafePointer[WasmInstance], rt: Int, key: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, key: Int
 ) raises -> Int:
     """Read an Int32 signal (with context tracking)."""
     return Int(w[].call_i32("signal_read_i32", args_ptr_i32(rt, Int32(key))))
 
 
 fn _signal_write(
-    w: UnsafePointer[WasmInstance], rt: Int, key: Int, value: Int32
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, key: Int, value: Int32
 ) raises:
     """Write to an Int32 signal."""
     w[].call_void("signal_write_i32", args_ptr_i32_i32(rt, Int32(key), value))
 
 
 fn _signal_subscriber_count(
-    w: UnsafePointer[WasmInstance], rt: Int, key: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, key: Int
 ) raises -> Int:
     """Return subscriber count for a signal."""
     return Int(
@@ -98,35 +98,35 @@ fn _signal_subscriber_count(
 
 
 fn _signal_contains(
-    w: UnsafePointer[WasmInstance], rt: Int, key: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, key: Int
 ) raises -> Bool:
     """Check whether a signal key is live."""
     return w[].call_i32("signal_contains", args_ptr_i32(rt, Int32(key))) != 0
 
 
 fn _effect_create(
-    w: UnsafePointer[WasmInstance], rt: Int, scope_id: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, scope_id: Int
 ) raises -> Int:
     """Create an effect and return its ID as Int."""
     return Int(w[].call_i32("effect_create", args_ptr_i32(rt, Int32(scope_id))))
 
 
 fn _effect_begin_run(
-    w: UnsafePointer[WasmInstance], rt: Int, effect_id: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, effect_id: Int
 ) raises:
     """Begin effect execution."""
     w[].call_void("effect_begin_run", args_ptr_i32(rt, Int32(effect_id)))
 
 
 fn _effect_end_run(
-    w: UnsafePointer[WasmInstance], rt: Int, effect_id: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, effect_id: Int
 ) raises:
     """End effect execution."""
     w[].call_void("effect_end_run", args_ptr_i32(rt, Int32(effect_id)))
 
 
 fn _effect_is_pending(
-    w: UnsafePointer[WasmInstance], rt: Int, effect_id: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, effect_id: Int
 ) raises -> Bool:
     """Check whether the effect is pending."""
     return (
@@ -136,19 +136,19 @@ fn _effect_is_pending(
 
 
 fn _effect_destroy(
-    w: UnsafePointer[WasmInstance], rt: Int, effect_id: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, effect_id: Int
 ) raises:
     """Destroy an effect."""
     w[].call_void("effect_destroy", args_ptr_i32(rt, Int32(effect_id)))
 
 
-fn _effect_count(w: UnsafePointer[WasmInstance], rt: Int) raises -> Int:
+fn _effect_count(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int) raises -> Int:
     """Return the number of live effects."""
     return Int(w[].call_i32("effect_count", args_ptr(rt)))
 
 
 fn _effect_context_id(
-    w: UnsafePointer[WasmInstance], rt: Int, effect_id: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, effect_id: Int
 ) raises -> Int:
     """Return the reactive context ID of the effect."""
     return Int(
@@ -156,13 +156,13 @@ fn _effect_context_id(
     )
 
 
-fn _effect_drain_pending(w: UnsafePointer[WasmInstance], rt: Int) raises -> Int:
+fn _effect_drain_pending(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int) raises -> Int:
     """Return the number of currently pending effects."""
     return Int(w[].call_i32("effect_drain_pending", args_ptr(rt)))
 
 
 fn _effect_pending_at(
-    w: UnsafePointer[WasmInstance], rt: Int, index: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, index: Int
 ) raises -> Int:
     """Return the effect ID at the given index in the pending list."""
     return Int(
@@ -170,25 +170,25 @@ fn _effect_pending_at(
     )
 
 
-fn _dirty_count(w: UnsafePointer[WasmInstance], rt: Int) raises -> Int:
+fn _dirty_count(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int) raises -> Int:
     """Return number of dirty scopes."""
     return Int(w[].call_i32("runtime_dirty_count", args_ptr(rt)))
 
 
-fn _hook_use_effect(w: UnsafePointer[WasmInstance], rt: Int) raises -> Int:
+fn _hook_use_effect(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int) raises -> Int:
     """Hook: create or retrieve an effect for the current scope."""
     return Int(w[].call_i32("hook_use_effect", args_ptr(rt)))
 
 
 fn _hook_use_signal_i32(
-    w: UnsafePointer[WasmInstance], rt: Int, initial: Int32
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, initial: Int32
 ) raises -> Int:
     """Hook: create or retrieve an Int32 signal for the current scope."""
     return Int(w[].call_i32("hook_use_signal_i32", args_ptr_i32(rt, initial)))
 
 
 fn _hook_use_memo_i32(
-    w: UnsafePointer[WasmInstance], rt: Int, initial: Int32
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, initial: Int32
 ) raises -> Int:
     """Hook: create or retrieve an Int32 memo for the current scope."""
     return Int(w[].call_i32("hook_use_memo_i32", args_ptr_i32(rt, initial)))
@@ -196,7 +196,7 @@ fn _hook_use_memo_i32(
 
 # Memo helpers for testing effect→memo chain
 fn _memo_create(
-    w: UnsafePointer[WasmInstance], rt: Int, scope_id: Int, initial: Int32
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, scope_id: Int, initial: Int32
 ) raises -> Int:
     """Create a memo and return its ID."""
     return Int(
@@ -208,13 +208,13 @@ fn _memo_create(
 
 
 fn _memo_begin_compute(
-    w: UnsafePointer[WasmInstance], rt: Int, memo_id: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, memo_id: Int
 ) raises:
     w[].call_void("memo_begin_compute", args_ptr_i32(rt, Int32(memo_id)))
 
 
 fn _memo_end_compute_i32(
-    w: UnsafePointer[WasmInstance], rt: Int, memo_id: Int, value: Int32
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, memo_id: Int, value: Int32
 ) raises:
     w[].call_void(
         "memo_end_compute_i32",
@@ -223,13 +223,13 @@ fn _memo_end_compute_i32(
 
 
 fn _memo_read_i32(
-    w: UnsafePointer[WasmInstance], rt: Int, memo_id: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, memo_id: Int
 ) raises -> Int:
     return Int(w[].call_i32("memo_read_i32", args_ptr_i32(rt, Int32(memo_id))))
 
 
 fn _memo_output_key(
-    w: UnsafePointer[WasmInstance], rt: Int, memo_id: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, memo_id: Int
 ) raises -> Int:
     return Int(
         w[].call_i32("memo_output_key", args_ptr_i32(rt, Int32(memo_id)))
@@ -241,7 +241,7 @@ fn _memo_output_key(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_effect_create_returns_valid_id(w: UnsafePointer[WasmInstance]):
+def test_effect_create_returns_valid_id(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """Creating an effect returns ID 0 and count becomes 1."""
     var rt = _create_runtime(w)
     var scope = _scope_create(w, rt, 0, -1)
@@ -254,7 +254,7 @@ def test_effect_create_returns_valid_id(w: UnsafePointer[WasmInstance]):
     print("  ✓ test_effect_create_returns_valid_id")
 
 
-def test_effect_starts_pending(w: UnsafePointer[WasmInstance]):
+def test_effect_starts_pending(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """A newly created effect starts pending (needs first run)."""
     var rt = _create_runtime(w)
     var scope = _scope_create(w, rt, 0, -1)
@@ -266,7 +266,7 @@ def test_effect_starts_pending(w: UnsafePointer[WasmInstance]):
     print("  ✓ test_effect_starts_pending")
 
 
-def test_effect_has_context_id(w: UnsafePointer[WasmInstance]):
+def test_effect_has_context_id(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """An effect has a valid reactive context ID (a signal key)."""
     var rt = _create_runtime(w)
     var scope = _scope_create(w, rt, 0, -1)
@@ -280,7 +280,7 @@ def test_effect_has_context_id(w: UnsafePointer[WasmInstance]):
     print("  ✓ test_effect_has_context_id")
 
 
-def test_effect_two_effects_distinct_ids(w: UnsafePointer[WasmInstance]):
+def test_effect_two_effects_distinct_ids(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """Creating two effects returns distinct IDs."""
     var rt = _create_runtime(w)
     var scope = _scope_create(w, rt, 0, -1)
@@ -294,7 +294,7 @@ def test_effect_two_effects_distinct_ids(w: UnsafePointer[WasmInstance]):
     print("  ✓ test_effect_two_effects_distinct_ids")
 
 
-def test_effect_destroy_reduces_count(w: UnsafePointer[WasmInstance]):
+def test_effect_destroy_reduces_count(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """Destroying an effect reduces the count."""
     var rt = _create_runtime(w)
     var scope = _scope_create(w, rt, 0, -1)
@@ -315,7 +315,7 @@ def test_effect_destroy_reduces_count(w: UnsafePointer[WasmInstance]):
     print("  ✓ test_effect_destroy_reduces_count")
 
 
-def test_effect_id_reuse_after_destroy(w: UnsafePointer[WasmInstance]):
+def test_effect_id_reuse_after_destroy(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """Destroyed effect IDs are reused by the next create."""
     var rt = _create_runtime(w)
     var scope = _scope_create(w, rt, 0, -1)
@@ -331,7 +331,7 @@ def test_effect_id_reuse_after_destroy(w: UnsafePointer[WasmInstance]):
 
 
 def test_effect_destroy_cleans_up_context_signal(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ):
     """Destroying an effect also destroys its context signal."""
     var rt = _create_runtime(w)
@@ -359,7 +359,7 @@ def test_effect_destroy_cleans_up_context_signal(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_effect_begin_end_run_clears_pending(w: UnsafePointer[WasmInstance]):
+def test_effect_begin_end_run_clears_pending(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """Running an effect (begin + end) clears the pending flag."""
     var rt = _create_runtime(w)
     var scope = _scope_create(w, rt, 0, -1)
@@ -379,7 +379,7 @@ def test_effect_begin_end_run_clears_pending(w: UnsafePointer[WasmInstance]):
 
 
 def test_effect_signal_read_during_run_subscribes(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ):
     """Reading a signal during an effect run subscribes the effect's context."""
     var rt = _create_runtime(w)
@@ -413,7 +413,7 @@ def test_effect_signal_read_during_run_subscribes(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_effect_signal_write_marks_pending(w: UnsafePointer[WasmInstance]):
+def test_effect_signal_write_marks_pending(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """Writing to a signal that the effect depends on marks it pending."""
     var rt = _create_runtime(w)
     var scope = _scope_create(w, rt, 0, -1)
@@ -441,7 +441,7 @@ def test_effect_signal_write_marks_pending(w: UnsafePointer[WasmInstance]):
 
 
 def test_effect_signal_write_does_not_dirty_scope(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ):
     """Writing to a signal that ONLY an effect subscribes to does NOT dirty any scope.
     """
@@ -475,7 +475,7 @@ def test_effect_signal_write_does_not_dirty_scope(
     print("  ✓ test_effect_signal_write_does_not_dirty_scope")
 
 
-def test_effect_two_effects_same_signal(w: UnsafePointer[WasmInstance]):
+def test_effect_two_effects_same_signal(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """Two effects reading the same signal both become pending on write."""
     var rt = _create_runtime(w)
     var scope = _scope_create(w, rt, 0, -1)
@@ -510,7 +510,7 @@ def test_effect_two_effects_same_signal(w: UnsafePointer[WasmInstance]):
     print("  ✓ test_effect_two_effects_same_signal")
 
 
-def test_effect_scope_and_effect_both_react(w: UnsafePointer[WasmInstance]):
+def test_effect_scope_and_effect_both_react(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """A signal with both a scope subscriber and an effect subscriber:
     writing marks the scope dirty AND the effect pending."""
     var rt = _create_runtime(w)
@@ -538,7 +538,7 @@ def test_effect_scope_and_effect_both_react(w: UnsafePointer[WasmInstance]):
     print("  ✓ test_effect_scope_and_effect_both_react")
 
 
-def test_effect_unsubscribed_signal_no_pending(w: UnsafePointer[WasmInstance]):
+def test_effect_unsubscribed_signal_no_pending(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """Writing to a signal that the effect does NOT read does not trigger pending.
     """
     var rt = _create_runtime(w)
@@ -577,7 +577,7 @@ def test_effect_unsubscribed_signal_no_pending(w: UnsafePointer[WasmInstance]):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_effect_dependency_retracking(w: UnsafePointer[WasmInstance]):
+def test_effect_dependency_retracking(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """Effect dependencies are re-tracked on each run.
 
     First run reads sig_a → subscribed to sig_a.
@@ -629,7 +629,7 @@ def test_effect_dependency_retracking(w: UnsafePointer[WasmInstance]):
 
 
 def test_effect_drain_pending_returns_pending_effects(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ):
     """Drain_pending returns the correct count and IDs of pending effects."""
     var rt = _create_runtime(w)
@@ -673,7 +673,7 @@ def test_effect_drain_pending_returns_pending_effects(
     print("  ✓ test_effect_drain_pending_returns_pending_effects")
 
 
-def test_effect_drain_pending_after_partial_run(w: UnsafePointer[WasmInstance]):
+def test_effect_drain_pending_after_partial_run(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """After running one of two pending effects, drain returns only the remaining one.
     """
     var rt = _create_runtime(w)
@@ -718,7 +718,7 @@ def test_effect_drain_pending_after_partial_run(w: UnsafePointer[WasmInstance]):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_effect_reads_memo_output(w: UnsafePointer[WasmInstance]):
+def test_effect_reads_memo_output(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """An effect that reads a memo's output becomes pending when the memo changes.
 
     Chain: signal → memo (dirty → recompute) → memo output signal → effect pending.
@@ -764,7 +764,7 @@ def test_effect_reads_memo_output(w: UnsafePointer[WasmInstance]):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_effect_destroy_while_pending(w: UnsafePointer[WasmInstance]):
+def test_effect_destroy_while_pending(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """Destroying a pending effect is safe and cleans up properly."""
     var rt = _create_runtime(w)
     var scope = _scope_create(w, rt, 0, -1)
@@ -790,7 +790,7 @@ def test_effect_destroy_while_pending(w: UnsafePointer[WasmInstance]):
     print("  ✓ test_effect_destroy_while_pending")
 
 
-def test_effect_destroy_nonexistent(w: UnsafePointer[WasmInstance]):
+def test_effect_destroy_nonexistent(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """Destroying a non-existent effect is a no-op."""
     var rt = _create_runtime(w)
 
@@ -808,7 +808,7 @@ def test_effect_destroy_nonexistent(w: UnsafePointer[WasmInstance]):
 
 
 def test_hook_use_effect_creates_on_first_render(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ):
     """Use_effect on first render creates an effect and returns its ID."""
     var rt = _create_runtime(w)
@@ -827,7 +827,7 @@ def test_hook_use_effect_creates_on_first_render(
 
 
 def test_hook_use_effect_returns_same_id_on_rerender(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ):
     """Use_effect on re-render returns the same effect ID."""
     var rt = _create_runtime(w)
@@ -850,7 +850,7 @@ def test_hook_use_effect_returns_same_id_on_rerender(
     print("  ✓ test_hook_use_effect_returns_same_id_on_rerender")
 
 
-def test_hook_use_effect_multiple_distinct_ids(w: UnsafePointer[WasmInstance]):
+def test_hook_use_effect_multiple_distinct_ids(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """Multiple use_effect calls in one render create distinct effects."""
     var rt = _create_runtime(w)
     var scope = _scope_create(w, rt, 0, -1)
@@ -877,7 +877,7 @@ def test_hook_use_effect_multiple_distinct_ids(w: UnsafePointer[WasmInstance]):
 
 
 def test_hook_use_effect_interleaved_with_signal_and_memo(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ):
     """Hooks use_effect interleaved with use_signal and use_memo all remain stable.
     """
@@ -914,7 +914,7 @@ def test_hook_use_effect_interleaved_with_signal_and_memo(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_effect_multiple_writes_single_pending(w: UnsafePointer[WasmInstance]):
+def test_effect_multiple_writes_single_pending(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """Multiple writes to the same signal only produce one pending state (idempotent).
     """
     var rt = _create_runtime(w)
@@ -938,7 +938,7 @@ def test_effect_multiple_writes_single_pending(w: UnsafePointer[WasmInstance]):
     print("  ✓ test_effect_multiple_writes_single_pending")
 
 
-def test_effect_run_resubscribe_cycle(w: UnsafePointer[WasmInstance]):
+def test_effect_run_resubscribe_cycle(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     """Running an effect multiple times correctly re-subscribes each time."""
     var rt = _create_runtime(w)
     var scope = _scope_create(w, rt, 0, -1)
@@ -980,7 +980,7 @@ def test_effect_run_resubscribe_cycle(w: UnsafePointer[WasmInstance]):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_all(w: UnsafePointer[WasmInstance]) raises:
+fn test_all(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     # Store basics
     test_effect_create_returns_valid_id(w)
     test_effect_starts_pending(w)
