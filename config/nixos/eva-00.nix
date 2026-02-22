@@ -61,7 +61,7 @@ inputs.nixos-raspberrypi.lib.nixosSystem {
     {nixpkgs.overlays = [inputs.self.overlays.default];}
 
     # ── IronClaw service module ─────────────────────────────────────────
-    ../../modules/nixos/services/ironclaw.nix
+    ../../nixos/services/ironclaw.nix
 
     # ── Machine configuration ───────────────────────────────────────────
     ({
