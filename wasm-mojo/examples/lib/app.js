@@ -2,7 +2,7 @@
 //
 // Convention-based WASM export discovery: given an app name (e.g. "counter"),
 // the launcher looks for exports named `{name}_init`, `{name}_rebuild`,
-// `{name}_flush`, `{name}_handle_event`, and optionally `{name}_dispatch_string`.
+// `{name}_flush`, and optionally `{name}_handle_event` and `{name}_dispatch_string`.
 //
 // This abstraction captures the common boot sequence shared by all standard
 // wasm-mojo apps (load WASM → init → interpreter → EventBridge → mount).
@@ -27,6 +27,16 @@
 //   launch({
 //     app: "todo",
 //     wasm: new URL("../../build/out.wasm", import.meta.url),
+//   });
+//
+//   // Bench — launch with onBoot for custom event delegation & toolbar wiring
+//   launch({
+//     app: "bench",
+//     wasm: new URL("../../build/out.wasm", import.meta.url),
+//     root: "#tbody",
+//     bufferCapacity: 8 * 1024 * 1024,
+//     clearRoot: false,
+//     onBoot: ({ fns, appPtr, rootEl, flush }) => { /* toolbar + delegation */ },
 //   });
 
 import { alignedAlloc, getMemory, loadWasm } from "./env.js";
@@ -77,8 +87,14 @@ const EVT_CLICK = 0;
  *   - `counter_init() -> appPtr`            (required)
  *   - `counter_rebuild(appPtr, buf, cap)`   (required)
  *   - `counter_flush(appPtr, buf, cap)`     (required)
- *   - `counter_handle_event(appPtr, hid, evt)` (required)
+ *   - `counter_handle_event(appPtr, hid, evt)` (optional — enables EventBridge dispatch)
  *   - `counter_dispatch_string(appPtr, hid, evt, strPtr)` (optional — enables string dispatch)
+ *
+ * When `{app}_handle_event` is missing, the EventBridge is still created
+ * (so NewEventListener mutations are processed and DOM listeners attached)
+ * but the dispatch callback is a no-op.  This allows apps that use custom
+ * event delegation (e.g. bench) to wire their own handlers via `onBoot`
+ * while still benefiting from the shared boot sequence.
  *
  * When `{app}_dispatch_string` exists, the EventBridge automatically
  * routes string-carrying events through the string dispatch path:
@@ -117,7 +133,7 @@ export async function launch(options) {
 		const initFn = fns[`${appName}_init`];
 		const rebuildFn = fns[`${appName}_rebuild`];
 		const flushFn = fns[`${appName}_flush`];
-		const handleEventFn = fns[`${appName}_handle_event`];
+		const handleEventFn = fns[`${appName}_handle_event`]; // optional
 		const dispatchStringFn = fns[`${appName}_dispatch_string`]; // optional
 
 		if (!initFn) {
@@ -128,9 +144,6 @@ export async function launch(options) {
 		}
 		if (!flushFn) {
 			throw new Error(`WASM export "${appName}_flush" not found`);
-		}
-		if (!handleEventFn) {
-			throw new Error(`WASM export "${appName}_handle_event" not found`);
 		}
 
 		// 2. Initialize WASM-side app
@@ -153,6 +166,9 @@ export async function launch(options) {
 		}
 
 		// 5. Wire events via EventBridge with smart dispatch
+		//    - If `{app}_handle_event` is missing, EventBridge dispatch is a no-op
+		//      (DOM listeners are still attached so NewEventListener mutations work;
+		//      apps like bench wire their own handlers via onBoot)
 		//    - If `{app}_dispatch_string` exists:
 		//      · input/change → string dispatch (event.target.value → WASM SignalString)
 		//      · keydown → string dispatch (event.key → WASM key filtering);
@@ -176,10 +192,10 @@ export async function launch(options) {
 				// If accepted (returns 1), also call handle_event for app-level routing.
 				const strPtr = writeStringStruct(domEvent.key);
 				const accepted = dispatchStringFn(appPtr, handlerId, EVT_CLICK, strPtr);
-				if (accepted) {
+				if (accepted && handleEventFn) {
 					handleEventFn(appPtr, handlerId, EVT_CLICK);
 				}
-			} else {
+			} else if (handleEventFn) {
 				handleEventFn(appPtr, handlerId, EVT_CLICK);
 			}
 			flush();

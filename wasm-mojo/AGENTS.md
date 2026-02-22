@@ -91,7 +91,7 @@
 
 ## App Architectures (`examples/`)
 
-All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state — TodoApp's `input_text` field was migrated from plain `String` to `SignalString` via `create_signal_string()` (M19.7). Phase 20 adds string event dispatch infrastructure (`ACTION_SIGNAL_SET_STRING`, `dispatch_event_with_string`) enabling JS → WASM string value flow for input events. Phase 20.5 migrates the TodoApp to fully WASM-driven input binding using `bind_value()`, `oninput_set_string()`, and `onclick_custom()` — JS has no special-casing for any handler. Phase 21 introduces `launch()` (`examples/lib/app.js`) — a convention-based app launcher that eliminates per-app boot boilerplate; counter and todo now use identical launch() calls (todo adds an `onBoot` hook for Enter key until keydown moves into WASM).
+All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state — TodoApp's `input_text` field was migrated from plain `String` to `SignalString` via `create_signal_string()` (M19.7). Phase 20 adds string event dispatch infrastructure (`ACTION_SIGNAL_SET_STRING`, `dispatch_event_with_string`) enabling JS → WASM string value flow for input events. Phase 20.5 migrates the TodoApp to fully WASM-driven input binding using `bind_value()`, `oninput_set_string()`, and `onclick_custom()` — JS has no special-casing for any handler. Phase 21 introduces `launch()` (`examples/lib/app.js`) — a convention-based app launcher that eliminates per-app boot boilerplate. Phase 22 adds WASM-driven Enter key handling; counter and todo now use identical zero-config launch() calls. Phase 23 converges bench to launch() with `onBoot` for toolbar wiring and event delegation — all three apps now use the shared boot infrastructure.
 
 ### CounterApp (`counter.mojo`) — simplest example
 
@@ -155,19 +155,19 @@ All exports follow this pattern — thin wrappers forwarding to app modules:
 
 Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int32`, `_alloc_writer()`, `_free_writer()`.
 
-**Naming convention for `launch()`**: The JS `launch({ app: "NAME" })` function discovers WASM exports by prefix — `{NAME}_init`, `{NAME}_rebuild`, `{NAME}_flush`, `{NAME}_handle_event` (required), and `{NAME}_dispatch_string` (optional, enables auto string dispatch for input/change events). New apps MUST follow this naming convention to be compatible with `launch()`.
+**Naming convention for `launch()`**: The JS `launch({ app: "NAME" })` function discovers WASM exports by prefix — `{NAME}_init`, `{NAME}_rebuild`, `{NAME}_flush` (required), `{NAME}_handle_event` (optional — enables EventBridge dispatch; when missing, EventBridge is a no-op and apps wire custom handlers via `onBoot`), and `{NAME}_dispatch_string` (optional, enables auto string dispatch for input/change/keydown events). New apps MUST follow this naming convention to be compatible with `launch()`.
 
 ## Browser Runtime (`examples/lib/`)
 
-- `app.js` — **`launch(options)`**: Convention-based app launcher (Phase 21, updated Phase 22). Given `app: "counter"`, auto-discovers WASM exports by naming convention, sets up interpreter + EventBridge with smart dispatch (auto string dispatch when `{app}_dispatch_string` exists), runs initial mount, and calls optional `onBoot(handle)` for app-specific post-boot wiring. Returns `AppHandle` with `{ fns, appPtr, interp, bufPtr, rootEl, flush }`. Options: `app` (required), `wasm` (required URL), `root` (CSS selector, default `"#root"`), `bufferCapacity` (default 65536), `clearRoot` (default true), `onBoot` (optional callback). **Phase 22**: EventBridge smart dispatch extended to route `keydown` events through `dispatch_string` (sends `event.key` as the string payload); if the WASM handler accepts the key (returns 1), also calls `handle_event` for app-level routing. This enables `ACTION_KEY_ENTER_CUSTOM` handlers to filter for "Enter" entirely in WASM. Counter and todo now both use identical zero-config `launch()` calls.
-- `boot.js` — Re-exports from `app.js`, `env.js`, `events.js`, `interpreter.js`, `protocol.js`, `strings.js`. Low-level API for advanced use cases (e.g. bench) that need direct control over the boot sequence.
+- `app.js` — **`launch(options)`**: Convention-based app launcher (Phase 21, updated Phase 22–23). Given `app: "counter"`, auto-discovers WASM exports by naming convention, sets up interpreter + EventBridge with smart dispatch (auto string dispatch when `{app}_dispatch_string` exists), runs initial mount, and calls optional `onBoot(handle)` for app-specific post-boot wiring. Returns `AppHandle` with `{ fns, appPtr, interp, bufPtr, rootEl, flush }`. Options: `app` (required), `wasm` (required URL), `root` (CSS selector, default `"#root"`), `bufferCapacity` (default 65536), `clearRoot` (default true), `onBoot` (optional callback). **Phase 22**: EventBridge smart dispatch extended to route `keydown` events through `dispatch_string`. **Phase 23**: `{app}_handle_event` made optional — when missing, EventBridge dispatch is a no-op (DOM listeners still attached); apps like bench wire custom handlers via `onBoot`. All three apps now use `launch()`.
+- `boot.js` — Re-exports from `app.js`, `env.js`, `events.js`, `interpreter.js`, `protocol.js`, `strings.js`. Low-level API for advanced use cases that need direct control over the boot sequence.
 - `env.js` — WASM memory management + import object + `loadWasm()` loader.
 - `events.js` — `EventBridge` wires interpreter event mutations to a WASM dispatch callback.
 - `interpreter.js` — DOM stack machine applying binary mutation buffers (shared with `runtime/interpreter.ts`).
 - `protocol.js` — Op constants + `MutationReader` for binary mutation decoding.
 - `strings.js` — `writeStringStruct()` writes JS strings into WASM linear memory as Mojo String structs.
 
-**Example main.js files (Phase 22)**:
+**Example main.js files (Phase 23)**:
 
 Counter — zero app-specific JS:
 
@@ -183,7 +183,19 @@ import { launch } from "../lib/app.js";
 launch({ app: "todo", wasm: new URL("../../build/out.wasm", import.meta.url) });
 ```
 
-Bench — uses direct `boot.js` imports (event delegation + toolbar not yet in WASM).
+Bench — launch() with `onBoot` for event delegation & toolbar wiring (no `bench_handle_event`):
+
+```txt
+import { launch } from "../lib/app.js";
+launch({
+  app: "bench",
+  wasm: new URL("../../build/out.wasm", import.meta.url),
+  root: "#tbody",
+  bufferCapacity: 8 * 1024 * 1024,
+  clearRoot: false,
+  onBoot: ({ fns, appPtr, rootEl, flush }) => { /* toolbar + delegation */ },
+});
+```
 
 ## TypeScript Runtime (`runtime/`)
 
