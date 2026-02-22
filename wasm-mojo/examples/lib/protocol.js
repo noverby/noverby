@@ -25,6 +25,7 @@ export const Op = {
 	Remove: 0x0e,
 	PushRoot: 0x0f,
 	RegisterTemplate: 0x10,
+	RemoveAttribute: 0x11,
 };
 
 // ── MutationReader ──────────────────────────────────────────────────────────
@@ -122,6 +123,12 @@ export class MutationReader {
 				const name = this.readShortStr();
 				const value = this.readStr();
 				return { op, id, ns, name, value };
+			}
+			case Op.RemoveAttribute: {
+				const id = this.readU32();
+				const ns = this.readU8();
+				const name = this.readShortStr();
+				return { op, id, ns, name };
 			}
 			case Op.SetText:
 				return { op, id: this.readU32(), text: this.readStr() };

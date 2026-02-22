@@ -1223,12 +1223,9 @@ export function testMutations(fns: WasmExports): void {
 		assert(mutations.length, 1, "attr removal → 1 mutation");
 		assert(
 			mutations[0].op,
-			Op.SetAttribute,
-			"mutation is SetAttribute (removal)",
+			Op.RemoveAttribute,
+			"mutation is RemoveAttribute (removal)",
 		);
-		if (mutations[0].op === Op.SetAttribute) {
-			assert(mutations[0].value, "", "value is empty for removal");
-		}
 
 		ext.writer_destroy(writer2);
 		freeBuf(ext, buf2);

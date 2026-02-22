@@ -592,6 +592,64 @@ fn dyn_attr(index: Int) -> Node:
     return Node.dynamic_attr_node(UInt32(index))
 
 
+# ── Boolean / conditional attribute helpers ──────────────────────────────────
+#
+# HTML boolean attributes (disabled, checked, hidden, selected, open, readonly,
+# required, etc.) are "present = true, absent = false".  Setting `disabled=""`
+# means disabled; removing the attribute means not disabled.
+#
+# At the VNodeBuilder / RenderContext level, use `add_dyn_bool_attr(name, cond)`
+# which stores AVAL_TEXT("") when true and AVAL_NONE when false.  The diff
+# engine emits RemoveAttribute for AVAL_NONE transitions.
+#
+# The helpers below are runtime string utilities for use with
+# `add_dyn_text_attr()` — analogous to `class_if()` and `class_when()`.
+
+
+fn attr_if(condition: Bool, value: String) -> String:
+    """Return `value` if condition is True, empty string otherwise.
+
+    A general-purpose conditional attribute value helper, similar to
+    `class_if` but for any attribute.
+
+    Example:
+        vb.add_dyn_text_attr("title", attr_if(has_tooltip, "Click me"))
+
+    Args:
+        condition: Whether to include the value.
+        value: The attribute value when condition is True.
+
+    Returns:
+        The value or an empty string.
+    """
+    if condition:
+        return value
+    return String("")
+
+
+fn attr_when(
+    condition: Bool, true_value: String, false_value: String
+) -> String:
+    """Return one of two attribute values based on a condition.
+
+    General-purpose binary attribute switching.
+
+    Example:
+        vb.add_dyn_text_attr("aria-expanded", attr_when(is_open, "true", "false"))
+
+    Args:
+        condition: The boolean condition.
+        true_value: Value when True.
+        false_value: Value when False.
+
+    Returns:
+        The appropriate value.
+    """
+    if condition:
+        return true_value
+    return false_value
+
+
 # ── Inline event handler constructors ────────────────────────────────────────
 #
 # These create NODE_EVENT nodes that carry handler metadata (action type,
@@ -3412,16 +3470,32 @@ struct VNodeBuilder(Movable):
         )
 
     fn add_dyn_bool_attr(mut self, name: String, value: Bool):
-        """Add a dynamic boolean attribute (e.g. disabled, checked).
+        """Add a dynamic boolean attribute (e.g. disabled, checked, hidden).
+
+        When `value` is True, emits SetAttribute(name, "") — the presence
+        of the attribute means "on" for HTML boolean attributes.
+
+        When `value` is False, stores AVAL_NONE so the diff engine emits
+        RemoveAttribute instead of SetAttribute(name, "") — correctly
+        removing the attribute from the DOM rather than leaving an empty
+        attribute present.
 
         Args:
             name: The attribute name.
             value: The boolean value.
         """
-        self._store[0].push_dynamic_attr(
-            self._vnode_idx,
-            DynamicAttr(name, AttributeValue.boolean(value), UInt32(0)),
-        )
+        if value:
+            # Present: set attribute to empty string (HTML boolean convention)
+            self._store[0].push_dynamic_attr(
+                self._vnode_idx,
+                DynamicAttr(name, AttributeValue.text(String("")), UInt32(0)),
+            )
+        else:
+            # Absent: use AVAL_NONE → diff engine emits RemoveAttribute
+            self._store[0].push_dynamic_attr(
+                self._vnode_idx,
+                DynamicAttr(name, AttributeValue.none(), UInt32(0)),
+            )
 
     fn add_dyn_none_attr(mut self, name: String):
         """Add a dynamic none/removal attribute.

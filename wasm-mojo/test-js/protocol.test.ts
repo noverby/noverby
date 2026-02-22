@@ -12,6 +12,7 @@ import type {
 	MutationPushRoot,
 	MutationRegisterTemplate,
 	MutationRemove,
+	MutationRemoveAttribute,
 	MutationRemoveEventListener,
 	MutationReplacePlaceholder,
 	MutationReplaceWith,
@@ -375,6 +376,65 @@ export function testProtocol(fns: WasmExports): void {
 		freeBuf(fns, buf);
 	}
 
+	// ── RemoveAttribute ──────────────────────────────────────────────
+	suite("Protocol — RemoveAttribute");
+	{
+		const buf = allocBuf(fns);
+		const namePtr = writeStringStruct("disabled");
+		const off = ext.write_op_remove_attribute(buf, 0, 53, 0, namePtr) as number;
+		// 1 (op) + 4 (id) + 1 (ns) + 2 (name_len) + 8 (name) = 16
+		assert(off, 16, "RemoveAttribute('disabled') writes 16 bytes");
+
+		const m = readOne(buf, off) as MutationRemoveAttribute;
+		assert(m.op, Op.RemoveAttribute, "op is RemoveAttribute");
+		assert(m.id, 53, "id is 53");
+		assert(m.ns, 0, "ns is 0 (no namespace)");
+		assert(m.name, "disabled", "name is 'disabled'");
+		freeBuf(fns, buf);
+	}
+
+	// ── RemoveAttribute with namespace ───────────────────────────────
+	suite("Protocol — RemoveAttribute (with namespace)");
+	{
+		const buf = allocBuf(fns);
+		const namePtr = writeStringStruct("href");
+		const off = ext.write_op_remove_attribute(buf, 0, 54, 1, namePtr) as number;
+		// 1 (op) + 4 (id) + 1 (ns) + 2 (name_len) + 4 (name) = 12
+		assert(off, 12, "RemoveAttribute('href', ns=1) writes 12 bytes");
+
+		const m = readOne(buf, off) as MutationRemoveAttribute;
+		assert(m.op, Op.RemoveAttribute, "op is RemoveAttribute");
+		assert(m.id, 54, "id is 54");
+		assert(m.ns, 1, "ns is 1 (xlink namespace)");
+		assert(m.name, "href", "name is 'href'");
+		freeBuf(fns, buf);
+	}
+
+	// ── RemoveAttribute in sequence (Set → Remove round-trip) ────────
+	suite("Protocol — RemoveAttribute in Set→Remove sequence");
+	{
+		const buf = allocBuf(fns);
+		let off = 0;
+		const namePtr1 = writeStringStruct("hidden");
+		const valPtr1 = writeStringStruct("");
+		off = fns.write_op_set_attribute(buf, off, 55, 0, namePtr1, valPtr1);
+		const namePtr2 = writeStringStruct("hidden");
+		off = ext.write_op_remove_attribute(buf, off, 55, 0, namePtr2) as number;
+		fns.write_op_end(buf, off);
+
+		const reader = readerAt(buf, off + 1);
+		const mutations = reader.readAll();
+		assert(mutations.length, 2, "two mutations in buffer");
+		const m0 = mutations[0] as MutationSetAttribute;
+		assert(m0.op, Op.SetAttribute, "first is SetAttribute");
+		assert(m0.name, "hidden", "first name is 'hidden'");
+		assert(m0.value, "", "first value is empty");
+		const m1 = mutations[1] as MutationRemoveAttribute;
+		assert(m1.op, Op.RemoveAttribute, "second is RemoveAttribute");
+		assert(m1.name, "hidden", "second name is 'hidden'");
+		freeBuf(fns, buf);
+	}
+
 	// ── NewEventListener ─────────────────────────────────────────────
 	suite("Protocol — NewEventListener");
 	{
@@ -690,11 +750,14 @@ export function testProtocol(fns: WasmExports): void {
 		off = fns.write_op_remove(buf, off, 15);
 		// 15. PushRoot
 		off = fns.write_op_push_root(buf, off, 16);
+		// 16. RemoveAttribute
+		const ra1 = writeStringStruct("hidden");
+		off = ext.write_op_remove_attribute(buf, off, 17, 0, ra1) as number;
 		// End
 		off = fns.write_op_end(buf, off);
 
 		const all = readerAt(buf, off).readAll();
-		assert(all.length, 15, "15 mutations (all opcodes)");
+		assert(all.length, 16, "16 mutations (all opcodes)");
 
 		assert(all[0].op, Op.AppendChildren, "op[0] AppendChildren");
 		assert(all[1].op, Op.AssignId, "op[1] AssignId");
@@ -711,6 +774,7 @@ export function testProtocol(fns: WasmExports): void {
 		assert(all[12].op, Op.RemoveEventListener, "op[12] RemoveEventListener");
 		assert(all[13].op, Op.Remove, "op[13] Remove");
 		assert(all[14].op, Op.PushRoot, "op[14] PushRoot");
+		assert(all[15].op, Op.RemoveAttribute, "op[15] RemoveAttribute");
 
 		// Spot-check a few payloads
 		assert(
@@ -737,6 +801,11 @@ export function testProtocol(fns: WasmExports): void {
 			(all[11] as MutationNewEventListener).handlerId,
 			0,
 			"NewEventListener handlerId=0",
+		);
+		assert(
+			(all[15] as MutationRemoveAttribute).name,
+			"hidden",
+			"RemoveAttribute name='hidden'",
 		);
 
 		freeBuf(fns, buf);

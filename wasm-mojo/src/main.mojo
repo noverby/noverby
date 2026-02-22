@@ -1452,6 +1452,15 @@ fn write_op_set_attribute(
 
 
 @export
+fn write_op_remove_attribute(
+    buf: Int64, off: Int32, id: Int32, ns: Int32, name: String
+) -> Int32:
+    var w = _writer(buf, off)
+    w.remove_attribute(UInt32(id), UInt8(ns), name)
+    return Int32(w.offset)
+
+
+@export
 fn write_op_new_event_listener(
     buf: Int64, off: Int32, id: Int32, handler_id: Int32, name: String
 ) -> Int32:

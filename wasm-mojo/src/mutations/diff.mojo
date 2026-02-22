@@ -240,12 +240,12 @@ struct DiffEngine:
                             elem_id, old_attr.name
                         )
                     else:
-                        # Remove attribute by setting to empty
+                        # Remove attribute entirely (not just set to "")
                         var ns_byte: UInt8 = 0
                         if new_attr.has_namespace():
                             ns_byte = 1
-                        self.writer[0].set_attribute(
-                            elem_id, ns_byte, new_attr.name, String("")
+                        self.writer[0].remove_attribute(
+                            elem_id, ns_byte, new_attr.name
                         )
                 else:
                     if old_attr.value.kind == AVAL_EVENT:

@@ -57,6 +57,7 @@ comptime OP_REMOVE_EVENT_LISTENER = 0x0D
 comptime OP_REMOVE = 0x0E
 comptime OP_PUSH_ROOT = 0x0F
 comptime OP_REGISTER_TEMPLATE = 0x10
+comptime OP_REMOVE_ATTRIBUTE = 0x11
 
 comptime BUF_CAP = 4096
 
@@ -543,6 +544,77 @@ fn test_set_attribute_empty_value(
     pos += 4
 
     assert_equal(_read_u8(w, buf, pos), OP_END)
+
+    _free_buf(w, buf)
+
+
+# ── RemoveAttribute ──────────────────────────────────────────────────────────
+
+
+fn test_remove_attribute(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
+    var buf = _alloc_buf(w)
+
+    var name_ptr = w[].write_string_struct("disabled")
+    var off = Int(
+        w[].call_i32(
+            "write_op_remove_attribute",
+            args_ptr_i32_i32_i32_ptr(buf, 0, 53, 0, name_ptr),
+        )
+    )
+    _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
+
+    var pos = 0
+    assert_equal(
+        _read_u8(w, buf, pos),
+        OP_REMOVE_ATTRIBUTE,
+        "opcode is REMOVE_ATTRIBUTE",
+    )
+    pos += 1
+
+    assert_equal(_read_u32_le(w, buf, pos), 53, "id is 53")
+    pos += 4
+
+    assert_equal(_read_u8(w, buf, pos), 0, "ns is 0 (no namespace)")
+    pos += 1
+
+    # name is u16-length-prefixed
+    assert_equal(_read_u16_le(w, buf, pos), 8, "name length is 8")
+    pos += 2
+    assert_equal(_read_u8(w, buf, pos), Int(ord("d")))
+    assert_equal(_read_u8(w, buf, pos + 1), Int(ord("i")))
+    assert_equal(_read_u8(w, buf, pos + 2), Int(ord("s")))
+    assert_equal(_read_u8(w, buf, pos + 3), Int(ord("a")))
+    assert_equal(_read_u8(w, buf, pos + 4), Int(ord("b")))
+    assert_equal(_read_u8(w, buf, pos + 5), Int(ord("l")))
+    assert_equal(_read_u8(w, buf, pos + 6), Int(ord("e")))
+    assert_equal(_read_u8(w, buf, pos + 7), Int(ord("d")))
+    pos += 8
+
+    # No value payload (unlike SetAttribute)
+    assert_equal(_read_u8(w, buf, pos), OP_END)
+
+    # Verify byte count: 1 (op) + 4 (id) + 1 (ns) + 2 (name_len) + 8 (name) = 16
+    assert_equal(off, 16, "RemoveAttribute('disabled') writes 16 bytes")
+
+    _free_buf(w, buf)
+
+
+fn test_remove_attribute_with_namespace(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
+    var buf = _alloc_buf(w)
+
+    var name_ptr = w[].write_string_struct("href")
+    _ = w[].call_i32(
+        "write_op_remove_attribute",
+        args_ptr_i32_i32_i32_ptr(buf, 0, 54, 1, name_ptr),
+    )
+
+    assert_equal(_read_u8(w, buf, 0), OP_REMOVE_ATTRIBUTE)
+    assert_equal(_read_u32_le(w, buf, 1), 54, "id is 54")
+    assert_equal(_read_u8(w, buf, 5), 1, "ns is 1 (xlink)")
 
     _free_buf(w, buf)
 
@@ -1164,6 +1236,13 @@ fn test_all_opcodes_in_one_buffer(
     off = Int(
         w[].call_i32("write_op_push_root", args_ptr_i32_i32(buf, off, 15))
     )
+    var ra_name = w[].write_string_struct("h")
+    off = Int(
+        w[].call_i32(
+            "write_op_remove_attribute",
+            args_ptr_i32_i32_i32_ptr(buf, off, 16, 0, ra_name),
+        )
+    )
     _ = w[].call_i32("write_op_end", args_ptr_i32(buf, off))
 
     # Walk through and extract just the opcodes
@@ -1228,6 +1307,10 @@ fn test_all_opcodes_in_one_buffer(
     # PUSH_ROOT: op(1) + id(4) = 5
     assert_equal(_read_u8(w, buf, pos), OP_PUSH_ROOT)
     pos += 5
+
+    # REMOVE_ATTRIBUTE: op(1) + id(4) + ns(1) + name_len(2) + "h"(1) = 9
+    assert_equal(_read_u8(w, buf, pos), OP_REMOVE_ATTRIBUTE)
+    pos += 9
 
     # END
     assert_equal(_read_u8(w, buf, pos), OP_END)
@@ -1691,6 +1774,8 @@ fn main() raises:
     test_set_attribute(w)
     test_set_attribute_with_namespace(w)
     test_set_attribute_empty_value(w)
+    test_remove_attribute(w)
+    test_remove_attribute_with_namespace(w)
     test_new_event_listener(w)
     test_remove_event_listener(w)
     test_assign_id(w)
@@ -1709,4 +1794,4 @@ fn main() raises:
     test_register_template_minimal(w)
     test_register_template_with_text_and_attrs(w)
     test_register_template_with_dynamic_node(w)
-    print("protocol: 37/37 passed")
+    print("protocol: 39/39 passed")

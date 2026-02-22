@@ -55,6 +55,7 @@ comptime OP_NEW_EVENT_LISTENER = 0x0C
 comptime OP_REMOVE_EVENT_LISTENER = 0x0D
 comptime OP_REMOVE = 0x0E
 comptime OP_PUSH_ROOT = 0x0F
+comptime OP_REMOVE_ATTRIBUTE = 0x11
 
 comptime TAG_DIV = 0
 comptime TAG_SPAN = 1
@@ -2109,7 +2110,7 @@ fn test_diff_attr_type_changed_text_to_bool(
 fn test_diff_attr_removed_text_to_none(
     w: UnsafePointer[WasmInstance, MutExternalOrigin]
 ) raises:
-    """Attribute removed (text -> none) -> SetAttribute with empty value."""
+    """Attribute removed (text -> none) -> RemoveAttribute."""
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "attr-remove-mut")
@@ -2159,8 +2160,140 @@ fn test_diff_attr_removed_text_to_none(
 
     var mutations = ctx.finalize_and_read()
 
+    var remove_attr_count = _count_op(mutations, OP_REMOVE_ATTRIBUTE)
+    assert_true(remove_attr_count > 0, "RemoveAttribute for attr removal")
+
+    ctx.destroy()
+
+
+fn test_diff_attr_none_to_text(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
+    """Attribute appearing (none -> text) -> SetAttribute."""
+    var ctx = WasmTestContext(w)
+
+    var tmpl_id = _register_div_with_dyn_attr(ctx, "attr-appear-mut")
+
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_none",
+        args_ptr_i32_ptr_i32(
+            ctx.store, old_idx, w[].write_string_struct("disabled"), 0
+        ),
+    )
+
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
+    ctx.reset_writer()
+
+    var new_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_text",
+        args_ptr_i32_ptr_ptr_i32(
+            ctx.store,
+            new_idx,
+            w[].write_string_struct("disabled"),
+            w[].write_string_struct(""),
+            0,
+        ),
+    )
+
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
+
+    var mutations = ctx.finalize_and_read()
+
     var set_attr_count = _count_op(mutations, OP_SET_ATTRIBUTE)
-    assert_true(set_attr_count > 0, "SetAttribute for attr removal")
+    assert_true(set_attr_count > 0, "SetAttribute for attr appearance")
+
+    # Verify no RemoveAttribute was emitted
+    var remove_attr_count = _count_op(mutations, OP_REMOVE_ATTRIBUTE)
+    assert_equal(remove_attr_count, 0, "no RemoveAttribute for appearance")
+
+    ctx.destroy()
+
+
+fn test_diff_bool_attr_true_to_false_remove(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
+    """Boolean HTML attr pattern: AVAL_TEXT('') -> AVAL_NONE -> RemoveAttribute.
+    """
+    var ctx = WasmTestContext(w)
+
+    var tmpl_id = _register_div_with_dyn_attr(ctx, "bool-rm-mut")
+
+    # Old: attribute present (AVAL_TEXT(""))
+    var old_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_text",
+        args_ptr_i32_ptr_ptr_i32(
+            ctx.store,
+            old_idx,
+            w[].write_string_struct("hidden"),
+            w[].write_string_struct(""),
+            0,
+        ),
+    )
+
+    _ = w[].call_i32(
+        "create_vnode",
+        args_ptr_ptr_ptr_ptr_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx
+        ),
+    )
+    ctx.reset_writer()
+
+    # New: attribute absent (AVAL_NONE)
+    var new_idx = Int(
+        w[].call_i32(
+            "vnode_push_template_ref", args_ptr_i32(ctx.store, tmpl_id)
+        )
+    )
+    w[].call_void(
+        "vnode_push_dynamic_attr_none",
+        args_ptr_i32_ptr_i32(
+            ctx.store, new_idx, w[].write_string_struct("hidden"), 0
+        ),
+    )
+
+    _ = w[].call_i32(
+        "diff_vnodes",
+        args_ptr_ptr_ptr_ptr_i32_i32(
+            ctx.writer, ctx.eid, ctx.rt, ctx.store, old_idx, new_idx
+        ),
+    )
+
+    var mutations = ctx.finalize_and_read()
+
+    var remove_attr_count = _count_op(mutations, OP_REMOVE_ATTRIBUTE)
+    assert_true(
+        remove_attr_count > 0,
+        "RemoveAttribute for bool attr true->false",
+    )
+
+    # No SetAttribute should be emitted
+    var set_attr_count = _count_op(mutations, OP_SET_ATTRIBUTE)
+    assert_equal(set_attr_count, 0, "no SetAttribute for bool removal")
 
     ctx.destroy()
 
@@ -2485,8 +2618,10 @@ fn main() raises:
     test_diff_same_event_listener_zero_mutations(w)
     test_diff_attr_type_changed_text_to_bool(w)
     test_diff_attr_removed_text_to_none(w)
+    test_diff_attr_none_to_text(w)
+    test_diff_bool_attr_true_to_false_remove(w)
     test_diff_int_attr_changed(w)
     test_diff_mount_state_transfer_preserves_ids(w)
     test_diff_sequential_diffs_state_chain(w)
     test_diff_dyn_node_text_to_placeholder(w)
-    print("mutations: 34/34 passed")
+    print("mutations: 36/36 passed")

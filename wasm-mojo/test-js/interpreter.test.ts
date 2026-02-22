@@ -8,6 +8,7 @@
 import { parseHTML } from "npm:linkedom";
 import { Interpreter, MutationBuilder } from "../runtime/interpreter.ts";
 import { getMemory } from "../runtime/memory.ts";
+import type { MutationRemoveAttribute } from "../runtime/protocol.ts";
 import { MutationReader, Op } from "../runtime/protocol.ts";
 import { writeStringStruct } from "../runtime/strings.ts";
 import { TemplateCache } from "../runtime/templates.ts";
@@ -438,6 +439,178 @@ export function testInterpreter(fns: Fns): void {
 
 		const node = interp.getNode(1) as Element;
 		assert(node.getAttribute("disabled"), "", "empty attribute set");
+	}
+
+	// ── RemoveAttribute ──────────────────────────────────────────────
+	suite("Interpreter — RemoveAttribute");
+	{
+		const dom = createDOM();
+		const { interp, document, templates } = createInterpreter(dom);
+
+		const el = document.createElement("div");
+		templates.register(0, [el]);
+
+		// Set an attribute, then remove it
+		const { buffer, length } = new MutationBuilder()
+			.loadTemplate(0, 0, 1)
+			.setAttribute(1, 0, "class", "foo")
+			.removeAttribute(1, 0, "class")
+			.end()
+			.build();
+
+		interp.applyMutations(buffer, 0, length);
+
+		const node = interp.getNode(1) as Element;
+		assert(node.hasAttribute("class"), false, "class attribute removed (null)");
+	}
+
+	suite("Interpreter — RemoveAttribute on boolean attribute");
+	{
+		const dom = createDOM();
+		const { interp, document, templates } = createInterpreter(dom);
+
+		const el = document.createElement("button");
+		templates.register(0, [el]);
+
+		// Set disabled="" (HTML boolean attr), then remove it
+		const { buffer, length } = new MutationBuilder()
+			.loadTemplate(0, 0, 1)
+			.setAttribute(1, 0, "disabled", "")
+			.end()
+			.build();
+
+		interp.applyMutations(buffer, 0, length);
+
+		const node = interp.getNode(1) as Element;
+		assert(node.getAttribute("disabled"), "", "disabled set initially");
+
+		const { buffer: buf2, length: len2 } = new MutationBuilder()
+			.removeAttribute(1, 0, "disabled")
+			.end()
+			.build();
+
+		interp.applyMutations(buf2, 0, len2);
+
+		assert(
+			node.hasAttribute("disabled"),
+			false,
+			"disabled removed after RemoveAttribute",
+		);
+	}
+
+	suite("Interpreter — RemoveAttribute then SetAttribute (re-add)");
+	{
+		const dom = createDOM();
+		const { interp, document, templates } = createInterpreter(dom);
+
+		const el = document.createElement("input");
+		templates.register(0, [el]);
+
+		// Set → Remove → Set again (full cycle)
+		const { buffer: buf1, length: len1 } = new MutationBuilder()
+			.loadTemplate(0, 0, 1)
+			.setAttribute(1, 0, "hidden", "")
+			.end()
+			.build();
+
+		interp.applyMutations(buf1, 0, len1);
+
+		const node = interp.getNode(1) as Element;
+		assert(node.getAttribute("hidden"), "", "hidden initially present");
+
+		const { buffer: buf2, length: len2 } = new MutationBuilder()
+			.removeAttribute(1, 0, "hidden")
+			.end()
+			.build();
+
+		interp.applyMutations(buf2, 0, len2);
+		assert(node.hasAttribute("hidden"), false, "hidden removed");
+
+		const { buffer: buf3, length: len3 } = new MutationBuilder()
+			.setAttribute(1, 0, "hidden", "")
+			.end()
+			.build();
+
+		interp.applyMutations(buf3, 0, len3);
+		assert(node.getAttribute("hidden"), "", "hidden re-added");
+	}
+
+	suite("Interpreter — RemoveAttribute on non-existent attribute is no-op");
+	{
+		const dom = createDOM();
+		const { interp, document, templates } = createInterpreter(dom);
+
+		const el = document.createElement("div");
+		templates.register(0, [el]);
+
+		const { buffer, length } = new MutationBuilder()
+			.loadTemplate(0, 0, 1)
+			.removeAttribute(1, 0, "data-nope")
+			.end()
+			.build();
+
+		// Should not throw
+		interp.applyMutations(buffer, 0, length);
+
+		const node = interp.getNode(1) as Element;
+		assert(
+			node.hasAttribute("data-nope"),
+			false,
+			"non-existent attribute remains absent",
+		);
+	}
+
+	suite(
+		"Interpreter — RemoveAttribute + SetAttribute interleaved on multiple attrs",
+	);
+	{
+		const dom = createDOM();
+		const { interp, document, templates } = createInterpreter(dom);
+
+		const el = document.createElement("div");
+		templates.register(0, [el]);
+
+		const { buffer, length } = new MutationBuilder()
+			.loadTemplate(0, 0, 1)
+			.setAttribute(1, 0, "class", "active")
+			.setAttribute(1, 0, "disabled", "")
+			.setAttribute(1, 0, "data-id", "7")
+			.removeAttribute(1, 0, "class")
+			.removeAttribute(1, 0, "disabled")
+			.end()
+			.build();
+
+		interp.applyMutations(buffer, 0, length);
+
+		const node = interp.getNode(1) as Element;
+		assert(node.hasAttribute("class"), false, "class removed");
+		assert(node.hasAttribute("disabled"), false, "disabled removed");
+		assert(node.getAttribute("data-id"), "7", "data-id still present");
+	}
+
+	suite("Interpreter — MutationBuilder round-trip RemoveAttribute");
+	{
+		const { buffer, length } = new MutationBuilder()
+			.removeAttribute(99, 0, "checked")
+			.removeAttribute(100, 1, "href")
+			.end()
+			.build();
+
+		const reader = new MutationReader(buffer, 0, length);
+		const mutations = reader.readAll();
+		assert(mutations.length, 2, "two RemoveAttribute mutations");
+
+		const m0 = mutations[0] as MutationRemoveAttribute;
+		assert(m0.op, Op.RemoveAttribute, "first op is RemoveAttribute");
+		assert(m0.id, 99, "first id is 99");
+		assert(m0.ns, 0, "first ns is 0");
+		assert(m0.name, "checked", "first name is 'checked'");
+
+		const m1 = mutations[1] as MutationRemoveAttribute;
+		assert(m1.op, Op.RemoveAttribute, "second op is RemoveAttribute");
+		assert(m1.id, 100, "second id is 100");
+		assert(m1.ns, 1, "second ns is 1");
+		assert(m1.name, "href", "second name is 'href'");
 	}
 
 	suite("Interpreter — Remove");

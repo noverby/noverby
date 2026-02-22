@@ -134,6 +134,12 @@ export class Interpreter {
 				break;
 			}
 
+			case Op.RemoveAttribute: {
+				const n = this.nodes.get(m.id);
+				if (n?.removeAttribute) n.removeAttribute(m.name);
+				break;
+			}
+
 			case Op.SetText: {
 				const n = this.nodes.get(m.id);
 				if (n) n.textContent = m.text;
