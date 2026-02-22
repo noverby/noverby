@@ -29,6 +29,7 @@ flamegraph.svg
 /typos.toml
 /lychee.toml
 /.commitlintrc.yml
+/.secretsignore
 
 *.qcow2
 *.img

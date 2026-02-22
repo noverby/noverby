@@ -4,7 +4,7 @@
   ...
 }: {
   age.secrets.u2f-keys = {
-    file = src + /secrets/u2f-keys.age;
+    file = src + /config/secrets/u2f-keys.age;
     path = "/run/agenix/u2f-keys";
     mode = "0444"; # Readable by PAM
     owner = "root";
