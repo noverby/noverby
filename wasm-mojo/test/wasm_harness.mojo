@@ -30,6 +30,7 @@ Import signatures are derived from `wasm-objdump -j Import -x build/out.wasm`:
    - func[16] sig=10 () -> f64               performance_now
 """
 
+from collections import Dict
 from memory import UnsafePointer, memcpy, memset_zero
 from pathlib import Path
 from sys.ffi import DLHandle
@@ -108,6 +109,13 @@ struct SharedState(Movable):
     var has_memory: Bool
     var mock_time: Float64  # P24.3: deterministic clock for performance_now
 
+    # --- Free-list allocator state (P25.3) ---
+    # Mirrors the JS-side size-class map allocator from runtime/memory.ts.
+    # Reuse is disabled by default — see PLAN.md "Key insight (revised)".
+    var ptr_size: Dict[Int, Int]  # pointer → allocation size
+    var free_map: Dict[Int, List[Int]]  # size → LIFO stack of freed pointers
+    var reuse_enabled: Bool
+
     fn __init__(out self):
         self.bump_ptr = 0
         self.context = ContextPtr()
@@ -115,6 +123,9 @@ struct SharedState(Movable):
         self.captured_stdout = List[String]()
         self.has_memory = False
         self.mock_time = 0.0
+        self.ptr_size = Dict[Int, Int]()
+        self.free_map = Dict[Int, List[Int]]()
+        self.reuse_enabled = False
 
     fn __moveinit__(out self, deinit other: Self):
         self.bump_ptr = other.bump_ptr
@@ -123,15 +134,78 @@ struct SharedState(Movable):
         self.captured_stdout = other.captured_stdout^
         self.has_memory = other.has_memory
         self.mock_time = other.mock_time
+        self.ptr_size = other.ptr_size^
+        self.free_map = other.free_map^
+        self.reuse_enabled = other.reuse_enabled
 
     fn aligned_alloc(mut self, align: Int, size: Int) -> Int:
-        """Bump-allocate *size* bytes with the given alignment."""
+        """Allocate *size* bytes with the given alignment.
+
+        If reuse is enabled, checks the size-class free list for an exact
+        match (O(1) pop).  Otherwise falls back to bump allocation.
+        Tracks ptr→size in a Dict for later free.
+        """
+        var actual = size if size >= 1 else 1
+
+        # --- Size-class map path (O(1) pop) ---
+        if self.reuse_enabled:
+            var bucket = self.free_map.get(actual)
+            if bucket:
+                var b = bucket.value().copy()
+                if len(b) > 0:
+                    var ptr = b.pop()
+                    self.free_map[actual] = b^
+                    return ptr
+
+        # --- Bump-allocator fallback ---
         var remainder = self.bump_ptr % align
         if remainder != 0:
             self.bump_ptr += align - remainder
         var ptr = self.bump_ptr
-        self.bump_ptr += size
+        self.bump_ptr += actual
+
+        # Track the size so aligned_free can recover it later.
+        self.ptr_size[ptr] = actual
+
         return ptr
+
+    fn aligned_free(mut self, ptr: Int):
+        """Free a previously allocated block.
+
+        Looks up the block size from ptr_size and pushes the pointer onto
+        the size-class free list.  If reuse is disabled the block is still
+        tracked (visible in heap_stats) but won't be handed out.
+        """
+        if ptr == 0:
+            return
+
+        var size_opt = self.ptr_size.get(ptr)
+        if not size_opt:
+            return  # unknown pointer — ignore
+
+        var size = size_opt.value()
+
+        # Push onto the size-class bucket (O(1)).
+        var bucket = self.free_map.get(size)
+        if bucket:
+            var b = bucket.value().copy()
+            b.append(ptr)
+            self.free_map[size] = b^
+        else:
+            var b = List[Int]()
+            b.append(ptr)
+            self.free_map[size] = b^
+
+    fn heap_stats(self) raises -> (Int, Int, Int):
+        """Return (heap_pointer, free_blocks, free_bytes)."""
+        var blocks = 0
+        var bytes = 0
+        for entry in self.free_map.items():
+            var size = entry[].key
+            var bucket = entry[].value
+            blocks += len(bucket)
+            bytes += size * len(bucket)
+        return (self.bump_ptr, blocks, bytes)
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +256,9 @@ fn _cb_aligned_free(
     results: UnsafePointer[WasmtimeVal],
     nresults: Int,
 ) -> UnsafePointer[NoneType]:
-    # Bump allocator never reclaims.
+    var state = _state(env)
+    var ptr = Int(args[0].get_i64())
+    state[].aligned_free(ptr)
     return UnsafePointer[NoneType]()
 
 
