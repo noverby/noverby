@@ -18,7 +18,7 @@
     inputs.catppuccin.nixosModules.catppuccin
     inputs.home-manager.nixosModules.home-manager
     inputs.ragenix.nixosModules.default
-    thinkpad-t14-ryzen-7-pro
+    inputs.self.hardware.thinkpad-t14-ryzen-7-pro
     nitrokey
     age
     cosmic
