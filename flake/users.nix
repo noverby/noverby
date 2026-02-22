@@ -1,17 +1,19 @@
 {
-  src,
   lib,
+  config,
   ...
 }: let
-  inherit (lib) filterAttrs hasSuffix mapAttrs' removeSuffix;
-  usersDir = src + /config/users;
-  dirEntries = builtins.readDir usersDir;
-  nixFiles = filterAttrs (name: _: hasSuffix ".nix" name) dirEntries;
+  inherit (lib) mkOption mkIf;
+  inherit (lib.types) lazyAttrsOf raw;
 in {
-  outputs.users =
-    mapAttrs' (name: _: {
-      name = removeSuffix ".nix" name;
-      value = usersDir + "/${name}";
-    })
-    nixFiles;
+  options.users = mkOption {
+    type = lazyAttrsOf raw;
+    default = {};
+    description = "User home-manager configuration file paths";
+  };
+
+  config = {
+    outputs = mkIf (config.users != {}) {inherit (config) users;};
+    nixDirPathAttrs = ["users"];
+  };
 }
