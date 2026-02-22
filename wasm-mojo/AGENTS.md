@@ -149,7 +149,7 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 | `src/vdom/vnode.mojo` | ~600 | VNode + VNodeStore + VNodeBuilder |
 | `src/signals/runtime.mojo` | ~500 | Reactive runtime |
 | `src/mutations/diff.mojo` | ~500 | DiffEngine (keyed reconciliation) |
-| `CHANGELOG.md` | ~140 | Development history (Phases 0–14) |
+| `CHANGELOG.md` | ~145 | Development history (Phases 0–15) |
 
 ## Common Patterns
 
