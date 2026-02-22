@@ -21,6 +21,6 @@ extend-ignore-re = [
 extend-exclude = [
   # Project is still in Danish
   "wiki/**",
-  "secrets/*.age",
+  "config/secrets/*.age",
 ]
 ignore-hidden = false
