@@ -20,6 +20,8 @@ export {
 	initTestAllocator,
 	restoreAllocator,
 	saveAllocator,
+	scratchAlloc,
+	scratchFreeAll,
 	setAllocatorReuse,
 } from "./memory.ts";
 export type { Mutation } from "./protocol.ts";

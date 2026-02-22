@@ -23,6 +23,7 @@
 //
 // Event type tags (must match Mojo's EVT_* constants):
 
+import { scratchFreeAll } from "./memory.ts";
 import { writeStringStruct } from "./strings.ts";
 
 export const EventType = {
@@ -321,6 +322,7 @@ export class EventBridge {
 				if (this.dispatchWithStringFn) {
 					const stringPtr = writeStringStruct(strValue);
 					const handled = this.dispatchWithStringFn(hid, eventType, stringPtr);
+					scratchFreeAll();
 					if (handled) {
 						this.onAfterDispatch?.();
 						return;

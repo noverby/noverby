@@ -144,16 +144,32 @@ Ported the size-class map allocator to the Mojo test harness.
 
 **Verify**: `just test` — 29 modules, 946 tests, 0 failures (~16s).
 
-### P25.4 — JS-side string struct frees
+### P25.4 — JS-side string struct frees ✅
 
-`writeStringStruct()` allocates a 24-byte struct + data buffer per call
-(every keystroke). Add a scratch arena that bulk-frees after each flush:
+Added a scratch arena for transient `writeStringStruct` allocations across
+both the TS runtime and JS browser examples runtime.
 
-- `scratchAlloc(align, size)` records allocations.
-- `scratchFreeAll()` frees them all after flush.
-- Wire into `launch()` flush helper and EventBridge dispatch.
+- `scratchAlloc(align, size)` wraps `alignedAlloc` and records the pointer.
+- `scratchFreeAll()` bulk-frees all recorded scratch pointers.
+- `writeStringStruct()` now uses `scratchAlloc` (both `runtime/strings.ts`
+  and `examples/lib/strings.js`).
+- TS runtime: `scratchFreeAll()` called in `EventBridge.handleEvent()` after
+  string dispatch (WASM consumes data synchronously before free).
+- JS examples: `scratchFreeAll()` called in `launch()` flush helper after
+  mutations are applied.
+- `scratchPtrs` reset on `initialize()` / `initMemory()` / `initTestAllocator()`.
+- Exported from `runtime/mod.ts` for test and consumer access.
 
-**Tests**: 1,000 writeStringStruct → flush → scratchFreeAll cycles, heap stable.
+**Tests** — `test-js/allocator.test.ts` (19 new scratch arena assertions):
+
+- ✅ scratchAlloc returns aligned, distinct pointers.
+- ✅ scratchFreeAll moves scratch blocks to free list.
+- ✅ Re-alloc reuses freed scratch blocks (LIFO).
+- ✅ scratchFreeAll on empty arena is a safe no-op (including double-call).
+- ✅ 1,000 writeStringStruct-like cycles — heap pointer stays bounded.
+- ✅ scratchFreeAll does not affect direct (non-scratch) allocations.
+
+**Result**: 1,357 tests pass (1,338 existing + 19 new scratch tests), 0 failures.
 
 ### P25.5 — Fix WASM use-after-free and enable reuse
 
@@ -172,6 +188,6 @@ Investigate and fix the use-after-free in the Mojo vnode/diff code:
 | P25.1 | TS allocator + tests             | ~250   | ✅ Done |
 | P25.2 | JS allocator port                | ~50    | ✅ Done |
 | P25.3 | Mojo allocator port              | ~80    | ✅ Done |
-| P25.4 | Scratch arena + string frees     | ~100   | |
+| P25.4 | Scratch arena + string frees     | ~100   | ✅ Done |
 | P25.5 | Fix use-after-free + validation  | ~200   | |
 | **Total** |                              | **~680** | |
