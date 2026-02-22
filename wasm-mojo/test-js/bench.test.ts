@@ -79,8 +79,10 @@ function createBenchApp(
 ): BenchAppHandle {
 	// Use the generic createApp factory — templates come from WASM via
 	// RegisterTemplate mutations, no manual DOM template construction needed.
-	// The bench app uses event delegation on tbody, not per-element listeners,
-	// so handleEvent is a no-op.
+	// Phase 24.1: bench_handle_event now routes row clicks (select/remove)
+	// via the KeyedList handler_map in WASM.  Tests still use direct WASM
+	// calls for deterministic control, but handleEvent is wired for
+	// EventBridge compatibility.
 	const handle = createApp({
 		fns,
 		root: tbody,
@@ -89,7 +91,7 @@ function createBenchApp(
 		init: (f) => f.bench_init(),
 		rebuild: (f, app, buf, cap) => f.bench_rebuild(app, buf, cap),
 		flush: (f, app, buf, cap) => f.bench_flush(app, buf, cap),
-		handleEvent: () => 0, // bench uses direct WASM calls, not event dispatch
+		handleEvent: (f, app, hid, evt) => f.bench_handle_event(app, hid, evt),
 		destroy: (f, app) => f.bench_destroy(app),
 	});
 
