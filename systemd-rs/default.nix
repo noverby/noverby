@@ -1,4 +1,11 @@
 {
+  devShells.systemd-rs = pkgs: {
+    packages = with pkgs; [
+      just
+      dbus
+    ];
+  };
+
   packages.systemd-rs = {
     lib,
     rustPlatform,
