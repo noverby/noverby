@@ -62,7 +62,9 @@ fn test_add_float64(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_add_int32_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_add_int32_edge_cases(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("add_int32", args_i32_i32(0, 0))),
         0,
@@ -85,7 +87,9 @@ fn test_add_int32_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     )
 
 
-fn test_add_int64_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_add_int64_edge_cases(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i64("add_int64", args_i64_i64(0, 0))),
         0,
@@ -103,7 +107,9 @@ fn test_add_int64_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     )
 
 
-fn test_add_float64_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_add_float64_edge_cases(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         w[].call_f64("add_float64", args_f64_f64(0.0, 0.0)),
         0.0,
@@ -149,7 +155,9 @@ fn test_sub_float64(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_sub_int32_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_sub_int32_edge_cases(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("sub_int32", args_i32_i32(0, 0))),
         0,
@@ -172,7 +180,9 @@ fn test_sub_int32_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     )
 
 
-fn test_sub_int64_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_sub_int64_edge_cases(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i64("sub_int64", args_i64_i64(0, 0))),
         0,
@@ -218,7 +228,9 @@ fn test_mul_float64(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_mul_int32_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_mul_int32_edge_cases(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("mul_int32", args_i32_i32(0, 100))),
         0,
@@ -241,7 +253,9 @@ fn test_mul_int32_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     )
 
 
-fn test_mul_int64_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_mul_int64_edge_cases(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i64("mul_int64", args_i64_i64(0, 999))),
         0,
@@ -254,7 +268,9 @@ fn test_mul_int64_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     )
 
 
-fn test_mul_float64_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_mul_float64_edge_cases(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         w[].call_f64("mul_float64", args_f64_f64(0.0, 123.456)),
         0.0,
@@ -295,7 +311,9 @@ fn test_div_float64(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_div_int32_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_div_int32_edge_cases(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("div_int32", args_i32_i32(7, 2))),
         3,
@@ -320,7 +338,9 @@ fn test_div_int32_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     )
 
 
-fn test_div_int64_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_div_int64_edge_cases(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i64("div_int64", args_i64_i64(7, 2))),
         3,
@@ -328,7 +348,9 @@ fn test_div_int64_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     )
 
 
-fn test_div_float64_edge_cases(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_div_float64_edge_cases(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         w[].call_f64("div_float64", args_f64_f64(1.0, 3.0)),
         1.0 / 3.0,
@@ -440,7 +462,9 @@ fn test_pow_float64(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_pow_float32_stable(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_pow_float32_stable(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     # Verify pow_float32 is at least stable (same input → same output)
     var a = Float64(w[].call_f32("pow_float32", args_f32(3.3)))
     var b = Float64(w[].call_f32("pow_float32", args_f32(3.3)))

@@ -109,7 +109,8 @@ from memory import UnsafePointer, memset_zero, alloc
 
 @always_inline
 fn _as_ptr[T: AnyType](addr: Int) -> UnsafePointer[T, MutExternalOrigin]:
-    """Reinterpret an integer address as an UnsafePointer[T, MutExternalOrigin]."""
+    """Reinterpret an integer address as an UnsafePointer[T, MutExternalOrigin].
+    """
     var slot = alloc[Int](1)
     slot[0] = addr
     var result = slot.bitcast[UnsafePointer[T, MutExternalOrigin]]()[0]
@@ -135,7 +136,9 @@ fn _heap_new[T: Movable](var val: T) -> UnsafePointer[T, MutExternalOrigin]:
 
 
 @always_inline
-fn _heap_del[T: Movable & ImplicitlyDestructible](ptr: UnsafePointer[T, MutExternalOrigin]):
+fn _heap_del[
+    T: Movable & ImplicitlyDestructible
+](ptr: UnsafePointer[T, MutExternalOrigin]):
     """Destroy and free a single heap-allocated T."""
     ptr.destroy_pointee()
     ptr.free()
@@ -146,7 +149,8 @@ fn _heap_del[T: Movable & ImplicitlyDestructible](ptr: UnsafePointer[T, MutExter
 
 @always_inline
 fn _get[T: AnyType](ptr: Int64) -> UnsafePointer[T, MutExternalOrigin]:
-    """Reinterpret an Int64 WASM handle as an UnsafePointer[T, MutExternalOrigin]."""
+    """Reinterpret an Int64 WASM handle as an UnsafePointer[T, MutExternalOrigin].
+    """
     return _as_ptr[T](Int(ptr))
 
 

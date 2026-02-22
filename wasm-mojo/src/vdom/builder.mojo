@@ -299,7 +299,9 @@ struct TemplateBuilder(Movable):
 # pointer handles.  These helpers manage the lifecycle.
 
 
-fn create_builder(name: String) -> UnsafePointer[TemplateBuilder, MutExternalOrigin]:
+fn create_builder(
+    name: String,
+) -> UnsafePointer[TemplateBuilder, MutExternalOrigin]:
     """Allocate a TemplateBuilder on the heap and return a pointer."""
     var ptr = alloc[TemplateBuilder](1)
     ptr.init_pointee_move(TemplateBuilder(name))

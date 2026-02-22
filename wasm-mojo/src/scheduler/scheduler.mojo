@@ -82,7 +82,11 @@ struct Scheduler(Movable):
         if len(dirty) > 0:
             self._sorted = False
 
-    fn collect_one(mut self, rt: UnsafePointer[Runtime, MutExternalOrigin], scope_id: UInt32):
+    fn collect_one(
+        mut self,
+        rt: UnsafePointer[Runtime, MutExternalOrigin],
+        scope_id: UInt32,
+    ):
         """Add a single scope to the queue (if not already present).
 
         Useful when you know exactly which scope is dirty without

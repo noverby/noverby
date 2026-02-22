@@ -33,19 +33,27 @@ fn _get_wasm() raises -> UnsafePointer[WasmInstance, MutExternalOrigin]:
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-fn _create_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises -> Int:
+fn _create_runtime(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises -> Int:
     return Int(w[].call_i64("runtime_create", no_args()))
 
 
-fn _destroy_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int) raises:
+fn _destroy_runtime(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int
+) raises:
     w[].call_void("runtime_destroy", args_ptr(rt))
 
 
-fn _create_vnode_store(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises -> Int:
+fn _create_vnode_store(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises -> Int:
     return Int(w[].call_i64("vnode_store_create", no_args()))
 
 
-fn _destroy_vnode_store(w: UnsafePointer[WasmInstance, MutExternalOrigin], s: Int) raises:
+fn _destroy_vnode_store(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], s: Int
+) raises:
     w[].call_void("vnode_store_destroy", args_ptr(s))
 
 
@@ -85,17 +93,23 @@ fn test_dsl_text_node(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     assert_equal(result, 1, "dsl_test_text_node passed")
 
 
-fn test_dsl_dyn_text_node(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_dyn_text_node(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_dyn_text_node", no_args()))
     assert_equal(result, 1, "dsl_test_dyn_text_node passed")
 
 
-fn test_dsl_dyn_node_slot(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_dyn_node_slot(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_dyn_node_slot", no_args()))
     assert_equal(result, 1, "dsl_test_dyn_node_slot passed")
 
 
-fn test_dsl_static_attr(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_static_attr(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_static_attr", no_args()))
     assert_equal(result, 1, "dsl_test_static_attr passed")
 
@@ -105,37 +119,51 @@ fn test_dsl_dyn_attr(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     assert_equal(result, 1, "dsl_test_dyn_attr passed")
 
 
-fn test_dsl_empty_element(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_empty_element(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_empty_element", no_args()))
     assert_equal(result, 1, "dsl_test_empty_element passed")
 
 
-fn test_dsl_element_with_children(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_element_with_children(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_element_with_children", no_args()))
     assert_equal(result, 1, "dsl_test_element_with_children passed")
 
 
-fn test_dsl_element_with_attrs(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_element_with_attrs(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_element_with_attrs", no_args()))
     assert_equal(result, 1, "dsl_test_element_with_attrs passed")
 
 
-fn test_dsl_element_mixed(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_element_mixed(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_element_mixed", no_args()))
     assert_equal(result, 1, "dsl_test_element_mixed passed")
 
 
-fn test_dsl_nested_elements(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_nested_elements(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_nested_elements", no_args()))
     assert_equal(result, 1, "dsl_test_nested_elements passed")
 
 
-fn test_dsl_all_tag_helpers(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_all_tag_helpers(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_all_tag_helpers", no_args()))
     assert_equal(result, 1, "dsl_test_all_tag_helpers passed")
 
 
-fn test_dsl_count_utilities(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_count_utilities(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_count_utilities", no_args()))
     assert_equal(result, 1, "dsl_test_count_utilities passed")
 
@@ -145,27 +173,37 @@ fn test_dsl_count_utilities(w: UnsafePointer[WasmInstance, MutExternalOrigin]) r
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_to_template_simple(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_to_template_simple(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_to_template_simple", no_args()))
     assert_equal(result, 1, "dsl_test_to_template_simple passed")
 
 
-fn test_dsl_to_template_attrs(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_to_template_attrs(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_to_template_attrs", no_args()))
     assert_equal(result, 1, "dsl_test_to_template_attrs passed")
 
 
-fn test_dsl_to_template_multi_root(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_to_template_multi_root(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_to_template_multi_root", no_args()))
     assert_equal(result, 1, "dsl_test_to_template_multi_root passed")
 
 
-fn test_dsl_counter_template(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_counter_template(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_counter_template", no_args()))
     assert_equal(result, 1, "dsl_test_counter_template passed")
 
 
-fn test_dsl_template_equivalence(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_template_equivalence(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_template_equivalence", no_args()))
     assert_equal(result, 1, "dsl_test_template_equivalence passed")
 
@@ -175,12 +213,16 @@ fn test_dsl_template_equivalence(w: UnsafePointer[WasmInstance, MutExternalOrigi
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_vnode_builder(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_vnode_builder(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_vnode_builder", no_args()))
     assert_equal(result, 1, "dsl_test_vnode_builder passed")
 
 
-fn test_dsl_vnode_builder_keyed(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_vnode_builder_keyed(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var result = Int(w[].call_i32("dsl_test_vnode_builder_keyed", no_args()))
     assert_equal(result, 1, "dsl_test_vnode_builder_keyed passed")
 
@@ -190,7 +232,9 @@ fn test_dsl_vnode_builder_keyed(w: UnsafePointer[WasmInstance, MutExternalOrigin
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_node_create_text(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_node_create_text(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Create a text Node via WASM, verify kind."""
     var n = Int(
         w[].call_i64(
@@ -202,7 +246,9 @@ fn test_dsl_node_create_text(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     w[].call_void("dsl_node_destroy", args_ptr(n))
 
 
-fn test_dsl_node_create_dyn_text(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_node_create_dyn_text(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Create a dyn_text Node via WASM, verify kind and index."""
     var n = Int(w[].call_i64("dsl_node_dyn_text", args_i32(4)))
     var kind = Int(w[].call_i32("dsl_node_kind", args_ptr(n)))
@@ -212,7 +258,9 @@ fn test_dsl_node_create_dyn_text(w: UnsafePointer[WasmInstance, MutExternalOrigi
     w[].call_void("dsl_node_destroy", args_ptr(n))
 
 
-fn test_dsl_node_create_dyn_node(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_node_create_dyn_node(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Create a dyn_node Node via WASM, verify kind and index."""
     var n = Int(w[].call_i64("dsl_node_dyn_node", args_i32(2)))
     var kind = Int(w[].call_i32("dsl_node_kind", args_ptr(n)))
@@ -222,7 +270,9 @@ fn test_dsl_node_create_dyn_node(w: UnsafePointer[WasmInstance, MutExternalOrigi
     w[].call_void("dsl_node_destroy", args_ptr(n))
 
 
-fn test_dsl_node_create_attr(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_node_create_attr(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Create a static attr Node via WASM, verify kind."""
     var n = Int(
         w[].call_i64(
@@ -238,7 +288,9 @@ fn test_dsl_node_create_attr(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     w[].call_void("dsl_node_destroy", args_ptr(n))
 
 
-fn test_dsl_node_create_dyn_attr(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_node_create_dyn_attr(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Create a dyn_attr Node via WASM, verify kind and index."""
     var n = Int(w[].call_i64("dsl_node_dyn_attr", args_i32(1)))
     var kind = Int(w[].call_i32("dsl_node_kind", args_ptr(n)))
@@ -248,7 +300,9 @@ fn test_dsl_node_create_dyn_attr(w: UnsafePointer[WasmInstance, MutExternalOrigi
     w[].call_void("dsl_node_destroy", args_ptr(n))
 
 
-fn test_dsl_node_create_element(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_node_create_element(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Create an empty element Node via WASM, verify kind and tag."""
     var n = Int(w[].call_i64("dsl_node_element", args_i32(TAG_DIV)))
     var kind = Int(w[].call_i32("dsl_node_kind", args_ptr(n)))
@@ -260,7 +314,9 @@ fn test_dsl_node_create_element(w: UnsafePointer[WasmInstance, MutExternalOrigin
     w[].call_void("dsl_node_destroy", args_ptr(n))
 
 
-fn test_dsl_node_add_items(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_node_add_items(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Add children and attrs to an element, verify counts."""
 
     # Create div
@@ -298,7 +354,9 @@ fn test_dsl_node_add_items(w: UnsafePointer[WasmInstance, MutExternalOrigin]) ra
     w[].call_void("dsl_node_destroy", args_ptr(div))
 
 
-fn test_dsl_node_nested_tree(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_node_nested_tree(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Build nested tree and verify recursive counts."""
 
     # Build: div > [ span > text("inner"), button > dyn_text(0) + dyn_attr(0) ]
@@ -411,7 +469,9 @@ fn test_dsl_node_count_dyn_node_and_static_attr(
     w[].call_void("dsl_node_destroy", args_ptr(div))
 
 
-fn test_dsl_node_to_template(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_node_to_template(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Build a Node tree, convert to template, verify structure."""
     var rt = _create_runtime(w)
 
@@ -447,7 +507,9 @@ fn test_dsl_node_to_template(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     _destroy_runtime(w, rt)
 
 
-fn test_dsl_vb_create_and_query(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_vb_create_and_query(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Create a VNodeBuilder via WASM, add dynamic content, verify."""
 
     # Use the self-contained test which handles all the orchestration
@@ -479,7 +541,9 @@ fn test_dsl_template_equivalence_via_wasm(
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_counter_template_via_wasm(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_counter_template_via_wasm(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Build counter template via DSL and verify all properties."""
     var result = Int(w[].call_i32("dsl_test_counter_template", no_args()))
     assert_equal(result, 1, "counter template test passed")
@@ -490,7 +554,9 @@ fn test_dsl_counter_template_via_wasm(w: UnsafePointer[WasmInstance, MutExternal
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_multi_root_via_wasm(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_multi_root_via_wasm(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Multiple root nodes via to_template_multi."""
     var result = Int(w[].call_i32("dsl_test_to_template_multi_root", no_args()))
     assert_equal(result, 1, "multi-root template test passed")
@@ -501,7 +567,9 @@ fn test_dsl_multi_root_via_wasm(w: UnsafePointer[WasmInstance, MutExternalOrigin
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_oninput_set_string_node(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_oninput_set_string_node(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Oninput_set_string creates NODE_EVENT with correct fields."""
     var result = Int(
         w[].call_i32("dsl_test_oninput_set_string_node", no_args())
@@ -509,7 +577,9 @@ fn test_dsl_oninput_set_string_node(w: UnsafePointer[WasmInstance, MutExternalOr
     assert_equal(result, 1, "oninput_set_string_node passed")
 
 
-fn test_dsl_onchange_set_string_node(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_onchange_set_string_node(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Onchange_set_string creates NODE_EVENT with correct fields."""
     var result = Int(
         w[].call_i32("dsl_test_onchange_set_string_node", no_args())
@@ -517,7 +587,9 @@ fn test_dsl_onchange_set_string_node(w: UnsafePointer[WasmInstance, MutExternalO
     assert_equal(result, 1, "onchange_set_string_node passed")
 
 
-fn test_dsl_oninput_in_element(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_oninput_in_element(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Oninput_set_string inside an element counts as dynamic attr."""
     var result = Int(w[].call_i32("dsl_test_oninput_in_element", no_args()))
     assert_equal(result, 1, "oninput_in_element passed")
@@ -528,25 +600,33 @@ fn test_dsl_oninput_in_element(w: UnsafePointer[WasmInstance, MutExternalOrigin]
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_bind_value_node(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_bind_value_node(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Bind_value creates NODE_BIND_VALUE with attr_name='value'."""
     var result = Int(w[].call_i32("dsl_test_bind_value_node", no_args()))
     assert_equal(result, 1, "bind_value_node passed")
 
 
-fn test_dsl_bind_attr_node(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_bind_attr_node(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Bind_attr creates NODE_BIND_VALUE with custom attr name."""
     var result = Int(w[].call_i32("dsl_test_bind_attr_node", no_args()))
     assert_equal(result, 1, "bind_attr_node passed")
 
 
-fn test_dsl_bind_value_in_element(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_bind_value_in_element(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Bind_value inside an element counts as dynamic attr."""
     var result = Int(w[].call_i32("dsl_test_bind_value_in_element", no_args()))
     assert_equal(result, 1, "bind_value_in_element passed")
 
 
-fn test_dsl_two_way_binding_element(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_two_way_binding_element(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Bind_value + oninput_set_string together produce 2 dynamic attrs."""
     var result = Int(
         w[].call_i32("dsl_test_two_way_binding_element", no_args())
@@ -554,13 +634,17 @@ fn test_dsl_two_way_binding_element(w: UnsafePointer[WasmInstance, MutExternalOr
     assert_equal(result, 1, "two_way_binding_element passed")
 
 
-fn test_dsl_bind_value_to_template(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_bind_value_to_template(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Bind_value converts to TATTR_DYNAMIC in template."""
     var result = Int(w[].call_i32("dsl_test_bind_value_to_template", no_args()))
     assert_equal(result, 1, "bind_value_to_template passed")
 
 
-fn test_dsl_two_way_to_template(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_two_way_to_template(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Bind_value + oninput_set_string converts to 2 TATTR_DYNAMICs."""
     var result = Int(w[].call_i32("dsl_test_two_way_to_template", no_args()))
     assert_equal(result, 1, "two_way_to_template passed")
@@ -571,13 +655,17 @@ fn test_dsl_two_way_to_template(w: UnsafePointer[WasmInstance, MutExternalOrigin
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_onclick_custom_node(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_onclick_custom_node(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Onclick_custom creates NODE_EVENT with ACTION_CUSTOM."""
     var result = Int(w[].call_i32("dsl_test_onclick_custom_node", no_args()))
     assert_equal(result, 1, "onclick_custom_node passed")
 
 
-fn test_dsl_onclick_custom_in_element(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_onclick_custom_in_element(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Onclick_custom inside a button counts as dynamic attr."""
     var result = Int(
         w[].call_i32("dsl_test_onclick_custom_in_element", no_args())
@@ -585,7 +673,9 @@ fn test_dsl_onclick_custom_in_element(w: UnsafePointer[WasmInstance, MutExternal
     assert_equal(result, 1, "onclick_custom_in_element passed")
 
 
-fn test_dsl_onclick_custom_with_binding(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_onclick_custom_with_binding(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Onclick_custom + bind_value + oninput_set_string in sibling elements."""
     var result = Int(
         w[].call_i32("dsl_test_onclick_custom_with_binding", no_args())
@@ -598,7 +688,9 @@ fn test_dsl_onclick_custom_with_binding(w: UnsafePointer[WasmInstance, MutExtern
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_dsl_onkeydown_enter_custom_node(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_dsl_onkeydown_enter_custom_node(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Onkeydown_enter_custom creates NODE_EVENT with ACTION_KEY_ENTER_CUSTOM.
     """
     var result = Int(

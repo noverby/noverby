@@ -31,12 +31,16 @@ fn _get_wasm() raises -> UnsafePointer[WasmInstance, MutExternalOrigin]:
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-fn _create_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises -> Int:
+fn _create_runtime(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises -> Int:
     """Create a heap-allocated Runtime via WASM."""
     return Int(w[].call_i64("runtime_create", no_args()))
 
 
-fn _destroy_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int) raises:
+fn _destroy_runtime(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int
+) raises:
     """Destroy a heap-allocated Runtime via WASM."""
     w[].call_void("runtime_destroy", args_ptr(rt))
 
@@ -44,7 +48,9 @@ fn _destroy_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int) 
 # ── Runtime lifecycle ────────────────────────────────────────────────────────
 
 
-fn test_runtime_create_returns_non_null(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_runtime_create_returns_non_null(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     assert_true(rt != 0, "runtime_create returns non-null pointer")
@@ -60,7 +66,9 @@ fn test_runtime_create_returns_non_null(w: UnsafePointer[WasmInstance, MutExtern
 # ── Signal create and read ───────────────────────────────────────────────────
 
 
-fn test_signal_create_and_read(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_signal_create_and_read(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 42)))
@@ -85,7 +93,9 @@ fn test_signal_create_and_read(w: UnsafePointer[WasmInstance, MutExternalOrigin]
 # ── Signal write and read back ───────────────────────────────────────────────
 
 
-fn test_signal_write_and_read_back(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_signal_write_and_read_back(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -138,7 +148,9 @@ fn test_signal_peek(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
 # ── Signal version tracking ──────────────────────────────────────────────────
 
 
-fn test_signal_version_tracking(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_signal_version_tracking(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -177,7 +189,9 @@ fn test_signal_version_tracking(w: UnsafePointer[WasmInstance, MutExternalOrigin
 # ── Multiple independent signals ─────────────────────────────────────────────
 
 
-fn test_multiple_independent_signals(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_multiple_independent_signals(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var k1 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 10)))
@@ -231,7 +245,9 @@ fn test_multiple_independent_signals(w: UnsafePointer[WasmInstance, MutExternalO
 # ── Signal destroy ───────────────────────────────────────────────────────────
 
 
-fn test_signal_destroy(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_signal_destroy(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var k1 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 10)))
@@ -265,7 +281,9 @@ fn test_signal_destroy(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises
 # ── Signal slot reuse after destroy ──────────────────────────────────────────
 
 
-fn test_signal_slot_reuse_after_destroy(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_signal_slot_reuse_after_destroy(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var k1 = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 10)))
@@ -340,7 +358,9 @@ fn test_signal_isub(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
 # ── Context: no context by default ───────────────────────────────────────────
 
 
-fn test_no_context_by_default(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_no_context_by_default(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     assert_equal(
@@ -355,7 +375,9 @@ fn test_no_context_by_default(w: UnsafePointer[WasmInstance, MutExternalOrigin])
 # ── Context: set and clear ───────────────────────────────────────────────────
 
 
-fn test_context_set_and_clear(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_context_set_and_clear(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     w[].call_void("runtime_set_context", args_ptr_i32(rt, 42))
@@ -378,7 +400,9 @@ fn test_context_set_and_clear(w: UnsafePointer[WasmInstance, MutExternalOrigin])
 # ── Subscription: read with context subscribes ───────────────────────────────
 
 
-fn test_read_with_context_subscribes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_read_with_context_subscribes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -420,7 +444,9 @@ fn test_read_with_context_subscribes(w: UnsafePointer[WasmInstance, MutExternalO
 # ── Subscription: peek does NOT subscribe ────────────────────────────────────
 
 
-fn test_peek_does_not_subscribe(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_peek_does_not_subscribe(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -440,7 +466,9 @@ fn test_peek_does_not_subscribe(w: UnsafePointer[WasmInstance, MutExternalOrigin
 # ── Subscription: multiple contexts subscribe ────────────────────────────────
 
 
-fn test_multiple_contexts_subscribe(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_multiple_contexts_subscribe(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -467,7 +495,9 @@ fn test_multiple_contexts_subscribe(w: UnsafePointer[WasmInstance, MutExternalOr
 # ── Dirty scopes: write with subscribers produces dirty ──────────────────────
 
 
-fn test_write_marks_subscribers_dirty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_write_marks_subscribers_dirty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -531,7 +561,9 @@ fn test_write_without_subscribers_is_clean(
 # ── Dirty scopes: iadd marks dirty ───────────────────────────────────────────
 
 
-fn test_iadd_marks_subscribers_dirty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_iadd_marks_subscribers_dirty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))
@@ -614,7 +646,9 @@ fn test_read_after_write_returns_new_value(
 # ── Stress: create 100 signals, verify independence ──────────────────────────
 
 
-fn test_stress_100_independent_signals(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_stress_100_independent_signals(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var keys = List[Int]()
@@ -711,7 +745,9 @@ fn test_stress_create_destroy_reuse_cycle(
 # ── Edge case: negative values ───────────────────────────────────────────────
 
 
-fn test_signal_negative_values(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_signal_negative_values(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var key = Int(
@@ -738,7 +774,9 @@ fn test_signal_negative_values(w: UnsafePointer[WasmInstance, MutExternalOrigin]
 # ── Edge case: zero initial value ────────────────────────────────────────────
 
 
-fn test_signal_zero_initial_value(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_signal_zero_initial_value(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var key = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 0)))

@@ -72,7 +72,11 @@ struct SignalI32(Copyable, Stringable):
 
     # ── Construction ─────────────────────────────────────────────────
 
-    fn __init__(out self, key: UInt32, runtime: UnsafePointer[Runtime, MutExternalOrigin]):
+    fn __init__(
+        out self,
+        key: UInt32,
+        runtime: UnsafePointer[Runtime, MutExternalOrigin],
+    ):
         """Create a signal handle from a raw key and runtime pointer.
 
         Args:
@@ -218,7 +222,9 @@ struct MemoI32(Copyable, Stringable):
 
     # ── Construction ─────────────────────────────────────────────────
 
-    fn __init__(out self, id: UInt32, runtime: UnsafePointer[Runtime, MutExternalOrigin]):
+    fn __init__(
+        out self, id: UInt32, runtime: UnsafePointer[Runtime, MutExternalOrigin]
+    ):
         """Create a memo handle from a raw ID and runtime pointer.
 
         Args:
@@ -353,7 +359,9 @@ struct EffectHandle(Copyable):
 
     # ── Construction ─────────────────────────────────────────────────
 
-    fn __init__(out self, id: UInt32, runtime: UnsafePointer[Runtime, MutExternalOrigin]):
+    fn __init__(
+        out self, id: UInt32, runtime: UnsafePointer[Runtime, MutExternalOrigin]
+    ):
         """Create an effect handle from a raw ID and runtime pointer.
 
         Args:
@@ -430,7 +438,11 @@ struct SignalBool(Copyable, Stringable):
 
     # ── Construction ─────────────────────────────────────────────────
 
-    fn __init__(out self, key: UInt32, runtime: UnsafePointer[Runtime, MutExternalOrigin]):
+    fn __init__(
+        out self,
+        key: UInt32,
+        runtime: UnsafePointer[Runtime, MutExternalOrigin],
+    ):
         """Create a bool signal handle from a raw key and runtime pointer.
 
         Args:

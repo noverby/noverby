@@ -63,14 +63,19 @@ struct MutationWriter(Movable):
 
     # ── Construction ─────────────────────────────────────────────────────
 
-    fn __init__(out self, buf: UnsafePointer[UInt8, MutExternalOrigin], capacity: Int):
+    fn __init__(
+        out self, buf: UnsafePointer[UInt8, MutExternalOrigin], capacity: Int
+    ):
         """Create a writer that starts at the beginning of `buf`."""
         self.buf = buf
         self.offset = 0
         self.capacity = capacity
 
     fn __init__(
-        out self, buf: UnsafePointer[UInt8, MutExternalOrigin], offset: Int, capacity: Int
+        out self,
+        buf: UnsafePointer[UInt8, MutExternalOrigin],
+        offset: Int,
+        capacity: Int,
     ):
         """Create a writer that starts at `offset` within `buf`."""
         self.buf = buf
@@ -117,7 +122,9 @@ struct MutationWriter(Movable):
             self.buf[self.offset + i] = ptr[i]
         self.offset += text_len
 
-    fn _write_path[origin: Origin](mut self, path_ptr: UnsafePointer[UInt8, origin], path_len: Int):
+    fn _write_path[
+        origin: Origin
+    ](mut self, path_ptr: UnsafePointer[UInt8, origin], path_len: Int):
         """Write a u8-length-prefixed byte path (template traversal indices)."""
         self._write_u8(UInt8(path_len))
         for i in range(path_len):
@@ -144,8 +151,13 @@ struct MutationWriter(Movable):
         self._write_u32_le(id)
         self._write_u32_le(m)
 
-    fn assign_id[origin: Origin](
-        mut self, path_ptr: UnsafePointer[UInt8, origin], path_len: Int, id: UInt32
+    fn assign_id[
+        origin: Origin
+    ](
+        mut self,
+        path_ptr: UnsafePointer[UInt8, origin],
+        path_len: Int,
+        id: UInt32,
     ):
         """Assign an ElementId to the node at `path` inside the current template.
 
@@ -191,8 +203,13 @@ struct MutationWriter(Movable):
         self._write_u32_le(id)
         self._write_u32_le(m)
 
-    fn replace_placeholder[origin: Origin](
-        mut self, path_ptr: UnsafePointer[UInt8, origin], path_len: Int, m: UInt32
+    fn replace_placeholder[
+        origin: Origin
+    ](
+        mut self,
+        path_ptr: UnsafePointer[UInt8, origin],
+        path_len: Int,
+        m: UInt32,
     ):
         """Replace the placeholder at `path` with `m` nodes from the stack.
 

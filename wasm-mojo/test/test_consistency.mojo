@@ -52,7 +52,9 @@ fn _gcd(var a: Int, var b: Int) -> Int:
 # ---------------------------------------------------------------------------
 
 
-fn test_add_sub_inverse(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_add_sub_inverse(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """sub(add(x, y), y) === x (add/sub inverse)."""
     var x = 17
     var y = 9
@@ -64,7 +66,9 @@ fn test_add_sub_inverse(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raise
     )
 
 
-fn test_mul_div_inverse(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_mul_div_inverse(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """div(mul(x, y), y) === x (mul/div inverse for exact division)."""
     var x = 6
     var y = 3
@@ -76,7 +80,9 @@ fn test_mul_div_inverse(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raise
     )
 
 
-fn test_neg_neg_identity(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_neg_neg_identity(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """neg(neg(x)) === x."""
     var inner = Int(w[].call_i32("neg_int32", args_i32(42)))
     assert_equal(
@@ -86,7 +92,9 @@ fn test_neg_neg_identity(w: UnsafePointer[WasmInstance, MutExternalOrigin]) rais
     )
 
 
-fn test_abs_neg_eq_abs(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_abs_neg_eq_abs(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """abs(neg(x)) === abs(x) for positive x."""
     var neg7 = Int(w[].call_i32("neg_int32", args_i32(7)))
     var abs_neg = Int(w[].call_i32("abs_int32", args_i32(neg7)))
@@ -107,7 +115,9 @@ fn test_min_le_max(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_bitwise_identity_and_or_xor(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitwise_identity_and_or_xor(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """(x & y) | (x ^ y) === x | y."""
     var x = 0b1100
     var y = 0b1010
@@ -118,7 +128,9 @@ fn test_bitwise_identity_and_or_xor(w: UnsafePointer[WasmInstance, MutExternalOr
     assert_equal(lhs, rhs, "(x & y) | (x ^ y) === x | y")
 
 
-fn test_shl_shr_roundtrip(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_shl_shr_roundtrip(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """shr(shl(x, 4), 4) === x."""
     var x = 5
     var shifted = Int(w[].call_i32("shl_int32", args_i32_i32(x, 4)))
@@ -154,7 +166,9 @@ fn test_gcd_scaling(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     assert_equal(lhs, rhs, "gcd(a*k, b*k) === k * gcd(a, b)")
 
 
-fn test_fibonacci_recurrence(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_fibonacci_recurrence(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """fib(n) === fib(n-1) + fib(n-2) for several values of n."""
     var ns: List[Int] = [5, 8, 12, 15]
     for i in range(len(ns)):
@@ -169,7 +183,9 @@ fn test_fibonacci_recurrence(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
         )
 
 
-fn test_factorial_recurrence(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_factorial_recurrence(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """factorial(n) === n * factorial(n-1) for n = 2..7."""
     var ns: List[Int] = [2, 3, 4, 5, 6, 7]
     for i in range(len(ns)):
@@ -183,7 +199,9 @@ fn test_factorial_recurrence(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
         )
 
 
-fn test_string_concat_length(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_string_concat_length(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """len(concat(a, b)) === len(a) + len(b)."""
     var a_ptr = w[].write_string_struct("foo")
     var b_ptr = w[].write_string_struct("barbaz")
@@ -197,7 +215,9 @@ fn test_string_concat_length(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     )
 
 
-fn test_clamp_eq_max_lo_min_hi_x(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_clamp_eq_max_lo_min_hi_x(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """clamp(x, lo, hi) === max(lo, min(hi, x)) for several values of x."""
     var lo = 0
     var hi = 10

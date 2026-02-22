@@ -26,7 +26,9 @@ fn _get_wasm() raises -> UnsafePointer[WasmInstance, MutExternalOrigin]:
 # ── Fibonacci — int32 ────────────────────────────────────────────────────────
 
 
-fn test_fib_int32_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_fib_int32_zero(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(0))), 0, "fib_int32(0) === 0"
     )
@@ -44,19 +46,25 @@ fn test_fib_int32_two(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_fib_int32_three(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_fib_int32_three(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(3))), 2, "fib_int32(3) === 2"
     )
 
 
-fn test_fib_int32_four(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_fib_int32_four(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(4))), 3, "fib_int32(4) === 3"
     )
 
 
-fn test_fib_int32_five(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_fib_int32_five(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(5))), 5, "fib_int32(5) === 5"
     )
@@ -68,7 +76,9 @@ fn test_fib_int32_six(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_fib_int32_seven(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_fib_int32_seven(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(7))),
         13,
@@ -84,7 +94,9 @@ fn test_fib_int32_ten(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_fib_int32_twenty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_fib_int32_twenty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("fib_int32", args_i32(20))),
         6765,
@@ -95,7 +107,9 @@ fn test_fib_int32_twenty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) rais
 # ── Fibonacci — int64 ────────────────────────────────────────────────────────
 
 
-fn test_fib_int64_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_fib_int64_zero(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i64("fib_int64", args_i64(0))), 0, "fib_int64(0) === 0"
     )
@@ -115,7 +129,9 @@ fn test_fib_int64_ten(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_fib_int64_twenty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_fib_int64_twenty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i64("fib_int64", args_i64(20))),
         6765,
@@ -123,7 +139,9 @@ fn test_fib_int64_twenty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) rais
     )
 
 
-fn test_fib_int64_fifty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_fib_int64_fifty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i64("fib_int64", args_i64(50))),
         12586269025,
@@ -134,7 +152,9 @@ fn test_fib_int64_fifty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raise
 # ── Factorial — int32 ────────────────────────────────────────────────────────
 
 
-fn test_factorial_int32_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_factorial_int32_zero(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(0))),
         1,
@@ -142,7 +162,9 @@ fn test_factorial_int32_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     )
 
 
-fn test_factorial_int32_one(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_factorial_int32_one(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(1))),
         1,
@@ -150,7 +172,9 @@ fn test_factorial_int32_one(w: UnsafePointer[WasmInstance, MutExternalOrigin]) r
     )
 
 
-fn test_factorial_int32_two(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_factorial_int32_two(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(2))),
         2,
@@ -158,7 +182,9 @@ fn test_factorial_int32_two(w: UnsafePointer[WasmInstance, MutExternalOrigin]) r
     )
 
 
-fn test_factorial_int32_three(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_factorial_int32_three(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(3))),
         6,
@@ -166,7 +192,9 @@ fn test_factorial_int32_three(w: UnsafePointer[WasmInstance, MutExternalOrigin])
     )
 
 
-fn test_factorial_int32_four(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_factorial_int32_four(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(4))),
         24,
@@ -174,7 +202,9 @@ fn test_factorial_int32_four(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     )
 
 
-fn test_factorial_int32_five(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_factorial_int32_five(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(5))),
         120,
@@ -182,7 +212,9 @@ fn test_factorial_int32_five(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     )
 
 
-fn test_factorial_int32_ten(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_factorial_int32_ten(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("factorial_int32", args_i32(10))),
         3628800,
@@ -193,7 +225,9 @@ fn test_factorial_int32_ten(w: UnsafePointer[WasmInstance, MutExternalOrigin]) r
 # ── Factorial — int64 ────────────────────────────────────────────────────────
 
 
-fn test_factorial_int64_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_factorial_int64_zero(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i64("factorial_int64", args_i64(0))),
         1,
@@ -201,7 +235,9 @@ fn test_factorial_int64_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     )
 
 
-fn test_factorial_int64_one(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_factorial_int64_one(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i64("factorial_int64", args_i64(1))),
         1,
@@ -209,7 +245,9 @@ fn test_factorial_int64_one(w: UnsafePointer[WasmInstance, MutExternalOrigin]) r
     )
 
 
-fn test_factorial_int64_five(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_factorial_int64_five(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i64("factorial_int64", args_i64(5))),
         120,
@@ -217,7 +255,9 @@ fn test_factorial_int64_five(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     )
 
 
-fn test_factorial_int64_ten(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_factorial_int64_ten(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i64("factorial_int64", args_i64(10))),
         3628800,
@@ -225,7 +265,9 @@ fn test_factorial_int64_ten(w: UnsafePointer[WasmInstance, MutExternalOrigin]) r
     )
 
 
-fn test_factorial_int64_twenty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_factorial_int64_twenty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i64("factorial_int64", args_i64(20))),
         2432902008176640000,
@@ -244,7 +286,9 @@ fn test_gcd_12_8(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_gcd_commutative(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_gcd_commutative(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(8, 12))),
         4,
@@ -268,7 +312,9 @@ fn test_gcd_100_75(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_gcd_zero_first(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_gcd_zero_first(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(0, 5))),
         5,
@@ -276,7 +322,9 @@ fn test_gcd_zero_first(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises
     )
 
 
-fn test_gcd_zero_second(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_gcd_zero_second(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(5, 0))),
         5,
@@ -300,7 +348,9 @@ fn test_gcd_one(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_gcd_negative_first(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_gcd_negative_first(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(-12, 8))),
         4,
@@ -308,7 +358,9 @@ fn test_gcd_negative_first(w: UnsafePointer[WasmInstance, MutExternalOrigin]) ra
     )
 
 
-fn test_gcd_negative_second(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_gcd_negative_second(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(12, -8))),
         4,
@@ -316,7 +368,9 @@ fn test_gcd_negative_second(w: UnsafePointer[WasmInstance, MutExternalOrigin]) r
     )
 
 
-fn test_gcd_both_negative(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_gcd_both_negative(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(-12, -8))),
         4,
@@ -332,7 +386,9 @@ fn test_gcd_48_18(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_gcd_classic_euclid(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_gcd_classic_euclid(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("gcd_int32", args_i32_i32(1071, 462))),
         21,
@@ -344,7 +400,9 @@ fn test_gcd_classic_euclid(w: UnsafePointer[WasmInstance, MutExternalOrigin]) ra
 # fib(n) === fib(n-1) + fib(n-2) for n >= 2
 
 
-fn test_fib_recurrence_property(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_fib_recurrence_property(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     for n in range(2, 21):
         var fn0 = Int(w[].call_i32("fib_int32", args_i32(Int32(n))))
         var fn1 = Int(w[].call_i32("fib_int32", args_i32(Int32(n - 1))))
@@ -366,7 +424,9 @@ fn test_fib_recurrence_property(w: UnsafePointer[WasmInstance, MutExternalOrigin
 # n! === n * (n-1)! for n >= 2
 
 
-fn test_factorial_recurrence_property(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_factorial_recurrence_property(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     for n in range(2, 11):
         var fn0 = Int(w[].call_i32("factorial_int32", args_i32(Int32(n))))
         var fn1 = Int(w[].call_i32("factorial_int32", args_i32(Int32(n - 1))))
@@ -386,7 +446,9 @@ fn test_factorial_recurrence_property(w: UnsafePointer[WasmInstance, MutExternal
 # ── GCD properties ───────────────────────────────────────────────────────────
 
 
-fn test_gcd_commutative_property(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_gcd_commutative_property(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """gcd(a, b) === gcd(b, a) for several pairs."""
     var as_: List[Int] = [12, 7, 100, 0, 1071]
     var bs: List[Int] = [8, 13, 75, 5, 462]
@@ -400,7 +462,9 @@ fn test_gcd_commutative_property(w: UnsafePointer[WasmInstance, MutExternalOrigi
         )
 
 
-fn test_gcd_idempotent(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_gcd_idempotent(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """gcd(a, a) === a for positive values."""
     for v in range(1, 20):
         assert_equal(

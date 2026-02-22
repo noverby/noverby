@@ -3271,7 +3271,9 @@ struct VNodeBuilder(Movable):
     # ── Construction ─────────────────────────────────────────────────
 
     fn __init__(
-        out self, template_id: UInt32, store: UnsafePointer[VNodeStore, MutExternalOrigin]
+        out self,
+        template_id: UInt32,
+        store: UnsafePointer[VNodeStore, MutExternalOrigin],
     ):
         """Create a new TemplateRef VNode in the store.
 
