@@ -2,6 +2,19 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 19 — SignalString (Reactive String Signals) ✅
+
+- **M19.1** — `StringStore` (`src/signals/runtime.mojo`). Safe heap-string storage with slab-style free-list slot reuse. Methods: `create(initial) -> UInt32`, `read(key) -> String`, `write(key, value)`, `destroy(key)`, `count()`, `contains(key)`. Added as `Runtime.strings` field. Solves the problem that the type-erased `SignalStore` (memcpy-based) is unsafe for heap types like String.
+- **M19.2** — `SignalString` handle type (`src/signals/handle.mojo`). Ergonomic reactive string signal wrapping a `string_key` (index in StringStore) + `version_key` (companion Int32 signal in SignalStore for subscriber tracking). API: `get() -> String` (peek without subscribing), `peek() -> String` (alias), `read() -> String` (subscribe context via version signal), `set(String)` (write + bump version → marks subscribers dirty), `version() -> UInt32`, `is_empty() -> Bool`, `__str__() -> String`. Exported from signals package.
+- **M19.3** — Runtime string signal methods (`src/signals/runtime.mojo`). `create_signal_string(initial) -> (UInt32, UInt32)` creates string + version signal pair. `peek_signal_string(string_key) -> String`, `read_signal_string(string_key, version_key) -> String` (with context subscription), `write_signal_string(string_key, version_key, value)` (write + bump version), `destroy_signal_string(string_key, version_key)`, `string_signal_count() -> Int`. Hook-based `use_signal_string(initial) -> (UInt32, UInt32)` stores both keys in scope hooks (two HOOK_SIGNAL entries).
+- **M19.4** — `use_signal_string` / `create_signal_string` on `ComponentContext` (`src/component/context.mojo`). `ctx.use_signal_string(initial: String) -> SignalString` creates a string signal with hook registration and scope subscription. `ctx.create_signal_string(initial: String) -> SignalString` creates without hooks or subscription.
+- **M19.5** — `add_dyn_text_signal(SignalString)` convenience on `RenderBuilder` (`src/component/context.mojo`) and `ItemBuilder` (`src/component/keyed_list.mojo`). Reads the signal's current value (via peek) and adds it as the next dynamic text slot — replaces the common `add_dyn_text(signal.get())` pattern.
+- **M19.6** — 38 new Mojo tests: 9 `StringStore` unit tests (create/read, write, count, contains, destroy, reuse slot, multiple entries, empty string, overwrite), 16 `SignalString` unit tests (get, peek, set, set empty, read subscribes, read returns value, version increments, is_empty true/false/after set, str, str empty, copy, multiple writes, concatenation pattern), 3 Runtime string signal tests (count, destroy, use_signal_string hook), 10 `ComponentContext` SignalString integration tests (use_signal_string, empty, subscribes scope, create_signal_string, no subscribe, set/get, version lifecycle, str interpolation, render builder, multiple signals, mixed with SignalI32).
+
+**Test count after M19.6:** 981 Mojo + 1,152 JS = 2,133 tests.
+
+---
+
 ## Phase 18 — Conditional Helpers & SignalBool ✅
 
 - **M18.1** — `SignalBool` handle type (`src/signals/handle.mojo`). Ergonomic boolean signal wrapping Int32 (0/1) with proper Bool API: `get() -> Bool`, `read() -> Bool` (with context subscription), `set(Bool)`, `toggle()`, `peek_i32() -> Int32`, `version()`, `__str__()` ("true"/"false"). Exported from signals package.
