@@ -64,6 +64,7 @@ from events import HandlerEntry
 from .lifecycle import FragmentSlot
 from .context import ComponentContext
 from signals import Runtime
+from signals.handle import SignalString
 from vdom import VNodeBuilder
 
 
@@ -230,6 +231,19 @@ struct ItemBuilder(Movable):
             value: The text content for this slot.
         """
         self.vb.add_dyn_text(value)
+
+    fn add_dyn_text_signal(mut self, signal: SignalString):
+        """Add a dynamic text node from a SignalString value.
+
+        Reads the signal's current value (via peek/get — no subscription)
+        and adds it as the next dynamic text slot.  This is a convenience
+        for the common pattern of reading a SignalString and passing it
+        to `add_dyn_text()`.
+
+        Args:
+            signal: The SignalString to read.
+        """
+        self.vb.add_dyn_text(signal.get())
 
     # ── Dynamic attributes ───────────────────────────────────────────
 

@@ -298,7 +298,7 @@ Adding a new test:
 
 ## Test results
 
-2,095 tests across 29 Mojo modules and 9 JS test suites:
+2,133 tests across 29 Mojo modules and 9 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -436,6 +436,33 @@ var cls = class_when(is_open, String("open"), String("closed"))  # either/or
 var txt = text_when(done, String("✓ Done"), item.text)    # conditional text
 ```
 
+Phase 19 adds `SignalString` for reactive string signals. Unlike `SignalI32`
+and `SignalBool` which use the type-erased `SignalStore` (memcpy-based,
+safe only for fixed-size value types), `SignalString` stores strings in a
+separate `StringStore` (safe for heap types) and uses a companion Int32
+"version signal" for subscriber tracking:
+
+```mojo
+# SignalString — reactive string signal with proper String API:
+var name = ctx.use_signal_string(String("hello"))
+var v = name.get()              # read without subscribing
+var v = name.read()             # read and subscribe context
+name.set(String("world"))       # write (marks subscribers dirty)
+if name.is_empty(): ...         # convenience check
+var display = String("Hi, ") + String(name) + String("!")  # interpolation
+
+# Use with RenderBuilder or ItemBuilder:
+var vb = ctx.render_builder()
+vb.add_dyn_text_signal(name)    # reads name.get() and adds as dyn text
+var idx = vb.build()
+
+# Multiple signal types in one component:
+var count = ctx.use_signal(0)
+var label = ctx.use_signal_string(String("Count: 0"))
+count += 1
+label.set(String("Count: ") + String(count.peek()))
+```
+
 ## Deferred abstractions
 
 Some Dioxus features cannot be idiomatically expressed in Mojo today due to
@@ -447,7 +474,7 @@ They are documented here so they can be revisited as Mojo evolves:
 | **Closure event handlers** (`onclick: move \|_\| count += 1`) | No closures/function pointers in WASM; handlers use action-based structs | Lambda syntax (Phase 1), Closure refinement (Phase 1) | 🚧 In progress |
 | **`rsx!` macro** (compile-time DSL) | No hygienic macros | Hygienic importable macros (Phase 2) | ⏰ Not started |
 | **`for` loops in views** (`for item in items { ... }`) | Views are static templates; iteration happens in build functions | Hygienic macros (Phase 2) | ⏰ Not started |
-| **Generic `Signal[T]`** (`use_signal(\|\| vec![])`) | Runtime stores fixed `Int32` signals; parametric stores need conditional conformance. Phase 18 added `SignalBool` as a manual workaround | Conditional conformance (Phase 1) | 🚧 In progress |
+| **Generic `Signal[T]`** (`use_signal(\|\| vec![])`) | Runtime stores fixed `Int32` signals; parametric stores need conditional conformance. Phase 18 added `SignalBool`, Phase 19 added `SignalString` as manual workarounds | Conditional conformance (Phase 1) | 🚧 In progress |
 | **Dynamic component dispatch** (trait objects for components) | No existentials/dynamic traits | Existentials / dynamic traits (Phase 2) | ⏰ Not started |
 | **Pattern matching on actions** | `if/elif` chains instead of `match` | Algebraic data types & pattern matching (Phase 2) | ⏰ Not started |
 | **Async data loading / suspense** | No `async`/`await` | First-class async support (Phase 2) | ⏰ Not started |
@@ -456,5 +483,5 @@ They are documented here so they can be revisited as Mojo evolves:
 When these Mojo features land, the corresponding Dioxus patterns can be
 adopted — closures would eliminate `ItemBuilder.add_custom_event()` + `get_action()`,
 macros would enable an `rsx!`-like DSL, and generic signals would replace the
-current `SignalI32` / `SignalBool` / `MemoI32` handles with `Signal[Int32]`,
-`Signal[Bool]`, `Signal[String]`, etc.
+current `SignalI32` / `SignalBool` / `SignalString` / `MemoI32` handles with
+`Signal[Int32]`, `Signal[Bool]`, `Signal[String]`, etc.

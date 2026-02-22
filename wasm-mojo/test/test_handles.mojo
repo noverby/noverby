@@ -1,23 +1,29 @@
-# Tests for reactive handles (SignalI32, MemoI32, EffectHandle) and ComponentContext.
+# Tests for reactive handles (SignalI32, MemoI32, EffectHandle, SignalString)
+# and ComponentContext.
 #
 # Validates:
 #   - SignalI32: peek, read, set, +=, -=, *=, //=, %=, toggle, version, __str__
 #   - MemoI32: read, peek, is_dirty, begin_compute, end_compute, recompute_from
 #   - EffectHandle: is_pending, begin_run, end_run
-#   - ComponentContext: create, use_signal, use_memo, use_effect, end_setup,
-#     register_template, setup_view, register_view, on_click_add,
-#     on_click_sub, on_click_set, on_click_toggle, on_input_set,
-#     vnode_builder, render_builder, mount, dispatch_event, flush,
+#   - SignalBool: get, set, toggle, read, peek_i32, version, __str__, copy
+#   - SignalString: get, peek, read, set, version, is_empty, __str__, copy
+#   - StringStore: create, read, write, destroy, count, contains, reuse
+#   - ComponentContext: create, use_signal, use_signal_bool, use_signal_string,
+#     use_memo, use_effect, end_setup, register_template, setup_view,
+#     register_view, on_click_add, on_click_sub, on_click_set, on_click_toggle,
+#     on_input_set, vnode_builder, render_builder, mount, dispatch_event, flush,
 #     has_dirty, consume_dirty, diff, finalize, destroy
 
 from memory import UnsafePointer
 from testing import assert_equal, assert_true, assert_false
 from signals import (
     Runtime,
+    StringStore,
     create_runtime,
     destroy_runtime,
     SignalI32,
     SignalBool,
+    SignalString,
     MemoI32,
     EffectHandle,
 )
@@ -1331,6 +1337,426 @@ def test_ctx_vnode_builder_for():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# StringStore unit tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_string_store_create_and_read():
+    var store = StringStore()
+    var key = store.create(String("hello"))
+    assert_equal(
+        store.read(key), String("hello"), "should read back initial value"
+    )
+
+
+def test_string_store_write():
+    var store = StringStore()
+    var key = store.create(String("hello"))
+    store.write(key, String("world"))
+    assert_equal(store.read(key), String("world"), "should read updated value")
+
+
+def test_string_store_count():
+    var store = StringStore()
+    assert_equal(store.count(), 0, "empty store count should be 0")
+    var k1 = store.create(String("a"))
+    assert_equal(store.count(), 1, "count should be 1 after first create")
+    var k2 = store.create(String("b"))
+    assert_equal(store.count(), 2, "count should be 2 after second create")
+
+
+def test_string_store_contains():
+    var store = StringStore()
+    var key = store.create(String("hi"))
+    assert_true(store.contains(key), "should contain created key")
+    assert_false(store.contains(UInt32(999)), "should not contain unknown key")
+
+
+def test_string_store_destroy():
+    var store = StringStore()
+    var key = store.create(String("doomed"))
+    assert_equal(store.count(), 1, "count before destroy")
+    store.destroy(key)
+    assert_equal(store.count(), 0, "count after destroy")
+    assert_false(store.contains(key), "should not contain destroyed key")
+
+
+def test_string_store_reuse_slot():
+    """Destroying a slot should allow it to be reused by the next create."""
+    var store = StringStore()
+    var k1 = store.create(String("first"))
+    store.destroy(k1)
+    var k2 = store.create(String("second"))
+    # The freed slot should be reused, so k2 == k1
+    assert_equal(k2, k1, "should reuse freed slot")
+    assert_equal(store.read(k2), String("second"), "reused slot has new value")
+
+
+def test_string_store_multiple_entries():
+    var store = StringStore()
+    var k1 = store.create(String("alpha"))
+    var k2 = store.create(String("beta"))
+    var k3 = store.create(String("gamma"))
+    assert_equal(store.read(k1), String("alpha"), "first entry")
+    assert_equal(store.read(k2), String("beta"), "second entry")
+    assert_equal(store.read(k3), String("gamma"), "third entry")
+    assert_equal(store.count(), 3, "count should be 3")
+
+
+def test_string_store_empty_string():
+    var store = StringStore()
+    var key = store.create(String(""))
+    assert_equal(store.read(key), String(""), "should handle empty string")
+
+
+def test_string_store_overwrite_multiple_times():
+    var store = StringStore()
+    var key = store.create(String("v1"))
+    store.write(key, String("v2"))
+    store.write(key, String("v3"))
+    store.write(key, String("v4"))
+    assert_equal(store.read(key), String("v4"), "should have latest value")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SignalString unit tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_signal_string_get():
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String("hello"))
+    var sig = SignalString(keys[0], keys[1], rt)
+    assert_equal(sig.get(), String("hello"), "get should return initial value")
+    _destroy_runtime(rt)
+
+
+def test_signal_string_peek():
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String("world"))
+    var sig = SignalString(keys[0], keys[1], rt)
+    assert_equal(
+        sig.peek(), String("world"), "peek should return initial value"
+    )
+    _destroy_runtime(rt)
+
+
+def test_signal_string_set():
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String("old"))
+    var sig = SignalString(keys[0], keys[1], rt)
+    sig.set(String("new"))
+    assert_equal(sig.get(), String("new"), "get should return updated value")
+    _destroy_runtime(rt)
+
+
+def test_signal_string_set_empty():
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String("not empty"))
+    var sig = SignalString(keys[0], keys[1], rt)
+    sig.set(String(""))
+    assert_equal(sig.get(), String(""), "set to empty string should work")
+    _destroy_runtime(rt)
+
+
+def test_signal_string_read_subscribes():
+    var rt = _create_runtime()
+    var scope_id = rt[0].create_scope(0, -1)
+    _ = rt[0].begin_scope_render(scope_id)
+    var keys = rt[0].create_signal_string(String("initial"))
+    var sig = SignalString(keys[0], keys[1], rt)
+    _ = sig.read()  # subscribe scope via version signal
+    rt[0].end_scope_render(-1)
+    assert_false(rt[0].has_dirty(), "no dirty scopes initially")
+    sig.set(String("changed"))
+    assert_true(
+        rt[0].has_dirty(),
+        "scope should be dirty after string write",
+    )
+    _destroy_runtime(rt)
+
+
+def test_signal_string_read_returns_value():
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String("readable"))
+    var sig = SignalString(keys[0], keys[1], rt)
+    var val = sig.read()
+    assert_equal(val, String("readable"), "read should return current value")
+    _destroy_runtime(rt)
+
+
+def test_signal_string_version_increments():
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String("v0"))
+    var sig = SignalString(keys[0], keys[1], rt)
+    var v0 = sig.version()
+    sig.set(String("v1"))
+    var v1 = sig.version()
+    assert_true(v1 > v0, "version should increment after first write")
+    sig.set(String("v2"))
+    var v2 = sig.version()
+    assert_true(v2 > v1, "version should increment after second write")
+    _destroy_runtime(rt)
+
+
+def test_signal_string_is_empty_true():
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String(""))
+    var sig = SignalString(keys[0], keys[1], rt)
+    assert_true(sig.is_empty(), "empty string should return True")
+    _destroy_runtime(rt)
+
+
+def test_signal_string_is_empty_false():
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String("content"))
+    var sig = SignalString(keys[0], keys[1], rt)
+    assert_false(sig.is_empty(), "non-empty string should return False")
+    _destroy_runtime(rt)
+
+
+def test_signal_string_is_empty_after_set():
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String("something"))
+    var sig = SignalString(keys[0], keys[1], rt)
+    assert_false(sig.is_empty(), "before clear")
+    sig.set(String(""))
+    assert_true(sig.is_empty(), "after set to empty")
+    _destroy_runtime(rt)
+
+
+def test_signal_string_str():
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String("display me"))
+    var sig = SignalString(keys[0], keys[1], rt)
+    assert_equal(
+        String(sig), String("display me"), "__str__ should return value"
+    )
+    _destroy_runtime(rt)
+
+
+def test_signal_string_str_empty():
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String(""))
+    var sig = SignalString(keys[0], keys[1], rt)
+    assert_equal(String(sig), String(""), "__str__ of empty string")
+    _destroy_runtime(rt)
+
+
+def test_signal_string_copy():
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String("shared"))
+    var sig1 = SignalString(keys[0], keys[1], rt)
+    var sig2 = sig1.copy()
+    sig1.set(String("modified"))
+    assert_equal(
+        sig2.get(),
+        String("modified"),
+        "copy shares underlying signal",
+    )
+    _destroy_runtime(rt)
+
+
+def test_signal_string_multiple_writes():
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String(""))
+    var sig = SignalString(keys[0], keys[1], rt)
+    sig.set(String("one"))
+    sig.set(String("two"))
+    sig.set(String("three"))
+    assert_equal(sig.get(), String("three"), "should have latest value")
+    _destroy_runtime(rt)
+
+
+def test_signal_string_concatenation_pattern():
+    """Test the common pattern of building a display string from a signal."""
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String("world"))
+    var sig = SignalString(keys[0], keys[1], rt)
+    var display = String("Hello, ") + sig.get() + String("!")
+    assert_equal(display, String("Hello, world!"), "string concat pattern")
+    _destroy_runtime(rt)
+
+
+# ── Runtime string signal count ──────────────────────────────────────────────
+
+
+def test_runtime_string_signal_count():
+    var rt = _create_runtime()
+    assert_equal(rt[0].string_signal_count(), 0, "initial count should be 0")
+    var keys1 = rt[0].create_signal_string(String("a"))
+    assert_equal(rt[0].string_signal_count(), 1, "count after first create")
+    var keys2 = rt[0].create_signal_string(String("b"))
+    assert_equal(rt[0].string_signal_count(), 2, "count after second create")
+    _destroy_runtime(rt)
+
+
+def test_runtime_destroy_signal_string():
+    var rt = _create_runtime()
+    var keys = rt[0].create_signal_string(String("temp"))
+    assert_equal(rt[0].string_signal_count(), 1, "before destroy")
+    rt[0].destroy_signal_string(keys[0], keys[1])
+    assert_equal(rt[0].string_signal_count(), 0, "after destroy")
+    _destroy_runtime(rt)
+
+
+# ── Runtime hook-based string signal ─────────────────────────────────────────
+
+
+def test_runtime_use_signal_string():
+    """Hook-based string signal creation stores keys in scope hooks."""
+    var rt = _create_runtime()
+    var scope_id = rt[0].create_scope(0, -1)
+    _ = rt[0].begin_scope_render(scope_id)
+    var keys = rt[0].use_signal_string(String("hooked"))
+    rt[0].end_scope_render(-1)
+    # Verify the string was stored
+    assert_equal(
+        rt[0].peek_signal_string(keys[0]),
+        String("hooked"),
+        "hook should create string signal with initial value",
+    )
+    assert_equal(rt[0].string_signal_count(), 1, "one string signal created")
+    _destroy_runtime(rt)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ComponentContext SignalString integration tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_ctx_use_signal_string():
+    var ctx = ComponentContext.create()
+    var name = ctx.use_signal_string(String("hello"))
+    ctx.end_setup()
+    assert_equal(name.get(), String("hello"), "initial value")
+    ctx.destroy()
+
+
+def test_ctx_use_signal_string_empty():
+    var ctx = ComponentContext.create()
+    var name = ctx.use_signal_string(String(""))
+    ctx.end_setup()
+    assert_equal(name.get(), String(""), "empty initial value")
+    assert_true(name.is_empty(), "should be empty")
+    ctx.destroy()
+
+
+def test_ctx_use_signal_string_subscribes_scope():
+    var ctx = ComponentContext.create()
+    var name = ctx.use_signal_string(String("initial"))
+    ctx.end_setup()
+    # Drain any initial dirty scopes
+    _ = ctx.consume_dirty()
+    # Write to the string signal should make scope dirty
+    name.set(String("changed"))
+    assert_true(
+        ctx.has_dirty(),
+        "scope should be dirty after string write",
+    )
+    ctx.destroy()
+
+
+def test_ctx_create_signal_string():
+    var ctx = ComponentContext.create()
+    ctx.end_setup()
+    var name = ctx.create_signal_string(String("created"))
+    assert_equal(name.get(), String("created"), "create_signal_string value")
+    ctx.destroy()
+
+
+def test_ctx_create_signal_string_no_subscribe():
+    """Create_signal_string should NOT auto-subscribe the scope."""
+    var ctx = ComponentContext.create()
+    ctx.end_setup()
+    var name = ctx.create_signal_string(String("initial"))
+    _ = ctx.consume_dirty()
+    name.set(String("changed"))
+    # No subscription means scope should not be dirty
+    assert_false(
+        ctx.has_dirty(),
+        "create_signal_string should not subscribe scope",
+    )
+    ctx.destroy()
+
+
+def test_ctx_signal_string_set_and_get():
+    var ctx = ComponentContext.create()
+    var name = ctx.use_signal_string(String("before"))
+    ctx.end_setup()
+    name.set(String("after"))
+    assert_equal(name.get(), String("after"), "set/get round-trip")
+    ctx.destroy()
+
+
+def test_ctx_signal_string_version_lifecycle():
+    var ctx = ComponentContext.create()
+    var name = ctx.use_signal_string(String("v0"))
+    ctx.end_setup()
+    var v0 = name.version()
+    name.set(String("v1"))
+    var v1 = name.version()
+    assert_true(v1 > v0, "version increments on write")
+    name.set(String("v2"))
+    var v2 = name.version()
+    assert_true(v2 > v1, "version increments again")
+    ctx.destroy()
+
+
+def test_ctx_signal_string_str_interpolation():
+    """Test the pattern of using __str__ for display text building."""
+    var ctx = ComponentContext.create()
+    var name = ctx.use_signal_string(String("Mojo"))
+    ctx.end_setup()
+    var display = String("Hello, ") + String(name) + String("!")
+    assert_equal(display, String("Hello, Mojo!"), "str interpolation")
+    ctx.destroy()
+
+
+def test_ctx_signal_string_with_render_builder():
+    """Test using a SignalString with RenderBuilder.add_dyn_text_signal()."""
+    var ctx = ComponentContext.create()
+    var name = ctx.use_signal_string(String("dynamic"))
+    ctx.setup_view(
+        el_div(el_h1(dyn_text())),
+        String("str-test"),
+    )
+    var vb = ctx.render_builder()
+    vb.add_dyn_text_signal(name)
+    var idx = vb.build()
+    assert_true(Int(idx) >= 0, "VNode should be valid")
+    ctx.destroy()
+
+
+def test_ctx_multiple_signal_strings():
+    """Test creating multiple string signals in one component."""
+    var ctx = ComponentContext.create()
+    var first = ctx.use_signal_string(String("Alice"))
+    var last = ctx.use_signal_string(String("Smith"))
+    ctx.end_setup()
+    assert_equal(first.get(), String("Alice"), "first signal")
+    assert_equal(last.get(), String("Smith"), "second signal")
+    first.set(String("Bob"))
+    last.set(String("Jones"))
+    assert_equal(first.get(), String("Bob"), "first after set")
+    assert_equal(last.get(), String("Jones"), "second after set")
+    ctx.destroy()
+
+
+def test_ctx_signal_string_with_signal_i32():
+    """Test mixing SignalString with SignalI32 in one component."""
+    var ctx = ComponentContext.create()
+    var count = ctx.use_signal(0)
+    var label = ctx.use_signal_string(String("Count: 0"))
+    ctx.end_setup()
+    count += 1
+    label.set(String("Count: ") + String(count.peek()))
+    assert_equal(count.peek(), Int32(1), "i32 signal")
+    assert_equal(label.get(), String("Count: 1"), "string signal")
+    ctx.destroy()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Main — run all tests
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1988,6 +2414,276 @@ fn main() raises:
         pass_count += 1
     except e:
         print("FAIL test_ctx_signal_bool_toggle_lifecycle:", e)
+        fail_count += 1
+
+    # -- StringStore --
+    try:
+        test_string_store_create_and_read()
+        pass_count += 1
+    except e:
+        print("FAIL test_string_store_create_and_read:", e)
+        fail_count += 1
+
+    try:
+        test_string_store_write()
+        pass_count += 1
+    except e:
+        print("FAIL test_string_store_write:", e)
+        fail_count += 1
+
+    try:
+        test_string_store_count()
+        pass_count += 1
+    except e:
+        print("FAIL test_string_store_count:", e)
+        fail_count += 1
+
+    try:
+        test_string_store_contains()
+        pass_count += 1
+    except e:
+        print("FAIL test_string_store_contains:", e)
+        fail_count += 1
+
+    try:
+        test_string_store_destroy()
+        pass_count += 1
+    except e:
+        print("FAIL test_string_store_destroy:", e)
+        fail_count += 1
+
+    try:
+        test_string_store_reuse_slot()
+        pass_count += 1
+    except e:
+        print("FAIL test_string_store_reuse_slot:", e)
+        fail_count += 1
+
+    try:
+        test_string_store_multiple_entries()
+        pass_count += 1
+    except e:
+        print("FAIL test_string_store_multiple_entries:", e)
+        fail_count += 1
+
+    try:
+        test_string_store_empty_string()
+        pass_count += 1
+    except e:
+        print("FAIL test_string_store_empty_string:", e)
+        fail_count += 1
+
+    try:
+        test_string_store_overwrite_multiple_times()
+        pass_count += 1
+    except e:
+        print("FAIL test_string_store_overwrite_multiple_times:", e)
+        fail_count += 1
+
+    # -- SignalString --
+    try:
+        test_signal_string_get()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_get:", e)
+        fail_count += 1
+
+    try:
+        test_signal_string_peek()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_peek:", e)
+        fail_count += 1
+
+    try:
+        test_signal_string_set()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_set:", e)
+        fail_count += 1
+
+    try:
+        test_signal_string_set_empty()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_set_empty:", e)
+        fail_count += 1
+
+    try:
+        test_signal_string_read_subscribes()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_read_subscribes:", e)
+        fail_count += 1
+
+    try:
+        test_signal_string_read_returns_value()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_read_returns_value:", e)
+        fail_count += 1
+
+    try:
+        test_signal_string_version_increments()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_version_increments:", e)
+        fail_count += 1
+
+    try:
+        test_signal_string_is_empty_true()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_is_empty_true:", e)
+        fail_count += 1
+
+    try:
+        test_signal_string_is_empty_false()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_is_empty_false:", e)
+        fail_count += 1
+
+    try:
+        test_signal_string_is_empty_after_set()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_is_empty_after_set:", e)
+        fail_count += 1
+
+    try:
+        test_signal_string_str()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_str:", e)
+        fail_count += 1
+
+    try:
+        test_signal_string_str_empty()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_str_empty:", e)
+        fail_count += 1
+
+    try:
+        test_signal_string_copy()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_copy:", e)
+        fail_count += 1
+
+    try:
+        test_signal_string_multiple_writes()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_multiple_writes:", e)
+        fail_count += 1
+
+    try:
+        test_signal_string_concatenation_pattern()
+        pass_count += 1
+    except e:
+        print("FAIL test_signal_string_concatenation_pattern:", e)
+        fail_count += 1
+
+    # -- Runtime string signal --
+    try:
+        test_runtime_string_signal_count()
+        pass_count += 1
+    except e:
+        print("FAIL test_runtime_string_signal_count:", e)
+        fail_count += 1
+
+    try:
+        test_runtime_destroy_signal_string()
+        pass_count += 1
+    except e:
+        print("FAIL test_runtime_destroy_signal_string:", e)
+        fail_count += 1
+
+    try:
+        test_runtime_use_signal_string()
+        pass_count += 1
+    except e:
+        print("FAIL test_runtime_use_signal_string:", e)
+        fail_count += 1
+
+    # -- ComponentContext SignalString --
+    try:
+        test_ctx_use_signal_string()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_use_signal_string:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_use_signal_string_empty()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_use_signal_string_empty:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_use_signal_string_subscribes_scope()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_use_signal_string_subscribes_scope:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_create_signal_string()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_create_signal_string:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_create_signal_string_no_subscribe()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_create_signal_string_no_subscribe:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_signal_string_set_and_get()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_signal_string_set_and_get:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_signal_string_version_lifecycle()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_signal_string_version_lifecycle:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_signal_string_str_interpolation()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_signal_string_str_interpolation:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_signal_string_with_render_builder()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_signal_string_with_render_builder:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_multiple_signal_strings()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_multiple_signal_strings:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_signal_string_with_signal_i32()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_signal_string_with_signal_i32:", e)
         fail_count += 1
 
     var total = pass_count + fail_count

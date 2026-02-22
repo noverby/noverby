@@ -53,7 +53,14 @@
 
 from memory import UnsafePointer
 from signals import Runtime
-from signals.handle import SignalI32, SignalBool, MemoI32, EffectHandle
+from signals.handle import (
+    SignalI32,
+    SignalBool,
+    SignalString,
+    MemoI32,
+    EffectHandle,
+)
+from signals.runtime import StringStore
 from events import HandlerEntry
 from bridge import MutationWriter
 from .app_shell import AppShell, app_shell_create
@@ -159,6 +166,21 @@ struct RenderBuilder(Movable):
     fn add_dyn_placeholder(mut self):
         """Add a dynamic placeholder node."""
         self._vb.add_dyn_placeholder()
+
+    # ── Dynamic text from signal ─────────────────────────────────────
+
+    fn add_dyn_text_signal(mut self, signal: SignalString):
+        """Add a dynamic text node from a SignalString value.
+
+        Reads the signal's current value (via peek/get — no subscription)
+        and adds it as the next dynamic text slot.  This is a convenience
+        for the common pattern of reading a SignalString and passing it
+        to `add_dyn_text()`.
+
+        Args:
+            signal: The SignalString to read.
+        """
+        self._vb.add_dyn_text(signal.get())
 
     # ── Dynamic attributes (manual) ─────────────────────────────────
 
@@ -406,6 +428,44 @@ struct ComponentContext(Movable):
             init_val = 0
         var key = self.shell.create_signal_i32(init_val)
         return SignalBool(key, self.shell.runtime)
+
+    # ── String signal hooks ──────────────────────────────────────────
+
+    fn use_signal_string(mut self, initial: String) -> SignalString:
+        """Create a String signal and subscribe the root scope to it.
+
+        Must be called during setup (before end_setup).
+
+        Stores the string in the Runtime's StringStore (safe for heap
+        types) and uses a companion Int32 version signal for reactivity.
+        The returned SignalString handle provides a proper String API
+        with `get()`, `set(String)`, `read()`, `peek()`, and `is_empty()`.
+
+        Args:
+            initial: The initial String value.
+
+        Returns:
+            A SignalString handle with string semantics.
+        """
+        var keys = self.shell.runtime[0].use_signal_string(initial)
+        # Read the version signal during render to subscribe the scope
+        _ = self.shell.runtime[0].read_signal[Int32](keys[1])
+        return SignalString(keys[0], keys[1], self.shell.runtime)
+
+    fn create_signal_string(mut self, initial: String) -> SignalString:
+        """Create a String signal without the hook system.
+
+        Can be called at any time (not just during setup).
+        Does NOT auto-subscribe the scope.
+
+        Args:
+            initial: The initial String value.
+
+        Returns:
+            A SignalString handle.
+        """
+        var keys = self.shell.runtime[0].create_signal_string(initial)
+        return SignalString(keys[0], keys[1], self.shell.runtime)
 
     # ── Memo hooks ───────────────────────────────────────────────────
 

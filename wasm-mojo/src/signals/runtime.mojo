@@ -297,18 +297,149 @@ struct SignalStore(Movable):
         return self._states[idx].occupied
 
 
+# ── StringStore ──────────────────────────────────────────────────────────────
+#
+# Safe storage for heap-allocated String signal values.
+#
+# The SignalStore uses type-erased raw-byte storage (memcpy), which is
+# correct for fixed-size value types like Int32 but unsafe for types
+# with ownership semantics like String (double-free, dangling pointers).
+#
+# StringStore solves this by storing Strings in a proper List[String]
+# with slab-style free-list reuse.  Each SignalString gets:
+#   - A string_key  — index into StringStore for the actual String value
+#   - A version_key — an Int32 signal in SignalStore for reactivity
+#     (subscriptions, dirty-marking, version tracking)
+#
+# When a SignalString is written, we update the StringStore entry and
+# bump the version signal, which triggers the existing subscriber/dirty
+# mechanism.  This keeps the reactive plumbing in one place (SignalStore)
+# while safely managing heap strings.
+
+
+struct _StringSlotState(Copyable, Movable):
+    """Tracks whether a string slot is occupied or vacant."""
+
+    var occupied: Bool
+    var next_free: Int  # Only valid when not occupied; -1 = end of free list.
+
+    fn __init__(out self, occupied: Bool, next_free: Int):
+        self.occupied = occupied
+        self.next_free = next_free
+
+    fn __copyinit__(out self, other: Self):
+        self.occupied = other.occupied
+        self.next_free = other.next_free
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.occupied = other.occupied
+        self.next_free = other.next_free
+
+
+struct StringStore(Movable):
+    """Safe storage for String signal values.
+
+    Each string is identified by a `UInt32` key (index into the store).
+    Freed slots are recycled via a free list for O(1) allocation.
+
+    This store does NOT handle reactivity — that is managed by a
+    companion Int32 "version signal" in the SignalStore.
+    """
+
+    var _entries: List[String]
+    var _states: List[_StringSlotState]
+    var _free_head: Int
+    var _count: Int
+
+    # ── Construction ─────────────────────────────────────────────────
+
+    fn __init__(out self):
+        self._entries = List[String]()
+        self._states = List[_StringSlotState]()
+        self._free_head = -1
+        self._count = 0
+
+    fn __moveinit__(out self, deinit other: Self):
+        self._entries = other._entries^
+        self._states = other._states^
+        self._free_head = other._free_head
+        self._count = other._count
+
+    # ── Create / Destroy ─────────────────────────────────────────────
+
+    fn create(mut self, initial: String) -> UInt32:
+        """Store a new string and return its key."""
+        if self._free_head != -1:
+            var idx = self._free_head
+            self._free_head = self._states[idx].next_free
+            self._entries[idx] = initial
+            self._states[idx] = _StringSlotState(occupied=True, next_free=-1)
+            self._count += 1
+            return UInt32(idx)
+        else:
+            var idx = len(self._entries)
+            self._entries.append(initial)
+            self._states.append(_StringSlotState(occupied=True, next_free=-1))
+            self._count += 1
+            return UInt32(idx)
+
+    fn destroy(mut self, key: UInt32):
+        """Remove the string at `key`, freeing its slot for reuse."""
+        var idx = Int(key)
+        if idx < 0 or idx >= len(self._entries):
+            return
+        if not self._states[idx].occupied:
+            return
+        # Replace with empty string to release heap memory
+        self._entries[idx] = String("")
+        self._states[idx] = _StringSlotState(
+            occupied=False, next_free=self._free_head
+        )
+        self._free_head = idx
+        self._count -= 1
+
+    # ── Read / Write ─────────────────────────────────────────────────
+
+    fn read(self, key: UInt32) -> String:
+        """Read the string at `key`.  Returns a copy."""
+        return self._entries[Int(key)]
+
+    fn write(mut self, key: UInt32, value: String):
+        """Write a new string value at `key`.
+
+        Does NOT handle reactivity — the caller must bump the companion
+        version signal after calling this.
+        """
+        self._entries[Int(key)] = value
+
+    # ── Queries ──────────────────────────────────────────────────────
+
+    fn count(self) -> Int:
+        """Number of live string entries."""
+        return self._count
+
+    fn contains(self, key: UInt32) -> Bool:
+        """Check whether `key` is a live string slot."""
+        var idx = Int(key)
+        if idx < 0 or idx >= len(self._states):
+            return False
+        return self._states[idx].occupied
+
+
 # ── Runtime ──────────────────────────────────────────────────────────────────
 
 
 struct Runtime(Movable):
     """Top-level reactive runtime state.
 
-    Owns the signal store, the current reactive context pointer, and
-    the dirty-scope queue.  A single instance is heap-allocated at
-    framework init and its pointer is threaded through all exports.
+    Owns the signal store, the string store, the current reactive context
+    pointer, and the dirty-scope queue.  A single instance is
+    heap-allocated at framework init and its pointer is threaded through
+    all exports.
     """
 
     var signals: SignalStore
+    var strings: StringStore
     var scopes: ScopeArena
     var templates: TemplateRegistry
     var vnodes: VNodeStore
@@ -337,6 +468,7 @@ struct Runtime(Movable):
 
     fn __init__(out self):
         self.signals = SignalStore()
+        self.strings = StringStore()
         self.scopes = ScopeArena()
         self.templates = TemplateRegistry()
         self.vnodes = VNodeStore()
@@ -353,6 +485,7 @@ struct Runtime(Movable):
 
     fn __moveinit__(out self, deinit other: Self):
         self.signals = other.signals^
+        self.strings = other.strings^
         self.scopes = other.scopes^
         self.templates = other.templates^
         self.vnodes = other.vnodes^
@@ -499,6 +632,127 @@ struct Runtime(Movable):
     fn destroy_signal(mut self, key: UInt32):
         """Destroy a signal, cleaning up subscribers."""
         self.signals.destroy(key)
+
+    # ── String signal operations ─────────────────────────────────────
+    #
+    # A "string signal" is a pair: (string_key in StringStore,
+    # version_key in SignalStore).  The version signal provides
+    # subscriber tracking and dirty-marking; the StringStore provides
+    # safe heap-string storage.
+
+    fn create_signal_string(mut self, initial: String) -> (UInt32, UInt32):
+        """Create a string signal and return (string_key, version_key).
+
+        The version signal starts at 0; it is bumped on every write.
+        Subscribers attach to the version signal and get notified when
+        the string changes.
+
+        Args:
+            initial: The initial string value.
+
+        Returns:
+            A tuple of (string_key, version_key).
+        """
+        var string_key = self.strings.create(initial)
+        var version_key = self.signals.create[Int32](Int32(0))
+        return (string_key, version_key)
+
+    fn peek_signal_string(self, string_key: UInt32) -> String:
+        """Read a string signal's value WITHOUT subscribing.
+
+        Args:
+            string_key: The key in the StringStore.
+
+        Returns:
+            A copy of the current string value.
+        """
+        return self.strings.read(string_key)
+
+    fn read_signal_string(
+        mut self, string_key: UInt32, version_key: UInt32
+    ) -> String:
+        """Read a string signal's value AND subscribe the current context.
+
+        Subscribes via the companion version signal so the reading
+        context is marked dirty when the string changes.
+
+        Args:
+            string_key: The key in the StringStore.
+            version_key: The companion version signal key.
+
+        Returns:
+            A copy of the current string value.
+        """
+        # Subscribe the current context to the version signal
+        _ = self.read_signal[Int32](version_key)
+        return self.strings.read(string_key)
+
+    fn write_signal_string(
+        mut self, string_key: UInt32, version_key: UInt32, value: String
+    ):
+        """Write a new string value and notify subscribers.
+
+        Updates the StringStore entry and bumps the version signal,
+        which marks all subscribers dirty via the existing mechanism.
+
+        Args:
+            string_key: The key in the StringStore.
+            version_key: The companion version signal key.
+            value: The new string value.
+        """
+        self.strings.write(string_key, value)
+        # Bump the version signal — this triggers subscriber notification
+        var ver = self.peek_signal[Int32](version_key)
+        self.write_signal[Int32](version_key, ver + 1)
+
+    fn destroy_signal_string(mut self, string_key: UInt32, version_key: UInt32):
+        """Destroy a string signal, freeing both the string and version.
+
+        Args:
+            string_key: The key in the StringStore.
+            version_key: The companion version signal key.
+        """
+        self.strings.destroy(string_key)
+        self.signals.destroy(version_key)
+
+    fn string_signal_count(self) -> Int:
+        """Return the number of live string signals in the StringStore."""
+        return self.strings.count()
+
+    # ── Hook-based string signal creation ────────────────────────────
+
+    fn use_signal_string(mut self, initial: String) -> (UInt32, UInt32):
+        """Hook: create or retrieve a string signal for the current scope.
+
+        On first render: creates a new string signal (string_key +
+        version_key), stores both keys in the scope's hook array
+        (two HOOK_SIGNAL entries), and returns them.
+
+        On re-render: retrieves the existing keys from the hook array
+        and returns them (initial value is ignored).
+
+        Precondition: `has_scope()` is True.
+
+        Args:
+            initial: The initial string value (first render only).
+
+        Returns:
+            A tuple of (string_key, version_key).
+        """
+        var scope_id = self.get_scope()
+        if self.scopes.is_first_render(scope_id):
+            # First render — create string signal and store in hooks
+            var keys = self.create_signal_string(initial)
+            # Store string_key as a HOOK_SIGNAL entry
+            self.scopes.push_hook(scope_id, HOOK_SIGNAL, keys[0])
+            # Store version_key as a HOOK_SIGNAL entry
+            self.scopes.push_hook(scope_id, HOOK_SIGNAL, keys[1])
+            return keys
+        else:
+            # Re-render — return existing keys
+            var string_key = self.scopes.next_hook(scope_id)
+            var version_key = self.scopes.next_hook(scope_id)
+            return (string_key, version_key)
 
     # ── Dirty queue ──────────────────────────────────────────────────
 

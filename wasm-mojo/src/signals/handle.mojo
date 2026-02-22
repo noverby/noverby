@@ -30,9 +30,16 @@
 #   - recompute()  — manual recompute when dirty (reads deps, writes cache)
 #   - __str__()    — for easy interpolation
 #
-# Both types are lightweight value types (Copyable + Movable) that hold
-# a non-owning pointer to the Runtime.  They do NOT manage the Runtime's
-# lifetime — the ComponentContext or AppShell owns that.
+# SignalString supports:
+#   - get() / peek() — read the string without subscribing
+#   - read()         — read and subscribe the current context
+#   - set(value)     — write a new string (marks subscribers dirty)
+#   - is_empty()     — convenience check
+#   - __str__()      — for easy interpolation
+#
+# All handle types are lightweight value types (Copyable + Movable) that
+# hold a non-owning pointer to the Runtime.  They do NOT manage the
+# Runtime's lifetime — the ComponentContext or AppShell owns that.
 #
 # Thread safety: WASM is single-threaded, so no synchronisation needed.
 
@@ -522,3 +529,141 @@ struct SignalBool(Copyable, Movable, Stringable):
             return String("true")
         else:
             return String("false")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SignalString — Ergonomic handle for a reactive String signal
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+struct SignalString(Copyable, Movable, Stringable):
+    """Ergonomic handle wrapping a reactive String signal.
+
+    Unlike SignalI32/SignalBool which store values in the type-erased
+    SignalStore, SignalString stores the String in a separate StringStore
+    (safe for heap types) and uses a companion Int32 "version signal"
+    in the SignalStore for subscriber tracking and dirty-marking.
+
+    Usage:
+
+        var name = SignalString(string_key, version_key, runtime_ptr)
+        name.set(String("hello"))    # write
+        var v = name.get()           # read without subscribing
+        var v = name.read()          # read and subscribe context
+
+    The handle does NOT own the Runtime — it holds a non-owning pointer.
+    """
+
+    var string_key: UInt32
+    var version_key: UInt32
+    var runtime: UnsafePointer[Runtime]
+
+    # ── Construction ─────────────────────────────────────────────────
+
+    fn __init__(
+        out self,
+        string_key: UInt32,
+        version_key: UInt32,
+        runtime: UnsafePointer[Runtime],
+    ):
+        """Create a string signal handle from raw keys and runtime pointer.
+
+        Args:
+            string_key: The key in the Runtime's StringStore.
+            version_key: The companion version signal key in SignalStore.
+            runtime: Non-owning pointer to the Runtime.
+        """
+        self.string_key = string_key
+        self.version_key = version_key
+        self.runtime = runtime
+
+    fn __copyinit__(out self, other: Self):
+        self.string_key = other.string_key
+        self.version_key = other.version_key
+        self.runtime = other.runtime
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.string_key = other.string_key
+        self.version_key = other.version_key
+        self.runtime = other.runtime
+
+    # ── Read ─────────────────────────────────────────────────────────
+
+    fn get(self) -> String:
+        """Read the string value WITHOUT subscribing the current context.
+
+        Use this for one-off reads (e.g. in event handlers) where you
+        don't want the calling scope/memo/effect to re-run when the
+        string changes.
+
+        Returns:
+            A copy of the current String value.
+        """
+        return self.runtime[0].peek_signal_string(self.string_key)
+
+    fn peek(self) -> String:
+        """Alias for get() — read without subscribing.
+
+        Returns:
+            A copy of the current String value.
+        """
+        return self.get()
+
+    fn read(self) -> String:
+        """Read the string value AND subscribe the current reactive context.
+
+        If a scope, memo, or effect is currently rendering/computing/running,
+        it will be added to the version signal's subscriber set and marked
+        dirty when the string changes.
+
+        Returns:
+            A copy of the current String value.
+        """
+        return self.runtime[0].read_signal_string(
+            self.string_key, self.version_key
+        )
+
+    # ── Write ────────────────────────────────────────────────────────
+
+    fn set(self, value: String):
+        """Write a new string value to the signal.
+
+        Updates the StringStore entry and bumps the version signal,
+        which marks all subscribers (scopes, memos, effects) dirty.
+
+        Args:
+            value: The new String value.
+        """
+        self.runtime[0].write_signal_string(
+            self.string_key, self.version_key, value
+        )
+
+    # ── Queries ──────────────────────────────────────────────────────
+
+    fn version(self) -> UInt32:
+        """Return the signal's write version (monotonically increasing).
+
+        Useful for staleness checks — if the version hasn't changed,
+        the value hasn't changed.
+        """
+        return self.runtime[0].signals.version(self.version_key)
+
+    fn is_empty(self) -> Bool:
+        """Check whether the string value is empty.
+
+        Uses get() (peek) so it does NOT subscribe the calling context.
+
+        Returns:
+            True if the string is empty, False otherwise.
+        """
+        return len(self.get()) == 0
+
+    # ── Stringable ───────────────────────────────────────────────────
+
+    fn __str__(self) -> String:
+        """Return the string value for display/interpolation.
+
+        Uses get() (peek) so it does NOT subscribe the calling context.
+        For reactive display, use read() explicitly.
+        """
+        return self.get()

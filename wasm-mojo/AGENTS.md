@@ -17,9 +17,12 @@
 
 ### Signals & Reactivity (`src/signals/`)
 
-- `Runtime` — reactive runtime: signal store, scope tracking, context management.
+- `Runtime` — reactive runtime: signal store, string store, scope tracking, context management.
+- `SignalStore` — type-erased storage for fixed-size value signals (Int32). Uses raw-byte memcpy — safe for value types only.
+- `StringStore` (`signals/runtime.mojo`) — Phase 19 safe heap-string storage with slab-style free-list slot reuse. Methods: `create(initial) -> UInt32`, `read(key) -> String`, `write(key, value)`, `destroy(key)`, `count()`, `contains(key)`. Lives as `Runtime.strings` field. Solves the problem that `SignalStore` (memcpy-based) is unsafe for heap types like String.
 - `SignalI32` (`signals/handle.mojo`) — ergonomic handle with `peek()`, `set()`, `+=`, `-=`. Holds key + runtime pointer.
 - `SignalBool` (`signals/handle.mojo`) — Phase 18 ergonomic boolean signal wrapping Int32 (0/1). `get() -> Bool`, `read() -> Bool` (with context subscription), `set(Bool)`, `toggle()`, `peek_i32() -> Int32`, `version()`, `__str__()` ("true"/"false"). Created via `ctx.use_signal_bool(initial)` or `ctx.create_signal_bool(initial)`.
+- `SignalString` (`signals/handle.mojo`) — Phase 19 ergonomic reactive string signal. Wraps a `string_key` (index in StringStore) + `version_key` (companion Int32 signal in SignalStore for subscriber tracking). `get() -> String` / `peek() -> String` (read without subscribing), `read() -> String` (subscribe context via version signal), `set(String)` (write + bump version → marks subscribers dirty), `version() -> UInt32`, `is_empty() -> Bool`, `__str__() -> String`. Created via `ctx.use_signal_string(initial)` or `ctx.create_signal_string(initial)`.
 - `MemoI32` — derived signal with lazy recomputation and auto dependency tracking.
 - `EffectHandle` — reactive side effects.
 
@@ -37,7 +40,7 @@
 - `dyn_text()` with no args → auto-numbered (sentinel `DYN_TEXT_AUTO`).
 - `to_template(node, name)` → `Template` (static structure for DOM cloning).
 - `VNode` — runtime instance of a template with dynamic slots.
-- `VNodeBuilder` — fills dynamic text/attr/event slots on a VNode.
+- `VNodeBuilder` — fills dynamic text/attr/event slots on a VNode. `add_dyn_text(value)`, `add_dyn_text_attr(name, value)`, `add_dyn_bool_attr(name, value)`, `add_dyn_event(event, handler_id)`, `add_dyn_placeholder()`.
 - `VNodeStore` — arena for VNode storage.
 
 ### Mutations (`src/mutations/`)
@@ -57,14 +60,17 @@
 - **`ComponentContext`** — ergonomic wrapper over AppShell. High-level API for apps:
   - `ComponentContext.create()` → allocates shell, root scope, begins render bracket.
   - `ctx.use_signal(initial)` → `SignalI32` (auto-subscribes scope).
+  - `ctx.use_signal_bool(initial)` → `SignalBool` (auto-subscribes scope).
+  - `ctx.use_signal_string(initial)` → `SignalString` (auto-subscribes scope). Phase 19.
   - `ctx.use_memo(initial)` → `MemoI32`.
   - `ctx.use_effect()` → `EffectHandle`.
   - `ctx.end_setup()` — closes render bracket.
+  - `ctx.create_signal_string(initial)` → `SignalString` (no hooks, no subscription). Phase 19.
   - `ctx.register_template(view, name)` — sets `ctx.template_id`.
   - `ctx.register_extra_template(view, name) -> UInt32` — for multi-template apps.
   - `ctx.setup_view(view, name)` — combines `end_setup()` + `register_view()` (with inline event extraction + auto-numbered dyn_text).
   - `ctx.register_view(view, name)` — processes inline events (`onclick_add` etc.), auto-numbers `dyn_text()`, registers handlers.
-  - `ctx.render_builder()` → `RenderBuilder` (auto-adds registered event attrs on `build()`).
+  - `ctx.render_builder()` → `RenderBuilder` (auto-adds registered event attrs on `build()`). Phase 19 adds `add_dyn_text_signal(SignalString)`.
   - `ctx.mount(writer, vnode_idx)` — emit templates + create + append to root.
   - `ctx.flush(writer, new_idx)` — diff + finalize (convenience).
   - `ctx.dispatch_event(handler_id, event_type)` → Bool.
@@ -76,13 +82,13 @@
   - `ctx.vnode_builder()` / `ctx.vnode_builder_for(tmpl_id)` — VNode construction.
 - **`FragmentSlot`** — tracks empty↔populated transitions for dynamic keyed lists.
 - **`KeyedList`** (`src/component/keyed_list.mojo`) — bundles `FragmentSlot` + child scope IDs + item template ID + handler map for keyed-list components. Methods: `begin_rebuild(ctx)` (destroy old scopes + clear handler map, return empty fragment), `begin_item(key, ctx)` → `ItemBuilder` (Phase 17 — create scope + keyed VNodeBuilder in one call), `get_action(handler_id)` → `HandlerAction` (Phase 17 — dispatch lookup), `create_scope(ctx)` (create + track child scope), `item_builder(key, ctx)` (keyed VNodeBuilder), `push_child(ctx, frag, child)`, `flush(ctx, writer, frag)` (fragment transitions), `init_slot(anchor, frag)`, `handler_count()`.
-- **`ItemBuilder`** — Phase 17 ergonomic per-item builder wrapping VNodeBuilder + child scope + handler map pointer. Methods: `add_dyn_text(value)`, `add_dyn_text_attr(name, value)`, `add_dyn_bool_attr(name, value)`, `add_dyn_event(event, handler_id)`, `add_custom_event(event, action_tag, data)` (registers handler + maps action + adds event attr in one call), `add_class_if(condition, class_name)` (Phase 18 — conditional CSS class in one call), `add_class_when(condition, true_class, false_class)` (Phase 18 — binary class switching), `add_dyn_placeholder()`, `index()`.
+- **`ItemBuilder`** — Phase 17 ergonomic per-item builder wrapping VNodeBuilder + child scope + handler map pointer. Methods: `add_dyn_text(value)`, `add_dyn_text_signal(SignalString)` (Phase 19 — read signal + add as dyn text), `add_dyn_text_attr(name, value)`, `add_dyn_bool_attr(name, value)`, `add_dyn_event(event, handler_id)`, `add_custom_event(event, action_tag, data)` (registers handler + maps action + adds event attr in one call), `add_class_if(condition, class_name)` (Phase 18 — conditional CSS class in one call), `add_class_when(condition, true_class, false_class)` (Phase 18 — binary class switching), `add_dyn_placeholder()`, `index()`.
 - **`HandlerAction`** — Phase 17 result of `KeyedList.get_action(handler_id)`. Fields: `tag: UInt8` (app-defined action), `data: Int32` (e.g. item ID), `found: Bool`.
 - **Lifecycle helpers**: `mount_vnode()`, `diff_and_finalize()`, `flush_fragment()`.
 
 ## App Architectures (`examples/`)
 
-All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate.
+All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state.
 
 ### CounterApp (`counter.mojo`) — simplest example
 
@@ -153,8 +159,9 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 | File | Lines | Role |
 |------|-------|------|
 | `src/main.mojo` | ~2,500 | All @export wrappers |
-| `src/signals/handle.mojo` | ~525 | SignalI32 + SignalBool + MemoI32 + EffectHandle |
-| `src/component/context.mojo` | ~950 | ComponentContext + RenderBuilder + tree processing |
+| `src/signals/handle.mojo` | ~670 | SignalI32 + SignalBool + SignalString + MemoI32 + EffectHandle |
+| `src/signals/runtime.mojo` | ~630 | Reactive runtime + SignalStore + StringStore |
+| `src/component/context.mojo` | ~1,000 | ComponentContext + RenderBuilder + tree processing |
 | `src/component/lifecycle.mojo` | ~350 | FragmentSlot + mount/diff helpers |
 | `src/component/app_shell.mojo` | ~350 | AppShell (low-level) |
 | `examples/counter/counter.mojo` | ~115 | Counter app |
@@ -163,15 +170,16 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 | `src/component/keyed_list.mojo` | ~595 | KeyedList + ItemBuilder + HandlerAction |
 | `src/vdom/dsl.mojo` | ~2,870 | Node DSL + el_* helpers + multi-arg overloads + conditional helpers + to_template |
 | `src/vdom/vnode.mojo` | ~600 | VNode + VNodeStore + VNodeBuilder |
-| `src/signals/runtime.mojo` | ~500 | Reactive runtime |
 | `src/mutations/diff.mojo` | ~500 | DiffEngine (keyed reconciliation) |
-| `CHANGELOG.md` | ~185 | Development history (Phases 0–18) |
+| `CHANGELOG.md` | ~200 | Development history (Phases 0–19) |
 
 ## Common Patterns
 
 **Adding a signal to a component**: `var foo = self.ctx.use_signal(0)` in setup, `foo.peek()` to read, `foo += 1` or `foo.set(v)` to write.
 
 **Adding a bool signal**: `var flag = self.ctx.use_signal_bool(False)` in setup, `flag.get()` to read, `flag.set(True)` or `flag.toggle()` to write.
+
+**Adding a string signal**: `var name = self.ctx.use_signal_string(String("hello"))` in setup, `name.get()` / `name.peek()` to read, `name.set(String("world"))` to write, `name.read()` to read with subscription, `name.is_empty()` to check, `String(name)` for interpolation.
 
 **Bump version signal**: `self.version += 1` (triggers re-render via scope subscription).
 
@@ -182,6 +190,8 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 **Keyed list rebuild (Phase 17+18 — via ItemBuilder)**: `var frag = self.items.begin_rebuild(ctx)` → for each item: `var ib = items.begin_item(key, ctx)` → `ib.add_dyn_text(...)` → `ib.add_custom_event("click", ACTION_TAG, item_id)` → `ib.add_class_if(condition, "class")` → `items.push_child(ctx, frag, ib.index())`.
 
 **Conditional helpers (Phase 18)**: `class_if(cond, "name")` → `"name"` or `""`. `class_when(cond, "a", "b")` → `"a"` or `"b"`. `text_when(cond, "yes", "no")` → conditional text. `ib.add_class_if(cond, "name")` → one-call shortcut on ItemBuilder/RenderBuilder.
+
+**String signal in render (Phase 19)**: `vb.add_dyn_text_signal(name)` → reads `name.get()` and adds as dynamic text. Works on both `RenderBuilder` and `ItemBuilder`.
 
 **Keyed list dispatch (Phase 17 — via HandlerAction)**: `var action = self.items.get_action(handler_id)` → `if action.found: match action.tag`.
 
@@ -196,7 +206,7 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 - **Closure event handlers** → blocked on Lambda syntax + Closure refinement (Phase 1, 🚧). Would eliminate `ItemBuilder.add_custom_event()` + `get_action()`.
 - **`rsx!` macro** → blocked on Hygienic importable macros (Phase 2, ⏰). Would enable compile-time DSL like Dioxus.
 - **`for` loops in views** → blocked on macros (Phase 2, ⏰). Currently iteration happens in build functions.
-- **Generic `Signal[T]`** → blocked on Conditional conformance (Phase 1, 🚧). Currently `SignalI32` / `SignalBool` / `MemoI32` (Phase 18 added `SignalBool`).
+- **Generic `Signal[T]`** → blocked on Conditional conformance (Phase 1, 🚧). Currently `SignalI32` / `SignalBool` / `SignalString` / `MemoI32` (Phase 18 added `SignalBool`, Phase 19 added `SignalString`).
 - **Dynamic component dispatch** → blocked on Existentials / dynamic traits (Phase 2, ⏰).
 - **Pattern matching on actions** → blocked on ADTs & pattern matching (Phase 2, ⏰). Currently `if/elif` chains.
 - **Async data loading / suspense** → blocked on First-class async (Phase 2, ⏰).
