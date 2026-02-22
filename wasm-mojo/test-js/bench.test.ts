@@ -44,10 +44,10 @@ function time(fn: () => void): number {
 
 function createDOM() {
 	const { document, window } = parseHTML(
-		'<!DOCTYPE html><html><body><table><tbody id="tbody"></tbody></table></body></html>',
+		'<!DOCTYPE html><html><body><div id="root"></div></body></html>',
 	);
-	const tbody = document.getElementById("tbody")!;
-	return { document, window, tbody };
+	const root = document.getElementById("root")!;
+	return { document, window, root };
 }
 
 // ── BenchApp handle ─────────────────────────────────────────────────────────
@@ -55,6 +55,7 @@ function createDOM() {
 interface BenchAppHandle {
 	fns: Fns;
 	handle: AppHandle;
+	root: Element;
 	tbody: Element;
 
 	create(count: number): void;
@@ -74,18 +75,18 @@ const BENCH_BUF_CAPACITY = 8 * 1024 * 1024; // 8 MB
 
 function createBenchApp(
 	fns: Fns,
-	tbody: Element,
+	root: Element,
 	doc: Document,
 ): BenchAppHandle {
 	// Use the generic createApp factory — templates come from WASM via
 	// RegisterTemplate mutations, no manual DOM template construction needed.
-	// Phase 24.1: bench_handle_event now routes row clicks (select/remove)
-	// via the KeyedList handler_map in WASM.  Tests still use direct WASM
-	// calls for deterministic control, but handleEvent is wired for
-	// EventBridge compatibility.
+	// Phase 24.2: WASM renders the entire app shell (heading, toolbar,
+	// status, table) into the root element.  bench_handle_event routes
+	// both toolbar button clicks and row clicks.  Tests still use direct
+	// WASM calls for deterministic control.
 	const handle = createApp({
 		fns,
-		root: tbody,
+		root,
 		doc,
 		bufCapacity: BENCH_BUF_CAPACITY,
 		init: (f) => f.bench_init(),
@@ -95,6 +96,10 @@ function createBenchApp(
 		destroy: (f, app) => f.bench_destroy(app),
 	});
 
+	// Phase 24.2: tbody is rendered by WASM inside the app shell template.
+	// Find it from the mounted DOM tree.
+	const tbody = root.querySelector("tbody")!;
+
 	function flushOp(): void {
 		handle.flushAndApply();
 	}
@@ -102,6 +107,7 @@ function createBenchApp(
 	return {
 		fns,
 		handle,
+		root,
 		tbody,
 
 		create(count: number): void {
@@ -875,23 +881,39 @@ function testBenchTimings(fns: Fns): void {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function testBenchDomMount(fns: Fns): void {
-	suite("Bench DOM — createBenchApp mounts empty tbody");
+	suite("Bench DOM — createBenchApp mounts app shell with empty tbody");
 	{
 		const dom = createDOM();
-		const app = createBenchApp(fns, dom.tbody, dom.document);
+		const app = createBenchApp(fns, dom.root, dom.document);
+
+		// Phase 24.2: WASM renders the entire app shell including the
+		// heading, toolbar buttons, status bar, and table structure.
+		// The root should now have content (the container div).
+		assert(
+			dom.root.childNodes.length > 0,
+			true,
+			"root has content after mount",
+		);
+
+		// The rendered DOM should include a tbody element
+		assert(app.tbody !== null, true, "tbody exists in rendered DOM");
 
 		// After mount with no rows created, tbody should have a placeholder
 		// (comment node from the fragment slot)
-		const childCount = dom.tbody.childNodes.length;
+		const childCount = app.tbody.childNodes.length;
 		assert(
 			childCount >= 0,
 			true,
 			"tbody has children or placeholder after mount",
 		);
 
-		// No tr elements yet
-		const trCount = dom.tbody.querySelectorAll("tr").length;
-		assert(trCount, 0, "no tr elements before create");
+		// No row tr elements in tbody yet (thead has its own tr)
+		const trCount = app.tbody.querySelectorAll("tr").length;
+		assert(trCount, 0, "no tr elements in tbody before create");
+
+		// Toolbar buttons should be rendered
+		const buttons = dom.root.querySelectorAll("button");
+		assert(buttons.length, 6, "6 toolbar buttons rendered");
 
 		app.destroy();
 	}
@@ -901,11 +923,11 @@ function testBenchDomCreate(fns: Fns): void {
 	suite("Bench DOM — create 100 rows → 100 tr elements");
 	{
 		const dom = createDOM();
-		const app = createBenchApp(fns, dom.tbody, dom.document);
+		const app = createBenchApp(fns, dom.root, dom.document);
 
 		app.create(100);
 
-		const trs = dom.tbody.querySelectorAll("tr");
+		const trs = app.tbody.querySelectorAll("tr");
 		assert(trs.length, 100, "100 tr elements after create(100)");
 
 		// Each tr should have 3 td children
@@ -929,18 +951,18 @@ function testBenchDomAppend(fns: Fns): void {
 	suite("Bench DOM — append 100 rows to existing 100 → 200 tr elements");
 	{
 		const dom = createDOM();
-		const app = createBenchApp(fns, dom.tbody, dom.document);
+		const app = createBenchApp(fns, dom.root, dom.document);
 
 		app.create(100);
 		assert(
-			dom.tbody.querySelectorAll("tr").length,
+			app.tbody.querySelectorAll("tr").length,
 			100,
 			"100 rows after create",
 		);
 
 		app.append(100);
 		assert(
-			dom.tbody.querySelectorAll("tr").length,
+			app.tbody.querySelectorAll("tr").length,
 			200,
 			"200 rows after append",
 		);
@@ -954,17 +976,17 @@ function testBenchDomClear(fns: Fns): void {
 	suite("Bench DOM — clear removes all tr elements");
 	{
 		const dom = createDOM();
-		const app = createBenchApp(fns, dom.tbody, dom.document);
+		const app = createBenchApp(fns, dom.root, dom.document);
 
 		app.create(100);
 		assert(
-			dom.tbody.querySelectorAll("tr").length,
+			app.tbody.querySelectorAll("tr").length,
 			100,
 			"100 rows before clear",
 		);
 
 		app.clear();
-		const trCount = dom.tbody.querySelectorAll("tr").length;
+		const trCount = app.tbody.querySelectorAll("tr").length;
 		assert(trCount, 0, "0 tr elements after clear");
 		assert(app.rowCount(), 0, "WASM row count is 0 after clear");
 
@@ -976,14 +998,14 @@ function testBenchDomSelect(fns: Fns): void {
 	suite("Bench DOM — select row adds danger class");
 	{
 		const dom = createDOM();
-		const app = createBenchApp(fns, dom.tbody, dom.document);
+		const app = createBenchApp(fns, dom.root, dom.document);
 
 		app.create(100);
 		const rowId = app.rowIdAt(5);
 		app.select(rowId);
 
 		// The selected row should have class="danger"
-		const trs = dom.tbody.querySelectorAll("tr");
+		const trs = app.tbody.querySelectorAll("tr");
 		let dangerCount = 0;
 		for (let i = 0; i < trs.length; i++) {
 			const tr = trs[i] as Element;
@@ -1002,14 +1024,14 @@ function testBenchDomRemove(fns: Fns): void {
 	suite("Bench DOM — remove row decrements tr count");
 	{
 		const dom = createDOM();
-		const app = createBenchApp(fns, dom.tbody, dom.document);
+		const app = createBenchApp(fns, dom.root, dom.document);
 
 		app.create(100);
 		const removeId = app.rowIdAt(50);
 		app.remove(removeId);
 
 		assert(
-			dom.tbody.querySelectorAll("tr").length,
+			app.tbody.querySelectorAll("tr").length,
 			99,
 			"99 tr elements after remove",
 		);
@@ -1023,7 +1045,7 @@ function testBenchDomSwap(fns: Fns): void {
 	suite("Bench DOM — swap rows changes row order in DOM");
 	{
 		const dom = createDOM();
-		const app = createBenchApp(fns, dom.tbody, dom.document);
+		const app = createBenchApp(fns, dom.root, dom.document);
 
 		app.create(1000);
 
@@ -1040,7 +1062,7 @@ function testBenchDomSwap(fns: Fns): void {
 		assert(newIdAt998, idAt1, "position 998 now has old position 1 ID");
 
 		// DOM should reflect the swap — check the first td text of swapped rows
-		const trs = dom.tbody.querySelectorAll("tr");
+		const trs = app.tbody.querySelectorAll("tr");
 		const tr1Text = (trs[1] as Element).querySelector("td")?.textContent ?? "";
 		const tr998Text =
 			(trs[998] as Element).querySelector("td")?.textContent ?? "";
@@ -1055,12 +1077,12 @@ function testBenchDomUpdate(fns: Fns): void {
 	suite("Bench DOM — update every 10th modifies label text");
 	{
 		const dom = createDOM();
-		const app = createBenchApp(fns, dom.tbody, dom.document);
+		const app = createBenchApp(fns, dom.root, dom.document);
 
 		app.create(100);
 
 		// Get label of row 0 (every 10th starting from 0) before update
-		const trs = dom.tbody.querySelectorAll("tr");
+		const trs = app.tbody.querySelectorAll("tr");
 		const getLabelText = (tr: Element): string => {
 			const tds = tr.querySelectorAll("td");
 			// Second td contains the label (inside an <a>)
@@ -1071,7 +1093,7 @@ function testBenchDomUpdate(fns: Fns): void {
 
 		app.update();
 
-		const trsAfter = dom.tbody.querySelectorAll("tr");
+		const trsAfter = app.tbody.querySelectorAll("tr");
 		const labelAfter = getLabelText(trsAfter[0] as Element);
 
 		// Updated rows get " !!!" appended
@@ -1099,21 +1121,21 @@ function testBenchDomCreateAfterClear(fns: Fns): void {
 	suite("Bench DOM — create after clear works correctly");
 	{
 		const dom = createDOM();
-		const app = createBenchApp(fns, dom.tbody, dom.document);
+		const app = createBenchApp(fns, dom.root, dom.document);
 
 		app.create(50);
 		assert(
-			dom.tbody.querySelectorAll("tr").length,
+			app.tbody.querySelectorAll("tr").length,
 			50,
 			"50 rows after first create",
 		);
 
 		app.clear();
-		assert(dom.tbody.querySelectorAll("tr").length, 0, "0 rows after clear");
+		assert(app.tbody.querySelectorAll("tr").length, 0, "0 rows after clear");
 
 		app.create(30);
 		assert(
-			dom.tbody.querySelectorAll("tr").length,
+			app.tbody.querySelectorAll("tr").length,
 			30,
 			"30 rows after second create",
 		);
@@ -1128,27 +1150,27 @@ function testBenchDomMultipleInstances(fns: Fns): void {
 	{
 		const dom1 = createDOM();
 		const dom2 = createDOM();
-		const app1 = createBenchApp(fns, dom1.tbody, dom1.document);
-		const app2 = createBenchApp(fns, dom2.tbody, dom2.document);
+		const app1 = createBenchApp(fns, dom1.root, dom1.document);
+		const app2 = createBenchApp(fns, dom2.root, dom2.document);
 
 		app1.create(50);
 		app2.create(100);
 
 		assert(
-			dom1.tbody.querySelectorAll("tr").length,
+			app1.tbody.querySelectorAll("tr").length,
 			50,
 			"instance 1 has 50 rows",
 		);
 		assert(
-			dom2.tbody.querySelectorAll("tr").length,
+			app2.tbody.querySelectorAll("tr").length,
 			100,
 			"instance 2 has 100 rows",
 		);
 
 		app1.clear();
-		assert(dom1.tbody.querySelectorAll("tr").length, 0, "instance 1 cleared");
+		assert(app1.tbody.querySelectorAll("tr").length, 0, "instance 1 cleared");
 		assert(
-			dom2.tbody.querySelectorAll("tr").length,
+			app2.tbody.querySelectorAll("tr").length,
 			100,
 			"instance 2 unaffected",
 		);
@@ -1162,6 +1184,11 @@ function testBenchDomMultipleInstances(fns: Fns): void {
 // Section: Handler lifecycle (M13.1)
 // ══════════════════════════════════════════════════════════════════════════════
 
+// Phase 24.2: The bench app now has 6 toolbar button handlers (from
+// register_view onclick_custom) in addition to per-row handlers.
+// TOOLBAR_HANDLERS is the constant base count for these app-level handlers.
+const TOOLBAR_HANDLERS = 6;
+
 function testBenchHandlerLifecycle(fns: Fns): void {
 	suite("Bench — handler count after create 100 rows");
 	{
@@ -1170,16 +1197,20 @@ function testBenchHandlerLifecycle(fns: Fns): void {
 		const bufPtr = fns.mutation_buf_alloc(bufSize);
 		fns.bench_rebuild(appPtr, bufPtr, bufSize);
 
-		// Before any rows: 0 handlers (bench has no app-level handlers)
+		// Before any rows: 6 toolbar handlers (from register_view onclick_custom)
 		const hcBefore = fns.bench_handler_count(appPtr);
-		assert(hcBefore, 0, "0 handlers before any rows");
+		assert(hcBefore, TOOLBAR_HANDLERS, "6 toolbar handlers before any rows");
 
 		// Create 100 rows — each gets 2 handlers (select + remove)
 		fns.bench_create(appPtr, 100);
 		fns.bench_flush(appPtr, bufPtr, bufSize);
 
 		const hcAfter = fns.bench_handler_count(appPtr);
-		assert(hcAfter, 200, "200 handlers after 100 rows (2 per row)");
+		assert(
+			hcAfter,
+			TOOLBAR_HANDLERS + 200,
+			"206 handlers after 100 rows (6 toolbar + 200 row)",
+		);
 
 		fns.bench_destroy(appPtr);
 	}
@@ -1195,19 +1226,27 @@ function testBenchHandlerLifecycle(fns: Fns): void {
 		fns.bench_create(appPtr, 100);
 		fns.bench_flush(appPtr, bufPtr, bufSize);
 
-		// Clear all rows, flush — handlers should be cleaned up
+		// Clear all rows, flush — row handlers should be cleaned up
 		fns.bench_clear(appPtr);
 		fns.bench_flush(appPtr, bufPtr, bufSize);
 
 		const hcAfterClear = fns.bench_handler_count(appPtr);
-		assert(hcAfterClear, 0, "0 handlers after clear (no leak)");
+		assert(
+			hcAfterClear,
+			TOOLBAR_HANDLERS,
+			"6 toolbar handlers after clear (row handlers freed)",
+		);
 
-		// Create 100 rows again — should be exactly 200, not 400
+		// Create 100 rows again — should be 6 + 200, not 6 + 400
 		fns.bench_create(appPtr, 100);
 		fns.bench_flush(appPtr, bufPtr, bufSize);
 
 		const hcAfterRecreate = fns.bench_handler_count(appPtr);
-		assert(hcAfterRecreate, 200, "200 handlers after recreate (not 400)");
+		assert(
+			hcAfterRecreate,
+			TOOLBAR_HANDLERS + 200,
+			"206 handlers after recreate (not 406)",
+		);
 
 		fns.bench_destroy(appPtr);
 	}
@@ -1225,9 +1264,13 @@ function testBenchHandlerLifecycle(fns: Fns): void {
 			fns.bench_flush(appPtr, bufPtr, bufSize);
 		}
 
-		// Should be 100 (50 rows * 2 handlers), NOT 500 (leaked)
+		// Should be 6 + 100 (50 rows * 2 handlers), NOT 6 + 500 (leaked)
 		const hc = fns.bench_handler_count(appPtr);
-		assert(hc, 100, "100 handlers after 5 create cycles (no leak)");
+		assert(
+			hc,
+			TOOLBAR_HANDLERS + 100,
+			"106 handlers after 5 create cycles (no leak)",
+		);
 
 		fns.bench_destroy(appPtr);
 	}

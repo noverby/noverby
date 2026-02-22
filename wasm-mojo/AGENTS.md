@@ -127,7 +127,7 @@ struct TodoApp:
 
 Phase 20.5 migration: TodoApp now uses `register_view()` with inline event/binding helpers for the app template. The input element has `bind_value(input_text)` + `oninput_set_string(input_text)` for Dioxus-style two-way binding. The Add button uses `onclick_custom()` — an inline custom handler auto-registered by `register_view()`. `handle_event()` handles the Add action entirely in WASM: reads `input_text.peek()`, calls `add_item()`, clears via `input_text.set("")`. `render()` uses `render_builder()` which auto-populates bind_value (reads signal → "value" attr) and event listeners. `todo_app_flush()` re-renders the app shell via `ctx.diff()` (to catch bind_value changes) before flushing items via KeyedList. JS dispatches events uniformly — `input`/`change` events go through `todo_dispatch_string()`, all others through `todo_handle_event()` — no special-casing. WASM exports: `todo_dispatch_string` for string events, `todo_add_handler_id` for the Add handler ID, plus existing `todo_set_input`, `todo_input_version`, `todo_input_is_empty`.
 
-### BenchmarkApp (`bench.mojo`) — js-framework-benchmark, same pattern as todo
+### BenchmarkApp (`bench.mojo`) — js-framework-benchmark, WASM-rendered toolbar + keyed rows
 
 ```txt
 struct BenchmarkApp:
@@ -136,18 +136,40 @@ struct BenchmarkApp:
     var selected: SignalI32
     var rows_list: KeyedList      # bundles template_id + FragmentSlot + scope_ids + handler_map
     var rows: List[BenchRow]
+    var create1k_handler: UInt32  # auto-registered by register_view() via onclick_custom()
+    var create10k_handler: UInt32
+    var append_handler: UInt32
+    var update_handler: UInt32
+    var swap_handler: UInt32
+    var clear_handler: UInt32
+    fn __init__: ctx.create() → use_signal(version, selected) → setup_view("bench-app"
+                 with 6 onclick_custom buttons, dyn_text status, dyn_node(1) for rows)
+                 → view_event_handler_id(0..5) for toolbar handlers
+                 + KeyedList(register_extra_template("bench-row"))
+    fn render: ctx.render_builder() → add_dyn_text(status) → add_dyn_placeholder → build()
+    fn build_row_vnode: rows_list.begin_item(key, ctx) → ib.add_custom_event() (Phase 17)
+    fn build_rows_fragment: rows_list.begin_rebuild → build each row → rows_list.push_child
+    fn handle_event: if create1k_handler → create_rows(1000)
+                     elif create10k_handler → create_rows(10000)
+                     elif append_handler → append_rows(1000)
+                     elif update_handler → update_every_10th()
+                     elif swap_handler → swap_rows(1, 998)
+                     elif clear_handler → clear_rows()
+                     else → rows_list.get_action(handler_id) → select/remove row
 ```
 
 Two signals: `version` (list changes), `selected` (highlight row).
 Operations: create_rows, append_rows, update_every_10th, select_row, swap_rows, remove_row, clear_rows.
 Per-row build uses `begin_item()` + `add_custom_event()` (Phase 17) + `add_class_if()` (Phase 18).
 
+Phase 24.2: Uses `setup_view()` for the app shell template ("bench-app") with inline `onclick_custom()` for 6 toolbar buttons. The entire UI — heading, buttons, status bar, table with thead + tbody — is rendered from WASM. Root is `#root` (not `#tbody`). `handle_event()` routes both toolbar button clicks (via handler ID comparison) and row clicks (via `get_action()`). `render()` uses `render_builder()` which auto-populates event handlers; provides `dyn_text()` for status (dynamic_nodes[0]) and `dyn_placeholder()` for the keyed row list (dynamic_nodes[1]). **Important:** `dyn_text` and `dyn_node` share the same `dynamic_nodes` index space — auto-numbered `dyn_text()` gets index 0, so `dyn_node` must use index 1. `bench_app_rebuild()` follows the todo pattern: emit templates → render shell → CreateEngine → extract `dyn_node[1]` anchor → init KeyedList slot. `bench_app_flush()` diffs app shell + flushes KeyedList. `bench/main.js` is now a 7-line `launch()` call (only `bufferCapacity` is bench-specific).
+
 **Phase 24 — Bench zero app-specific JS convergence** (see also `examples/bench/main.js` header):
 
 - **P24.1** ✅ — `bench_handle_event` with handler_map dispatch. `BenchmarkApp.handle_event(handler_id)` calls `rows_list.get_action(handler_id)` and routes to `select_row`/`remove_row` (same pattern as `TodoApp.handle_event`). `bench_handle_event` WASM export in `main.mojo`. EventBridge now dispatches row clicks directly — tbody event delegation JS eliminated.
-- **P24.2** — WASM-rendered toolbar with `onclick_custom` handlers. Move toolbar (h1, 6 buttons, status div, table) into the WASM template tree. Change root from `#tbody` to `#root`. Extend `handle_event` to route each button's handler ID. Needs per-button discrimination — either: (a) one handler ID per button with hardcoded routing, or (b) new `onclick_custom_data(operand)` DSL helper storing an Int32 payload retrievable via handler action lookup. Eliminates toolbar button wiring JS.
-- **P24.3** — `performance.now()` WASM import for timing. Add `performance_now() -> Float64` to `env.js` imports + Mojo FFI declaration. Add timing wrapper in `BenchmarkApp` that stores result in a `SignalString`. Requires float-to-string formatting with 1 decimal place (verify Mojo WASM support or write manual formatter). Eliminates `timeOp`/`setStatus` JS.
-- **P24.4** — Status bar as WASM template with dynamic text. Include status bar in WASM template (part of P24.2 restructure). Use `dyn_text` nodes for operation name, timing, and row count — replaces `innerHTML` with proper elements + `SignalString` updates. After P24.2–P24.4, `onBoot` is empty and `bench/main.js` reduces to `launch({ app: "bench", wasm: ... })`.
+- **P24.2** ✅ — WASM-rendered toolbar with `onclick_custom` handlers. Entire app shell (h1, 6 buttons, status `dyn_text` at dynamic_nodes[0], table with thead + tbody > `dyn_node(1)` at dynamic_nodes[1]) rendered from WASM via `setup_view()`. Root changed from `#tbody` to `#root`. 6 handler IDs extracted via `view_event_handler_id()`. `handle_event()` routes toolbar button clicks to benchmark operations + existing row click dispatch. `bench/index.html` simplified to `<div id="root">` + styles. `bench/main.js` reduced to 7-line `launch()` call. Tests updated: `createDOM()` creates root div, DOM tests query rendered tbody, handler lifecycle tests account for 6 toolbar base handlers. **Gotcha:** `dyn_text` and `dyn_node` share the `dynamic_nodes` index space — auto-numbered `dyn_text()` gets index 0, so `dyn_node` must use 1.
+- **P24.3** — `performance.now()` WASM import for timing. Add `performance_now() -> Float64` to `env.js` imports + Mojo FFI declaration. Add timing wrapper in `BenchmarkApp` that stores result in a `SignalString`. Requires float-to-string formatting with 1 decimal place (verify Mojo WASM support or write manual formatter). Eliminates the need for any JS-side timing code.
+- **P24.4** — Status bar as WASM template with dynamic text. The status bar div is already in the WASM template (P24.2). Use `dyn_text` nodes for operation name, timing, and row count — replaces the static "Ready" text with proper `SignalString` updates. After P24.3 + P24.4, `bench/main.js` is identical to counter/todo (no `bufferCapacity` override needed if default is sufficient, or kept as the only bench-specific config).
 
 ## WASM Export Pattern (`src/main.mojo`)
 
@@ -162,11 +184,11 @@ All exports follow this pattern — thin wrappers forwarding to app modules:
 
 Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int32`, `_alloc_writer()`, `_free_writer()`.
 
-**Naming convention for `launch()`**: The JS `launch({ app: "NAME" })` function discovers WASM exports by prefix — `{NAME}_init`, `{NAME}_rebuild`, `{NAME}_flush` (required), `{NAME}_handle_event` (optional — enables EventBridge dispatch; when missing, EventBridge is a no-op and apps wire custom handlers via `onBoot`), and `{NAME}_dispatch_string` (optional, enables auto string dispatch for input/change/keydown events). New apps MUST follow this naming convention to be compatible with `launch()`.
+**Naming convention for `launch()`**: The JS `launch({ app: "NAME" })` function discovers WASM exports by prefix — `{NAME}_init`, `{NAME}_rebuild`, `{NAME}_flush` (required), `{NAME}_handle_event` (optional — enables EventBridge dispatch; when missing, EventBridge is a no-op), and `{NAME}_dispatch_string` (optional, enables auto string dispatch for input/change/keydown events). New apps MUST follow this naming convention to be compatible with `launch()`.
 
 ## Browser Runtime (`examples/lib/`)
 
-- `app.js` — **`launch(options)`**: Convention-based app launcher (Phase 21, updated Phase 22–23). Given `app: "counter"`, auto-discovers WASM exports by naming convention, sets up interpreter + EventBridge with smart dispatch (auto string dispatch when `{app}_dispatch_string` exists), runs initial mount, and calls optional `onBoot(handle)` for app-specific post-boot wiring. Returns `AppHandle` with `{ fns, appPtr, interp, bufPtr, rootEl, flush }`. Options: `app` (required), `wasm` (required URL), `root` (CSS selector, default `"#root"`), `bufferCapacity` (default 65536), `clearRoot` (default true), `onBoot` (optional callback). **Phase 22**: EventBridge smart dispatch extended to route `keydown` events through `dispatch_string`. **Phase 23**: `{app}_handle_event` made optional — when missing, EventBridge dispatch is a no-op (DOM listeners still attached); apps like bench wire custom handlers via `onBoot`. All three apps now use `launch()`.
+- `app.js` — **`launch(options)`**: Convention-based app launcher (Phase 21, updated Phase 22–24). Given `app: "counter"`, auto-discovers WASM exports by naming convention, sets up interpreter + EventBridge with smart dispatch (auto string dispatch when `{app}_dispatch_string` exists), runs initial mount, and calls optional `onBoot(handle)` for app-specific post-boot wiring. Returns `AppHandle` with `{ fns, appPtr, interp, bufPtr, rootEl, flush }`. Options: `app` (required), `wasm` (required URL), `root` (CSS selector, default `"#root"`), `bufferCapacity` (default 65536), `clearRoot` (default true), `onBoot` (optional callback). **Phase 22**: EventBridge smart dispatch extended to route `keydown` events through `dispatch_string`. **Phase 23**: `{app}_handle_event` made optional — when missing, EventBridge dispatch is a no-op (DOM listeners still attached). **Phase 24.2**: All three apps now use near-zero-config `launch()` (bench only needs `bufferCapacity`; no `onBoot`, no custom root).
 - `boot.js` — Re-exports from `app.js`, `env.js`, `events.js`, `interpreter.js`, `protocol.js`, `strings.js`. Low-level API for advanced use cases that need direct control over the boot sequence.
 - `env.js` — WASM memory management + import object + `loadWasm()` loader.
 - `events.js` — `EventBridge` wires interpreter event mutations to a WASM dispatch callback.
