@@ -1,4 +1,11 @@
 {
+  devShells.nu-plugin-tramp = pkgs: {
+    packages = with pkgs; [
+      just
+      openssh
+    ];
+  };
+
   packages = {
     nu-plugin-tramp = {
       lib,
