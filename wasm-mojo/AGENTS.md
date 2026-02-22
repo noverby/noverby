@@ -6,12 +6,69 @@
 
 ## Mojo Constraints
 
-- **No closures/function pointers in WASM** — event handlers are action-based structs.
+- **No closures/function pointers in WASM** — event handlers are action-based structs. 0.26.1 improves function type conversions (non-raising → raising, ref → value) but true closures still missing.
 - **`@export` only works in main.mojo** — submodule exports get DCE'd. All ~430 WASM exports are thin wrappers in `src/main.mojo` forwarding to submodule implementations.
 - **Single-threaded** — no sync needed.
 - **Operator overloading** works (SignalI32 has `+=`, `-=`, `peek()`, `set()`).
 - **Format**: `mojo format <file>` — pre-commit hooks run this automatically.
 - **Commit messages**: `feat(wasm-mojo): Uppercase description` — commitlint enforced, allowed types: `feat`, `fix`, `chore`, `doc`.
+- **Mojo 0.26.1 migration in progress** — see [MIGRATION_PLAN.md](MIGRATION_PLAN.md) for full details. Key syntax changes: `List[T](a, b, c)` → `[a, b, c]` list literals, `alias` → `comptime`, explicit `Bool` conversions required (no `ImplicitlyBoolable`).
+
+## Mojo 0.26.1 Migration
+
+Migration to Mojo 0.26.1 is tracked in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). Summary for agents:
+
+### Breaking Changes
+
+| ID | Change | Impact | Scope |
+|----|--------|--------|-------|
+| **B1** | `List[T](a, b, c)` variadic init removed → use list literals `[a, b, c]` | Widespread | ~50–80 call sites |
+| **B2** | `alias` keyword deprecated → use `comptime` | Pervasive | ~150+ declarations |
+| **B3** | `ImplicitlyBoolable` removed → explicit `!= 0` / `!= UnsafePointer[T]()` checks | Moderate | ~20–40 sites |
+| **B4** | `UInt` is now `Scalar[DType.uint]`, no implicit `Int` ↔ `UInt` conversion | Low | Audit needed |
+| **B6** | `Error()` default construction removed, `Error` not `Boolable` | Low | `grep -rn 'Error()' src/` |
+| **B8** | `Writer.write_bytes()` → `write_string()`, `String.__init__(bytes:)` → `unsafe_from_utf8` | Low | Only if custom `Writer` impls exist |
+
+### New Syntax Patterns
+
+```mojo
+# List literals (B1) — type inferred from first element or annotation:
+el_div([
+    el_h1([dyn_text(0)]),
+    el_button([text("Up!"), onclick_add(count, 1)]),
+])
+var keys: List[UInt32] = [1, 2, 3]
+
+# comptime (B2) — replaces alias:
+comptime OP_END = UInt8(0x00)
+comptime TAG_DIV: UInt8 = 0
+
+# Explicit bool (B3) — no implicit truthiness:
+if self._free_head != -1:           # not: if self._free_head:
+if ptr != UnsafePointer[T]():       # not: if ptr:
+```
+
+### New Features to Leverage
+
+| ID | Feature | Opportunity | Priority |
+|----|---------|-------------|----------|
+| **F1** | Typed errors (`raises CustomError`) | Zero-overhead error types for WASM — define `EventError`, `DiffError`, `MutationError` | Medium |
+| **F2** | String UTF-8 constructors (`from_utf8=`, `from_utf8_lossy=`, `unsafe_from_utf8=`) | Explicit safety in WASM ↔ JS string bridge | Medium |
+| **F3** | Default trait impls (`Equatable`, `Writable` auto-derived) | Add conformance to `ElementId`, `Node`, `HandlerEntry`, `VNode` with zero boilerplate | Medium |
+| **F4** | `Copyable` refines `Movable` | Remove redundant `Movable` declarations | Low |
+| **F5** | `comptime(x)` expression | Inline compile-time evaluation without separate declarations | Low |
+| **F8** | `conforms_to()` + `trait_downcast()` (experimental) | Stepping stone toward generic `Signal[T]` with static dispatch | Low |
+| **F9** | Expanded reflection (`struct_field_count`, `struct_field_names`, `offset_of`) | Auto-generated binary protocol encoders, debug formatters | Low |
+| **F10** | `Never` type | Annotate unreachable code paths and `abort()` wrappers | Low |
+
+### Migration Order
+
+1. **B3** — Fix `ImplicitlyBoolable` (hard compile errors, scattered)
+2. **B1** — Update `List[T](...)` → list literals (most widespread)
+3. **B4–B8** — Minor breaks (`UInt`, `Error`, `InlineArray`, `Writer`)
+4. **B2** — Bulk `alias` → `comptime` (mechanical, last to avoid merge conflicts)
+5. **F1–F3** — Adopt new features incrementally
+6. **F7** — Enable `-Werror` in CI after all warnings resolved
 
 ## Key Abstractions (dependency order)
 
@@ -426,10 +483,10 @@ el_button(text("Add"), onclick_custom()),
 
 ## Deferred Abstractions (Blocked on Mojo Roadmap)
 
-- **Closure event handlers** → blocked on Lambda syntax + Closure refinement (Phase 1, 🚧). Would eliminate `ItemBuilder.add_custom_event()` + `get_action()`. Phase 20 string dispatch + inline DSL helpers (`oninput_set_string`, `bind_value`) address this for input events.
-- **`rsx!` macro** → blocked on Hygienic importable macros (Phase 2, ⏰). Would enable compile-time DSL like Dioxus.
-- **`for` loops in views** → blocked on macros (Phase 2, ⏰). Currently iteration happens in build functions.
-- **Generic `Signal[T]`** → blocked on Conditional conformance (Phase 1, 🚧). Currently `SignalI32` / `SignalBool` / `SignalString` / `MemoI32` (Phase 18 added `SignalBool`, Phase 19 added `SignalString`).
-- **Dynamic component dispatch** → blocked on Existentials / dynamic traits (Phase 2, ⏰).
-- **Pattern matching on actions** → blocked on ADTs & pattern matching (Phase 2, ⏰). Currently `if/elif` chains.
-- **Async data loading / suspense** → blocked on First-class async (Phase 2, ⏰).
+- **Closure event handlers** → blocked on Lambda syntax + Closure refinement (Phase 1, 🚧). Would eliminate `ItemBuilder.add_custom_event()` + `get_action()`. Phase 20 string dispatch + inline DSL helpers (`oninput_set_string`, `bind_value`) address this for input events. **0.26.1 progress:** Function type conversions improved (non-raising → raising, ref → value), but true closures/function pointers in WASM still missing.
+- **`rsx!` macro** → blocked on Hygienic importable macros (Phase 2, ⏰). Would enable compile-time DSL like Dioxus. **0.26.1 progress:** None.
+- **`for` loops in views** → blocked on macros (Phase 2, ⏰). Currently iteration happens in build functions. **0.26.1 progress:** None.
+- **Generic `Signal[T]`** → blocked on Conditional conformance (Phase 1, 🚧). Currently `SignalI32` / `SignalBool` / `SignalString` / `MemoI32` (Phase 18 added `SignalBool`, Phase 19 added `SignalString`). **0.26.1 progress:** Experimental `conforms_to()` + `trait_downcast()` enable static dispatch on trait conformance; expanded reflection (`struct_field_count`, `struct_field_names`, `struct_field_types`) enables field introspection. Still blocked on full conditional conformance for parametric stores.
+- **Dynamic component dispatch** → blocked on Existentials / dynamic traits (Phase 2, ⏰). **0.26.1 progress:** `AnyType` no longer requires `__del__()` (explicitly-destroyed types help), but doesn't solve dispatch.
+- **Pattern matching on actions** → blocked on ADTs & pattern matching (Phase 2, ⏰). Currently `if/elif` chains. **0.26.1 progress:** None.
+- **Async data loading / suspense** → blocked on First-class async (Phase 2, ⏰). **0.26.1 progress:** None.
