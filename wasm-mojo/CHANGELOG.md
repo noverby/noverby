@@ -2,6 +2,14 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 20 — String Event Dispatch & Input Binding
+
+- **M20.1** — String event dispatch infrastructure. New `ACTION_SIGNAL_SET_STRING` action tag (value 6) in `src/events/registry.mojo` for handlers that write a string value to a `SignalString`. `HandlerEntry.signal_set_string(scope_id, string_key, version_key, event_name)` convenience constructor stores `string_key` in the `signal_key` field and `version_key` in the `operand` field (cast to Int32). `Runtime.dispatch_event_with_string(handler_id, event_type, value: String)` dispatches string payloads — for `ACTION_SIGNAL_SET_STRING` handlers, calls `write_signal_string(string_key, version_key, value)` which updates the StringStore entry and bumps the version signal (marking subscribers dirty); falls back to normal `dispatch_event` for other action types. Forwarding methods added to `AppShell` and `ComponentContext`. New WASM exports: `handler_register_signal_set_string(rt, scope, string_key, version_key, event_name) -> handler_id`, `dispatch_event_with_string(rt, handler_id, event_type, value) -> i32`, `shell_dispatch_event_with_string(shell, handler_id, event_type, value) -> i32`. Also added string signal WASM exports needed for testing: `signal_create_string(rt, initial) -> packed_i64` (low 32 bits = string_key, high 32 bits = version_key), `signal_string_key(packed) -> i32`, `signal_version_key(packed) -> i32`, `signal_peek_string(rt, string_key) -> String`, `signal_write_string(rt, string_key, version_key, value)`, `signal_string_count(rt) -> i32`. 6 new Mojo tests in `test/test_events.mojo`: handler field verification (action=6, signal_key=string_key, operand=version_key), basic dispatch (writes string to signal), empty string dispatch, overwrite with version tracking, scope dirty via subscriber notification, fallback to normal dispatch for non-string actions.
+
+**Test count after M20.1:** 987 Mojo + 1,164 JS = 2,151 tests.
+
+---
+
 ## Phase 19 — SignalString (Reactive String Signals) ✅
 
 - **M19.1** — `StringStore` (`src/signals/runtime.mojo`). Safe heap-string storage with slab-style free-list slot reuse. Methods: `create(initial) -> UInt32`, `read(key) -> String`, `write(key, value)`, `destroy(key)`, `count()`, `contains(key)`. Added as `Runtime.strings` field. Solves the problem that the type-erased `SignalStore` (memcpy-based) is unsafe for heap types like String.

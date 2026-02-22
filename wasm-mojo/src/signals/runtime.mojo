@@ -43,6 +43,7 @@ from events import (
     ACTION_SIGNAL_SUB_I32,
     ACTION_SIGNAL_TOGGLE,
     ACTION_SIGNAL_SET_INPUT,
+    ACTION_SIGNAL_SET_STRING,
     ACTION_CUSTOM,
 )
 
@@ -1007,6 +1008,43 @@ struct Runtime(Movable):
 
         if entry.action == ACTION_SIGNAL_SET_INPUT:
             self.write_signal[Int32](entry.signal_key, value)
+            return True
+
+        # Fall back to normal dispatch for other action types
+        return self.dispatch_event(handler_id, event_type)
+
+    fn dispatch_event_with_string(
+        mut self, handler_id: UInt32, event_type: UInt8, value: String
+    ) -> Bool:
+        """Dispatch an event with a String payload (e.g. from input).
+
+        Phase 20: For ACTION_SIGNAL_SET_STRING, the payload is written
+        to the SignalString identified by the handler's signal_key
+        (string_key) and operand (version_key).  For other actions,
+        this falls back to the normal dispatch.
+
+        The string value is passed from JS via writeStringStruct() into
+        WASM linear memory; the @export wrapper reads it as a Mojo
+        String and forwards it here.
+
+        Args:
+            handler_id: The handler to invoke.
+            event_type: The DOM event type tag.
+            value: The String payload from the event (e.g. input.value).
+
+        Returns:
+            True if an action was executed, False otherwise.
+        """
+        if not self.handlers.contains(handler_id):
+            return False
+
+        var entry = self.handlers.get(handler_id)
+
+        if entry.action == ACTION_SIGNAL_SET_STRING:
+            # signal_key holds the string_key, operand holds the version_key
+            self.write_signal_string(
+                entry.signal_key, UInt32(entry.operand), value
+            )
             return True
 
         # Fall back to normal dispatch for other action types
