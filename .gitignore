@@ -34,3 +34,5 @@ flamegraph.svg
 *.qcow2
 *.img
 *.raw
+
+kgen.trace.json.*
