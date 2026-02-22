@@ -18,7 +18,8 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **AppShell abstraction** — single struct bundling runtime, store, allocator, and scheduler
 - **ComponentContext** — ergonomic Dioxus-style API with `use_signal()`, `setup_view()`, inline events, auto-numbered `dyn_text()`
 - **Three working apps** — counter, todo list, and js-framework-benchmark (all using ComponentContext)
-- **2,055 tests** — 903 Mojo (via wasmtime) + 1,152 JS (via Deno), all passing
+- **ItemBuilder + HandlerAction** — ergonomic per-item building and event dispatch for keyed lists (`begin_item()`, `add_custom_event()`, `get_action()`)
+- **2,068 tests** — 916 Mojo (via wasmtime) + 1,152 JS (via Deno), all passing
 
 ## How it works
 
@@ -292,7 +293,7 @@ Adding a new test:
 
 ## Test results
 
-2,055 tests across 29 Mojo modules and 9 JS test suites:
+2,068 tests across 29 Mojo modules and 9 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -303,7 +304,7 @@ Adding a new test:
 - **Events** — handler registry, dispatch, signal actions
 - **DSL** — Node union, tag helpers, to_template conversion, VNodeBuilder
 - **Memo** — create/destroy, dirty tracking, auto-track, propagation chain, diamond dependency, dependency re-tracking, cache hit, version bumps, cleanup, hooks
-- **Component** — AppShell lifecycle, mount/diff/finalize helpers, FragmentSlot, shell memo helpers
+- **Component** — AppShell lifecycle, mount/diff/finalize helpers, FragmentSlot, shell memo helpers, ItemBuilder handler map
 - **Counter app** — init, mount, click, flush, DOM verification, memo (doubled count) demo
 - **Todo app** — add, remove, toggle, clear, keyed list transitions
 - **Benchmark** — create/append/update/swap/select/remove/clear 1000 rows, full DOM integration
@@ -350,15 +351,18 @@ struct CounterApp:
         return vb.build()
 ```
 
-Multi-template apps (todo, bench) use `KeyedList` to bundle the item template,
-`FragmentSlot`, and child scope tracking into a single abstraction:
+Multi-template apps (todo, bench) use `KeyedList` with `ItemBuilder` for ergonomic
+per-item building and `HandlerAction` for event dispatch:
 
 ```mojo
-# Keyed list pattern (todo, bench):
+# Keyed list pattern (todo, bench) — Phase 17 ergonomics:
+alias TODO_ACTION_TOGGLE: UInt8 = 1
+alias TODO_ACTION_REMOVE: UInt8 = 2
+
 struct TodoApp:
     var ctx: ComponentContext
     var list_version: SignalI32
-    var items: KeyedList  # bundles template_id + FragmentSlot + scope_ids
+    var items: KeyedList  # bundles template_id + FragmentSlot + scope_ids + handler_map
 
     fn __init__(out self):
         self.ctx = ComponentContext.create()
@@ -382,12 +386,50 @@ struct TodoApp:
             String("todo-item"),
         ))
 
+    fn build_item(mut self, item: TodoItem) -> UInt32:
+        var ib = self.items.begin_item(String(item.id), self.ctx)
+        ib.add_dyn_text(item.display_text())
+        ib.add_custom_event(String("click"), TODO_ACTION_TOGGLE, item.id)
+        ib.add_custom_event(String("click"), TODO_ACTION_REMOVE, item.id)
+        ib.add_dyn_text_attr(String("class"), item.class_name())
+        return ib.index()
+
     fn build_items(mut self) -> UInt32:
         var frag = self.items.begin_rebuild(self.ctx)
         for i in range(len(self.data)):
-            var scope = self.items.create_scope(self.ctx)
-            var vb = self.items.item_builder(String(self.data[i].id), self.ctx)
-            # ... fill dynamic text/attrs/events ...
-            self.items.push_child(self.ctx, frag, vb.index())
+            var idx = self.build_item(self.data[i])
+            self.items.push_child(self.ctx, frag, idx)
         return frag
+
+    fn handle_event(mut self, handler_id: UInt32) -> Bool:
+        var action = self.items.get_action(handler_id)
+        if action.found:
+            if action.tag == TODO_ACTION_TOGGLE:
+                self.toggle_item(action.data)
+            elif action.tag == TODO_ACTION_REMOVE:
+                self.remove_item(action.data)
+            return True
+        return False
 ```
+
+## Deferred abstractions
+
+Some Dioxus features cannot be idiomatically expressed in Mojo today due to
+language limitations tracked on the [Mojo roadmap](https://docs.modular.com/mojo/roadmap/).
+They are documented here so they can be revisited as Mojo evolves:
+
+| Dioxus feature | Mojo blocker | Roadmap item | Status |
+|---|---|---|---|
+| **Closure event handlers** (`onclick: move \|_\| count += 1`) | No closures/function pointers in WASM; handlers use action-based structs | Lambda syntax (Phase 1), Closure refinement (Phase 1) | 🚧 In progress |
+| **`rsx!` macro** (compile-time DSL) | No hygienic macros | Hygienic importable macros (Phase 2) | ⏰ Not started |
+| **`for` loops in views** (`for item in items { ... }`) | Views are static templates; iteration happens in build functions | Hygienic macros (Phase 2) | ⏰ Not started |
+| **Generic `Signal[T]`** (`use_signal(\|\| vec![])`) | Runtime stores fixed `Int32` signals; parametric stores need conditional conformance | Conditional conformance (Phase 1) | 🚧 In progress |
+| **Dynamic component dispatch** (trait objects for components) | No existentials/dynamic traits | Existentials / dynamic traits (Phase 2) | ⏰ Not started |
+| **Pattern matching on actions** | `if/elif` chains instead of `match` | Algebraic data types & pattern matching (Phase 2) | ⏰ Not started |
+| **Async data loading / suspense** | No `async`/`await` | First-class async support (Phase 2) | ⏰ Not started |
+| **Untyped Python-style code** | Explicit types required everywhere | Phase 3: Dynamic OOP | ⏰ Not started |
+
+When these Mojo features land, the corresponding Dioxus patterns can be
+adopted — closures would eliminate `ItemBuilder.add_custom_event()` + `get_action()`,
+macros would enable an `rsx!`-like DSL, and generic signals would replace the
+current `SignalI32` / `MemoI32` handles with `Signal[Int32]`, `Signal[String]`, etc.

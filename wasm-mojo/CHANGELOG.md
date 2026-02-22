@@ -2,6 +2,18 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 17 — ItemBuilder & HandlerAction (Keyed List Ergonomics) ✅
+
+- **M17.1** — `ItemBuilder` + `HandlerAction` on `KeyedList` (`src/component/keyed_list.mojo`). `ItemBuilder` wraps VNodeBuilder + child scope + handler map pointer, providing `add_dyn_text()`, `add_dyn_text_attr()`, `add_dyn_bool_attr()`, `add_dyn_event()`, `add_custom_event()`, and `index()`. `add_custom_event(event, action_tag, data)` performs three operations in one call: registers a custom handler in the Runtime, stores the handler_id → (action_tag, data) mapping, and adds the dynamic event attribute to the VNode. `HandlerAction` struct returned by `KeyedList.get_action(handler_id)` for WASM-side dispatch (`tag`, `data`, `found` fields). `_HandlerMapping` internal storage type. `handler_map: List[_HandlerMapping]` field added to `KeyedList`. `begin_rebuild()` now also clears the handler map. `begin_item(key, ctx) -> ItemBuilder` creates child scope + keyed VNodeBuilder in one call. `get_action(handler_id) -> HandlerAction` for dispatch lookup. `handler_count()` query method. Phase 16 methods (`create_scope`, `item_builder`, `push_child`) remain available for manual pattern. Exported `ItemBuilder` and `HandlerAction` from component package.
+- **M17.2** — TodoApp migration. Removed `HandlerItemMapping` struct and `handler_map` field (replaced by `KeyedList.handler_map`). `build_item_vnode()` rewritten: `begin_item()` replaces `create_scope()` + `item_builder()`; `add_custom_event()` replaces `register_handler()` + `add_dyn_event()` + `handler_map.append()` (3 lines → 1 per handler). `handle_event()` rewritten: `get_action()` replaces manual loop over handler_map. Net reduction: ~40 lines removed.
+- **M17.3** — BenchmarkApp migration. `build_row_vnode()` rewritten with `begin_item()` + `add_custom_event()`. Removed `HandlerEntry` import (no longer needed). Added `BENCH_ACTION_SELECT` and `BENCH_ACTION_REMOVE` action tags for consistency. Net reduction: ~20 lines removed.
+- **M17.4** — WASM exports for testing. `todo_handler_map_count`, `todo_handler_action`, `todo_handler_action_data` for querying the todo KeyedList's handler map. `bench_handler_map_count` for bench. 7 new Mojo tests validating handler map population, clearing on rebuild, and 2×row_count invariant.
+- **M17.5** — Documentation. README updated with Phase 17 `ItemBuilder`/`HandlerAction` examples, updated keyed list pattern, test counts. New "Deferred abstractions" section documenting Dioxus features blocked on Mojo roadmap items (closures, macros, generic signals, async, pattern matching, existentials). AGENTS.md and CHANGELOG.md updated.
+
+**Test count after M17.5:** 916 Mojo + 1,152 JS = 2,068 tests.
+
+---
+
 ## Phase 16 — Dioxus-style DSL & KeyedList Abstractions ✅
 
 - **M16.1** — Multi-arg `el_*` overloads. 1–5 `Node` argument overloads for all 38 element helpers (`el_div`, `el_span`, `el_button`, etc.), eliminating `List[Node](...)` wrappers. 190 new function overloads using `var` ownership + `^` transfer for zero-copy ergonomics. DSL now mirrors Dioxus `rsx!` nesting: `el_div(el_h1(dyn_text()), el_button(text("Up!"), onclick_add(count, 1)))`.

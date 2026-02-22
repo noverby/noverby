@@ -1,8 +1,10 @@
 # BenchmarkApp — js-framework-benchmark implementation.
 #
-# Migrated to Dioxus-style ergonomics with Phase 16 abstractions:
+# Migrated to Phase 17 Dioxus-style ergonomics:
+#   - `begin_item()` replaces manual `create_scope()` + `item_builder()`
+#   - `add_custom_event()` replaces manual `register_handler()` + `add_dyn_event()`
 #   - Multi-arg el_* overloads (no List[Node]() wrappers)
-#   - KeyedList abstraction (bundles FragmentSlot + scope IDs + template ID)
+#   - KeyedList abstraction (bundles FragmentSlot + scope IDs + template ID + handler map)
 #   - Constructor-based setup (all init in __init__)
 #   - ctx.use_signal() for automatic scope subscription
 #   - SignalI32 handles with operator overloading
@@ -47,33 +49,27 @@
 #         }
 #     }
 #
-# Mojo equivalent (with Phase 16 abstractions):
+# Mojo equivalent (with Phase 17 abstractions):
 #
 #     struct BenchmarkApp:
 #         var ctx: ComponentContext
 #         var version: SignalI32
 #         var selected: SignalI32
-#         var rows_list: KeyedList   # bundles template_id + FragmentSlot + scope_ids
+#         var rows_list: KeyedList   # bundles template_id + FragmentSlot + scope_ids + handler_map
 #
-#         fn __init__(out self):
-#             self.ctx = ComponentContext.create()
-#             self.version = self.ctx.use_signal(0)
-#             self.selected = self.ctx.use_signal(0)
-#             self.ctx.end_setup()
-#             self.rows_list = KeyedList(self.ctx.register_extra_template(
-#                 el_tr(
-#                     dyn_attr(0),
-#                     el_td(dyn_text(0)),
-#                     el_td(el_a(dyn_attr(1), dyn_text(1))),
-#                     el_td(el_a(dyn_attr(2), text("×"))),
-#                 ),
-#                 String("bench-row"),
-#             ))
+#         fn build_row_vnode(mut self, row: BenchRow) -> UInt32:
+#             var ib = self.rows_list.begin_item(String(row.id), self.ctx)
+#             ib.add_dyn_text(String(row.id))
+#             ib.add_dyn_text(row.label)
+#             var tr_class = String("danger") if self.selected.peek() == row.id else String("")
+#             ib.add_dyn_text_attr(String("class"), tr_class)
+#             ib.add_custom_event(String("click"), BENCH_ACTION_SELECT, row.id)
+#             ib.add_custom_event(String("click"), BENCH_ACTION_REMOVE, row.id)
+#             return ib.index()
 
 from memory import UnsafePointer
 from bridge import MutationWriter
 
-from events import HandlerEntry
 from component import ComponentContext, KeyedList
 from signals import SignalI32
 from vdom import (
@@ -196,6 +192,15 @@ fn _noun(idx: Int) -> String:
         return "mouse"
 
 
+# App-defined action tags for ItemBuilder.add_custom_event() dispatch.
+# These are stored in the KeyedList's handler_map and retrievable via
+# get_action().  The bench app uses DOM event delegation on the JS side,
+# so these tags aren't used for WASM-side dispatch — they're included
+# for consistency with the Phase 17 pattern and for future use.
+alias BENCH_ACTION_SELECT: UInt8 = 1
+alias BENCH_ACTION_REMOVE: UInt8 = 2
+
+
 struct BenchmarkApp(Movable):
     """Js-framework-benchmark app state.
 
@@ -203,8 +208,10 @@ struct BenchmarkApp(Movable):
     registration — happens in __init__.  The lifecycle functions are
     thin delegations to ComponentContext.
 
-    Uses KeyedList to bundle the row template, FragmentSlot, and child
-    scope tracking into a single abstraction.
+    Uses KeyedList with Phase 17 ItemBuilder for ergonomic per-item
+    building.  Each row is built via `begin_item()` with
+    `add_custom_event()` replacing the manual `register_handler()` +
+    `add_dyn_event()` pattern.
 
     Manages a list of rows, selection state, and all rendering
     infrastructure via ComponentContext (runtime, templates, vnode
@@ -214,7 +221,7 @@ struct BenchmarkApp(Movable):
     var ctx: ComponentContext
     var version: SignalI32  # bumped on list changes
     var selected: SignalI32  # currently selected row id (0 = none)
-    var rows_list: KeyedList  # bundles template_id + FragmentSlot + scope_ids
+    var rows_list: KeyedList  # bundles template_id + FragmentSlot + scope_ids + handler_map
     var rows: List[BenchRow]
     var next_id: Int32
     var rng_state: UInt32  # simple LCG state
@@ -342,26 +349,24 @@ struct BenchmarkApp(Movable):
     fn build_row_vnode(mut self, row: BenchRow) -> UInt32:
         """Build a keyed VNode for a single benchmark row.
 
+        Uses Phase 17 ItemBuilder for ergonomic per-item construction:
+          - `begin_item()` creates child scope + keyed VNodeBuilder
+          - `add_custom_event()` registers handler + maps action + adds event attr
+
         Template "bench-row": tr > [ td(id), td > a(label), td > a("×") ]
-          dynamic_attr[0] = class on <tr> ("danger" if selected)
           dynamic_text[0] = row id
           dynamic_text[1] = row label
-          dynamic_attr[1] = click on label <a> (select)
-          dynamic_attr[2] = click on delete <a> (remove)
-
-        Uses KeyedList.create_scope() and KeyedList.item_builder() for
-        ergonomic child scope and VNode construction.
+          dynamic_attr[0] = class on <tr> ("danger" if selected)
+          dynamic_attr[1] = click on label <a> (select) → BENCH_ACTION_SELECT
+          dynamic_attr[2] = click on delete <a> (remove) → BENCH_ACTION_REMOVE
         """
-        # Create a child scope for this row's handlers (tracked by KeyedList)
-        var child_scope = self.rows_list.create_scope(self.ctx)
-
-        var vb = self.rows_list.item_builder(String(row.id), self.ctx)
+        var ib = self.rows_list.begin_item(String(row.id), self.ctx)
 
         # Dynamic text 0: row id
-        vb.add_dyn_text(String(row.id))
+        ib.add_dyn_text(String(row.id))
 
         # Dynamic text 1: row label
-        vb.add_dyn_text(row.label)
+        ib.add_dyn_text(row.label)
 
         # Dynamic attr 0: class on <tr> ("danger" if selected)
         var selected = self.selected.peek()
@@ -370,28 +375,22 @@ struct BenchmarkApp(Movable):
             tr_class = String("danger")
         else:
             tr_class = String("")
-        vb.add_dyn_text_attr(String("class"), tr_class)
+        ib.add_dyn_text_attr(String("class"), tr_class)
 
         # Dynamic attr 1: click on label <a> (select — custom handler)
-        var select_handler = self.ctx.register_handler(
-            HandlerEntry.custom(child_scope, String("click"))
-        )
-        vb.add_dyn_event(String("click"), select_handler)
+        ib.add_custom_event(String("click"), BENCH_ACTION_SELECT, row.id)
 
         # Dynamic attr 2: click on delete <a> (remove — custom handler)
-        var remove_handler = self.ctx.register_handler(
-            HandlerEntry.custom(child_scope, String("click"))
-        )
-        vb.add_dyn_event(String("click"), remove_handler)
+        ib.add_custom_event(String("click"), BENCH_ACTION_REMOVE, row.id)
 
-        return vb.index()
+        return ib.index()
 
     fn build_rows_fragment(mut self) -> UInt32:
         """Build a Fragment VNode containing all row VNodes.
 
-        Uses KeyedList.begin_rebuild() to destroy old child scopes and
-        create a new empty fragment, then builds each row VNode and
-        pushes it as a fragment child.
+        Uses KeyedList.begin_rebuild() to destroy old child scopes,
+        clear the handler map, and create a new empty fragment, then
+        builds each row VNode and pushes it as a fragment child.
         """
         var frag_idx = self.rows_list.begin_rebuild(self.ctx)
         for i in range(len(self.rows)):

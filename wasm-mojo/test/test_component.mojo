@@ -1121,6 +1121,138 @@ def test_counter_doubled_decrement(w: UnsafePointer[WasmInstance]):
     w[].call_void("counter_destroy", args_ptr(app))
 
 
+# ── Phase 17 — ItemBuilder + HandlerAction on KeyedList ──────────────────────
+
+
+def test_todo_handler_map_empty_initially(w: UnsafePointer[WasmInstance]):
+    """After init (before any flush), handler map count is 0."""
+    var app = Int(w[].call_i64("todo_init", no_args()))
+    var count = w[].call_i32("todo_handler_map_count", args_ptr(app))
+    assert_equal(count, 0, "handler map empty before first rebuild")
+    w[].call_void("todo_destroy", args_ptr(app))
+
+
+def test_bench_handler_map_empty_initially(w: UnsafePointer[WasmInstance]):
+    """After init (before any create), bench handler map count is 0."""
+    var app = Int(w[].call_i64("bench_init", no_args()))
+    var count = w[].call_i32("bench_handler_map_count", args_ptr(app))
+    assert_equal(count, 0, "bench handler map empty before rows created")
+    w[].call_void("bench_destroy", args_ptr(app))
+
+
+def test_bench_handler_map_after_create(w: UnsafePointer[WasmInstance]):
+    """After creating 10 rows and flushing, handler map has 2*10=20 entries."""
+    var app = Int(w[].call_i64("bench_init", no_args()))
+    var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(65536)))
+    # Initial mount (empty)
+    _ = w[].call_i32("bench_rebuild", args_ptr_ptr_i32(app, buf, 65536))
+    # Create 10 rows
+    w[].call_void("bench_create", args_ptr_i32(app, 10))
+    # Flush to trigger rebuild (which populates handler map)
+    _ = w[].call_i32("bench_flush", args_ptr_ptr_i32(app, buf, 65536))
+    var map_count = w[].call_i32("bench_handler_map_count", args_ptr(app))
+    assert_equal(map_count, 20, "2 handlers per row × 10 rows = 20")
+    w[].call_void("mutation_buf_free", args_ptr(buf))
+    w[].call_void("bench_destroy", args_ptr(app))
+
+
+def test_bench_handler_map_cleared_on_rebuild(w: UnsafePointer[WasmInstance]):
+    """Handler map is cleared on each begin_rebuild (via flush)."""
+    var app = Int(w[].call_i64("bench_init", no_args()))
+    var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(65536)))
+    _ = w[].call_i32("bench_rebuild", args_ptr_ptr_i32(app, buf, 65536))
+    # Create 10 rows, flush
+    w[].call_void("bench_create", args_ptr_i32(app, 10))
+    _ = w[].call_i32("bench_flush", args_ptr_ptr_i32(app, buf, 65536))
+    assert_equal(
+        w[].call_i32("bench_handler_map_count", args_ptr(app)),
+        20,
+        "20 mappings after 10 rows",
+    )
+    # Create 5 rows (replaces), flush — map should reset to 2*5=10
+    w[].call_void("bench_create", args_ptr_i32(app, 5))
+    _ = w[].call_i32("bench_flush", args_ptr_ptr_i32(app, buf, 65536))
+    assert_equal(
+        w[].call_i32("bench_handler_map_count", args_ptr(app)),
+        10,
+        "10 mappings after replacing with 5 rows",
+    )
+    w[].call_void("mutation_buf_free", args_ptr(buf))
+    w[].call_void("bench_destroy", args_ptr(app))
+
+
+def test_bench_handler_map_clear_rows(w: UnsafePointer[WasmInstance]):
+    """After clearing all rows, handler map has 0 entries."""
+    var app = Int(w[].call_i64("bench_init", no_args()))
+    var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(65536)))
+    _ = w[].call_i32("bench_rebuild", args_ptr_ptr_i32(app, buf, 65536))
+    # Create 10 rows, flush
+    w[].call_void("bench_create", args_ptr_i32(app, 10))
+    _ = w[].call_i32("bench_flush", args_ptr_ptr_i32(app, buf, 65536))
+    assert_equal(
+        w[].call_i32("bench_handler_map_count", args_ptr(app)),
+        20,
+        "20 mappings after 10 rows",
+    )
+    # Clear all rows, flush — map should be 0
+    w[].call_void("bench_clear", args_ptr(app))
+    _ = w[].call_i32("bench_flush", args_ptr_ptr_i32(app, buf, 65536))
+    assert_equal(
+        w[].call_i32("bench_handler_map_count", args_ptr(app)),
+        0,
+        "0 mappings after clearing rows",
+    )
+    w[].call_void("mutation_buf_free", args_ptr(buf))
+    w[].call_void("bench_destroy", args_ptr(app))
+
+
+def test_bench_handler_map_append_rows(w: UnsafePointer[WasmInstance]):
+    """Append adds to row count; handler map reflects total."""
+    var app = Int(w[].call_i64("bench_init", no_args()))
+    var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(65536)))
+    _ = w[].call_i32("bench_rebuild", args_ptr_ptr_i32(app, buf, 65536))
+    # Create 5, flush
+    w[].call_void("bench_create", args_ptr_i32(app, 5))
+    _ = w[].call_i32("bench_flush", args_ptr_ptr_i32(app, buf, 65536))
+    assert_equal(
+        w[].call_i32("bench_handler_map_count", args_ptr(app)),
+        10,
+        "10 after 5 rows",
+    )
+    # Append 3 more, flush — total 8 rows → 16 mappings
+    w[].call_void("bench_append", args_ptr_i32(app, 3))
+    _ = w[].call_i32("bench_flush", args_ptr_ptr_i32(app, buf, 65536))
+    assert_equal(
+        w[].call_i32("bench_handler_map_count", args_ptr(app)),
+        16,
+        "16 after appending 3 to 5 rows",
+    )
+    w[].call_void("mutation_buf_free", args_ptr(buf))
+    w[].call_void("bench_destroy", args_ptr(app))
+
+
+def test_bench_row_count_matches_handler_map(w: UnsafePointer[WasmInstance]):
+    """Handler map count is always 2 × row count after flush."""
+    var app = Int(w[].call_i64("bench_init", no_args()))
+    var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(65536)))
+    _ = w[].call_i32("bench_rebuild", args_ptr_ptr_i32(app, buf, 65536))
+    # Create 20 rows
+    w[].call_void("bench_create", args_ptr_i32(app, 20))
+    _ = w[].call_i32("bench_flush", args_ptr_ptr_i32(app, buf, 65536))
+    var rows = w[].call_i32("bench_row_count", args_ptr(app))
+    var maps = w[].call_i32("bench_handler_map_count", args_ptr(app))
+    assert_equal(maps, rows * 2, "handler map = 2 × row count")
+    # Remove a row
+    var first_id = w[].call_i32("bench_row_id_at", args_ptr_i32(app, 0))
+    w[].call_void("bench_remove", args_ptr_i32(app, first_id))
+    _ = w[].call_i32("bench_flush", args_ptr_ptr_i32(app, buf, 65536))
+    rows = w[].call_i32("bench_row_count", args_ptr(app))
+    maps = w[].call_i32("bench_handler_map_count", args_ptr(app))
+    assert_equal(maps, rows * 2, "handler map = 2 × row count after remove")
+    w[].call_void("mutation_buf_free", args_ptr(buf))
+    w[].call_void("bench_destroy", args_ptr(app))
+
+
 fn main() raises:
     from wasm_harness import get_instance
 
@@ -1173,4 +1305,12 @@ fn main() raises:
     test_shell_use_effect_hook(w)
     test_shell_effect_parity_with_runtime(w)
     test_shell_effect_drain_pending(w)
-    print("component: 45/45 passed")
+    # Phase 17 — ItemBuilder + HandlerAction on KeyedList
+    test_todo_handler_map_empty_initially(w)
+    test_bench_handler_map_empty_initially(w)
+    test_bench_handler_map_after_create(w)
+    test_bench_handler_map_cleared_on_rebuild(w)
+    test_bench_handler_map_clear_rows(w)
+    test_bench_handler_map_append_rows(w)
+    test_bench_row_count_matches_handler_map(w)
+    print("component: 52/52 passed")
