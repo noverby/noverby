@@ -158,6 +158,7 @@
 
       imports = [
         ./modules/flakelight/libBuiltins.nix
+        ./modules/flakelight/secrets.nix
         ./modules/flakelight/devenvModules.nix
         ./modules/flakelight/devenvConfigurations.nix
 
@@ -184,6 +185,7 @@
         homeModules = ["modules/home-manager" "modules/home-manager/users" "modules/home-manager/desktop"];
         devenvConfiguration = ["config/devenv"];
         devenvModules = ["modules/devenv"];
+        secrets = ["config/secrets"];
         withOverlays = ["config/with-overlays"];
       };
     };
