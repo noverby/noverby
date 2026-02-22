@@ -523,6 +523,13 @@ export interface WasmExports extends WebAssembly.Exports {
 		signalKey: number,
 		eventName: bigint,
 	): number;
+	handler_register_signal_set_string(
+		rtPtr: bigint,
+		scopeId: number,
+		stringKey: number,
+		versionKey: number,
+		eventName: bigint,
+	): number;
 	handler_register_custom(
 		rtPtr: bigint,
 		scopeId: number,
@@ -553,6 +560,25 @@ export interface WasmExports extends WebAssembly.Exports {
 		eventType: number,
 		value: number,
 	): number;
+	dispatch_event_with_string(
+		rtPtr: bigint,
+		handlerId: number,
+		eventType: number,
+		value: bigint,
+	): number;
+
+	// String signal queries (Phase 20)
+	signal_create_string(rtPtr: bigint, initial: bigint): bigint;
+	signal_string_key(packed: bigint): number;
+	signal_version_key(packed: bigint): number;
+	signal_peek_string(rtPtr: bigint, stringKey: number, outPtr: bigint): void;
+	signal_write_string(
+		rtPtr: bigint,
+		stringKey: number,
+		versionKey: number,
+		value: bigint,
+	): void;
+	signal_string_count(rtPtr: bigint): number;
 
 	// Dirty scope management
 	runtime_drain_dirty(rtPtr: bigint): number;
@@ -602,6 +628,12 @@ export interface WasmExports extends WebAssembly.Exports {
 		shellPtr: bigint,
 		handlerId: number,
 		eventType: number,
+	): number;
+	shell_dispatch_event_with_string(
+		shellPtr: bigint,
+		handlerId: number,
+		eventType: number,
+		value: bigint,
 	): number;
 	shell_rt_ptr(shellPtr: bigint): bigint;
 	shell_store_ptr(shellPtr: bigint): bigint;

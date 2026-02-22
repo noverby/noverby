@@ -156,7 +156,7 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 
 - `mod.ts` — WASM instantiation entry point.
 - `interpreter.ts` — DOM stack machine reading binary mutations.
-- `events.ts` — `EventBridge` captures DOM events, dispatches handler IDs to WASM.
+- `events.ts` — `EventBridge` captures DOM events, dispatches handler IDs to WASM. For `input`/`change` events, extracts `event.target.value` as a string and dispatches via `DispatchWithStringFn` → `writeStringStruct()` → WASM `dispatch_event_with_string` (Phase 20, M20.2). Falls back to numeric then default dispatch.
 - `templates.ts` — `TemplateCache` registers templates from `RegisterTemplate` mutations.
 - `strings.ts` — Mojo `String` ABI (SSO layout: inline ≤23 bytes, heap pointer otherwise).
 - `memory.ts` — bump allocator for WASM linear memory.
@@ -165,7 +165,9 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 
 Phase 20 adds the infrastructure for passing string values from DOM events to WASM `SignalString` signals. This is the key missing piece for Dioxus-style `oninput` handling.
 
-**Dispatch path**: JS EventBridge extracts `event.target.value` → `writeStringStruct()` → `dispatch_event_with_string(rt, handler_id, event_type, string_ptr)` → Runtime looks up handler → for `ACTION_SIGNAL_SET_STRING`: `write_signal_string(string_key, version_key, value)` → bumps version signal → marks subscriber scopes dirty.
+**Dispatch path (M20.1 Mojo + M20.2 JS)**: JS EventBridge `handleEvent()` → for `input`/`change` events: extract `event.target.value` → `writeStringStruct(value)` → `dispatchWithStringFn(hid, eventType, stringPtr)` → WASM `dispatch_event_with_string(rt, handler_id, event_type, string_ptr)` → Runtime looks up handler → for `ACTION_SIGNAL_SET_STRING`: `write_signal_string(string_key, version_key, value)` → bumps version signal → marks subscriber scopes dirty. If string dispatch returns 0: try numeric fallback (`parseInt` + `dispatchWithValueFn`), then default no-payload dispatch. Non-input events (click, keydown, etc.) bypass string dispatch entirely.
+
+**JS wiring (M20.2)**: `EventBridge.setDispatch(dispatch, dispatchWithValue?, dispatchWithString?)` — third parameter enables string dispatch. `AppConfig.handleEventWithString` optional callback; `createApp()` wires it to `EventBridge.dispatchWithStringFn` when provided. `DispatchWithStringFn` type: `(handlerId, eventType, stringPtr) => number`.
 
 **Handler encoding**: `HandlerEntry.signal_set_string(scope_id, string_key, version_key, event_name)` repurposes existing fields — `signal_key` holds the `string_key` (StringStore index), `operand` holds the `version_key` (cast to Int32).
 
@@ -188,7 +190,11 @@ Phase 20 adds the infrastructure for passing string values from DOM events to WA
 | `src/vdom/dsl.mojo` | ~2,870 | Node DSL + el_* helpers + multi-arg overloads + conditional helpers + to_template |
 | `src/vdom/vnode.mojo` | ~600 | VNode + VNodeStore + VNodeBuilder |
 | `src/mutations/diff.mojo` | ~500 | DiffEngine (keyed reconciliation) |
-| `CHANGELOG.md` | ~200 | Development history (Phases 0–19) |
+| `runtime/events.ts` | ~375 | EventBridge + DispatchWithStringFn (M20.2) |
+| `runtime/app.ts` | ~370 | createApp + createCounterApp + AppConfig with handleEventWithString |
+| `runtime/types.ts` | ~690 | WasmExports interface (Phase 20 string dispatch exports) |
+| `test-js/events.test.ts` | ~650 | EventBridge string dispatch tests (unit + WASM integration) |
+| `CHANGELOG.md` | ~205 | Development history (Phases 0–20) |
 
 ## Common Patterns
 
