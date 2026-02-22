@@ -1,0 +1,5 @@
+nix-build host:
+    nixos-rebuild build --flake .#{{ host }} --print-build-logs
+
+nix-switch host:
+    sudo nixos-rebuild switch --flake .#{{ host }} --print-build-logs
