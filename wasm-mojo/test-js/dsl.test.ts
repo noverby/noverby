@@ -27,6 +27,8 @@ const NODE_DYN_TEXT = 2;
 const NODE_DYN_NODE = 3;
 const NODE_STATIC_ATTR = 4;
 const NODE_DYN_ATTR = 5;
+const NODE_EVENT = 6;
+const NODE_BIND_VALUE = 7;
 
 // ── HTML tag constants (matching src/vdom/tags.mojo) ────────────────────────
 
@@ -512,4 +514,75 @@ export function testDsl(fns: Fns): void {
 		fns.vnode_store_destroy(store);
 		fns.runtime_destroy(rt);
 	}
+
+	// ═════════════════════════════════════════════════════════════════════
+	// Section 6: Phase 20 — M20.3: oninput_set_string / onchange_set_string
+	// ═════════════════════════════════════════════════════════════════════
+
+	suite("DSL — oninput_set_string node");
+	assert(
+		fns.dsl_test_oninput_set_string_node(),
+		1,
+		"oninput_set_string creates NODE_EVENT with correct fields",
+	);
+
+	suite("DSL — onchange_set_string node");
+	assert(
+		fns.dsl_test_onchange_set_string_node(),
+		1,
+		"onchange_set_string creates NODE_EVENT with correct fields",
+	);
+
+	suite("DSL — oninput_set_string in element");
+	assert(
+		fns.dsl_test_oninput_in_element(),
+		1,
+		"oninput_set_string counts as dynamic attr inside element",
+	);
+
+	// ═════════════════════════════════════════════════════════════════════
+	// Section 7: Phase 20 — M20.4: bind_value / bind_attr
+	// ═════════════════════════════════════════════════════════════════════
+
+	suite("DSL — bind_value node");
+	assert(
+		fns.dsl_test_bind_value_node(),
+		1,
+		"bind_value creates NODE_BIND_VALUE with attr_name='value'",
+	);
+
+	suite("DSL — bind_attr node");
+	assert(
+		fns.dsl_test_bind_attr_node(),
+		1,
+		"bind_attr creates NODE_BIND_VALUE with custom attr name",
+	);
+
+	suite("DSL — bind_value in element");
+	assert(
+		fns.dsl_test_bind_value_in_element(),
+		1,
+		"bind_value counts as dynamic attr inside element",
+	);
+
+	suite("DSL — two-way binding element");
+	assert(
+		fns.dsl_test_two_way_binding_element(),
+		1,
+		"bind_value + oninput_set_string together produce 2 dynamic attrs",
+	);
+
+	suite("DSL — bind_value to_template");
+	assert(
+		fns.dsl_test_bind_value_to_template(),
+		1,
+		"bind_value converts to TATTR_DYNAMIC in template",
+	);
+
+	suite("DSL — two-way binding to_template");
+	assert(
+		fns.dsl_test_two_way_to_template(),
+		1,
+		"bind_value + oninput_set_string converts to 2 TATTR_DYNAMICs",
+	);
 }

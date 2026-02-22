@@ -20,7 +20,8 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **Three working apps** — counter, todo list, and js-framework-benchmark (all using ComponentContext)
 - **ItemBuilder + HandlerAction** — ergonomic per-item building and event dispatch for keyed lists (`begin_item()`, `add_custom_event()`, `get_action()`)
 - **String event dispatch** — `ACTION_SIGNAL_SET_STRING` handlers pipe string values from DOM events directly into `SignalString` signals; JS EventBridge extracts `event.target.value` → `writeStringStruct()` → WASM `dispatch_event_with_string` with automatic fallback to numeric/default dispatch
-- **2,200 tests** — 987 Mojo (via wasmtime) + 1,213 JS (via Deno), all passing
+- **Two-way input binding** — Dioxus-style `oninput_set_string(signal)` + `bind_value(signal)` DSL helpers for inline string event handlers and auto-populated `value` attributes; `RenderBuilder.build()` reads `SignalString` at render time
+- **2,218 tests** — 996 Mojo (via wasmtime) + 1,222 JS (via Deno), all passing
 
 ## How it works
 
@@ -299,7 +300,7 @@ Adding a new test:
 
 ## Test results
 
-2,200 tests across 29 Mojo modules and 10 JS test suites:
+2,218 tests across 29 Mojo modules and 10 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -308,7 +309,7 @@ Adding a new test:
 - **VNodes** — template refs, text, placeholders, fragments, keyed children
 - **Mutations** — create engine, diff engine, binary protocol round-trip
 - **Events** — handler registry, dispatch, signal actions, string dispatch (Phase 20), EventBridge string extraction, dispatch fallback chain, WASM integration
-- **DSL** — Node union, tag helpers, to_template conversion, VNodeBuilder
+- **DSL** — Node union, tag helpers, to_template conversion, VNodeBuilder, `oninput_set_string` / `onchange_set_string` node fields (M20.3), `bind_value` / `bind_attr` node fields and element integration (M20.4), two-way binding element + template conversion
 - **Memo** — create/destroy, dirty tracking, auto-track, propagation chain, diamond dependency, dependency re-tracking, cache hit, version bumps, cleanup, hooks
 - **Component** — AppShell lifecycle, mount/diff/finalize helpers, FragmentSlot, shell memo helpers, ItemBuilder handler map
 - **Counter app** — init, mount, click, flush, DOM verification, memo (doubled count) demo
@@ -462,6 +463,48 @@ var count = ctx.use_signal(0)
 var label = ctx.use_signal_string(String("Count: 0"))
 count += 1
 label.set(String("Count: ") + String(count.peek()))
+```
+
+Phase 20 (M20.3 + M20.4) adds Dioxus-style two-way input binding via inline
+DSL helpers. `oninput_set_string(signal)` writes the input's string value into
+a `SignalString` on every keystroke; `bind_value(signal)` auto-populates the
+`value` attribute at render time by reading the signal. Combined, they give
+full two-way binding without any manual handler registration or attribute
+management:
+
+```mojo
+# Dioxus (Rust):
+#     input { value: "{text}", oninput: move |e| text.set(e.value()) }
+
+# Mojo equivalent — two-way input binding (Phase 20):
+struct SearchApp:
+    var ctx: ComponentContext
+    var query: SignalString
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.query = self.ctx.use_signal_string(String(""))
+        self.ctx.setup_view(
+            el_div(
+                el_input(
+                    attr(String("type"), String("text")),
+                    attr(String("placeholder"), String("Search...")),
+                    bind_value(self.query),              # value attr ← signal
+                    oninput_set_string(self.query),       # signal ← input event
+                ),
+                el_p(dyn_text()),                        # display current value
+            ),
+            String("search"),
+        )
+
+    fn render(mut self) -> UInt32:
+        var vb = self.ctx.render_builder()
+        vb.add_dyn_text(String("You typed: ") + String(self.query.peek()))
+        return vb.build()  # auto-adds value attr + event handler
+
+# Also available:
+#   onchange_set_string(signal)   — fires on "change" instead of "input"
+#   bind_attr("placeholder", sig) — bind any attribute, not just "value"
 ```
 
 ## Deferred abstractions

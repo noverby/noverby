@@ -163,7 +163,7 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 
 ## String Event Dispatch (Phase 20)
 
-Phase 20 adds the infrastructure for passing string values from DOM events to WASM `SignalString` signals. This is the key missing piece for Dioxus-style `oninput` handling.
+Phase 20 adds the infrastructure for passing string values from DOM events to WASM `SignalString` signals, culminating in Dioxus-style two-way input binding.
 
 **Dispatch path (M20.1 Mojo + M20.2 JS)**: JS EventBridge `handleEvent()` → for `input`/`change` events: extract `event.target.value` → `writeStringStruct(value)` → `dispatchWithStringFn(hid, eventType, stringPtr)` → WASM `dispatch_event_with_string(rt, handler_id, event_type, string_ptr)` → Runtime looks up handler → for `ACTION_SIGNAL_SET_STRING`: `write_signal_string(string_key, version_key, value)` → bumps version signal → marks subscriber scopes dirty. If string dispatch returns 0: try numeric fallback (`parseInt` + `dispatchWithValueFn`), then default no-payload dispatch. Non-input events (click, keydown, etc.) bypass string dispatch entirely.
 
@@ -172,6 +172,35 @@ Phase 20 adds the infrastructure for passing string values from DOM events to WA
 **Handler encoding**: `HandlerEntry.signal_set_string(scope_id, string_key, version_key, event_name)` repurposes existing fields — `signal_key` holds the `string_key` (StringStore index), `operand` holds the `version_key` (cast to Int32).
 
 **WASM exports**: `handler_register_signal_set_string`, `dispatch_event_with_string`, `shell_dispatch_event_with_string`, `signal_create_string` (returns packed i64), `signal_string_key`, `signal_version_key`, `signal_peek_string`, `signal_write_string`, `signal_string_count`.
+
+**DSL helpers (M20.3)**: `oninput_set_string(signal: SignalString) -> Node` creates a `NODE_EVENT` for `"input"` with `ACTION_SIGNAL_SET_STRING`. `onchange_set_string(signal: SignalString) -> Node` does the same for `"change"`. Both store `string_key` in `dynamic_index` and `Int32(version_key)` in `operand`, matching `HandlerEntry.signal_set_string()` encoding. Processed by `register_view()` / `setup_view()` which auto-assigns dyn_attr indices and registers handlers.
+
+**Value binding (M20.4)**: `NODE_BIND_VALUE` node kind (tag 7) carries a SignalString reference (attr_name in `text`, string_key in `dynamic_index`, version_key in `operand`). `bind_value(signal: SignalString) -> Node` creates one with `attr_name="value"`; `bind_attr(attr_name, signal) -> Node` supports arbitrary attribute names. `_process_view_tree()` handles `NODE_BIND_VALUE` like `NODE_EVENT` — collects `_ValueBindingInfo` and replaces with `NODE_DYN_ATTR`. New `AutoBinding` tagged union (`AUTO_BIND_EVENT` / `AUTO_BIND_VALUE`) stores both events and value bindings in tree-walk order. `register_view()` interleaves them by `attr_idx`. `RenderBuilder.build()` auto-populates: events via `add_dyn_event()`, value bindings via `peek_signal_string()` + `add_dyn_text_attr()`. Falls back to legacy `EventBinding` path when no auto-bindings present.
+
+**Two-way binding pattern (M20.3 + M20.4)**:
+
+```mojo
+el_input(
+    attr("type", "text"),
+    bind_value(input_text),          # M20.4: value attr ← signal
+    oninput_set_string(input_text),   # M20.3: signal ← input event
+)
+```
+
+Equivalent Dioxus: `input { value: "{text}", oninput: move |e| text.set(e.value()) }`
+
+## Node Kind Tags (`src/vdom/dsl.mojo`)
+
+| Tag | Value | Description |
+|-----|-------|-------------|
+| `NODE_TEXT` | 0 | Static text content |
+| `NODE_ELEMENT` | 1 | HTML element with tag, children, attrs |
+| `NODE_DYN_TEXT` | 2 | Dynamic text placeholder (slot index) |
+| `NODE_DYN_NODE` | 3 | Dynamic node placeholder (slot index) |
+| `NODE_STATIC_ATTR` | 4 | Static attribute (name + value) |
+| `NODE_DYN_ATTR` | 5 | Dynamic attribute placeholder (slot index) |
+| `NODE_EVENT` | 6 | Inline event handler (action + signal + operand) |
+| `NODE_BIND_VALUE` | 7 | Value binding (SignalString → dynamic attr) (Phase 20, M20.4) |
 
 ## File Size Reference
 
@@ -194,11 +223,16 @@ Phase 20 adds the infrastructure for passing string values from DOM events to WA
 | `runtime/app.ts` | ~370 | createApp + createCounterApp + AppConfig with handleEventWithString |
 | `runtime/types.ts` | ~690 | WasmExports interface (Phase 20 string dispatch exports) |
 | `test-js/events.test.ts` | ~650 | EventBridge string dispatch tests (unit + WASM integration) |
-| `CHANGELOG.md` | ~205 | Development history (Phases 0–20) |
+| `test-js/dsl.test.ts` | ~590 | DSL tests incl. M20.3/M20.4 string binding tests |
+| `CHANGELOG.md` | ~215 | Development history (Phases 0–20) |
 
 ## Common Patterns
 
-**String event dispatch (Phase 20)**: Register a handler with `HandlerEntry.signal_set_string(scope_id, signal.string_key, signal.version_key, String("input"))`, then dispatch from JS via `dispatch_event_with_string(rt, handler_id, event_type, string_value)`. The runtime writes the string to the `SignalString` and bumps the version signal.
+**String event dispatch (Phase 20 — manual)**: Register a handler with `HandlerEntry.signal_set_string(scope_id, signal.string_key, signal.version_key, String("input"))`, then dispatch from JS via `dispatch_event_with_string(rt, handler_id, event_type, string_value)`. The runtime writes the string to the `SignalString` and bumps the version signal.
+
+**Inline string event binding (Phase 20 — M20.3)**: `oninput_set_string(signal)` / `onchange_set_string(signal)` create `NODE_EVENT` nodes with `ACTION_SIGNAL_SET_STRING`. Used with `register_view()` / `setup_view()` for automatic handler registration: `el_input(oninput_set_string(name))`.
+
+**Two-way input binding (Phase 20 — M20.3 + M20.4)**: Combine `bind_value(signal)` (auto-populates `value` attribute at render time) with `oninput_set_string(signal)` (writes input value back to signal): `el_input(attr("type", "text"), bind_value(text), oninput_set_string(text))`. The `RenderBuilder.build()` reads the signal and emits the `value` attr automatically. For custom attribute names, use `bind_attr("placeholder", signal)`.
 
 **Adding a signal to a component**: `var foo = self.ctx.use_signal(0)` in setup, `foo.peek()` to read, `foo += 1` or `foo.set(v)` to write.
 
@@ -228,7 +262,7 @@ Phase 20 adds the infrastructure for passing string values from DOM events to WA
 
 ## Deferred Abstractions (Blocked on Mojo Roadmap)
 
-- **Closure event handlers** → blocked on Lambda syntax + Closure refinement (Phase 1, 🚧). Would eliminate `ItemBuilder.add_custom_event()` + `get_action()`. Phase 20 string dispatch partially addresses this for input events.
+- **Closure event handlers** → blocked on Lambda syntax + Closure refinement (Phase 1, 🚧). Would eliminate `ItemBuilder.add_custom_event()` + `get_action()`. Phase 20 string dispatch + inline DSL helpers (`oninput_set_string`, `bind_value`) address this for input events.
 - **`rsx!` macro** → blocked on Hygienic importable macros (Phase 2, ⏰). Would enable compile-time DSL like Dioxus.
 - **`for` loops in views** → blocked on macros (Phase 2, ⏰). Currently iteration happens in build functions.
 - **Generic `Signal[T]`** → blocked on Conditional conformance (Phase 1, 🚧). Currently `SignalI32` / `SignalBool` / `SignalString` / `MemoI32` (Phase 18 added `SignalBool`, Phase 19 added `SignalString`).

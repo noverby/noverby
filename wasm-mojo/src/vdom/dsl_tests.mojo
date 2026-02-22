@@ -15,11 +15,17 @@ from .dsl import (
     NODE_DYN_NODE,
     NODE_STATIC_ATTR,
     NODE_DYN_ATTR,
+    NODE_EVENT,
+    NODE_BIND_VALUE,
     text,
     dyn_text,
     dyn_node,
     attr,
     dyn_attr,
+    oninput_set_string,
+    onchange_set_string,
+    bind_value,
+    bind_attr,
     el_div,
     el_span,
     el_p,
@@ -115,7 +121,9 @@ from .tags import (
 from .template import TNODE_ELEMENT, TNODE_TEXT
 from .vnode import VNodeStore, VNODE_TEMPLATE_REF
 from .builder import TemplateBuilder
-from signals import create_runtime, destroy_runtime
+from signals import create_runtime, destroy_runtime, Runtime
+from signals.handle import SignalString
+from events.registry import ACTION_SIGNAL_SET_STRING
 
 
 fn test_text_node() -> Int32:
@@ -758,4 +766,308 @@ fn test_template_equivalence() -> Int32:
 
     destroy_runtime(rt1)
     destroy_runtime(rt2)
+    return 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 20 — M20.3: oninput_set_string / onchange_set_string tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+fn test_oninput_set_string_node() -> Int32:
+    """Test: oninput_set_string creates a NODE_EVENT with correct fields."""
+    var rt_ptr = create_runtime()
+    var keys = rt_ptr[0].create_signal_string(String("hello"))
+    var sig = SignalString(keys[0], keys[1], rt_ptr)
+
+    var n = oninput_set_string(sig)
+
+    # Verify node kind
+    if n.kind != NODE_EVENT:
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify event name
+    if n.text != String("input"):
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify action tag is ACTION_SIGNAL_SET_STRING (6)
+    if n.tag != ACTION_SIGNAL_SET_STRING:
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify signal_key = string_key
+    if n.dynamic_index != keys[0]:
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify operand = Int32(version_key)
+    if n.operand != Int32(keys[1]):
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify it counts as an event node
+    if not n.is_event():
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify it counts as an attr
+    if not n.is_attr():
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+fn test_onchange_set_string_node() -> Int32:
+    """Test: onchange_set_string creates a NODE_EVENT with correct fields."""
+    var rt_ptr = create_runtime()
+    var keys = rt_ptr[0].create_signal_string(String("world"))
+    var sig = SignalString(keys[0], keys[1], rt_ptr)
+
+    var n = onchange_set_string(sig)
+
+    # Verify node kind
+    if n.kind != NODE_EVENT:
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify event name is "change" (not "input")
+    if n.text != String("change"):
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify action tag
+    if n.tag != ACTION_SIGNAL_SET_STRING:
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify signal_key = string_key
+    if n.dynamic_index != keys[0]:
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify operand = Int32(version_key)
+    if n.operand != Int32(keys[1]):
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+fn test_oninput_in_element() -> Int32:
+    """Test: oninput_set_string inside an element counts as a dynamic attr."""
+    var rt_ptr = create_runtime()
+    var keys = rt_ptr[0].create_signal_string(String(""))
+    var sig = SignalString(keys[0], keys[1], rt_ptr)
+
+    var n = el_input(
+        attr(String("type"), String("text")),
+        oninput_set_string(sig),
+    )
+
+    # 2 items: 1 static attr + 1 event
+    if n.item_count() != 2:
+        destroy_runtime(rt_ptr)
+        return 0
+    if n.static_attr_count() != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+    if n.event_count() != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+    if n.dynamic_attr_count() != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 20 — M20.4: bind_value / bind_attr tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+fn test_bind_value_node() -> Int32:
+    """Test: bind_value creates a NODE_BIND_VALUE with attr_name='value'."""
+    var rt_ptr = create_runtime()
+    var keys = rt_ptr[0].create_signal_string(String("initial"))
+    var sig = SignalString(keys[0], keys[1], rt_ptr)
+
+    var n = bind_value(sig)
+
+    # Verify node kind
+    if n.kind != NODE_BIND_VALUE:
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify attr_name is "value"
+    if n.text != String("value"):
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify string_key stored in dynamic_index
+    if n.dynamic_index != keys[0]:
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify version_key stored in operand
+    if n.operand != Int32(keys[1]):
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify it counts as an attr
+    if not n.is_attr():
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify is_bind_value
+    if not n.is_bind_value():
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify it's NOT a child
+    if n.is_child():
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+fn test_bind_attr_node() -> Int32:
+    """Test: bind_attr creates a NODE_BIND_VALUE with custom attr name."""
+    var rt_ptr = create_runtime()
+    var keys = rt_ptr[0].create_signal_string(String("hint"))
+    var sig = SignalString(keys[0], keys[1], rt_ptr)
+
+    var n = bind_attr(String("placeholder"), sig)
+
+    # Verify node kind
+    if n.kind != NODE_BIND_VALUE:
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify attr_name is "placeholder"
+    if n.text != String("placeholder"):
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify string_key
+    if n.dynamic_index != keys[0]:
+        destroy_runtime(rt_ptr)
+        return 0
+    # Verify version_key
+    if n.operand != Int32(keys[1]):
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+fn test_bind_value_in_element() -> Int32:
+    """Test: bind_value inside an element counts as a dynamic attr."""
+    var rt_ptr = create_runtime()
+    var keys = rt_ptr[0].create_signal_string(String("text"))
+    var sig = SignalString(keys[0], keys[1], rt_ptr)
+
+    var n = el_input(
+        attr(String("type"), String("text")),
+        bind_value(sig),
+    )
+
+    if n.item_count() != 2:
+        destroy_runtime(rt_ptr)
+        return 0
+    if n.static_attr_count() != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+    if n.bind_value_count() != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+    # bind_value counts as a dynamic attr
+    if n.dynamic_attr_count() != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+fn test_two_way_binding_element() -> Int32:
+    """Test: bind_value + oninput_set_string together in an element."""
+    var rt_ptr = create_runtime()
+    var keys = rt_ptr[0].create_signal_string(String(""))
+    var sig = SignalString(keys[0], keys[1], rt_ptr)
+
+    var n = el_input(
+        attr(String("type"), String("text")),
+        bind_value(sig),
+        oninput_set_string(sig),
+    )
+
+    # 3 items: 1 static attr + 1 bind_value + 1 event
+    if n.item_count() != 3:
+        destroy_runtime(rt_ptr)
+        return 0
+    if n.static_attr_count() != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+    if n.bind_value_count() != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+    if n.event_count() != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+    # Both bind_value and event count as dynamic attrs
+    if n.dynamic_attr_count() != 2:
+        destroy_runtime(rt_ptr)
+        return 0
+    # count_dynamic_attr_slots on the tree should also be 2
+    if count_dynamic_attr_slots(n) != 2:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+fn test_bind_value_to_template() -> Int32:
+    """Test: bind_value converts to a TATTR_DYNAMIC in the template."""
+    var rt_ptr = create_runtime()
+    var keys = rt_ptr[0].create_signal_string(String("test"))
+    var sig = SignalString(keys[0], keys[1], rt_ptr)
+
+    # Build a template with bind_value
+    # Note: bind_value gets a dynamic_index from the node, but
+    # to_template treats it like a dyn_attr.
+    var view = el_input(
+        attr(String("type"), String("text")),
+        bind_value(sig),
+    )
+    var template = to_template(view, String("bind-test"))
+    var tmpl_id = rt_ptr[0].templates.register(template^)
+
+    # Template should have: input element with 1 static attr + 1 dynamic attr
+    if rt_ptr[0].templates.node_count(tmpl_id) != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+    if rt_ptr[0].templates.dynamic_attr_count(tmpl_id) != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+fn test_two_way_to_template() -> Int32:
+    """Test: bind_value + oninput_set_string converts to 2 TATTR_DYNAMICs."""
+    var rt_ptr = create_runtime()
+    var keys = rt_ptr[0].create_signal_string(String(""))
+    var sig = SignalString(keys[0], keys[1], rt_ptr)
+
+    var view = el_input(
+        attr(String("type"), String("text")),
+        bind_value(sig),
+        oninput_set_string(sig),
+    )
+    var template = to_template(view, String("two-way-test"))
+    var tmpl_id = rt_ptr[0].templates.register(template^)
+
+    # 1 node (input), 2 dynamic attrs (bind_value + event)
+    if rt_ptr[0].templates.node_count(tmpl_id) != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+    if rt_ptr[0].templates.dynamic_attr_count(tmpl_id) != 2:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
     return 1

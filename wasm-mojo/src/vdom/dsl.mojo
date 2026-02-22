@@ -200,6 +200,7 @@ alias NODE_DYN_NODE: UInt8 = 3  # Dynamic node placeholder (slot index)
 alias NODE_STATIC_ATTR: UInt8 = 4  # Static attribute (name + value)
 alias NODE_DYN_ATTR: UInt8 = 5  # Dynamic attribute placeholder (slot index)
 alias NODE_EVENT: UInt8 = 6  # Inline event handler (action + signal + operand)
+alias NODE_BIND_VALUE: UInt8 = 7  # Value binding (SignalString → dynamic attr)
 
 # ── Auto-numbering sentinel ──────────────────────────────────────────────────
 #
@@ -434,13 +435,18 @@ struct Node(Copyable, Movable):
         """Check whether this is an inline event handler node."""
         return self.kind == NODE_EVENT
 
+    fn is_bind_value(self) -> Bool:
+        """Check whether this is a value binding node."""
+        return self.kind == NODE_BIND_VALUE
+
     fn is_attr(self) -> Bool:
-        """Check whether this is any kind of attribute (static, dynamic, or event).
+        """Check whether this is any kind of attribute (static, dynamic, event, or binding).
         """
         return (
             self.kind == NODE_STATIC_ATTR
             or self.kind == NODE_DYN_ATTR
             or self.kind == NODE_EVENT
+            or self.kind == NODE_BIND_VALUE
         )
 
     fn is_child(self) -> Bool:
@@ -484,16 +490,25 @@ struct Node(Copyable, Movable):
                 count += 1
         return count
 
+    fn bind_value_count(self) -> Int:
+        """Return the number of value binding nodes in an element."""
+        var count = 0
+        for i in range(len(self.items)):
+            if self.items[i].kind == NODE_BIND_VALUE:
+                count += 1
+        return count
+
     fn dynamic_attr_count(self) -> Int:
         """Return the number of dynamic attribute placeholders in an element.
 
-        Includes both explicit dyn_attr and inline event nodes.
+        Includes explicit dyn_attr, inline event, and value binding nodes.
         """
         var count = 0
         for i in range(len(self.items)):
             if (
                 self.items[i].kind == NODE_DYN_ATTR
                 or self.items[i].kind == NODE_EVENT
+                or self.items[i].kind == NODE_BIND_VALUE
             ):
                 count += 1
         return count
@@ -590,8 +605,9 @@ from events.registry import (
     ACTION_SIGNAL_SET_I32,
     ACTION_SIGNAL_TOGGLE,
     ACTION_SIGNAL_SET_INPUT,
+    ACTION_SIGNAL_SET_STRING,
 )
-from signals.handle import SignalI32
+from signals.handle import SignalI32, SignalString
 
 
 fn onclick_add(signal: SignalI32, delta: Int32) -> Node:
@@ -662,6 +678,141 @@ fn on_event(
         el_input(List[Node](on_event("input", text_sig, ACTION_SIGNAL_SET_INPUT, 0)))
     """
     return Node.event_node(event_name, action, signal.key, operand)
+
+
+# ── Inline string event handler constructors (Phase 20 — M20.3) ─────────────
+#
+# These create NODE_EVENT nodes for SignalString binding on input/change events.
+# Processed by ComponentContext.register_view() which registers handlers with
+# ACTION_SIGNAL_SET_STRING, storing string_key in signal_key and version_key
+# in operand — exactly matching HandlerEntry.signal_set_string().
+
+
+fn oninput_set_string(signal: SignalString) -> Node:
+    """Create an inline input handler that sets a SignalString from the input value.
+
+    Equivalent to Dioxus: `oninput: move |e| signal.set(e.value())`
+
+    The handler stores both the string_key and version_key so that
+    dispatch_event_with_string() can call write_signal_string().
+
+    Usage:
+        el_input(oninput_set_string(name))
+        el_input(bind_value(name), oninput_set_string(name))  # two-way binding
+
+    Args:
+        signal: The SignalString to update from input events.
+
+    Returns:
+        A NODE_EVENT node for "input" with ACTION_SIGNAL_SET_STRING.
+    """
+    return Node.event_node(
+        String("input"),
+        ACTION_SIGNAL_SET_STRING,
+        signal.string_key,
+        Int32(signal.version_key),
+    )
+
+
+fn onchange_set_string(signal: SignalString) -> Node:
+    """Create an inline change handler that sets a SignalString from the input value.
+
+    Like `oninput_set_string` but fires on the "change" event (when the
+    input loses focus or the user presses Enter), not on every keystroke.
+
+    Equivalent to Dioxus: `onchange: move |e| signal.set(e.value())`
+
+    Usage:
+        el_input(onchange_set_string(name))
+        el_select(onchange_set_string(selected))
+
+    Args:
+        signal: The SignalString to update from change events.
+
+    Returns:
+        A NODE_EVENT node for "change" with ACTION_SIGNAL_SET_STRING.
+    """
+    return Node.event_node(
+        String("change"),
+        ACTION_SIGNAL_SET_STRING,
+        signal.string_key,
+        Int32(signal.version_key),
+    )
+
+
+# ── Value binding constructors (Phase 20 — M20.4) ───────────────────────────
+#
+# These create NODE_BIND_VALUE nodes that carry a SignalString reference.
+# Processed by ComponentContext.register_view() which auto-populates the
+# dynamic attribute at render time by reading the signal's current value.
+#
+# NODE_BIND_VALUE fields:
+#   text         → attribute name (e.g. "value", "checked")
+#   dynamic_index → string_key (SignalString's StringStore key)
+#   operand      → Int32(version_key) (companion version signal key)
+
+
+fn bind_value(signal: SignalString) -> Node:
+    """Create a value binding that syncs an input's value to a SignalString.
+
+    Produces a NODE_BIND_VALUE node with attr_name="value".  When used
+    with `register_view()` / `setup_view()`, the binding is auto-populated
+    at render time — `RenderBuilder.build()` reads the signal and emits
+    a dynamic "value" attribute.
+
+    For two-way binding, combine with `oninput_set_string()`:
+
+        el_input(
+            attr("type", "text"),
+            bind_value(input_text),          # M20.4: value → signal
+            oninput_set_string(input_text),   # M20.3: signal ← input
+        )
+
+    Equivalent Dioxus pattern:
+        input { value: "{text}", oninput: move |e| text.set(e.value()) }
+
+    Args:
+        signal: The SignalString whose value drives the attribute.
+
+    Returns:
+        A NODE_BIND_VALUE node for the "value" attribute.
+    """
+    return Node(
+        kind=NODE_BIND_VALUE,
+        tag=0,
+        text=String("value"),
+        attr_value=String(""),
+        dynamic_index=signal.string_key,
+        operand=Int32(signal.version_key),
+        items=List[Node](),
+    )
+
+
+fn bind_attr(attr_name: String, signal: SignalString) -> Node:
+    """Create a value binding for an arbitrary attribute name.
+
+    Like `bind_value()` but lets you specify the attribute name.
+    Useful for binding to attributes other than "value" (e.g. "placeholder").
+
+    Usage:
+        el_input(bind_attr("placeholder", hint_signal))
+
+    Args:
+        attr_name: The HTML attribute name to bind.
+        signal: The SignalString whose value drives the attribute.
+
+    Returns:
+        A NODE_BIND_VALUE node for the specified attribute.
+    """
+    return Node(
+        kind=NODE_BIND_VALUE,
+        tag=0,
+        text=attr_name,
+        attr_value=String(""),
+        dynamic_index=signal.string_key,
+        operand=Int32(signal.version_key),
+        items=List[Node](),
+    )
 
 
 # ── Generic element constructor ──────────────────────────────────────────────
@@ -3006,11 +3157,12 @@ fn _build_node(mut builder: TemplateBuilder, node: Node, parent: Int):
                     idx, node.items[i].text, node.items[i].attr_value
                 )
 
-        # Pass 2: dynamic attributes (explicit dyn_attr + event nodes)
+        # Pass 2: dynamic attributes (explicit dyn_attr + event + bind_value nodes)
         for i in range(len(node.items)):
             if (
                 node.items[i].kind == NODE_DYN_ATTR
                 or node.items[i].kind == NODE_EVENT
+                or node.items[i].kind == NODE_BIND_VALUE
             ):
                 builder.push_dynamic_attr(idx, node.items[i].dynamic_index)
 
@@ -3029,6 +3181,13 @@ fn _build_node(mut builder: TemplateBuilder, node: Node, parent: Int):
         # EVENT nodes in _build_node are treated as dynamic attrs.
         # Their dynamic_index is used as the attr slot index (set by
         # register_view's reindexing pass, or by the caller).
+        if parent >= 0:
+            builder.push_dynamic_attr(parent, node.dynamic_index)
+
+    elif node.kind == NODE_BIND_VALUE:
+        # BIND_VALUE nodes are treated as dynamic attrs (like EVENT).
+        # Their dynamic_index is the attr slot index (set by
+        # register_view's reindexing pass).
         if parent >= 0:
             builder.push_dynamic_attr(parent, node.dynamic_index)
 
@@ -3300,13 +3459,15 @@ fn count_dynamic_node_slots(node: Node) -> Int:
 
 
 fn count_dynamic_attr_slots(node: Node) -> Int:
-    """Count the total number of DYN_ATTR and EVENT nodes in the tree."""
+    """Count the total number of DYN_ATTR, EVENT, and BIND_VALUE nodes in the tree.
+    """
     if node.kind == NODE_ELEMENT:
         var total = 0
         for i in range(len(node.items)):
             if (
                 node.items[i].kind == NODE_DYN_ATTR
                 or node.items[i].kind == NODE_EVENT
+                or node.items[i].kind == NODE_BIND_VALUE
             ):
                 total += 1
             elif node.items[i].is_child():
