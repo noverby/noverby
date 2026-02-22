@@ -39,5 +39,6 @@ rules:
       - wasm-mojo
       - wasmtime-mojo
       - zed-mojo
+      - nix-workspace
       - nu-plugin-tramp
       - wiki
