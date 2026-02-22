@@ -257,24 +257,44 @@ When a subworkspace comes from a git submodule or external VCS, the Nix store pa
 ```text
 Workspace
 ├── WorkspaceConfig          # Top-level workspace.ncl structure
+│   ├── mkWorkspaceConfig    # Factory for plugin-extended workspace contracts
+│   └── DependencyRef        # Cross-subworkspace dependency reference (= Name)
 ├── NixpkgsConfig            # nixpkgs settings (allowUnfree, overlays, etc.)
-├── SubworkspaceConfig       # Subworkspace declaration
+├── ConventionConfig         # Per-convention directory overrides
 │
 ├── PackageConfig            # Package definition
-│   ├── RustPackage          # Rust-specific (Cargo.toml, features, etc.)
-│   ├── GoPackage            # Go-specific
-│   └── GenericPackage       # Language-agnostic (stdenv.mkDerivation)
+│   ├── RustPackage          # Rust-specific (plugin: nix-workspace-rust)
+│   └── GoPackage            # Go-specific (plugin: nix-workspace-go)
 │
 ├── ShellConfig              # Development shell
 ├── MachineConfig            # NixOS configuration
+│   ├── StateVersion         # "YY.MM" pattern (e.g. "25.05")
+│   ├── UserConfig           # Per-user home-manager config
+│   ├── FileSystemConfig     # File system mount points
+│   ├── NetworkingConfig     # Network settings
+│   │   ├── FirewallConfig   # Firewall rules
+│   │   └── InterfaceConfig  # Per-interface network config
 │   ├── System               # "x86_64-linux" | "aarch64-linux" | ...
 │   └── ModuleRef            # Reference to a NixOS module
 │
-├── HomeConfig               # Home-manager configuration
-├── ModuleConfig             # NixOS/HM module definition
-├── OverlayConfig            # Nixpkgs overlay
-├── CheckConfig              # CI check definition
-└── TemplateConfig           # Flake template
+├── HomeConfig               # Home-manager module definition
+├── ModuleConfig             # NixOS module definition
+│
+├── PluginConfig             # Plugin definition contract
+│   ├── PluginConvention     # Convention directory mapping
+│   └── PluginBuilder        # Builder metadata + defaults
+│
+├── Common types             # Shared across all contracts
+│   ├── System               # Valid Nix system triple
+│   ├── Name                 # Valid workspace/output name
+│   ├── NonEmptyString       # Non-empty string
+│   ├── RelativePath         # Relative file path (no leading /)
+│   └── ModuleRef            # Module reference (name or path)
+│
+└── Planned (v1.0)
+    ├── OverlayConfig        # Nixpkgs overlay
+    ├── CheckConfig          # CI check definition
+    └── TemplateConfig       # Flake template
 ```
 
 ### Example contract
@@ -367,7 +387,8 @@ Diagnostic codes are prefixed `NW` (nix-workspace) and grouped:
 - `NW1xx` — Discovery errors (missing files, bad directory structure)
 - `NW2xx` — Namespace conflicts (duplicate names, invalid derivation names)
 - `NW3xx` — Module errors (missing dependencies, circular imports)
-- `NW4xx` — System errors (unsupported system, missing input)
+- `NW4xx` — System/plugin errors (unsupported system, missing input, plugin conflicts)
+- `NW5xx` — CLI errors (missing tool, tool failure, flake generation failure)
 
 ## System multiplexing
 
@@ -393,6 +414,28 @@ Systems are declared once and applied automatically:
 ```
 
 The Nix layer handles the `eachSystem` expansion. Users never write `packages.x86_64-linux.my-tool` — they write `packages.my-tool` and the system dimension is managed for them.
+
+### Error catalog
+
+| Code | Name | Description |
+|------|------|-------------|
+| `NW001` | Contract violation | A value failed a Nickel contract check |
+| `NW002` | Invalid type | A value has the wrong type (e.g. string where array expected) |
+| `NW003` | Invalid value | A value is the wrong shape or out of range |
+| `NW100` | Missing workspace.ncl | No `workspace.ncl` found in the workspace root |
+| `NW101` | Missing directory | A referenced convention directory does not exist |
+| `NW102` | Invalid .ncl file | A `.ncl` file failed to parse or evaluate |
+| `NW103` | Discovery error | General error during directory scanning |
+| `NW200` | Namespace conflict | Two sources produce the same output name in the same convention |
+| `NW201` | Invalid name | A namespaced output name is not a valid Nix derivation name |
+| `NW300` | Missing dependency | A subworkspace declares a dependency on a non-existent sibling |
+| `NW301` | Circular import | Circular dependency detected among subworkspaces |
+| `NW400` | Unsupported system | A system string is not in the valid set / duplicate plugin name |
+| `NW401` | Missing input | A required flake input is not provided |
+| `NW402` | Plugin error | A plugin failed to load, validate, or merge |
+| `NW500` | Missing tool | A required external tool (e.g. `nickel`, `nix`) is not on `$PATH` |
+| `NW501` | Tool failed | An external tool invocation returned a non-zero exit code |
+| `NW502` | Flake generation failed | On-the-fly `flake.nix` generation failed |
 
 ## Module system
 
@@ -465,14 +508,16 @@ A plugin is a Nickel record that can:
 nix-workspace/
 ├── SPEC.md                    # This specification
 ├── README.md                  # User-facing documentation
-├── default.nix                # Flake entry point (package + dev shell)
+├── flake.nix                  # Flake definition (callable + dev tooling)
+├── default.nix                # Package + dev shell for external consumers
+├── justfile                   # Development task runner (build, test, run)
 │
 ├── lib/                       # Nix library (flake output builders)
-│   ├── default.nix            # Main entry point: nix-workspace function
-│   ├── discover.nix           # Directory auto-discovery
-│   ├── eval-nickel.nix        # Nickel evaluation (IFD bridge)
-│   ├── systems.nix            # System multiplexing
-│   ├── namespacing.nix        # Subworkspace name resolution
+│   ├── default.nix            # Main entry point: mkWorkspace function
+│   ├── discover.nix           # Directory auto-discovery + subworkspace scanning
+│   ├── eval-nickel.nix        # Nickel evaluation (wrapper generation, IFD bridge)
+│   ├── systems.nix            # System multiplexing (eachSystem, perSystemOutput)
+│   ├── namespacing.nix        # Subworkspace name resolution + conflict detection
 │   ├── plugins.nix            # Plugin loading, routing, and merging
 │   └── builders/              # Output-type-specific builders
 │       ├── packages.nix
@@ -482,20 +527,20 @@ nix-workspace/
 │
 ├── contracts/                 # Nickel contracts
 │   ├── workspace.ncl          # Top-level workspace contract + mkWorkspaceConfig
-│   ├── package.ncl            # Package contracts
-│   ├── machine.ncl            # NixOS machine contracts
-│   ├── shell.ncl              # Dev shell contracts
-│   ├── module.ncl             # Module contracts
+│   ├── package.ncl            # Package contracts (PackageConfig)
+│   ├── machine.ncl            # NixOS machine contracts (MachineConfig + sub-types)
+│   ├── shell.ncl              # Dev shell contracts (ShellConfig)
+│   ├── module.ncl             # Module contracts (ModuleConfig, HomeConfig)
 │   ├── plugin.ncl             # Plugin definition contract (PluginConfig)
-│   └── common.ncl             # Shared types (System, ModuleRef, etc.)
+│   └── common.ncl             # Shared types (System, Name, ModuleRef, etc.)
 │
 ├── plugins/                   # Built-in plugin definitions
 │   ├── rust/                  # nix-workspace-rust plugin
 │   │   ├── plugin.ncl         # Rust contracts, crates/ convention, extensions
-│   │   └── builder.nix        # Enhanced Rust builder (features, workspace-member, etc.)
+│   │   └── builder.nix        # Rust builder (buildRustPackage wrapper)
 │   └── go/                    # nix-workspace-go plugin
 │       ├── plugin.ncl         # Go contracts, go-modules/ convention, extensions
-│       └── builder.nix        # Enhanced Go builder (tags, ldflags, CGO, etc.)
+│       └── builder.nix        # Go builder (buildGoModule wrapper)
 │
 ├── cli/                       # Rust CLI (standalone mode)
 │   ├── Cargo.toml
@@ -538,34 +583,75 @@ nix-workspace/
 │   │   │   └── my-machine.ncl
 │   │   └── modules/
 │   │       └── desktop.ncl
-│   └── rust-project/          # Rust project with plugin support
-│       ├── flake.nix
-│       ├── workspace.ncl      # plugins = ["nix-workspace-rust"]
-│       ├── packages/
-│       │   └── my-cli.ncl     # Package with Rust plugin fields
-│       └── crates/
-│           └── my-lib.ncl     # Auto-discovered via crates/ convention
+│   ├── rust-project/          # Rust project with plugin support
+│   │   ├── flake.nix
+│   │   ├── workspace.ncl      # plugins = ["nix-workspace-rust"]
+│   │   ├── packages/
+│   │   │   └── my-cli.ncl     # Package with Rust plugin fields
+│   │   └── crates/
+│   │       └── my-lib.ncl     # Auto-discovered via crates/ convention
+│   ├── submodule/             # Git submodule as subworkspace
+│   │   ├── flake.nix
+│   │   ├── workspace.ncl
+│   │   └── external-tool/     # Simulated submodule with workspace.ncl
+│   │       └── workspace.ncl
+│   └── standalone/            # CLI standalone mode (no flake.nix)
+│       ├── workspace.ncl
+│       └── packages/
+│           └── ...
 │
 └── tests/                     # Test suite
     ├── unit/                  # Nickel contract tests
     │   ├── workspace.ncl
     │   ├── package.ncl
     │   ├── machine.ncl
+    │   ├── module.ncl
+    │   ├── common.ncl         # Shared type contract tests
+    │   ├── subworkspace.ncl   # Subworkspace contract tests
     │   └── plugin.ncl         # Plugin contract tests
-    ├── integration/           # Full workspace evaluation tests
+    ├── integration/           # Full workspace evaluation tests (Nix)
     │   ├── discovery.nix
     │   ├── namespacing.nix
     │   └── plugins.nix        # Plugin system integration tests
     └── errors/                # Error message snapshot tests
         ├── invalid-system.ncl
+        ├── invalid-machine-system.ncl
+        ├── missing-machine-system.ncl
         ├── missing-field.ncl
+        ├── invalid-build-system.ncl
+        ├── invalid-state-version.ncl
         ├── invalid-plugin-name.ncl
         ├── invalid-plugin-convention.ncl
-        └── expected/          # Expected error output
-            ├── invalid-system.json
-            ├── missing-field.json
-            └── namespace-conflict.json
+        ├── invalid-dependency-name.ncl
+        ├── invalid-dependency-ref.ncl
+        └── expected/          # Expected error output (snapshots)
 ```
+
+## Non-goals
+
+The following are explicitly out of scope for `nix-workspace`:
+
+- **Replacing Nix** — `nix-workspace` is not a Nix alternative. It generates standard flake outputs; the Nix evaluator and store remain the execution engine.
+- **Full Nickel-to-Nix bridge** — We do not depend on `nickel-nix` or attempt to evaluate Nix expressions from Nickel. The boundary is JSON: Nickel produces validated config, Nix consumes it.
+- **Package manager** — `nix-workspace` does not fetch, resolve, or manage dependencies. Nixpkgs and flake inputs handle that.
+- **Deployment orchestration** — While a `nix-workspace-deploy` plugin is conceivable, the core does not manage remote hosts, secrets, or rollout strategies.
+- **Supporting non-flake Nix** — The Nix library assumes flakes. Legacy `nix-build` / `nix-shell` workflows are not targeted (though the CLI's standalone mode generates a flake on the fly).
+- **VCS integration** — Subworkspace discovery is deliberately VCS-agnostic. We never parse `.gitmodules`, `.jj/`, or any VCS metadata.
+
+## Security considerations
+
+- **No network access at config time** — Nickel evaluation is pure and sandboxed. Network access only occurs during Nix fetching (controlled by flake inputs).
+- **IFD boundary** — The Nickel evaluation step uses Import From Derivation (IFD) to bridge Nickel into Nix. This means Nickel evaluation happens in a Nix sandbox with the same restrictions as any other derivation.
+- **Plugin trust** — Plugins ship Nix code (`builder.nix`) that runs with full Nix build privileges. Only load plugins from trusted sources. Built-in plugins (`nix-workspace-rust`, `nix-workspace-go`) are shipped with `nix-workspace` and reviewed as part of the project.
+- **No secrets in config** — `workspace.ncl` files are committed to version control. Do not put secrets in Nickel config. Use NixOS modules (`sops-nix`, `agenix`) or environment variables for secret management.
+
+## Versioning and stability
+
+- **Spec version** — This specification tracks the design of `nix-workspace`. Breaking changes to the `workspace.ncl` schema or the Nix library API are reflected here.
+- **Contract stability** — From v1.0 onward, core contracts (`WorkspaceConfig`, `PackageConfig`, `ShellConfig`, `MachineConfig`, `ModuleConfig`, `HomeConfig`) are stable. New optional fields may be added without a major version bump. Removing or renaming fields is a breaking change.
+- **Plugin API stability** — The `PluginConfig` contract is stable from v1.0. Plugin authors can depend on the `contracts`, `conventions`, `builders`, and `extend` fields.
+- **Diagnostic codes** — Once assigned, `NWxxx` codes are never reused or reassigned. Codes may be deprecated but not recycled.
+- **Flake output shape** — `nix-workspace` always produces standard flake outputs. The output attribute structure is determined by Nix ecosystem conventions, not by `nix-workspace`.
 
 ## Milestones
 
@@ -582,8 +668,8 @@ nix-workspace/
 
 ### v0.2 — NixOS integration
 
-- [x] `MachineConfig` contract with full validation
-- [x] `ModuleConfig` contract
+- [x] `MachineConfig` contract with full validation (`StateVersion`, `UserConfig`, `FileSystemConfig`, `NetworkingConfig`)
+- [x] `ModuleConfig` and `HomeConfig` contracts
 - [x] Machine auto-discovery from `machines/` directory
 - [x] Module auto-discovery from `modules/` directory
 - [x] Home-manager module support (`home/` directory)
@@ -594,7 +680,8 @@ nix-workspace/
 
 - [x] Subworkspace discovery and config merging
 - [x] Automatic output namespacing with hyphen separator
-- [x] Cross-subworkspace dependency resolution
+- [x] Cross-subworkspace dependency resolution (`DependencyRef`, `validateDependencies`)
+- [x] Cycle detection in dependency graph (`detectCycles`)
 - [x] Namespace conflict detection with `NW2xx` diagnostics
 - [x] Git submodule support (discover `workspace.ncl` in submodules)
 - [x] VCS-agnostic discovery (any directory with `workspace.ncl`, not git-specific)
@@ -604,25 +691,33 @@ nix-workspace/
 
 ### v0.4 — Plugin system
 
-- [x] Plugin interface definition (contracts, conventions, builders)
-- [x] Plugin loading and merging
+- [x] Plugin interface definition (`PluginConfig`, `PluginConvention`, `PluginBuilder`)
+- [x] Plugin loading and builder routing (`plugins.nix`)
+- [x] Contract extension mechanism (`mkWorkspaceConfig` factory)
 - [x] Built-in plugins: `nix-workspace-rust`, `nix-workspace-go`
-- [x] Custom convention directory support
-- [x] Plugin contract extension mechanism
+- [x] Custom convention directory support (e.g. `crates/`, `go-modules/`)
+- [x] Plugin validation and conflict detection (`NW4xx` diagnostics)
+- [x] Shell extras from plugins (e.g. Rust toolchain in dev shells)
+- [x] Plugin builder defaults applied to package configs
 
 ### v0.5 — Standalone CLI
 
-- [x] Rust CLI skeleton (`nix-workspace init`, `check`, `info`)
+- [x] Rust CLI skeleton (`nix-workspace init`, `check`, `info`, `build`, `shell`)
 - [x] `nix-workspace build` delegating to `nix build`
 - [x] `nix-workspace shell` delegating to `nix develop`
 - [x] JSON diagnostic output via `--format json`
 - [x] On-the-fly `flake.nix` generation for non-flake projects
+- [x] Nickel error parsing into structured `NWxxx` diagnostics
+- [x] Colored human-readable error output
+- [x] Example: standalone workspace (no `flake.nix`)
 
 ### v1.0 — Production ready
 
-- [ ] Complete contract coverage for all flake output types
-- [ ] Comprehensive error catalog with all `NWxxx` codes documented
+- [ ] Contract coverage for remaining flake output types (`OverlayConfig`, `CheckConfig`, `TemplateConfig`)
+- [ ] Comprehensive error catalog with all `NWxxx` codes documented and tested
+- [ ] Error snapshot tests with expected JSON output in `tests/errors/expected/`
 - [ ] Migration guide from flakelight / flake-parts
 - [ ] Editor integration (LSP diagnostics via Nickel LSP)
 - [ ] CI integration guide (GitHub Actions, etc.)
 - [ ] Full documentation and examples
+- [ ] Stability guarantees for core contracts and plugin API
