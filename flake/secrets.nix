@@ -1,20 +1,34 @@
 {
-  src,
   lib,
+  config,
   ...
 }: let
-  inherit (lib) filterAttrs hasSuffix mapAttrs' removeSuffix;
-  secretsDir = src + /config/secrets;
-  dirEntries = builtins.readDir secretsDir;
-  ageFiles = filterAttrs (name: _: hasSuffix ".age" name) dirEntries;
+  inherit (lib) mkOption mkIf filterAttrs hasSuffix mapAttrs' removeSuffix mergeAttrsList;
+  inherit (lib.types) lazyAttrsOf raw;
+
+  aliasNames = ["secrets"] ++ (config.nixDirAliases.secrets or []);
+  ageFiles = mergeAttrsList (map (
+      name: let
+        dir = config.nixDir + "/${name}";
+      in
+        if builtins.pathExists dir
+        then
+          mapAttrs' (file: _: {
+            name = removeSuffix ".age" file;
+            value = dir + "/${file}";
+          }) (filterAttrs (file: _: hasSuffix ".age" file) (builtins.readDir dir))
+        else {}
+    )
+    aliasNames);
 in {
-  outputs.secrets =
-    mapAttrs' (name: _: {
-      name = removeSuffix ".age" name;
-      value = secretsDir + "/${name}";
-    })
-    ageFiles
-    // {
-      publicKeys = import (secretsDir + /publicKeys.nix);
-    };
+  options.secrets = mkOption {
+    type = lazyAttrsOf raw;
+    default = {};
+    description = "Age-encrypted secret file paths and public key metadata";
+  };
+
+  config = {
+    secrets = ageFiles;
+    outputs = mkIf (config.secrets != {}) {inherit (config) secrets;};
+  };
 }

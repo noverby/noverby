@@ -183,9 +183,11 @@
         nixosConfigurations = ["config/nixos"];
         nixosModules = ["nixos" "nixos/hardware" "nixos/desktop"];
         homeConfigurations = ["config/home-manager"];
-        homeModules = ["home-manager" "home-manager/users" "home-manager/desktop"];
+        homeModules = ["home-manager" "home-manager/desktop"];
         devenvConfiguration = ["config/devenv"];
         devenvModules = ["devenv"];
+        secrets = ["config/secrets"];
+        users = ["config/users"];
         withOverlays = ["config/with-overlays"];
       };
     };
