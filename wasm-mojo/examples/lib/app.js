@@ -29,14 +29,11 @@
 //     wasm: new URL("../../build/out.wasm", import.meta.url),
 //   });
 //
-//   // Bench — launch with onBoot for custom event delegation & toolbar wiring
+//   // Bench — near-zero-config launch (toolbar rendered from WASM, only needs large buffer)
 //   launch({
 //     app: "bench",
 //     wasm: new URL("../../build/out.wasm", import.meta.url),
-//     root: "#tbody",
 //     bufferCapacity: 8 * 1024 * 1024,
-//     clearRoot: false,
-//     onBoot: ({ fns, appPtr, rootEl, flush }) => { /* toolbar + delegation */ },
 //   });
 
 import { alignedAlloc, getMemory, loadWasm } from "./env.js";
@@ -92,9 +89,7 @@ const EVT_CLICK = 0;
  *
  * When `{app}_handle_event` is missing, the EventBridge is still created
  * (so NewEventListener mutations are processed and DOM listeners attached)
- * but the dispatch callback is a no-op.  This allows apps that use custom
- * event delegation (e.g. bench) to wire their own handlers via `onBoot`
- * while still benefiting from the shared boot sequence.
+ * but the dispatch callback is a no-op.
  *
  * When `{app}_dispatch_string` exists, the EventBridge automatically
  * routes string-carrying events through the string dispatch path:

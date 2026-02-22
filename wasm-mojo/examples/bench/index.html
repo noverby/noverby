@@ -154,34 +154,9 @@
     </style>
   </head>
   <body>
-    <div class="container">
-      <h1>🔥 Mojo WASM — js-framework-benchmark</h1>
-      <div class="controls">
-        <button class="btn-create" id="btn-create1k">Create 1,000 rows</button>
-        <button class="btn-create10k" id="btn-create10k">
-          Create 10,000 rows
-        </button>
-        <button class="btn-append" id="btn-append">Append 1,000 rows</button>
-        <button class="btn-update" id="btn-update">
-          Update every 10th row
-        </button>
-        <button class="btn-swap" id="btn-swap">Swap rows</button>
-        <button class="btn-clear" id="btn-clear">Clear</button>
-      </div>
-      <div class="status" id="status">Loading WASM…</div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Label</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody id="tbody"></tbody>
-        </table>
-      </div>
-    </div>
+    <!-- Phase 24.2: WASM renders the entire app shell (heading, toolbar,
+         status, table) into this root div via register_view(). -->
+    <div id="root"></div>
 
     <script type="module" src="main.js"></script>
   </body>
