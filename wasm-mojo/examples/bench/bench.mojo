@@ -346,6 +346,28 @@ struct BenchmarkApp(Movable):
         self.rows = List[BenchRow]()
         self._bump_version()
 
+    fn handle_event(mut self, handler_id: UInt32) -> Bool:
+        """Dispatch an event by handler ID.
+
+        Phase 24.1: Uses get_action() to look up the handler in the
+        KeyedList's handler_map and routes to select_row/remove_row.
+        This lets EventBridge dispatch row clicks directly from WASM,
+        eliminating the need for JS-side tbody event delegation.
+
+        Returns True if the handler was found and the action executed,
+        False otherwise.
+        """
+        var action = self.rows_list.get_action(handler_id)
+        if not action.found:
+            return False
+        if action.tag == BENCH_ACTION_SELECT:
+            self.select_row(action.data)
+            return True
+        elif action.tag == BENCH_ACTION_REMOVE:
+            self.remove_row(action.data)
+            return True
+        return False
+
     fn build_row_vnode(mut self, row: BenchRow) -> UInt32:
         """Build a keyed VNode for a single benchmark row.
 

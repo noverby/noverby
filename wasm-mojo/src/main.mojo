@@ -2494,6 +2494,23 @@ fn bench_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     return offset
 
 
+@export
+fn bench_handle_event(
+    app_ptr: Int64, handler_id: Int32, event_type: Int32
+) -> Int32:
+    """Dispatch a click event by handler ID.
+
+    Phase 24.1: Routes row click events via the KeyedList handler_map.
+    EventBridge calls this automatically when bench_handle_event exists
+    as a WASM export.  Eliminates the need for JS-side tbody event
+    delegation.
+
+    Returns 1 if the handler was found and action executed (select/remove),
+    0 otherwise.
+    """
+    return _b2i(_get[BenchmarkApp](app_ptr)[0].handle_event(UInt32(handler_id)))
+
+
 # ── Benchmark App Query Exports ──────────────────────────────────────────────
 
 

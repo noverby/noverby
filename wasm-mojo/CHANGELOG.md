@@ -2,6 +2,14 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 24 — Bench Zero App-Specific JS
+
+- **P24.1** — `bench_handle_event` with handler_map dispatch. Added `handle_event(handler_id) -> Bool` method to `BenchmarkApp` (`examples/bench/bench.mojo`) that calls `rows_list.get_action(handler_id)` and routes to `select_row` (for `BENCH_ACTION_SELECT`) or `remove_row` (for `BENCH_ACTION_REMOVE`) — same pattern as `TodoApp.handle_event`. Added `bench_handle_event(app_ptr, handler_id, event_type) -> i32` WASM export in `src/main.mojo`. EventBridge now dispatches row clicks directly through the shared `launch()` dispatch path — the 25-line tbody event delegation block in `examples/bench/main.js` is eliminated. Updated test helper in `test-js/bench.test.ts` to wire `bench_handle_event` instead of no-op. Updated `AGENTS.md`: P24.1 marked complete, bench example updated. No runtime or infrastructure changes needed — the KeyedList handler_map was already populated by `add_custom_event()` calls in `build_row_vnode()`.
+
+**Test count after P24.1:** 1,002 Mojo + 1,257 JS = 2,259 tests (no test changes — refactor only).
+
+---
+
 ## Phase 23 — Bench Convergence to `launch()`
 
 - **M23.1** — Bench app converged to shared `launch()` abstraction. `examples/bench/main.js` rewritten from 138 lines of direct `boot.js` imports to 114 lines using `launch()` with `onBoot` callback — same boot infrastructure as counter and todo. `{app}_handle_event` made optional in `launch()` (`examples/lib/app.js`): when missing, EventBridge is still created (DOM listeners attached for NewEventListener mutations) but dispatch callback is a no-op. Apps that use custom event delegation (e.g. bench) wire their own handlers via `onBoot` while benefiting from the shared WASM loading, buffer allocation, interpreter creation, and initial mount sequence. Bench `main.js` uses `launch({ app: "bench", root: "#tbody", bufferCapacity: 8 * 1024 * 1024, clearRoot: false, onBoot: ... })` — toolbar button wiring, event delegation, and timing display remain in `onBoot`. Error handling consolidated into `launch()` (no more manual try/catch in bench). All three example apps (counter, todo, bench) now use the shared `launch()` boot sequence. Updated `app.js` header comments with bench usage example. Updated `AGENTS.md`: naming convention shows `handle_event` as optional, browser runtime section updated for Phase 23, bench example main.js pattern added. Updated `CHANGELOG.md` with Phase 23 entry.
