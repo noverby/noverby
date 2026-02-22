@@ -1,4 +1,10 @@
 {
+  devShells.pkg-config-rs = pkgs: {
+    packages = with pkgs; [
+      just
+    ];
+  };
+
   packages.pkg-config-rs = {
     lib,
     rustPlatform,
