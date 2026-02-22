@@ -19,7 +19,8 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **ComponentContext** — ergonomic Dioxus-style API with `use_signal()`, `setup_view()`, inline events, auto-numbered `dyn_text()`
 - **Three working apps** — counter, todo list, and js-framework-benchmark (all using ComponentContext)
 - **ItemBuilder + HandlerAction** — ergonomic per-item building and event dispatch for keyed lists (`begin_item()`, `add_custom_event()`, `get_action()`)
-- **2,068 tests** — 916 Mojo (via wasmtime) + 1,152 JS (via Deno), all passing
+- **String event dispatch** — `ACTION_SIGNAL_SET_STRING` handlers pipe string values from DOM events directly into `SignalString` signals via `dispatch_event_with_string`
+- **2,151 tests** — 987 Mojo (via wasmtime) + 1,164 JS (via Deno), all passing
 
 ## How it works
 
@@ -298,7 +299,7 @@ Adding a new test:
 
 ## Test results
 
-2,133 tests across 29 Mojo modules and 9 JS test suites:
+2,151 tests across 29 Mojo modules and 9 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -306,7 +307,7 @@ Adding a new test:
 - **Templates** — builder, DSL, registry, node queries
 - **VNodes** — template refs, text, placeholders, fragments, keyed children
 - **Mutations** — create engine, diff engine, binary protocol round-trip
-- **Events** — handler registry, dispatch, signal actions
+- **Events** — handler registry, dispatch, signal actions, string dispatch (Phase 20)
 - **DSL** — Node union, tag helpers, to_template conversion, VNodeBuilder
 - **Memo** — create/destroy, dirty tracking, auto-track, propagation chain, diamond dependency, dependency re-tracking, cache hit, version bumps, cleanup, hooks
 - **Component** — AppShell lifecycle, mount/diff/finalize helpers, FragmentSlot, shell memo helpers, ItemBuilder handler map

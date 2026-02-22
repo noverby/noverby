@@ -950,6 +950,27 @@ struct ComponentContext(Movable):
         """
         return self.shell.dispatch_event(handler_id, event_type)
 
+    fn dispatch_event_with_string(
+        mut self, handler_id: UInt32, event_type: UInt8, value: String
+    ) -> Bool:
+        """Dispatch an event with a String payload (Phase 20).
+
+        For ACTION_SIGNAL_SET_STRING handlers, writes the string value
+        to the target SignalString.  Falls back to normal dispatch for
+        other action types.
+
+        Args:
+            handler_id: The handler to invoke.
+            event_type: The event type tag (EVT_INPUT, etc.).
+            value: The String payload from the event (e.g. input.value).
+
+        Returns:
+            True if an action was executed.
+        """
+        return self.shell.dispatch_event_with_string(
+            handler_id, event_type, value
+        )
+
     # ── Flush lifecycle ──────────────────────────────────────────────
 
     fn has_dirty(self) -> Bool:

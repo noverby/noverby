@@ -428,6 +428,19 @@ struct AppShell(Movable):
             handler_id, event_type, value
         )
 
+    fn dispatch_event_with_string(
+        mut self, handler_id: UInt32, event_type: UInt8, value: String
+    ) -> Bool:
+        """Dispatch an event with a String payload (Phase 20).
+
+        For ACTION_SIGNAL_SET_STRING handlers, writes the string value
+        to the target SignalString.  Falls back to normal dispatch for
+        other action types.
+        """
+        return self.runtime[0].dispatch_event_with_string(
+            handler_id, event_type, value
+        )
+
 
 # ── Module-level factory ─────────────────────────────────────────────────────
 

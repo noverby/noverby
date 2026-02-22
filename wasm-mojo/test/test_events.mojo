@@ -24,6 +24,8 @@ from wasm_harness import (
     args_ptr_i32_ptr,
     args_ptr_i32_i32_ptr,
     args_ptr_i32_i32_i32_ptr,
+    args_ptr_ptr,
+    args_i64,
     no_args,
 )
 
@@ -1152,6 +1154,320 @@ fn test_dispatch_counter_scenario(w: UnsafePointer[WasmInstance]) raises:
     _destroy_runtime(w, rt)
 
 
+# ── Phase 20 — dispatch_event_with_string (SignalString) ─────────────────────
+
+
+fn test_query_signal_set_string_fields(w: UnsafePointer[WasmInstance]) raises:
+    """Verify handler fields for ACTION_SIGNAL_SET_STRING (action=6)."""
+    var rt = _create_runtime(w)
+
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+
+    # Create a string signal → returns packed i64 (low=string_key, high=version_key)
+    var packed = w[].call_i64(
+        "signal_create_string",
+        args_ptr_ptr(rt, w[].write_string_struct("")),
+    )
+    var string_key = Int(w[].call_i32("signal_string_key", args_i64(packed)))
+    var version_key = Int(w[].call_i32("signal_version_key", args_i64(packed)))
+
+    # Register a set_string handler
+    var id = Int(
+        w[].call_i32(
+            "handler_register_signal_set_string",
+            args_ptr_i32_i32_i32_ptr(
+                rt,
+                s,
+                string_key,
+                version_key,
+                w[].write_string_struct("input"),
+            ),
+        )
+    )
+
+    # ACTION_SIGNAL_SET_STRING = 6
+    assert_equal(
+        Int(w[].call_i32("handler_action", args_ptr_i32(rt, id))),
+        6,
+        "action is SET_STRING (6)",
+    )
+    # signal_key stores the string_key
+    assert_equal(
+        Int(w[].call_i32("handler_signal_key", args_ptr_i32(rt, id))),
+        string_key,
+        "signal_key holds string_key",
+    )
+    # operand stores the version_key
+    assert_equal(
+        Int(w[].call_i32("handler_operand", args_ptr_i32(rt, id))),
+        version_key,
+        "operand holds version_key",
+    )
+
+    _destroy_runtime(w, rt)
+
+
+fn test_dispatch_signal_set_string(w: UnsafePointer[WasmInstance]) raises:
+    """Dispatch_event_with_string writes the string to the SignalString."""
+    var rt = _create_runtime(w)
+
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+
+    # Create a string signal with initial value "initial"
+    var packed = w[].call_i64(
+        "signal_create_string",
+        args_ptr_ptr(rt, w[].write_string_struct("initial")),
+    )
+    var string_key = Int(w[].call_i32("signal_string_key", args_i64(packed)))
+    var version_key = Int(w[].call_i32("signal_version_key", args_i64(packed)))
+
+    # Register a set_string handler
+    var id = Int(
+        w[].call_i32(
+            "handler_register_signal_set_string",
+            args_ptr_i32_i32_i32_ptr(
+                rt,
+                s,
+                string_key,
+                version_key,
+                w[].write_string_struct("input"),
+            ),
+        )
+    )
+
+    # Dispatch with string payload "hello world"
+    var result = Int(
+        w[].call_i32(
+            "dispatch_event_with_string",
+            args_ptr_i32_i32_ptr(
+                rt, id, 1, w[].write_string_struct("hello world")
+            ),
+        )
+    )
+    assert_equal(result, 1, "dispatch returns 1 (action executed)")
+
+    # Read back the string signal value
+    var out_ptr = w[].alloc_string_struct()
+    w[].call_void(
+        "signal_peek_string", args_ptr_i32_ptr(rt, string_key, out_ptr)
+    )
+    assert_equal(
+        w[].read_string_struct(out_ptr),
+        String("hello world"),
+        "string signal set to dispatched value",
+    )
+
+    _destroy_runtime(w, rt)
+
+
+fn test_dispatch_signal_set_string_empty(w: UnsafePointer[WasmInstance]) raises:
+    """Dispatch_event_with_string handles empty string payload."""
+    var rt = _create_runtime(w)
+
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+
+    var packed = w[].call_i64(
+        "signal_create_string",
+        args_ptr_ptr(rt, w[].write_string_struct("not empty")),
+    )
+    var string_key = Int(w[].call_i32("signal_string_key", args_i64(packed)))
+    var version_key = Int(w[].call_i32("signal_version_key", args_i64(packed)))
+
+    var id = Int(
+        w[].call_i32(
+            "handler_register_signal_set_string",
+            args_ptr_i32_i32_i32_ptr(
+                rt,
+                s,
+                string_key,
+                version_key,
+                w[].write_string_struct("input"),
+            ),
+        )
+    )
+
+    # Dispatch with empty string
+    var result = Int(
+        w[].call_i32(
+            "dispatch_event_with_string",
+            args_ptr_i32_i32_ptr(rt, id, 1, w[].write_string_struct("")),
+        )
+    )
+    assert_equal(result, 1, "dispatch returns 1")
+
+    var out_ptr = w[].alloc_string_struct()
+    w[].call_void(
+        "signal_peek_string", args_ptr_i32_ptr(rt, string_key, out_ptr)
+    )
+    assert_equal(
+        w[].read_string_struct(out_ptr),
+        String(""),
+        "string signal set to empty string",
+    )
+
+    _destroy_runtime(w, rt)
+
+
+fn test_dispatch_signal_set_string_overwrite(
+    w: UnsafePointer[WasmInstance],
+) raises:
+    """Multiple dispatches overwrite the SignalString value each time."""
+    var rt = _create_runtime(w)
+
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+
+    var packed = w[].call_i64(
+        "signal_create_string",
+        args_ptr_ptr(rt, w[].write_string_struct("v0")),
+    )
+    var string_key = Int(w[].call_i32("signal_string_key", args_i64(packed)))
+    var version_key = Int(w[].call_i32("signal_version_key", args_i64(packed)))
+
+    var id = Int(
+        w[].call_i32(
+            "handler_register_signal_set_string",
+            args_ptr_i32_i32_i32_ptr(
+                rt,
+                s,
+                string_key,
+                version_key,
+                w[].write_string_struct("input"),
+            ),
+        )
+    )
+
+    # Record initial version
+    var v0 = Int(w[].call_i32("signal_version", args_ptr_i32(rt, version_key)))
+
+    # Dispatch first value
+    _ = w[].call_i32(
+        "dispatch_event_with_string",
+        args_ptr_i32_i32_ptr(rt, id, 1, w[].write_string_struct("first")),
+    )
+    var v1 = Int(w[].call_i32("signal_version", args_ptr_i32(rt, version_key)))
+    assert_true(v1 > v0, "version bumped after first dispatch")
+
+    # Dispatch second value
+    _ = w[].call_i32(
+        "dispatch_event_with_string",
+        args_ptr_i32_i32_ptr(rt, id, 1, w[].write_string_struct("second")),
+    )
+    var v2 = Int(w[].call_i32("signal_version", args_ptr_i32(rt, version_key)))
+    assert_true(v2 > v1, "version bumped after second dispatch")
+
+    # Final value should be "second"
+    var out_ptr = w[].alloc_string_struct()
+    w[].call_void(
+        "signal_peek_string", args_ptr_i32_ptr(rt, string_key, out_ptr)
+    )
+    assert_equal(
+        w[].read_string_struct(out_ptr),
+        String("second"),
+        "string signal has last dispatched value",
+    )
+
+    _destroy_runtime(w, rt)
+
+
+fn test_dispatch_signal_set_string_marks_scope_dirty(
+    w: UnsafePointer[WasmInstance],
+) raises:
+    """Dispatch_event_with_string marks subscribing scopes dirty via version signal.
+    """
+    var rt = _create_runtime(w)
+
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+
+    # Begin render so we can subscribe
+    var prev = Int(w[].call_i32("scope_begin_render", args_ptr_i32(rt, s)))
+
+    var packed = w[].call_i64(
+        "signal_create_string",
+        args_ptr_ptr(rt, w[].write_string_struct("")),
+    )
+    var string_key = Int(w[].call_i32("signal_string_key", args_i64(packed)))
+    var version_key = Int(w[].call_i32("signal_version_key", args_i64(packed)))
+
+    # Subscribe scope by reading the version signal
+    _ = w[].call_i32("signal_read_i32", args_ptr_i32(rt, version_key))
+
+    w[].call_void("scope_end_render", args_ptr_i32(rt, prev))
+
+    # Not dirty yet
+    assert_equal(
+        Int(w[].call_i32("runtime_has_dirty", args_ptr(rt))),
+        0,
+        "no dirty scopes before dispatch",
+    )
+
+    # Register handler (outside render bracket — no subscription needed for handler)
+    var id = Int(
+        w[].call_i32(
+            "handler_register_signal_set_string",
+            args_ptr_i32_i32_i32_ptr(
+                rt,
+                s,
+                string_key,
+                version_key,
+                w[].write_string_struct("input"),
+            ),
+        )
+    )
+
+    # Dispatch — should write string + bump version → dirty scope
+    _ = w[].call_i32(
+        "dispatch_event_with_string",
+        args_ptr_i32_i32_ptr(rt, id, 1, w[].write_string_struct("typed text")),
+    )
+
+    assert_equal(
+        Int(w[].call_i32("runtime_has_dirty", args_ptr(rt))),
+        1,
+        "scope is dirty after string dispatch",
+    )
+
+    _destroy_runtime(w, rt)
+
+
+fn test_dispatch_signal_set_string_fallback(
+    w: UnsafePointer[WasmInstance],
+) raises:
+    """Dispatch_event_with_string falls back to normal dispatch for non-string actions.
+    """
+    var rt = _create_runtime(w)
+
+    var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
+    var sig = Int(w[].call_i32("signal_create_i32", args_ptr_i32(rt, 10)))
+
+    # Register an ADD handler (not a string handler)
+    var id = Int(
+        w[].call_i32(
+            "handler_register_signal_add",
+            args_ptr_i32_i32_i32_ptr(
+                rt, s, sig, 5, w[].write_string_struct("click")
+            ),
+        )
+    )
+
+    # Call dispatch_event_with_string on a non-string handler → should fall back
+    var result = Int(
+        w[].call_i32(
+            "dispatch_event_with_string",
+            args_ptr_i32_i32_ptr(rt, id, 0, w[].write_string_struct("ignored")),
+        )
+    )
+    assert_equal(result, 1, "fallback dispatch returns 1 (ADD executed)")
+
+    # Signal should have been incremented by 5 (normal ADD action)
+    assert_equal(
+        Int(w[].call_i32("signal_peek_i32", args_ptr_i32(rt, sig))),
+        15,
+        "signal is 15 after fallback ADD (10 + 5)",
+    )
+
+    _destroy_runtime(w, rt)
+
+
 fn main() raises:
     from wasm_harness import get_instance
 
@@ -1185,4 +1501,11 @@ fn main() raises:
     test_stress_100_handlers(w)
     test_stress_register_remove_cycle(w)
     test_dispatch_counter_scenario(w)
-    print("events: 29/29 passed")
+    # Phase 20 — dispatch_event_with_string
+    test_query_signal_set_string_fields(w)
+    test_dispatch_signal_set_string(w)
+    test_dispatch_signal_set_string_empty(w)
+    test_dispatch_signal_set_string_overwrite(w)
+    test_dispatch_signal_set_string_marks_scope_dirty(w)
+    test_dispatch_signal_set_string_fallback(w)
+    print("events: 35/35 passed")

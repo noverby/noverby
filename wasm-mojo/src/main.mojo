@@ -288,6 +288,60 @@ fn signal_contains(rt_ptr: Int64, key: Int32) -> Int32:
     return _b2i(_get[Runtime](rt_ptr)[0].signals.contains(UInt32(key)))
 
 
+# ── String signal exports (Phase 20) ────────────────────────────────────────
+
+
+@export
+fn signal_create_string(rt_ptr: Int64, initial: String) -> Int64:
+    """Create a string signal.  Returns (string_key, version_key) packed as i64.
+
+    Phase 20: The two UInt32 keys are packed into a single Int64:
+      - low 32 bits  = string_key  (StringStore index)
+      - high 32 bits = version_key (SignalStore index)
+
+    Use signal_string_key() and signal_version_key() to unpack.
+    """
+    var keys = _get[Runtime](rt_ptr)[0].create_signal_string(initial)
+    # Pack two UInt32 keys into one Int64: low = string_key, high = version_key
+    return Int64(Int(keys[0])) | (Int64(Int(keys[1])) << 32)
+
+
+@export
+fn signal_string_key(packed: Int64) -> Int32:
+    """Extract the string_key (low 32 bits) from a packed string signal pair."""
+    return Int32(packed & 0xFFFFFFFF)
+
+
+@export
+fn signal_version_key(packed: Int64) -> Int32:
+    """Extract the version_key (high 32 bits) from a packed string signal pair.
+    """
+    return Int32((packed >> 32) & 0xFFFFFFFF)
+
+
+@export
+fn signal_peek_string(rt_ptr: Int64, string_key: Int32) -> String:
+    """Read a string signal without subscribing.  Returns the current value."""
+    return _get[Runtime](rt_ptr)[0].peek_signal_string(UInt32(string_key))
+
+
+@export
+fn signal_write_string(
+    rt_ptr: Int64, string_key: Int32, version_key: Int32, value: String
+):
+    """Write a new value to a string signal (bumps version, notifies subscribers).
+    """
+    _get[Runtime](rt_ptr)[0].write_signal_string(
+        UInt32(string_key), UInt32(version_key), value
+    )
+
+
+@export
+fn signal_string_count(rt_ptr: Int64) -> Int32:
+    """Return the number of live string signals."""
+    return Int32(_get[Runtime](rt_ptr)[0].string_signal_count())
+
+
 # ── Context management exports ───────────────────────────────────────────────
 
 
@@ -1544,6 +1598,32 @@ fn handler_register_signal_set_input(
 
 
 @export
+fn handler_register_signal_set_string(
+    rt_ptr: Int64,
+    scope_id: Int32,
+    string_key: Int32,
+    version_key: Int32,
+    event_name: String,
+) -> Int32:
+    """Register a handler that sets a SignalString from a string event value.
+
+    Phase 20: The handler stores string_key and version_key so that
+    dispatch_event_with_string() can call write_signal_string().
+    Returns the handler ID.
+    """
+    return Int32(
+        _get[Runtime](rt_ptr)[0].register_handler(
+            HandlerEntry.signal_set_string(
+                UInt32(scope_id),
+                UInt32(string_key),
+                UInt32(version_key),
+                event_name,
+            )
+        )
+    )
+
+
+@export
 fn handler_register_custom(
     rt_ptr: Int64, scope_id: Int32, event_name: String
 ) -> Int32:
@@ -1630,6 +1710,23 @@ fn dispatch_event_with_i32(
     """
     return _b2i(
         _get[Runtime](rt_ptr)[0].dispatch_event_with_i32(
+            UInt32(handler_id), UInt8(event_type), value
+        )
+    )
+
+
+@export
+fn dispatch_event_with_string(
+    rt_ptr: Int64, handler_id: Int32, event_type: Int32, value: String
+) -> Int32:
+    """Dispatch an event with a String payload (Phase 20).
+
+    For ACTION_SIGNAL_SET_STRING handlers, writes the string value to
+    the target SignalString.  Falls back to normal dispatch otherwise.
+    Returns 1 if action executed, 0 otherwise.
+    """
+    return _b2i(
+        _get[Runtime](rt_ptr)[0].dispatch_event_with_string(
             UInt32(handler_id), UInt8(event_type), value
         )
     )
@@ -2665,6 +2762,23 @@ fn shell_dispatch_event(
     return _b2i(
         _get[AppShell](shell_ptr)[0].dispatch_event(
             UInt32(handler_id), UInt8(event_type)
+        )
+    )
+
+
+@export
+fn shell_dispatch_event_with_string(
+    shell_ptr: Int64, handler_id: Int32, event_type: Int32, value: String
+) -> Int32:
+    """Dispatch an event with a String payload via the AppShell (Phase 20).
+
+    For ACTION_SIGNAL_SET_STRING handlers, writes the string value to
+    the target SignalString.  Falls back to normal dispatch otherwise.
+    Returns 1 if executed.
+    """
+    return _b2i(
+        _get[AppShell](shell_ptr)[0].dispatch_event_with_string(
+            UInt32(handler_id), UInt8(event_type), value
         )
     )
 

@@ -11,6 +11,7 @@
 #   - SIGNAL_SUB_I32:  signal -= operand
 #   - SIGNAL_TOGGLE:   signal.set(!signal.get())  (for Bool signals stored as i32)
 #   - SIGNAL_SET_INPUT: signal.set(input_value)   (value comes from event data)
+#   - SIGNAL_SET_STRING: string_signal.set(string_value)  (Phase 20: string from event)
 #   - CUSTOM:          no Mojo-side action; JS is responsible for the side effect
 #
 # Each handler also records the owning scope_id so the runtime can mark
@@ -63,6 +64,7 @@ alias ACTION_SIGNAL_ADD_I32: UInt8 = 2
 alias ACTION_SIGNAL_SUB_I32: UInt8 = 3
 alias ACTION_SIGNAL_TOGGLE: UInt8 = 4
 alias ACTION_SIGNAL_SET_INPUT: UInt8 = 5
+alias ACTION_SIGNAL_SET_STRING: UInt8 = 6
 alias ACTION_CUSTOM: UInt8 = 255
 
 
@@ -189,6 +191,35 @@ struct HandlerEntry(Copyable, Movable):
         """
         return HandlerEntry(
             scope_id, ACTION_SIGNAL_SET_INPUT, signal_key, 0, event_name
+        )
+
+    @staticmethod
+    fn signal_set_string(
+        scope_id: UInt32,
+        string_key: UInt32,
+        version_key: UInt32,
+        event_name: String,
+    ) -> HandlerEntry:
+        """Create a handler that sets a SignalString from a string event value.
+
+        Phase 20: The string value is passed from JS via
+        `dispatch_event_with_string()`.  The handler stores the
+        string_key in signal_key and the version_key in operand
+        (cast to Int32), allowing the runtime to call
+        `write_signal_string(string_key, version_key, value)`.
+
+        Args:
+            scope_id: The owning scope.
+            string_key: The key in the Runtime's StringStore.
+            version_key: The companion version signal key in SignalStore.
+            event_name: The DOM event name (e.g. "input").
+        """
+        return HandlerEntry(
+            scope_id,
+            ACTION_SIGNAL_SET_STRING,
+            string_key,
+            Int32(version_key),
+            event_name,
         )
 
     @staticmethod

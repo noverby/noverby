@@ -51,8 +51,10 @@
 
 ### Events (`src/events/`)
 
-- `HandlerEntry` — action-based handler (signal_add, signal_sub, signal_set, signal_toggle, custom).
+- `HandlerEntry` — action-based handler (signal_add, signal_sub, signal_set, signal_toggle, signal_set_string, custom).
+  - Phase 20: `HandlerEntry.signal_set_string(scope_id, string_key, version_key, event_name)` creates a handler that writes a string event value to a `SignalString`. Stores `string_key` in the `signal_key` field and `version_key` in the `operand` field (cast to Int32).
 - `HandlerRegistry` — maps handler IDs → entries. Scope-scoped cleanup.
+- Action tags: `ACTION_NONE` (0), `ACTION_SIGNAL_SET_I32` (1), `ACTION_SIGNAL_ADD_I32` (2), `ACTION_SIGNAL_SUB_I32` (3), `ACTION_SIGNAL_TOGGLE` (4), `ACTION_SIGNAL_SET_INPUT` (5), `ACTION_SIGNAL_SET_STRING` (6, Phase 20), `ACTION_CUSTOM` (255).
 
 ### Component Layer (`src/component/`)
 
@@ -74,6 +76,7 @@
   - `ctx.mount(writer, vnode_idx)` — emit templates + create + append to root.
   - `ctx.flush(writer, new_idx)` — diff + finalize (convenience).
   - `ctx.dispatch_event(handler_id, event_type)` → Bool.
+  - `ctx.dispatch_event_with_string(handler_id, event_type, value: String)` → Bool. Phase 20: dispatches string payloads — for `ACTION_SIGNAL_SET_STRING` handlers, writes value to the target `SignalString`; falls back to normal dispatch for other action types.
   - `ctx.consume_dirty()` → Bool.
   - `ctx.on_click_add()`, `on_click_sub()`, `on_click_set()`, `on_click_toggle()` — manual handler registration.
   - `ctx.register_handler(entry)` — raw handler registration.
@@ -88,7 +91,7 @@
 
 ## App Architectures (`examples/`)
 
-All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state — TodoApp's `input_text` field was migrated from plain `String` to `SignalString` via `create_signal_string()` (M19.7).
+All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state — TodoApp's `input_text` field was migrated from plain `String` to `SignalString` via `create_signal_string()` (M19.7). Phase 20 adds string event dispatch infrastructure (`ACTION_SIGNAL_SET_STRING`, `dispatch_event_with_string`) enabling JS → WASM string value flow for input events.
 
 ### CounterApp (`counter.mojo`) — simplest example
 
@@ -158,6 +161,16 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 - `strings.ts` — Mojo `String` ABI (SSO layout: inline ≤23 bytes, heap pointer otherwise).
 - `memory.ts` — bump allocator for WASM linear memory.
 
+## String Event Dispatch (Phase 20)
+
+Phase 20 adds the infrastructure for passing string values from DOM events to WASM `SignalString` signals. This is the key missing piece for Dioxus-style `oninput` handling.
+
+**Dispatch path**: JS EventBridge extracts `event.target.value` → `writeStringStruct()` → `dispatch_event_with_string(rt, handler_id, event_type, string_ptr)` → Runtime looks up handler → for `ACTION_SIGNAL_SET_STRING`: `write_signal_string(string_key, version_key, value)` → bumps version signal → marks subscriber scopes dirty.
+
+**Handler encoding**: `HandlerEntry.signal_set_string(scope_id, string_key, version_key, event_name)` repurposes existing fields — `signal_key` holds the `string_key` (StringStore index), `operand` holds the `version_key` (cast to Int32).
+
+**WASM exports**: `handler_register_signal_set_string`, `dispatch_event_with_string`, `shell_dispatch_event_with_string`, `signal_create_string` (returns packed i64), `signal_string_key`, `signal_version_key`, `signal_peek_string`, `signal_write_string`, `signal_string_count`.
+
 ## File Size Reference
 
 | File | Lines | Role |
@@ -178,6 +191,8 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 | `CHANGELOG.md` | ~200 | Development history (Phases 0–19) |
 
 ## Common Patterns
+
+**String event dispatch (Phase 20)**: Register a handler with `HandlerEntry.signal_set_string(scope_id, signal.string_key, signal.version_key, String("input"))`, then dispatch from JS via `dispatch_event_with_string(rt, handler_id, event_type, string_value)`. The runtime writes the string to the `SignalString` and bumps the version signal.
 
 **Adding a signal to a component**: `var foo = self.ctx.use_signal(0)` in setup, `foo.peek()` to read, `foo += 1` or `foo.set(v)` to write.
 
@@ -207,7 +222,7 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 
 ## Deferred Abstractions (Blocked on Mojo Roadmap)
 
-- **Closure event handlers** → blocked on Lambda syntax + Closure refinement (Phase 1, 🚧). Would eliminate `ItemBuilder.add_custom_event()` + `get_action()`.
+- **Closure event handlers** → blocked on Lambda syntax + Closure refinement (Phase 1, 🚧). Would eliminate `ItemBuilder.add_custom_event()` + `get_action()`. Phase 20 string dispatch partially addresses this for input events.
 - **`rsx!` macro** → blocked on Hygienic importable macros (Phase 2, ⏰). Would enable compile-time DSL like Dioxus.
 - **`for` loops in views** → blocked on macros (Phase 2, ⏰). Currently iteration happens in build functions.
 - **Generic `Signal[T]`** → blocked on Conditional conformance (Phase 1, 🚧). Currently `SignalI32` / `SignalBool` / `SignalString` / `MemoI32` (Phase 18 added `SignalBool`, Phase 19 added `SignalString`).
