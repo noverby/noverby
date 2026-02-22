@@ -1,4 +1,5 @@
 import { instantiate } from "../runtime/mod.ts";
+import { testAllocator } from "./allocator.test.ts";
 import { testBench } from "./bench.test.ts";
 import { testCounter } from "./counter.test.ts";
 import { testDsl } from "./dsl.test.ts";
@@ -18,6 +19,7 @@ async function run(): Promise<void> {
 
 	console.log("wasm-mojo JS runtime tests\n");
 
+	testAllocator();
 	testProtocol(fns);
 	testMutations(fns);
 	testInterpreter(fns);

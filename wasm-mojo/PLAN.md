@@ -1,7 +1,8 @@
 # Phase 25 — Freeing Allocator
 
-Replace the bump allocator (which never reclaims memory) with a free-list
-allocator across all three runtimes.
+Replace the bump allocator (which never reclaims memory) with a tracking
+allocator across all three runtimes, with the goal of enabling memory reuse
+once WASM-side use-after-free bugs are resolved.
 
 ## Problem
 
@@ -31,67 +32,99 @@ is never reclaimed.
 - **No app restart**: Cannot destroy an app and create a new one — the old
   app's memory is permanently consumed.
 
-## Key insight
+## Key insight (revised after P25.1)
 
-Mojo's borrow checker already ensures frees are called at the right time.
-**The only task is making `alignedFree` actually free.** Once the allocator
-honors free calls, WASM-internal memory automatically stays bounded.
+Mojo's borrow checker ensures frees are called for Mojo-level ownership, but
+the compiled WASM output contains **use-after-free patterns** that were
+previously masked by the no-op free:
 
-## Design
+- `create_vnode` frees internal vnode storage (e.g. 32-byte list backing
+  buffers) that is still referenced by the vnode for future diffs.
+- Enabling immediate reuse causes those freed blocks to be handed out for
+  new allocations, corrupting the old vnode's data.
 
-A **free-list allocator** with block headers, operating on WASM linear memory.
+This was discovered during P25.1 by enabling reuse and observing diff tests
+produce 0 mutations (old and new vnodes sharing the same backing memory).
 
-### Block layout
+**The allocator tracks all frees so `heapStats()` reports reclaimable memory.
+Actual reuse is gated behind `setAllocatorReuse(true)` and disabled by default
+until the Mojo vnode code is fixed.**
+
+## Design (revised)
+
+A **JS-side size-class map** allocator — no headers in WASM linear memory.
+
+### Why not WASM-side headers?
+
+The initial plan called for a 16-byte header before each allocation in WASM
+linear memory. This approach was abandoned because:
+
+1. **Pre-init allocs**: Some allocations happen during WASM instantiation
+   before the JS runtime has a memory reference, so headers can't be written.
+2. **Alignment overhead**: Headers shift all pointers by 16 bytes, wasting
+   space and complicating alignment.
+3. **Performance**: Reading headers from WASM memory (via `DataView`) on every
+   free is slower than a JS-side `Map.get()`.
+
+### Current design
 
 ```txt
-┌──────────────────────┬──────────────────────────────┐
-│  Header (16 bytes)   │  User data (size bytes)      │
-│  ┌────────┬────────┐ │                              │
-│  │ size   │ _pad   │ │  ← alignedAlloc returns here │
-│  │ (i64)  │ (i64)  │ │                              │
-│  └────────┴────────┘ │                              │
-└──────────────────────┴──────────────────────────────┘
+alignedAlloc(align, size)
+  ├─ if reuseEnabled: check freeMap[size] for a cached pointer (O(1) pop)
+  └─ else: bump allocator (same as before, O(1))
+       └─ record ptr→size in ptrSize Map
+
+alignedFree(ptr)
+  ├─ look up size = ptrSize.get(ptr)
+  └─ push ptr onto freeMap[size] bucket
 ```
 
-- `alignedAlloc(align, size)` returns a pointer to user data (header + 16).
-- `alignedFree(ptr)` reads `size` from `ptr - 16` to recover the block.
-- Header is 16 bytes so user data is naturally 16-byte aligned (covers all
-  alignments Mojo requests: 1, 4, 8, 16).
-
-### Free list
-
-- Singly-linked list of free blocks, sorted by address.
-- Free blocks reuse the user-data region for the link: `{ next_ptr, size }`.
-- Minimum allocation: 16 bytes (to hold the link when freed).
-- On free: insert into sorted position, coalesce with adjacent blocks.
-- On alloc: first-fit search. Split oversized blocks. Fall back to bump
-  pointer if no free block fits.
+- `ptrSize: Map<bigint, bigint>` — every bump-allocated pointer → its size.
+- `freeMap: Map<bigint, bigint[]>` — size-class buckets of freed pointers.
+- `reuseEnabled: boolean` — gates whether `alignedAlloc` pops from `freeMap`.
+- `heapStats()` — walks `freeMap` to report free blocks/bytes.
+- Zero WASM memory reads/writes in the allocator — fully transparent.
 
 ## Steps
 
-### P25.1 — Free-list allocator in TypeScript (`runtime/memory.ts`)
+### P25.1 — Size-class map allocator in TypeScript (`runtime/memory.ts`) ✅
 
-Replace the bump allocator. Same export signatures — drop-in replacement.
+Replaced the bump allocator with JS-side tracking. Same export signatures.
 
-- `alignedAlloc(align, size)` with header + free-list + bump fallback.
-- `alignedFree(ptr)` with free-list insertion + coalescing.
+- `alignedAlloc(align, size)` with size-class reuse (gated) + bump fallback.
+- `alignedFree(ptr)` with JS-side size lookup and free-list push.
+- `heapStats()` reports free blocks and bytes.
+- `setAllocatorReuse(on)` toggle for enabling/disabling reuse.
+- `saveAllocator()` / `restoreAllocator()` / `initTestAllocator()` for test
+  isolation.
 
-**Tests** — `test-js/allocator.test.ts`:
+**Tests** — `test-js/allocator.test.ts` (with reuse enabled in isolated memory):
 
-- Alloc returns aligned pointers.
-- Free + re-alloc reuses memory.
-- Coalescing (adjacent frees merge into one block).
-- Split (alloc from an oversized free block).
-- Bump fallback when free list is empty.
-- Rapid alloc/free cycles — heap stats stable.
+- ✅ Alloc returns correctly aligned pointers.
+- ✅ Free + re-alloc reuses memory (same size).
+- ✅ Different sizes use different buckets.
+- ✅ Mismatched size falls through to bump.
+- ✅ Bump fallback when free list is empty.
+- ✅ LIFO ordering (stack-like pop).
+- ✅ Rapid alloc/free cycles — heap stats stable.
+- ✅ Mixed-size rapid cycles stay bounded.
+- ✅ Checkerboard (interleaved) alloc/free pattern.
+- ✅ HeapStats accuracy.
+- ✅ Large allocations (4 KiB).
+- ✅ free(0) is a safe no-op.
 
-### P25.2 — Free-list allocator in JavaScript (`examples/lib/env.js`)
+**Result**: 1,338 tests pass (1,278 existing + 60 new allocator tests), 0 failures, ~1.2s runtime.
+
+**Discovery**: WASM vnode code has use-after-free — reuse disabled by default
+until Mojo source is fixed. See "Key insight (revised)" above.
+
+### P25.2 — Size-class map allocator in JavaScript (`examples/lib/env.js`)
 
 Port P25.1 to plain JS for the browser examples runtime.
 
 **Verify**: `just serve` — counter, todo, bench all work.
 
-### P25.3 — Free-list allocator in Mojo (`test/wasm_harness.mojo`)
+### P25.3 — Size-class map allocator in Mojo (`test/wasm_harness.mojo`)
 
 Port to the Mojo test harness (`SharedState.aligned_alloc` + `_cb_aligned_free`).
 
@@ -108,19 +141,23 @@ Port to the Mojo test harness (`SharedState.aligned_alloc` + `_cb_aligned_free`)
 
 **Tests**: 1,000 writeStringStruct → flush → scratchFreeAll cycles, heap stable.
 
-### P25.5 — Validation
+### P25.5 — Fix WASM use-after-free and enable reuse
 
+Investigate and fix the use-after-free in the Mojo vnode/diff code:
+
+- `create_vnode` frees internal list buffers still needed by the vnode.
+- Once fixed, enable `setAllocatorReuse(true)` by default.
 - Multi-app: create → destroy → create → destroy × 10, heap bounded.
 - Bench: create 10k rows, clear × 10, heap bounded.
 - Update `AGENTS.md` and `README.md`, remove OOM caveats.
 
-## Estimated size
+## Estimated size (revised)
 
-| Step  | Scope                        | ~Lines |
-|-------|------------------------------|--------|
-| P25.1 | TS allocator + tests         | ~300   |
-| P25.2 | JS allocator port            | ~80    |
-| P25.3 | Mojo allocator port          | ~80    |
-| P25.4 | Scratch arena + string frees | ~100   |
-| P25.5 | Validation + docs            | ~150   |
-| **Total** |                          | **~710** |
+| Step  | Scope                            | ~Lines | Status |
+|-------|----------------------------------|--------|--------|
+| P25.1 | TS allocator + tests             | ~250   | ✅ Done |
+| P25.2 | JS allocator port                | ~50    | |
+| P25.3 | Mojo allocator port              | ~80    | |
+| P25.4 | Scratch arena + string frees     | ~100   | |
+| P25.5 | Fix use-after-free + validation  | ~200   | |
+| **Total** |                              | **~680** | |

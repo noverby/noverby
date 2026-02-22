@@ -8,13 +8,19 @@ export type {
 } from "./events.ts";
 export { EventBridge, EventType } from "./events.ts";
 export { Interpreter, MutationBuilder } from "./interpreter.ts";
+export type { HeapStats } from "./memory.ts";
 export {
 	alignedAlloc,
 	alignedFree,
 	getExports,
 	getMemory,
 	getView,
+	heapStats,
 	initialize,
+	initTestAllocator,
+	restoreAllocator,
+	saveAllocator,
+	setAllocatorReuse,
 } from "./memory.ts";
 export type { Mutation } from "./protocol.ts";
 export { MutationReader, Op } from "./protocol.ts";
