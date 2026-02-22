@@ -6,3 +6,4 @@
 ## Nix flake rules
 
 - **Always `git add` new or changed files before running `direnv reload` or `nix develop`.** Nix flakes only see files tracked by git. If you create or modify a file referenced by Nix (e.g. in `modules/`, `config/`) and don't stage it first, the flake will use the old version or fail to find it.
+- **Run `direnv reload` after changing devenv modules or configs.** Files in `modules/devenv/` and `config/devenv.nix` are evaluated by devenv on shell entry. Changes to these files (e.g. `enterShell`, git-hooks, packages) won't take effect until you `git add` the changed files and run `direnv reload`.
