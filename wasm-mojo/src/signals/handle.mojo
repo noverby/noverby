@@ -393,3 +393,132 @@ struct EffectHandle(Copyable, Movable):
         context.
         """
         self.runtime[0].effect_end_run(self.id)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SignalBool — Ergonomic handle for a Bool signal (stored as Int32 0/1)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+struct SignalBool(Copyable, Movable, Stringable):
+    """Ergonomic handle wrapping a Bool signal stored as Int32 (0/1).
+
+    Provides a proper boolean API on top of the Int32 signal store,
+    since Mojo WASM only supports Int32 signals currently (generic
+    `Signal[T]` is blocked on conditional conformance).
+
+    Usage:
+
+        var visible = SignalBool(key, runtime_ptr)
+        visible.set(True)       # write
+        var v = visible.get()   # read without subscribing
+        var v = visible.read()  # read and subscribe context
+        visible.toggle()        # flip True ↔ False
+
+    The handle does NOT own the Runtime — it holds a non-owning pointer.
+    """
+
+    var key: UInt32
+    var runtime: UnsafePointer[Runtime]
+
+    # ── Construction ─────────────────────────────────────────────────
+
+    fn __init__(out self, key: UInt32, runtime: UnsafePointer[Runtime]):
+        """Create a bool signal handle from a raw key and runtime pointer.
+
+        Args:
+            key: The signal's key in the Runtime's SignalStore.
+            runtime: Non-owning pointer to the Runtime.
+        """
+        self.key = key
+        self.runtime = runtime
+
+    fn __copyinit__(out self, other: Self):
+        self.key = other.key
+        self.runtime = other.runtime
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.key = other.key
+        self.runtime = other.runtime
+
+    # ── Read ─────────────────────────────────────────────────────────
+
+    fn get(self) -> Bool:
+        """Read the signal value as Bool WITHOUT subscribing.
+
+        Equivalent to `peek()` on SignalI32 but returns Bool.
+        Use this for one-off reads (e.g. in event handlers).
+
+        Returns:
+            True if the stored Int32 value is non-zero, False otherwise.
+        """
+        return self.runtime[0].peek_signal[Int32](self.key) != 0
+
+    fn read(self) -> Bool:
+        """Read the signal value as Bool AND subscribe the current context.
+
+        If a scope, memo, or effect is currently rendering/computing,
+        it will be subscribed to this signal and marked dirty on change.
+
+        Returns:
+            True if the stored Int32 value is non-zero, False otherwise.
+        """
+        return self.runtime[0].read_signal[Int32](self.key) != 0
+
+    fn peek_i32(self) -> Int32:
+        """Read the raw Int32 value (0 or 1) without subscribing.
+
+        Useful when you need the Int32 representation directly.
+
+        Returns:
+            The raw Int32 value (0 or 1).
+        """
+        return self.runtime[0].peek_signal[Int32](self.key)
+
+    # ── Write ────────────────────────────────────────────────────────
+
+    fn set(self, value: Bool):
+        """Write a boolean value to the signal.
+
+        All subscribers (scopes, memos, effects) will be marked dirty.
+
+        Args:
+            value: The new Bool value (stored as Int32 1 or 0).
+        """
+        if value:
+            self.runtime[0].write_signal[Int32](self.key, 1)
+        else:
+            self.runtime[0].write_signal[Int32](self.key, 0)
+
+    fn toggle(self):
+        """Flip the boolean value (True ↔ False).
+
+        Reads the current value and writes its logical inverse.
+        """
+        var current = self.runtime[0].peek_signal[Int32](self.key)
+        if current == 0:
+            self.runtime[0].write_signal[Int32](self.key, 1)
+        else:
+            self.runtime[0].write_signal[Int32](self.key, 0)
+
+    # ── Queries ──────────────────────────────────────────────────────
+
+    fn version(self) -> UInt32:
+        """Return the signal's write version (monotonically increasing).
+
+        Returns:
+            The version counter.
+        """
+        return self.runtime[0].signals.version(self.key)
+
+    # ── Stringable ───────────────────────────────────────────────────
+
+    fn __str__(self) -> String:
+        """Return "true" or "false" for display/interpolation.
+
+        Uses get() (peek) so it does NOT subscribe the calling context.
+        """
+        if self.get():
+            return String("true")
+        else:
+            return String("false")

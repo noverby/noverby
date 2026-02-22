@@ -19,6 +19,7 @@
 
 - `Runtime` — reactive runtime: signal store, scope tracking, context management.
 - `SignalI32` (`signals/handle.mojo`) — ergonomic handle with `peek()`, `set()`, `+=`, `-=`. Holds key + runtime pointer.
+- `SignalBool` (`signals/handle.mojo`) — Phase 18 ergonomic boolean signal wrapping Int32 (0/1). `get() -> Bool`, `read() -> Bool` (with context subscription), `set(Bool)`, `toggle()`, `peek_i32() -> Int32`, `version()`, `__str__()` ("true"/"false"). Created via `ctx.use_signal_bool(initial)` or `ctx.create_signal_bool(initial)`.
 - `MemoI32` — derived signal with lazy recomputation and auto dependency tracking.
 - `EffectHandle` — reactive side effects.
 
@@ -32,6 +33,7 @@
 - `Node` (DSL union) — `text()`, `dyn_text()`, `dyn_node()`, `attr()`, `dyn_attr()`, `el_div()`, `el_button()`, etc.
 - **Multi-arg `el_*` overloads** — 1–5 `Node` argument overloads for all 38 element helpers, eliminating `List[Node](...)` wrappers. Uses `var` ownership + `^` transfer. Example: `el_div(el_h1(dyn_text()), el_button(text("Up!"), onclick_add(count, 1)))`.
 - Inline event constructors: `onclick_add(signal, delta)`, `onclick_sub()`, `onclick_set()`, `onclick_toggle()`, `on_event()`.
+- **Conditional helpers** (Phase 18): `class_if(condition, name) -> String` (returns name or ""), `class_when(condition, true_class, false_class) -> String`, `text_when(condition, true_text, false_text) -> String`. Eliminate if/else boilerplate for dynamic attributes and text.
 - `dyn_text()` with no args → auto-numbered (sentinel `DYN_TEXT_AUTO`).
 - `to_template(node, name)` → `Template` (static structure for DOM cloning).
 - `VNode` — runtime instance of a template with dynamic slots.
@@ -74,13 +76,13 @@
   - `ctx.vnode_builder()` / `ctx.vnode_builder_for(tmpl_id)` — VNode construction.
 - **`FragmentSlot`** — tracks empty↔populated transitions for dynamic keyed lists.
 - **`KeyedList`** (`src/component/keyed_list.mojo`) — bundles `FragmentSlot` + child scope IDs + item template ID + handler map for keyed-list components. Methods: `begin_rebuild(ctx)` (destroy old scopes + clear handler map, return empty fragment), `begin_item(key, ctx)` → `ItemBuilder` (Phase 17 — create scope + keyed VNodeBuilder in one call), `get_action(handler_id)` → `HandlerAction` (Phase 17 — dispatch lookup), `create_scope(ctx)` (create + track child scope), `item_builder(key, ctx)` (keyed VNodeBuilder), `push_child(ctx, frag, child)`, `flush(ctx, writer, frag)` (fragment transitions), `init_slot(anchor, frag)`, `handler_count()`.
-- **`ItemBuilder`** — Phase 17 ergonomic per-item builder wrapping VNodeBuilder + child scope + handler map pointer. Methods: `add_dyn_text(value)`, `add_dyn_text_attr(name, value)`, `add_dyn_bool_attr(name, value)`, `add_dyn_event(event, handler_id)`, `add_custom_event(event, action_tag, data)` (registers handler + maps action + adds event attr in one call), `add_dyn_placeholder()`, `index()`.
+- **`ItemBuilder`** — Phase 17 ergonomic per-item builder wrapping VNodeBuilder + child scope + handler map pointer. Methods: `add_dyn_text(value)`, `add_dyn_text_attr(name, value)`, `add_dyn_bool_attr(name, value)`, `add_dyn_event(event, handler_id)`, `add_custom_event(event, action_tag, data)` (registers handler + maps action + adds event attr in one call), `add_class_if(condition, class_name)` (Phase 18 — conditional CSS class in one call), `add_class_when(condition, true_class, false_class)` (Phase 18 — binary class switching), `add_dyn_placeholder()`, `index()`.
 - **`HandlerAction`** — Phase 17 result of `KeyedList.get_action(handler_id)`. Fields: `tag: UInt8` (app-defined action), `data: Int32` (e.g. item ID), `found: Bool`.
 - **Lifecycle helpers**: `mount_vnode()`, `diff_and_finalize()`, `flush_fragment()`.
 
 ## App Architectures (`src/apps/`)
 
-All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch.
+All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate.
 
 ### CounterApp (`counter.mojo`) — simplest example
 
@@ -122,7 +124,7 @@ struct BenchmarkApp:
 
 Two signals: `version` (list changes), `selected` (highlight row).
 Operations: create_rows, append_rows, update_every_10th, select_row, swap_rows, remove_row, clear_rows.
-Per-row build uses `begin_item()` + `add_custom_event()` (Phase 17).
+Per-row build uses `begin_item()` + `add_custom_event()` (Phase 17) + `add_class_if()` (Phase 18).
 
 ## WASM Export Pattern (`src/main.mojo`)
 
@@ -151,6 +153,7 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 | File | Lines | Role |
 |------|-------|------|
 | `src/main.mojo` | ~2,500 | All @export wrappers |
+| `src/signals/handle.mojo` | ~525 | SignalI32 + SignalBool + MemoI32 + EffectHandle |
 | `src/component/context.mojo` | ~950 | ComponentContext + RenderBuilder + tree processing |
 | `src/component/lifecycle.mojo` | ~350 | FragmentSlot + mount/diff helpers |
 | `src/component/app_shell.mojo` | ~350 | AppShell (low-level) |
@@ -158,15 +161,17 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 | `src/apps/todo.mojo` | ~450 | Todo app (uses KeyedList + ItemBuilder) |
 | `src/apps/bench.mojo` | ~430 | Benchmark app (uses KeyedList + ItemBuilder) |
 | `src/component/keyed_list.mojo` | ~595 | KeyedList + ItemBuilder + HandlerAction |
-| `src/vdom/dsl.mojo` | ~2,775 | Node DSL + el_* helpers + multi-arg overloads + to_template |
+| `src/vdom/dsl.mojo` | ~2,870 | Node DSL + el_* helpers + multi-arg overloads + conditional helpers + to_template |
 | `src/vdom/vnode.mojo` | ~600 | VNode + VNodeStore + VNodeBuilder |
 | `src/signals/runtime.mojo` | ~500 | Reactive runtime |
 | `src/mutations/diff.mojo` | ~500 | DiffEngine (keyed reconciliation) |
-| `CHANGELOG.md` | ~170 | Development history (Phases 0–17) |
+| `CHANGELOG.md` | ~185 | Development history (Phases 0–18) |
 
 ## Common Patterns
 
 **Adding a signal to a component**: `var foo = self.ctx.use_signal(0)` in setup, `foo.peek()` to read, `foo += 1` or `foo.set(v)` to write.
+
+**Adding a bool signal**: `var flag = self.ctx.use_signal_bool(False)` in setup, `flag.get()` to read, `flag.set(True)` or `flag.toggle()` to write.
 
 **Bump version signal**: `self.version += 1` (triggers re-render via scope subscription).
 
@@ -174,7 +179,9 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 
 **Manual events**: `var hid = ctx.register_handler(HandlerEntry.custom(scope_id, "click"))`, then `vb.add_dyn_event("click", hid)`.
 
-**Keyed list rebuild (Phase 17 — via ItemBuilder)**: `var frag = self.items.begin_rebuild(ctx)` → for each item: `var ib = items.begin_item(key, ctx)` → `ib.add_dyn_text(...)` → `ib.add_custom_event("click", ACTION_TAG, item_id)` → `items.push_child(ctx, frag, ib.index())`.
+**Keyed list rebuild (Phase 17+18 — via ItemBuilder)**: `var frag = self.items.begin_rebuild(ctx)` → for each item: `var ib = items.begin_item(key, ctx)` → `ib.add_dyn_text(...)` → `ib.add_custom_event("click", ACTION_TAG, item_id)` → `ib.add_class_if(condition, "class")` → `items.push_child(ctx, frag, ib.index())`.
+
+**Conditional helpers (Phase 18)**: `class_if(cond, "name")` → `"name"` or `""`. `class_when(cond, "a", "b")` → `"a"` or `"b"`. `text_when(cond, "yes", "no")` → conditional text. `ib.add_class_if(cond, "name")` → one-call shortcut on ItemBuilder/RenderBuilder.
 
 **Keyed list dispatch (Phase 17 — via HandlerAction)**: `var action = self.items.get_action(handler_id)` → `if action.found: match action.tag`.
 
@@ -189,7 +196,7 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 - **Closure event handlers** → blocked on Lambda syntax + Closure refinement (Phase 1, 🚧). Would eliminate `ItemBuilder.add_custom_event()` + `get_action()`.
 - **`rsx!` macro** → blocked on Hygienic importable macros (Phase 2, ⏰). Would enable compile-time DSL like Dioxus.
 - **`for` loops in views** → blocked on macros (Phase 2, ⏰). Currently iteration happens in build functions.
-- **Generic `Signal[T]`** → blocked on Conditional conformance (Phase 1, 🚧). Currently only `SignalI32` / `MemoI32`.
+- **Generic `Signal[T]`** → blocked on Conditional conformance (Phase 1, 🚧). Currently `SignalI32` / `SignalBool` / `MemoI32` (Phase 18 added `SignalBool`).
 - **Dynamic component dispatch** → blocked on Existentials / dynamic traits (Phase 2, ⏰).
 - **Pattern matching on actions** → blocked on ADTs & pattern matching (Phase 2, ⏰). Currently `if/elif` chains.
 - **Async data loading / suspense** → blocked on First-class async (Phase 2, ⏰).

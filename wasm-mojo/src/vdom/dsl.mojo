@@ -98,6 +98,96 @@ from .tags import (
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Conditional helpers — Reduce if/else boilerplate for dynamic attributes
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# These are runtime string utilities used alongside the DSL for concise
+# conditional rendering.  They complement `text()`, `dyn_text()`, etc.
+#
+# Instead of:
+#
+#     var tr_class: String
+#     if selected == row.id:
+#         tr_class = String("danger")
+#     else:
+#         tr_class = String("")
+#     ib.add_dyn_text_attr(String("class"), tr_class)
+#
+# Write:
+#
+#     ib.add_dyn_text_attr(String("class"), class_if(selected == row.id, String("danger")))
+#
+# Or even shorter with ItemBuilder convenience methods:
+#
+#     ib.add_class_if(selected == row.id, String("danger"))
+
+
+fn class_if(condition: Bool, name: String) -> String:
+    """Return the class name if condition is True, empty string otherwise.
+
+    A concise alternative to if/else blocks for conditional CSS classes.
+
+    Example:
+        var cls = class_if(item.completed, String("completed"))
+        # Returns "completed" if True, "" if False
+
+    Args:
+        condition: Whether to include the class.
+        name: The CSS class name.
+
+    Returns:
+        The class name or an empty string.
+    """
+    if condition:
+        return name
+    return String("")
+
+
+fn class_when(
+    condition: Bool, true_class: String, false_class: String
+) -> String:
+    """Return one of two class names based on a condition.
+
+    For binary class switching (e.g. "active" vs "inactive").
+
+    Example:
+        var cls = class_when(is_open, String("open"), String("closed"))
+
+    Args:
+        condition: The boolean condition.
+        true_class: Class name when True.
+        false_class: Class name when False.
+
+    Returns:
+        The appropriate class name.
+    """
+    if condition:
+        return true_class
+    return false_class
+
+
+fn text_when(condition: Bool, true_text: String, false_text: String) -> String:
+    """Return one of two strings based on a condition.
+
+    General-purpose conditional text helper.
+
+    Example:
+        var label = text_when(item.completed, String("✓ Done"), item.text)
+
+    Args:
+        condition: The boolean condition.
+        true_text: Text when True.
+        false_text: Text when False.
+
+    Returns:
+        The appropriate text.
+    """
+    if condition:
+        return true_text
+    return false_text
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Node — Tagged union for the declarative element tree
 # ══════════════════════════════════════════════════════════════════════════════
 

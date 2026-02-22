@@ -53,7 +53,7 @@
 
 from memory import UnsafePointer
 from signals import Runtime
-from signals.handle import SignalI32, MemoI32, EffectHandle
+from signals.handle import SignalI32, SignalBool, MemoI32, EffectHandle
 from events import HandlerEntry
 from bridge import MutationWriter
 from .app_shell import AppShell, app_shell_create
@@ -169,6 +169,45 @@ struct RenderBuilder(Movable):
     fn add_dyn_bool_attr(mut self, name: String, value: Bool):
         """Add a dynamic boolean attribute (e.g. disabled, checked)."""
         self._vb.add_dyn_bool_attr(name, value)
+
+    # ── Conditional class helpers ────────────────────────────────────
+
+    fn add_class_if(mut self, condition: Bool, class_name: String):
+        """Add a conditional CSS class attribute.
+
+        Shortcut for `add_dyn_text_attr("class", ...)`.
+        Adds the class name if condition is True, or an empty string
+        if False.
+
+        Args:
+            condition: Whether to apply the class.
+            class_name: The CSS class name to apply when True.
+        """
+        if condition:
+            self._vb.add_dyn_text_attr(String("class"), class_name)
+        else:
+            self._vb.add_dyn_text_attr(String("class"), String(""))
+
+    fn add_class_when(
+        mut self,
+        condition: Bool,
+        true_class: String,
+        false_class: String,
+    ):
+        """Add one of two CSS class names based on a condition.
+
+        Shortcut for `add_dyn_text_attr("class", ...)`.
+        For binary class switching (e.g. "active" vs "inactive").
+
+        Args:
+            condition: The boolean condition.
+            true_class: Class name when True.
+            false_class: Class name when False.
+        """
+        if condition:
+            self._vb.add_dyn_text_attr(String("class"), true_class)
+        else:
+            self._vb.add_dyn_text_attr(String("class"), false_class)
 
     # ── Build ────────────────────────────────────────────────────────
 
@@ -320,6 +359,53 @@ struct ComponentContext(Movable):
         """
         var key = self.shell.create_signal_i32(initial)
         return SignalI32(key, self.shell.runtime)
+
+    # ── Bool signal hooks ────────────────────────────────────────────
+
+    fn use_signal_bool(mut self, initial: Bool) -> SignalBool:
+        """Create a Bool signal and subscribe the root scope to it.
+
+        Must be called during setup (before end_setup).
+
+        Stores the boolean as Int32 (1 for True, 0 for False) internally,
+        but the returned SignalBool handle provides a proper Bool API
+        with `get()`, `set(Bool)`, `toggle()`, and `read()`.
+
+        Args:
+            initial: The initial Bool value.
+
+        Returns:
+            A SignalBool handle with boolean semantics.
+        """
+        var init_val: Int32
+        if initial:
+            init_val = 1
+        else:
+            init_val = 0
+        var key = self.shell.use_signal_i32(init_val)
+        # Read during render to subscribe the scope
+        _ = self.shell.read_signal_i32(key)
+        return SignalBool(key, self.shell.runtime)
+
+    fn create_signal_bool(mut self, initial: Bool) -> SignalBool:
+        """Create a Bool signal without the hook system.
+
+        Can be called at any time (not just during setup).
+        Does NOT auto-subscribe the scope.
+
+        Args:
+            initial: The initial Bool value.
+
+        Returns:
+            A SignalBool handle.
+        """
+        var init_val: Int32
+        if initial:
+            init_val = 1
+        else:
+            init_val = 0
+        var key = self.shell.create_signal_i32(init_val)
+        return SignalBool(key, self.shell.runtime)
 
     # ── Memo hooks ───────────────────────────────────────────────────
 

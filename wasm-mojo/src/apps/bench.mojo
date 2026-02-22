@@ -1,8 +1,9 @@
 # BenchmarkApp — js-framework-benchmark implementation.
 #
-# Migrated to Phase 17 Dioxus-style ergonomics:
+# Migrated to Phase 18 Dioxus-style ergonomics:
 #   - `begin_item()` replaces manual `create_scope()` + `item_builder()`
 #   - `add_custom_event()` replaces manual `register_handler()` + `add_dyn_event()`
+#   - `add_class_if()` replaces 5-line if/else class pattern (Phase 18)
 #   - Multi-arg el_* overloads (no List[Node]() wrappers)
 #   - KeyedList abstraction (bundles FragmentSlot + scope IDs + template ID + handler map)
 #   - Constructor-based setup (all init in __init__)
@@ -49,7 +50,7 @@
 #         }
 #     }
 #
-# Mojo equivalent (with Phase 17 abstractions):
+# Mojo equivalent (with Phase 17 + 18 abstractions):
 #
 #     struct BenchmarkApp:
 #         var ctx: ComponentContext
@@ -61,8 +62,7 @@
 #             var ib = self.rows_list.begin_item(String(row.id), self.ctx)
 #             ib.add_dyn_text(String(row.id))
 #             ib.add_dyn_text(row.label)
-#             var tr_class = String("danger") if self.selected.peek() == row.id else String("")
-#             ib.add_dyn_text_attr(String("class"), tr_class)
+#             ib.add_class_if(self.selected.peek() == row.id, String("danger"))
 #             ib.add_custom_event(String("click"), BENCH_ACTION_SELECT, row.id)
 #             ib.add_custom_event(String("click"), BENCH_ACTION_REMOVE, row.id)
 #             return ib.index()
@@ -349,9 +349,10 @@ struct BenchmarkApp(Movable):
     fn build_row_vnode(mut self, row: BenchRow) -> UInt32:
         """Build a keyed VNode for a single benchmark row.
 
-        Uses Phase 17 ItemBuilder for ergonomic per-item construction:
+        Uses Phase 17 ItemBuilder + Phase 18 conditional helpers:
           - `begin_item()` creates child scope + keyed VNodeBuilder
           - `add_custom_event()` registers handler + maps action + adds event attr
+          - `add_class_if()` replaces 5-line if/else class pattern
 
         Template "bench-row": tr > [ td(id), td > a(label), td > a("×") ]
           dynamic_text[0] = row id
@@ -369,13 +370,7 @@ struct BenchmarkApp(Movable):
         ib.add_dyn_text(row.label)
 
         # Dynamic attr 0: class on <tr> ("danger" if selected)
-        var selected = self.selected.peek()
-        var tr_class: String
-        if selected == row.id:
-            tr_class = String("danger")
-        else:
-            tr_class = String("")
-        ib.add_dyn_text_attr(String("class"), tr_class)
+        ib.add_class_if(self.selected.peek() == row.id, String("danger"))
 
         # Dynamic attr 1: click on label <a> (select — custom handler)
         ib.add_custom_event(String("click"), BENCH_ACTION_SELECT, row.id)

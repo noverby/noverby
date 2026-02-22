@@ -99,6 +99,10 @@ from .dsl import (
     onclick_set,
     onclick_toggle,
     on_event,
+    # Conditional helpers
+    class_if,
+    class_when,
+    text_when,
     # Generic element constructors
     el,
     el_empty,

@@ -1,9 +1,11 @@
 # TodoApp — Self-contained todo list application.
 #
-# Migrated to Phase 17 Dioxus-style ergonomics:
+# Migrated to Phase 18 Dioxus-style ergonomics:
 #   - `begin_item()` replaces manual `create_scope()` + `item_builder()`
 #   - `add_custom_event()` replaces manual `register_handler()` + `add_dyn_event()` + `handler_map.append()`
 #   - `get_action()` replaces manual handler_map lookup loop
+#   - `add_class_if()` replaces 4-line if/else class pattern (Phase 18)
+#   - `text_when()` replaces 4-line if/else text pattern (Phase 18)
 #   - Multi-arg el_* overloads (no List[Node]() wrappers)
 #   - KeyedList abstraction (bundles FragmentSlot + scope IDs + template ID + handler map)
 #   - Constructor-based setup (all init in __init__)
@@ -81,10 +83,10 @@
 #
 #         fn build_item_vnode(mut self, item: TodoItem) -> UInt32:
 #             var ib = self.items.begin_item(String(item.id), self.ctx)
-#             ib.add_dyn_text(display_text)
+#             ib.add_dyn_text(text_when(item.completed, "✓ " + item.text, item.text))
 #             ib.add_custom_event(String("click"), TODO_ACTION_TOGGLE, item.id)
 #             ib.add_custom_event(String("click"), TODO_ACTION_REMOVE, item.id)
-#             ib.add_dyn_text_attr(String("class"), class_name)
+#             ib.add_class_if(item.completed, String("completed"))
 #             return ib.index()
 #
 #         fn handle_event(mut self, handler_id: UInt32) -> Bool:
@@ -119,6 +121,7 @@ from vdom import (
     dyn_attr,
     attr,
     to_template,
+    text_when,
     VNodeBuilder,
 )
 
@@ -280,10 +283,11 @@ struct TodoApp(Movable):
     fn build_item_vnode(mut self, item: TodoItem) -> UInt32:
         """Build a keyed VNode for a single todo item.
 
-        Uses Phase 17 ItemBuilder for ergonomic per-item construction:
+        Uses Phase 17 ItemBuilder + Phase 18 conditional helpers:
           - `begin_item()` creates child scope + keyed VNodeBuilder
           - `add_custom_event()` registers handler + maps action + adds event attr
-          - `get_action()` retrieves the action tag + data for dispatch
+          - `add_class_if()` replaces 4-line if/else class pattern
+          - `text_when()` replaces 4-line if/else text pattern
 
         Template "todo-item": li > [ span > dynamic_text[0], button("✓"), button("✕") ]
           dynamic_text[0] = item text (possibly with completion indicator)
@@ -294,12 +298,13 @@ struct TodoApp(Movable):
         var ib = self.items.begin_item(String(item.id), self.ctx)
 
         # Dynamic text: item text with completion indicator
-        var display_text: String
-        if item.completed:
-            display_text = String("✓ ") + item.text
-        else:
-            display_text = item.text
-        ib.add_dyn_text(display_text)
+        ib.add_dyn_text(
+            text_when(
+                item.completed,
+                String("✓ ") + item.text,
+                item.text,
+            )
+        )
 
         # Dynamic attr 0: toggle handler (click on ✓ button)
         ib.add_custom_event(String("click"), TODO_ACTION_TOGGLE, item.id)
@@ -308,12 +313,7 @@ struct TodoApp(Movable):
         ib.add_custom_event(String("click"), TODO_ACTION_REMOVE, item.id)
 
         # Dynamic attr 2: class on the li element
-        var li_class: String
-        if item.completed:
-            li_class = String("completed")
-        else:
-            li_class = String("")
-        ib.add_dyn_text_attr(String("class"), li_class)
+        ib.add_class_if(item.completed, String("completed"))
 
         return ib.index()
 

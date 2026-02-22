@@ -2,6 +2,19 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 18 — Conditional Helpers & SignalBool ✅
+
+- **M18.1** — `SignalBool` handle type (`src/signals/handle.mojo`). Ergonomic boolean signal wrapping Int32 (0/1) with proper Bool API: `get() -> Bool`, `read() -> Bool` (with context subscription), `set(Bool)`, `toggle()`, `peek_i32() -> Int32`, `version()`, `__str__()` ("true"/"false"). Exported from signals package.
+- **M18.2** — `use_signal_bool` / `create_signal_bool` on `ComponentContext` (`src/component/context.mojo`). `ctx.use_signal_bool(initial: Bool) -> SignalBool` creates a Bool signal with hook registration and scope subscription. `ctx.create_signal_bool(initial: Bool) -> SignalBool` creates without hooks. Stores Bool as Int32 internally.
+- **M18.3** — Conditional helper functions (`src/vdom/dsl.mojo`). `class_if(condition, name) -> String` returns the class name or empty string. `class_when(condition, true_class, false_class) -> String` for binary class switching. `text_when(condition, true_text, false_text) -> String` for general conditional text. Exported from vdom package.
+- **M18.4** — `add_class_if` / `add_class_when` convenience methods on `ItemBuilder` (`src/component/keyed_list.mojo`) and `RenderBuilder` (`src/component/context.mojo`). `add_class_if(condition, class_name)` replaces the common 4–5 line if/else class pattern with a single call. `add_class_when(condition, true_class, false_class)` for binary class switching.
+- **M18.5** — App migrations. TodoApp: `build_item_vnode()` uses `text_when()` for conditional completion indicator (4 lines → 1) and `add_class_if()` for conditional "completed" class (4 lines → 1). BenchmarkApp: `build_row_vnode()` uses `add_class_if()` for conditional "danger" class (5 lines → 1). Header comments updated to reference Phase 18.
+- **M18.6** — 27 new Mojo tests: 13 `SignalBool` unit tests (get, set, toggle, round-trip, read subscription, peek_i32, version, str, copy), 8 conditional helper tests (class_if true/false, class_when true/false, text_when true/false, edge cases), 6 `ComponentContext` SignalBool integration tests (use_signal_bool true/false, scope subscription, create_signal_bool true/false, toggle lifecycle).
+
+**Test count after M18.6:** 943 Mojo + 1,152 JS = 2,095 tests.
+
+---
+
 ## Phase 17 — ItemBuilder & HandlerAction (Keyed List Ergonomics) ✅
 
 - **M17.1** — `ItemBuilder` + `HandlerAction` on `KeyedList` (`src/component/keyed_list.mojo`). `ItemBuilder` wraps VNodeBuilder + child scope + handler map pointer, providing `add_dyn_text()`, `add_dyn_text_attr()`, `add_dyn_bool_attr()`, `add_dyn_event()`, `add_custom_event()`, and `index()`. `add_custom_event(event, action_tag, data)` performs three operations in one call: registers a custom handler in the Runtime, stores the handler_id → (action_tag, data) mapping, and adds the dynamic event attribute to the VNode. `HandlerAction` struct returned by `KeyedList.get_action(handler_id)` for WASM-side dispatch (`tag`, `data`, `found` fields). `_HandlerMapping` internal storage type. `handler_map: List[_HandlerMapping]` field added to `KeyedList`. `begin_rebuild()` now also clears the handler map. `begin_item(key, ctx) -> ItemBuilder` creates child scope + keyed VNodeBuilder in one call. `get_action(handler_id) -> HandlerAction` for dispatch lookup. `handler_count()` query method. Phase 16 methods (`create_scope`, `item_builder`, `push_child`) remain available for manual pattern. Exported `ItemBuilder` and `HandlerAction` from component package.
