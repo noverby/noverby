@@ -6,6 +6,15 @@
 // Boots the Mojo WASM benchmark app (js-framework-benchmark style) in a
 // browser environment. Provides Create/Append/Update/Swap/Clear/Select/Remove
 // operations with timing display.
+//
+// NOTE: This example uses direct boot.js imports rather than the shared
+// launch() from lib/app.js because it relies on:
+//   - Manual event delegation on <tbody> (not per-element EventBridge)
+//   - Direct WASM calls for each operation (no generic handle_event export)
+//   - Custom toolbar button wiring with timing display
+//
+// As these features move into WASM (event delegation, toolbar rendering),
+// bench will converge to the same launch() call used by counter and todo.
 
 import {
 	allocBuffer,
