@@ -111,6 +111,14 @@ alias NODE_STATIC_ATTR: UInt8 = 4  # Static attribute (name + value)
 alias NODE_DYN_ATTR: UInt8 = 5  # Dynamic attribute placeholder (slot index)
 alias NODE_EVENT: UInt8 = 6  # Inline event handler (action + signal + operand)
 
+# ── Auto-numbering sentinel ──────────────────────────────────────────────────
+#
+# When a dyn_text() node is created without an explicit index, it uses this
+# sentinel value.  ComponentContext.register_view() / setup_view() will
+# auto-assign sequential indices (0, 1, 2, ...) in tree-walk order.
+
+alias DYN_TEXT_AUTO: UInt32 = 0xFFFFFFFF
+
 
 struct Node(Copyable, Movable):
     """A declarative description of a UI element tree node.
@@ -423,7 +431,7 @@ fn text(s: String) -> Node:
 
 
 fn dyn_text(index: Int) -> Node:
-    """Create a dynamic text placeholder.
+    """Create a dynamic text placeholder with an explicit slot index.
 
     The `index` identifies which slot in the VNode's dynamic_nodes list
     this placeholder fills.
@@ -431,6 +439,22 @@ fn dyn_text(index: Int) -> Node:
     Usage: `dyn_text(0)` → first dynamic text slot
     """
     return Node.dynamic_text_node(UInt32(index))
+
+
+fn dyn_text() -> Node:
+    """Create an auto-numbered dynamic text placeholder.
+
+    The slot index will be auto-assigned by `ComponentContext.setup_view()`
+    or `ComponentContext.register_view()` in tree-walk order (0, 1, 2, ...).
+
+    This eliminates manual index tracking and brings the DSL closer to
+    Dioxus's `{count}` interpolation syntax.
+
+    Usage:
+        el_h1(List[Node](dyn_text()))  # auto-assigned index 0
+        el_p(List[Node](dyn_text()))   # auto-assigned index 1
+    """
+    return Node.dynamic_text_node(DYN_TEXT_AUTO)
 
 
 fn dyn_node(index: Int) -> Node:

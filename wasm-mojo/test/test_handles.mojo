@@ -5,8 +5,9 @@
 #   - MemoI32: read, peek, is_dirty, begin_compute, end_compute, recompute_from
 #   - EffectHandle: is_pending, begin_run, end_run
 #   - ComponentContext: create, use_signal, use_memo, use_effect, end_setup,
-#     register_template, on_click_add, on_click_sub, on_click_set,
-#     on_click_toggle, on_input_set, vnode_builder, mount, dispatch_event,
+#     register_template, setup_view, register_view, on_click_add,
+#     on_click_sub, on_click_set, on_click_toggle, on_input_set,
+#     vnode_builder, render_builder, mount, dispatch_event, flush,
 #     has_dirty, consume_dirty, diff, finalize, destroy
 
 from memory import UnsafePointer
@@ -19,15 +20,18 @@ from signals import (
     MemoI32,
     EffectHandle,
 )
-from component import ComponentContext, AppShell, app_shell_create
+from component import ComponentContext, EventBinding, AppShell, app_shell_create
 from vdom import (
     Node,
     el_div,
     el_span,
+    el_h1,
     el_button,
     text,
     dyn_text,
     dyn_attr,
+    onclick_add,
+    onclick_sub,
 )
 from bridge import MutationWriter
 
@@ -827,6 +831,216 @@ def test_ctx_double_destroy():
     ctx.destroy()  # Should be safe
 
 
+def test_ctx_setup_view_basic():
+    """Test setup_view() combines end_setup + register_view."""
+    var ctx = ComponentContext.create()
+    var count = ctx.use_signal(0)
+    # setup_view combines end_setup + register_view
+    ctx.setup_view(
+        el_div(
+            List[Node](
+                el_h1(List[Node](dyn_text(0))),
+                el_button(
+                    List[Node](
+                        text(String("Up")),
+                        onclick_add(count, 1),
+                    )
+                ),
+            )
+        ),
+        String("setup-view-test"),
+    )
+    assert_true(Int(ctx.template_id) >= 0, "template ID valid after setup_view")
+    var events = ctx.view_events()
+    assert_equal(len(events), 1, "one event binding registered")
+    assert_equal(events[0].event_name, "click", "event is click")
+    ctx.destroy()
+
+
+def test_ctx_setup_view_auto_dyn_text():
+    """Test auto-numbered dyn_text() via setup_view."""
+    var ctx = ComponentContext.create()
+    var count = ctx.use_signal(0)
+    # Use dyn_text() without explicit index — auto-numbered
+    ctx.setup_view(
+        el_div(
+            List[Node](
+                el_h1(List[Node](dyn_text())),
+                el_span(List[Node](dyn_text())),
+            )
+        ),
+        String("auto-dyn-text-test"),
+    )
+    assert_true(Int(ctx.template_id) >= 0, "template ID valid")
+    # Build a VNode and verify both dyn_text slots work
+    var vb = ctx.render_builder()
+    vb.add_dyn_text(String("first"))
+    vb.add_dyn_text(String("second"))
+    var idx = vb.build()
+    assert_true(Int(idx) >= 0, "VNode index valid")
+    ctx.destroy()
+
+
+def test_ctx_setup_view_with_render_builder():
+    """Test setup_view + render_builder end-to-end."""
+    var ctx = ComponentContext.create()
+    var count = ctx.use_signal(0)
+    ctx.setup_view(
+        el_div(
+            List[Node](
+                el_h1(List[Node](dyn_text())),
+                el_button(
+                    List[Node](
+                        text(String("Up high!")),
+                        onclick_add(count, 1),
+                    )
+                ),
+                el_button(
+                    List[Node](
+                        text(String("Down low!")),
+                        onclick_sub(count, 1),
+                    )
+                ),
+            )
+        ),
+        String("render-builder-test"),
+    )
+    var events = ctx.view_events()
+    assert_equal(len(events), 2, "two event bindings (incr + decr)")
+
+    # Build VNode via render_builder (auto-adds event attrs)
+    var vb = ctx.render_builder()
+    vb.add_dyn_text(String("High-Five counter: 0"))
+    var idx = vb.build()
+    assert_true(Int(idx) >= 0, "VNode index valid from render_builder")
+    ctx.destroy()
+
+
+def test_ctx_flush_convenience():
+    """Test flush() combines diff + finalize."""
+    var ctx = ComponentContext.create()
+    var count = ctx.use_signal(0)
+    ctx.setup_view(
+        el_div(
+            List[Node](
+                el_h1(List[Node](dyn_text())),
+                el_button(
+                    List[Node](
+                        text(String("+")),
+                        onclick_add(count, 1),
+                    )
+                ),
+            )
+        ),
+        String("flush-test"),
+    )
+
+    # Initial mount
+    var vb = ctx.render_builder()
+    vb.add_dyn_text(String("Count: 0"))
+    var vnode_idx = vb.build()
+    var writer_ptr = _alloc_writer()
+    var mount_len = ctx.mount(writer_ptr, vnode_idx)
+    assert_true(Int(mount_len) > 0, "mount should produce mutations")
+    _free_writer(writer_ptr)
+
+    # Dispatch click
+    var events = ctx.view_events()
+    _ = ctx.dispatch_event(events[0].handler_id, 0)
+    assert_equal(count.peek(), 1, "count should be 1 after click")
+
+    # Flush using convenience method
+    assert_true(ctx.consume_dirty(), "dirty after click")
+    var vb2 = ctx.render_builder()
+    vb2.add_dyn_text(String("Count: 1"))
+    var new_idx = vb2.build()
+    var writer_ptr2 = _alloc_writer()
+    var flush_len = ctx.flush(writer_ptr2, new_idx)
+    assert_true(Int(flush_len) > 0, "flush should produce mutations")
+    _free_writer(writer_ptr2)
+
+    ctx.destroy()
+
+
+def test_ctx_dioxus_style_counter_lifecycle():
+    """Full Dioxus-style counter lifecycle: init, mount, click, flush.
+
+    Mirrors the pattern used by CounterApp.__init__() with setup_view(),
+    auto-numbered dyn_text(), render_builder(), and flush().
+    """
+    # ── Setup (like CounterApp.__init__) ──
+    var ctx = ComponentContext.create()
+    var count = ctx.use_signal(0)
+    ctx.setup_view(
+        el_div(
+            List[Node](
+                el_h1(List[Node](dyn_text())),
+                el_button(
+                    List[Node](
+                        text(String("Up high!")),
+                        onclick_add(count, 1),
+                    )
+                ),
+                el_button(
+                    List[Node](
+                        text(String("Down low!")),
+                        onclick_sub(count, 1),
+                    )
+                ),
+            )
+        ),
+        String("dioxus-counter"),
+    )
+
+    var events = ctx.view_events()
+    assert_equal(len(events), 2, "two event bindings")
+    var incr = events[0].handler_id
+    var decr = events[1].handler_id
+
+    # ── Mount (like counter_app_rebuild) ──
+    var vb = ctx.render_builder()
+    vb.add_dyn_text(String("High-Five counter: 0"))
+    var vnode_idx = vb.build()
+    var writer_ptr = _alloc_writer()
+    var mount_len = ctx.mount(writer_ptr, vnode_idx)
+    assert_true(Int(mount_len) > 0, "mount produces mutations")
+    _free_writer(writer_ptr)
+
+    # ── Increment 3 times ──
+    for _ in range(3):
+        _ = ctx.dispatch_event(incr, 0)
+    assert_equal(count.peek(), 3, "count is 3 after 3 increments")
+
+    # ── Flush (like counter_app_flush) ──
+    assert_true(ctx.consume_dirty(), "dirty after increments")
+    var vb2 = ctx.render_builder()
+    vb2.add_dyn_text(String("High-Five counter: 3"))
+    var new_idx = vb2.build()
+    var writer_ptr2 = _alloc_writer()
+    var flush_len = ctx.flush(writer_ptr2, new_idx)
+    assert_true(Int(flush_len) > 0, "flush produces mutations")
+    _free_writer(writer_ptr2)
+
+    # ── Decrement ──
+    _ = ctx.dispatch_event(decr, 0)
+    assert_equal(count.peek(), 2, "count is 2 after decrement")
+
+    # ── Flush again ──
+    assert_true(ctx.consume_dirty(), "dirty after decrement")
+    var vb3 = ctx.render_builder()
+    vb3.add_dyn_text(String("High-Five counter: 2"))
+    var new_idx2 = vb3.build()
+    var writer_ptr3 = _alloc_writer()
+    var flush_len2 = ctx.flush(writer_ptr3, new_idx2)
+    assert_true(Int(flush_len2) > 0, "second flush produces mutations")
+    _free_writer(writer_ptr3)
+
+    # ── No-op flush when clean ──
+    assert_false(ctx.consume_dirty(), "not dirty when no events")
+
+    ctx.destroy()
+
+
 def test_ctx_vnode_builder_keyed():
     var ctx = ComponentContext.create()
     ctx.end_setup()
@@ -1279,6 +1493,41 @@ fn main() raises:
         pass_count += 1
     except e:
         print("FAIL test_ctx_double_destroy:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_setup_view_basic()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_setup_view_basic:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_setup_view_auto_dyn_text()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_setup_view_auto_dyn_text:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_setup_view_with_render_builder()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_setup_view_with_render_builder:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_flush_convenience()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_flush_convenience:", e)
+        fail_count += 1
+
+    try:
+        test_ctx_dioxus_style_counter_lifecycle()
+        pass_count += 1
+    except e:
+        print("FAIL test_ctx_dioxus_style_counter_lifecycle:", e)
         fail_count += 1
 
     try:

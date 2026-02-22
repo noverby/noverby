@@ -51,7 +51,9 @@ from vdom import (
     Node,
     NODE_EVENT,
     NODE_ELEMENT,
+    NODE_DYN_TEXT,
     NODE_DYN_ATTR,
+    DYN_TEXT_AUTO,
     to_template,
     VNodeBuilder,
     VNodeStore,
@@ -387,19 +389,59 @@ struct ComponentContext(Movable):
             self.shell.runtime[0].templates.register(template^)
         )
 
+    fn setup_view(mut self, view: Node, name: String):
+        """End setup and register a view in one call.
+
+        Combines `end_setup()` + `register_view()` for maximum
+        conciseness.  Call after all `use_signal()` / `use_memo()` /
+        `use_effect()` calls.
+
+        Supports auto-numbered `dyn_text()` nodes (no explicit index)
+        — indices are assigned in tree-walk order (0, 1, 2, ...).
+
+        Equivalent Dioxus pattern:
+            rsx! {
+                h1 { "High-Five counter: {count}" }
+                button { onclick: move |_| count += 1, "Up high!" }
+                button { onclick: move |_| count -= 1, "Down low!" }
+            }
+
+        Mojo equivalent:
+            ctx.setup_view(
+                el_div(List[Node](
+                    el_h1(List[Node](dyn_text())),
+                    el_button(List[Node](text("Up high!"), onclick_add(count, 1))),
+                    el_button(List[Node](text("Down low!"), onclick_sub(count, 1))),
+                )),
+                "counter",
+            )
+
+        Args:
+            view: The root Node of the template tree (may contain
+                  NODE_EVENT and auto-numbered dyn_text nodes).
+            name: The template name (for deduplication).
+        """
+        self.end_setup()
+        self.register_view(view, name)
+
     fn register_view(mut self, view: Node, name: String):
         """Build a template from a Node tree with inline event handlers.
 
         Processes the Node tree to:
-        1. Find all NODE_EVENT nodes and assign dynamic attr indices
-        2. Register event handlers for each NODE_EVENT
-        3. Build and register the template
+        1. Auto-number any `dyn_text()` nodes with sentinel indices
+        2. Find all NODE_EVENT nodes and assign dynamic attr indices
+        3. Register event handlers for each NODE_EVENT
+        4. Build and register the template
 
         The registered event handlers are stored internally and
         auto-populated by `render_builder().build()`.
 
         This is the ergonomic alternative to `register_template()` +
         manual `on_click_add()`/`on_click_sub()` calls.
+
+        Supports both explicit `dyn_text(0)` and auto-numbered
+        `dyn_text()` (sentinel DYN_TEXT_AUTO) — they can even be mixed,
+        though mixing is not recommended.
 
         Equivalent Dioxus pattern:
             rsx! {
@@ -411,7 +453,7 @@ struct ComponentContext(Movable):
         Mojo equivalent:
             ctx.register_view(
                 el_div(List[Node](
-                    el_h1(List[Node](dyn_text(0))),
+                    el_h1(List[Node](dyn_text())),
                     el_button(List[Node](text("Up high!"), onclick_add(count, 1))),
                     el_button(List[Node](text("Down low!"), onclick_sub(count, 1))),
                 )),
@@ -420,14 +462,16 @@ struct ComponentContext(Movable):
 
         Args:
             view: The root Node of the template tree (may contain
-                  NODE_EVENT nodes from onclick_add, onclick_sub, etc.).
+                  NODE_EVENT nodes from onclick_add, onclick_sub, etc.,
+                  and auto-numbered dyn_text() nodes).
             name: The template name (for deduplication).
         """
-        # 1. Collect events and reindex: replace NODE_EVENT with
-        #    NODE_DYN_ATTR(auto_index) in a copy of the tree.
+        # 1. Process tree: auto-number dyn_text, replace NODE_EVENT with
+        #    NODE_DYN_ATTR(auto_index), collect event info.
         var events = List[_EventInfo]()
         var attr_idx = UInt32(0)
-        var processed = _collect_and_reindex_events(view, events, attr_idx)
+        var text_idx = UInt32(0)
+        var processed = _process_view_tree(view, events, attr_idx, text_idx)
 
         # 2. Build and register template from processed tree
         var template = to_template(processed, name)
@@ -450,6 +494,33 @@ struct ComponentContext(Movable):
             self._view_events.append(
                 EventBinding(events[i].event_name, handler_id)
             )
+
+    # ── Flush convenience ────────────────────────────────────────────
+
+    fn flush(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter],
+        new_vnode_idx: UInt32,
+    ) -> Int32:
+        """Diff old → new VNode, write End sentinel, return byte length.
+
+        Convenience method combining `diff()` + `finalize()`.
+        Typical usage in a flush function:
+
+            if not app[0].ctx.consume_dirty():
+                return 0
+            var new_idx = app[0].render()
+            return app[0].ctx.flush(writer_ptr, new_idx)
+
+        Args:
+            writer_ptr: Mutation buffer.
+            new_vnode_idx: Index of the new VNode from render().
+
+        Returns:
+            Byte length of mutation data.
+        """
+        self.diff(writer_ptr, new_vnode_idx)
+        return self.finalize(writer_ptr)
 
     # ── Handler registration — click events ──────────────────────────
 
@@ -798,16 +869,24 @@ struct _EventInfo(Copyable, Movable):
         self.operand = other.operand
 
 
-fn _collect_and_reindex_events(
+fn _process_view_tree(
     node: Node,
     mut events: List[_EventInfo],
     mut attr_idx: UInt32,
+    mut text_idx: UInt32,
 ) -> Node:
-    """Recursively clone a Node tree, replacing NODE_EVENT with NODE_DYN_ATTR.
+    """Recursively clone a Node tree, processing events and auto-numbered text.
 
-    Each NODE_EVENT is:
-    1. Collected into `events` (preserving tree-order traversal)
-    2. Replaced with a NODE_DYN_ATTR node with an auto-assigned index
+    Performs two transformations in a single tree walk:
+
+    1. **NODE_EVENT → NODE_DYN_ATTR**: Each NODE_EVENT is collected into
+       `events` and replaced with a NODE_DYN_ATTR with an auto-assigned
+       dynamic attribute index.
+
+    2. **Auto-numbered dyn_text**: Any NODE_DYN_TEXT node with
+       `dynamic_index == DYN_TEXT_AUTO` (the sentinel from `dyn_text()`)
+       is replaced with a properly numbered NODE_DYN_TEXT node using the
+       next sequential text index.
 
     All other nodes are cloned unchanged.  ELEMENT nodes have their
     items recursively processed.
@@ -816,9 +895,10 @@ fn _collect_and_reindex_events(
         node: The current node to process.
         events: Accumulator for collected event info (mutated in place).
         attr_idx: Running counter for dynamic attr indices (mutated).
+        text_idx: Running counter for auto-numbered dyn_text indices (mutated).
 
     Returns:
-        A new Node tree with NODE_EVENT replaced by NODE_DYN_ATTR.
+        A new Node tree with events replaced and dyn_text auto-numbered.
     """
     if node.kind == NODE_EVENT:
         # Collect the event info
@@ -835,12 +915,25 @@ fn _collect_and_reindex_events(
         attr_idx += 1
         return Node.dynamic_attr_node(idx)
 
+    elif node.kind == NODE_DYN_TEXT:
+        if node.dynamic_index == DYN_TEXT_AUTO:
+            # Auto-assign the next sequential text index
+            var idx = text_idx
+            text_idx += 1
+            return Node.dynamic_text_node(idx)
+        else:
+            # Explicit index — pass through but still advance counter
+            # past it so auto-numbering doesn't collide
+            if node.dynamic_index >= text_idx:
+                text_idx = node.dynamic_index + 1
+            return node.copy()
+
     elif node.kind == NODE_ELEMENT:
         # Recursively process items (children + attrs)
         var new_items = List[Node]()
         for i in range(len(node.items)):
             new_items.append(
-                _collect_and_reindex_events(node.items[i], events, attr_idx)
+                _process_view_tree(node.items[i], events, attr_idx, text_idx)
             )
         return Node(
             kind=NODE_ELEMENT,
@@ -853,5 +946,5 @@ fn _collect_and_reindex_events(
         )
 
     else:
-        # Pass through unchanged (TEXT, DYN_TEXT, DYN_NODE, STATIC_ATTR, DYN_ATTR)
+        # Pass through unchanged (TEXT, DYN_NODE, STATIC_ATTR, DYN_ATTR)
         return node.copy()
