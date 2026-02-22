@@ -6,7 +6,7 @@ import { useLocation, useSearchParams } from "react-router-dom";
 
 const useApps = () => {
 	const pathname = usePath();
-	const location = useLocation();
+	const _location = useLocation();
 	const [searchParams] = useSearchParams();
 	const link = useLink();
 	const [session] = useSession();

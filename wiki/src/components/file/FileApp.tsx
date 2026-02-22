@@ -4,18 +4,16 @@ import type { Node } from "hooks";
 
 const FileApp = ({ node }: { node: Node }) => {
 	return (
-		<>
-			<Stack spacing={1}>
-				<Card sx={{ m: 0 }}>
-					<ContentHeader node={node} />
-					<Collapse in>
-						<FileLoader node={node} />
-					</Collapse>
-				</Card>
-				<ChangeList node={node} />
-				<QuestionList node={node} />
-			</Stack>
-		</>
+		<Stack spacing={1}>
+			<Card sx={{ m: 0 }}>
+				<ContentHeader node={node} />
+				<Collapse in>
+					<FileLoader node={node} />
+				</Collapse>
+			</Card>
+			<ChangeList node={node} />
+			<QuestionList node={node} />
+		</Stack>
 	);
 };
 

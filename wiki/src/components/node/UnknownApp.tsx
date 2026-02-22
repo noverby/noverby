@@ -2,7 +2,7 @@ import { Login, QuestionMark } from "@mui/icons-material";
 import { Avatar, Button, CardContent, Grid, Typography } from "@mui/material";
 import { useAuthenticationStatus } from "@nhost/react";
 import { HeaderCard } from "comps";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 const UnknownApp = () => {
 	const navigate = useNavigate();

@@ -1377,7 +1377,7 @@ mod tests {
 
     #[test]
     fn test_parse_env_content_basic() {
-        let content = "KEY=value\nFOO=bar\n";
+        let content = "KEY=value\nFOO=bar\n"; // pragma: allowlist secret
         let m = parse_env_content(content);
         assert_eq!(m.get("KEY").unwrap(), "value");
         assert_eq!(m.get("FOO").unwrap(), "bar");

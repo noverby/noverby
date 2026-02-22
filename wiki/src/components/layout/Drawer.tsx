@@ -309,11 +309,11 @@ const MenuList = ({ setOpen }: { setOpen: (open: boolean) => void }) => {
 			Promise.all([
 				fromId(contextId),
 				resolve(({ query }) => {
-					const node = query?.node({ id: session?.prefix?.id! })?.context;
+					const node = query?.node({ id: session?.prefix?.id ?? "" })?.context;
 					return {
 						id: node?.id,
 						name: node?.name ?? "",
-						mime: node?.mimeId!,
+						mime: node?.mimeId ?? "",
 						key: node?.key,
 					};
 				}),
@@ -333,7 +333,7 @@ const MenuList = ({ setOpen }: { setOpen: (open: boolean) => void }) => {
 	const handleCurrent = async () => {
 		const resId = await resolve(
 			({ query }) =>
-				query?.node({ id: session?.prefix?.id! })?.context?.relations({
+				query?.node({ id: session?.prefix?.id ?? "" })?.context?.relations({
 					where: { name: { _eq: "active" } },
 				})?.[0]?.nodeId,
 			{ cachePolicy: "no-cache" },

@@ -46,7 +46,7 @@ const Editor = ({ node }: { node: Node }) => {
 
 	useEffect(() => {
 		startTransition(() => {
-			if (!["wiki/group", "wiki/event"].includes(query?.mimeId!)) {
+			if (!["wiki/group", "wiki/event"].includes(query?.mimeId ?? "")) {
 				const fetchMembers = async (id: string) => {
 					const members = await resolve(({ query }) =>
 						query
@@ -85,7 +85,7 @@ const Editor = ({ node }: { node: Node }) => {
 				"vote/position",
 				"vote/candidate",
 				"wiki/folder",
-			].includes(query?.mimeId!)
+			].includes(query?.mimeId ?? "")
 		) {
 			if (members.length === 0) {
 				setAuthorError("Tilføj mindst 1 forfatter");
@@ -114,84 +114,78 @@ const Editor = ({ node }: { node: Node }) => {
 	};
 
 	return (
-		<>
-			<Card sx={{ m: 0 }}>
-				<CardContent>
-					<Grid container spacing={2}>
-						<Grid size={{ xs: 12 }}>
-							<Stack spacing={2} direction="row" alignItems="center">
-								<TextField
-									value={name}
-									onChange={(e) => setName(e.target.value)}
-									label="Titel"
-									variant="outlined"
-									fullWidth
-									multiline
-								/>
-								<ButtonGroup>
-									<DeleteButton node={node} />
-									<AutoButton
-										text="Gem"
-										icon={<Save />}
-										onClick={handleSave()}
-									/>
-									{query?.mutable && (
-										<PublishButton
-											node={node}
-											handlePublish={handleSave(false)}
-										/>
-									)}
-								</ButtonGroup>
-							</Stack>
-						</Grid>
-						<Grid size={12}>
-							<Stack spacing={2} direction="row" alignItems="center">
-								{![
-									"wiki/group",
-									"wiki/event",
-									"vote/position",
-									"vote/candidate",
-								].includes(query?.mimeId!) && (
-									<AuthorTextField
-										value={members}
-										onChange={setMembers}
-										setAuthorError={setAuthorError}
-										authorError={authorError}
-									/>
-								)}
-
-								{query?.isContextOwner && (
-									<DatePicker value={date} onChange={setDate} />
-								)}
-							</Stack>
-						</Grid>
-						<Grid>
-							<FileUploader
-								text="Upload Billede"
-								onNewFile={({ fileId }: { fileId?: string }) => {
-									fileId && setFileId(fileId);
-								}}
+		<Card sx={{ m: 0 }}>
+			<CardContent>
+				<Grid container spacing={2}>
+					<Grid size={{ xs: 12 }}>
+						<Stack spacing={2} direction="row" alignItems="center">
+							<TextField
+								value={name}
+								onChange={(e) => setName(e.target.value)}
+								label="Titel"
+								variant="outlined"
+								fullWidth
+								multiline
 							/>
-						</Grid>
-
-						<Grid size={{ xs: 12 }}>
-							<Grid container>
-								{image && (
-									<Grid size={{ xs: 3 }}>
-										<Image alt="Billede for indhold" src={image} />
-									</Grid>
+							<ButtonGroup>
+								<DeleteButton node={node} />
+								<AutoButton text="Gem" icon={<Save />} onClick={handleSave()} />
+								{query?.mutable && (
+									<PublishButton
+										node={node}
+										handlePublish={handleSave(false)}
+									/>
 								)}
-							</Grid>
+							</ButtonGroup>
+						</Stack>
+					</Grid>
+					<Grid size={12}>
+						<Stack spacing={2} direction="row" alignItems="center">
+							{![
+								"wiki/group",
+								"wiki/event",
+								"vote/position",
+								"vote/candidate",
+							].includes(query?.mimeId ?? "") && (
+								<AuthorTextField
+									value={members}
+									onChange={setMembers}
+									setAuthorError={setAuthorError}
+									authorError={authorError}
+								/>
+							)}
+
+							{query?.isContextOwner && (
+								<DatePicker value={date} onChange={setDate} />
+							)}
+						</Stack>
+					</Grid>
+					<Grid>
+						<FileUploader
+							text="Upload Billede"
+							onNewFile={({ fileId }: { fileId?: string }) => {
+								fileId && setFileId(fileId);
+							}}
+						/>
+					</Grid>
+
+					<Grid size={{ xs: 12 }}>
+						<Grid container>
+							{image && (
+								<Grid size={{ xs: 3 }}>
+									<Image alt="Billede for indhold" src={image} />
+								</Grid>
+							)}
 						</Grid>
 					</Grid>
-				</CardContent>
-				<Slate
-					value={content}
-					onChange={(value) => setContent(structuredClone(value))}
-					readOnly={false}
-				/>
-			</Card>
-		</>
+				</Grid>
+			</CardContent>
+			<Slate
+				value={content}
+				onChange={(value) => setContent(structuredClone(value))}
+				readOnly={false}
+			/>
+		</Card>
 	);
 };
 

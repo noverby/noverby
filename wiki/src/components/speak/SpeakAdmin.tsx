@@ -83,7 +83,7 @@ const SpeakAdmin = ({ node, time }: { node: Node; time: number }) => {
 					InputProps={{
 						sx: { color: "#fff" },
 					}}
-					onChange={(e) => setTimeBox(parseInt(e.target.value))}
+					onChange={(e) => setTimeBox(parseInt(e.target.value, 10))}
 					variant="filled"
 				/>
 			</AdminCard>

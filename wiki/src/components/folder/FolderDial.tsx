@@ -240,73 +240,69 @@ const FolderDial = ({ node }: { node: Node }) => {
 	};
 
 	return (
-		<>
-			<Zoom in>
-				<SpeedDial
-					ariaLabel="Administrer mappe"
-					sx={{
-						position: "fixed",
-						bottom: (t) => t.spacing(24),
-						right: (t) => t.spacing(3),
-					}}
-					icon={<SupervisorAccount />}
-					onOpen={() => setOpen(true)}
-					onClose={() => setOpen(false)}
-					open={open}
-				>
-					<SpeedDialAction
-						icon={
-							<Avatar sx={{ bgcolor: "primary.main" }}>
-								{<ContentPaste />}
-							</Avatar>
-						}
-						tooltipTitle="Indsæt"
-						tooltipOpen
-						onClick={handlePaste}
-					/>
-					<SpeedDialAction
-						icon={
-							<Avatar sx={{ bgcolor: "primary.main" }}>
-								{query?.attachable ? <Lock /> : <LockOpen />}
-							</Avatar>
-						}
-						tooltipTitle={`${query?.attachable ? "Lås" : "Lås op"} indsend`}
-						tooltipOpen
-						onClick={handleLockChildren}
-					/>
-					<SpeedDialAction
-						icon={
-							<Avatar sx={{ bgcolor: "primary.main" }}>
-								{query?.mutable ? <Lock /> : <LockOpen />}
-							</Avatar>
-						}
-						tooltipTitle={`${query?.mutable ? "Lås" : "Lås op"} indhold`}
-						tooltipOpen
-						onClick={handleLockContent}
-					/>
-					<SpeedDialAction
-						icon={
-							<Avatar sx={{ bgcolor: "primary.main" }}>
-								<LowPriority />
-							</Avatar>
-						}
-						tooltipTitle="Sorter"
-						tooltipOpen
-						onClick={() => link.push([], "sort")}
-					/>
-					<SpeedDialAction
-						icon={
-							<Avatar sx={{ bgcolor: "primary.main" }}>
-								<GetApp />
-							</Avatar>
-						}
-						tooltipTitle="Eksporter"
-						tooltipOpen
-						onClick={handleExport}
-					/>
-				</SpeedDial>
-			</Zoom>
-		</>
+		<Zoom in>
+			<SpeedDial
+				ariaLabel="Administrer mappe"
+				sx={{
+					position: "fixed",
+					bottom: (t) => t.spacing(24),
+					right: (t) => t.spacing(3),
+				}}
+				icon={<SupervisorAccount />}
+				onOpen={() => setOpen(true)}
+				onClose={() => setOpen(false)}
+				open={open}
+			>
+				<SpeedDialAction
+					icon={
+						<Avatar sx={{ bgcolor: "primary.main" }}>{<ContentPaste />}</Avatar>
+					}
+					tooltipTitle="Indsæt"
+					tooltipOpen
+					onClick={handlePaste}
+				/>
+				<SpeedDialAction
+					icon={
+						<Avatar sx={{ bgcolor: "primary.main" }}>
+							{query?.attachable ? <Lock /> : <LockOpen />}
+						</Avatar>
+					}
+					tooltipTitle={`${query?.attachable ? "Lås" : "Lås op"} indsend`}
+					tooltipOpen
+					onClick={handleLockChildren}
+				/>
+				<SpeedDialAction
+					icon={
+						<Avatar sx={{ bgcolor: "primary.main" }}>
+							{query?.mutable ? <Lock /> : <LockOpen />}
+						</Avatar>
+					}
+					tooltipTitle={`${query?.mutable ? "Lås" : "Lås op"} indhold`}
+					tooltipOpen
+					onClick={handleLockContent}
+				/>
+				<SpeedDialAction
+					icon={
+						<Avatar sx={{ bgcolor: "primary.main" }}>
+							<LowPriority />
+						</Avatar>
+					}
+					tooltipTitle="Sorter"
+					tooltipOpen
+					onClick={() => link.push([], "sort")}
+				/>
+				<SpeedDialAction
+					icon={
+						<Avatar sx={{ bgcolor: "primary.main" }}>
+							<GetApp />
+						</Avatar>
+					}
+					tooltipTitle="Eksporter"
+					tooltipOpen
+					onClick={handleExport}
+				/>
+			</SpeedDial>
+		</Zoom>
 	);
 };
 

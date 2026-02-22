@@ -1078,7 +1078,7 @@ mod tests {
     fn test_set_vconsole_keymap_empty_removes_keys() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("vconsole.conf");
-        fs::write(&path, "KEYMAP=us\nKEYMAP_TOGGLE=de\nFONT=lat2\n").unwrap();
+        fs::write(&path, "KEYMAP=us\nKEYMAP_TOGGLE=de\nFONT=lat2\n").unwrap(); // pragma: allowlist secret
 
         set_vconsole_keymap_at("", "", path.to_str().unwrap()).unwrap();
 
@@ -1182,7 +1182,7 @@ mod tests {
         let x11_dir = dir.path().join("X11");
         let x11_conf = x11_dir.join("00-keyboard.conf");
 
-        fs::write(&vconsole_path, "KEYMAP=us\nFONT=lat2\n").unwrap();
+        fs::write(&vconsole_path, "KEYMAP=us\nFONT=lat2\n").unwrap(); // pragma: allowlist secret
 
         set_x11_keymap_at(
             "de",

@@ -35,8 +35,8 @@ type Vote = boolean[];
 const VoteApp = ({ node }: { node: Node }) => {
 	const [session] = useSession();
 	const userId = useUserId();
-	const navigate = useNavigate();
-	const [searchParams] = useSearchParams();
+	const _navigate = useNavigate();
+	const [_searchParams] = useSearchParams();
 	const [refresh, setRefresh] = useState(false);
 	const [loading, setLoading] = useState(false);
 
@@ -136,7 +136,7 @@ const VoteApp = ({ node }: { node: Node }) => {
 			1 === maxVote && 1 === minVote
 				? new Array(options.length).fill(false)
 				: vote;
-		const index = parseInt(e.target.value);
+		const index = parseInt(e.target.value, 10);
 		const voteNew = [
 			...voteOld.slice(0, index),
 			!voteOld[index],
@@ -183,7 +183,7 @@ const VoteApp = ({ node }: { node: Node }) => {
 	const pollComp = (
 		<Stack spacing={1}>
 			{status}
-			<MimeLoader id={poll?.id} mimeId={poll?.mimeId!} />
+			<MimeLoader id={poll?.id} mimeId={poll?.mimeId ?? ""} />
 		</Stack>
 	);
 
