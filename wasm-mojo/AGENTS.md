@@ -88,7 +88,7 @@
 
 ## App Architectures (`examples/`)
 
-All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state.
+All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state — TodoApp's `input_text` field was migrated from plain `String` to `SignalString` via `create_signal_string()` (M19.7).
 
 ### CounterApp (`counter.mojo`) — simplest example
 
@@ -102,20 +102,24 @@ struct CounterApp:
 
 Lifecycle: `counter_app_init()` → `counter_app_rebuild()` → `counter_app_handle_event()` → `counter_app_flush()`.
 
-### TodoApp (`todo.mojo`) — keyed lists, multiple templates, custom handlers
+### TodoApp (`todo.mojo`) — keyed lists, multiple templates, custom handlers, SignalString
 
 ```txt
 struct TodoApp:
     var ctx: ComponentContext
     var list_version: SignalI32
+    var input_text: SignalString   # Phase 19: create_signal_string (no subscription)
     var items: KeyedList          # bundles template_id + FragmentSlot + scope_ids + handler_map
     var data: List[TodoItem]
     var add_handler: UInt32
     fn __init__: register_template("todo-app") + KeyedList(register_extra_template("todo-item"))
+                 + ctx.create_signal_string("") for input_text (Phase 19)
     fn build_item_vnode: items.begin_item(key, ctx) → ib.add_custom_event() (Phase 17)
     fn build_items_fragment: items.begin_rebuild → build each item → items.push_child
     fn handle_event: items.get_action(handler_id) → toggle/remove item (Phase 17)
 ```
+
+Phase 19 migration: `input_text` changed from plain `String` to `SignalString` via `ctx.create_signal_string(String(""))`. Uses `create_` (not `use_`) because the input value is a write-buffer — it doesn't drive renders. WASM exports: `todo_set_input` uses `input_text.set(text)`, `todo_input_version` reads `input_text.version()`, `todo_input_is_empty` reads `input_text.is_empty()`.
 
 ### BenchmarkApp (`bench.mojo`) — js-framework-benchmark, same pattern as todo
 
@@ -165,7 +169,7 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 | `src/component/lifecycle.mojo` | ~350 | FragmentSlot + mount/diff helpers |
 | `src/component/app_shell.mojo` | ~350 | AppShell (low-level) |
 | `examples/counter/counter.mojo` | ~115 | Counter app |
-| `examples/todo/todo.mojo` | ~450 | Todo app (uses KeyedList + ItemBuilder) |
+| `examples/todo/todo.mojo` | ~465 | Todo app (uses KeyedList + ItemBuilder + SignalString) |
 | `examples/bench/bench.mojo` | ~430 | Benchmark app (uses KeyedList + ItemBuilder) |
 | `src/component/keyed_list.mojo` | ~595 | KeyedList + ItemBuilder + HandlerAction |
 | `src/vdom/dsl.mojo` | ~2,870 | Node DSL + el_* helpers + multi-arg overloads + conditional helpers + to_template |
@@ -179,7 +183,7 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 
 **Adding a bool signal**: `var flag = self.ctx.use_signal_bool(False)` in setup, `flag.get()` to read, `flag.set(True)` or `flag.toggle()` to write.
 
-**Adding a string signal**: `var name = self.ctx.use_signal_string(String("hello"))` in setup, `name.get()` / `name.peek()` to read, `name.set(String("world"))` to write, `name.read()` to read with subscription, `name.is_empty()` to check, `String(name)` for interpolation.
+**Adding a string signal**: `var name = self.ctx.use_signal_string(String("hello"))` in setup, `name.get()` / `name.peek()` to read, `name.set(String("world"))` to write, `name.read()` to read with subscription, `name.is_empty()` to check, `String(name)` for interpolation. For non-reactive string state (write-buffer), use `ctx.create_signal_string(initial)` instead — no hook registration, no scope subscription (see TodoApp `input_text`).
 
 **Bump version signal**: `self.version += 1` (triggers re-render via scope subscription).
 

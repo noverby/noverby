@@ -696,6 +696,58 @@ export function testTodo(fns: Fns): void {
 		fns.todo_destroy(appPtr);
 	}
 
+	suite("Todo — SignalString input_text version tracking (Phase 19)");
+	{
+		const appPtr = fns.todo_init();
+
+		// Initial version is 0 (no writes yet)
+		assert(fns.todo_input_version(appPtr), 0, "initial input version is 0");
+
+		// Initial value is empty
+		assert(fns.todo_input_is_empty(appPtr), 1, "input is empty initially");
+
+		// First set() bumps version to 1
+		fns.todo_set_input(appPtr, writeStringStruct("hello"));
+		assert(fns.todo_input_version(appPtr), 1, "version is 1 after first set");
+		assert(fns.todo_input_is_empty(appPtr), 0, "input not empty after set");
+
+		// Second set() bumps version to 2
+		fns.todo_set_input(appPtr, writeStringStruct("world"));
+		assert(fns.todo_input_version(appPtr), 2, "version is 2 after second set");
+
+		// Setting to empty string still bumps version
+		fns.todo_set_input(appPtr, writeStringStruct(""));
+		assert(fns.todo_input_version(appPtr), 3, "version is 3 after empty set");
+		assert(fns.todo_input_is_empty(appPtr), 1, "input is empty after clearing");
+
+		// list_version is still unchanged (no coupling)
+		assert(
+			fns.todo_list_version(appPtr),
+			0,
+			"list_version unchanged by input sets",
+		);
+
+		// Scope never became dirty (create_signal_string — no subscription)
+		assert(fns.todo_has_dirty(appPtr), 0, "scope not dirty after input sets");
+
+		fns.todo_destroy(appPtr);
+	}
+
+	suite("Todo — SignalString input_text is_empty reflects state (Phase 19)");
+	{
+		const appPtr = fns.todo_init();
+
+		assert(fns.todo_input_is_empty(appPtr), 1, "empty on init");
+
+		fns.todo_set_input(appPtr, writeStringStruct("x"));
+		assert(fns.todo_input_is_empty(appPtr), 0, "not empty after set");
+
+		fns.todo_set_input(appPtr, writeStringStruct(""));
+		assert(fns.todo_input_is_empty(appPtr), 1, "empty again after clear");
+
+		fns.todo_destroy(appPtr);
+	}
+
 	suite("Todo — remove nonexistent item is a no-op");
 	{
 		const { document, root } = createDOM();
