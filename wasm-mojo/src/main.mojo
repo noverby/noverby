@@ -53,18 +53,22 @@ from vdom.dsl_tests import (
 from scheduler import Scheduler
 from component import AppShell, app_shell_create
 
-from apps import (
+from counter import (
     CounterApp,
     counter_app_init,
     counter_app_destroy,
     counter_app_rebuild,
     counter_app_handle_event,
     counter_app_flush,
+)
+from todo import (
     TodoApp,
     todo_app_init,
     todo_app_destroy,
     todo_app_rebuild,
     todo_app_flush,
+)
+from bench import (
     BenchmarkApp,
     bench_app_init,
     bench_app_destroy,

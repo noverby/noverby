@@ -29,6 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEST_DIR="$PROJECT_DIR/test"
 SRC_DIR="$PROJECT_DIR/src"
+EXAMPLES_DIR="$PROJECT_DIR/examples"
 OUT_DIR="$PROJECT_DIR/build/test-bin"
 WASMTIME_MOJO="$PROJECT_DIR/../wasmtime-mojo/src"
 
@@ -174,7 +175,7 @@ for src in "${sources[@]}"; do
     wait_for_slot
 
     (
-        mojo build -I "$WASMTIME_MOJO" -I "$SRC_DIR" -I "$TEST_DIR" -o "$bin" "$src" 2>&1 \
+        mojo build -I "$WASMTIME_MOJO" -I "$SRC_DIR" -I "$EXAMPLES_DIR" -I "$TEST_DIR" -o "$bin" "$src" 2>&1 \
             | sed "s/^/  [$name] /"
     ) &
     pids+=($!)
