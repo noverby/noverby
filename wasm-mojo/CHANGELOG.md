@@ -2,21 +2,29 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
-## Phase 14 — Effects (Reactive Side Effects)
+## Phase 15 — Ergonomic Component API (Dioxus-style Abstractions) ✅
 
-### Done
+- **M15.1** — Reactive handles & `ComponentContext`. `SignalI32` with operator overloading (`+=`, `-=`, `peek()`, `set()`), `MemoI32`, `EffectHandle` wrappers. `ComponentContext` high-level API bundling AppShell lifecycle, hook creation (`use_signal`, `use_memo`, `use_effect`), template registration, handler registration. Counter app rewritten from ~50 lines to ~15. 60 new Mojo tests. 2,061 tests.
+- **M15.2** — Inline event handlers. `NODE_EVENT` DSL node with inline constructors (`onclick_add`, `onclick_sub`, `onclick_set`, `onclick_toggle`, `on_event`). `register_view()` processes event nodes, auto-assigns dynamic attr indices, registers handlers. `RenderBuilder` auto-populates event handler attributes on `build()`. 2,050 tests.
+- **M15.3** — Dioxus-style view setup. Auto-numbered `dyn_text()` (no args, sentinel `DYN_TEXT_AUTO`). `setup_view()` combines `end_setup()` + `register_view()`. `flush()` combines diff + finalize. CounterApp init reduced from 35 lines to 3. 5 new tests. 2,055 tests.
+- **M15.4** — Todo & bench migration. `register_extra_template()` for multi-template apps. `create_child_scope()`/`destroy_child_scopes()` for keyed lists. Fragment lifecycle helpers (`flush_fragment`, `build_empty_fragment`, `push_fragment_child`). TodoApp init 71 → 3 lines. BenchmarkApp init 44 → 3 lines. 2,055 tests.
+- **M15.5** — Documentation. `AGENTS.md` project context for AI agents. README updated with ergonomic API examples, test counts, and Dioxus vs Mojo comparison.
+- **M15.6** — PoC cleanup. Inline poc functions into `@export` wrappers, delete `src/poc/`.
+
+**Test count after M15.6:** 909 Mojo + 1,152 JS = 2,061 tests.
+
+---
+
+## Phase 14 — Effects (Reactive Side Effects) ✅
 
 - **M14.1** — `EffectEntry` & `EffectStore` slab allocator in `src/signals/effect.mojo`. Create, destroy, pending/running flags, slot reuse. Unit tests in `test/test_effect.mojo`.
 - **M14.2** — Effect runtime API & WASM exports. `Runtime.create_effect`, `effect_begin_run`, `effect_end_run`, `effect_is_pending`, `effect_mark_pending`, `destroy_effect`. Dependency tracking via reactive contexts. Signal write → effect pending propagation (parallel to memo dirty chain). 9 WASM exports. 50 new Mojo + 52 new JS assertions.
 - **M14.3** — `use_effect` hook. `HOOK_EFFECT` tag functional. First render creates effect + pushes hook; re-render returns existing ID. WASM export + TS types. 4 new Mojo tests + 3 new JS suites.
 - **M14.4** — AppShell effect helpers. 6 convenience methods mirroring signal/memo pattern. 6 shell WASM exports. TS types. 8 new Mojo tests + 6 new JS suites.
+- ~~**M14.5**~~ — Superseded by Phase 15 ergonomic API.
+- ~~**M14.6**~~ — Superseded by Phase 15 documentation.
 
-### Planned
-
-- **M14.5** — Counter app effect demo (`action_count` signal + `count_effect`). Template gains third span for "Actions: N".
-- **M14.6** — Documentation & test count update.
-
-**Test count after M14.4:** 903 Mojo + 1,152 JS = 2,055 tests.
+**Test count after M14.4:** 838 Mojo + 1,163 JS = 2,001 tests.
 
 ---
 
