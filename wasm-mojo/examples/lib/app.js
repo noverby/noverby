@@ -23,19 +23,10 @@
 //     wasm: new URL("../../build/out.wasm", import.meta.url),
 //   });
 //
-//   // Todo — with post-boot hook for Enter key
+//   // Todo — zero-config launch (Enter key handled in WASM via onkeydown_enter_custom)
 //   launch({
 //     app: "todo",
 //     wasm: new URL("../../build/out.wasm", import.meta.url),
-//     onBoot({ fns, appPtr, flush, rootEl }) {
-//       const hid = fns.todo_add_handler_id(appPtr);
-//       rootEl.querySelector("input")?.addEventListener("keydown", (e) => {
-//         if (e.key === "Enter") {
-//           fns.todo_handle_event(appPtr, hid, 0);
-//           flush();
-//         }
-//       });
-//     },
 //   });
 
 import { alignedAlloc, getMemory, loadWasm } from "./env.js";
@@ -90,9 +81,14 @@ const EVT_CLICK = 0;
  *   - `counter_dispatch_string(appPtr, hid, evt, strPtr)` (optional — enables string dispatch)
  *
  * When `{app}_dispatch_string` exists, the EventBridge automatically
- * routes `input`/`change` events through the string dispatch path
- * (extracts `event.target.value` → WASM SignalString), enabling
- * Dioxus-style two-way input binding with zero app-specific JS.
+ * routes string-carrying events through the string dispatch path:
+ *   - `input`/`change` events: extracts `event.target.value` → WASM SignalString
+ *   - `keydown` events: extracts `event.key` → WASM key filtering
+ *     (ACTION_KEY_ENTER_CUSTOM checks for "Enter"; accepted keys also
+ *     dispatch through handle_event for app-level routing)
+ *
+ * This enables Dioxus-style two-way input binding and WASM-driven
+ * keyboard shortcuts with zero app-specific JS.
  *
  * @param {LaunchOptions} options
  * @returns {Promise<AppHandle>} Resolves after mount (and onBoot if provided).
@@ -157,8 +153,10 @@ export async function launch(options) {
 		}
 
 		// 5. Wire events via EventBridge with smart dispatch
-		//    - If `{app}_dispatch_string` exists: input/change events use
-		//      string dispatch (extracts event.target.value → WASM SignalString)
+		//    - If `{app}_dispatch_string` exists:
+		//      · input/change → string dispatch (event.target.value → WASM SignalString)
+		//      · keydown → string dispatch (event.key → WASM key filtering);
+		//        if accepted (e.g. Enter), also call handle_event for app routing
 		//    - All other events use normal numeric dispatch
 		new EventBridge(interp, (handlerId, eventName, domEvent) => {
 			if (
@@ -168,6 +166,19 @@ export async function launch(options) {
 			) {
 				const strPtr = writeStringStruct(domEvent.target.value);
 				dispatchStringFn(appPtr, handlerId, EVT_CLICK, strPtr);
+			} else if (
+				dispatchStringFn &&
+				eventName === "keydown" &&
+				domEvent?.key !== undefined
+			) {
+				// Send the key name through string dispatch for WASM-side filtering.
+				// ACTION_KEY_ENTER_CUSTOM checks value == "Enter" and marks scope dirty.
+				// If accepted (returns 1), also call handle_event for app-level routing.
+				const strPtr = writeStringStruct(domEvent.key);
+				const accepted = dispatchStringFn(appPtr, handlerId, EVT_CLICK, strPtr);
+				if (accepted) {
+					handleEventFn(appPtr, handlerId, EVT_CLICK);
+				}
 			} else {
 				handleEventFn(appPtr, handlerId, EVT_CLICK);
 			}

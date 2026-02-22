@@ -104,6 +104,8 @@ from .dsl import (
     # Inline string event handler constructors (Phase 20 — M20.3)
     oninput_set_string,
     onchange_set_string,
+    # Inline keydown handler (Phase 22)
+    onkeydown_enter_custom,
     # Value binding constructors (Phase 20 — M20.4)
     bind_value,
     bind_attr,

@@ -44,6 +44,7 @@ from events import (
     ACTION_SIGNAL_TOGGLE,
     ACTION_SIGNAL_SET_INPUT,
     ACTION_SIGNAL_SET_STRING,
+    ACTION_KEY_ENTER_CUSTOM,
     ACTION_CUSTOM,
 )
 
@@ -1046,6 +1047,21 @@ struct Runtime(Movable):
                 entry.signal_key, UInt32(entry.operand), value
             )
             return True
+
+        if entry.action == ACTION_KEY_ENTER_CUSTOM:
+            # Phase 22: Only fire when the key string is "Enter".
+            # Mark scope dirty (same as ACTION_CUSTOM) so the app's
+            # handle_event() can perform custom routing.
+            if value == String("Enter"):
+                var found = False
+                for j in range(len(self.dirty_scopes)):
+                    if self.dirty_scopes[j] == entry.scope_id:
+                        found = True
+                        break
+                if not found:
+                    self.dirty_scopes.append(entry.scope_id)
+                return True
+            return False
 
         # Fall back to normal dispatch for other action types
         return self.dispatch_event(handler_id, event_type)

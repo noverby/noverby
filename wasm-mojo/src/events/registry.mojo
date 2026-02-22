@@ -65,6 +65,7 @@ alias ACTION_SIGNAL_SUB_I32: UInt8 = 3
 alias ACTION_SIGNAL_TOGGLE: UInt8 = 4
 alias ACTION_SIGNAL_SET_INPUT: UInt8 = 5
 alias ACTION_SIGNAL_SET_STRING: UInt8 = 6
+alias ACTION_KEY_ENTER_CUSTOM: UInt8 = 7
 alias ACTION_CUSTOM: UInt8 = 255
 
 
@@ -220,6 +221,23 @@ struct HandlerEntry(Copyable, Movable):
             string_key,
             Int32(version_key),
             event_name,
+        )
+
+    @staticmethod
+    fn key_enter_custom(scope_id: UInt32) -> HandlerEntry:
+        """Create a handler that fires only when the key is "Enter".
+
+        Phase 22: Used by `onkeydown_enter_custom()` DSL helper.
+        Dispatched via `dispatch_event_with_string()` — the runtime
+        checks the string payload against "Enter" and marks the scope
+        dirty only on match.  The app's `handle_event()` then performs
+        custom routing based on the handler ID (same as ACTION_CUSTOM).
+
+        Args:
+            scope_id: The owning scope.
+        """
+        return HandlerEntry(
+            scope_id, ACTION_KEY_ENTER_CUSTOM, 0, 0, String("keydown")
         )
 
     @staticmethod

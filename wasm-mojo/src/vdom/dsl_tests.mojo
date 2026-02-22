@@ -23,6 +23,7 @@ from .dsl import (
     attr,
     dyn_attr,
     onclick_custom,
+    onkeydown_enter_custom,
     oninput_set_string,
     onchange_set_string,
     bind_value,
@@ -124,7 +125,11 @@ from .vnode import VNodeStore, VNODE_TEMPLATE_REF
 from .builder import TemplateBuilder
 from signals import create_runtime, destroy_runtime, Runtime
 from signals.handle import SignalString
-from events.registry import ACTION_SIGNAL_SET_STRING, ACTION_CUSTOM
+from events.registry import (
+    ACTION_SIGNAL_SET_STRING,
+    ACTION_CUSTOM,
+    ACTION_KEY_ENTER_CUSTOM,
+)
 
 
 fn test_text_node() -> Int32:
@@ -1165,6 +1170,100 @@ fn test_two_way_to_template() -> Int32:
         destroy_runtime(rt_ptr)
         return 0
     if rt_ptr[0].templates.dynamic_attr_count(tmpl_id) != 2:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
+    return 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 22: onkeydown_enter_custom tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+fn test_onkeydown_enter_custom_node() -> Int32:
+    """Test: onkeydown_enter_custom creates a NODE_EVENT with ACTION_KEY_ENTER_CUSTOM.
+    """
+    var n = onkeydown_enter_custom()
+
+    # Verify node kind
+    if n.kind != NODE_EVENT:
+        return 0
+
+    # Verify event name
+    if n.text != String("keydown"):
+        return 0
+
+    # Verify action tag
+    if n.tag != ACTION_KEY_ENTER_CUSTOM:
+        return 0
+
+    # Verify signal_key and operand are 0 (no signal binding)
+    if n.dynamic_index != 0:
+        return 0
+    if n.operand != 0:
+        return 0
+
+    return 1
+
+
+fn test_onkeydown_enter_custom_in_element() -> Int32:
+    """Test: onkeydown_enter_custom inside an input counts as a dynamic attr."""
+    var n = el_input(
+        attr(String("type"), String("text")),
+        onkeydown_enter_custom(),
+    )
+
+    # Should have 2 items: static attr + event
+    if n.item_count() != 2:
+        return 0
+
+    # 1 dynamic attr (the keydown event)
+    if n.dynamic_attr_count() != 1:
+        return 0
+
+    return 1
+
+
+fn test_onkeydown_enter_custom_with_binding() -> Int32:
+    """Test: onkeydown_enter_custom + bind_value + oninput + onclick_custom (Phase 22 TodoApp pattern).
+    """
+    var rt_ptr = create_runtime()
+    var keys = rt_ptr[0].create_signal_string(String(""))
+    var sig = SignalString(keys[0], keys[1], rt_ptr)
+
+    # Simulates the Phase 22 TodoApp pattern:
+    #   el_div(
+    #       el_input(bind_value(sig), oninput_set_string(sig), onkeydown_enter_custom()),
+    #       el_button(text("Add"), onclick_custom()),
+    #   )
+    var n = el_div(
+        el_input(
+            attr(String("type"), String("text")),
+            bind_value(sig),
+            oninput_set_string(sig),
+            onkeydown_enter_custom(),
+        ),
+        el_button(text(String("Add")), onclick_custom()),
+    )
+
+    # div has 2 children: input + button
+    if n.child_count() != 2:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # input has 4 attrs: static type + bind_value + oninput + onkeydown_enter
+    # 3 dynamic attrs (bind_value + oninput event + keydown event)
+    if n.items[0].dynamic_attr_count() != 3:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # button has 1 child (text) + 1 dynamic attr (onclick_custom)
+    if n.items[1].child_count() != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+    if n.items[1].dynamic_attr_count() != 1:
         destroy_runtime(rt_ptr)
         return 0
 

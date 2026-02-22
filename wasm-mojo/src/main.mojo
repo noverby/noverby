@@ -64,6 +64,10 @@ from vdom.dsl_tests import (
     test_onclick_custom_node as _dsl_test_onclick_custom_node,
     test_onclick_custom_in_element as _dsl_test_onclick_custom_in_element,
     test_onclick_custom_with_binding as _dsl_test_onclick_custom_with_binding,
+    # Phase 22: onkeydown_enter_custom tests
+    test_onkeydown_enter_custom_node as _dsl_test_onkeydown_enter_custom_node,
+    test_onkeydown_enter_custom_in_element as _dsl_test_onkeydown_enter_custom_in_element,
+    test_onkeydown_enter_custom_with_binding as _dsl_test_onkeydown_enter_custom_with_binding,
 )
 from scheduler import Scheduler
 from component import AppShell, app_shell_create
@@ -2238,12 +2242,23 @@ fn todo_dispatch_string(
 
 @export
 fn todo_add_handler_id(app_ptr: Int64) -> Int32:
-    """Return the Add button handler ID (Phase 20 — M20.5).
+    """Return the Add button handler ID.
 
-    After M20.5, the Add handler is auto-registered by register_view()
-    via onclick_custom().  This export lets JS and tests retrieve it.
+    The Add handler is auto-registered by register_view() via
+    onclick_custom().  This export lets JS and tests retrieve it.
     """
     return Int32(_get[TodoApp](app_ptr)[0].add_handler)
+
+
+@export
+fn todo_enter_handler_id(app_ptr: Int64) -> Int32:
+    """Return the Enter key handler ID (Phase 22).
+
+    The Enter handler is auto-registered by register_view() via
+    onkeydown_enter_custom().  Dispatched via dispatch_event_with_string
+    with the key name — only "Enter" triggers the action.
+    """
+    return Int32(_get[TodoApp](app_ptr)[0].enter_handler)
 
 
 @export
@@ -3390,6 +3405,21 @@ fn dsl_test_onclick_custom_in_element() -> Int32:
 @export
 fn dsl_test_onclick_custom_with_binding() -> Int32:
     return _dsl_test_onclick_custom_with_binding()
+
+
+@export
+fn dsl_test_onkeydown_enter_custom_node() -> Int32:
+    return _dsl_test_onkeydown_enter_custom_node()
+
+
+@export
+fn dsl_test_onkeydown_enter_custom_in_element() -> Int32:
+    return _dsl_test_onkeydown_enter_custom_in_element()
+
+
+@export
+fn dsl_test_onkeydown_enter_custom_with_binding() -> Int32:
+    return _dsl_test_onkeydown_enter_custom_with_binding()
 
 
 # ══════════════════════════════════════════════════════════════════════════════

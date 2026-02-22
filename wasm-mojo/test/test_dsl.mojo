@@ -593,6 +593,41 @@ fn test_dsl_onclick_custom_with_binding(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(result, 1, "onclick_custom_with_binding passed")
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 22: onkeydown_enter_custom
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+fn test_dsl_onkeydown_enter_custom_node(w: UnsafePointer[WasmInstance]) raises:
+    """Onkeydown_enter_custom creates NODE_EVENT with ACTION_KEY_ENTER_CUSTOM.
+    """
+    var result = Int(
+        w[].call_i32("dsl_test_onkeydown_enter_custom_node", no_args())
+    )
+    assert_equal(result, 1, "onkeydown_enter_custom_node passed")
+
+
+fn test_dsl_onkeydown_enter_custom_in_element(
+    w: UnsafePointer[WasmInstance],
+) raises:
+    """Onkeydown_enter_custom inside an input counts as dynamic attr."""
+    var result = Int(
+        w[].call_i32("dsl_test_onkeydown_enter_custom_in_element", no_args())
+    )
+    assert_equal(result, 1, "onkeydown_enter_custom_in_element passed")
+
+
+fn test_dsl_onkeydown_enter_custom_with_binding(
+    w: UnsafePointer[WasmInstance],
+) raises:
+    """Onkeydown_enter_custom + bind_value + oninput + onclick_custom (Phase 22 TodoApp pattern).
+    """
+    var result = Int(
+        w[].call_i32("dsl_test_onkeydown_enter_custom_with_binding", no_args())
+    )
+    assert_equal(result, 1, "onkeydown_enter_custom_with_binding passed")
+
+
 fn main() raises:
     from wasm_harness import get_instance
 
@@ -646,4 +681,8 @@ fn main() raises:
     test_dsl_onclick_custom_node(w)
     test_dsl_onclick_custom_in_element(w)
     test_dsl_onclick_custom_with_binding(w)
-    print("dsl: 46/46 passed")
+    # Phase 22: onkeydown_enter_custom
+    test_dsl_onkeydown_enter_custom_node(w)
+    test_dsl_onkeydown_enter_custom_in_element(w)
+    test_dsl_onkeydown_enter_custom_with_binding(w)
+    print("dsl: 49/49 passed")

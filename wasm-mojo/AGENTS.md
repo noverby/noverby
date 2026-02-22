@@ -105,7 +105,7 @@ struct CounterApp:
 
 Lifecycle: `counter_app_init()` → `counter_app_rebuild()` → `counter_app_handle_event()` → `counter_app_flush()`.
 
-### TodoApp (`todo.mojo`) — keyed lists, two-way input binding, custom handlers, SignalString
+### TodoApp (`todo.mojo`) — keyed lists, two-way input binding, Enter key, custom handlers, SignalString
 
 ```txt
 struct TodoApp:
@@ -159,7 +159,7 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 
 ## Browser Runtime (`examples/lib/`)
 
-- `app.js` — **`launch(options)`**: Convention-based app launcher (Phase 21). Given `app: "counter"`, auto-discovers WASM exports by naming convention, sets up interpreter + EventBridge with smart dispatch (auto string dispatch when `{app}_dispatch_string` exists), runs initial mount, and calls optional `onBoot(handle)` for app-specific post-boot wiring. Returns `AppHandle` with `{ fns, appPtr, interp, bufPtr, rootEl, flush }`. Options: `app` (required), `wasm` (required URL), `root` (CSS selector, default `"#root"`), `bufferCapacity` (default 65536), `clearRoot` (default true), `onBoot` (optional callback). Convergence target: all standard apps should eventually use identical `launch()` calls with no `onBoot` hook.
+- `app.js` — **`launch(options)`**: Convention-based app launcher (Phase 21, updated Phase 22). Given `app: "counter"`, auto-discovers WASM exports by naming convention, sets up interpreter + EventBridge with smart dispatch (auto string dispatch when `{app}_dispatch_string` exists), runs initial mount, and calls optional `onBoot(handle)` for app-specific post-boot wiring. Returns `AppHandle` with `{ fns, appPtr, interp, bufPtr, rootEl, flush }`. Options: `app` (required), `wasm` (required URL), `root` (CSS selector, default `"#root"`), `bufferCapacity` (default 65536), `clearRoot` (default true), `onBoot` (optional callback). **Phase 22**: EventBridge smart dispatch extended to route `keydown` events through `dispatch_string` (sends `event.key` as the string payload); if the WASM handler accepts the key (returns 1), also calls `handle_event` for app-level routing. This enables `ACTION_KEY_ENTER_CUSTOM` handlers to filter for "Enter" entirely in WASM. Counter and todo now both use identical zero-config `launch()` calls.
 - `boot.js` — Re-exports from `app.js`, `env.js`, `events.js`, `interpreter.js`, `protocol.js`, `strings.js`. Low-level API for advanced use cases (e.g. bench) that need direct control over the boot sequence.
 - `env.js` — WASM memory management + import object + `loadWasm()` loader.
 - `events.js` — `EventBridge` wires interpreter event mutations to a WASM dispatch callback.
@@ -167,7 +167,7 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 - `protocol.js` — Op constants + `MutationReader` for binary mutation decoding.
 - `strings.js` — `writeStringStruct()` writes JS strings into WASM linear memory as Mojo String structs.
 
-**Example main.js files (Phase 21)**:
+**Example main.js files (Phase 22)**:
 
 Counter — zero app-specific JS:
 
@@ -176,18 +176,11 @@ import { launch } from "../lib/app.js";
 launch({ app: "counter", wasm: new URL("../../build/out.wasm", import.meta.url) });
 ```
 
-Todo — only Enter key hook (disappears when keydown moves to WASM):
+Todo — zero app-specific JS (Enter key handled in WASM via `onkeydown_enter_custom`):
 
 ```txt
 import { launch } from "../lib/app.js";
-launch({ app: "todo", wasm: new URL("../../build/out.wasm", import.meta.url),
-  onBoot({ fns, appPtr, flush, rootEl }) {
-    const hid = fns.todo_add_handler_id(appPtr);
-    rootEl.querySelector("input")?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { fns.todo_handle_event(appPtr, hid, 0); flush(); }
-    });
-  },
-});
+launch({ app: "todo", wasm: new URL("../../build/out.wasm", import.meta.url) });
 ```
 
 Bench — uses direct `boot.js` imports (event delegation + toolbar not yet in WASM).
@@ -196,7 +189,7 @@ Bench — uses direct `boot.js` imports (event delegation + toolbar not yet in W
 
 - `mod.ts` — WASM instantiation entry point.
 - `interpreter.ts` — DOM stack machine reading binary mutations.
-- `events.ts` — `EventBridge` captures DOM events, dispatches handler IDs to WASM. For `input`/`change` events, extracts `event.target.value` as a string and dispatches via `DispatchWithStringFn` → `writeStringStruct()` → WASM `dispatch_event_with_string` (Phase 20, M20.2). Falls back to numeric then default dispatch.
+- `events.ts` — `EventBridge` captures DOM events, dispatches handler IDs to WASM. For `input`/`change` events, extracts `event.target.value` as a string and dispatches via `DispatchWithStringFn` → `writeStringStruct()` → WASM `dispatch_event_with_string` (Phase 20, M20.2). Falls back to numeric then default dispatch. Note: the browser `app.js` EventBridge additionally routes `keydown` events through string dispatch (Phase 22), but the TypeScript runtime does not yet implement this path.
 - `templates.ts` — `TemplateCache` registers templates from `RegisterTemplate` mutations.
 - `strings.ts` — Mojo `String` ABI (SSO layout: inline ≤23 bytes, heap pointer otherwise).
 - `memory.ts` — bump allocator for WASM linear memory.
@@ -234,6 +227,22 @@ Equivalent Dioxus: `input { value: "{text}", oninput: move |e| text.set(e.value(
 
 **view_event_handler_id (M20.5)**: `ctx.view_event_handler_id(index: Int) -> UInt32` returns the handler ID for the Nth event registered by `register_view()` in tree-walk order. Example: after `register_view(el_div(el_input(bind_value(sig), oninput_set_string(sig)), el_button(text("Add"), onclick_custom()), ...))`, `view_event_handler_id(0)` = oninput handler, `view_event_handler_id(1)` = Add button handler.
 
+**Keydown Enter handler (Phase 22)**: `onkeydown_enter_custom() -> Node` creates a `NODE_EVENT` for `"keydown"` with `ACTION_KEY_ENTER_CUSTOM` (value 7), `signal_key=0`, `operand=0`. When dispatched via `dispatch_event_with_string()`, the runtime checks the string payload (the key name from `event.key`) — only `"Enter"` triggers the action (marks scope dirty, returns True); all other keys are silently ignored (returns False). The app's `handle_event()` then performs custom routing based on the handler ID, same as `ACTION_CUSTOM`. Use `ctx.view_event_handler_id(index)` after `register_view()` to retrieve the auto-registered handler ID.
+
+**JS keydown dispatch (Phase 22)**: The `launch()` EventBridge in `app.js` routes `keydown` events through `dispatch_string` when `{app}_dispatch_string` exists. It sends `event.key` as the string payload. If the WASM handler accepts the key (returns 1 — e.g. `ACTION_KEY_ENTER_CUSTOM` matched "Enter"), the bridge also calls `handle_event` for app-level routing. If rejected (returns 0), no further dispatch occurs. This two-step dispatch (string filter → app routing) enables WASM-driven keyboard shortcuts with zero app-specific JS.
+
+**Phase 22 TodoApp pattern (Enter key + Add button)**: `view_event_handler_id(0)` = oninput handler, `view_event_handler_id(1)` = Enter key handler, `view_event_handler_id(2)` = Add button handler. Both Enter key and Add button handler IDs are checked in `handle_event()` to trigger the same Add logic. The template uses:
+
+```mojo
+el_input(
+    attr("type", "text"),
+    bind_value(input_text),
+    oninput_set_string(input_text),
+    onkeydown_enter_custom(),
+),
+el_button(text("Add"), onclick_custom()),
+```
+
 ## Node Kind Tags (`src/vdom/dsl.mojo`)
 
 | Tag | Value | Description |
@@ -246,6 +255,20 @@ Equivalent Dioxus: `input { value: "{text}", oninput: move |e| text.set(e.value(
 | `NODE_DYN_ATTR` | 5 | Dynamic attribute placeholder (slot index) |
 | `NODE_EVENT` | 6 | Inline event handler (action + signal + operand) |
 | `NODE_BIND_VALUE` | 7 | Value binding (SignalString → dynamic attr) (Phase 20, M20.4) |
+
+## Handler Action Tags (`src/events/registry.mojo`)
+
+| Tag | Value | Description |
+|-----|-------|-------------|
+| `ACTION_NONE` | 0 | No-op (marks scope dirty) |
+| `ACTION_SIGNAL_SET_I32` | 1 | `signal.set(operand)` |
+| `ACTION_SIGNAL_ADD_I32` | 2 | `signal += operand` |
+| `ACTION_SIGNAL_SUB_I32` | 3 | `signal -= operand` |
+| `ACTION_SIGNAL_TOGGLE` | 4 | `signal.set(!signal.get())` |
+| `ACTION_SIGNAL_SET_INPUT` | 5 | `signal.set(input_value)` |
+| `ACTION_SIGNAL_SET_STRING` | 6 | `string_signal.set(string_value)` (Phase 20) |
+| `ACTION_KEY_ENTER_CUSTOM` | 7 | Fires only when key == "Enter" (Phase 22) |
+| `ACTION_CUSTOM` | 255 | No Mojo-side action; marks scope dirty for app routing |
 
 ## File Size Reference
 
