@@ -161,6 +161,9 @@ in
 
       # /etc/modular/crashdb needs to be mutable
       ln -s /tmp/ $out/etc/modular/crashdb
+
+      # /etc/modular/cache needs to be mutable
+      ln -s /tmp/ $out/etc/modular/cache
     '';
 
     doInstallCheck = true;
