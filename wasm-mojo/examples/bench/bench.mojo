@@ -1,12 +1,24 @@
 # BenchmarkApp — js-framework-benchmark implementation.
 #
+# Phase 24.4: Fine-grained status bar with 3 dynamic text nodes.
+#
+# Splits the single `status_text` string into three separate dyn_text
+# nodes rendered in the status bar:
+#   dyn_text[0] = op_name       ("Ready" or "Create 1,000 rows")
+#   dyn_text[1] = timing_text   ("" or " — 12.3ms")
+#   dyn_text[2] = row_count_text("" or " · 1,000 rows")
+# The row list placeholder moves from dyn_node(1) to dyn_node(3).
+# This enables finer-grained DOM updates: only the changed text node
+# gets a SetText mutation on flush (e.g. row count doesn't change on
+# update-every-10th, so only timing_text is diffed).
+#
 # Phase 24.3: performance.now() WASM import for timing.
 #
 # Adds a `performance_now() -> Float64` WASM import (declared via
 # external_call) that maps to `performance.now()` on the JS side.
 # Each toolbar operation in handle_event() is wrapped with before/after
 # performance_now() calls; the elapsed time is formatted to 1 decimal
-# place and stored in `status_text`, which render() emits as dyn_text[0].
+# place and stored in timing_text, which render() emits as dyn_text[1].
 # This eliminates the need for any JS-side timing code — the status bar
 # updates automatically on every flush.
 #
@@ -32,19 +44,27 @@
 #   - ctx.use_signal() for automatic scope subscription
 #   - SignalI32 handles with operator overloading
 #
+# Phase 24.4: fine-grained status bar (3 dyn_text nodes)
+#   - op_name, timing_text, row_count_text as separate fields
+#   - dyn_text[0] = op_name, dyn_text[1] = timing_text, dyn_text[2] = row_count_text
+#   - dyn_node(3) for row list (was dyn_node(1))
+#   - format_timing_ms() returns " — X.Yms" (timing only, with separator)
+#   - format_row_count() returns " · N rows" (with comma-formatted number)
+#   - finer diff granularity: only changed text nodes get SetText mutations
+#
 # Phase 24.3: performance_now() WASM import + timing in handle_event()
 #   - external_call["performance_now", Float64]() → env.performance_now
-#   - format_timing() formats Float64 ms to "12.3ms" (1 decimal place)
-#   - status_text field stores the latest operation + timing string
+#   - format_timing_ms() formats Float64 ms to " — 12.3ms" (1 decimal place)
+#   - op_name + timing_text + row_count_text fields store the latest status
 #   - handle_event() wraps each toolbar op with before/after timing
-#   - render() uses status_text for dyn_text[0] (status bar)
+#   - render() uses 3 dyn_text nodes for the status bar
 #
 # Phase 24.2: register_view() with inline onclick_custom() for toolbar
-#   - App shell template "bench-app" includes h1, 6 buttons, status, table
+#   - App shell template "bench-app" includes h1, 6 buttons, status (3 dyn_text), table
 #   - 6 onclick_custom() handlers auto-registered by register_view()
 #   - handle_event() routes toolbar buttons AND row clicks
 #   - Root changed from #tbody to #root — WASM renders entire container
-#   - render() uses render_builder() with dyn_text (status) + dyn_placeholder (rows)
+#   - render() uses render_builder() with 3 dyn_text (status) + dyn_placeholder (rows)
 #   - rebuild/flush follow the todo pattern (mount shell + init keyed list)
 #
 # Implements the standard benchmark operations:
@@ -72,10 +92,14 @@
 #         button.btn-swap("Swap rows", onclick_custom()),              -- dyn_attr[4]
 #         button.btn-clear("Clear", onclick_custom()),                 -- dyn_attr[5]
 #       ],
-#       div.status > dyn_text[0],         -- status message (dynamic_nodes[0])
+#       div.status > [
+#         dyn_text[0],                    -- op name      (dynamic_nodes[0])
+#         dyn_text[1],                    -- timing       (dynamic_nodes[1])
+#         dyn_text[2],                    -- row count    (dynamic_nodes[2])
+#       ],
 #       div.table-wrap > table > [
 #         thead > tr > [th("#"), th("Label"), th("Action")],
-#         tbody > dyn_node[1],            -- keyed row list (dynamic_nodes[1])
+#         tbody > dyn_node[3],            -- keyed row list (dynamic_nodes[3])
 #       ],
 #     ]
 #
@@ -235,11 +259,14 @@ fn performance_now() -> Float64:
 # ── Timing formatter ─────────────────────────────────────────────────────────
 
 
-fn format_timing(op_name: String, ms: Float64) -> String:
-    """Format an operation name and elapsed milliseconds for the status bar.
+fn format_timing_ms(ms: Float64) -> String:
+    """Format elapsed milliseconds for the timing dyn_text node.
 
-    Produces "{op_name} — {whole}.{frac}ms" with 1 decimal place.
-    Example: "Create 1,000 rows — 12.3ms"
+    Produces " — {whole}.{frac}ms" with 1 decimal place and leading
+    em-dash separator.  Example: " — 12.3ms"
+
+    Phase 24.4: Split from format_timing() — returns only the timing
+    portion with separator, not the op name.
     """
     var abs_ms = ms
     if abs_ms < 0.0:
@@ -250,7 +277,36 @@ fn format_timing(op_name: String, ms: Float64) -> String:
     if frac >= 10:
         whole += 1
         frac = 0
-    return op_name + " — " + String(whole) + "." + String(frac) + "ms"
+    return " — " + String(whole) + "." + String(frac) + "ms"
+
+
+fn _format_number(n: Int) -> String:
+    """Format a non-negative integer with comma thousands separators.
+
+    Examples: 0 → "0", 999 → "999", 1000 → "1,000", 10000 → "10,000".
+    Handles up to 999,999 (sufficient for bench row counts).
+    """
+    if n < 1000:
+        return String(n)
+    var thousands = n // 1000
+    var remainder = n % 1000
+    if remainder < 10:
+        return String(thousands) + ",00" + String(remainder)
+    elif remainder < 100:
+        return String(thousands) + ",0" + String(remainder)
+    else:
+        return String(thousands) + "," + String(remainder)
+
+
+fn format_row_count(count: Int) -> String:
+    """Format a row count for the row-count dyn_text node.
+
+    Produces " · {N} rows" with comma-formatted number and leading
+    middle-dot separator.  Example: " · 1,000 rows"
+
+    Phase 24.4: Displayed as dyn_text[2] in the status bar.
+    """
+    return " · " + _format_number(count) + " rows"
 
 
 # ── Label generation ─────────────────────────────────────────────────────────
@@ -349,11 +405,20 @@ alias BENCH_ACTION_REMOVE: UInt8 = 2
 struct BenchmarkApp(Movable):
     """Js-framework-benchmark app state.
 
+    Phase 24.4: Fine-grained status bar with 3 dynamic text nodes.
+
+    The status bar is split into three dyn_text nodes:
+      dyn_text[0] = op_name        ("Ready" or operation name)
+      dyn_text[1] = timing_text    ("" or " — X.Yms")
+      dyn_text[2] = row_count_text ("" or " · N rows")
+    The row list placeholder moves to dyn_node(3).
+    Only changed text nodes receive SetText mutations on flush.
+
     Phase 24.3: WASM-side timing via performance_now() import.
 
     Each toolbar operation in handle_event() is wrapped with before/after
     performance_now() calls.  The elapsed time is formatted and stored
-    in `status_text`, which render() emits as dyn_text[0].  The diff
+    in timing_text, which render() emits as dyn_text[1].  The diff
     engine detects the changed text on flush and emits a SetText mutation.
 
     Phase 24.2: Full WASM-rendered app shell with toolbar buttons.
@@ -381,7 +446,10 @@ struct BenchmarkApp(Movable):
     var rows: List[BenchRow]
     var next_id: Int32
     var rng_state: UInt32  # simple LCG state
-    var status_text: String  # P24.3: latest operation + timing for status bar
+    # P24.4: Fine-grained status bar fields (3 separate dyn_text nodes)
+    var op_name: String  # dyn_text[0]: operation name or "Ready"
+    var timing_text: String  # dyn_text[1]: " — X.Yms" or ""
+    var row_count_text: String  # dyn_text[2]: " · N rows" or ""
     # Toolbar handler IDs (auto-registered by register_view)
     var create1k_handler: UInt32
     var create10k_handler: UInt32
@@ -399,8 +467,9 @@ struct BenchmarkApp(Movable):
         the app shell template (with 6 onclick_custom toolbar buttons),
         and the row template via KeyedList.
 
-        Phase 24.3: Initializes status_text to "Ready" for the initial
-        render.  handle_event() updates it with timing on each operation.
+        Phase 24.4: Initializes op_name to "Ready", timing_text and
+        row_count_text to "" for the initial render.  handle_event()
+        updates all three fields with timing on each toolbar operation.
 
         Phase 24.2: Uses setup_view() for the app shell template.
         The app shell includes the heading, 6 toolbar buttons with
@@ -411,8 +480,10 @@ struct BenchmarkApp(Movable):
             div.container > [
                 h1 > text(...),
                 div.controls > [6 buttons with onclick_custom()],
-                div.status > dyn_text[0],              (dynamic_nodes[0])
-                div.table-wrap > table > [thead, tbody > dyn_node[1]],  (dynamic_nodes[1])
+                div.status > [dyn_text[0], dyn_text[1], dyn_text[2]],
+                                              (dynamic_nodes[0,1,2])
+                div.table-wrap > table > [thead, tbody > dyn_node[3]],
+                                              (dynamic_nodes[3])
             ]
             auto dyn_attr[0] = onclick_custom (Create 1k)
             auto dyn_attr[1] = onclick_custom (Create 10k)
@@ -485,8 +556,9 @@ struct BenchmarkApp(Movable):
 
         # 3. Register the "bench-app" shell template via setup_view()
         #    dyn_text() and dyn_node() share the dynamic_nodes index space.
-        #    Auto-numbered dyn_text() gets index 0, so dyn_node must be 1.
-        #    setup_view() calls end_setup() + register_view() internally.
+        #    Three auto-numbered dyn_text() get indices 0, 1, 2, so dyn_node
+        #    must be 3.  setup_view() calls end_setup() + register_view()
+        #    internally.
         self.ctx.setup_view(
             el_div(
                 attr(String("class"), String("container")),
@@ -494,7 +566,9 @@ struct BenchmarkApp(Movable):
                 controls_div^,
                 el_div(
                     attr(String("class"), String("status")),
-                    dyn_text(),
+                    dyn_text(),  # index 0: op_name
+                    dyn_text(),  # index 1: timing_text
+                    dyn_text(),  # index 2: row_count_text
                 ),
                 el_div(
                     attr(String("class"), String("table-wrap")),
@@ -506,7 +580,7 @@ struct BenchmarkApp(Movable):
                                 el_th(text(String("Action"))),
                             )
                         ),
-                        el_tbody(dyn_node(1)),
+                        el_tbody(dyn_node(3)),
                     ),
                 ),
             ),
@@ -538,7 +612,9 @@ struct BenchmarkApp(Movable):
         self.rows = List[BenchRow]()
         self.next_id = 1
         self.rng_state = 42
-        self.status_text = String("Ready")
+        self.op_name = String("Ready")
+        self.timing_text = String("")
+        self.row_count_text = String("")
 
     fn __moveinit__(out self, deinit other: Self):
         self.ctx = other.ctx^
@@ -548,7 +624,9 @@ struct BenchmarkApp(Movable):
         self.rows = other.rows^
         self.next_id = other.next_id
         self.rng_state = other.rng_state
-        self.status_text = other.status_text^
+        self.op_name = other.op_name^
+        self.timing_text = other.timing_text^
+        self.row_count_text = other.row_count_text^
         self.create1k_handler = other.create1k_handler
         self.create10k_handler = other.create10k_handler
         self.append_handler = other.append_handler
@@ -631,10 +709,13 @@ struct BenchmarkApp(Movable):
     fn handle_event(mut self, handler_id: UInt32) -> Bool:
         """Dispatch an event by handler ID.
 
+        Phase 24.4: Each toolbar operation sets three status fields:
+        op_name (dyn_text[0]), timing_text (dyn_text[1]), and
+        row_count_text (dyn_text[2]).  Only changed text nodes receive
+        SetText mutations on flush.
+
         Phase 24.3: Each toolbar operation is wrapped with before/after
-        performance_now() calls.  The elapsed time is formatted and
-        stored in status_text.  On the next flush, diff detects the
-        changed dyn_text[0] and emits a SetText mutation.
+        performance_now() calls for timing.
 
         Phase 24.2: Routes both toolbar button clicks and row clicks.
 
@@ -654,47 +735,48 @@ struct BenchmarkApp(Movable):
         False otherwise.
         """
         # Toolbar button routing — each operation timed via performance_now()
+        # Phase 24.4: sets op_name, timing_text, row_count_text separately
         if handler_id == self.create1k_handler:
             var t0 = performance_now()
             self.create_rows(1000)
-            self.status_text = format_timing(
-                String("Create 1,000 rows"), performance_now() - t0
-            )
+            self.op_name = String("Create 1,000 rows")
+            self.timing_text = format_timing_ms(performance_now() - t0)
+            self.row_count_text = format_row_count(len(self.rows))
             return True
         elif handler_id == self.create10k_handler:
             var t0 = performance_now()
             self.create_rows(10000)
-            self.status_text = format_timing(
-                String("Create 10,000 rows"), performance_now() - t0
-            )
+            self.op_name = String("Create 10,000 rows")
+            self.timing_text = format_timing_ms(performance_now() - t0)
+            self.row_count_text = format_row_count(len(self.rows))
             return True
         elif handler_id == self.append_handler:
             var t0 = performance_now()
             self.append_rows(1000)
-            self.status_text = format_timing(
-                String("Append 1,000 rows"), performance_now() - t0
-            )
+            self.op_name = String("Append 1,000 rows")
+            self.timing_text = format_timing_ms(performance_now() - t0)
+            self.row_count_text = format_row_count(len(self.rows))
             return True
         elif handler_id == self.update_handler:
             var t0 = performance_now()
             self.update_every_10th()
-            self.status_text = format_timing(
-                String("Update every 10th"), performance_now() - t0
-            )
+            self.op_name = String("Update every 10th")
+            self.timing_text = format_timing_ms(performance_now() - t0)
+            self.row_count_text = format_row_count(len(self.rows))
             return True
         elif handler_id == self.swap_handler:
             var t0 = performance_now()
             self.swap_rows(1, 998)
-            self.status_text = format_timing(
-                String("Swap rows"), performance_now() - t0
-            )
+            self.op_name = String("Swap rows")
+            self.timing_text = format_timing_ms(performance_now() - t0)
+            self.row_count_text = format_row_count(len(self.rows))
             return True
         elif handler_id == self.clear_handler:
             var t0 = performance_now()
             self.clear_rows()
-            self.status_text = format_timing(
-                String("Clear"), performance_now() - t0
-            )
+            self.op_name = String("Clear")
+            self.timing_text = format_timing_ms(performance_now() - t0)
+            self.row_count_text = format_row_count(len(self.rows))
             return True
 
         # Row event routing (select/remove via KeyedList handler_map)
@@ -759,27 +841,36 @@ struct BenchmarkApp(Movable):
     fn render(mut self) -> UInt32:
         """Build the app shell VNode using render_builder (auto-populates).
 
-        Phase 24.3: dyn_text[0] now reads from self.status_text, which
-        is updated by handle_event() with timing info after each toolbar
-        operation.  On flush, diff detects the text change and emits
-        SetText.
+        Phase 24.4: Three dyn_text nodes for the status bar:
+          dyn_text[0] = op_name        (dynamic_nodes[0])
+          dyn_text[1] = timing_text    (dynamic_nodes[1])
+          dyn_text[2] = row_count_text (dynamic_nodes[2])
+        Only changed text nodes receive SetText mutations on flush.
 
         Phase 24.2: Uses render_builder() which auto-populates all
         event handlers registered by setup_view() in tree-walk order:
           auto dyn_attr[0..5] = onclick_custom handlers (6 toolbar buttons)
-          dyn_text[0]         = status message          (dynamic_nodes[0])
-          dyn_node[1]         = placeholder (row list)  (dynamic_nodes[1])
+          dyn_text[0]         = op_name                 (dynamic_nodes[0])
+          dyn_text[1]         = timing_text             (dynamic_nodes[1])
+          dyn_text[2]         = row_count_text          (dynamic_nodes[2])
+          dyn_node[3]         = placeholder (row list)  (dynamic_nodes[3])
 
         Note: dyn_text and dyn_node share the dynamic_nodes index space.
-        Auto-numbered dyn_text() gets index 0, so dyn_node uses index 1.
+        Three auto-numbered dyn_text() get indices 0-2, so dyn_node uses 3.
         """
         var vb = self.ctx.render_builder()
 
-        # Dynamic text 0: status message (updated by handle_event timing)
-        vb.add_dyn_text(self.status_text)
+        # Dynamic text 0: operation name (or "Ready")
+        vb.add_dyn_text(self.op_name)
 
-        # Dynamic node 1: placeholder in the <tbody>
-        # (index 1 because dyn_text occupies index 0 in the shared space)
+        # Dynamic text 1: timing (" — X.Yms" or "")
+        vb.add_dyn_text(self.timing_text)
+
+        # Dynamic text 2: row count (" · N rows" or "")
+        vb.add_dyn_text(self.row_count_text)
+
+        # Dynamic node 3: placeholder in the <tbody>
+        # (index 3 because dyn_text occupies indices 0-2 in the shared space)
         vb.add_dyn_placeholder()
 
         return vb.build()
@@ -844,13 +935,13 @@ fn bench_app_rebuild(
     )
     var num_roots = engine.create_node(app_vnode_idx)
 
-    # After CreateEngine, dynamic[1]'s placeholder has an ElementId.
-    # (dyn_node uses index 1 because dyn_text occupies index 0)
+    # After CreateEngine, dynamic[3]'s placeholder has an ElementId.
+    # (dyn_node uses index 3 because 3 dyn_text nodes occupy indices 0-2)
     # Initialize the KeyedList's slot with the anchor and empty fragment.
     var anchor_id: UInt32 = 0
     var app_vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(app_vnode_idx)
-    if app_vnode_ptr[0].dyn_node_id_count() > 1:
-        anchor_id = app_vnode_ptr[0].get_dyn_node_id(1)
+    if app_vnode_ptr[0].dyn_node_id_count() > 3:
+        anchor_id = app_vnode_ptr[0].get_dyn_node_id(3)
     app[0].rows_list.init_slot(anchor_id, frag_idx)
 
     # Append the app shell to root element (id 0)
@@ -866,9 +957,9 @@ fn bench_app_flush(
 ) -> Int32:
     """Flush pending updates after a benchmark operation.
 
-    Phase 24.2: Re-renders the app shell VNode (to catch any status
-    text changes via diff) and flushes the row list via KeyedList.
-    Follows the same pattern as todo_app_flush.
+    Phase 24.4: Re-renders the app shell VNode (to catch any status
+    text changes via diff — 3 dyn_text nodes) and flushes the row list
+    via KeyedList.  Follows the same pattern as todo_app_flush.
 
     Uses KeyedList.flush() which delegates fragment transitions
     (empty↔populated) to the reusable flush_fragment lifecycle helper.
@@ -880,7 +971,7 @@ fn bench_app_flush(
         return 0
 
     # Re-render app shell to pick up any changes.
-    # dyn_node(0) stays as placeholder — diff sees placeholder vs
+    # dyn_node(3) stays as placeholder — diff sees placeholder vs
     # placeholder and does nothing (KeyedList manages it separately).
     var new_app_idx = app[0].render()
     app[0].ctx.diff(writer_ptr, new_app_idx)

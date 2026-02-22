@@ -1313,6 +1313,27 @@ function readBenchStatus(fns: Fns, appPtr: bigint): string {
 	return readStringStruct(outPtr);
 }
 
+/** Helper: read bench_op_name from WASM (P24.4). */
+function readBenchOpName(fns: Fns, appPtr: bigint): string {
+	const outPtr = allocStringStruct();
+	fns.bench_op_name(appPtr, outPtr);
+	return readStringStruct(outPtr);
+}
+
+/** Helper: read bench_timing_text from WASM (P24.4). */
+function readBenchTimingText(fns: Fns, appPtr: bigint): string {
+	const outPtr = allocStringStruct();
+	fns.bench_timing_text(appPtr, outPtr);
+	return readStringStruct(outPtr);
+}
+
+/** Helper: read bench_row_count_text from WASM (P24.4). */
+function readBenchRowCountText(fns: Fns, appPtr: bigint): string {
+	const outPtr = allocStringStruct();
+	fns.bench_row_count_text(appPtr, outPtr);
+	return readStringStruct(outPtr);
+}
+
 function testBenchStatusTextInit(fns: Fns): void {
 	suite("Bench P24.3 — status text is 'Ready' before any operation");
 	{
@@ -1407,6 +1428,82 @@ function testBenchStatusTextAfterOps(fns: Fns): void {
 // field is correctly set by handle_event with timing info.
 
 // ══════════════════════════════════════════════════════════════════════════════
+// Section: P24.4 — Fine-grained status bar (3 dyn_text nodes)
+// ══════════════════════════════════════════════════════════════════════════════
+
+function testBenchStatusTextParts(fns: Fns): void {
+	// Verify the three individual status bar fields (op_name, timing_text,
+	// row_count_text) are set correctly by handle_event.
+	//
+	// No bench_rebuild or mutation buffer needed — handle_event only
+	// modifies app state fields (op_name, timing_text, row_count_text)
+	// and handler IDs are set in __init__ via view_event_handler_id().
+	// This avoids the OOM risk from the bump allocator at this point
+	// in the test run.
+
+	suite("Bench P24.4 — initial status parts: op_name='Ready', others empty");
+	{
+		const appPtr = fns.bench_init();
+
+		// Before any operation: op_name = "Ready", timing/row_count = ""
+		const opName = readBenchOpName(fns, appPtr);
+		assert(opName, "Ready", "initial op_name is 'Ready'");
+
+		const timing = readBenchTimingText(fns, appPtr);
+		assert(timing, "", "initial timing_text is empty");
+
+		const rowCount = readBenchRowCountText(fns, appPtr);
+		assert(rowCount, "", "initial row_count_text is empty");
+
+		// -- Create 1,000 rows via handle_event (handler index 0) --
+		const createHandler = fns.bench_handler_id_at(appPtr, 0);
+		fns.bench_handle_event(appPtr, createHandler, 0);
+
+		const opAfterCreate = readBenchOpName(fns, appPtr);
+		assert(opAfterCreate, "Create 1,000 rows", "op_name after create 1k");
+
+		const timingAfterCreate = readBenchTimingText(fns, appPtr);
+		assert(
+			timingAfterCreate.startsWith(" \u2014 "),
+			true,
+			`timing_text starts with em-dash separator: "${timingAfterCreate}"`,
+		);
+		assert(
+			timingAfterCreate.endsWith("ms"),
+			true,
+			`timing_text ends with 'ms': "${timingAfterCreate}"`,
+		);
+
+		const rowCountAfterCreate = readBenchRowCountText(fns, appPtr);
+		assert(
+			rowCountAfterCreate,
+			" \u00b7 1,000 rows",
+			"row_count_text after create 1k",
+		);
+
+		// Verify full status is the concatenation
+		const fullStatus = readBenchStatus(fns, appPtr);
+		assert(
+			fullStatus,
+			opAfterCreate + timingAfterCreate + rowCountAfterCreate,
+			"full status = op_name + timing_text + row_count_text",
+		);
+
+		// -- Clear via handle_event (handler index 5) --
+		const clearHandler = fns.bench_handler_id_at(appPtr, 5);
+		fns.bench_handle_event(appPtr, clearHandler, 0);
+
+		const opAfterClear = readBenchOpName(fns, appPtr);
+		assert(opAfterClear, "Clear", "op_name after clear");
+
+		const rowCountAfterClear = readBenchRowCountText(fns, appPtr);
+		assert(rowCountAfterClear, " \u00b7 0 rows", "row_count_text after clear");
+
+		fns.bench_destroy(appPtr);
+	}
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Combined export
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -1459,4 +1556,7 @@ export function testBench(fns: Fns): void {
 	// P24.3 — WASM-side timing (performance_now import)
 	testBenchStatusTextInit(fns);
 	testBenchStatusTextAfterOps(fns);
+
+	// P24.4 — Fine-grained status bar (3 dyn_text nodes)
+	testBenchStatusTextParts(fns);
 }
