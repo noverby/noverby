@@ -2603,13 +2603,46 @@ fn bench_handler_id_at(app_ptr: Int64, index: Int32) -> Int32:
 
 @export
 fn bench_status_text(app_ptr: Int64) -> String:
-    """Return the current status bar text (P24.3).
+    """Return the full status bar text (concatenation of all 3 parts).
 
-    After each toolbar operation, handle_event() stores the operation
-    name and elapsed time (e.g. "Create 1,000 rows — 12.3ms") in the
-    app's status_text field.  Before any operation, returns "Ready".
+    Phase 24.4: Returns op_name + timing_text + row_count_text.
+    Before any operation: "Ready" (timing_text and row_count_text are "").
+    After an operation: e.g. "Create 1,000 rows — 12.3ms · 1,000 rows".
+
+    Backward-compatible with P24.3 tests that check startsWith/includes.
     """
-    return _get[BenchmarkApp](app_ptr)[0].status_text
+    var app = _get[BenchmarkApp](app_ptr)
+    return app[0].op_name + app[0].timing_text + app[0].row_count_text
+
+
+@export
+fn bench_op_name(app_ptr: Int64) -> String:
+    """Return the operation name (dyn_text[0]) from the status bar.
+
+    Phase 24.4: "Ready" before any operation, or the operation name
+    (e.g. "Create 1,000 rows") after a toolbar action.
+    """
+    return _get[BenchmarkApp](app_ptr)[0].op_name
+
+
+@export
+fn bench_timing_text(app_ptr: Int64) -> String:
+    """Return the timing text (dyn_text[1]) from the status bar.
+
+    Phase 24.4: "" before any operation, or " — X.Yms" after a
+    toolbar action (includes leading em-dash separator).
+    """
+    return _get[BenchmarkApp](app_ptr)[0].timing_text
+
+
+@export
+fn bench_row_count_text(app_ptr: Int64) -> String:
+    """Return the row count text (dyn_text[2]) from the status bar.
+
+    Phase 24.4: "" before any operation, or " · N rows" after a
+    toolbar action (includes leading middle-dot separator).
+    """
+    return _get[BenchmarkApp](app_ptr)[0].row_count_text
 
 
 # ══════════════════════════════════════════════════════════════════════════════
