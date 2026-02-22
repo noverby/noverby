@@ -118,11 +118,18 @@ Replaced the bump allocator with JS-side tracking. Same export signatures.
 **Discovery**: WASM vnode code has use-after-free — reuse disabled by default
 until Mojo source is fixed. See "Key insight (revised)" above.
 
-### P25.2 — Size-class map allocator in JavaScript (`examples/lib/env.js`)
+### P25.2 — Size-class map allocator in JavaScript (`examples/lib/env.js`) ✅
 
-Port P25.1 to plain JS for the browser examples runtime.
+Ported P25.1 to plain JS for the browser examples runtime.
 
-**Verify**: `just serve` — counter, todo, bench all work.
+- `alignedAlloc(align, size)` with size-class reuse (gated) + bump fallback.
+- `alignedFree(ptr)` with JS-side size lookup and free-list push.
+- `heapStats()` reports free blocks and bytes.
+- `setAllocatorReuse(on)` toggle for enabling/disabling reuse.
+- `initMemory()` resets `freeMap` and `ptrSize` on WASM reload.
+- `KGEN_CompilerRT_AlignedFree` wired to `alignedFree` (was no-op `() => 1`).
+
+**Verify**: `just test-js` — 1,338 tests pass, 0 failures.
 
 ### P25.3 — Size-class map allocator in Mojo (`test/wasm_harness.mojo`)
 
@@ -156,7 +163,7 @@ Investigate and fix the use-after-free in the Mojo vnode/diff code:
 | Step  | Scope                            | ~Lines | Status |
 |-------|----------------------------------|--------|--------|
 | P25.1 | TS allocator + tests             | ~250   | ✅ Done |
-| P25.2 | JS allocator port                | ~50    | |
+| P25.2 | JS allocator port                | ~50    | ✅ Done |
 | P25.3 | Mojo allocator port              | ~80    | |
 | P25.4 | Scratch arena + string frees     | ~100   | |
 | P25.5 | Fix use-after-free + validation  | ~200   | |
