@@ -1,6 +1,6 @@
-{src, ...}: {
+{inputs, ...}: {
   age.secrets."resolved-secret.conf" = {
-    file = src + /config/secrets/resolved.age;
+    file = inputs.self.secrets.resolved;
     path = "/etc/systemd/resolved.conf.d/10-secret.conf";
     owner = "systemd-resolve";
     group = "systemd-resolve";

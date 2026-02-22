@@ -178,7 +178,7 @@ inputs.nixos-raspberrypi.lib.nixosSystem {
         # Or use agenix to manage the file declaratively:
         #
         #   age.secrets."ironclaw-env" = {
-        #     file = src + /config/secrets/ironclaw-env.age;
+        #     file = inputs.self.secrets.ironclaw-env;
         #     path = "/run/agenix/ironclaw-env";
         #     owner = "ironclaw";
         #   };

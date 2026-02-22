@@ -1,9 +1,11 @@
 {
   lib,
   config,
-  src,
+  inputs,
   ...
-}: {
+}: let
+  inherit (inputs.self) secrets;
+in {
   programs.ssh = {
     enable = true;
     enableDefaultConfig = false;
@@ -35,7 +37,7 @@
   };
 
   home.file = let
-    publicKeys = import (src + /config/secrets/publicKeys.nix);
+    inherit (secrets) publicKeys;
   in {
     ".ssh/id_ed25519.pub".text = publicKeys.noverby-ssh-ed25519;
     ".ssh/id_rsa.pub".text = publicKeys.noverby-ssh-rsa;
@@ -45,12 +47,12 @@
     identityPaths = ["${config.home.homeDirectory}/.age/id_fido2"];
     secrets = {
       id_ed25519 = {
-        file = src + /config/secrets/id_ed25519.age;
+        file = secrets.id_ed25519;
         path = "${config.home.homeDirectory}/.ssh/id_ed25519";
         mode = "600";
       };
       id_rsa = {
-        file = src + /config/secrets/id_rsa.age;
+        file = secrets.id_rsa;
         path = "${config.home.homeDirectory}/.ssh/id_rsa";
         mode = "600";
       };
