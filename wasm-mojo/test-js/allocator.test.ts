@@ -11,6 +11,8 @@ import {
 	initTestAllocator,
 	restoreAllocator,
 	saveAllocator,
+	scratchAlloc,
+	scratchFreeAll,
 	setAllocatorReuse,
 } from "../runtime/memory.ts";
 import { assert, suite } from "./harness.ts";
@@ -418,5 +420,119 @@ function runAllocatorTests(): void {
 		const p2 = alignedAlloc(16n, 4096n);
 		assert(p2, p, "4 KiB re-alloc reuses freed block");
 		assert(heapStats().heapPointer, heapAfter, "heap pointer unchanged");
+	}
+
+	// ─── Scratch arena: basic alloc + freeAll ───────────────────────────
+
+	suite("Scratch arena — scratchAlloc + scratchFreeAll cycle");
+	{
+		freshAllocator();
+
+		// scratchAlloc behaves like alignedAlloc (returns valid pointers).
+		const s1 = scratchAlloc(8n, 24n);
+		const s2 = scratchAlloc(1n, 10n);
+		assert(s1 % 8n === 0n, true, "scratch ptr 1 is 8-byte aligned");
+		assert(s2 > 0n, true, "scratch ptr 2 is valid");
+		assert(s2 !== s1, true, "scratch ptrs are distinct");
+
+		// No free blocks yet — scratch just allocated, not freed.
+		assert(heapStats().freeBlocks, 0, "0 free blocks before scratchFreeAll");
+
+		// Bulk-free: both scratch allocations should move to the free list.
+		scratchFreeAll();
+		assert(heapStats().freeBlocks, 2, "2 free blocks after scratchFreeAll");
+		assert(heapStats().freeBytes, 34n, "24 + 10 = 34 free bytes");
+
+		// Re-alloc same sizes: should reuse the freed scratch blocks.
+		const heapBefore = heapStats().heapPointer;
+		const r1 = scratchAlloc(1n, 10n);
+		const r2 = scratchAlloc(8n, 24n);
+		assert(r1, s2, "10-byte re-alloc reuses scratch ptr (LIFO)");
+		assert(r2, s1, "24-byte re-alloc reuses scratch ptr (LIFO)");
+		assert(heapStats().heapPointer, heapBefore, "heap pointer unchanged");
+
+		// Clean up scratch for the next test.
+		scratchFreeAll();
+	}
+
+	// ─── Scratch arena: empty scratchFreeAll is safe ────────────────────
+
+	suite("Scratch arena — scratchFreeAll on empty arena is a no-op");
+	freshAllocator();
+
+	// Calling scratchFreeAll when nothing was scratch-allocated is fine.
+	scratchFreeAll();
+	assert(heapStats().freeBlocks, 0, "still 0 free blocks");
+	assert(heapStats().freeBytes, 0n, "still 0 free bytes");
+
+	// Double-call is also safe.
+	scratchFreeAll();
+	scratchFreeAll();
+	assert(heapStats().freeBlocks, 0, "still 0 after double freeAll");
+
+	// ─── Scratch arena: 1000 alloc/freeAll cycles stay bounded ──────────
+
+	suite("Scratch arena — 1000 writeStringStruct-like cycles stay bounded");
+	{
+		freshAllocator();
+
+		// Simulate writeStringStruct pattern: 2 scratch allocs per cycle
+		// (data buffer + 24-byte struct), then scratchFreeAll after flush.
+		scratchAlloc(1n, 6n); // "hello" + null
+		scratchAlloc(8n, 24n); // string struct
+		scratchFreeAll();
+
+		const baseline = heapStats().heapPointer;
+
+		for (let i = 0; i < 1000; i++) {
+			scratchAlloc(1n, 6n);
+			scratchAlloc(8n, 24n);
+			scratchFreeAll();
+		}
+
+		const after = heapStats();
+		assert(
+			after.heapPointer,
+			baseline,
+			"heap pointer unchanged after 1000 scratch cycles",
+		);
+		assert(
+			after.freeBlocks <= 2,
+			true,
+			"free list has at most 2 blocks (one per size bucket)",
+		);
+	}
+
+	// ─── Scratch arena: mixed scratch + direct allocs ───────────────────
+
+	suite("Scratch arena — scratchFreeAll does not affect direct allocs");
+	{
+		freshAllocator();
+
+		// Direct alloc (not scratch).
+		const directPtr = alignedAlloc(8n, 64n);
+
+		// Scratch allocs.
+		scratchAlloc(8n, 32n);
+		scratchAlloc(8n, 16n);
+
+		scratchFreeAll();
+
+		// Scratch blocks are freed (2 blocks), direct block is NOT freed.
+		assert(heapStats().freeBlocks, 2, "only scratch blocks freed");
+		assert(heapStats().freeBytes, 48n, "32 + 16 = 48 scratch bytes freed");
+
+		// Direct alloc of 64 should bump (not reuse 32 or 16).
+		const heapBefore = heapStats().heapPointer;
+		const d2 = alignedAlloc(8n, 64n);
+		assert(d2 !== directPtr, true, "direct re-alloc is a new pointer");
+		assert(
+			heapStats().heapPointer > heapBefore,
+			true,
+			"heap pointer advanced (64-byte bucket was empty)",
+		);
+
+		// Scratch 32-byte bucket still has its freed block.
+		assert(heapStats().freeBlocks, 2, "scratch free blocks untouched");
 	}
 }

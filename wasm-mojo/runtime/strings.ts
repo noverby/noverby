@@ -1,4 +1,4 @@
-import { alignedAlloc, getMemory, getView } from "./memory.ts";
+import { alignedAlloc, getMemory, getView, scratchAlloc } from "./memory.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -16,13 +16,13 @@ export const writeStringStruct = (str: string): bigint => {
 	const dataLen = BigInt(bytes.length);
 
 	// Allocate buffer for string data (with null terminator)
-	const dataPtr = alignedAlloc(1n, dataLen + 1n);
+	const dataPtr = scratchAlloc(1n, dataLen + 1n);
 	const mem = getMemory();
 	new Uint8Array(mem.buffer).set(bytes, Number(dataPtr));
 	new Uint8Array(mem.buffer)[Number(dataPtr + dataLen)] = 0;
 
 	// Allocate 24-byte String struct
-	const structPtr = alignedAlloc(STRING_STRUCT_ALIGN, STRING_STRUCT_SIZE);
+	const structPtr = scratchAlloc(STRING_STRUCT_ALIGN, STRING_STRUCT_SIZE);
 	const view = getView();
 	// data_ptr at offset 0
 	view.setBigInt64(Number(structPtr), dataPtr, true);

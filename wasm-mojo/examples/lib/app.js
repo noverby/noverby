@@ -36,7 +36,7 @@
 //     bufferCapacity: 8 * 1024 * 1024,
 //   });
 
-import { alignedAlloc, getMemory, loadWasm } from "./env.js";
+import { alignedAlloc, getMemory, loadWasm, scratchFreeAll } from "./env.js";
 import { EventBridge } from "./events.js";
 import { Interpreter } from "./interpreter.js";
 import { writeStringStruct } from "./strings.js";
@@ -158,6 +158,9 @@ export async function launch(options) {
 				const mem = getMemory();
 				interp.applyMutations(mem.buffer, Number(bufPtr), len);
 			}
+			// Free transient scratch allocations (e.g. writeStringStruct)
+			// now that WASM has consumed the data and mutations are applied.
+			scratchFreeAll();
 		}
 
 		// 5. Wire events via EventBridge with smart dispatch

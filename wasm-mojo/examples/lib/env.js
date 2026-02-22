@@ -116,6 +116,39 @@ export function alignedFree(ptr) {
 	return 1;
 }
 
+// ── Scratch arena ───────────────────────────────────────────────────────────
+
+/**
+ * Scratch arena: a list of pointers allocated via scratchAlloc.
+ * These are transient allocations (e.g. writeStringStruct per keystroke)
+ * that should be bulk-freed after each dispatch+flush cycle.
+ *
+ * Call scratchFreeAll() after the WASM side has consumed the data.
+ */
+let scratchPtrs = [];
+
+/**
+ * Allocate from the main allocator and record the pointer in the scratch
+ * arena.  Use this for transient JS→WASM data (e.g. writeStringStruct)
+ * that should be bulk-freed after each dispatch+flush cycle.
+ */
+export function scratchAlloc(align, size) {
+	const ptr = alignedAlloc(align, size);
+	scratchPtrs.push(ptr);
+	return ptr;
+}
+
+/**
+ * Free every pointer in the scratch arena.  Call this after the WASM side
+ * has consumed the transient data (typically after flush).
+ */
+export function scratchFreeAll() {
+	for (const ptr of scratchPtrs) {
+		alignedFree(ptr);
+	}
+	scratchPtrs = [];
+}
+
 // ── Diagnostics ─────────────────────────────────────────────────────────────
 
 /**
@@ -141,6 +174,7 @@ export function initMemory(exports) {
 	heapPointer = exports.__heap_base.value;
 	freeMap = new Map();
 	ptrSize = new Map();
+	scratchPtrs = [];
 }
 
 // ── WASM import object ──────────────────────────────────────────────────────

@@ -38,6 +38,17 @@ let ptrSize: Map<bigint, bigint> = new Map();
  */
 let reuseEnabled = false;
 
+// --- Scratch arena state ---
+
+/**
+ * Scratch arena: a list of pointers allocated via `scratchAlloc`.
+ * These are transient allocations (e.g. `writeStringStruct` per keystroke)
+ * that should be bulk-freed after each dispatch+flush cycle.
+ *
+ * Call `scratchFreeAll()` after the WASM side has consumed the data.
+ */
+let scratchPtrs: bigint[] = [];
+
 // --- Public API ---
 
 /** Initialize runtime state from a WASM instance. */
@@ -47,6 +58,7 @@ export const initialize = (instance: WebAssembly.Instance): void => {
 	heapPointer = wasmExports.__heap_base.value as bigint;
 	freeMap = new Map();
 	ptrSize = new Map();
+	scratchPtrs = [];
 };
 
 /** Get the current WASM exports (throws if not initialized). */
@@ -136,6 +148,30 @@ export const alignedFree = (ptr: bigint): number => {
 	return 1;
 };
 
+// --- Scratch arena ---
+
+/**
+ * Allocate from the main allocator and record the pointer in the scratch
+ * arena.  Use this for transient JS→WASM data (e.g. `writeStringStruct`)
+ * that should be bulk-freed after each dispatch+flush cycle.
+ */
+export const scratchAlloc = (align: bigint, size: bigint): bigint => {
+	const ptr = alignedAlloc(align, size);
+	scratchPtrs.push(ptr);
+	return ptr;
+};
+
+/**
+ * Free every pointer in the scratch arena.  Call this after the WASM side
+ * has consumed the transient data (typically after flush).
+ */
+export const scratchFreeAll = (): void => {
+	for (const ptr of scratchPtrs) {
+		alignedFree(ptr);
+	}
+	scratchPtrs = [];
+};
+
 // --- Diagnostics (for tests) ---
 
 export interface HeapStats {
@@ -164,6 +200,7 @@ interface AllocatorSnapshot {
 	freeMap: Map<bigint, bigint[]>;
 	ptrSize: Map<bigint, bigint>;
 	reuseEnabled: boolean;
+	scratchPtrs: bigint[];
 	wasmExports: WasmExports | null;
 	memory: WebAssembly.Memory | null;
 }
@@ -178,6 +215,7 @@ export const saveAllocator = (): AllocatorSnapshot => ({
 	freeMap,
 	ptrSize,
 	reuseEnabled,
+	scratchPtrs,
 	wasmExports,
 	memory,
 });
@@ -188,6 +226,7 @@ export const restoreAllocator = (snap: AllocatorSnapshot): void => {
 	freeMap = snap.freeMap;
 	ptrSize = snap.ptrSize;
 	reuseEnabled = snap.reuseEnabled;
+	scratchPtrs = snap.scratchPtrs;
 	wasmExports = snap.wasmExports;
 	memory = snap.memory;
 };
@@ -205,4 +244,5 @@ export const initTestAllocator = (
 	heapPointer = base;
 	freeMap = new Map();
 	ptrSize = new Map();
+	scratchPtrs = [];
 };
