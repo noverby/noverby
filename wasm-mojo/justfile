@@ -21,7 +21,7 @@ build-if-changed:
     fi
 
 precompile: build
-    mojo run -I ../wasmtime-mojo/src scripts/precompile.mojo
+    wasmtime compile -o build/out.cwasm build/out.wasm
 
 # Incremental precompile — skip if cwasm is newer than wasm.
 precompile-if-changed: build-if-changed
