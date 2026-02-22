@@ -19,16 +19,16 @@
     inputs.home-manager.nixosModules.home-manager
     inputs.ragenix.nixosModules.default
     inputs.self.hardware.thinkpad-t14-ryzen-7-pro
+    inputs.self.desktops.cosmic
+    inputs.self.desktops.gnome
+    inputs.self.desktops.xr
     nitrokey
     age
-    cosmic
-    gnome
     core
     programs
     services
     catppuccin
     home-manager
-    xr
     veo
     cloud-hypervisor
   ];

@@ -18,6 +18,5 @@
     services
     catppuccin
     vibe
-    xr
   ];
 }
