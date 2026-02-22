@@ -206,7 +206,9 @@ struct MemoStore(Movable):
         """
         return self._entries[Int(id)].copy()
 
-    fn get_ptr(mut self, id: UInt32) -> UnsafePointer[MemoEntry, MutExternalOrigin]:
+    fn get_ptr(
+        mut self, id: UInt32
+    ) -> UnsafePointer[MemoEntry, MutExternalOrigin]:
         """Return a pointer to the memo entry at `id`.
 
         The pointer is valid until the next mutation of the store.

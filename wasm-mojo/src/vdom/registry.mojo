@@ -92,7 +92,9 @@ struct TemplateRegistry(Movable):
         Precondition: `id` < `count()`.
         """
         var ptr = self._templates.unsafe_ptr() + Int(id)
-        return UnsafePointer[Template, MutExternalOrigin](unsafe_from_address=Int(ptr))
+        return UnsafePointer[Template, MutExternalOrigin](
+            unsafe_from_address=Int(ptr)
+        )
 
     fn find_by_name(self, name: String) -> Int:
         """Find a template by name.  Returns its ID as Int, or -1 if not found.

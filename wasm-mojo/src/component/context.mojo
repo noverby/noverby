@@ -1232,7 +1232,9 @@ struct ComponentContext(Movable):
         self.shell.diff(writer_ptr, old_idx, new_vnode_idx)
         self.current_vnode = Int(new_vnode_idx)
 
-    fn finalize(self, writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin]) -> Int32:
+    fn finalize(
+        self, writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin]
+    ) -> Int32:
         """Write the End sentinel and return byte length.
 
         Args:

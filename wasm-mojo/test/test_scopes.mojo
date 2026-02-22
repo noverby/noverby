@@ -27,12 +27,16 @@ fn _get_wasm() raises -> UnsafePointer[WasmInstance, MutExternalOrigin]:
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-fn _create_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises -> Int:
+fn _create_runtime(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises -> Int:
     """Create a heap-allocated Runtime via WASM."""
     return Int(w[].call_i64("runtime_create", no_args()))
 
 
-fn _destroy_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int) raises:
+fn _destroy_runtime(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int
+) raises:
     """Destroy a heap-allocated Runtime via WASM."""
     w[].call_void("runtime_destroy", args_ptr(rt))
 
@@ -40,7 +44,9 @@ fn _destroy_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int) 
 # ── Scope lifecycle ──────────────────────────────────────────────────────────
 
 
-fn test_scope_create_and_destroy(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_scope_create_and_destroy(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     assert_equal(
@@ -76,7 +82,9 @@ fn test_scope_create_and_destroy(w: UnsafePointer[WasmInstance, MutExternalOrigi
     _destroy_runtime(w, rt)
 
 
-fn test_scope_sequential_ids(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_scope_sequential_ids(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var s0 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -95,7 +103,9 @@ fn test_scope_sequential_ids(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
     _destroy_runtime(w, rt)
 
 
-fn test_scope_slot_reuse_after_destroy(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_scope_slot_reuse_after_destroy(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var s0 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -113,7 +123,9 @@ fn test_scope_slot_reuse_after_destroy(w: UnsafePointer[WasmInstance, MutExterna
     _destroy_runtime(w, rt)
 
 
-fn test_scope_double_destroy_is_noop(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_scope_double_destroy_is_noop(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var s0 = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -131,7 +143,9 @@ fn test_scope_double_destroy_is_noop(w: UnsafePointer[WasmInstance, MutExternalO
 # ── Height and parent tracking ───────────────────────────────────────────────
 
 
-fn test_scope_height_and_parent_tracking(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_scope_height_and_parent_tracking(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var root = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -213,7 +227,9 @@ fn test_scope_create_child_auto_computes_height(
 # ── Dirty flag ───────────────────────────────────────────────────────────────
 
 
-fn test_scope_dirty_flag(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_scope_dirty_flag(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -243,7 +259,9 @@ fn test_scope_dirty_flag(w: UnsafePointer[WasmInstance, MutExternalOrigin]) rais
 # ── Render count ─────────────────────────────────────────────────────────────
 
 
-fn test_scope_render_count(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_scope_render_count(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -275,7 +293,9 @@ fn test_scope_render_count(w: UnsafePointer[WasmInstance, MutExternalOrigin]) ra
 # ── Begin render clears dirty ────────────────────────────────────────────────
 
 
-fn test_scope_begin_render_clears_dirty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_scope_begin_render_clears_dirty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -380,7 +400,9 @@ fn test_scope_begin_render_sets_reactive_context(
 # ── Nested scope rendering ───────────────────────────────────────────────────
 
 
-fn test_scope_nested_rendering(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_scope_nested_rendering(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var root = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -425,7 +447,9 @@ fn test_scope_nested_rendering(w: UnsafePointer[WasmInstance, MutExternalOrigin]
 # ── is_first_render ──────────────────────────────────────────────────────────
 
 
-fn test_scope_is_first_render(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_scope_is_first_render(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -457,7 +481,9 @@ fn test_scope_is_first_render(w: UnsafePointer[WasmInstance, MutExternalOrigin])
 # ── Hooks start empty ────────────────────────────────────────────────────────
 
 
-fn test_scope_hooks_start_empty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_scope_hooks_start_empty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -511,7 +537,9 @@ fn test_hook_use_signal_creates_on_first_render(
 # ── Hook: use_signal returns same signal on re-render ────────────────────────
 
 
-fn test_hook_use_signal_same_on_rerender(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_hook_use_signal_same_on_rerender(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -551,7 +579,9 @@ fn test_hook_use_signal_same_on_rerender(w: UnsafePointer[WasmInstance, MutExter
 # ── Hook: multiple signals in same scope ─────────────────────────────────────
 
 
-fn test_hook_multiple_signals_same_scope(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_hook_multiple_signals_same_scope(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -696,7 +726,9 @@ fn test_hook_signal_read_subscribes_scope(
 # ── Hook: peek during render does NOT subscribe ──────────────────────────────
 
 
-fn test_hook_peek_does_not_subscribe(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_hook_peek_does_not_subscribe(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -788,7 +820,9 @@ fn test_hook_nested_rendering_subscribes_correct_scope(
 # ── Stress: 100 scopes ──────────────────────────────────────────────────────
 
 
-fn test_scope_stress_100_scopes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_scope_stress_100_scopes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var ids = List[Int]()
@@ -880,7 +914,9 @@ fn test_hook_signal_stable_across_many_rerenders(
 # ── Simulated counter component ──────────────────────────────────────────────
 
 
-fn test_hook_simulated_counter_component(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_hook_simulated_counter_component(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
 
@@ -1001,7 +1037,9 @@ fn test_hook_simulated_multi_state_component(
 # ── Simulated parent-child component tree ────────────────────────────────────
 
 
-fn test_hook_simulated_parent_child_tree(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_hook_simulated_parent_child_tree(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var parent = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))
@@ -1096,7 +1134,9 @@ fn test_hook_simulated_parent_child_tree(w: UnsafePointer[WasmInstance, MutExter
 # ── Render scope with no hooks ───────────────────────────────────────────────
 
 
-fn test_scope_render_with_no_hooks(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_scope_render_with_no_hooks(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
 
     var s = Int(w[].call_i32("scope_create", args_ptr_i32_i32(rt, 0, -1)))

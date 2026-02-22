@@ -30,7 +30,9 @@ fn _get_wasm() raises -> UnsafePointer[WasmInstance, MutExternalOrigin]:
 # ---------------------------------------------------------------------------
 
 
-fn test_add_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_add_int32_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [0, 1, -7, 100, 2147483647, 12345]
     var bs: List[Int] = [0, 2, 13, -100, -2147483648, 67890]
     for i in range(len(as_)):
@@ -43,7 +45,9 @@ fn test_add_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) ra
         )
 
 
-fn test_add_int64_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_add_int64_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [0, 1, -999, 9223372036854775807]
     var bs: List[Int] = [0, 2, 999, -1]
     for i in range(len(as_)):
@@ -56,7 +60,9 @@ fn test_add_int64_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) ra
         )
 
 
-fn test_add_float64_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_add_float64_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Float64] = [0.0, 1.5, -3.14, 1e10]
     var bs: List[Float64] = [0.0, 2.5, 3.14, 1e-10]
     for i in range(len(as_)):
@@ -78,7 +84,9 @@ fn test_add_float64_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
 # ---------------------------------------------------------------------------
 
 
-fn test_mul_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_mul_int32_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [0, 3, -5, -4, 2147483647, 1000]
     var bs: List[Int] = [1, 7, 11, -6, 2, 1000]
     for i in range(len(as_)):
@@ -91,7 +99,9 @@ fn test_mul_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) ra
         )
 
 
-fn test_mul_int64_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_mul_int64_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [0, 3, -100]
     var bs: List[Int] = [1, 7, 200]
     for i in range(len(as_)):
@@ -104,7 +114,9 @@ fn test_mul_int64_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) ra
         )
 
 
-fn test_mul_float64_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_mul_float64_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Float64] = [2.5, -1.5, 0.0]
     var bs: List[Float64] = [4.0, 3.0, 999.0]
     for i in range(len(as_)):
@@ -126,7 +138,9 @@ fn test_mul_float64_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
 # ---------------------------------------------------------------------------
 
 
-fn test_min_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_min_int32_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [3, -5, 0, 2147483647]
     var bs: List[Int] = [7, 5, 0, -2147483648]
     for i in range(len(as_)):
@@ -139,7 +153,9 @@ fn test_min_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) ra
         )
 
 
-fn test_max_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_max_int32_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [3, -5, 0, 2147483647]
     var bs: List[Int] = [7, 5, 0, -2147483648]
     for i in range(len(as_)):
@@ -157,7 +173,9 @@ fn test_max_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) ra
 # ---------------------------------------------------------------------------
 
 
-fn test_gcd_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_gcd_int32_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [12, 7, 100, 0, 1071]
     var bs: List[Int] = [8, 13, 75, 5, 462]
     for i in range(len(as_)):
@@ -175,7 +193,9 @@ fn test_gcd_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) ra
 # ---------------------------------------------------------------------------
 
 
-fn test_bitand_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitand_int32_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [0b1100, 0xFF, 0, 2147483647]
     var bs: List[Int] = [0b1010, 0x0F, -1, -2147483648]
     for i in range(len(as_)):
@@ -192,7 +212,9 @@ fn test_bitand_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin])
         )
 
 
-fn test_bitor_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitor_int32_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [0b1100, 0xFF, 0, 2147483647]
     var bs: List[Int] = [0b1010, 0x0F, -1, -2147483648]
     for i in range(len(as_)):
@@ -209,7 +231,9 @@ fn test_bitor_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) 
         )
 
 
-fn test_bitxor_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitxor_int32_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [0b1100, 0xFF, 0, 2147483647]
     var bs: List[Int] = [0b1010, 0x0F, -1, -2147483648]
     for i in range(len(as_)):
@@ -231,7 +255,9 @@ fn test_bitxor_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin])
 # ---------------------------------------------------------------------------
 
 
-fn test_bool_and_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bool_and_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     for a in range(2):
         for b in range(2):
             assert_equal(
@@ -245,7 +271,9 @@ fn test_bool_and_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) rai
             )
 
 
-fn test_bool_or_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bool_or_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     for a in range(2):
         for b in range(2):
             assert_equal(
@@ -264,7 +292,9 @@ fn test_bool_or_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) rais
 # ---------------------------------------------------------------------------
 
 
-fn test_eq_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_eq_int32_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [0, 5, -1, 2147483647]
     var bs: List[Int] = [0, 6, 1, -2147483648]
     for i in range(len(as_)):
@@ -277,7 +307,9 @@ fn test_eq_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) rai
         )
 
 
-fn test_ne_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_ne_int32_commutes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [0, 5, -1, 2147483647]
     var bs: List[Int] = [0, 6, 1, -2147483648]
     for i in range(len(as_)):
@@ -295,7 +327,9 @@ fn test_ne_int32_commutes(w: UnsafePointer[WasmInstance, MutExternalOrigin]) rai
 # ---------------------------------------------------------------------------
 
 
-fn test_add_int32_associative(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_add_int32_associative(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [1, -5, 100, 0, 2147483647]
     var bs: List[Int] = [2, 10, 200, 0, 1]
     var cs: List[Int] = [3, -3, 300, 0, -1]
@@ -331,7 +365,9 @@ fn test_add_int32_associative(w: UnsafePointer[WasmInstance, MutExternalOrigin])
         )
 
 
-fn test_add_float64_associative(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_add_float64_associative(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Float64] = [1.0, -1.0, 100.0]
     var bs: List[Float64] = [2.0, 1.0, 200.0]
     var cs: List[Float64] = [4.0, 0.0, 300.0]
@@ -366,7 +402,9 @@ fn test_add_float64_associative(w: UnsafePointer[WasmInstance, MutExternalOrigin
 # ---------------------------------------------------------------------------
 
 
-fn test_mul_int32_associative(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_mul_int32_associative(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [2, -1, 1, 0, 10]
     var bs: List[Int] = [3, 5, 1, 999, 10]
     var cs: List[Int] = [4, 7, 1, 123, 10]
@@ -407,7 +445,9 @@ fn test_mul_int32_associative(w: UnsafePointer[WasmInstance, MutExternalOrigin])
 # ---------------------------------------------------------------------------
 
 
-fn test_bitand_int32_associative(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitand_int32_associative(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [0b1100, 0xFF, 0]
     var bs: List[Int] = [0b1010, 0x0F, -1]
     var cs: List[Int] = [0b0110, 0xAA, 42]
@@ -443,7 +483,9 @@ fn test_bitand_int32_associative(w: UnsafePointer[WasmInstance, MutExternalOrigi
         )
 
 
-fn test_bitor_int32_associative(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitor_int32_associative(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [0b1100, 0xFF, 0]
     var bs: List[Int] = [0b1010, 0x0F, -1]
     var cs: List[Int] = [0b0110, 0xAA, 42]
@@ -479,7 +521,9 @@ fn test_bitor_int32_associative(w: UnsafePointer[WasmInstance, MutExternalOrigin
         )
 
 
-fn test_bitxor_int32_associative(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitxor_int32_associative(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [0b1100, 0xFF, 0]
     var bs: List[Int] = [0b1010, 0x0F, -1]
     var cs: List[Int] = [0b0110, 0xAA, 42]
@@ -520,7 +564,9 @@ fn test_bitxor_int32_associative(w: UnsafePointer[WasmInstance, MutExternalOrigi
 # ---------------------------------------------------------------------------
 
 
-fn test_mul_distributes_over_add(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_mul_distributes_over_add(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [2, -3, 0, 1, 10, 7]
     var bs: List[Int] = [3, 5, 100, -1, 10, 0]
     var cs: List[Int] = [4, 7, 200, 1, 10, 0]
@@ -563,7 +609,9 @@ fn test_mul_distributes_over_add(w: UnsafePointer[WasmInstance, MutExternalOrigi
 # ---------------------------------------------------------------------------
 
 
-fn test_bitand_distributes_over_bitor(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitand_distributes_over_bitor(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [0b1100, 0xFF, -1, 0]
     var bs: List[Int] = [0b1010, 0x0F, 42, 0xFFFF]
     var cs: List[Int] = [0b0110, 0xF0, 99, 0xFF00]
@@ -606,7 +654,9 @@ fn test_bitand_distributes_over_bitor(w: UnsafePointer[WasmInstance, MutExternal
 # ---------------------------------------------------------------------------
 
 
-fn test_bitor_distributes_over_bitand(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitor_distributes_over_bitand(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [0b1100, 0xFF, 0]
     var bs: List[Int] = [0b1010, 0x0F, 42]
     var cs: List[Int] = [0b0110, 0xF0, 99]
@@ -671,7 +721,9 @@ fn test_mul_identity(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
         )
 
 
-fn test_bitand_identity(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitand_identity(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var xs: List[Int] = [-42, 0, 1, 2147483647, -2147483648]
     for i in range(len(xs)):
         var x = xs[i]
@@ -682,7 +734,9 @@ fn test_bitand_identity(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raise
         )
 
 
-fn test_bitor_identity(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitor_identity(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var xs: List[Int] = [-42, 0, 1, 2147483647, -2147483648]
     for i in range(len(xs)):
         var x = xs[i]
@@ -693,7 +747,9 @@ fn test_bitor_identity(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises
         )
 
 
-fn test_bitxor_identity(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitxor_identity(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var xs: List[Int] = [-42, 0, 1, 2147483647, -2147483648]
     for i in range(len(xs)):
         var x = xs[i]
@@ -731,7 +787,9 @@ fn test_bitand_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
         )
 
 
-fn test_bitor_all_ones(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitor_all_ones(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var xs: List[Int] = [-42, 0, 1, 2147483647, -2147483648]
     for i in range(len(xs)):
         var x = xs[i]
@@ -796,7 +854,9 @@ fn test_bool_not_not(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
         )
 
 
-fn test_bitxor_self_inverse(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitxor_self_inverse(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var xs: List[Int] = [42, 0, 2147483647]
     var ys: List[Int] = [99, -1, -2147483648]
     for i in range(len(xs)):
@@ -829,7 +889,9 @@ fn test_bitxor_self_inverse(w: UnsafePointer[WasmInstance, MutExternalOrigin]) r
 # ---------------------------------------------------------------------------
 
 
-fn test_de_morgan_not_and_eq_or_not(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_de_morgan_not_and_eq_or_not(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """not(a and b) === not(a) or not(b)."""
     for a in range(2):
         for b in range(2):
@@ -863,7 +925,9 @@ fn test_de_morgan_not_and_eq_or_not(w: UnsafePointer[WasmInstance, MutExternalOr
             )
 
 
-fn test_de_morgan_not_or_eq_and_not(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_de_morgan_not_or_eq_and_not(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """not(a or b) === not(a) and not(b)."""
     for a in range(2):
         for b in range(2):
@@ -902,7 +966,9 @@ fn test_de_morgan_not_or_eq_and_not(w: UnsafePointer[WasmInstance, MutExternalOr
 # ---------------------------------------------------------------------------
 
 
-fn test_bitnot_and_eq_or_bitnot(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitnot_and_eq_or_bitnot(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """~(a & b) === ~a | ~b."""
     var as_: List[Int] = [0b1100, 0xFF, 0, 2147483647]
     var bs: List[Int] = [0b1010, 0x0F, -1, -2147483648]
@@ -938,7 +1004,9 @@ fn test_bitnot_and_eq_or_bitnot(w: UnsafePointer[WasmInstance, MutExternalOrigin
         )
 
 
-fn test_bitnot_or_eq_and_bitnot(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitnot_or_eq_and_bitnot(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """~(a | b) === ~a & ~b."""
     var as_: List[Int] = [0b1100, 0xFF, 0, 2147483647]
     var bs: List[Int] = [0b1010, 0x0F, -1, -2147483648]
@@ -1031,7 +1099,9 @@ fn test_le_eq_not_gt(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
         )
 
 
-fn test_eq_iff_le_and_ge(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_eq_iff_le_and_ge(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var as_: List[Int] = [3, 5, 7, -1, 0, 2147483647]
     var bs: List[Int] = [5, 5, 5, 0, -1, -2147483648]
     for i in range(len(as_)):

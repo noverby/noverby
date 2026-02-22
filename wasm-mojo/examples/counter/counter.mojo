@@ -168,7 +168,9 @@ fn counter_app_rebuild(
 
 
 fn counter_app_handle_event(
-    app: UnsafePointer[CounterApp, MutExternalOrigin], handler_id: UInt32, event_type: UInt8
+    app: UnsafePointer[CounterApp, MutExternalOrigin],
+    handler_id: UInt32,
+    event_type: UInt8,
 ) -> Bool:
     """Dispatch an event to the counter app.
 

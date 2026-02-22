@@ -360,13 +360,17 @@ struct Template(Copyable):
         """Return the total number of attributes across all nodes."""
         return len(self.attrs)
 
-    fn get_node_ptr(self, index: Int) -> UnsafePointer[TemplateNode, MutExternalOrigin]:
+    fn get_node_ptr(
+        self, index: Int
+    ) -> UnsafePointer[TemplateNode, MutExternalOrigin]:
         """Return a pointer to the node at `index`.
 
         The pointer is valid until the next mutation of the template.
         """
         var ptr = self.nodes.unsafe_ptr() + index
-        return UnsafePointer[TemplateNode, MutExternalOrigin](unsafe_from_address=Int(ptr))
+        return UnsafePointer[TemplateNode, MutExternalOrigin](
+            unsafe_from_address=Int(ptr)
+        )
 
     fn get_root_index(self, i: Int) -> UInt32:
         """Return the node index of the i-th root node."""

@@ -29,18 +29,25 @@ fn _get_wasm() raises -> UnsafePointer[WasmInstance, MutExternalOrigin]:
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-fn _create_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises -> Int:
+fn _create_runtime(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises -> Int:
     """Create a heap-allocated Runtime via WASM."""
     return Int(w[].call_i64("runtime_create", no_args()))
 
 
-fn _destroy_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int) raises:
+fn _destroy_runtime(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int
+) raises:
     """Destroy a heap-allocated Runtime via WASM."""
     w[].call_void("runtime_destroy", args_ptr(rt))
 
 
 fn _scope_create(
-    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, height: Int32, parent: Int32
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
+    rt: Int,
+    height: Int32,
+    parent: Int32,
 ) raises -> Int:
     """Create a scope and return its ID as Int."""
     return Int(
@@ -48,7 +55,9 @@ fn _scope_create(
     )
 
 
-fn _scope_destroy(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, id: Int) raises:
+fn _scope_destroy(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, id: Int
+) raises:
     """Destroy a scope."""
     w[].call_void("scope_destroy", args_ptr_i32(rt, Int32(id)))
 
@@ -68,13 +77,18 @@ fn _signal_read(
 
 
 fn _signal_write(
-    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, key: Int, value: Int32
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
+    rt: Int,
+    key: Int,
+    value: Int32,
 ) raises:
     """Write to an Int32 signal."""
     w[].call_void("signal_write_i32", args_ptr_i32_i32(rt, Int32(key), value))
 
 
-fn _signal_destroy(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, key: Int) raises:
+fn _signal_destroy(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, key: Int
+) raises:
     """Destroy a signal."""
     w[].call_void("signal_destroy", args_ptr_i32(rt, Int32(key)))
 
@@ -103,7 +117,10 @@ fn _signal_contains(
 
 
 fn _memo_create(
-    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, scope_id: Int, initial: Int32
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
+    rt: Int,
+    scope_id: Int,
+    initial: Int32,
 ) raises -> Int:
     """Create a memo and return its ID as Int."""
     return Int(
@@ -122,7 +139,10 @@ fn _memo_begin_compute(
 
 
 fn _memo_end_compute(
-    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, memo_id: Int, value: Int32
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
+    rt: Int,
+    memo_id: Int,
+    value: Int32,
 ) raises:
     """End memo computation and store the result."""
     w[].call_void(
@@ -145,12 +165,16 @@ fn _memo_is_dirty(
     return w[].call_i32("memo_is_dirty", args_ptr_i32(rt, Int32(memo_id))) != 0
 
 
-fn _memo_destroy(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, memo_id: Int) raises:
+fn _memo_destroy(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, memo_id: Int
+) raises:
     """Destroy a memo."""
     w[].call_void("memo_destroy", args_ptr_i32(rt, Int32(memo_id)))
 
 
-fn _memo_count(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int) raises -> Int:
+fn _memo_count(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int
+) raises -> Int:
     """Return the number of live memos."""
     return Int(w[].call_i32("memo_count", args_ptr(rt)))
 
@@ -173,7 +197,9 @@ fn _memo_context_id(
     )
 
 
-fn _drain_dirty(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int) raises -> Int:
+fn _drain_dirty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int
+) raises -> Int:
     """Drain the dirty scope queue and return the count."""
     return Int(w[].call_i32("runtime_drain_dirty", args_ptr(rt)))
 
@@ -187,7 +213,9 @@ fn _scope_begin_render(
     )
 
 
-fn _scope_end_render(w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, prev: Int) raises:
+fn _scope_end_render(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, prev: Int
+) raises:
     """End scope render."""
     w[].call_void("scope_end_render", args_ptr_i32(rt, Int32(prev)))
 
@@ -216,7 +244,10 @@ fn _scope_hook_count(
 
 
 fn _scope_hook_tag_at(
-    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, scope_id: Int, index: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
+    rt: Int,
+    scope_id: Int,
+    index: Int,
 ) raises -> Int:
     """Return the hook tag at the given index."""
     return Int(
@@ -228,7 +259,10 @@ fn _scope_hook_tag_at(
 
 
 fn _scope_hook_value_at(
-    w: UnsafePointer[WasmInstance, MutExternalOrigin], rt: Int, scope_id: Int, index: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
+    rt: Int,
+    scope_id: Int,
+    index: Int,
 ) raises -> Int:
     """Return the hook value at the given index."""
     return Int(
@@ -275,7 +309,9 @@ fn test_memo_initial_value_readable(
     _destroy_runtime(w, rt)
 
 
-fn test_memo_starts_dirty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_memo_starts_dirty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
     var s0 = _scope_create(w, rt, 0, -1)
 
@@ -287,7 +323,9 @@ fn test_memo_starts_dirty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) rai
     _destroy_runtime(w, rt)
 
 
-fn test_memo_allocates_signals(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_memo_allocates_signals(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
     var s0 = _scope_create(w, rt, 0, -1)
 
@@ -614,7 +652,9 @@ fn test_memo_destroy_nonexistent(
 # ── Cache hit: read without recompute ────────────────────────────────────────
 
 
-fn test_memo_cache_hit(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_memo_cache_hit(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var rt = _create_runtime(w)
     var s0 = _scope_create(w, rt, 0, -1)
 

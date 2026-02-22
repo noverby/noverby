@@ -79,7 +79,9 @@ fn test_bitxor_basic(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_bitxor_self_is_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitxor_self_is_zero(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("bitxor_int32", args_i32_i32(42, 42))),
         0,
@@ -87,7 +89,9 @@ fn test_bitxor_self_is_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]) r
     )
 
 
-fn test_bitxor_with_zero_is_identity(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_bitxor_with_zero_is_identity(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("bitxor_int32", args_i32_i32(42, 0))),
         42,
@@ -141,7 +145,9 @@ fn test_shl_by_four(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     )
 
 
-fn test_shl_three_by_three(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_shl_three_by_three(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("shl_int32", args_i32_i32(3, 3))),
         24,
@@ -149,7 +155,9 @@ fn test_shl_three_by_three(w: UnsafePointer[WasmInstance, MutExternalOrigin]) ra
     )
 
 
-fn test_shr_sixteen_by_four(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_shr_sixteen_by_four(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("shr_int32", args_i32_i32(16, 4))),
         1,
@@ -157,7 +165,9 @@ fn test_shr_sixteen_by_four(w: UnsafePointer[WasmInstance, MutExternalOrigin]) r
     )
 
 
-fn test_shr_twentyfour_by_three(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_shr_twentyfour_by_three(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("shr_int32", args_i32_i32(24, 3))),
         3,
@@ -165,7 +175,9 @@ fn test_shr_twentyfour_by_three(w: UnsafePointer[WasmInstance, MutExternalOrigin
     )
 
 
-fn test_shr_255_by_one(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_shr_255_by_one(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     assert_equal(
         Int(w[].call_i32("shr_int32", args_i32_i32(255, 1))),
         127,

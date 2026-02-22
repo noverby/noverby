@@ -347,7 +347,9 @@ struct HandlerRegistry(Movable):
         """
         return self._entries[Int(id)].copy()
 
-    fn get_ptr(self, id: UInt32) -> UnsafePointer[HandlerEntry, MutExternalOrigin]:
+    fn get_ptr(
+        self, id: UInt32
+    ) -> UnsafePointer[HandlerEntry, MutExternalOrigin]:
         """Return a pointer to the handler entry at `id`.
 
         Precondition: `contains(id)` is True.

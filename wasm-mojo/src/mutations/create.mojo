@@ -79,7 +79,9 @@ from vdom import (
 # up to the root and reversing.
 
 
-fn _build_parent_map(tmpl_ptr: UnsafePointer[Template, MutExternalOrigin]) -> List[Int]:
+fn _build_parent_map(
+    tmpl_ptr: UnsafePointer[Template, MutExternalOrigin]
+) -> List[Int]:
     """Build parent[i] = parent node index of node i, or -1 for roots."""
     var n = tmpl_ptr[0].node_count()
     var parents = List[Int](capacity=n)

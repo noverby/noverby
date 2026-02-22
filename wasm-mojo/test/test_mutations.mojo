@@ -283,7 +283,9 @@ struct WasmTestContext(Movable):
     var buf: Int
     var writer: Int
 
-    fn __init__(out self, w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+    fn __init__(
+        out self, w: UnsafePointer[WasmInstance, MutExternalOrigin]
+    ) raises:
         self.w = w
         self.rt = Int(w[].call_i64("runtime_create", no_args()))
         self.eid = Int(w[].call_i64("eid_alloc_create", no_args()))
@@ -500,7 +502,9 @@ fn _register_complex_template(
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_create_text_vnode(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_create_text_vnode(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var ctx = WasmTestContext(w)
 
     var vn_idx = Int(
@@ -556,7 +560,9 @@ fn test_create_text_vnode(w: UnsafePointer[WasmInstance, MutExternalOrigin]) rai
     ctx.destroy()
 
 
-fn test_create_placeholder_vnode(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_create_placeholder_vnode(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var ctx = WasmTestContext(w)
 
     var vn_idx = Int(
@@ -598,7 +604,9 @@ fn test_create_placeholder_vnode(w: UnsafePointer[WasmInstance, MutExternalOrigi
     ctx.destroy()
 
 
-fn test_create_simple_template_ref(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_create_simple_template_ref(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_template(ctx, "simple-div-mut")
@@ -763,7 +771,9 @@ fn test_create_template_ref_with_dyn_attr(
     ctx.destroy()
 
 
-fn test_create_template_ref_with_event(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_create_template_ref_with_event(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "event-div-mut")
@@ -893,7 +903,9 @@ fn test_create_template_ref_with_dyn_placeholder(
     ctx.destroy()
 
 
-fn test_create_fragment_vnode(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_create_fragment_vnode(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var ctx = WasmTestContext(w)
 
     # Create 3 text children
@@ -947,7 +959,9 @@ fn test_create_fragment_vnode(w: UnsafePointer[WasmInstance, MutExternalOrigin])
     ctx.destroy()
 
 
-fn test_create_element_id_uniqueness(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_create_element_id_uniqueness(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Multiple create calls produce unique ElementIds."""
     var ctx = WasmTestContext(w)
 
@@ -999,7 +1013,9 @@ fn test_create_element_id_uniqueness(w: UnsafePointer[WasmInstance, MutExternalO
     ctx.destroy()
 
 
-fn test_create_empty_fragment(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_create_empty_fragment(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Empty fragment creates 0 roots."""
     var ctx = WasmTestContext(w)
 
@@ -1092,7 +1108,9 @@ fn test_create_complex_template_multi_slots(
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_diff_same_text_zero_mutations(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_diff_same_text_zero_mutations(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Diffing two Text VNodes with the same text -> 0 mutations."""
     var ctx = WasmTestContext(w)
 
@@ -1197,7 +1215,9 @@ fn test_diff_text_changed_produces_set_text(
     ctx.destroy()
 
 
-fn test_diff_text_empty_to_content(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_diff_text_empty_to_content(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Diffing '' -> 'hello' produces SetText."""
     var ctx = WasmTestContext(w)
 
@@ -1404,7 +1424,9 @@ fn test_diff_same_template_dyn_text_changed(
     ctx.destroy()
 
 
-fn test_diff_same_template_attr_changed(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_diff_same_template_attr_changed(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Same template, dynamic attribute changed -> SetAttribute."""
     var ctx = WasmTestContext(w)
 
@@ -1530,7 +1552,9 @@ fn test_diff_same_template_attr_unchanged_zero_mutations(
     ctx.destroy()
 
 
-fn test_diff_bool_attr_changed(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_diff_bool_attr_changed(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Bool attribute changed -> SetAttribute."""
     var ctx = WasmTestContext(w)
 
@@ -1749,7 +1773,9 @@ fn test_diff_fragment_children_text_changed(
     ctx.destroy()
 
 
-fn test_diff_fragment_children_removed(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_diff_fragment_children_removed(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Fragment diff: children removed."""
     var ctx = WasmTestContext(w)
 
@@ -1827,7 +1853,9 @@ fn test_diff_fragment_children_removed(w: UnsafePointer[WasmInstance, MutExterna
     ctx.destroy()
 
 
-fn test_diff_fragment_children_added(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_diff_fragment_children_added(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Fragment diff: children added."""
     var ctx = WasmTestContext(w)
 
@@ -1908,7 +1936,9 @@ fn test_diff_fragment_children_added(w: UnsafePointer[WasmInstance, MutExternalO
     ctx.destroy()
 
 
-fn test_diff_event_listener_changed(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_diff_event_listener_changed(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Event listener handler changed -> RemoveEventListener + NewEventListener.
     """
     var ctx = WasmTestContext(w)
@@ -2076,7 +2106,9 @@ fn test_diff_attr_type_changed_text_to_bool(
     ctx.destroy()
 
 
-fn test_diff_attr_removed_text_to_none(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_diff_attr_removed_text_to_none(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Attribute removed (text -> none) -> SetAttribute with empty value."""
     var ctx = WasmTestContext(w)
 
@@ -2133,7 +2165,9 @@ fn test_diff_attr_removed_text_to_none(w: UnsafePointer[WasmInstance, MutExterna
     ctx.destroy()
 
 
-fn test_diff_int_attr_changed(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_diff_int_attr_changed(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Integer attribute value changed -> SetAttribute."""
     var ctx = WasmTestContext(w)
 

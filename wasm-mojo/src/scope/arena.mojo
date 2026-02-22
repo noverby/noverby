@@ -128,7 +128,9 @@ struct ScopeArena(Movable):
 
     # ── Access ───────────────────────────────────────────────────────
 
-    fn get_ptr(self, id: UInt32) -> UnsafePointer[ScopeState, MutExternalOrigin]:
+    fn get_ptr(
+        self, id: UInt32
+    ) -> UnsafePointer[ScopeState, MutExternalOrigin]:
         """Return a pointer to the ScopeState at `id`.
 
         The caller must ensure `id` refers to a live scope.
@@ -238,7 +240,9 @@ struct ScopeArena(Movable):
         """
         self._scopes[Int(scope_id)].provide_context(key, value)
 
-    fn consume_context(self, scope_id: UInt32, key: UInt32) -> Tuple[Bool, Int32]:
+    fn consume_context(
+        self, scope_id: UInt32, key: UInt32
+    ) -> Tuple[Bool, Int32]:
         """Look up a context value by walking up the scope tree.
 
         Starts at `scope_id` and checks each ancestor scope until a

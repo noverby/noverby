@@ -118,7 +118,9 @@ fn test_100_return_input_string_roundtrips(
 # ---------------------------------------------------------------------------
 
 
-fn test_50_sequential_concats(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_50_sequential_concats(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Build a string by concatenating 'ab' 50 times through WASM."""
     var current_ptr = w[].write_string_struct("")
     for _ in range(50):
@@ -238,7 +240,9 @@ fn test_mixed_size_strings_report_correct_length(
 # ---------------------------------------------------------------------------
 
 
-fn test_fib_recurrence_2_to_40(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_fib_recurrence_2_to_40(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     """Verify fib(n) = fib(n-1) + fib(n-2) for n = 2..40."""
     for n in range(2, 41):
         var fn0 = Int(w[].call_i32("fib_int32", args_i32(n)))
@@ -264,7 +268,9 @@ fn test_fib_recurrence_2_to_40(w: UnsafePointer[WasmInstance, MutExternalOrigin]
 # ---------------------------------------------------------------------------
 
 
-fn test_string_eq_reflexive(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
+fn test_string_eq_reflexive(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+) raises:
     var test_strings: List[String] = [
         "",
         "a",

@@ -90,10 +90,15 @@ struct AppShell(Movable):
             self.store.free()
             self.store = UnsafePointer[VNodeStore, MutExternalOrigin]()
 
-        if self.eid_alloc != UnsafePointer[ElementIdAllocator, MutExternalOrigin]():
+        if (
+            self.eid_alloc
+            != UnsafePointer[ElementIdAllocator, MutExternalOrigin]()
+        ):
             self.eid_alloc.destroy_pointee()
             self.eid_alloc.free()
-            self.eid_alloc = UnsafePointer[ElementIdAllocator, MutExternalOrigin]()
+            self.eid_alloc = UnsafePointer[
+                ElementIdAllocator, MutExternalOrigin
+            ]()
 
         if self.runtime != UnsafePointer[Runtime, MutExternalOrigin]():
             destroy_runtime(self.runtime)
@@ -312,7 +317,9 @@ struct AppShell(Movable):
         )
         engine.diff_node(old_idx, new_idx)
 
-    fn finalize(self, writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin]) -> Int32:
+    fn finalize(
+        self, writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin]
+    ) -> Int32:
         """Write the End sentinel and return the byte length."""
         writer_ptr[0].finalize()
         return Int32(writer_ptr[0].offset)
@@ -401,7 +408,9 @@ struct AppShell(Movable):
 
     # ── Template emission ────────────────────────────────────────────
 
-    fn emit_templates(self, writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin]):
+    fn emit_templates(
+        self, writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin]
+    ):
         """Serialize all registered templates into the mutation buffer.
 
         Iterates the template registry and emits a `RegisterTemplate`

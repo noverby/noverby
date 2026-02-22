@@ -41,14 +41,18 @@ fn _load() raises -> WasmInstance:
 # ── AppShell lifecycle ───────────────────────────────────────────────────────
 
 
-def test_shell_create_destroy(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_create_destroy(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     var shell = Int(w[].call_i64("shell_create", no_args()))
     assert_true(shell != 0, "shell pointer should be non-zero")
     assert_equal(w[].call_i32("shell_is_alive", args_ptr(shell)), 1)
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_is_alive_after_create(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_is_alive_after_create(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     var shell = Int(w[].call_i64("shell_create", no_args()))
     assert_equal(w[].call_i32("shell_is_alive", args_ptr(shell)), 1)
     w[].call_void("shell_destroy", args_ptr(shell))
@@ -57,21 +61,27 @@ def test_shell_is_alive_after_create(w: UnsafePointer[WasmInstance, MutExternalO
 # ── Pointer accessors ────────────────────────────────────────────────────────
 
 
-def test_shell_rt_ptr_non_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_rt_ptr_non_zero(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var rt = Int(w[].call_i64("shell_rt_ptr", args_ptr(shell)))
     assert_true(rt != 0, "runtime pointer should be non-zero")
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_store_ptr_non_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_store_ptr_non_zero(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var store = Int(w[].call_i64("shell_store_ptr", args_ptr(shell)))
     assert_true(store != 0, "store pointer should be non-zero")
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_eid_ptr_non_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_eid_ptr_non_zero(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var eid = Int(w[].call_i64("shell_eid_ptr", args_ptr(shell)))
     assert_true(eid != 0, "eid_alloc pointer should be non-zero")
@@ -81,7 +91,9 @@ def test_shell_eid_ptr_non_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin
 # ── Scope creation ───────────────────────────────────────────────────────────
 
 
-def test_shell_create_root_scope(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_create_root_scope(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var s0 = w[].call_i32("shell_create_root_scope", args_ptr(shell))
     assert_true(s0 >= 0, "root scope id should be non-negative")
@@ -94,7 +106,9 @@ def test_shell_create_root_scope(w: UnsafePointer[WasmInstance, MutExternalOrigi
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_create_child_scope(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_create_child_scope(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var parent = w[].call_i32("shell_create_root_scope", args_ptr(shell))
     var child = w[].call_i32(
@@ -110,7 +124,9 @@ def test_shell_create_child_scope(w: UnsafePointer[WasmInstance, MutExternalOrig
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_create_multiple_root_scopes(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_create_multiple_root_scopes(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var s0 = w[].call_i32("shell_create_root_scope", args_ptr(shell))
     var s1 = w[].call_i32("shell_create_root_scope", args_ptr(shell))
@@ -124,7 +140,9 @@ def test_shell_create_multiple_root_scopes(w: UnsafePointer[WasmInstance, MutExt
 # ── Signal operations ────────────────────────────────────────────────────────
 
 
-def test_shell_create_signal_i32(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_create_signal_i32(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var key = w[].call_i32("shell_create_signal_i32", args_ptr_i32(shell, 42))
     assert_true(key >= 0, "signal key should be non-negative")
@@ -136,7 +154,9 @@ def test_shell_create_signal_i32(w: UnsafePointer[WasmInstance, MutExternalOrigi
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_write_and_peek_signal(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_write_and_peek_signal(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var key = w[].call_i32("shell_create_signal_i32", args_ptr_i32(shell, 0))
 
@@ -153,7 +173,9 @@ def test_shell_write_and_peek_signal(w: UnsafePointer[WasmInstance, MutExternalO
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_read_signal_with_context(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_read_signal_with_context(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """read_signal subscribes the current scope to the signal."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
@@ -172,7 +194,9 @@ def test_shell_read_signal_with_context(w: UnsafePointer[WasmInstance, MutExtern
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_peek_does_not_subscribe(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_peek_does_not_subscribe(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """peek_signal does NOT subscribe the scope."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
@@ -191,7 +215,9 @@ def test_shell_peek_does_not_subscribe(w: UnsafePointer[WasmInstance, MutExterna
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_multiple_signals(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_multiple_signals(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var sig_a = w[].call_i32("shell_create_signal_i32", args_ptr_i32(shell, 1))
     var sig_b = w[].call_i32("shell_create_signal_i32", args_ptr_i32(shell, 2))
@@ -225,7 +251,9 @@ def test_shell_multiple_signals(w: UnsafePointer[WasmInstance, MutExternalOrigin
 # ── Render lifecycle ─────────────────────────────────────────────────────────
 
 
-def test_shell_begin_end_render(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_begin_end_render(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
 
@@ -266,14 +294,18 @@ def test_shell_nested_render(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
 # ── Dirty / Scheduler integration ───────────────────────────────────────────
 
 
-def test_shell_initially_not_dirty(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_initially_not_dirty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     var shell = Int(w[].call_i64("shell_create", no_args()))
     assert_equal(w[].call_i32("shell_has_dirty", args_ptr(shell)), 0)
     assert_equal(w[].call_i32("shell_scheduler_empty", args_ptr(shell)), 1)
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_dirty_after_signal_write(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_dirty_after_signal_write(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
     var sig = w[].call_i32("shell_create_signal_i32", args_ptr_i32(shell, 0))
@@ -290,7 +322,9 @@ def test_shell_dirty_after_signal_write(w: UnsafePointer[WasmInstance, MutExtern
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_collect_and_drain_dirty(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_collect_and_drain_dirty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """collect_dirty + next_dirty yields dirty scopes in order."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
@@ -317,7 +351,9 @@ def test_shell_collect_and_drain_dirty(w: UnsafePointer[WasmInstance, MutExterna
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_dirty_height_ordering(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_dirty_height_ordering(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Scheduler yields parent before child when both are dirty."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var parent = w[].call_i32("shell_create_root_scope", args_ptr(shell))
@@ -351,7 +387,9 @@ def test_shell_dirty_height_ordering(w: UnsafePointer[WasmInstance, MutExternalO
 # ── Event dispatch ───────────────────────────────────────────────────────────
 
 
-def test_shell_dispatch_event(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_dispatch_event(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """dispatch_event routes to the runtime's handler registry."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var rt = Int(w[].call_i64("shell_rt_ptr", args_ptr(shell)))
@@ -390,7 +428,9 @@ def test_shell_dispatch_event(w: UnsafePointer[WasmInstance, MutExternalOrigin])
 # ── Mount ────────────────────────────────────────────────────────────────────
 
 
-def test_shell_mount_text_vnode(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_mount_text_vnode(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """shell_mount produces valid mutation bytes for a text VNode."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
 
@@ -412,7 +452,9 @@ def test_shell_mount_text_vnode(w: UnsafePointer[WasmInstance, MutExternalOrigin
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_mount_template_ref(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_mount_template_ref(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """shell_mount produces mutations for a TemplateRef VNode."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var rt = Int(w[].call_i64("shell_rt_ptr", args_ptr(shell)))
@@ -458,7 +500,9 @@ def test_shell_mount_template_ref(w: UnsafePointer[WasmInstance, MutExternalOrig
 # ── Diff ─────────────────────────────────────────────────────────────────────
 
 
-def test_shell_diff_same_text_zero_mutations(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_diff_same_text_zero_mutations(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Diffing identical text VNodes produces 0 mutation bytes (just End)."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var store = Int(w[].call_i64("shell_store_ptr", args_ptr(shell)))
@@ -487,7 +531,9 @@ def test_shell_diff_same_text_zero_mutations(w: UnsafePointer[WasmInstance, MutE
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_diff_text_changed(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_diff_text_changed(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Diffing different text VNodes produces SetText mutations."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var store = Int(w[].call_i64("shell_store_ptr", args_ptr(shell)))
@@ -521,7 +567,9 @@ def test_shell_diff_text_changed(w: UnsafePointer[WasmInstance, MutExternalOrigi
 # ── Full mount → update cycle ────────────────────────────────────────────────
 
 
-def test_shell_full_mount_update_cycle(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_full_mount_update_cycle(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """End-to-end: create shell, mount, write signal, collect dirty, diff."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var rt = Int(w[].call_i64("shell_rt_ptr", args_ptr(shell)))
@@ -608,7 +656,9 @@ def test_shell_full_mount_update_cycle(w: UnsafePointer[WasmInstance, MutExterna
 # ── Subsystem isolation ──────────────────────────────────────────────────────
 
 
-def test_shell_independent_instances(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_independent_instances(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Two AppShells are fully independent (no shared state)."""
     var shell_a = Int(w[].call_i64("shell_create", no_args()))
     var shell_b = Int(w[].call_i64("shell_create", no_args()))
@@ -646,7 +696,9 @@ def test_shell_independent_instances(w: UnsafePointer[WasmInstance, MutExternalO
 # ── Shell memo helpers (M13.5) ───────────────────────────────────────────────
 
 
-def test_shell_memo_create_returns_valid_id(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_memo_create_returns_valid_id(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """shell_memo_create_i32 returns a non-negative memo ID."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
@@ -657,7 +709,9 @@ def test_shell_memo_create_returns_valid_id(w: UnsafePointer[WasmInstance, MutEx
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_memo_initial_value_readable(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_memo_initial_value_readable(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Memo's initial cached value is readable via shell helper."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
@@ -669,7 +723,9 @@ def test_shell_memo_initial_value_readable(w: UnsafePointer[WasmInstance, MutExt
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_memo_starts_dirty(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_memo_starts_dirty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Newly created memo starts dirty (needs first computation)."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
@@ -682,7 +738,9 @@ def test_shell_memo_starts_dirty(w: UnsafePointer[WasmInstance, MutExternalOrigi
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_memo_compute_clears_dirty(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_memo_compute_clears_dirty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """begin_compute + end_compute clears the dirty flag."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
@@ -713,7 +771,9 @@ def test_shell_memo_compute_clears_dirty(w: UnsafePointer[WasmInstance, MutExter
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_memo_signal_write_marks_dirty(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_memo_signal_write_marks_dirty(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Writing an input signal marks the memo dirty and propagates to scope."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
@@ -776,7 +836,9 @@ def test_shell_use_memo_hook(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_memo_parity_with_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_memo_parity_with_runtime(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Shell memo helpers produce same results as raw Runtime methods."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var rt = Int(w[].call_i64("shell_rt_ptr", args_ptr(shell)))
@@ -827,7 +889,9 @@ def test_shell_memo_parity_with_runtime(w: UnsafePointer[WasmInstance, MutExtern
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_memo_multiple_memos(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_memo_multiple_memos(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Multiple memos via shell have distinct IDs and independent values."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
@@ -864,7 +928,9 @@ def test_shell_memo_multiple_memos(w: UnsafePointer[WasmInstance, MutExternalOri
 # ── Shell effect helpers (M14.4) ────────────────────────────────────────────
 
 
-def test_shell_effect_create_returns_valid_id(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_effect_create_returns_valid_id(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Creating an effect via shell returns a valid ID."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
@@ -941,7 +1007,9 @@ def test_shell_effect_signal_write_marks_pending(
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_use_effect_hook(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_use_effect_hook(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Use_effect hook via shell creates on first render, returns same on re-render.
     """
     var shell = Int(w[].call_i64("shell_create", no_args()))
@@ -964,7 +1032,9 @@ def test_shell_use_effect_hook(w: UnsafePointer[WasmInstance, MutExternalOrigin]
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_effect_parity_with_runtime(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_effect_parity_with_runtime(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Shell effect helpers produce the same result as raw Runtime methods."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var rt = Int(w[].call_i64("shell_rt_ptr", args_ptr(shell)))
@@ -998,7 +1068,9 @@ def test_shell_effect_parity_with_runtime(w: UnsafePointer[WasmInstance, MutExte
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-def test_shell_effect_drain_pending(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_shell_effect_drain_pending(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Shell drain_pending returns correct count of pending effects."""
     var shell = Int(w[].call_i64("shell_create", no_args()))
     var scope = w[].call_i32("shell_create_root_scope", args_ptr(shell))
@@ -1042,7 +1114,9 @@ def test_shell_effect_drain_pending(w: UnsafePointer[WasmInstance, MutExternalOr
 # ── Counter doubled demo (inline computation, no memo) ──────────────────────
 
 
-def test_counter_doubled_initial(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_counter_doubled_initial(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Counter doubled value is 0 initially (computed inline as count * 2)."""
     var app = Int(w[].call_i64("counter_init", no_args()))
     # counter_doubled_memo returns -1 (memo removed in ergonomic rewrite)
@@ -1054,7 +1128,9 @@ def test_counter_doubled_initial(w: UnsafePointer[WasmInstance, MutExternalOrigi
     w[].call_void("counter_destroy", args_ptr(app))
 
 
-def test_counter_doubled_after_first_build(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_counter_doubled_after_first_build(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """After first rebuild, doubled = count * 2 = 0."""
     var app = Int(w[].call_i64("counter_init", no_args()))
     var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(4096)))
@@ -1067,7 +1143,9 @@ def test_counter_doubled_after_first_build(w: UnsafePointer[WasmInstance, MutExt
     w[].call_void("counter_destroy", args_ptr(app))
 
 
-def test_counter_doubled_after_increment(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_counter_doubled_after_increment(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """After increment + flush, doubled = count * 2 = 2."""
     var app = Int(w[].call_i64("counter_init", no_args()))
     var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(4096)))
@@ -1086,7 +1164,9 @@ def test_counter_doubled_after_increment(w: UnsafePointer[WasmInstance, MutExter
     w[].call_void("counter_destroy", args_ptr(app))
 
 
-def test_counter_doubled_multiple_increments(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_counter_doubled_multiple_increments(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """After 5 increments + flush, doubled = 10."""
     var app = Int(w[].call_i64("counter_init", no_args()))
     var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(4096)))
@@ -1104,7 +1184,9 @@ def test_counter_doubled_multiple_increments(w: UnsafePointer[WasmInstance, MutE
     w[].call_void("counter_destroy", args_ptr(app))
 
 
-def test_counter_doubled_decrement(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_counter_doubled_decrement(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """After decrement, doubled = -2."""
     var app = Int(w[].call_i64("counter_init", no_args()))
     var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(4096)))
@@ -1124,7 +1206,9 @@ def test_counter_doubled_decrement(w: UnsafePointer[WasmInstance, MutExternalOri
 # ── Phase 17 — ItemBuilder + HandlerAction on KeyedList ──────────────────────
 
 
-def test_todo_handler_map_empty_initially(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_todo_handler_map_empty_initially(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """After init (before any flush), handler map count is 0."""
     var app = Int(w[].call_i64("todo_init", no_args()))
     var count = w[].call_i32("todo_handler_map_count", args_ptr(app))
@@ -1132,7 +1216,9 @@ def test_todo_handler_map_empty_initially(w: UnsafePointer[WasmInstance, MutExte
     w[].call_void("todo_destroy", args_ptr(app))
 
 
-def test_bench_handler_map_empty_initially(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_bench_handler_map_empty_initially(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """After init (before any create), bench handler map count is 0."""
     var app = Int(w[].call_i64("bench_init", no_args()))
     var count = w[].call_i32("bench_handler_map_count", args_ptr(app))
@@ -1140,7 +1226,9 @@ def test_bench_handler_map_empty_initially(w: UnsafePointer[WasmInstance, MutExt
     w[].call_void("bench_destroy", args_ptr(app))
 
 
-def test_bench_handler_map_after_create(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_bench_handler_map_after_create(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """After creating 10 rows and flushing, handler map has 2*10=20 entries."""
     var app = Int(w[].call_i64("bench_init", no_args()))
     var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(65536)))
@@ -1156,7 +1244,9 @@ def test_bench_handler_map_after_create(w: UnsafePointer[WasmInstance, MutExtern
     w[].call_void("bench_destroy", args_ptr(app))
 
 
-def test_bench_handler_map_cleared_on_rebuild(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_bench_handler_map_cleared_on_rebuild(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Handler map is cleared on each begin_rebuild (via flush)."""
     var app = Int(w[].call_i64("bench_init", no_args()))
     var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(65536)))
@@ -1181,7 +1271,9 @@ def test_bench_handler_map_cleared_on_rebuild(w: UnsafePointer[WasmInstance, Mut
     w[].call_void("bench_destroy", args_ptr(app))
 
 
-def test_bench_handler_map_clear_rows(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_bench_handler_map_clear_rows(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """After clearing all rows, handler map has 0 entries."""
     var app = Int(w[].call_i64("bench_init", no_args()))
     var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(65536)))
@@ -1206,7 +1298,9 @@ def test_bench_handler_map_clear_rows(w: UnsafePointer[WasmInstance, MutExternal
     w[].call_void("bench_destroy", args_ptr(app))
 
 
-def test_bench_handler_map_append_rows(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_bench_handler_map_append_rows(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Append adds to row count; handler map reflects total."""
     var app = Int(w[].call_i64("bench_init", no_args()))
     var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(65536)))
@@ -1231,7 +1325,9 @@ def test_bench_handler_map_append_rows(w: UnsafePointer[WasmInstance, MutExterna
     w[].call_void("bench_destroy", args_ptr(app))
 
 
-def test_bench_row_count_matches_handler_map(w: UnsafePointer[WasmInstance, MutExternalOrigin]):
+def test_bench_row_count_matches_handler_map(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin]
+):
     """Handler map count is always 2 × row count after flush."""
     var app = Int(w[].call_i64("bench_init", no_args()))
     var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(65536)))

@@ -191,14 +191,18 @@ struct ItemBuilder(Movable):
     var vb: VNodeBuilder
     var scope_id: UInt32
     var _runtime: UnsafePointer[Runtime, MutExternalOrigin]
-    var _handler_map_ptr: UnsafePointer[List[_HandlerMapping], MutExternalOrigin]
+    var _handler_map_ptr: UnsafePointer[
+        List[_HandlerMapping], MutExternalOrigin
+    ]
 
     fn __init__(
         out self,
         var vb: VNodeBuilder,
         scope_id: UInt32,
         runtime: UnsafePointer[Runtime, MutExternalOrigin],
-        handler_map_ptr: UnsafePointer[List[_HandlerMapping], MutExternalOrigin],
+        handler_map_ptr: UnsafePointer[
+            List[_HandlerMapping], MutExternalOrigin
+        ],
     ):
         """Create an ItemBuilder (called internally by KeyedList.begin_item).
 
@@ -540,7 +544,9 @@ struct KeyedList(Movable):
             vb^,
             scope_id,
             ctx.runtime_ptr(),
-            UnsafePointer[List[_HandlerMapping], MutExternalOrigin](unsafe_from_address=Int(handler_map_ptr)),
+            UnsafePointer[List[_HandlerMapping], MutExternalOrigin](
+                unsafe_from_address=Int(handler_map_ptr)
+            ),
         )
 
     # ── Phase 17 — Handler action dispatch ───────────────────────────

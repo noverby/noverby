@@ -706,7 +706,9 @@ struct VNodeStore(Movable):
         Valid until the store is mutated.
         """
         var ptr = self._nodes.unsafe_ptr() + Int(index)
-        return UnsafePointer[VNode, MutExternalOrigin](unsafe_from_address=Int(ptr))
+        return UnsafePointer[VNode, MutExternalOrigin](
+            unsafe_from_address=Int(ptr)
+        )
 
     fn kind(self, index: UInt32) -> UInt8:
         """Return the kind tag of the VNode at `index`."""

@@ -69,7 +69,9 @@ struct SignalEntry(Copyable):
         self.subscribers = List[UInt32]()
         self.version = 0
 
-    fn __init__(out self, ptr: UnsafePointer[UInt8, MutExternalOrigin], size: Int):
+    fn __init__(
+        out self, ptr: UnsafePointer[UInt8, MutExternalOrigin], size: Int
+    ):
         """Create an entry that owns `size` bytes at `ptr`."""
         self.value_ptr = ptr
         self.value_size = size
@@ -82,7 +84,9 @@ struct SignalEntry(Copyable):
         self.version = other.version
         if other.value_ptr and other.value_size > 0:
             self.value_ptr = alloc[UInt8](other.value_size)
-            memcpy(dest=self.value_ptr, src=other.value_ptr, count=other.value_size)
+            memcpy(
+                dest=self.value_ptr, src=other.value_ptr, count=other.value_size
+            )
         else:
             self.value_ptr = UnsafePointer[UInt8, MutExternalOrigin]()
 
@@ -105,11 +109,15 @@ struct SignalEntry(Copyable):
         return self.value_ptr.bitcast[T]()[0].copy()
 
     @always_inline
-    fn write_value[T: Copyable & ImplicitlyDestructible & AnyType](mut self, value: T):
+    fn write_value[
+        T: Copyable & ImplicitlyDestructible & AnyType
+    ](mut self, value: T):
         """Overwrite the stored bytes with `value` and bump version."""
         var tmp = alloc[T](1)
         tmp.init_pointee_copy(value)
-        memcpy(dest=self.value_ptr, src=tmp.bitcast[UInt8](), count=self.value_size)
+        memcpy(
+            dest=self.value_ptr, src=tmp.bitcast[UInt8](), count=self.value_size
+        )
         tmp.destroy_pointee()
         tmp.free()
         self.version += 1
@@ -181,7 +189,9 @@ struct SignalStore(Movable):
 
     # ── Create / Destroy ─────────────────────────────────────────────
 
-    fn create[T: Copyable & ImplicitlyDestructible & AnyType](mut self, initial: T) -> UInt32:
+    fn create[
+        T: Copyable & ImplicitlyDestructible & AnyType
+    ](mut self, initial: T) -> UInt32:
         """Create a new signal with `initial` value.  Returns its key."""
         var sz = size_of[T]()
 
@@ -247,7 +257,9 @@ struct SignalStore(Movable):
         self._entries[Int(key)].subscribe(context_id)
         return self._entries[Int(key)].read_value[T]()
 
-    fn write[T: Copyable & ImplicitlyDestructible & AnyType](mut self, key: UInt32, value: T):
+    fn write[
+        T: Copyable & ImplicitlyDestructible & AnyType
+    ](mut self, key: UInt32, value: T):
         """Write a new value to the signal at `key`.
 
         Returns without notifying subscribers — call `get_subscribers`

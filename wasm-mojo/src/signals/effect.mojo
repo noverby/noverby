@@ -193,7 +193,9 @@ struct EffectStore(Movable):
         """
         return self._entries[Int(id)].copy()
 
-    fn get_ptr(mut self, id: UInt32) -> UnsafePointer[EffectEntry, MutExternalOrigin]:
+    fn get_ptr(
+        mut self, id: UInt32
+    ) -> UnsafePointer[EffectEntry, MutExternalOrigin]:
         """Return a pointer to the effect entry at `id`.
 
         The pointer is valid until the next mutation of the store.
