@@ -28,22 +28,22 @@ from .tags import TAG_UNKNOWN
 
 # ── TemplateNode kind tags ───────────────────────────────────────────────────
 
-alias TNODE_ELEMENT: UInt8 = 0
-alias TNODE_TEXT: UInt8 = 1
-alias TNODE_DYNAMIC: UInt8 = 2
-alias TNODE_DYNAMIC_TEXT: UInt8 = 3
+comptime TNODE_ELEMENT: UInt8 = 0
+comptime TNODE_TEXT: UInt8 = 1
+comptime TNODE_DYNAMIC: UInt8 = 2
+comptime TNODE_DYNAMIC_TEXT: UInt8 = 3
 
 
 # ── TemplateAttribute kind tags ──────────────────────────────────────────────
 
-alias TATTR_STATIC: UInt8 = 0
-alias TATTR_DYNAMIC: UInt8 = 1
+comptime TATTR_STATIC: UInt8 = 0
+comptime TATTR_DYNAMIC: UInt8 = 1
 
 
 # ── TemplateAttribute ────────────────────────────────────────────────────────
 
 
-struct TemplateAttribute(Copyable, Movable):
+struct TemplateAttribute(Copyable):
     """An attribute on a template element node.
 
     Static attributes have a name and value known at template definition time.
@@ -119,7 +119,7 @@ struct TemplateAttribute(Copyable, Movable):
 # ── TemplateNode ─────────────────────────────────────────────────────────────
 
 
-struct TemplateNode(Copyable, Movable):
+struct TemplateNode(Copyable):
     """A node in a template's static structure.
 
     Uses a tagged-struct pattern to represent the four node kinds.
@@ -290,7 +290,7 @@ struct TemplateNode(Copyable, Movable):
 # ── Template ─────────────────────────────────────────────────────────────────
 
 
-struct Template(Copyable, Movable):
+struct Template(Copyable):
     """A static UI template — the blueprint for a piece of UI.
 
     Contains a flat list of all nodes and attributes, plus a list of
@@ -360,12 +360,13 @@ struct Template(Copyable, Movable):
         """Return the total number of attributes across all nodes."""
         return len(self.attrs)
 
-    fn get_node_ptr(self, index: Int) -> UnsafePointer[TemplateNode]:
+    fn get_node_ptr(self, index: Int) -> UnsafePointer[TemplateNode, MutExternalOrigin]:
         """Return a pointer to the node at `index`.
 
         The pointer is valid until the next mutation of the template.
         """
-        return self.nodes.unsafe_ptr() + index
+        var ptr = self.nodes.unsafe_ptr() + index
+        return UnsafePointer[TemplateNode, MutExternalOrigin](unsafe_from_address=Int(ptr))
 
     fn get_root_index(self, i: Int) -> UInt32:
         """Return the node index of the i-th root node."""

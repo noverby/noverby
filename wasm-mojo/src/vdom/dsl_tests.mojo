@@ -123,6 +123,7 @@ from .tags import (
 from .template import TNODE_ELEMENT, TNODE_TEXT
 from .vnode import VNodeStore, VNODE_TEMPLATE_REF
 from .builder import TemplateBuilder
+from memory import alloc
 from signals import create_runtime, destroy_runtime, Runtime
 from signals.handle import SignalString
 from events.registry import (
@@ -226,7 +227,7 @@ fn test_empty_element() -> Int32:
 
 fn test_element_with_children() -> Int32:
     """Test: el_div with text children."""
-    var n = el_div(List[Node](text(String("hello")), text(String("world"))))
+    var n = el_div([text(String("hello")), text(String("world"))])
     if n.kind != NODE_ELEMENT:
         return 0
     if n.tag != TAG_DIV:
@@ -243,10 +244,10 @@ fn test_element_with_children() -> Int32:
 fn test_element_with_attrs() -> Int32:
     """Test: el_div with attributes only."""
     var n = el_div(
-        List[Node](
+        [
             attr(String("class"), String("box")),
             attr(String("id"), String("main")),
-        )
+        ]
     )
     if n.item_count() != 2:
         return 0
@@ -262,13 +263,13 @@ fn test_element_with_attrs() -> Int32:
 fn test_element_mixed() -> Int32:
     """Test: element with a mix of attrs, children, and dynamic slots."""
     var n = el_div(
-        List[Node](
+        [
             attr(String("class"), String("counter")),
             dyn_attr(0),
             text(String("hello")),
             dyn_text(0),
-            el_span(List[Node](text(String("inner")))),
-        )
+            el_span([text(String("inner"))]),
+        ]
     )
     if n.item_count() != 5:
         return 0
@@ -286,16 +287,16 @@ fn test_element_mixed() -> Int32:
 fn test_nested_elements() -> Int32:
     """Test: deeply nested element tree."""
     var n = el_div(
-        List[Node](
-            el_h1(List[Node](text(String("Title")))),
+        [
+            el_h1([text(String("Title"))]),
             el_ul(
-                List[Node](
-                    el_li(List[Node](text(String("A")))),
-                    el_li(List[Node](text(String("B")))),
-                    el_li(List[Node](text(String("C")))),
-                )
+                [
+                    el_li([text(String("A"))]),
+                    el_li([text(String("B"))]),
+                    el_li([text(String("C"))]),
+                ]
             ),
-        )
+        ]
     )
     if n.child_count() != 2:
         return 0
@@ -316,11 +317,11 @@ fn test_counter_template() -> Int32:
     """
     # Build using DSL
     var view = el_div(
-        List[Node](
-            el_span(List[Node](dyn_text(0))),
-            el_button(List[Node](text(String("+")), dyn_attr(0))),
-            el_button(List[Node](text(String("-")), dyn_attr(1))),
-        )
+        [
+            el_span([dyn_text(0)]),
+            el_button([text(String("+")), dyn_attr(0)]),
+            el_button([text(String("-")), dyn_attr(1)]),
+        ]
     )
 
     # Verify Node tree structure before template conversion
@@ -381,7 +382,7 @@ fn test_counter_template() -> Int32:
 
 fn test_to_template_simple() -> Int32:
     """Test: simple div with static text converts to valid template."""
-    var view = el_div(List[Node](text(String("hello"))))
+    var view = el_div([text(String("hello"))])
     var rt_ptr = create_runtime()
     var template = to_template(view, String("dsl-simple"))
     var tmpl_id = rt_ptr[0].templates.register(template^)
@@ -413,11 +414,11 @@ fn test_to_template_simple() -> Int32:
 fn test_to_template_attrs() -> Int32:
     """Test: element with static and dynamic attrs converts correctly."""
     var view = el_div(
-        List[Node](
+        [
             attr(String("class"), String("box")),
             dyn_attr(0),
             text(String("content")),
-        )
+        ]
     )
     var rt_ptr = create_runtime()
     var template = to_template(view, String("dsl-attrs"))
@@ -447,10 +448,10 @@ fn test_to_template_attrs() -> Int32:
 
 fn test_to_template_multi_root() -> Int32:
     """Test: multiple root nodes via to_template_multi."""
-    var roots = List[Node](
-        el_h1(List[Node](text(String("Title")))),
-        el_p(List[Node](text(String("Body")))),
-    )
+    var roots: List[Node] = [
+        el_h1([text(String("Title"))]),
+        el_p([text(String("Body"))]),
+    ]
     var rt_ptr = create_runtime()
     var template = to_template_multi(roots, String("dsl-multi"))
     var tmpl_id = rt_ptr[0].templates.register(template^)
@@ -472,11 +473,11 @@ fn test_to_template_multi_root() -> Int32:
 fn test_vnode_builder() -> Int32:
     """Test: VNodeBuilder creates a VNode with correct dynamic content."""
     var rt_ptr = create_runtime()
-    var store_ptr = UnsafePointer[VNodeStore].alloc(1)
+    var store_ptr = alloc[VNodeStore](1)
     store_ptr.init_pointee_move(VNodeStore())
 
     # Register a template (we just need an ID)
-    var view = el_div(List[Node](dyn_text(0), dyn_attr(0), dyn_attr(1)))
+    var view = el_div([dyn_text(0), dyn_attr(0), dyn_attr(1)])
     var template = to_template(view, String("dsl-vb-test"))
     var tmpl_id = rt_ptr[0].templates.register(template^)
 
@@ -523,10 +524,10 @@ fn test_vnode_builder() -> Int32:
 fn test_vnode_builder_keyed() -> Int32:
     """Test: keyed VNodeBuilder creates a keyed VNode."""
     var rt_ptr = create_runtime()
-    var store_ptr = UnsafePointer[VNodeStore].alloc(1)
+    var store_ptr = alloc[VNodeStore](1)
     store_ptr.init_pointee_move(VNodeStore())
 
-    var view = el_div(List[Node](text(String("item"))))
+    var view = el_div([text(String("item"))])
     var template = to_template(view, String("dsl-keyed"))
     var tmpl_id = rt_ptr[0].templates.register(template^)
 
@@ -640,17 +641,17 @@ fn test_all_tag_helpers() -> Int32:
 fn test_count_utilities() -> Int32:
     """Test: count_* utility functions on a non-trivial tree."""
     var tree = el_div(
-        List[Node](
+        [
             attr(String("class"), String("app")),
             dyn_attr(0),
-            el_h1(List[Node](dyn_text(0))),
+            el_h1([dyn_text(0)]),
             el_ul(
-                List[Node](
-                    el_li(List[Node](text(String("A")), dyn_attr(1))),
-                    el_li(List[Node](dyn_text(1), dyn_node(0))),
-                )
+                [
+                    el_li([text(String("A")), dyn_attr(1)]),
+                    el_li([dyn_text(1), dyn_node(0)]),
+                ]
             ),
-        )
+        ]
     )
 
     # Tree nodes (excluding attrs): div + h1 + dyn_text(0) + ul + li + "A" + li + dyn_text(1) + dyn_node(0) = 9
@@ -701,11 +702,11 @@ fn test_template_equivalence() -> Int32:
     # ── Method 2: DSL builder ────────────────────────────────────────
     var rt2 = create_runtime()
     var view = el_div(
-        List[Node](
-            el_span(List[Node](dyn_text(0))),
-            el_button(List[Node](text(String("+")), dyn_attr(0))),
-            el_button(List[Node](text(String("-")), dyn_attr(1))),
-        )
+        [
+            el_span([dyn_text(0)]),
+            el_button([text(String("+")), dyn_attr(0)]),
+            el_button([text(String("-")), dyn_attr(1)]),
+        ]
     )
     var dsl_tmpl = to_template(view, String("dsl-counter"))
     var d_id = rt2[0].templates.register(dsl_tmpl^)

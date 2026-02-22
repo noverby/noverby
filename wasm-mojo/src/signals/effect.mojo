@@ -35,7 +35,7 @@ from memory import UnsafePointer
 # ── EffectEntry ──────────────────────────────────────────────────────────────
 
 
-struct EffectEntry(Copyable, Movable):
+struct EffectEntry(Copyable):
     """A reactive side effect with dependency tracking.
 
     An effect has its own reactive context (context_id) that records
@@ -89,7 +89,7 @@ struct EffectEntry(Copyable, Movable):
 
 
 @fieldwise_init
-struct EffectSlotState(Copyable, Movable):
+struct EffectSlotState(Copyable):
     """Tracks whether an effect slot is occupied or vacant."""
 
     var occupied: Bool
@@ -193,7 +193,7 @@ struct EffectStore(Movable):
         """
         return self._entries[Int(id)].copy()
 
-    fn get_ptr(mut self, id: UInt32) -> UnsafePointer[EffectEntry]:
+    fn get_ptr(mut self, id: UInt32) -> UnsafePointer[EffectEntry, MutExternalOrigin]:
         """Return a pointer to the effect entry at `id`.
 
         The pointer is valid until the next mutation of the store.

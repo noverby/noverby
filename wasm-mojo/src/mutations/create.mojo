@@ -79,7 +79,7 @@ from vdom import (
 # up to the root and reversing.
 
 
-fn _build_parent_map(tmpl_ptr: UnsafePointer[Template]) -> List[Int]:
+fn _build_parent_map(tmpl_ptr: UnsafePointer[Template, MutExternalOrigin]) -> List[Int]:
     """Build parent[i] = parent node index of node i, or -1 for roots."""
     var n = tmpl_ptr[0].node_count()
     var parents = List[Int](capacity=n)
@@ -94,7 +94,7 @@ fn _build_parent_map(tmpl_ptr: UnsafePointer[Template]) -> List[Int]:
 
 
 fn _path_from_root(
-    tmpl_ptr: UnsafePointer[Template],
+    tmpl_ptr: UnsafePointer[Template, MutExternalOrigin],
     parents: List[Int],
     target: Int,
 ) -> List[UInt8]:
@@ -173,17 +173,17 @@ struct CreateEngine:
         # The writer contains the mutations to create the DOM
     """
 
-    var writer: UnsafePointer[MutationWriter]
-    var eid_alloc: UnsafePointer[ElementIdAllocator]
-    var runtime: UnsafePointer[Runtime]
-    var store: UnsafePointer[VNodeStore]
+    var writer: UnsafePointer[MutationWriter, MutExternalOrigin]
+    var eid_alloc: UnsafePointer[ElementIdAllocator, MutExternalOrigin]
+    var runtime: UnsafePointer[Runtime, MutExternalOrigin]
+    var store: UnsafePointer[VNodeStore, MutExternalOrigin]
 
     fn __init__(
         out self,
-        writer: UnsafePointer[MutationWriter],
-        eid_alloc: UnsafePointer[ElementIdAllocator],
-        runtime: UnsafePointer[Runtime],
-        store: UnsafePointer[VNodeStore],
+        writer: UnsafePointer[MutationWriter, MutExternalOrigin],
+        eid_alloc: UnsafePointer[ElementIdAllocator, MutExternalOrigin],
+        runtime: UnsafePointer[Runtime, MutExternalOrigin],
+        store: UnsafePointer[VNodeStore, MutExternalOrigin],
     ):
         self.writer = writer
         self.eid_alloc = eid_alloc
@@ -223,7 +223,7 @@ struct CreateEngine:
 
         # 1. LoadTemplate for each root — assigns ElementIds, pushes to stack
         for i in range(root_count):
-            var root_node_idx = tmpl_ptr[0].get_root_index(i)
+            var _ = tmpl_ptr[0].get_root_index(i)
             var eid = self.eid_alloc[0].alloc()
             self.writer[0].load_template(tmpl_id, UInt32(i), eid.as_u32())
             # Store root ElementId on the VNode

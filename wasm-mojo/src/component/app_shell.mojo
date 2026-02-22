@@ -24,7 +24,7 @@
 #             self.my_signal = self.shell.create_signal_i32(42)
 #             ...
 
-from memory import UnsafePointer
+from memory import UnsafePointer, alloc
 from bridge import MutationWriter
 from arena import ElementIdAllocator
 from signals import Runtime, create_runtime, destroy_runtime
@@ -43,17 +43,17 @@ struct AppShell(Movable):
     manually wire CreateEngine, DiffEngine, etc.
     """
 
-    var runtime: UnsafePointer[Runtime]
-    var store: UnsafePointer[VNodeStore]
-    var eid_alloc: UnsafePointer[ElementIdAllocator]
+    var runtime: UnsafePointer[Runtime, MutExternalOrigin]
+    var store: UnsafePointer[VNodeStore, MutExternalOrigin]
+    var eid_alloc: UnsafePointer[ElementIdAllocator, MutExternalOrigin]
     var scheduler: Scheduler
     var _alive: Bool
 
     fn __init__(out self):
         """Create an uninitialized shell.  Call `setup()` to allocate."""
-        self.runtime = UnsafePointer[Runtime]()
-        self.store = UnsafePointer[VNodeStore]()
-        self.eid_alloc = UnsafePointer[ElementIdAllocator]()
+        self.runtime = UnsafePointer[Runtime, MutExternalOrigin]()
+        self.store = UnsafePointer[VNodeStore, MutExternalOrigin]()
+        self.eid_alloc = UnsafePointer[ElementIdAllocator, MutExternalOrigin]()
         self.scheduler = Scheduler()
         self._alive = False
 
@@ -70,10 +70,10 @@ struct AppShell(Movable):
         """Allocate all subsystems.  Must be called once before use."""
         self.runtime = create_runtime()
 
-        self.store = UnsafePointer[VNodeStore].alloc(1)
+        self.store = alloc[VNodeStore](1)
         self.store.init_pointee_move(VNodeStore())
 
-        self.eid_alloc = UnsafePointer[ElementIdAllocator].alloc(1)
+        self.eid_alloc = alloc[ElementIdAllocator](1)
         self.eid_alloc.init_pointee_move(ElementIdAllocator())
 
         self.scheduler = Scheduler()
@@ -85,19 +85,19 @@ struct AppShell(Movable):
             return
         self._alive = False
 
-        if self.store:
+        if self.store != UnsafePointer[VNodeStore, MutExternalOrigin]():
             self.store.destroy_pointee()
             self.store.free()
-            self.store = UnsafePointer[VNodeStore]()
+            self.store = UnsafePointer[VNodeStore, MutExternalOrigin]()
 
-        if self.eid_alloc:
+        if self.eid_alloc != UnsafePointer[ElementIdAllocator, MutExternalOrigin]():
             self.eid_alloc.destroy_pointee()
             self.eid_alloc.free()
-            self.eid_alloc = UnsafePointer[ElementIdAllocator]()
+            self.eid_alloc = UnsafePointer[ElementIdAllocator, MutExternalOrigin]()
 
-        if self.runtime:
+        if self.runtime != UnsafePointer[Runtime, MutExternalOrigin]():
             destroy_runtime(self.runtime)
-            self.runtime = UnsafePointer[Runtime]()
+            self.runtime = UnsafePointer[Runtime, MutExternalOrigin]()
 
     fn is_alive(self) -> Bool:
         """Check whether the shell has been set up and not yet destroyed."""
@@ -232,7 +232,7 @@ struct AppShell(Movable):
 
     fn mount(
         mut self,
-        writer_ptr: UnsafePointer[MutationWriter],
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
         vnode_idx: UInt32,
     ) -> Int32:
         """Initial render: create mutations for a VNode, append to root (id 0),
@@ -259,7 +259,7 @@ struct AppShell(Movable):
 
     fn mount_with_templates(
         mut self,
-        writer_ptr: UnsafePointer[MutationWriter],
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
         vnode_idx: UInt32,
     ) -> Int32:
         """Initial render with template emission prepended.
@@ -296,7 +296,7 @@ struct AppShell(Movable):
 
     fn diff(
         mut self,
-        writer_ptr: UnsafePointer[MutationWriter],
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
         old_idx: UInt32,
         new_idx: UInt32,
     ):
@@ -312,7 +312,7 @@ struct AppShell(Movable):
         )
         engine.diff_node(old_idx, new_idx)
 
-    fn finalize(self, writer_ptr: UnsafePointer[MutationWriter]) -> Int32:
+    fn finalize(self, writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin]) -> Int32:
         """Write the End sentinel and return the byte length."""
         writer_ptr[0].finalize()
         return Int32(writer_ptr[0].offset)
@@ -363,7 +363,7 @@ struct AppShell(Movable):
 
     fn flush_fragment(
         mut self,
-        writer_ptr: UnsafePointer[MutationWriter],
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
         slot: FragmentSlot,
         new_frag_idx: UInt32,
     ) -> FragmentSlot:
@@ -401,7 +401,7 @@ struct AppShell(Movable):
 
     # ── Template emission ────────────────────────────────────────────
 
-    fn emit_templates(self, writer_ptr: UnsafePointer[MutationWriter]):
+    fn emit_templates(self, writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin]):
         """Serialize all registered templates into the mutation buffer.
 
         Iterates the template registry and emits a `RegisterTemplate`

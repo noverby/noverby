@@ -33,50 +33,50 @@ from wasm_harness import (
 )
 
 
-fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
+fn _get_wasm() raises -> UnsafePointer[WasmInstance, MutExternalOrigin]:
     return get_instance()
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-alias OP_END = 0x00
-alias OP_APPEND_CHILDREN = 0x01
-alias OP_ASSIGN_ID = 0x02
-alias OP_CREATE_PLACEHOLDER = 0x03
-alias OP_CREATE_TEXT_NODE = 0x04
-alias OP_LOAD_TEMPLATE = 0x05
-alias OP_REPLACE_WITH = 0x06
-alias OP_REPLACE_PLACEHOLDER = 0x07
-alias OP_INSERT_AFTER = 0x08
-alias OP_INSERT_BEFORE = 0x09
-alias OP_SET_ATTRIBUTE = 0x0A
-alias OP_SET_TEXT = 0x0B
-alias OP_NEW_EVENT_LISTENER = 0x0C
-alias OP_REMOVE_EVENT_LISTENER = 0x0D
-alias OP_REMOVE = 0x0E
-alias OP_PUSH_ROOT = 0x0F
+comptime OP_END = 0x00
+comptime OP_APPEND_CHILDREN = 0x01
+comptime OP_ASSIGN_ID = 0x02
+comptime OP_CREATE_PLACEHOLDER = 0x03
+comptime OP_CREATE_TEXT_NODE = 0x04
+comptime OP_LOAD_TEMPLATE = 0x05
+comptime OP_REPLACE_WITH = 0x06
+comptime OP_REPLACE_PLACEHOLDER = 0x07
+comptime OP_INSERT_AFTER = 0x08
+comptime OP_INSERT_BEFORE = 0x09
+comptime OP_SET_ATTRIBUTE = 0x0A
+comptime OP_SET_TEXT = 0x0B
+comptime OP_NEW_EVENT_LISTENER = 0x0C
+comptime OP_REMOVE_EVENT_LISTENER = 0x0D
+comptime OP_REMOVE = 0x0E
+comptime OP_PUSH_ROOT = 0x0F
 
-alias TAG_DIV = 0
-alias TAG_SPAN = 1
-alias TAG_P = 2
-alias TAG_H1 = 3
-alias TAG_BUTTON = 12
-alias TAG_LI = 11
+comptime TAG_DIV = 0
+comptime TAG_SPAN = 1
+comptime TAG_P = 2
+comptime TAG_H1 = 3
+comptime TAG_BUTTON = 12
+comptime TAG_LI = 11
 
-alias BUF_CAP = 8192
+comptime BUF_CAP = 8192
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
 fn _read_u8(
-    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], buf: Int, offset: Int
 ) raises -> Int:
     return Int(w[].call_i32("debug_read_byte", args_ptr_i32(buf, offset)))
 
 
 fn _read_u32_le(
-    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], buf: Int, offset: Int
 ) raises -> Int:
     var b0 = _read_u8(w, buf, offset)
     var b1 = _read_u8(w, buf, offset + 1)
@@ -86,14 +86,14 @@ fn _read_u32_le(
 
 
 fn _read_u16_le(
-    w: UnsafePointer[WasmInstance], buf: Int, offset: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], buf: Int, offset: Int
 ) raises -> Int:
     var lo = _read_u8(w, buf, offset)
     var hi = _read_u8(w, buf, offset + 1)
     return lo | (hi << 8)
 
 
-struct MutationInfo(Copyable, Movable):
+struct MutationInfo(Copyable):
     var op: Int
     var id: Int
     var id2: Int
@@ -139,7 +139,7 @@ struct MutationInfo(Copyable, Movable):
 
 
 fn _read_mutations(
-    w: UnsafePointer[WasmInstance], buf: Int, length: Int
+    w: UnsafePointer[WasmInstance, MutExternalOrigin], buf: Int, length: Int
 ) raises -> List[MutationInfo]:
     """Decode all mutations from the WASM buffer up to the End sentinel."""
     var result = List[MutationInfo]()
@@ -276,14 +276,14 @@ fn _find_first(mutations: List[MutationInfo], op: Int) -> Int:
 struct WasmTestContext(Movable):
     """Manages WASM resources for a create/diff engine test."""
 
-    var w: UnsafePointer[WasmInstance]
+    var w: UnsafePointer[WasmInstance, MutExternalOrigin]
     var rt: Int
     var eid: Int
     var store: Int
     var buf: Int
     var writer: Int
 
-    fn __init__(out self, w: UnsafePointer[WasmInstance]) raises:
+    fn __init__(out self, w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
         self.w = w
         self.rt = Int(w[].call_i64("runtime_create", no_args()))
         self.eid = Int(w[].call_i64("eid_alloc_create", no_args()))
@@ -500,7 +500,7 @@ fn _register_complex_template(
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_create_text_vnode(w: UnsafePointer[WasmInstance]) raises:
+fn test_create_text_vnode(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var ctx = WasmTestContext(w)
 
     var vn_idx = Int(
@@ -556,7 +556,7 @@ fn test_create_text_vnode(w: UnsafePointer[WasmInstance]) raises:
     ctx.destroy()
 
 
-fn test_create_placeholder_vnode(w: UnsafePointer[WasmInstance]) raises:
+fn test_create_placeholder_vnode(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var ctx = WasmTestContext(w)
 
     var vn_idx = Int(
@@ -598,7 +598,7 @@ fn test_create_placeholder_vnode(w: UnsafePointer[WasmInstance]) raises:
     ctx.destroy()
 
 
-fn test_create_simple_template_ref(w: UnsafePointer[WasmInstance]) raises:
+fn test_create_simple_template_ref(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_template(ctx, "simple-div-mut")
@@ -651,7 +651,7 @@ fn test_create_simple_template_ref(w: UnsafePointer[WasmInstance]) raises:
 
 
 fn test_create_template_ref_with_dyn_text(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     var ctx = WasmTestContext(w)
 
@@ -708,7 +708,7 @@ fn test_create_template_ref_with_dyn_text(
 
 
 fn test_create_template_ref_with_dyn_attr(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     var ctx = WasmTestContext(w)
 
@@ -763,7 +763,7 @@ fn test_create_template_ref_with_dyn_attr(
     ctx.destroy()
 
 
-fn test_create_template_ref_with_event(w: UnsafePointer[WasmInstance]) raises:
+fn test_create_template_ref_with_event(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var ctx = WasmTestContext(w)
 
     var tmpl_id = _register_div_with_dyn_attr(ctx, "event-div-mut")
@@ -800,7 +800,7 @@ fn test_create_template_ref_with_event(w: UnsafePointer[WasmInstance]) raises:
 
 
 fn test_create_template_ref_with_dyn_text_node(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Create a template ref with a Dynamic (full) node slot filled with text.
     """
@@ -850,7 +850,7 @@ fn test_create_template_ref_with_dyn_text_node(
 
 
 fn test_create_template_ref_with_dyn_placeholder(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Create a template ref with a Dynamic node slot filled with placeholder.
     """
@@ -893,7 +893,7 @@ fn test_create_template_ref_with_dyn_placeholder(
     ctx.destroy()
 
 
-fn test_create_fragment_vnode(w: UnsafePointer[WasmInstance]) raises:
+fn test_create_fragment_vnode(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var ctx = WasmTestContext(w)
 
     # Create 3 text children
@@ -947,7 +947,7 @@ fn test_create_fragment_vnode(w: UnsafePointer[WasmInstance]) raises:
     ctx.destroy()
 
 
-fn test_create_element_id_uniqueness(w: UnsafePointer[WasmInstance]) raises:
+fn test_create_element_id_uniqueness(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Multiple create calls produce unique ElementIds."""
     var ctx = WasmTestContext(w)
 
@@ -999,7 +999,7 @@ fn test_create_element_id_uniqueness(w: UnsafePointer[WasmInstance]) raises:
     ctx.destroy()
 
 
-fn test_create_empty_fragment(w: UnsafePointer[WasmInstance]) raises:
+fn test_create_empty_fragment(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Empty fragment creates 0 roots."""
     var ctx = WasmTestContext(w)
 
@@ -1022,7 +1022,7 @@ fn test_create_empty_fragment(w: UnsafePointer[WasmInstance]) raises:
 
 
 fn test_create_complex_template_multi_slots(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Create a complex template with multiple dynamic slots."""
     var ctx = WasmTestContext(w)
@@ -1092,7 +1092,7 @@ fn test_create_complex_template_multi_slots(
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-fn test_diff_same_text_zero_mutations(w: UnsafePointer[WasmInstance]) raises:
+fn test_diff_same_text_zero_mutations(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Diffing two Text VNodes with the same text -> 0 mutations."""
     var ctx = WasmTestContext(w)
 
@@ -1135,7 +1135,7 @@ fn test_diff_same_text_zero_mutations(w: UnsafePointer[WasmInstance]) raises:
 
 
 fn test_diff_text_changed_produces_set_text(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Diffing two Text VNodes with different text -> SetText."""
     var ctx = WasmTestContext(w)
@@ -1197,7 +1197,7 @@ fn test_diff_text_changed_produces_set_text(
     ctx.destroy()
 
 
-fn test_diff_text_empty_to_content(w: UnsafePointer[WasmInstance]) raises:
+fn test_diff_text_empty_to_content(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Diffing '' -> 'hello' produces SetText."""
     var ctx = WasmTestContext(w)
 
@@ -1237,7 +1237,7 @@ fn test_diff_text_empty_to_content(w: UnsafePointer[WasmInstance]) raises:
 
 
 fn test_diff_placeholder_to_placeholder_zero_mutations(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Diffing two Placeholders -> 0 mutations."""
     var ctx = WasmTestContext(w)
@@ -1272,7 +1272,7 @@ fn test_diff_placeholder_to_placeholder_zero_mutations(
 
 
 fn test_diff_same_template_same_dyn_values_zero_mutations(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Same template, same dynamic text -> 0 mutations."""
     var ctx = WasmTestContext(w)
@@ -1331,7 +1331,7 @@ fn test_diff_same_template_same_dyn_values_zero_mutations(
 
 
 fn test_diff_same_template_dyn_text_changed(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Same template, dynamic text changed -> SetText."""
     var ctx = WasmTestContext(w)
@@ -1404,7 +1404,7 @@ fn test_diff_same_template_dyn_text_changed(
     ctx.destroy()
 
 
-fn test_diff_same_template_attr_changed(w: UnsafePointer[WasmInstance]) raises:
+fn test_diff_same_template_attr_changed(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Same template, dynamic attribute changed -> SetAttribute."""
     var ctx = WasmTestContext(w)
 
@@ -1468,7 +1468,7 @@ fn test_diff_same_template_attr_changed(w: UnsafePointer[WasmInstance]) raises:
 
 
 fn test_diff_same_template_attr_unchanged_zero_mutations(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Same template, same attribute value -> 0 mutations."""
     var ctx = WasmTestContext(w)
@@ -1530,7 +1530,7 @@ fn test_diff_same_template_attr_unchanged_zero_mutations(
     ctx.destroy()
 
 
-fn test_diff_bool_attr_changed(w: UnsafePointer[WasmInstance]) raises:
+fn test_diff_bool_attr_changed(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Bool attribute changed -> SetAttribute."""
     var ctx = WasmTestContext(w)
 
@@ -1584,7 +1584,7 @@ fn test_diff_bool_attr_changed(w: UnsafePointer[WasmInstance]) raises:
 
 
 fn test_diff_text_to_placeholder_replacement(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Text -> Placeholder (different kind) -> replacement."""
     var ctx = WasmTestContext(w)
@@ -1628,7 +1628,7 @@ fn test_diff_text_to_placeholder_replacement(
 
 
 fn test_diff_different_templates_replacement(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Different templates -> full replacement."""
     var ctx = WasmTestContext(w)
@@ -1670,7 +1670,7 @@ fn test_diff_different_templates_replacement(
 
 
 fn test_diff_fragment_children_text_changed(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Fragment diff: child text changed."""
     var ctx = WasmTestContext(w)
@@ -1749,7 +1749,7 @@ fn test_diff_fragment_children_text_changed(
     ctx.destroy()
 
 
-fn test_diff_fragment_children_removed(w: UnsafePointer[WasmInstance]) raises:
+fn test_diff_fragment_children_removed(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Fragment diff: children removed."""
     var ctx = WasmTestContext(w)
 
@@ -1827,7 +1827,7 @@ fn test_diff_fragment_children_removed(w: UnsafePointer[WasmInstance]) raises:
     ctx.destroy()
 
 
-fn test_diff_fragment_children_added(w: UnsafePointer[WasmInstance]) raises:
+fn test_diff_fragment_children_added(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Fragment diff: children added."""
     var ctx = WasmTestContext(w)
 
@@ -1908,7 +1908,7 @@ fn test_diff_fragment_children_added(w: UnsafePointer[WasmInstance]) raises:
     ctx.destroy()
 
 
-fn test_diff_event_listener_changed(w: UnsafePointer[WasmInstance]) raises:
+fn test_diff_event_listener_changed(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Event listener handler changed -> RemoveEventListener + NewEventListener.
     """
     var ctx = WasmTestContext(w)
@@ -1965,7 +1965,7 @@ fn test_diff_event_listener_changed(w: UnsafePointer[WasmInstance]) raises:
 
 
 fn test_diff_same_event_listener_zero_mutations(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Same event listener -> 0 mutations."""
     var ctx = WasmTestContext(w)
@@ -2018,7 +2018,7 @@ fn test_diff_same_event_listener_zero_mutations(
 
 
 fn test_diff_attr_type_changed_text_to_bool(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Attribute type changed (text -> bool) -> SetAttribute."""
     var ctx = WasmTestContext(w)
@@ -2076,7 +2076,7 @@ fn test_diff_attr_type_changed_text_to_bool(
     ctx.destroy()
 
 
-fn test_diff_attr_removed_text_to_none(w: UnsafePointer[WasmInstance]) raises:
+fn test_diff_attr_removed_text_to_none(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Attribute removed (text -> none) -> SetAttribute with empty value."""
     var ctx = WasmTestContext(w)
 
@@ -2133,7 +2133,7 @@ fn test_diff_attr_removed_text_to_none(w: UnsafePointer[WasmInstance]) raises:
     ctx.destroy()
 
 
-fn test_diff_int_attr_changed(w: UnsafePointer[WasmInstance]) raises:
+fn test_diff_int_attr_changed(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """Integer attribute value changed -> SetAttribute."""
     var ctx = WasmTestContext(w)
 
@@ -2187,7 +2187,7 @@ fn test_diff_int_attr_changed(w: UnsafePointer[WasmInstance]) raises:
 
 
 fn test_diff_mount_state_transfer_preserves_ids(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Diff transfers mount state: ElementIds on new VNode match old."""
     var ctx = WasmTestContext(w)
@@ -2264,7 +2264,7 @@ fn test_diff_mount_state_transfer_preserves_ids(
 
 
 fn test_diff_sequential_diffs_state_chain(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Sequential diffs (state chain): v0 -> v1 -> v2 -> v3."""
     var ctx = WasmTestContext(w)
@@ -2363,7 +2363,7 @@ fn test_diff_sequential_diffs_state_chain(
 
 
 fn test_diff_dyn_node_text_to_placeholder(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Dynamic node: text -> placeholder -> replacement."""
     var ctx = WasmTestContext(w)

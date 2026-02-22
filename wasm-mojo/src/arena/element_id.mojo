@@ -10,14 +10,13 @@
 #
 # ElementId(0) is reserved as the root node / invalid sentinel.
 
-from memory import UnsafePointer
 
 
 # ── ElementId ────────────────────────────────────────────────────────────────
 
 
 @fieldwise_init
-struct ElementId(Copyable, EqualityComparable, Movable, Stringable):
+struct ElementId(Copyable, Equatable, Stringable):
     """A lightweight handle identifying a DOM node.
 
     Internally just a `UInt32`.  ElementId(0) is reserved for the root
@@ -70,15 +69,15 @@ struct ElementId(Copyable, EqualityComparable, Movable, Stringable):
 
 # ── Sentinels ────────────────────────────────────────────────────────────────
 
-alias ROOT_ELEMENT_ID = ElementId(UInt32(0))
-alias INVALID_ELEMENT_ID = ElementId(UInt32(0))
+comptime ROOT_ELEMENT_ID = ElementId(UInt32(0))
+comptime INVALID_ELEMENT_ID = ElementId(UInt32(0))
 
 
 # ── Slot state for the allocator ─────────────────────────────────────────────
 
 
 @fieldwise_init
-struct _SlotState(Copyable, Movable):
+struct _SlotState(Copyable):
     """Tracks whether an ID slot is occupied or vacant."""
 
     var occupied: Bool

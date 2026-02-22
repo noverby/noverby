@@ -54,7 +54,7 @@ from vdom import VNodeStore
 # ── FragmentSlot — State tracker for a dynamic fragment in the DOM ────────────
 
 
-struct FragmentSlot(Copyable, Movable):
+struct FragmentSlot(Copyable):
     """Tracks the state of a fragment-based dynamic list in the DOM.
 
     A FragmentSlot manages the lifecycle of a list of keyed VNodes that
@@ -108,10 +108,10 @@ struct FragmentSlot(Copyable, Movable):
 
 
 fn flush_fragment(
-    writer_ptr: UnsafePointer[MutationWriter],
-    eid_ptr: UnsafePointer[ElementIdAllocator],
-    rt_ptr: UnsafePointer[Runtime],
-    store_ptr: UnsafePointer[VNodeStore],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    eid_ptr: UnsafePointer[ElementIdAllocator, MutExternalOrigin],
+    rt_ptr: UnsafePointer[Runtime, MutExternalOrigin],
+    store_ptr: UnsafePointer[VNodeStore, MutExternalOrigin],
     mut slot: FragmentSlot,
     new_frag_idx: UInt32,
 ) -> FragmentSlot:
@@ -212,10 +212,10 @@ fn flush_fragment(
 
 
 fn mount_vnode(
-    writer_ptr: UnsafePointer[MutationWriter],
-    eid_ptr: UnsafePointer[ElementIdAllocator],
-    rt_ptr: UnsafePointer[Runtime],
-    store_ptr: UnsafePointer[VNodeStore],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    eid_ptr: UnsafePointer[ElementIdAllocator, MutExternalOrigin],
+    rt_ptr: UnsafePointer[Runtime, MutExternalOrigin],
+    store_ptr: UnsafePointer[VNodeStore, MutExternalOrigin],
     vnode_idx: UInt32,
 ) -> Int32:
     """Initial render: create mutations for a VNode and append to root.
@@ -246,10 +246,10 @@ fn mount_vnode(
 
 
 fn mount_vnode_to(
-    writer_ptr: UnsafePointer[MutationWriter],
-    eid_ptr: UnsafePointer[ElementIdAllocator],
-    rt_ptr: UnsafePointer[Runtime],
-    store_ptr: UnsafePointer[VNodeStore],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    eid_ptr: UnsafePointer[ElementIdAllocator, MutExternalOrigin],
+    rt_ptr: UnsafePointer[Runtime, MutExternalOrigin],
+    store_ptr: UnsafePointer[VNodeStore, MutExternalOrigin],
     vnode_idx: UInt32,
     parent_id: UInt32,
 ) -> Int32:
@@ -279,10 +279,10 @@ fn mount_vnode_to(
 
 
 fn diff_and_finalize(
-    writer_ptr: UnsafePointer[MutationWriter],
-    eid_ptr: UnsafePointer[ElementIdAllocator],
-    rt_ptr: UnsafePointer[Runtime],
-    store_ptr: UnsafePointer[VNodeStore],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    eid_ptr: UnsafePointer[ElementIdAllocator, MutExternalOrigin],
+    rt_ptr: UnsafePointer[Runtime, MutExternalOrigin],
+    store_ptr: UnsafePointer[VNodeStore, MutExternalOrigin],
     old_idx: UInt32,
     new_idx: UInt32,
 ) -> Int32:
@@ -310,10 +310,10 @@ fn diff_and_finalize(
 
 
 fn diff_no_finalize(
-    writer_ptr: UnsafePointer[MutationWriter],
-    eid_ptr: UnsafePointer[ElementIdAllocator],
-    rt_ptr: UnsafePointer[Runtime],
-    store_ptr: UnsafePointer[VNodeStore],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    eid_ptr: UnsafePointer[ElementIdAllocator, MutExternalOrigin],
+    rt_ptr: UnsafePointer[Runtime, MutExternalOrigin],
+    store_ptr: UnsafePointer[VNodeStore, MutExternalOrigin],
     old_idx: UInt32,
     new_idx: UInt32,
 ):
@@ -336,10 +336,10 @@ fn diff_no_finalize(
 
 
 fn create_no_finalize(
-    writer_ptr: UnsafePointer[MutationWriter],
-    eid_ptr: UnsafePointer[ElementIdAllocator],
-    rt_ptr: UnsafePointer[Runtime],
-    store_ptr: UnsafePointer[VNodeStore],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    eid_ptr: UnsafePointer[ElementIdAllocator, MutExternalOrigin],
+    rt_ptr: UnsafePointer[Runtime, MutExternalOrigin],
+    store_ptr: UnsafePointer[VNodeStore, MutExternalOrigin],
     vnode_idx: UInt32,
 ) -> UInt32:
     """Create mutations for a VNode WITHOUT finalizing or appending.

@@ -23,13 +23,13 @@
 #   - When a signal is written, all subscribers are marked dirty.
 #
 # Memory layout per signal slot:
-#   - value_ptr    : UnsafePointer[UInt8]  — type-erased value storage
+#   - value_ptr    : UnsafePointer[UInt8, MutExternalOrigin]  — type-erased value storage
 #   - value_size   : Int                   — byte size of the stored value
 #   - subscribers  : List[UInt32]          — context IDs subscribed to this signal
 #   - version      : UInt32               — monotonic write counter (for staleness checks)
 
 from sys import size_of
-from memory import UnsafePointer, memcpy
+from memory import UnsafePointer, memcpy, alloc
 from scope import ScopeArena, ScopeState, HOOK_SIGNAL, HOOK_MEMO, HOOK_EFFECT
 from vdom import TemplateRegistry, VNodeStore
 from .memo import MemoStore, MemoEntry
@@ -52,10 +52,10 @@ from events import (
 # ── SignalEntry ──────────────────────────────────────────────────────────────
 
 
-struct SignalEntry(Copyable, Movable):
+struct SignalEntry(Copyable):
     """Type-erased storage for a single signal's value + subscribers."""
 
-    var value_ptr: UnsafePointer[UInt8]
+    var value_ptr: UnsafePointer[UInt8, MutExternalOrigin]
     var value_size: Int
     var subscribers: List[UInt32]
     var version: UInt32
@@ -64,12 +64,12 @@ struct SignalEntry(Copyable, Movable):
 
     fn __init__(out self):
         """Create an empty (uninitialised) entry."""
-        self.value_ptr = UnsafePointer[UInt8]()
+        self.value_ptr = UnsafePointer[UInt8, MutExternalOrigin]()
         self.value_size = 0
         self.subscribers = List[UInt32]()
         self.version = 0
 
-    fn __init__(out self, ptr: UnsafePointer[UInt8], size: Int):
+    fn __init__(out self, ptr: UnsafePointer[UInt8, MutExternalOrigin], size: Int):
         """Create an entry that owns `size` bytes at `ptr`."""
         self.value_ptr = ptr
         self.value_size = size
@@ -81,10 +81,10 @@ struct SignalEntry(Copyable, Movable):
         self.subscribers = other.subscribers.copy()
         self.version = other.version
         if other.value_ptr and other.value_size > 0:
-            self.value_ptr = UnsafePointer[UInt8].alloc(other.value_size)
-            memcpy(self.value_ptr, other.value_ptr, other.value_size)
+            self.value_ptr = alloc[UInt8](other.value_size)
+            memcpy(dest=self.value_ptr, src=other.value_ptr, count=other.value_size)
         else:
-            self.value_ptr = UnsafePointer[UInt8]()
+            self.value_ptr = UnsafePointer[UInt8, MutExternalOrigin]()
 
     fn __moveinit__(out self, deinit other: Self):
         self.value_ptr = other.value_ptr
@@ -94,22 +94,22 @@ struct SignalEntry(Copyable, Movable):
 
     fn __del__(deinit self):
         """Destroy the entry, freeing value storage."""
-        if self.value_ptr:
+        if self.value_ptr != UnsafePointer[UInt8, MutExternalOrigin]():
             self.value_ptr.free()
 
     # ── Value access ─────────────────────────────────────────────────
 
     @always_inline
-    fn read_value[T: Copyable & Movable & AnyType](self) -> T:
+    fn read_value[T: Copyable & AnyType](self) -> T:
         """Reinterpret the raw bytes as T and return a copy."""
         return self.value_ptr.bitcast[T]()[0].copy()
 
     @always_inline
-    fn write_value[T: Copyable & Movable & AnyType](mut self, value: T):
+    fn write_value[T: Copyable & ImplicitlyDestructible & AnyType](mut self, value: T):
         """Overwrite the stored bytes with `value` and bump version."""
-        var tmp = UnsafePointer[T].alloc(1)
+        var tmp = alloc[T](1)
         tmp.init_pointee_copy(value)
-        memcpy(self.value_ptr, tmp.bitcast[UInt8](), self.value_size)
+        memcpy(dest=self.value_ptr, src=tmp.bitcast[UInt8](), count=self.value_size)
         tmp.destroy_pointee()
         tmp.free()
         self.version += 1
@@ -143,7 +143,7 @@ struct SignalEntry(Copyable, Movable):
 
 
 @fieldwise_init
-struct SignalSlotState(Copyable, Movable):
+struct SignalSlotState(Copyable):
     """Tracks whether a signal slot is occupied or vacant."""
 
     var occupied: Bool
@@ -181,15 +181,15 @@ struct SignalStore(Movable):
 
     # ── Create / Destroy ─────────────────────────────────────────────
 
-    fn create[T: Copyable & Movable & AnyType](mut self, initial: T) -> UInt32:
+    fn create[T: Copyable & ImplicitlyDestructible & AnyType](mut self, initial: T) -> UInt32:
         """Create a new signal with `initial` value.  Returns its key."""
         var sz = size_of[T]()
 
         # Allocate value storage and copy initial value into it
-        var ptr = UnsafePointer[UInt8].alloc(sz)
-        var tmp = UnsafePointer[T].alloc(1)
+        var ptr = alloc[UInt8](sz)
+        var tmp = alloc[T](1)
         tmp.init_pointee_copy(initial)
-        memcpy(ptr, tmp.bitcast[UInt8](), sz)
+        memcpy(dest=ptr, src=tmp.bitcast[UInt8](), count=sz)
         tmp.destroy_pointee()
         tmp.free()
 
@@ -227,7 +227,7 @@ struct SignalStore(Movable):
     # ── Read / Write ─────────────────────────────────────────────────
 
     @always_inline
-    fn read[T: Copyable & Movable & AnyType](self, key: UInt32) -> T:
+    fn read[T: Copyable & AnyType](self, key: UInt32) -> T:
         """Read the signal value at `key` as type T.
 
         This does NOT perform subscriber tracking — call `read_tracked`
@@ -236,7 +236,7 @@ struct SignalStore(Movable):
         return self._entries[Int(key)].read_value[T]()
 
     fn read_tracked[
-        T: Copyable & Movable & AnyType
+        T: Copyable & AnyType
     ](mut self, key: UInt32, context_id: UInt32) -> T:
         """Read the signal value and subscribe `context_id`.
 
@@ -247,7 +247,7 @@ struct SignalStore(Movable):
         self._entries[Int(key)].subscribe(context_id)
         return self._entries[Int(key)].read_value[T]()
 
-    fn write[T: Copyable & Movable & AnyType](mut self, key: UInt32, value: T):
+    fn write[T: Copyable & ImplicitlyDestructible & AnyType](mut self, key: UInt32, value: T):
         """Write a new value to the signal at `key`.
 
         Returns without notifying subscribers — call `get_subscribers`
@@ -255,7 +255,7 @@ struct SignalStore(Movable):
         """
         self._entries[Int(key)].write_value[T](value)
 
-    fn peek[T: Copyable & Movable & AnyType](self, key: UInt32) -> T:
+    fn peek[T: Copyable & AnyType](self, key: UInt32) -> T:
         """Read without subscribing.  Alias for `read`."""
         return self.read[T](key)
 
@@ -319,7 +319,7 @@ struct SignalStore(Movable):
 # while safely managing heap strings.
 
 
-struct _StringSlotState(Copyable, Movable):
+struct _StringSlotState(Copyable):
     """Tracks whether a string slot is occupied or vacant."""
 
     var occupied: Bool
@@ -546,19 +546,19 @@ struct Runtime(Movable):
     # ── Signal operations (convenience wrappers) ─────────────────────
 
     fn create_signal[
-        T: Copyable & Movable & AnyType
+        T: Copyable & ImplicitlyDestructible & AnyType
     ](mut self, initial: T) -> UInt32:
         """Create a signal and return its key."""
         return self.signals.create[T](initial)
 
-    fn read_signal[T: Copyable & Movable & AnyType](mut self, key: UInt32) -> T:
+    fn read_signal[T: Copyable & AnyType](mut self, key: UInt32) -> T:
         """Read a signal, auto-subscribing the current context if any."""
         if self.has_context():
             return self.signals.read_tracked[T](key, self.get_context())
         return self.signals.read[T](key)
 
     fn write_signal[
-        T: Copyable & Movable & AnyType
+        T: Copyable & ImplicitlyDestructible & AnyType
     ](mut self, key: UInt32, value: T):
         """Write a signal and collect dirty scopes.
 
@@ -627,7 +627,7 @@ struct Runtime(Movable):
             if not found:
                 self.dirty_scopes.append(ctx)
 
-    fn peek_signal[T: Copyable & Movable & AnyType](self, key: UInt32) -> T:
+    fn peek_signal[T: Copyable & AnyType](self, key: UInt32) -> T:
         """Read a signal without subscribing."""
         return self.signals.peek[T](key)
 
@@ -642,7 +642,7 @@ struct Runtime(Movable):
     # subscriber tracking and dirty-marking; the StringStore provides
     # safe heap-string storage.
 
-    fn create_signal_string(mut self, initial: String) -> (UInt32, UInt32):
+    fn create_signal_string(mut self, initial: String) -> Tuple[UInt32, UInt32]:
         """Create a string signal and return (string_key, version_key).
 
         The version signal starts at 0; it is bumped on every write.
@@ -657,7 +657,7 @@ struct Runtime(Movable):
         """
         var string_key = self.strings.create(initial)
         var version_key = self.signals.create[Int32](Int32(0))
-        return (string_key, version_key)
+        return Tuple(string_key, version_key)
 
     fn peek_signal_string(self, string_key: UInt32) -> String:
         """Read a string signal's value WITHOUT subscribing.
@@ -723,7 +723,7 @@ struct Runtime(Movable):
 
     # ── Hook-based string signal creation ────────────────────────────
 
-    fn use_signal_string(mut self, initial: String) -> (UInt32, UInt32):
+    fn use_signal_string(mut self, initial: String) -> Tuple[UInt32, UInt32]:
         """Hook: create or retrieve a string signal for the current scope.
 
         On first render: creates a new string signal (string_key +
@@ -754,7 +754,7 @@ struct Runtime(Movable):
             # Re-render — return existing keys
             var string_key = self.scopes.next_hook(scope_id)
             var version_key = self.scopes.next_hook(scope_id)
-            return (string_key, version_key)
+            return Tuple(string_key, version_key)
 
     # ── Dirty queue ──────────────────────────────────────────────────
 
@@ -1330,14 +1330,14 @@ struct Runtime(Movable):
 # These helpers create and access the heap-allocated instance.
 
 
-fn create_runtime() -> UnsafePointer[Runtime]:
+fn create_runtime() -> UnsafePointer[Runtime, MutExternalOrigin]:
     """Allocate a Runtime on the heap and return a pointer to it."""
-    var ptr = UnsafePointer[Runtime].alloc(1)
+    var ptr = alloc[Runtime](1)
     ptr.init_pointee_move(Runtime())
     return ptr
 
 
-fn destroy_runtime(ptr: UnsafePointer[Runtime]):
+fn destroy_runtime(ptr: UnsafePointer[Runtime, MutExternalOrigin]):
     """Destroy and free a heap-allocated Runtime."""
     ptr.destroy_pointee()
     ptr.free()

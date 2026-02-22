@@ -94,7 +94,7 @@ from bench import (
     bench_app_rebuild,
     bench_app_flush,
 )
-from memory import UnsafePointer, memset_zero
+from memory import UnsafePointer, memset_zero, alloc
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -108,17 +108,17 @@ from memory import UnsafePointer, memset_zero
 
 
 @always_inline
-fn _as_ptr[T: AnyType](addr: Int) -> UnsafePointer[T]:
-    """Reinterpret an integer address as an UnsafePointer[T]."""
-    var slot = UnsafePointer[Int].alloc(1)
+fn _as_ptr[T: AnyType](addr: Int) -> UnsafePointer[T, MutExternalOrigin]:
+    """Reinterpret an integer address as an UnsafePointer[T, MutExternalOrigin]."""
+    var slot = alloc[Int](1)
     slot[0] = addr
-    var result = slot.bitcast[UnsafePointer[T]]()[0]
+    var result = slot.bitcast[UnsafePointer[T, MutExternalOrigin]]()[0]
     slot.free()
     return result
 
 
 @always_inline
-fn _to_i64[T: AnyType](ptr: UnsafePointer[T]) -> Int64:
+fn _to_i64[T: AnyType](ptr: UnsafePointer[T, MutExternalOrigin]) -> Int64:
     """Return the raw address of a typed pointer as Int64."""
     return Int64(Int(ptr))
 
@@ -127,15 +127,15 @@ fn _to_i64[T: AnyType](ptr: UnsafePointer[T]) -> Int64:
 
 
 @always_inline
-fn _heap_new[T: Movable](var val: T) -> UnsafePointer[T]:
+fn _heap_new[T: Movable](var val: T) -> UnsafePointer[T, MutExternalOrigin]:
     """Allocate a single T on the heap and move val into it."""
-    var ptr = UnsafePointer[T].alloc(1)
+    var ptr = alloc[T](1)
     ptr.init_pointee_move(val^)
     return ptr
 
 
 @always_inline
-fn _heap_del[T: Movable](ptr: UnsafePointer[T]):
+fn _heap_del[T: Movable & ImplicitlyDestructible](ptr: UnsafePointer[T, MutExternalOrigin]):
     """Destroy and free a single heap-allocated T."""
     ptr.destroy_pointee()
     ptr.free()
@@ -145,8 +145,8 @@ fn _heap_del[T: Movable](ptr: UnsafePointer[T]):
 
 
 @always_inline
-fn _get[T: AnyType](ptr: Int64) -> UnsafePointer[T]:
-    """Reinterpret an Int64 WASM handle as an UnsafePointer[T]."""
+fn _get[T: AnyType](ptr: Int64) -> UnsafePointer[T, MutExternalOrigin]:
+    """Reinterpret an Int64 WASM handle as an UnsafePointer[T, MutExternalOrigin]."""
     return _as_ptr[T](Int(ptr))
 
 
@@ -175,14 +175,14 @@ fn _writer(buf: Int64, off: Int32) -> MutationWriter:
 @always_inline
 fn _alloc_writer(
     buf_ptr: Int64, capacity: Int32
-) -> UnsafePointer[MutationWriter]:
+) -> UnsafePointer[MutationWriter, MutExternalOrigin]:
     """Allocate a MutationWriter on the heap with the given buffer and capacity.
     """
     return _heap_new(MutationWriter(_get[UInt8](buf_ptr), Int(capacity)))
 
 
 @always_inline
-fn _free_writer(ptr: UnsafePointer[MutationWriter]):
+fn _free_writer(ptr: UnsafePointer[MutationWriter, MutExternalOrigin]):
     """Destroy and free a heap-allocated MutationWriter."""
     _heap_del(ptr)
 
@@ -1316,7 +1316,7 @@ fn mutation_buf_alloc(capacity: Int32) -> Int64:
     previously freed blocks that contain stale data.
     """
     var cap = Int(capacity)
-    var ptr = UnsafePointer[UInt8].alloc(cap)
+    var ptr = alloc[UInt8](cap)
     memset_zero(ptr, cap)
     return _to_i64(ptr)
 
@@ -3955,25 +3955,25 @@ fn identity_float64(x: Float64) -> Float64:
 
 @export
 fn print_int32():
-    alias int32: Int32 = 3
+    comptime int32: Int32 = 3
     print(int32)
 
 
 @export
 fn print_int64():
-    alias int64: Int64 = 3
+    comptime int64: Int64 = 3
     print(2)
 
 
 @export
 fn print_float32():
-    alias float32: Float32 = 3.0
+    comptime float32: Float32 = 3.0
     print(float32)
 
 
 @export
 fn print_float64():
-    alias float64: Float64 = 3.0
+    comptime float64: Float64 = 3.0
     print(float64)
 
 

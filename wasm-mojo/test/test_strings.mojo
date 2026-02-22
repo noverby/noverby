@@ -22,14 +22,14 @@ from wasm_harness import (
 )
 
 
-fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
+fn _get_wasm() raises -> UnsafePointer[WasmInstance, MutExternalOrigin]:
     return get_instance()
 
 
 # ── Return static string ────────────────────────────────────────────────────
 
 
-fn test_return_static_string(w: UnsafePointer[WasmInstance]) raises:
+fn test_return_static_string(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var out_ptr = w[].alloc_string_struct()
     w[].call_void("return_static_string", args_ptr(out_ptr))
     var result = w[].read_string_struct(out_ptr)
@@ -43,7 +43,7 @@ fn test_return_static_string(w: UnsafePointer[WasmInstance]) raises:
 # ── Return input string ─────────────────────────────────────────────────────
 
 
-fn test_return_input_string_basic(w: UnsafePointer[WasmInstance]) raises:
+fn test_return_input_string_basic(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var expected = "return-input-string"
     var in_ptr = w[].write_string_struct(expected)
     var out_ptr = w[].alloc_string_struct()
@@ -54,7 +54,7 @@ fn test_return_input_string_basic(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_return_input_string_empty(w: UnsafePointer[WasmInstance]) raises:
+fn test_return_input_string_empty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var expected = ""
     var in_ptr = w[].write_string_struct(expected)
     var out_ptr = w[].alloc_string_struct()
@@ -65,7 +65,7 @@ fn test_return_input_string_empty(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_return_input_string_single_char(w: UnsafePointer[WasmInstance]) raises:
+fn test_return_input_string_single_char(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var expected = "a"
     var in_ptr = w[].write_string_struct(expected)
     var out_ptr = w[].alloc_string_struct()
@@ -76,7 +76,7 @@ fn test_return_input_string_single_char(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_return_input_string_emoji(w: UnsafePointer[WasmInstance]) raises:
+fn test_return_input_string_emoji(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var expected = String("Hello, World! 🌍")
     var in_ptr = w[].write_string_struct(expected)
     var out_ptr = w[].alloc_string_struct()
@@ -92,7 +92,7 @@ fn test_return_input_string_emoji(w: UnsafePointer[WasmInstance]) raises:
 # ── String length ────────────────────────────────────────────────────────────
 
 
-fn test_string_length_hello(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_length_hello(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var ptr = w[].write_string_struct("hello")
     assert_equal(
         Int(w[].call_i64("string_length", args_ptr(ptr))),
@@ -101,7 +101,7 @@ fn test_string_length_hello(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_string_length_empty(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_length_empty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var ptr = w[].write_string_struct("")
     assert_equal(
         Int(w[].call_i64("string_length", args_ptr(ptr))),
@@ -110,7 +110,7 @@ fn test_string_length_empty(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_string_length_single_char(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_length_single_char(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var ptr = w[].write_string_struct("a")
     assert_equal(
         Int(w[].call_i64("string_length", args_ptr(ptr))),
@@ -119,7 +119,7 @@ fn test_string_length_single_char(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_string_length_ten_chars(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_length_ten_chars(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var ptr = w[].write_string_struct("abcdefghij")
     assert_equal(
         Int(w[].call_i64("string_length", args_ptr(ptr))),
@@ -128,7 +128,7 @@ fn test_string_length_ten_chars(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_string_length_utf8_emoji(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_length_utf8_emoji(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     # UTF-8 multibyte: 🌍 is 4 bytes
     var ptr = w[].write_string_struct(String("🌍"))
     assert_equal(
@@ -141,7 +141,7 @@ fn test_string_length_utf8_emoji(w: UnsafePointer[WasmInstance]) raises:
 # ── String concatenation ────────────────────────────────────────────────────
 
 
-fn test_string_concat_basic(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_concat_basic(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a_ptr = w[].write_string_struct("hello")
     var b_ptr = w[].write_string_struct(" world")
     var out_ptr = w[].alloc_string_struct()
@@ -154,7 +154,7 @@ fn test_string_concat_basic(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_string_concat_empty_first(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_concat_empty_first(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a_ptr = w[].write_string_struct("")
     var b_ptr = w[].write_string_struct("world")
     var out_ptr = w[].alloc_string_struct()
@@ -167,7 +167,7 @@ fn test_string_concat_empty_first(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_string_concat_empty_second(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_concat_empty_second(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a_ptr = w[].write_string_struct("hello")
     var b_ptr = w[].write_string_struct("")
     var out_ptr = w[].alloc_string_struct()
@@ -180,7 +180,7 @@ fn test_string_concat_empty_second(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_string_concat_both_empty(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_concat_both_empty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a_ptr = w[].write_string_struct("")
     var b_ptr = w[].write_string_struct("")
     var out_ptr = w[].alloc_string_struct()
@@ -189,7 +189,7 @@ fn test_string_concat_both_empty(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(result, "", 'string_concat("", "") === ""')
 
 
-fn test_string_concat_short(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_concat_short(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a_ptr = w[].write_string_struct("foo")
     var b_ptr = w[].write_string_struct("bar")
     var out_ptr = w[].alloc_string_struct()
@@ -205,7 +205,7 @@ fn test_string_concat_short(w: UnsafePointer[WasmInstance]) raises:
 # ── String repeat ────────────────────────────────────────────────────────────
 
 
-fn test_string_repeat_basic(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_repeat_basic(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var ptr = w[].write_string_struct("ab")
     var out_ptr = w[].alloc_string_struct()
     w[].call_void("string_repeat", args_ptr_i32_ptr(ptr, 3, out_ptr))
@@ -217,7 +217,7 @@ fn test_string_repeat_basic(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_string_repeat_one(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_repeat_one(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var ptr = w[].write_string_struct("x")
     var out_ptr = w[].alloc_string_struct()
     w[].call_void("string_repeat", args_ptr_i32_ptr(ptr, 1, out_ptr))
@@ -225,7 +225,7 @@ fn test_string_repeat_one(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(result, "x", 'string_repeat("x", 1) === "x"')
 
 
-fn test_string_repeat_zero(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_repeat_zero(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var ptr = w[].write_string_struct("abc")
     var out_ptr = w[].alloc_string_struct()
     w[].call_void("string_repeat", args_ptr_i32_ptr(ptr, 0, out_ptr))
@@ -233,7 +233,7 @@ fn test_string_repeat_zero(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(result, "", 'string_repeat("abc", 0) === ""')
 
 
-fn test_string_repeat_five(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_repeat_five(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var ptr = w[].write_string_struct("ha")
     var out_ptr = w[].alloc_string_struct()
     w[].call_void("string_repeat", args_ptr_i32_ptr(ptr, 5, out_ptr))
@@ -248,7 +248,7 @@ fn test_string_repeat_five(w: UnsafePointer[WasmInstance]) raises:
 # ── String equality ──────────────────────────────────────────────────────────
 
 
-fn test_string_eq_same(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_eq_same(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a_ptr = w[].write_string_struct("hello")
     var b_ptr = w[].write_string_struct("hello")
     assert_equal(
@@ -258,7 +258,7 @@ fn test_string_eq_same(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_string_eq_different(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_eq_different(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a_ptr = w[].write_string_struct("hello")
     var b_ptr = w[].write_string_struct("world")
     assert_equal(
@@ -268,7 +268,7 @@ fn test_string_eq_different(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_string_eq_both_empty(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_eq_both_empty(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a_ptr = w[].write_string_struct("")
     var b_ptr = w[].write_string_struct("")
     assert_equal(
@@ -278,7 +278,7 @@ fn test_string_eq_both_empty(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_string_eq_prefix(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_eq_prefix(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a_ptr = w[].write_string_struct("hello")
     var b_ptr = w[].write_string_struct("hell")
     assert_equal(
@@ -288,7 +288,7 @@ fn test_string_eq_prefix(w: UnsafePointer[WasmInstance]) raises:
     )
 
 
-fn test_string_eq_case_sensitive(w: UnsafePointer[WasmInstance]) raises:
+fn test_string_eq_case_sensitive(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a_ptr = w[].write_string_struct("abc")
     var b_ptr = w[].write_string_struct("ABC")
     assert_equal(

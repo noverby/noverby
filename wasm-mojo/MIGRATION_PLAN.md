@@ -8,7 +8,7 @@
 
 ## 🔴 Breaking Changes
 
-### B1 — `List` variadic initializer removed
+### ✅ B1 — `List` variadic initializer removed
 
 **What changed:** `List[T](a, b, c)` no longer works. Use typed list literals instead.
 
@@ -39,9 +39,13 @@ var keys: List[UInt32] = [1, 2, 3]
 **Estimated scope:** ~50–80 call sites across `context.mojo`, `keyed_list.mojo`,
 `create.mojo`, `registry.mojo`, `main.mojo`, and example apps.
 
+**Status:** ✅ Done — all `List[T](a, b, c)` variadic calls replaced with
+`[a, b, c]` typed list literals across `src/`, `test/`, and `examples/`.
+Comments and docstrings updated accordingly.
+
 ---
 
-### B2 — `alias` keyword warns, migrate to `comptime`
+### ✅ B2 — `alias` keyword warns, migrate to `comptime`
 
 **What changed:** The compiler now warns on every `alias` usage and suggests
 `comptime` instead. `alias` still works but will eventually become an error.
@@ -71,9 +75,12 @@ comptime TAG_DIV: UInt8 = 0
 migrations are done, since it touches every file and will create merge conflicts
 with concurrent work.
 
+**Status:** ✅ Done — all `alias` declarations replaced with `comptime` across
+`src/`, `test/`, and `examples/` (~150+ declarations).
+
 ---
 
-### B3 — `ImplicitlyBoolable` trait removed
+### ✅ B3 — `ImplicitlyBoolable` trait removed
 
 **What changed:** Types like `Int`, `UInt32`, `UnsafePointer` can no longer
 implicitly convert to `Bool`. Code like `if pointer:` or `if count:` will fail.
@@ -98,9 +105,13 @@ if ptr != UnsafePointer[T]():  # explicit null check
 **Estimated scope:** ~20–40 sites. Careful audit needed — some may already use
 explicit comparisons.
 
+**Status:** ✅ Done — 4 implicit `UnsafePointer` truthiness checks fixed in
+`app_shell.mojo` (3 sites) and `runtime.mojo` (1 site). All other conditionals
+already used explicit `Bool` comparisons.
+
 ---
 
-### B4 — `UInt` is now `Scalar[DType.uint]`
+### ✅ B4 — `UInt` is now `Scalar[DType.uint]`
 
 **What changed:** `UInt` became a type alias to `Scalar[DType.uint]`. Implicit
 conversion between `Int` and `UInt` has been removed.
@@ -110,9 +121,12 @@ bare `UInt`. But any `Int` ↔ `UInt` implicit conversions will break.
 
 **Search pattern:** `grep -rn '\bUInt\b' src/ | grep -v UInt8 | grep -v UInt32`
 
+**Status:** ✅ No changes needed — only explicit `UInt()` construction in
+`element_id.mojo.__hash__()`, which continues to work.
+
 ---
 
-### B5 — `Iterator` trait overhaul
+### ✅ B5 — `Iterator` trait overhaul
 
 **What changed:** `__has_next__()` removed; iterators now use `__next__()` that
 `raises StopIteration`. The `Iterator.Element` type no longer requires
@@ -124,9 +138,11 @@ transparently.
 
 **Action:** No code changes needed unless custom iterators are added later.
 
+**Status:** ✅ No changes needed — confirmed no custom iterators in codebase.
+
 ---
 
-### B6 — `Error` no longer `Boolable` or `Defaultable`
+### ✅ B6 — `Error` no longer `Boolable` or `Defaultable`
 
 **What changed:** `Error()` (default construction) and `if error:` patterns
 no longer work. Errors must be constructed with meaningful messages.
@@ -135,22 +151,30 @@ no longer work. Errors must be constructed with meaningful messages.
 
 **Search pattern:** `grep -rn 'Error()' src/`
 
+**Status:** ✅ No changes needed — no `Error()` default construction or boolean
+checks on `Error` values found.
+
 ---
 
-### B7 — `InlineArray` no longer `ImplicitlyCopyable`
+### ✅ B7 — `InlineArray` no longer `ImplicitlyCopyable`
 
 **What changed:** Users must explicitly copy arrays or take references.
 
 **Impact:** Low — check if any `InlineArray` values are passed by implicit copy.
 
+**Status:** ✅ No changes needed — no `InlineArray` usage in codebase.
+
 ---
 
-### B8 — `Writer` rework: `write_bytes()` → `write_string()`
+### ✅ B8 — `Writer` rework: `write_bytes()` → `write_string()`
 
 **What changed:** `Writer` now supports only UTF-8 data. `write_bytes()` replaced
 with `write_string()`. `String.__init__(*, bytes:)` renamed to `unsafe_from_utf8`.
 
 **Impact:** Low — only relevant if custom `Writer` implementations exist.
+
+**Status:** ✅ No changes needed — no custom `Writer` implementations or
+`write_bytes()` calls found.
 
 ---
 
@@ -176,6 +200,8 @@ fn dispatch_event(handler_id: UInt32) raises EventError -> Bool:
 
 **Priority:** Medium — adopt incrementally as error paths are touched.
 
+**Status:** 🟡 Not yet adopted — available for incremental use.
+
 ---
 
 ### F2 — String UTF-8 safety constructors
@@ -190,6 +216,8 @@ fn dispatch_event(handler_id: UInt32) raises EventError -> Bool:
 guarantees when constructing strings from shared memory buffers.
 
 **Priority:** Medium — apply when touching string bridge code.
+
+**Status:** 🟡 Not yet adopted — available for use when touching bridge code.
 
 ---
 
@@ -211,6 +239,8 @@ struct ElementId(Equatable, Writable):
 
 **Priority:** Medium — improves debugging and test assertions.
 
+**Status:** 🟡 Not yet adopted — available for incremental use.
+
 ---
 
 ### F4 — `Copyable` now refines `Movable`
@@ -222,6 +252,11 @@ struct ElementId(Equatable, Writable):
 **Search pattern:** `grep -rn 'Copyable.*Movable\|Movable.*Copyable' src/`
 
 **Priority:** Low — minor cleanup.
+
+**Status:** ✅ Done — removed redundant `Movable` from all struct declarations
+that already declare `Copyable` (~40 structs). Also cleaned up redundant
+`Copyable & Movable & AnyType` generic constraints to `Copyable & AnyType`
+in `runtime.mojo`.
 
 ---
 
@@ -329,22 +364,27 @@ unblocked** by 0.26.1 but not yet fully actionable:
 
 Recommended sequence to minimize churn and test breakage:
 
-1. **B3 — `ImplicitlyBoolable`** — fix all implicit bool conversions first,
+1. ✅ **B3 — `ImplicitlyBoolable`** — fix all implicit bool conversions first,
    since these cause hard compile errors and are scattered throughout.
 
-2. **B1 — `List` variadic init** — update all `List[T](a, b, c)` patterns.
+2. ✅ **B1 — `List` variadic init** — update all `List[T](a, b, c)` patterns.
    This is the most widespread change.
 
-3. **B4–B8 — Minor breaks** — fix `UInt` conversions, `Error` patterns,
+3. ✅ **B4–B8 — Minor breaks** — fix `UInt` conversions, `Error` patterns,
    `InlineArray` copies, `Writer` changes.
 
-4. **B2 — `alias` → `comptime`** — do this last as a bulk find-replace,
+4. ✅ **B2 — `alias` → `comptime`** — do this last as a bulk find-replace,
    since it touches every file and is purely mechanical.
 
-5. **F1–F3 — Adopt new features** — typed errors, UTF-8 constructors,
+5. 🟡 **F1–F3 — Adopt new features** — typed errors, UTF-8 constructors,
    default trait impls. Do incrementally as code is touched.
 
-6. **F7 — `-Werror` in CI** — enable after all warnings are resolved.
+6. 🟡 **F7 — `-Werror` in CI** — enable after all warnings are resolved.
+
+### Also completed
+
+- ✅ **F4 — Remove redundant `Movable`** — cleaned up ~40 struct declarations
+  and generic constraints.
 
 ---
 

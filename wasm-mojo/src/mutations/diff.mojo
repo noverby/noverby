@@ -116,17 +116,17 @@ struct DiffEngine:
         # The new VNode now has mount state from the old VNode (transferred/updated)
     """
 
-    var writer: UnsafePointer[MutationWriter]
-    var eid_alloc: UnsafePointer[ElementIdAllocator]
-    var runtime: UnsafePointer[Runtime]
-    var store: UnsafePointer[VNodeStore]
+    var writer: UnsafePointer[MutationWriter, MutExternalOrigin]
+    var eid_alloc: UnsafePointer[ElementIdAllocator, MutExternalOrigin]
+    var runtime: UnsafePointer[Runtime, MutExternalOrigin]
+    var store: UnsafePointer[VNodeStore, MutExternalOrigin]
 
     fn __init__(
         out self,
-        writer: UnsafePointer[MutationWriter],
-        eid_alloc: UnsafePointer[ElementIdAllocator],
-        runtime: UnsafePointer[Runtime],
-        store: UnsafePointer[VNodeStore],
+        writer: UnsafePointer[MutationWriter, MutExternalOrigin],
+        eid_alloc: UnsafePointer[ElementIdAllocator, MutExternalOrigin],
+        runtime: UnsafePointer[Runtime, MutExternalOrigin],
+        store: UnsafePointer[VNodeStore, MutExternalOrigin],
     ):
         self.writer = writer
         self.eid_alloc = eid_alloc

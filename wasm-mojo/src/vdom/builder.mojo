@@ -23,7 +23,7 @@
 # The builder can also be used from WASM exports, where it is heap-allocated
 # and manipulated via pointer handles (Int64).
 
-from memory import UnsafePointer
+from memory import UnsafePointer, alloc
 from .template import (
     Template,
     TemplateNode,
@@ -299,14 +299,14 @@ struct TemplateBuilder(Movable):
 # pointer handles.  These helpers manage the lifecycle.
 
 
-fn create_builder(name: String) -> UnsafePointer[TemplateBuilder]:
+fn create_builder(name: String) -> UnsafePointer[TemplateBuilder, MutExternalOrigin]:
     """Allocate a TemplateBuilder on the heap and return a pointer."""
-    var ptr = UnsafePointer[TemplateBuilder].alloc(1)
+    var ptr = alloc[TemplateBuilder](1)
     ptr.init_pointee_move(TemplateBuilder(name))
     return ptr
 
 
-fn destroy_builder(ptr: UnsafePointer[TemplateBuilder]):
+fn destroy_builder(ptr: UnsafePointer[TemplateBuilder, MutExternalOrigin]):
     """Destroy and free a heap-allocated TemplateBuilder."""
     ptr.destroy_pointee()
     ptr.free()

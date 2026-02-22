@@ -37,9 +37,9 @@
 #   - is_empty()     — convenience check
 #   - __str__()      — for easy interpolation
 #
-# All handle types are lightweight value types (Copyable + Movable) that
-# hold a non-owning pointer to the Runtime.  They do NOT manage the
-# Runtime's lifetime — the ComponentContext or AppShell owns that.
+# All handle types are lightweight value types (Copyable) that hold a
+# non-owning pointer to the Runtime.  They do NOT manage the Runtime's
+# lifetime — the ComponentContext or AppShell owns that.
 #
 # Thread safety: WASM is single-threaded, so no synchronisation needed.
 
@@ -52,7 +52,7 @@ from .runtime import Runtime
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-struct SignalI32(Copyable, Movable, Stringable):
+struct SignalI32(Copyable, Stringable):
     """Ergonomic handle wrapping a raw signal key + runtime pointer.
 
     Provides operator overloading for concise reactive state management:
@@ -68,11 +68,11 @@ struct SignalI32(Copyable, Movable, Stringable):
     """
 
     var key: UInt32
-    var runtime: UnsafePointer[Runtime]
+    var runtime: UnsafePointer[Runtime, MutExternalOrigin]
 
     # ── Construction ─────────────────────────────────────────────────
 
-    fn __init__(out self, key: UInt32, runtime: UnsafePointer[Runtime]):
+    fn __init__(out self, key: UInt32, runtime: UnsafePointer[Runtime, MutExternalOrigin]):
         """Create a signal handle from a raw key and runtime pointer.
 
         Args:
@@ -190,7 +190,7 @@ struct SignalI32(Copyable, Movable, Stringable):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-struct MemoI32(Copyable, Movable, Stringable):
+struct MemoI32(Copyable, Stringable):
     """Ergonomic handle wrapping a raw memo ID + runtime pointer.
 
     Memos are derived values that cache their result and recompute only
@@ -214,11 +214,11 @@ struct MemoI32(Copyable, Movable, Stringable):
     """
 
     var id: UInt32
-    var runtime: UnsafePointer[Runtime]
+    var runtime: UnsafePointer[Runtime, MutExternalOrigin]
 
     # ── Construction ─────────────────────────────────────────────────
 
-    fn __init__(out self, id: UInt32, runtime: UnsafePointer[Runtime]):
+    fn __init__(out self, id: UInt32, runtime: UnsafePointer[Runtime, MutExternalOrigin]):
         """Create a memo handle from a raw ID and runtime pointer.
 
         Args:
@@ -327,7 +327,7 @@ struct MemoI32(Copyable, Movable, Stringable):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-struct EffectHandle(Copyable, Movable):
+struct EffectHandle(Copyable):
     """Ergonomic handle wrapping a raw effect ID + runtime pointer.
 
     Effects are reactive side effects that run when their dependencies
@@ -349,11 +349,11 @@ struct EffectHandle(Copyable, Movable):
     """
 
     var id: UInt32
-    var runtime: UnsafePointer[Runtime]
+    var runtime: UnsafePointer[Runtime, MutExternalOrigin]
 
     # ── Construction ─────────────────────────────────────────────────
 
-    fn __init__(out self, id: UInt32, runtime: UnsafePointer[Runtime]):
+    fn __init__(out self, id: UInt32, runtime: UnsafePointer[Runtime, MutExternalOrigin]):
         """Create an effect handle from a raw ID and runtime pointer.
 
         Args:
@@ -407,7 +407,7 @@ struct EffectHandle(Copyable, Movable):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-struct SignalBool(Copyable, Movable, Stringable):
+struct SignalBool(Copyable, Stringable):
     """Ergonomic handle wrapping a Bool signal stored as Int32 (0/1).
 
     Provides a proper boolean API on top of the Int32 signal store,
@@ -426,11 +426,11 @@ struct SignalBool(Copyable, Movable, Stringable):
     """
 
     var key: UInt32
-    var runtime: UnsafePointer[Runtime]
+    var runtime: UnsafePointer[Runtime, MutExternalOrigin]
 
     # ── Construction ─────────────────────────────────────────────────
 
-    fn __init__(out self, key: UInt32, runtime: UnsafePointer[Runtime]):
+    fn __init__(out self, key: UInt32, runtime: UnsafePointer[Runtime, MutExternalOrigin]):
         """Create a bool signal handle from a raw key and runtime pointer.
 
         Args:
@@ -536,7 +536,7 @@ struct SignalBool(Copyable, Movable, Stringable):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-struct SignalString(Copyable, Movable, Stringable):
+struct SignalString(Copyable, Stringable):
     """Ergonomic handle wrapping a reactive String signal.
 
     Unlike SignalI32/SignalBool which store values in the type-erased
@@ -556,7 +556,7 @@ struct SignalString(Copyable, Movable, Stringable):
 
     var string_key: UInt32
     var version_key: UInt32
-    var runtime: UnsafePointer[Runtime]
+    var runtime: UnsafePointer[Runtime, MutExternalOrigin]
 
     # ── Construction ─────────────────────────────────────────────────
 
@@ -564,7 +564,7 @@ struct SignalString(Copyable, Movable, Stringable):
         out self,
         string_key: UInt32,
         version_key: UInt32,
-        runtime: UnsafePointer[Runtime],
+        runtime: UnsafePointer[Runtime, MutExternalOrigin],
     ):
         """Create a string signal handle from raw keys and runtime pointer.
 

@@ -33,7 +33,7 @@ from memory import UnsafePointer
 # ── MemoEntry ────────────────────────────────────────────────────────────────
 
 
-struct MemoEntry(Copyable, Movable):
+struct MemoEntry(Copyable):
     """A cached derived value with dependency tracking.
 
     A memo has its own reactive context (context_id) that records which
@@ -98,7 +98,7 @@ struct MemoEntry(Copyable, Movable):
 
 
 @fieldwise_init
-struct MemoSlotState(Copyable, Movable):
+struct MemoSlotState(Copyable):
     """Tracks whether a memo slot is occupied or vacant."""
 
     var occupied: Bool
@@ -206,7 +206,7 @@ struct MemoStore(Movable):
         """
         return self._entries[Int(id)].copy()
 
-    fn get_ptr(mut self, id: UInt32) -> UnsafePointer[MemoEntry]:
+    fn get_ptr(mut self, id: UInt32) -> UnsafePointer[MemoEntry, MutExternalOrigin]:
         """Return a pointer to the memo entry at `id`.
 
         The pointer is valid until the next mutation of the store.

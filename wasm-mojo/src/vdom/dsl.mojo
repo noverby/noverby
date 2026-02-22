@@ -18,11 +18,11 @@
 #
 # Developers write:
 #
-#     var view = el_div(List[Node](
-#         el_span(List[Node](dyn_text(0))),
-#         el_button(List[Node](text("+"), dyn_attr(0))),
-#         el_button(List[Node](text("-"), dyn_attr(1))),
-#     ))
+#     var view = el_div([
+#         el_span([dyn_text(0)]),
+#         el_button([text("+"), dyn_attr(0)]),
+#         el_button([text("-"), dyn_attr(1)]),
+#     ])
 #     var template = to_template(view, "counter")
 #
 # And instead of:
@@ -193,14 +193,14 @@ fn text_when(condition: Bool, true_text: String, false_text: String) -> String:
 
 # ── Node kind tags ───────────────────────────────────────────────────────────
 
-alias NODE_TEXT: UInt8 = 0  # Static text content
-alias NODE_ELEMENT: UInt8 = 1  # HTML element with tag, children, attrs
-alias NODE_DYN_TEXT: UInt8 = 2  # Dynamic text placeholder (slot index)
-alias NODE_DYN_NODE: UInt8 = 3  # Dynamic node placeholder (slot index)
-alias NODE_STATIC_ATTR: UInt8 = 4  # Static attribute (name + value)
-alias NODE_DYN_ATTR: UInt8 = 5  # Dynamic attribute placeholder (slot index)
-alias NODE_EVENT: UInt8 = 6  # Inline event handler (action + signal + operand)
-alias NODE_BIND_VALUE: UInt8 = 7  # Value binding (SignalString → dynamic attr)
+comptime NODE_TEXT: UInt8 = 0  # Static text content
+comptime NODE_ELEMENT: UInt8 = 1  # HTML element with tag, children, attrs
+comptime NODE_DYN_TEXT: UInt8 = 2  # Dynamic text placeholder (slot index)
+comptime NODE_DYN_NODE: UInt8 = 3  # Dynamic node placeholder (slot index)
+comptime NODE_STATIC_ATTR: UInt8 = 4  # Static attribute (name + value)
+comptime NODE_DYN_ATTR: UInt8 = 5  # Dynamic attribute placeholder (slot index)
+comptime NODE_EVENT: UInt8 = 6  # Inline event handler (action + signal + operand)
+comptime NODE_BIND_VALUE: UInt8 = 7  # Value binding (SignalString → dynamic attr)
 
 # ── Auto-numbering sentinel ──────────────────────────────────────────────────
 #
@@ -208,10 +208,10 @@ alias NODE_BIND_VALUE: UInt8 = 7  # Value binding (SignalString → dynamic attr
 # sentinel value.  ComponentContext.register_view() / setup_view() will
 # auto-assign sequential indices (0, 1, 2, ...) in tree-walk order.
 
-alias DYN_TEXT_AUTO: UInt32 = 0xFFFFFFFF
+comptime DYN_TEXT_AUTO: UInt32 = 0xFFFFFFFF
 
 
-struct Node(Copyable, Movable):
+struct Node(Copyable):
     """A declarative description of a UI element tree node.
 
     Node is a tagged union that can represent static text, HTML elements
@@ -556,8 +556,8 @@ fn dyn_text() -> Node:
     Dioxus's `{count}` interpolation syntax.
 
     Usage:
-        el_h1(List[Node](dyn_text()))  # auto-assigned index 0
-        el_p(List[Node](dyn_text()))   # auto-assigned index 1
+        el_h1([dyn_text()])  # auto-assigned index 0
+        el_p([dyn_text()])   # auto-assigned index 1
     """
     return Node.dynamic_text_node(DYN_TEXT_AUTO)
 
@@ -618,7 +618,7 @@ fn onclick_add(signal: SignalI32, delta: Int32) -> Node:
     Equivalent to Dioxus: `onclick: move |_| signal += delta`
 
     Usage:
-        el_button(List[Node](text("Up high!"), onclick_add(count, 1)))
+        el_button([text("Up high!"), onclick_add(count, 1)])
     """
     return Node.event_node(
         String("click"), ACTION_SIGNAL_ADD_I32, signal.key, delta
@@ -631,7 +631,7 @@ fn onclick_sub(signal: SignalI32, delta: Int32) -> Node:
     Equivalent to Dioxus: `onclick: move |_| signal -= delta`
 
     Usage:
-        el_button(List[Node](text("Down low!"), onclick_sub(count, 1)))
+        el_button([text("Down low!"), onclick_sub(count, 1)])
     """
     return Node.event_node(
         String("click"), ACTION_SIGNAL_SUB_I32, signal.key, delta
@@ -644,7 +644,7 @@ fn onclick_set(signal: SignalI32, value: Int32) -> Node:
     Equivalent to Dioxus: `onclick: move |_| signal.set(value)`
 
     Usage:
-        el_button(List[Node](text("Reset"), onclick_set(count, 0)))
+        el_button([text("Reset"), onclick_set(count, 0)])
     """
     return Node.event_node(
         String("click"), ACTION_SIGNAL_SET_I32, signal.key, value
@@ -657,7 +657,7 @@ fn onclick_toggle(signal: SignalI32) -> Node:
     Equivalent to Dioxus: `onclick: move |_| signal.toggle()`
 
     Usage:
-        el_button(List[Node](text("Toggle"), onclick_toggle(flag)))
+        el_button([text("Toggle"), onclick_toggle(flag)])
     """
     return Node.event_node(String("click"), ACTION_SIGNAL_TOGGLE, signal.key, 0)
 
@@ -727,7 +727,7 @@ fn on_event(
         operand: The operand value for the action.
 
     Usage:
-        el_input(List[Node](on_event("input", text_sig, ACTION_SIGNAL_SET_INPUT, 0)))
+        el_input([on_event("input", text_sig, ACTION_SIGNAL_SET_INPUT, 0)])
     """
     return Node.event_node(event_name, action, signal.key, operand)
 
@@ -876,7 +876,7 @@ fn el(html_tag: UInt8, var items: List[Node]) -> Node:
     Items can be a mix of children and attributes in any order.
     The `to_template()` function sorts them appropriately.
 
-    Usage: `el(TAG_DIV, List[Node](text("hello"), attr("class", "x")))`
+    Usage: `el(TAG_DIV, [text("hello"), attr("class", "x")])`
     """
     return Node.element_node(html_tag, items^)
 
@@ -1307,16 +1307,16 @@ fn el_code() -> Node:
 # Multi-arg el_* overloads — Dioxus-style ergonomic element construction
 # ══════════════════════════════════════════════════════════════════════════════
 #
-# These overloads eliminate the need for `List[Node](...)` wrappers,
+# These overloads eliminate the need for `[...]` list literal wrappers,
 # bringing the DSL much closer to Dioxus's `rsx!` macro syntax.
 #
 # Instead of:
 #
-#     el_div(List[Node](
-#         el_h1(List[Node](dyn_text())),
-#         el_button(List[Node](text("Up high!"), onclick_add(count, 1))),
-#         el_button(List[Node](text("Down low!"), onclick_sub(count, 1))),
-#     ))
+#     el_div([
+#         el_h1([dyn_text()]),
+#         el_button([text("Up high!"), onclick_add(count, 1)]),
+#         el_button([text("Down low!"), onclick_sub(count, 1)]),
+#     ])
 #
 # Developers write:
 #
@@ -1327,7 +1327,7 @@ fn el_code() -> Node:
 #     )
 #
 # Overloads are provided for 1–5 Node arguments per element.  For more
-# than 5 children, use the `List[Node](...)` form.
+# than 5 children, use the `[...]` list literal form.
 
 
 # ── Layout / Sectioning — multi-arg overloads ────────────────────────────────
@@ -3265,13 +3265,13 @@ struct VNodeBuilder(Movable):
         var idx = vb.index()
     """
 
-    var _store: UnsafePointer[VNodeStore]
+    var _store: UnsafePointer[VNodeStore, MutExternalOrigin]
     var _vnode_idx: UInt32
 
     # ── Construction ─────────────────────────────────────────────────
 
     fn __init__(
-        out self, template_id: UInt32, store: UnsafePointer[VNodeStore]
+        out self, template_id: UInt32, store: UnsafePointer[VNodeStore, MutExternalOrigin]
     ):
         """Create a new TemplateRef VNode in the store.
 
@@ -3286,7 +3286,7 @@ struct VNodeBuilder(Movable):
         out self,
         template_id: UInt32,
         key: String,
-        store: UnsafePointer[VNodeStore],
+        store: UnsafePointer[VNodeStore, MutExternalOrigin],
     ):
         """Create a new keyed TemplateRef VNode in the store.
 
@@ -3440,7 +3440,7 @@ struct VNodeBuilder(Movable):
         """Return the VNode's index in the VNodeStore."""
         return self._vnode_idx
 
-    fn store(self) -> UnsafePointer[VNodeStore]:
+    fn store(self) -> UnsafePointer[VNodeStore, MutExternalOrigin]:
         """Return the VNodeStore pointer."""
         return self._store
 

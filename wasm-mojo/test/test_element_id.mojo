@@ -23,19 +23,19 @@ from wasm_harness import (
 )
 
 
-fn _get_wasm() raises -> UnsafePointer[WasmInstance]:
+fn _get_wasm() raises -> UnsafePointer[WasmInstance, MutExternalOrigin]:
     return get_instance()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-fn _create_alloc(w: UnsafePointer[WasmInstance]) raises -> Int:
+fn _create_alloc(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises -> Int:
     """Create a heap-allocated ElementIdAllocator via WASM."""
     return Int(w[].call_i64("eid_alloc_create", no_args()))
 
 
-fn _destroy_alloc(w: UnsafePointer[WasmInstance], alloc_ptr: Int) raises:
+fn _destroy_alloc(w: UnsafePointer[WasmInstance, MutExternalOrigin], alloc_ptr: Int) raises:
     """Destroy a heap-allocated ElementIdAllocator via WASM."""
     w[].call_void("eid_alloc_destroy", args_ptr(alloc_ptr))
 
@@ -43,7 +43,7 @@ fn _destroy_alloc(w: UnsafePointer[WasmInstance], alloc_ptr: Int) raises:
 # ── Allocator — initial state ────────────────────────────────────────────────
 
 
-fn test_allocator_initial_state(w: UnsafePointer[WasmInstance]) raises:
+fn test_allocator_initial_state(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a = _create_alloc(w)
 
     # Root is pre-reserved, so count=1, user_count=0
@@ -64,7 +64,7 @@ fn test_allocator_initial_state(w: UnsafePointer[WasmInstance]) raises:
 # ── Allocator — first alloc returns 1 ────────────────────────────────────────
 
 
-fn test_allocator_first_alloc_returns_1(w: UnsafePointer[WasmInstance]) raises:
+fn test_allocator_first_alloc_returns_1(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a = _create_alloc(w)
 
     var id = Int(w[].call_i32("eid_alloc", args_ptr(a)))
@@ -78,7 +78,7 @@ fn test_allocator_first_alloc_returns_1(w: UnsafePointer[WasmInstance]) raises:
 # ── Allocator — sequential alloc ─────────────────────────────────────────────
 
 
-fn test_allocator_sequential_alloc(w: UnsafePointer[WasmInstance]) raises:
+fn test_allocator_sequential_alloc(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a = _create_alloc(w)
 
     var id1 = Int(w[].call_i32("eid_alloc", args_ptr(a)))
@@ -97,7 +97,7 @@ fn test_allocator_sequential_alloc(w: UnsafePointer[WasmInstance]) raises:
 # ── Allocator — is_alive ─────────────────────────────────────────────────────
 
 
-fn test_allocator_is_alive(w: UnsafePointer[WasmInstance]) raises:
+fn test_allocator_is_alive(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a = _create_alloc(w)
 
     var id1 = Int(w[].call_i32("eid_alloc", args_ptr(a)))
@@ -130,7 +130,7 @@ fn test_allocator_is_alive(w: UnsafePointer[WasmInstance]) raises:
 # ── Allocator — free decrements count ────────────────────────────────────────
 
 
-fn test_allocator_free_decrements_count(w: UnsafePointer[WasmInstance]) raises:
+fn test_allocator_free_decrements_count(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a = _create_alloc(w)
 
     var id1 = Int(w[].call_i32("eid_alloc", args_ptr(a)))
@@ -156,7 +156,7 @@ fn test_allocator_free_decrements_count(w: UnsafePointer[WasmInstance]) raises:
 # ── Allocator — free root is noop ────────────────────────────────────────────
 
 
-fn test_allocator_free_root_is_noop(w: UnsafePointer[WasmInstance]) raises:
+fn test_allocator_free_root_is_noop(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a = _create_alloc(w)
 
     _ = w[].call_i32("eid_alloc", args_ptr(a))
@@ -180,7 +180,7 @@ fn test_allocator_free_root_is_noop(w: UnsafePointer[WasmInstance]) raises:
 # ── Allocator — double free is noop ──────────────────────────────────────────
 
 
-fn test_allocator_double_free_is_noop(w: UnsafePointer[WasmInstance]) raises:
+fn test_allocator_double_free_is_noop(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a = _create_alloc(w)
 
     var id = Int(w[].call_i32("eid_alloc", args_ptr(a)))
@@ -200,7 +200,7 @@ fn test_allocator_double_free_is_noop(w: UnsafePointer[WasmInstance]) raises:
 # ── Allocator — reuse freed slot ─────────────────────────────────────────────
 
 
-fn test_allocator_reuse_freed_slot(w: UnsafePointer[WasmInstance]) raises:
+fn test_allocator_reuse_freed_slot(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a = _create_alloc(w)
 
     var id1 = Int(w[].call_i32("eid_alloc", args_ptr(a)))  # gets 1
@@ -228,7 +228,7 @@ fn test_allocator_reuse_freed_slot(w: UnsafePointer[WasmInstance]) raises:
 
 
 fn test_allocator_reuse_multiple_freed_slots(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     var a = _create_alloc(w)
 
@@ -269,7 +269,7 @@ fn test_allocator_reuse_multiple_freed_slots(
 # ── Stress — many allocations ────────────────────────────────────────────────
 
 
-fn test_allocator_stress_100(w: UnsafePointer[WasmInstance]) raises:
+fn test_allocator_stress_100(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     var a = _create_alloc(w)
 
     var ids = List[Int]()
@@ -294,7 +294,7 @@ fn test_allocator_stress_100(w: UnsafePointer[WasmInstance]) raises:
 
 
 fn test_allocator_stress_free_even_realloc(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     var a = _create_alloc(w)
 
@@ -348,7 +348,7 @@ fn test_allocator_stress_free_even_realloc(
 
 
 fn test_allocator_stress_alloc_free_cycle(
-    w: UnsafePointer[WasmInstance],
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
 ) raises:
     """Allocate and free in a tight loop to exercise slot reuse."""
     var a = _create_alloc(w)
@@ -376,7 +376,7 @@ fn test_allocator_stress_alloc_free_cycle(
 # ── Debug — capacity query ───────────────────────────────────────────────────
 
 
-fn test_debug_eid_alloc_capacity(w: UnsafePointer[WasmInstance]) raises:
+fn test_debug_eid_alloc_capacity(w: UnsafePointer[WasmInstance, MutExternalOrigin]) raises:
     """debug_eid_alloc_capacity returns the total number of slots."""
     var a = _create_alloc(w)
 

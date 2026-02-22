@@ -9,69 +9,69 @@
 
 # ── Layout / Sectioning ─────────────────────────────────────────────────────
 
-alias TAG_DIV: UInt8 = 0
-alias TAG_SPAN: UInt8 = 1
-alias TAG_P: UInt8 = 2
-alias TAG_SECTION: UInt8 = 3
-alias TAG_HEADER: UInt8 = 4
-alias TAG_FOOTER: UInt8 = 5
-alias TAG_NAV: UInt8 = 6
-alias TAG_MAIN: UInt8 = 7
-alias TAG_ARTICLE: UInt8 = 8
-alias TAG_ASIDE: UInt8 = 9
+comptime TAG_DIV: UInt8 = 0
+comptime TAG_SPAN: UInt8 = 1
+comptime TAG_P: UInt8 = 2
+comptime TAG_SECTION: UInt8 = 3
+comptime TAG_HEADER: UInt8 = 4
+comptime TAG_FOOTER: UInt8 = 5
+comptime TAG_NAV: UInt8 = 6
+comptime TAG_MAIN: UInt8 = 7
+comptime TAG_ARTICLE: UInt8 = 8
+comptime TAG_ASIDE: UInt8 = 9
 
 # ── Headings ─────────────────────────────────────────────────────────────────
 
-alias TAG_H1: UInt8 = 10
-alias TAG_H2: UInt8 = 11
-alias TAG_H3: UInt8 = 12
-alias TAG_H4: UInt8 = 13
-alias TAG_H5: UInt8 = 14
-alias TAG_H6: UInt8 = 15
+comptime TAG_H1: UInt8 = 10
+comptime TAG_H2: UInt8 = 11
+comptime TAG_H3: UInt8 = 12
+comptime TAG_H4: UInt8 = 13
+comptime TAG_H5: UInt8 = 14
+comptime TAG_H6: UInt8 = 15
 
 # ── Lists ────────────────────────────────────────────────────────────────────
 
-alias TAG_UL: UInt8 = 16
-alias TAG_OL: UInt8 = 17
-alias TAG_LI: UInt8 = 18
+comptime TAG_UL: UInt8 = 16
+comptime TAG_OL: UInt8 = 17
+comptime TAG_LI: UInt8 = 18
 
 # ── Interactive ──────────────────────────────────────────────────────────────
 
-alias TAG_BUTTON: UInt8 = 19
-alias TAG_INPUT: UInt8 = 20
-alias TAG_FORM: UInt8 = 21
-alias TAG_TEXTAREA: UInt8 = 22
-alias TAG_SELECT: UInt8 = 23
-alias TAG_OPTION: UInt8 = 24
-alias TAG_LABEL: UInt8 = 25
+comptime TAG_BUTTON: UInt8 = 19
+comptime TAG_INPUT: UInt8 = 20
+comptime TAG_FORM: UInt8 = 21
+comptime TAG_TEXTAREA: UInt8 = 22
+comptime TAG_SELECT: UInt8 = 23
+comptime TAG_OPTION: UInt8 = 24
+comptime TAG_LABEL: UInt8 = 25
 
 # ── Links / Media ───────────────────────────────────────────────────────────
 
-alias TAG_A: UInt8 = 26
-alias TAG_IMG: UInt8 = 27
+comptime TAG_A: UInt8 = 26
+comptime TAG_IMG: UInt8 = 27
 
 # ── Table ────────────────────────────────────────────────────────────────────
 
-alias TAG_TABLE: UInt8 = 28
-alias TAG_THEAD: UInt8 = 29
-alias TAG_TBODY: UInt8 = 30
-alias TAG_TR: UInt8 = 31
-alias TAG_TD: UInt8 = 32
-alias TAG_TH: UInt8 = 33
+comptime TAG_TABLE: UInt8 = 28
+comptime TAG_THEAD: UInt8 = 29
+comptime TAG_TBODY: UInt8 = 30
+comptime TAG_TR: UInt8 = 31
+comptime TAG_TD: UInt8 = 32
+comptime TAG_TH: UInt8 = 33
 
 # ── Inline ───────────────────────────────────────────────────────────────────
 
-alias TAG_STRONG: UInt8 = 34
-alias TAG_EM: UInt8 = 35
-alias TAG_BR: UInt8 = 36
-alias TAG_HR: UInt8 = 37
-alias TAG_PRE: UInt8 = 38
-alias TAG_CODE: UInt8 = 39
+comptime TAG_STRONG: UInt8 = 34
+comptime TAG_EM: UInt8 = 35
+comptime TAG_BR: UInt8 = 36
+comptime TAG_HR: UInt8 = 37
+comptime TAG_PRE: UInt8 = 38
+comptime TAG_CODE: UInt8 = 39
 
 # ── Sentinel ─────────────────────────────────────────────────────────────────
 
-alias TAG_UNKNOWN: UInt8 = 255
-alias TAG_COUNT: Int = 40  # total number of known tags
+comptime TAG_UNKNOWN: UInt8 = 255
+comptime TAG_COUNT: Int = 40  # total number of known tags
 
 
 # ── Tag name lookup ──────────────────────────────────────────────────────────

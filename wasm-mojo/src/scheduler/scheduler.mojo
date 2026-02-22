@@ -21,7 +21,7 @@ from memory import UnsafePointer
 from signals import Runtime
 
 
-struct SchedulerEntry(Copyable, Movable):
+struct SchedulerEntry(Copyable):
     """A dirty scope entry with its height for sorting."""
 
     var scope_id: UInt32
@@ -66,7 +66,7 @@ struct Scheduler(Movable):
         self._queue = other._queue^
         self._sorted = other._sorted
 
-    fn collect(mut self, rt: UnsafePointer[Runtime]):
+    fn collect(mut self, rt: UnsafePointer[Runtime, MutExternalOrigin]):
         """Drain the runtime's dirty queue into the scheduler.
 
         Deduplicates against any entries already in the queue.
@@ -82,7 +82,7 @@ struct Scheduler(Movable):
         if len(dirty) > 0:
             self._sorted = False
 
-    fn collect_one(mut self, rt: UnsafePointer[Runtime], scope_id: UInt32):
+    fn collect_one(mut self, rt: UnsafePointer[Runtime, MutExternalOrigin], scope_id: UInt32):
         """Add a single scope to the queue (if not already present).
 
         Useful when you know exactly which scope is dirty without

@@ -38,7 +38,7 @@
 #   - `begin_item()` replaces manual `create_scope()` + `item_builder()`
 #   - `add_custom_event()` replaces manual `register_handler()` + `add_dyn_event()`
 #   - `add_class_if()` replaces 5-line if/else class pattern (Phase 18)
-#   - Multi-arg el_* overloads (no List[Node]() wrappers)
+#   - Multi-arg el_* overloads (no [...] list literal wrappers)
 #   - KeyedList abstraction (bundles FragmentSlot + scope IDs + template ID + handler map)
 #   - Constructor-based setup (all init in __init__)
 #   - ctx.use_signal() for automatic scope subscription
@@ -188,7 +188,7 @@
 #                 # select / remove
 #             return False
 
-from memory import UnsafePointer
+from memory import UnsafePointer, alloc
 from sys.ffi import external_call
 from bridge import MutationWriter
 from mutations import CreateEngine
@@ -220,7 +220,7 @@ from vdom import (
 )
 
 
-struct BenchRow(Copyable, Movable):
+struct BenchRow(Copyable):
     """A single benchmark table row."""
 
     var id: Int32
@@ -311,9 +311,9 @@ fn format_row_count(count: Int) -> String:
 
 # ── Label generation ─────────────────────────────────────────────────────────
 
-alias _ADJ_COUNT: Int = 12
-alias _COL_COUNT: Int = 11
-alias _NOUN_COUNT: Int = 12
+comptime _ADJ_COUNT: Int = 12
+comptime _COL_COUNT: Int = 11
+comptime _NOUN_COUNT: Int = 12
 
 
 fn _adjective(idx: Int) -> String:
@@ -398,8 +398,8 @@ fn _noun(idx: Int) -> String:
 # App-defined action tags for ItemBuilder.add_custom_event() dispatch.
 # These are stored in the KeyedList's handler_map and retrievable via
 # get_action().  Used by handle_event() for WASM-side row event dispatch.
-alias BENCH_ACTION_SELECT: UInt8 = 1
-alias BENCH_ACTION_REMOVE: UInt8 = 2
+comptime BENCH_ACTION_SELECT: UInt8 = 1
+comptime BENCH_ACTION_REMOVE: UInt8 = 2
 
 
 struct BenchmarkApp(Movable):
@@ -499,7 +499,7 @@ struct BenchmarkApp(Movable):
                 td > a + dyn_attr[2] > text("×")
             ]
 
-        Uses multi-arg el_* overloads — no List[Node]() wrappers needed
+        Uses multi-arg el_* overloads — no [...] list literal wrappers needed
         (except for the controls div which has 7 children: attr + 6 buttons).
         """
         # 1. Create context and signals
@@ -507,7 +507,7 @@ struct BenchmarkApp(Movable):
         self.version = self.ctx.use_signal(0)
         self.selected = self.ctx.use_signal(0)
 
-        # 2. Build controls div with List[Node] (attr + 6 buttons = 7 items)
+        # 2. Build controls div with List[Node] append (attr + 6 buttons = 7 items)
         var controls = List[Node]()
         controls.append(attr(String("class"), String("controls")))
         controls.append(
@@ -876,18 +876,18 @@ struct BenchmarkApp(Movable):
         return vb.build()
 
 
-fn bench_app_init() -> UnsafePointer[BenchmarkApp]:
+fn bench_app_init() -> UnsafePointer[BenchmarkApp, MutExternalOrigin]:
     """Initialize the benchmark app.  Returns a pointer to the app state.
 
     All setup happens in BenchmarkApp.__init__() — this function just
     allocates the heap slot and moves the app into it.
     """
-    var app_ptr = UnsafePointer[BenchmarkApp].alloc(1)
+    var app_ptr = alloc[BenchmarkApp](1)
     app_ptr.init_pointee_move(BenchmarkApp())
     return app_ptr
 
 
-fn bench_app_destroy(app_ptr: UnsafePointer[BenchmarkApp]):
+fn bench_app_destroy(app_ptr: UnsafePointer[BenchmarkApp, MutExternalOrigin]):
     """Destroy the benchmark app and free all resources."""
     app_ptr[0].ctx.destroy()
     app_ptr.destroy_pointee()
@@ -895,8 +895,8 @@ fn bench_app_destroy(app_ptr: UnsafePointer[BenchmarkApp]):
 
 
 fn bench_app_rebuild(
-    app: UnsafePointer[BenchmarkApp],
-    writer_ptr: UnsafePointer[MutationWriter],
+    app: UnsafePointer[BenchmarkApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the benchmark app.
 
@@ -952,8 +952,8 @@ fn bench_app_rebuild(
 
 
 fn bench_app_flush(
-    app: UnsafePointer[BenchmarkApp],
-    writer_ptr: UnsafePointer[MutationWriter],
+    app: UnsafePointer[BenchmarkApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates after a benchmark operation.
 

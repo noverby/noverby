@@ -31,9 +31,9 @@ Import signatures are derived from `wasm-objdump -j Import -x build/out.wasm`:
 """
 
 from collections import Dict
-from memory import UnsafePointer, memcpy, memset_zero
+from memory import UnsafePointer, memcpy, memset_zero, alloc
 from pathlib import Path
-from sys.ffi import DLHandle
+from sys.ffi import OwnedDLHandle
 
 from wasmtime_mojo import (
     Engine,
@@ -80,14 +80,14 @@ from wasmtime_mojo import (
 # Constants
 # ---------------------------------------------------------------------------
 
-alias STRING_STRUCT_SIZE: Int = 24
-alias STRING_STRUCT_ALIGN: Int = 8
+comptime STRING_STRUCT_SIZE: Int = 24
+comptime STRING_STRUCT_ALIGN: Int = 8
 
-alias SSO_FLAG: UInt64 = 0x8000_0000_0000_0000
-alias SSO_LEN_MASK: UInt64 = 0x1F00_0000_0000_0000
+comptime SSO_FLAG: UInt64 = 0x8000_0000_0000_0000
+comptime SSO_LEN_MASK: UInt64 = 0x1F00_0000_0000_0000
 
-alias WASM_PATH = "build/out.wasm"
-alias CWASM_PATH = "build/out.cwasm"
+comptime WASM_PATH = "build/out.wasm"
+comptime CWASM_PATH = "build/out.cwasm"
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +206,7 @@ struct SharedState(Movable):
             b.append(ptr)
             self.free_map[size] = b^
 
-    fn heap_stats(self) raises -> (Int, Int, Int):
+    fn heap_stats(self) raises -> Tuple[Int, Int, Int]:
         """Return (heap_pointer, free_blocks, free_bytes)."""
         var blocks = 0
         var bytes = 0
@@ -215,7 +215,7 @@ struct SharedState(Movable):
             var bucket = entry[].value
             blocks += len(bucket)
             bytes += size * len(bucket)
-        return (self.bump_ptr, blocks, bytes)
+        return Tuple(self.bump_ptr, blocks, bytes)
 
 
 # ---------------------------------------------------------------------------
@@ -224,15 +224,15 @@ struct SharedState(Movable):
 # Each callback has the wasmtime_func_callback_t signature:
 #   fn(env, caller, args, nargs, results, nresults) -> trap_ptr
 #
-# Return null pointer (UnsafePointer[NoneType]()) on success.
+# Return null pointer (UnsafePointer[NoneType, MutExternalOrigin]()) on success.
 # ---------------------------------------------------------------------------
 
 
 # Helper to get the SharedState from the env pointer.
 @always_inline
 fn _state(
-    env: UnsafePointer[NoneType],
-) -> UnsafePointer[SharedState]:
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+) -> UnsafePointer[SharedState, MutExternalOrigin]:
     return env.bitcast[SharedState]()
 
 
@@ -240,265 +240,265 @@ fn _state(
 
 
 fn _cb_aligned_alloc(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     var state = _state(env)
     var align = Int(args[0].get_i64())
     var size = Int(args[1].get_i64())
     var ptr = state[].aligned_alloc(align, size)
     results[0] = WasmtimeVal.from_i64(Int64(ptr))
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[1] KGEN_CompilerRT_AlignedFree: (i64) -> nil --------------------
 
 
 fn _cb_aligned_free(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     var state = _state(env)
     var ptr = Int(args[0].get_i64())
     state[].aligned_free(ptr)
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[2] fmaf: (f32, f32, f32) -> f32 ---------------------------------
 
 
 fn _cb_fmaf(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     var x = args[0].get_f32()
     var y = args[1].get_f32()
     var z = args[2].get_f32()
     # fused multiply-add (truncated to f32 precision)
     var r = x * y + z
     results[0] = WasmtimeVal.from_f32(r)
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[3] fminf: (f32, f32) -> f32 -------------------------------------
 
 
 fn _cb_fminf(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     var x = args[0].get_f32()
     var y = args[1].get_f32()
     var r = y if x > y else x
     results[0] = WasmtimeVal.from_f32(r)
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[4] fmaxf: (f32, f32) -> f32 -------------------------------------
 
 
 fn _cb_fmaxf(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     var x = args[0].get_f32()
     var y = args[1].get_f32()
     var r = x if x > y else y
     results[0] = WasmtimeVal.from_f32(r)
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[5] fma: (f64, f64, f64) -> f64 ----------------------------------
 
 
 fn _cb_fma(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     var x = args[0].get_f64()
     var y = args[1].get_f64()
     var z = args[2].get_f64()
     var r = x * y + z
     results[0] = WasmtimeVal.from_f64(r)
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[6] fmin: (f64, f64) -> f64 --------------------------------------
 
 
 fn _cb_fmin(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     var x = args[0].get_f64()
     var y = args[1].get_f64()
     var r = y if x > y else x
     results[0] = WasmtimeVal.from_f64(r)
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[7] fmax: (f64, f64) -> f64 --------------------------------------
 
 
 fn _cb_fmax(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     var x = args[0].get_f64()
     var y = args[1].get_f64()
     var r = x if x > y else y
     results[0] = WasmtimeVal.from_f64(r)
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[8] KGEN_CompilerRT_GetStackTrace: (i64, i64) -> i64 -------------
 
 
 fn _cb_get_stack_trace(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     results[0] = WasmtimeVal.from_i64(0)
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[9] free: (i64) -> nil -------------------------------------------
 
 
 fn _cb_free(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     # Bump allocator never reclaims.
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[10] dup: (i32) -> i32 -------------------------------------------
 
 
 fn _cb_dup(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     results[0] = WasmtimeVal.from_i32(1)
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[11] fdopen: (i32, i64) -> i64 -----------------------------------
 
 
 fn _cb_fdopen(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     results[0] = WasmtimeVal.from_i64(1)
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[12] fflush: (i64) -> i32 ----------------------------------------
 
 
 fn _cb_fflush(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     results[0] = WasmtimeVal.from_i32(1)
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[13] fclose: (i64) -> i32 ----------------------------------------
 
 
 fn _cb_fclose(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     results[0] = WasmtimeVal.from_i32(1)
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[14] KGEN_CompilerRT_fprintf: (i64, i64, i64) -> i32 -------------
 
 
 fn _cb_fprintf(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     results[0] = WasmtimeVal.from_i32(0)
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[15] write: (i64, i64, i64) -> i32 -------------------------------
 
 
 fn _cb_write(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     var state = _state(env)
     var fd = Int(args[0].get_i64())
     var ptr = Int(args[1].get_i64())
@@ -506,11 +506,11 @@ fn _cb_write(
 
     if length == 0:
         results[0] = WasmtimeVal.from_i32(0)
-        return UnsafePointer[NoneType]()
+        return UnsafePointer[NoneType, MutExternalOrigin]()
 
     if not state[].has_memory:
         results[0] = WasmtimeVal.from_i32(-1)
-        return UnsafePointer[NoneType]()
+        return UnsafePointer[NoneType, MutExternalOrigin]()
 
     if fd == 1:
         # stdout — capture the written text
@@ -534,7 +534,7 @@ fn _cb_write(
     else:
         results[0] = WasmtimeVal.from_i32(-1)
 
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # -- func[16] performance_now: () -> f64 -----------------------------------
@@ -544,18 +544,18 @@ fn _cb_write(
 
 
 fn _cb_performance_now(
-    env: UnsafePointer[NoneType],
-    caller: UnsafePointer[NoneType],
-    args: UnsafePointer[WasmtimeVal],
+    env: UnsafePointer[NoneType, MutExternalOrigin],
+    caller: UnsafePointer[NoneType, MutExternalOrigin],
+    args: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nargs: Int,
-    results: UnsafePointer[WasmtimeVal],
+    results: UnsafePointer[WasmtimeVal, MutExternalOrigin],
     nresults: Int,
-) -> UnsafePointer[NoneType]:
+) -> UnsafePointer[NoneType, MutExternalOrigin]:
     var state = _state(env)
     var t = state[].mock_time
     state[].mock_time += 1.0
     results[0] = WasmtimeVal.from_f64(t)
-    return UnsafePointer[NoneType]()
+    return UnsafePointer[NoneType, MutExternalOrigin]()
 
 
 # ---------------------------------------------------------------------------
@@ -579,7 +579,7 @@ struct WasmInstance(Movable):
     var _linker: Linker
     var _instance: WasmtimeInstance
     var _memory: WasmtimeMemory
-    var _state_ptr: UnsafePointer[SharedState]
+    var _state_ptr: UnsafePointer[SharedState, MutExternalOrigin]
 
     fn __init__(out self, wasm_path: String) raises:
         """Create a WasmInstance by loading and instantiating the WASM binary.
@@ -591,10 +591,10 @@ struct WasmInstance(Movable):
         var wasm_bytes = Path(wasm_path).read_bytes()
 
         # Allocate shared state on the heap
-        self._state_ptr = UnsafePointer[SharedState].alloc(1)
+        self._state_ptr = alloc[SharedState](1)
         self._state_ptr.init_pointee_move(SharedState())
         var env = self._state_ptr.bitcast[NoneType]()
-        var no_fin = UnsafePointer[NoneType]()
+        var no_fin = UnsafePointer[NoneType, MutExternalOrigin]()
 
         # Create engine with module caching enabled.
         # Each mojo-test function runs in a separate process, so in-memory
@@ -613,8 +613,8 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "KGEN_CompilerRT_AlignedAlloc",
-            List[UInt8](WASM_I64, WASM_I64),
-            List[UInt8](WASM_I64),
+            [WASM_I64, WASM_I64],
+            [WASM_I64],
             _cb_aligned_alloc,
             env,
         )
@@ -623,7 +623,7 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "KGEN_CompilerRT_AlignedFree",
-            List[UInt8](WASM_I64),
+            [WASM_I64],
             List[UInt8](),
             _cb_aligned_free,
             env,
@@ -633,8 +633,8 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "fmaf",
-            List[UInt8](WASM_F32, WASM_F32, WASM_F32),
-            List[UInt8](WASM_F32),
+            [WASM_F32, WASM_F32, WASM_F32],
+            [WASM_F32],
             _cb_fmaf,
             env,
         )
@@ -643,8 +643,8 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "fminf",
-            List[UInt8](WASM_F32, WASM_F32),
-            List[UInt8](WASM_F32),
+            [WASM_F32, WASM_F32],
+            [WASM_F32],
             _cb_fminf,
             env,
         )
@@ -653,8 +653,8 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "fmaxf",
-            List[UInt8](WASM_F32, WASM_F32),
-            List[UInt8](WASM_F32),
+            [WASM_F32, WASM_F32],
+            [WASM_F32],
             _cb_fmaxf,
             env,
         )
@@ -663,8 +663,8 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "fma",
-            List[UInt8](WASM_F64, WASM_F64, WASM_F64),
-            List[UInt8](WASM_F64),
+            [WASM_F64, WASM_F64, WASM_F64],
+            [WASM_F64],
             _cb_fma,
             env,
         )
@@ -673,8 +673,8 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "fmin",
-            List[UInt8](WASM_F64, WASM_F64),
-            List[UInt8](WASM_F64),
+            [WASM_F64, WASM_F64],
+            [WASM_F64],
             _cb_fmin,
             env,
         )
@@ -683,8 +683,8 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "fmax",
-            List[UInt8](WASM_F64, WASM_F64),
-            List[UInt8](WASM_F64),
+            [WASM_F64, WASM_F64],
+            [WASM_F64],
             _cb_fmax,
             env,
         )
@@ -693,8 +693,8 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "KGEN_CompilerRT_GetStackTrace",
-            List[UInt8](WASM_I64, WASM_I64),
-            List[UInt8](WASM_I64),
+            [WASM_I64, WASM_I64],
+            [WASM_I64],
             _cb_get_stack_trace,
             env,
         )
@@ -703,7 +703,7 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "free",
-            List[UInt8](WASM_I64),
+            [WASM_I64],
             List[UInt8](),
             _cb_free,
             env,
@@ -713,8 +713,8 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "dup",
-            List[UInt8](WASM_I32),
-            List[UInt8](WASM_I32),
+            [WASM_I32],
+            [WASM_I32],
             _cb_dup,
             env,
         )
@@ -723,8 +723,8 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "fdopen",
-            List[UInt8](WASM_I32, WASM_I64),
-            List[UInt8](WASM_I64),
+            [WASM_I32, WASM_I64],
+            [WASM_I64],
             _cb_fdopen,
             env,
         )
@@ -733,8 +733,8 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "fflush",
-            List[UInt8](WASM_I64),
-            List[UInt8](WASM_I32),
+            [WASM_I64],
+            [WASM_I32],
             _cb_fflush,
             env,
         )
@@ -743,8 +743,8 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "fclose",
-            List[UInt8](WASM_I64),
-            List[UInt8](WASM_I32),
+            [WASM_I64],
+            [WASM_I32],
             _cb_fclose,
             env,
         )
@@ -753,8 +753,8 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "KGEN_CompilerRT_fprintf",
-            List[UInt8](WASM_I64, WASM_I64, WASM_I64),
-            List[UInt8](WASM_I32),
+            [WASM_I64, WASM_I64, WASM_I64],
+            [WASM_I32],
             _cb_fprintf,
             env,
         )
@@ -763,8 +763,8 @@ struct WasmInstance(Movable):
         self._linker.define_func(
             "env",
             "write",
-            List[UInt8](WASM_I64, WASM_I64, WASM_I64),
-            List[UInt8](WASM_I32),
+            [WASM_I64, WASM_I64, WASM_I64],
+            [WASM_I32],
             _cb_write,
             env,
         )
@@ -774,7 +774,7 @@ struct WasmInstance(Movable):
             "env",
             "performance_now",
             List[UInt8](),
-            List[UInt8](WASM_F64),
+            [WASM_F64],
             _cb_performance_now,
             env,
         )
@@ -1425,7 +1425,7 @@ fn no_args() -> List[WasmtimeVal]:
 # ---------------------------------------------------------------------------
 
 
-fn get_instance() raises -> UnsafePointer[WasmInstance]:
+fn get_instance() raises -> UnsafePointer[WasmInstance, MutExternalOrigin]:
     """Create a new WasmInstance and return a heap pointer to it.
 
     Returns:
@@ -1434,6 +1434,6 @@ fn get_instance() raises -> UnsafePointer[WasmInstance]:
     Raises:
         Error: If the WASM binary cannot be loaded or instantiated.
     """
-    var ptr = UnsafePointer[WasmInstance].alloc(1)
+    var ptr = alloc[WasmInstance](1)
     ptr.init_pointee_move(WasmInstance(WASM_PATH))
     return ptr

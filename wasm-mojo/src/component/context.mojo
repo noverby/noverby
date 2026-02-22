@@ -85,7 +85,7 @@ from vdom import (
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-struct EventBinding(Copyable, Movable):
+struct EventBinding(Copyable):
     """A registered event handler binding for use by RenderBuilder.
 
     Stores the event name and handler ID so that `RenderBuilder.build()`
@@ -113,11 +113,11 @@ struct EventBinding(Copyable, Movable):
 # AutoBinding — Tagged union for auto-populated dynamic attributes (M20.4)
 # ══════════════════════════════════════════════════════════════════════════════
 
-alias AUTO_BIND_EVENT: UInt8 = 0
-alias AUTO_BIND_VALUE: UInt8 = 1
+comptime AUTO_BIND_EVENT: UInt8 = 0
+comptime AUTO_BIND_VALUE: UInt8 = 1
 
 
-struct AutoBinding(Copyable, Movable):
+struct AutoBinding(Copyable):
     """A single auto-populated dynamic attribute for RenderBuilder.
 
     Tagged union with two variants:
@@ -248,7 +248,7 @@ struct RenderBuilder(Movable):
     var _vb: VNodeBuilder
     var _events: List[EventBinding]
     var _auto_bindings: List[AutoBinding]
-    var _runtime: UnsafePointer[Runtime]
+    var _runtime: UnsafePointer[Runtime, MutExternalOrigin]
 
     fn __init__(
         out self,
@@ -259,13 +259,13 @@ struct RenderBuilder(Movable):
         self._vb = vb^
         self._events = events^
         self._auto_bindings = List[AutoBinding]()
-        self._runtime = UnsafePointer[Runtime]()
+        self._runtime = UnsafePointer[Runtime, MutExternalOrigin]()
 
     fn __init__(
         out self,
         var vb: VNodeBuilder,
         var auto_bindings: List[AutoBinding],
-        runtime: UnsafePointer[Runtime],
+        runtime: UnsafePointer[Runtime, MutExternalOrigin],
     ):
         """Construct with auto-bindings (events + value bindings)."""
         self._vb = vb^
@@ -422,11 +422,11 @@ struct ComponentContext(Movable):
         ctx.end_setup()
 
         ctx.register_view(
-            el_div(List[Node](
-                el_h1(List[Node](dyn_text(0))),
-                el_button(List[Node](text("Up high!"), onclick_add(count, 1))),
-                el_button(List[Node](text("Down low!"), onclick_sub(count, 1))),
-            )),
+            el_div([
+                el_h1([dyn_text(0)]),
+                el_button([text("Up high!"), onclick_add(count, 1)]),
+                el_button([text("Down low!"), onclick_sub(count, 1)]),
+            ]),
             "counter",
         )
 
@@ -739,11 +739,11 @@ struct ComponentContext(Movable):
 
         Mojo equivalent:
             ctx.setup_view(
-                el_div(List[Node](
-                    el_h1(List[Node](dyn_text())),
-                    el_button(List[Node](text("Up high!"), onclick_add(count, 1))),
-                    el_button(List[Node](text("Down low!"), onclick_sub(count, 1))),
-                )),
+                el_div([
+                    el_h1([dyn_text()]),
+                    el_button([text("Up high!"), onclick_add(count, 1)]),
+                    el_button([text("Down low!"), onclick_sub(count, 1)]),
+                ]),
                 "counter",
             )
 
@@ -783,11 +783,11 @@ struct ComponentContext(Movable):
 
         Mojo equivalent:
             ctx.register_view(
-                el_div(List[Node](
-                    el_h1(List[Node](dyn_text())),
-                    el_button(List[Node](text("Up high!"), onclick_add(count, 1))),
-                    el_button(List[Node](text("Down low!"), onclick_sub(count, 1))),
-                )),
+                el_div([
+                    el_h1([dyn_text()]),
+                    el_button([text("Up high!"), onclick_add(count, 1)]),
+                    el_button([text("Down low!"), onclick_sub(count, 1)]),
+                ]),
                 "counter",
             )
 
@@ -898,7 +898,7 @@ struct ComponentContext(Movable):
 
     fn flush(
         mut self,
-        writer_ptr: UnsafePointer[MutationWriter],
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
         new_vnode_idx: UInt32,
     ) -> Int32:
         """Diff old → new VNode, write End sentinel, return byte length.
@@ -1149,7 +1149,7 @@ struct ComponentContext(Movable):
 
     fn mount(
         mut self,
-        writer_ptr: UnsafePointer[MutationWriter],
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
         vnode_idx: UInt32,
     ) -> Int32:
         """Initial mount: emit templates + create VNode + append to root.
@@ -1217,7 +1217,7 @@ struct ComponentContext(Movable):
 
     fn diff(
         mut self,
-        writer_ptr: UnsafePointer[MutationWriter],
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
         new_vnode_idx: UInt32,
     ):
         """Diff the current VNode against a new one.
@@ -1232,7 +1232,7 @@ struct ComponentContext(Movable):
         self.shell.diff(writer_ptr, old_idx, new_vnode_idx)
         self.current_vnode = Int(new_vnode_idx)
 
-    fn finalize(self, writer_ptr: UnsafePointer[MutationWriter]) -> Int32:
+    fn finalize(self, writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin]) -> Int32:
         """Write the End sentinel and return byte length.
 
         Args:
@@ -1272,7 +1272,7 @@ struct ComponentContext(Movable):
 
     fn flush_fragment(
         mut self,
-        writer_ptr: UnsafePointer[MutationWriter],
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
         slot: FragmentSlot,
         new_frag_idx: UInt32,
     ) -> FragmentSlot:
@@ -1316,11 +1316,11 @@ struct ComponentContext(Movable):
 
     # ── Accessors for WASM exports ───────────────────────────────────
 
-    fn runtime_ptr(self) -> UnsafePointer[Runtime]:
+    fn runtime_ptr(self) -> UnsafePointer[Runtime, MutExternalOrigin]:
         """Return the runtime pointer (for WASM export helpers)."""
         return self.shell.runtime
 
-    fn store_ptr(self) -> UnsafePointer[VNodeStore]:
+    fn store_ptr(self) -> UnsafePointer[VNodeStore, MutExternalOrigin]:
         """Return the VNode store pointer."""
         return self.shell.store
 
@@ -1351,7 +1351,7 @@ struct ComponentContext(Movable):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-struct _EventInfo(Copyable, Movable):
+struct _EventInfo(Copyable):
     """Internal: collected event handler info from a NODE_EVENT node."""
 
     var event_name: String
@@ -1389,7 +1389,7 @@ struct _EventInfo(Copyable, Movable):
         self.attr_idx = other.attr_idx
 
 
-struct _ValueBindingInfo(Copyable, Movable):
+struct _ValueBindingInfo(Copyable):
     """Internal: collected value binding info from a NODE_BIND_VALUE node."""
 
     var attr_name: String

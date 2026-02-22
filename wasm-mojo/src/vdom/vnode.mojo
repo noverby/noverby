@@ -25,32 +25,32 @@ from memory import UnsafePointer
 
 # ── VNode kind tags ──────────────────────────────────────────────────────────
 
-alias VNODE_TEMPLATE_REF: UInt8 = 0
-alias VNODE_TEXT: UInt8 = 1
-alias VNODE_PLACEHOLDER: UInt8 = 2
-alias VNODE_FRAGMENT: UInt8 = 3
+comptime VNODE_TEMPLATE_REF: UInt8 = 0
+comptime VNODE_TEXT: UInt8 = 1
+comptime VNODE_PLACEHOLDER: UInt8 = 2
+comptime VNODE_FRAGMENT: UInt8 = 3
 
 
 # ── AttributeValue kind tags ─────────────────────────────────────────────────
 
-alias AVAL_TEXT: UInt8 = 0
-alias AVAL_INT: UInt8 = 1
-alias AVAL_FLOAT: UInt8 = 2
-alias AVAL_BOOL: UInt8 = 3
-alias AVAL_EVENT: UInt8 = 4
-alias AVAL_NONE: UInt8 = 5
+comptime AVAL_TEXT: UInt8 = 0
+comptime AVAL_INT: UInt8 = 1
+comptime AVAL_FLOAT: UInt8 = 2
+comptime AVAL_BOOL: UInt8 = 3
+comptime AVAL_EVENT: UInt8 = 4
+comptime AVAL_NONE: UInt8 = 5
 
 
 # ── DynamicNode kind tags ────────────────────────────────────────────────────
 
-alias DNODE_TEXT: UInt8 = 0
-alias DNODE_PLACEHOLDER: UInt8 = 1
+comptime DNODE_TEXT: UInt8 = 0
+comptime DNODE_PLACEHOLDER: UInt8 = 1
 
 
 # ── AttributeValue ───────────────────────────────────────────────────────────
 
 
-struct AttributeValue(Copyable, Movable):
+struct AttributeValue(Copyable):
     """The value of a dynamic attribute.
 
     Tagged union supporting text, integer, float, boolean, event handler
@@ -202,7 +202,7 @@ struct AttributeValue(Copyable, Movable):
 # ── DynamicAttr ──────────────────────────────────────────────────────────────
 
 
-struct DynamicAttr(Copyable, Movable):
+struct DynamicAttr(Copyable):
     """A dynamic attribute on a VNode's template instantiation.
 
     Each dynamic attribute specifies which element in the template it
@@ -264,7 +264,7 @@ struct DynamicAttr(Copyable, Movable):
 # ── DynamicNode ──────────────────────────────────────────────────────────────
 
 
-struct DynamicNode(Copyable, Movable):
+struct DynamicNode(Copyable):
     """A dynamic child node within a TemplateRef VNode.
 
     Dynamic nodes fill the slots identified by TemplateNode.Dynamic entries
@@ -315,7 +315,7 @@ struct DynamicNode(Copyable, Movable):
 # ── VNode ────────────────────────────────────────────────────────────────────
 
 
-struct VNode(Copyable, Movable):
+struct VNode(Copyable):
     """A virtual DOM node — the output of a component's render function.
 
     VNodes form the virtual DOM tree.  The diff algorithm compares old and
@@ -700,12 +700,13 @@ struct VNodeStore(Movable):
 
     # ── Access ───────────────────────────────────────────────────────
 
-    fn get_ptr(self, index: UInt32) -> UnsafePointer[VNode]:
+    fn get_ptr(self, index: UInt32) -> UnsafePointer[VNode, MutExternalOrigin]:
         """Return a pointer to the VNode at `index`.
 
         Valid until the store is mutated.
         """
-        return self._nodes.unsafe_ptr() + Int(index)
+        var ptr = self._nodes.unsafe_ptr() + Int(index)
+        return UnsafePointer[VNode, MutExternalOrigin](unsafe_from_address=Int(ptr))
 
     fn kind(self, index: UInt32) -> UInt8:
         """Return the kind tag of the VNode at `index`."""
