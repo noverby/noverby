@@ -1,13 +1,12 @@
 # TodoApp — Self-contained todo list application.
 #
-# Migrated to ComponentContext for Dioxus-like ergonomics:
+# Migrated to Dioxus-style ergonomics with Phase 16 abstractions:
+#   - Multi-arg el_* overloads (no List[Node]() wrappers)
+#   - KeyedList abstraction (bundles FragmentSlot + scope IDs + template ID)
 #   - Constructor-based setup (all init in __init__)
 #   - ctx.use_signal() for automatic scope subscription
-#   - ctx.register_template() + ctx.register_extra_template()
+#   - ctx.register_template() + KeyedList for multi-template apps
 #   - ctx.register_handler() for event handler registration
-#   - ctx.create_child_scope() / ctx.destroy_child_scopes()
-#   - ctx.flush_fragment() for keyed list lifecycle
-#   - ctx.build_empty_fragment() / ctx.push_fragment_child()
 #
 # Phase 8 — Demonstrates:
 #   - Dynamic keyed lists (add, remove, toggle items)
@@ -22,7 +21,7 @@
 #   - JS calls specific exports (todo_add_item, todo_remove_item, etc.)
 #     then calls todo_flush() to get mutation bytes
 #
-# Templates (built via DSL):
+# Templates (built via DSL with multi-arg overloads):
 #   - "todo-app": The app shell with input field + item list container
 #       div > [ input + button("Add") + ul > dynamic[0] ]
 #   - "todo-item": A single list item
@@ -31,34 +30,59 @@
 #       dynamic_attr[1] = click handler for remove
 #       dynamic_attr[2] = class on the li (for completed styling)
 #
-# Compare with old API:
+# Compare with Dioxus (Rust):
 #
-#     # Old — manual AppShell + scope + signal + template registration:
-#     app_ptr[0].shell = app_shell_create()
-#     app_ptr[0].scope_id = app_ptr[0].shell.create_root_scope()
-#     _ = app_ptr[0].shell.begin_render(app_ptr[0].scope_id)
-#     app_ptr[0].list_version_signal = app_ptr[0].shell.use_signal_i32(0)
-#     _ = app_ptr[0].shell.read_signal_i32(app_ptr[0].list_version_signal)
-#     app_ptr[0].shell.end_render(-1)
-#     var app_template = to_template(app_view, String("todo-app"))
-#     app_ptr[0].app_template_id = UInt32(
-#         app_ptr[0].shell.runtime[0].templates.register(app_template^)
-#     )
+#     fn TodoApp() -> Element {
+#         let mut items = use_signal(|| vec![]);
+#         rsx! {
+#             div {
+#                 input { type: "text", placeholder: "What needs to be done?" }
+#                 button { onclick: move |_| add_item(), "Add" }
+#                 ul { for item in items.read().iter() {
+#                     li { class: if item.completed { "completed" } else { "" },
+#                         span { "{item.text}" }
+#                         button { onclick: move |_| toggle(item.id), "✓" }
+#                         button { onclick: move |_| remove(item.id), "✕" }
+#                     }
+#                 }}
+#             }
+#         }
+#     }
 #
-#     # New — ComponentContext ergonomic API:
-#     self.ctx = ComponentContext.create()
-#     self.list_version = self.ctx.use_signal(0)
-#     self.ctx.end_setup()
-#     self.ctx.register_template(app_view, String("todo-app"))
-#     self.item_template_id = self.ctx.register_extra_template(
-#         item_view, String("todo-item"),
-#     )
+# Mojo equivalent (with Phase 16 abstractions):
+#
+#     struct TodoApp:
+#         var ctx: ComponentContext
+#         var list_version: SignalI32
+#         var items: KeyedList
+#
+#         fn __init__(out self):
+#             self.ctx = ComponentContext.create()
+#             self.list_version = self.ctx.use_signal(0)
+#             self.ctx.end_setup()
+#             self.ctx.register_template(
+#                 el_div(
+#                     el_input(attr("type", "text"), attr("placeholder", "What needs to be done?")),
+#                     el_button(text("Add"), dyn_attr(0)),
+#                     el_ul(dyn_node(0)),
+#                 ),
+#                 String("todo-app"),
+#             )
+#             self.items = KeyedList(self.ctx.register_extra_template(
+#                 el_li(
+#                     dyn_attr(2),
+#                     el_span(dyn_text(0)),
+#                     el_button(text("✓"), dyn_attr(0)),
+#                     el_button(text("✕"), dyn_attr(1)),
+#                 ),
+#                 String("todo-item"),
+#             ))
 
 from memory import UnsafePointer
 from bridge import MutationWriter
 from mutations import CreateEngine
 from events import HandlerEntry
-from component import ComponentContext, FragmentSlot
+from component import ComponentContext, KeyedList
 from signals import SignalI32
 from vdom import (
     VNode,
@@ -139,25 +163,25 @@ struct TodoApp(Movable):
     and event handler binding — happens in __init__.  The lifecycle
     functions are thin delegations to ComponentContext.
 
+    Uses KeyedList to bundle the item template, FragmentSlot, and child
+    scope tracking into a single abstraction.
+
     The item list lives inside the <ul> element of the app template.
     On initial mount, a placeholder comment node occupies the <ul>.
-    A FragmentSlot tracks the placeholder/anchor, current fragment,
+    KeyedList tracks the placeholder/anchor, current fragment,
     and mounted state for the item list transitions.
     """
 
     var ctx: ComponentContext
     var list_version: SignalI32
-    var item_template_id: UInt32  # "todo-item" template
-    var items: List[TodoItem]
+    var items: KeyedList  # bundles template_id + FragmentSlot + scope_ids
+    var data: List[TodoItem]
     var next_id: Int32
     var input_text: String
-    var item_slot: FragmentSlot  # tracks item list fragment lifecycle
     # Handler IDs for the app-level controls
     var add_handler: UInt32
     # Handler → item action mapping (rebuilt on every flush)
     var handler_map: List[HandlerItemMapping]
-    # Child scope IDs for per-item handler lifecycle (one scope per item)
-    var item_scope_ids: List[UInt32]
 
     fn __init__(out self):
         """Initialize the todo app with all reactive state, templates, and handlers.
@@ -170,6 +194,8 @@ struct TodoApp(Movable):
         Template "todo-item": li + dyn_attr[2] > [ span > dyn_text[0],
                                                     button("✓") + dyn_attr[0],
                                                     button("✕") + dyn_attr[1] ]
+
+        Uses multi-arg el_* overloads — no List[Node]() wrappers needed.
         """
         # 1. Create context and signal
         self.ctx = ComponentContext.create()
@@ -179,34 +205,30 @@ struct TodoApp(Movable):
         # 2. Register the "todo-app" template (sets ctx.template_id)
         self.ctx.register_template(
             el_div(
-                List[Node](
-                    el_input(
-                        List[Node](
-                            attr(String("type"), String("text")),
-                            attr(
-                                String("placeholder"),
-                                String("What needs to be done?"),
-                            ),
-                        )
+                el_input(
+                    attr(String("type"), String("text")),
+                    attr(
+                        String("placeholder"),
+                        String("What needs to be done?"),
                     ),
-                    el_button(List[Node](text(String("Add")), dyn_attr(0))),
-                    el_ul(List[Node](dyn_node(0))),
-                )
+                ),
+                el_button(text(String("Add")), dyn_attr(0)),
+                el_ul(dyn_node(0)),
             ),
             String("todo-app"),
         )
 
-        # 3. Register the "todo-item" template (extra template)
-        self.item_template_id = self.ctx.register_extra_template(
-            el_li(
-                List[Node](
+        # 3. Register the "todo-item" template via KeyedList
+        self.items = KeyedList(
+            self.ctx.register_extra_template(
+                el_li(
                     dyn_attr(2),  # class attr on li
-                    el_span(List[Node](dyn_text(0))),
-                    el_button(List[Node](text(String("✓")), dyn_attr(0))),
-                    el_button(List[Node](text(String("✕")), dyn_attr(1))),
-                )
-            ),
-            String("todo-item"),
+                    el_span(dyn_text(0)),
+                    el_button(text(String("✓")), dyn_attr(0)),
+                    el_button(text(String("✕")), dyn_attr(1)),
+                ),
+                String("todo-item"),
+            )
         )
 
         # 4. Register the Add button handler
@@ -215,51 +237,47 @@ struct TodoApp(Movable):
         )
 
         # 5. Initialize remaining state
-        self.items = List[TodoItem]()
+        self.data = List[TodoItem]()
         self.next_id = 1
         self.input_text = String("")
-        self.item_slot = FragmentSlot()
         self.handler_map = List[HandlerItemMapping]()
-        self.item_scope_ids = List[UInt32]()
 
     fn __moveinit__(out self, deinit other: Self):
         self.ctx = other.ctx^
         self.list_version = other.list_version^
-        self.item_template_id = other.item_template_id
         self.items = other.items^
+        self.data = other.data^
         self.next_id = other.next_id
         self.input_text = other.input_text^
-        self.item_slot = other.item_slot^
         self.add_handler = other.add_handler
         self.handler_map = other.handler_map^
-        self.item_scope_ids = other.item_scope_ids^
 
     fn add_item(mut self, text: String):
         """Add a new item and bump the list version signal."""
         if len(text) == 0:
             return
-        self.items.append(TodoItem(self.next_id, text, False))
+        self.data.append(TodoItem(self.next_id, text, False))
         self.next_id += 1
         self._bump_version()
 
     fn remove_item(mut self, item_id: Int32):
         """Remove an item by ID and bump the list version signal."""
-        for i in range(len(self.items)):
-            if self.items[i].id == item_id:
+        for i in range(len(self.data)):
+            if self.data[i].id == item_id:
                 # Swap-remove for O(1)
-                var last = len(self.items) - 1
+                var last = len(self.data) - 1
                 if i != last:
-                    self.items[i] = self.items[last].copy()
-                _ = self.items.pop()
+                    self.data[i] = self.data[last].copy()
+                _ = self.data.pop()
                 self._bump_version()
                 return
 
     fn toggle_item(mut self, item_id: Int32):
         """Toggle an item's completed status and bump the list version signal.
         """
-        for i in range(len(self.items)):
-            if self.items[i].id == item_id:
-                self.items[i].completed = not self.items[i].completed
+        for i in range(len(self.data)):
+            if self.data[i].id == item_id:
+                self.data[i].completed = not self.data[i].completed
                 self._bump_version()
                 return
 
@@ -276,16 +294,16 @@ struct TodoApp(Movable):
           dynamic_attr[1] = click on remove button
           dynamic_attr[2] = class on the li element
 
+        Uses KeyedList.create_scope() and KeyedList.item_builder() for
+        ergonomic child scope and VNode construction.
+
         Registers toggle/remove handler IDs in handler_map so the
         EventBridge dispatch can call the correct WASM action.
         """
-        # Create a child scope for this item's handlers
-        var child_scope = self.ctx.create_child_scope()
-        self.item_scope_ids.append(child_scope)
+        # Create a child scope for this item's handlers (tracked by KeyedList)
+        var child_scope = self.items.create_scope(self.ctx)
 
-        var vb = VNodeBuilder(
-            self.item_template_id, String(item.id), self.ctx.store_ptr()
-        )
+        var vb = self.items.item_builder(String(item.id), self.ctx)
 
         # Dynamic text: item text with completion indicator
         var display_text: String
@@ -326,18 +344,18 @@ struct TodoApp(Movable):
     fn build_items_fragment(mut self) -> UInt32:
         """Build a Fragment VNode containing keyed item children.
 
-        Destroys old per-item child scopes (cleaning up their handlers),
-        then clears and rebuilds the handler_map so it reflects the
-        current set of item handler IDs.
+        Uses KeyedList.begin_rebuild() to destroy old child scopes and
+        create a new empty fragment, then builds each item VNode and
+        pushes it as a fragment child.
+
+        Also clears the handler_map so it reflects the current set of
+        item handler IDs.
         """
-        # Destroy old child scopes — cleans up their handlers automatically
-        self.ctx.destroy_child_scopes(self.item_scope_ids)
-        self.item_scope_ids.clear()
         self.handler_map.clear()
-        var frag_idx = self.ctx.build_empty_fragment()
-        for i in range(len(self.items)):
-            var item_idx = self.build_item_vnode(self.items[i].copy())
-            self.ctx.push_fragment_child(frag_idx, item_idx)
+        var frag_idx = self.items.begin_rebuild(self.ctx)
+        for i in range(len(self.data)):
+            var item_idx = self.build_item_vnode(self.data[i].copy())
+            self.items.push_child(self.ctx, frag_idx, item_idx)
         return frag_idx
 
     fn handle_event(mut self, handler_id: UInt32) -> Bool:
@@ -433,12 +451,12 @@ fn todo_app_rebuild(
     var num_roots = engine.create_node(app_vnode_idx)
 
     # After CreateEngine, dynamic[0]'s placeholder has an ElementId.
-    # Initialize the FragmentSlot with the anchor and empty fragment.
+    # Initialize the KeyedList's slot with the anchor and empty fragment.
     var anchor_id: UInt32 = 0
     var app_vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(app_vnode_idx)
     if app_vnode_ptr[0].dyn_node_id_count() > 0:
         anchor_id = app_vnode_ptr[0].get_dyn_node_id(0)
-    app[0].item_slot = FragmentSlot(anchor_id, Int(frag_idx))
+    app[0].items.init_slot(anchor_id, frag_idx)
 
     # Append the app shell to root element (id 0)
     writer_ptr[0].append_children(0, num_roots)
@@ -453,8 +471,8 @@ fn todo_app_flush(
 ) -> Int32:
     """Flush pending updates after a list mutation.
 
-    Delegates fragment transitions (empty↔populated) to the reusable
-    `flush_fragment` lifecycle helper via the app's `FragmentSlot`.
+    Uses KeyedList.flush() which delegates fragment transitions
+    (empty↔populated) to the reusable flush_fragment lifecycle helper.
 
     Returns the byte offset (length) of mutation data, or 0 if nothing dirty.
     """
@@ -465,10 +483,8 @@ fn todo_app_flush(
     # Build a new items fragment from the current item list
     var new_frag_idx = app[0].build_items_fragment()
 
-    # Flush via ComponentContext method (handles all three transitions)
-    app[0].item_slot = app[0].ctx.flush_fragment(
-        writer_ptr, app[0].item_slot, new_frag_idx
-    )
+    # Flush via KeyedList (handles all three transitions)
+    app[0].items.flush(app[0].ctx, writer_ptr, new_frag_idx)
 
     writer_ptr[0].finalize()
     return Int32(writer_ptr[0].offset)

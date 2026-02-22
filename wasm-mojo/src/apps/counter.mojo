@@ -5,6 +5,7 @@
 #   - dyn_text()   — auto-numbered dynamic text (no manual index tracking)
 #   - flush()      — combines diff + finalize in one call
 #   - __init__     — all setup happens in the constructor
+#   - Multi-arg el_* overloads — no List[Node]() wrappers needed
 #
 # Compare with the Dioxus equivalent:
 #
@@ -27,11 +28,11 @@
 #             self.ctx = ComponentContext.create()
 #             self.count = self.ctx.use_signal(0)
 #             self.ctx.setup_view(
-#                 el_div(List[Node](
-#                     el_h1(List[Node](dyn_text())),
-#                     el_button(List[Node](text("Up high!"), onclick_add(self.count, 1))),
-#                     el_button(List[Node](text("Down low!"), onclick_sub(self.count, 1))),
-#                 )),
+#                 el_div(
+#                     el_h1(dyn_text()),
+#                     el_button(text("Up high!"), onclick_add(self.count, 1)),
+#                     el_button(text("Down low!"), onclick_sub(self.count, 1)),
+#                 ),
 #                 String("counter"),
 #             )
 #
@@ -91,26 +92,23 @@ struct CounterApp(Movable):
             and registers handlers
 
         dyn_text() uses auto-numbering — no manual index needed.
+
+        Multi-arg el_* overloads eliminate List[Node]() wrappers,
+        bringing the DSL closer to Dioxus's rsx! macro.
         """
         self.ctx = ComponentContext.create()
         self.count = self.ctx.use_signal(0)
         self.ctx.setup_view(
             el_div(
-                List[Node](
-                    el_h1(List[Node](dyn_text())),
-                    el_button(
-                        List[Node](
-                            text(String("Up high!")),
-                            onclick_add(self.count, 1),
-                        )
-                    ),
-                    el_button(
-                        List[Node](
-                            text(String("Down low!")),
-                            onclick_sub(self.count, 1),
-                        )
-                    ),
-                )
+                el_h1(dyn_text()),
+                el_button(
+                    text(String("Up high!")),
+                    onclick_add(self.count, 1),
+                ),
+                el_button(
+                    text(String("Down low!")),
+                    onclick_sub(self.count, 1),
+                ),
             ),
             String("counter"),
         )

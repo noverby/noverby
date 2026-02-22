@@ -313,8 +313,8 @@ Adding a new test:
 ## Ergonomic API
 
 All apps use `ComponentContext` for Dioxus-style ergonomics — constructor-based setup,
-`use_signal()` with operator overloading, inline event handlers, and auto-numbered
-dynamic text slots:
+`use_signal()` with operator overloading, inline event handlers, auto-numbered
+dynamic text slots, and multi-arg `el_*` overloads that eliminate `List[Node]()` wrappers:
 
 ```mojo
 # Dioxus (Rust):
@@ -336,11 +336,11 @@ struct CounterApp:
         self.ctx = ComponentContext.create()
         self.count = self.ctx.use_signal(0)
         self.ctx.setup_view(
-            el_div(List[Node](
-                el_h1(List[Node](dyn_text())),
-                el_button(List[Node](text("Up high!"), onclick_add(self.count, 1))),
-                el_button(List[Node](text("Down low!"), onclick_sub(self.count, 1))),
-            )),
+            el_div(
+                el_h1(dyn_text()),
+                el_button(text("Up high!"), onclick_add(self.count, 1)),
+                el_button(text("Down low!"), onclick_sub(self.count, 1)),
+            ),
             String("counter"),
         )
 
@@ -350,6 +350,44 @@ struct CounterApp:
         return vb.build()
 ```
 
-Multi-template apps (todo, bench) use `register_extra_template()` for item templates,
-`create_child_scope()` / `destroy_child_scopes()` for per-item handler lifecycle,
-and `flush_fragment()` for keyed list transitions.
+Multi-template apps (todo, bench) use `KeyedList` to bundle the item template,
+`FragmentSlot`, and child scope tracking into a single abstraction:
+
+```mojo
+# Keyed list pattern (todo, bench):
+struct TodoApp:
+    var ctx: ComponentContext
+    var list_version: SignalI32
+    var items: KeyedList  # bundles template_id + FragmentSlot + scope_ids
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.list_version = self.ctx.use_signal(0)
+        self.ctx.end_setup()
+        self.ctx.register_template(
+            el_div(
+                el_input(attr("type", "text"), attr("placeholder", "...")),
+                el_button(text("Add"), dyn_attr(0)),
+                el_ul(dyn_node(0)),
+            ),
+            String("todo-app"),
+        )
+        self.items = KeyedList(self.ctx.register_extra_template(
+            el_li(
+                dyn_attr(2),
+                el_span(dyn_text(0)),
+                el_button(text("✓"), dyn_attr(0)),
+                el_button(text("✕"), dyn_attr(1)),
+            ),
+            String("todo-item"),
+        ))
+
+    fn build_items(mut self) -> UInt32:
+        var frag = self.items.begin_rebuild(self.ctx)
+        for i in range(len(self.data)):
+            var scope = self.items.create_scope(self.ctx)
+            var vb = self.items.item_builder(String(self.data[i].id), self.ctx)
+            # ... fill dynamic text/attrs/events ...
+            self.items.push_child(self.ctx, frag, vb.index())
+        return frag
+```
