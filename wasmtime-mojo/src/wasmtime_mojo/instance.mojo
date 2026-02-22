@@ -16,7 +16,7 @@ Usage:
     var glob = instance_get_global(store.context(), inst, "__heap_base")
 """
 
-from memory import UnsafePointer, alloc, memcpy
+from memory import UnsafePointer, alloc, memcpy, free
 
 from ._types import (
     ContextPtr,
@@ -71,22 +71,29 @@ fn instance_get_export(
     Raises:
         Error: If the export is not found.
     """
-    var inst = instance  # mutable copy for address_of
-    var inst_ptr = _as_ext(UnsafePointer(to=inst))
-    var ext = WasmtimeExtern()
-    var ext_ptr = _as_ext(UnsafePointer(to=ext))
+    # Heap-allocate both the input instance and output extern so
+    # FFI reads/writes go through opaque heap pointers that the
+    # optimizer cannot keep in registers.
+    var inst_buf = alloc[WasmtimeInstance](1)
+    inst_buf[] = instance
+    var ext_buf = alloc[WasmtimeExtern](1)
+    ext_buf[] = WasmtimeExtern()
 
     var name_bytes = name.as_bytes()
     var name_ptr = _as_ext(name_bytes.unsafe_ptr())
     var name_len = len(name)
 
     var found = wasmtime_instance_export_get(
-        context, inst_ptr, name_ptr, name_len, ext_ptr
+        context, _as_ext(inst_buf), name_ptr, name_len, _as_ext(ext_buf)
     )
 
+    inst_buf.free()
     if not found:
+        ext_buf.free()
         raise Error("Export not found: '" + name + "'")
 
+    var ext = ext_buf[]
+    ext_buf.free()
     return ext
 
 
@@ -189,11 +196,14 @@ fn global_get_i32(
     context: ContextPtr, `global`: WasmtimeGlobal
 ) raises -> Int32:
     """Read an i32 value from a WASM global."""
-    var g = `global`
-    var g_ptr = _as_ext(UnsafePointer(to=g))
-    var val = WasmtimeVal()
-    var val_ptr = _as_ext(UnsafePointer(to=val))
-    wasmtime_global_get(context, g_ptr, val_ptr)
+    var g_buf = alloc[WasmtimeGlobal](1)
+    g_buf[] = `global`
+    var val_buf = alloc[WasmtimeVal](1)
+    val_buf[] = WasmtimeVal()
+    wasmtime_global_get(context, _as_ext(g_buf), _as_ext(val_buf))
+    g_buf.free()
+    var val = val_buf[]
+    val_buf.free()
     return val.get_i32()
 
 
@@ -201,11 +211,14 @@ fn global_get_i64(
     context: ContextPtr, `global`: WasmtimeGlobal
 ) raises -> Int64:
     """Read an i64 value from a WASM global."""
-    var g = `global`
-    var g_ptr = _as_ext(UnsafePointer(to=g))
-    var val = WasmtimeVal()
-    var val_ptr = _as_ext(UnsafePointer(to=val))
-    wasmtime_global_get(context, g_ptr, val_ptr)
+    var g_buf = alloc[WasmtimeGlobal](1)
+    g_buf[] = `global`
+    var val_buf = alloc[WasmtimeVal](1)
+    val_buf[] = WasmtimeVal()
+    wasmtime_global_get(context, _as_ext(g_buf), _as_ext(val_buf))
+    g_buf.free()
+    var val = val_buf[]
+    val_buf.free()
     return val.get_i64()
 
 
@@ -234,8 +247,8 @@ fn func_call(
     Raises:
         Error: If the call fails or traps.
     """
-    var f = func
-    var f_ptr = _as_ext(UnsafePointer(to=f))
+    var f_buf = alloc[WasmtimeFunc](1)
+    f_buf[] = func
 
     # Prepare args buffer
     var nargs = len(args)
@@ -248,12 +261,23 @@ fn func_call(
     for i in range(nresults):
         results_buf[i] = WasmtimeVal()
 
-    var trap = UnsafePointer[NoneType, MutExternalOrigin]()
-    var trap_ptr = _as_ext(UnsafePointer(to=trap))
+    # Heap-allocate trap output so FFI write is visible.
+    var trap_buf = alloc[UnsafePointer[NoneType, MutExternalOrigin]](1)
+    trap_buf[] = UnsafePointer[NoneType, MutExternalOrigin]()
 
     var err = wasmtime_func_call(
-        context, f_ptr, args_buf, nargs, results_buf, nresults, trap_ptr
+        context,
+        _as_ext(f_buf),
+        args_buf,
+        nargs,
+        results_buf,
+        nresults,
+        _as_ext(trap_buf),
     )
+    f_buf.free()
+
+    var trap = trap_buf[]
+    trap_buf.free()
 
     if err:
         var msg = error_message(err)
@@ -403,9 +427,11 @@ fn memory_data_ptr(
     Returns:
         Pointer to the first byte of linear memory.
     """
-    var m = memory
-    var m_ptr = _as_ext(UnsafePointer(to=m))
-    return wasmtime_memory_data(context, m_ptr)
+    var m_buf = alloc[WasmtimeMemory](1)
+    m_buf[] = memory
+    var result = wasmtime_memory_data(context, _as_ext(m_buf))
+    m_buf.free()
+    return result
 
 
 fn memory_data_size(context: ContextPtr, memory: WasmtimeMemory) raises -> Int:
@@ -418,9 +444,11 @@ fn memory_data_size(context: ContextPtr, memory: WasmtimeMemory) raises -> Int:
     Returns:
         The size in bytes.
     """
-    var m = memory
-    var m_ptr = _as_ext(UnsafePointer(to=m))
-    return wasmtime_memory_data_size(context, m_ptr)
+    var m_buf = alloc[WasmtimeMemory](1)
+    m_buf[] = memory
+    var result = wasmtime_memory_data_size(context, _as_ext(m_buf))
+    m_buf.free()
+    return result
 
 
 fn memory_read_bytes(
