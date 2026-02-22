@@ -13,7 +13,7 @@ The implementation is modeled after [systemd](https://github.com/systemd/systemd
 following its architecture for the service manager, unit dependency graph, D-Bus APIs,
 journal binary log format, and all other public interfaces.
 This is a **full drop-in replacement**, not a reimagining — the same way
-[pkg-config-rs](https://github.com/noverby/pkg-config-rs) replaces pkg-config.
+[pkg-config-rs](https://tangled.org/@overby.me/overby.me/tree/main/pkg-config-rs) replaces pkg-config.
 
 ## Features
 

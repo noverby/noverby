@@ -4,7 +4,7 @@ Personal homepage for [overby.me](https://overby.me) — an interactive 3D graph
 
 ## Overview
 
-The landing page renders a 3D force-directed graph (using [three.js](https://threejs.org/) via [react-force-graph-3d](https://github.com/vasturiano/react-force-graph-3d)) where nodes represent profiles, platforms, and life categories (Commerce, Improve, Connect, Immerse, Give). Clicking a node navigates to the corresponding URL.
+The landing page renders a 3D force-directed graph (using [three.js](https://threejs.org/) via [react-force-graph-3d](https://github.com/vasturiano/react-force-graph)) where nodes represent profiles, platforms, and life categories (Commerce, Improve, Connect, Immerse, Give). Clicking a node navigates to the corresponding URL.
 
 Additional utility routes:
 

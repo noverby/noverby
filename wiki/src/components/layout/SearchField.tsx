@@ -101,7 +101,7 @@ const SearchField = ({
 			return {
 				id: node?.id,
 				name: node?.name ?? "",
-				mime: node?.mimeId!,
+				mime: node?.mimeId ?? "",
 				key: node?.key,
 			};
 		});

@@ -1,2 +1,3 @@
 # Run `direnv reload` to apply changes to the repository.
-exclude = ['\$\{', '%7B', 'localhost']
+accept = [200, 201, 202, 203, 204, 206, 207, 429, 403]
+exclude = ['\$\{', '%7B', 'localhost', 'https://github.com/example/']

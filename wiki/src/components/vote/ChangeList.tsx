@@ -40,7 +40,7 @@ const ChildListElement = ({ id, index }: { id: string; index: number }) => {
 
 	const item = (
 		<>
-			<ListItemButton onClick={() => link.push([query?.key!])}>
+			<ListItemButton onClick={() => link.push([query?.key ?? ""])}>
 				<ListItemAvatar>
 					<MimeAvatar mimeId={query?.mimeId} index={index} child />
 				</ListItemAvatar>

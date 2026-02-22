@@ -92,7 +92,7 @@ const HomeList = ({ setOpen }: { setOpen?: (open: boolean) => void }) => {
 			});
 	const eventByYears = groupBy(
 		events,
-		(event) => event.createdAt?.substring(0, 4)!,
+		(event) => event.createdAt?.substring(0, 4) ?? "",
 	);
 	const groups = !userId
 		? []
@@ -124,7 +124,7 @@ const HomeList = ({ setOpen }: { setOpen?: (open: boolean) => void }) => {
 			return {
 				id: node?.id,
 				name: node?.name ?? "",
-				mime: node?.mimeId!,
+				mime: node?.mimeId ?? "",
 				key: node?.key,
 			};
 		});

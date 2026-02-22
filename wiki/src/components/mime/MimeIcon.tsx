@@ -20,7 +20,7 @@ const Icon = ({ node }: { node: Node }) => {
 	const mimeId = query?.mimeId;
 	const id = type ?? mimeId;
 	const name = query?.name;
-	const index = query?.getIndex!;
+	const index = query?.getIndex ?? 0;
 	return <IconId name={name} mimeId={id} index={index - 1} />;
 };
 

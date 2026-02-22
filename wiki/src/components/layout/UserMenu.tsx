@@ -22,7 +22,7 @@ import { ThemeModeContext } from "core/theme/ThemeModeContext";
 import { client } from "gql";
 import { nhost } from "nhost";
 import { type MouseEventHandler, useContext, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 const UserMenu = ({ avatar }: { avatar?: boolean }) => {
 	const navigate = useNavigate();
