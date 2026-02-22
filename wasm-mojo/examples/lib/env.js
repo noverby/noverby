@@ -3,7 +3,7 @@
 // Used by all browser examples to avoid duplicating ~70 lines each.
 //
 // This is the plain-JS port of the TypeScript allocator in runtime/memory.ts.
-// See PLAN.md P25.2 for details.
+// See CHANGELOG.md Phase 25 for details.
 
 // ── WASM memory state ───────────────────────────────────────────────────────
 
