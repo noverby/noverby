@@ -864,6 +864,36 @@ struct ComponentContext(Movable):
                 )
                 vb_idx += 1
 
+    # ── View event query ─────────────────────────────────────────────
+
+    fn view_event_handler_id(self, index: Int) -> UInt32:
+        """Return the handler ID for the Nth event registered by register_view.
+
+        After `register_view()` or `setup_view()`, events are stored in
+        `_view_events` in tree-walk order.  Use this to retrieve the
+        handler ID for custom handlers (ACTION_CUSTOM) that need
+        app-specific routing.
+
+        Example (TodoApp — Add button is the 2nd event in the tree):
+
+            ctx.register_view(
+                el_div(
+                    el_input(bind_value(text), oninput_set_string(text)),
+                    el_button(text("Add"), onclick_custom()),
+                    el_ul(dyn_node(0)),
+                ),
+                String("todo-app"),
+            )
+            var add_handler = ctx.view_event_handler_id(1)  # 2nd event
+
+        Args:
+            index: Zero-based index into the view event list.
+
+        Returns:
+            The handler ID at the given index.
+        """
+        return self._view_events[index].handler_id
+
     # ── Flush convenience ────────────────────────────────────────────
 
     fn flush(

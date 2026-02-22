@@ -99,6 +99,7 @@ from .dsl import (
     onclick_sub,
     onclick_set,
     onclick_toggle,
+    onclick_custom,
     on_event,
     # Inline string event handler constructors (Phase 20 — M20.3)
     oninput_set_string,

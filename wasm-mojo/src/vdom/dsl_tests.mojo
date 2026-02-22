@@ -22,6 +22,7 @@ from .dsl import (
     dyn_node,
     attr,
     dyn_attr,
+    onclick_custom,
     oninput_set_string,
     onchange_set_string,
     bind_value,
@@ -123,7 +124,7 @@ from .vnode import VNodeStore, VNODE_TEMPLATE_REF
 from .builder import TemplateBuilder
 from signals import create_runtime, destroy_runtime, Runtime
 from signals.handle import SignalString
-from events.registry import ACTION_SIGNAL_SET_STRING
+from events.registry import ACTION_SIGNAL_SET_STRING, ACTION_CUSTOM
 
 
 fn test_text_node() -> Int32:
@@ -766,6 +767,104 @@ fn test_template_equivalence() -> Int32:
 
     destroy_runtime(rt1)
     destroy_runtime(rt2)
+    return 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 20 — M20.5: onclick_custom tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+fn test_onclick_custom_node() -> Int32:
+    """Test: onclick_custom creates a NODE_EVENT with ACTION_CUSTOM."""
+    var n = onclick_custom()
+
+    # Verify node kind
+    if n.kind != NODE_EVENT:
+        return 0
+
+    # Verify event name
+    if n.text != String("click"):
+        return 0
+
+    # Verify action tag = ACTION_CUSTOM (255)
+    if n.tag != ACTION_CUSTOM:
+        return 0
+
+    # Verify signal_key = 0 (no signal)
+    if n.dynamic_index != 0:
+        return 0
+
+    # Verify operand = 0
+    if n.operand != 0:
+        return 0
+
+    return 1
+
+
+fn test_onclick_custom_in_element() -> Int32:
+    """Test: onclick_custom inside an element counts as a dynamic attr."""
+    var n = el_button(
+        text(String("Add")),
+        onclick_custom(),
+    )
+
+    # Should have 2 items: text + event
+    if n.item_count() != 2:
+        return 0
+
+    # 1 child (text)
+    if n.child_count() != 1:
+        return 0
+
+    # 1 dynamic attr (the event handler)
+    if n.dynamic_attr_count() != 1:
+        return 0
+
+    return 1
+
+
+fn test_onclick_custom_with_binding() -> Int32:
+    """Test: onclick_custom + bind_value + oninput_set_string in sibling elements.
+    """
+    var rt_ptr = create_runtime()
+    var keys = rt_ptr[0].create_signal_string(String(""))
+    var sig = SignalString(keys[0], keys[1], rt_ptr)
+
+    # Simulates the M20.5 TodoApp pattern:
+    #   el_div(
+    #       el_input(bind_value(sig), oninput_set_string(sig)),
+    #       el_button(text("Add"), onclick_custom()),
+    #   )
+    var n = el_div(
+        el_input(
+            attr(String("type"), String("text")),
+            bind_value(sig),
+            oninput_set_string(sig),
+        ),
+        el_button(text(String("Add")), onclick_custom()),
+    )
+
+    # div has 2 children: input + button
+    if n.child_count() != 2:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # input has 3 attrs: static type + bind_value + oninput
+    # 2 dynamic attrs (bind_value + event)
+    if n.items[0].dynamic_attr_count() != 2:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    # button has 1 child (text) + 1 dynamic attr (onclick_custom)
+    if n.items[1].child_count() != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+    if n.items[1].dynamic_attr_count() != 1:
+        destroy_runtime(rt_ptr)
+        return 0
+
+    destroy_runtime(rt_ptr)
     return 1
 
 

@@ -827,9 +827,10 @@ export function testTodo(fns: Fns): void {
 		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
 		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
 
-		// Before adding items: only the "add" handler exists
+		// Before adding items: 2 app-level handlers from register_view
+		// (oninput_set_string + onclick_custom)
 		const hcBefore = fns.todo_handler_count(appPtr);
-		assert(hcBefore, 1, "1 handler (add) before any items");
+		assert(hcBefore, 2, "2 handlers (oninput + add) before any items");
 
 		// Add 5 items — each gets 2 handlers (toggle + remove)
 		for (let i = 0; i < 5; i++) {
@@ -838,8 +839,8 @@ export function testTodo(fns: Fns): void {
 		fns.todo_flush(appPtr, bufPtr, BUF_CAPACITY);
 
 		const hcAfter = fns.todo_handler_count(appPtr);
-		// 1 (add) + 5 * 2 (toggle + remove per item) = 11
-		assert(hcAfter, 11, "11 handlers after adding 5 items (1 add + 10 item)");
+		// 2 (oninput + add) + 5 * 2 (toggle + remove per item) = 12
+		assert(hcAfter, 12, "12 handlers after adding 5 items (2 app + 10 item)");
 
 		fns.todo_destroy(appPtr);
 	}
@@ -861,9 +862,9 @@ export function testTodo(fns: Fns): void {
 		}
 
 		// After 10 add/remove cycles with 0 items remaining:
-		// Should be 1 (add handler only), NOT 1 + 10*2 = 21 (leaked)
+		// Should be 2 (oninput + add handlers only), NOT 2 + 10*2 = 22 (leaked)
 		const hc = fns.todo_handler_count(appPtr);
-		assert(hc, 1, "1 handler after 10 add/remove cycles (no leak)");
+		assert(hc, 2, "2 handlers after 10 add/remove cycles (no leak)");
 
 		fns.todo_destroy(appPtr);
 	}
@@ -881,7 +882,7 @@ export function testTodo(fns: Fns): void {
 		fns.todo_flush(appPtr, bufPtr, BUF_CAPACITY);
 
 		const hc1 = fns.todo_handler_count(appPtr);
-		assert(hc1, 7, "7 handlers: 1 add + 3*2 item handlers");
+		assert(hc1, 8, "8 handlers: 2 app + 3*2 item handlers");
 
 		// Add 2 more items, flush again — old item handlers should be cleaned up
 		// and re-registered (total = 1 add + 5*2 item = 11)
@@ -892,8 +893,161 @@ export function testTodo(fns: Fns): void {
 		const hc2 = fns.todo_handler_count(appPtr);
 		assert(
 			hc2,
-			11,
-			"11 handlers: 1 add + 5*2 item handlers (no leak from previous flush)",
+			12,
+			"12 handlers: 2 app + 5*2 item handlers (no leak from previous flush)",
+		);
+
+		fns.todo_destroy(appPtr);
+	}
+
+	// ═════════════════════════════════════════════════════════════════════
+	// Phase 20.5 — WASM-driven Add flow tests
+	// ═════════════════════════════════════════════════════════════════════
+
+	suite("Todo — M20.5: string dispatch updates SignalString");
+	{
+		const appPtr = fns.todo_init();
+		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
+		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
+
+		// Get the Add handler ID (2nd event in register_view tree-walk order)
+		const addHandler = fns.todo_add_handler_id(appPtr);
+		assert(addHandler >= 0, true, "add handler ID is non-negative");
+
+		// Dispatch string event to the oninput_set_string handler
+		// (the handler for input events writes to the SignalString)
+		const strPtr = writeStringStruct("Buy milk");
+		fns.todo_dispatch_string(appPtr, addHandler - 1, 0, strPtr);
+
+		// Signal should NOT be updated (wrong handler — that was oninput handler)
+		// Actually, addHandler - 1 IS the oninput handler since it's the 1st event
+		// Let's verify the signal was updated by checking input version
+		const version = fns.todo_input_version(appPtr);
+		assert(version > 0, true, "input version bumped after string dispatch");
+		assert(
+			fns.todo_input_is_empty(appPtr),
+			0,
+			"input not empty after string dispatch",
+		);
+
+		fns.todo_destroy(appPtr);
+	}
+
+	suite("Todo — M20.5: handle_event Add reads signal and adds item");
+	{
+		const appPtr = fns.todo_init();
+		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
+		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
+
+		const addHandler = fns.todo_add_handler_id(appPtr);
+
+		// Simulate typing by writing to the signal via todo_set_input
+		fns.todo_set_input(appPtr, writeStringStruct("Buy milk"));
+
+		// Dispatch Add handler — WASM reads signal, adds item, clears signal
+		const handled = fns.todo_handle_event(appPtr, addHandler, 0);
+		assert(handled, 1, "handle_event returns 1 (handled) for Add");
+
+		// Item was added
+		assert(fns.todo_item_count(appPtr), 1, "1 item after Add");
+
+		// Signal was cleared
+		assert(fns.todo_input_is_empty(appPtr), 1, "input cleared after Add");
+
+		fns.todo_destroy(appPtr);
+	}
+
+	suite("Todo — M20.5: Add with empty input is a no-op");
+	{
+		const appPtr = fns.todo_init();
+		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
+		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
+
+		const addHandler = fns.todo_add_handler_id(appPtr);
+
+		// Don't set any input text — signal is empty
+		const handled = fns.todo_handle_event(appPtr, addHandler, 0);
+		assert(handled, 1, "handle_event returns 1 even for empty (handled)");
+
+		// No item added
+		assert(fns.todo_item_count(appPtr), 0, "0 items when input empty");
+
+		fns.todo_destroy(appPtr);
+	}
+
+	suite("Todo — M20.5: WASM-driven Add with DOM rendering");
+	{
+		const { document, root } = createDOM();
+		const app = createTodoApp(fns, root, document);
+
+		const addHandler = fns.todo_add_handler_id(app.appPtr);
+
+		// Simulate typing via signal
+		fns.todo_set_input(app.appPtr, writeStringStruct("WASM todo"));
+
+		// Trigger Add via handle_event (same as EventBridge would)
+		fns.todo_handle_event(app.appPtr, addHandler, 0);
+		app.flush();
+
+		// Item appears in DOM
+		const ul = root.querySelector("ul");
+		const lis = ul ? Array.from(ul.querySelectorAll("li")) : [];
+		assert(lis.length, 1, "1 li rendered after WASM-driven Add");
+
+		// Verify item text
+		const span = lis[0]?.querySelector("span");
+		assert(span?.textContent?.includes("WASM todo"), true, "item text matches");
+
+		// Signal was cleared — input version bumped
+		assert(fns.todo_input_is_empty(app.appPtr), 1, "signal cleared after Add");
+
+		app.destroy();
+	}
+
+	suite("Todo — M20.5: multiple WASM-driven Adds");
+	{
+		const { document, root } = createDOM();
+		const app = createTodoApp(fns, root, document);
+
+		const addHandler = fns.todo_add_handler_id(app.appPtr);
+
+		// Add 3 items via the WASM-driven flow
+		for (const text of ["Alpha", "Beta", "Gamma"]) {
+			fns.todo_set_input(app.appPtr, writeStringStruct(text));
+			fns.todo_handle_event(app.appPtr, addHandler, 0);
+			app.flush();
+		}
+
+		assert(app.itemCount(), 3, "3 items after 3 WASM-driven Adds");
+
+		const ul = root.querySelector("ul");
+		const lis = ul ? Array.from(ul.querySelectorAll("li")) : [];
+		assert(lis.length, 3, "3 li elements rendered");
+
+		app.destroy();
+	}
+
+	suite("Todo — M20.5: todo_dispatch_string export works");
+	{
+		const appPtr = fns.todo_init();
+		const bufPtr = fns.mutation_buf_alloc(BUF_CAPACITY);
+		fns.todo_rebuild(appPtr, bufPtr, BUF_CAPACITY);
+
+		// Dispatch a string to the oninput handler
+		// The oninput handler is 1 less than the add handler
+		// (1st event in tree-walk order)
+		const addHandler = fns.todo_add_handler_id(appPtr);
+		const oninputHandler = addHandler - 1;
+
+		const strPtr = writeStringStruct("test dispatch");
+		const result = fns.todo_dispatch_string(appPtr, oninputHandler, 0, strPtr);
+		assert(result, 1, "dispatch_string returns 1 (handled)");
+
+		// Verify signal was updated
+		assert(
+			fns.todo_input_is_empty(appPtr),
+			0,
+			"input not empty after dispatch_string",
 		);
 
 		fns.todo_destroy(appPtr);

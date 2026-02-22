@@ -566,6 +566,33 @@ fn test_dsl_two_way_to_template(w: UnsafePointer[WasmInstance]) raises:
     assert_equal(result, 1, "two_way_to_template passed")
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 20 — M20.5: onclick_custom
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+fn test_dsl_onclick_custom_node(w: UnsafePointer[WasmInstance]) raises:
+    """Onclick_custom creates NODE_EVENT with ACTION_CUSTOM."""
+    var result = Int(w[].call_i32("dsl_test_onclick_custom_node", no_args()))
+    assert_equal(result, 1, "onclick_custom_node passed")
+
+
+fn test_dsl_onclick_custom_in_element(w: UnsafePointer[WasmInstance]) raises:
+    """Onclick_custom inside a button counts as dynamic attr."""
+    var result = Int(
+        w[].call_i32("dsl_test_onclick_custom_in_element", no_args())
+    )
+    assert_equal(result, 1, "onclick_custom_in_element passed")
+
+
+fn test_dsl_onclick_custom_with_binding(w: UnsafePointer[WasmInstance]) raises:
+    """Onclick_custom + bind_value + oninput_set_string in sibling elements."""
+    var result = Int(
+        w[].call_i32("dsl_test_onclick_custom_with_binding", no_args())
+    )
+    assert_equal(result, 1, "onclick_custom_with_binding passed")
+
+
 fn main() raises:
     from wasm_harness import get_instance
 
@@ -615,4 +642,8 @@ fn main() raises:
     test_dsl_two_way_binding_element(w)
     test_dsl_bind_value_to_template(w)
     test_dsl_two_way_to_template(w)
-    print("dsl: 43/43 passed")
+    # Phase 20 — M20.5: onclick_custom
+    test_dsl_onclick_custom_node(w)
+    test_dsl_onclick_custom_in_element(w)
+    test_dsl_onclick_custom_with_binding(w)
+    print("dsl: 46/46 passed")
