@@ -1,8 +1,11 @@
-// Shared boot helpers — high-level API for browser examples.
+// Shared boot helpers — low-level API for browser examples.
 //
 // Provides convenience functions that tie together env, interpreter,
-// and WASM loading so each example only needs ~50 lines of app-specific code.
+// and WASM loading.  Most examples should use `launch()` from `app.js`
+// instead — this module is for advanced use cases (e.g. bench) that
+// need direct control over the boot sequence.
 
+export { launch } from "./app.js";
 export { alignedAlloc, getMemory, loadWasm } from "./env.js";
 export { EventBridge } from "./events.js";
 export { Interpreter } from "./interpreter.js";
