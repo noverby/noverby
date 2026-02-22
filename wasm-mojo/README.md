@@ -38,7 +38,7 @@ Mojo → LLVM IR → WASM Object → WASM Binary
 
 At runtime, the TypeScript side (`runtime/`) instantiates the WASM module and provides:
 
-- **Memory management** — a bump allocator for `KGEN_CompilerRT_AlignedAlloc`/`AlignedFree`
+- **Memory management** — a size-class free-list allocator for `KGEN_CompilerRT_AlignedAlloc`/`AlignedFree` with safe memory reuse
 - **I/O** — `write` routed to `console.log`/`console.error` for stdout/stderr
 - **Math builtins** — `fma`, `fmin`, `fmax` and their float variants
 - **Libc stubs** — `dup`, `fdopen`, `fflush`, `fclose`, `__cxa_atexit`
@@ -111,7 +111,7 @@ wasm-mojo/
 ├── runtime/                      # TypeScript runtime (browser)
 │   ├── mod.ts                    # Entry point — instantiate WASM
 │   ├── types.ts                  # WasmExports interface
-│   ├── memory.ts                 # Bump allocator, WASM memory
+│   ├── memory.ts                 # Free-list allocator, WASM memory
 │   ├── env.ts                    # Environment imports (I/O, math, libc)
 │   ├── strings.ts                # Mojo String ABI helpers (SSO)
 │   ├── protocol.ts               # Mutation opcodes (shared with Mojo)
@@ -300,7 +300,7 @@ Adding a new test:
 
 ## Test results
 
-2,218 tests across 29 Mojo modules and 10 JS test suites:
+2,331 tests across 29 Mojo modules and 10 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -315,7 +315,7 @@ Adding a new test:
 - **Counter app** — init, mount, click, flush, DOM verification, memo (doubled count) demo
 - **Todo app** — add, remove, toggle, clear, keyed list transitions
 - **Benchmark** — create/append/update/swap/select/remove/clear 1000 rows, full DOM integration
-- **Memory** — allocation cycles, bounded growth, rapid write stability
+- **Memory** — allocation cycles, bounded growth, rapid write stability, free-list reuse, double-free protection, WASM-integrated reuse (text/attr/fragment/template diffs with reuse enabled)
 - **Arithmetic/strings** — original PoC interop regression suite
 
 ## Ergonomic API

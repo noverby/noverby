@@ -111,7 +111,8 @@ struct SharedState(Movable):
 
     # --- Free-list allocator state (P25.3) ---
     # Mirrors the JS-side size-class map allocator from runtime/memory.ts.
-    # Reuse is disabled by default — see PLAN.md "Key insight (revised)".
+    # Reuse is enabled by default — double-free protection in aligned_free
+    # ensures safe reuse even with WASM code that frees the same pointer twice.
     var ptr_size: Dict[Int, Int]  # pointer → allocation size
     var free_map: Dict[Int, List[Int]]  # size → LIFO stack of freed pointers
     var reuse_enabled: Bool
@@ -125,7 +126,7 @@ struct SharedState(Movable):
         self.mock_time = 0.0
         self.ptr_size = Dict[Int, Int]()
         self.free_map = Dict[Int, List[Int]]()
-        self.reuse_enabled = False
+        self.reuse_enabled = True
 
     fn __moveinit__(out self, deinit other: Self):
         self.bump_ptr = other.bump_ptr
@@ -155,6 +156,8 @@ struct SharedState(Movable):
                 if len(b) > 0:
                     var ptr = b.pop()
                     self.free_map[actual] = b^
+                    # Re-register in ptr_size so a future free can look up the size.
+                    self.ptr_size[ptr] = actual
                     return ptr
 
         # --- Bump-allocator fallback ---
@@ -181,9 +184,16 @@ struct SharedState(Movable):
 
         var size_opt = self.ptr_size.get(ptr)
         if not size_opt:
-            return  # unknown pointer — ignore
+            return  # unknown or already-freed pointer — ignore
 
         var size = size_opt.value()
+
+        # Remove from ptr_size so that a second free of the same pointer
+        # (double-free from WASM) is detected as "unknown" and ignored.
+        try:
+            _ = self.ptr_size.pop(ptr)
+        except:
+            pass
 
         # Push onto the size-class bucket (O(1)).
         var bucket = self.free_map.get(size)

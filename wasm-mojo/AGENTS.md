@@ -200,7 +200,7 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 
 - `app.js` — **`launch(options)`**: Convention-based app launcher (Phase 21, updated Phase 22–24). Given `app: "counter"`, auto-discovers WASM exports by naming convention, sets up interpreter + EventBridge with smart dispatch (auto string dispatch when `{app}_dispatch_string` exists), runs initial mount, and calls optional `onBoot(handle)` for app-specific post-boot wiring. Returns `AppHandle` with `{ fns, appPtr, interp, bufPtr, rootEl, flush }`. Options: `app` (required), `wasm` (required URL), `root` (CSS selector, default `"#root"`), `bufferCapacity` (default 65536), `clearRoot` (default true), `onBoot` (optional callback). **Phase 22**: EventBridge smart dispatch extended to route `keydown` events through `dispatch_string`. **Phase 23**: `{app}_handle_event` made optional — when missing, EventBridge dispatch is a no-op (DOM listeners still attached). **Phase 24.2**: All three apps now use near-zero-config `launch()` (bench only needs `bufferCapacity`; no `onBoot`, no custom root).
 - `boot.js` — Re-exports from `app.js`, `env.js`, `events.js`, `interpreter.js`, `protocol.js`, `strings.js`. Low-level API for advanced use cases that need direct control over the boot sequence.
-- `env.js` — WASM memory management + import object + `loadWasm()` loader.
+- `env.js` — WASM memory management (size-class free-list allocator with double-free protection and reuse enabled by default) + import object + `loadWasm()` loader.
 - `events.js` — `EventBridge` wires interpreter event mutations to a WASM dispatch callback.
 - `interpreter.js` — DOM stack machine applying binary mutation buffers (shared with `runtime/interpreter.ts`).
 - `protocol.js` — Op constants + `MutationReader` for binary mutation decoding.
@@ -243,7 +243,7 @@ launch({
 - `events.ts` — `EventBridge` captures DOM events, dispatches handler IDs to WASM. For `input`/`change` events, extracts `event.target.value` as a string and dispatches via `DispatchWithStringFn` → `writeStringStruct()` → WASM `dispatch_event_with_string` (Phase 20, M20.2). Falls back to numeric then default dispatch. Note: the browser `app.js` EventBridge additionally routes `keydown` events through string dispatch (Phase 22), but the TypeScript runtime does not yet implement this path.
 - `templates.ts` — `TemplateCache` registers templates from `RegisterTemplate` mutations.
 - `strings.ts` — Mojo `String` ABI (SSO layout: inline ≤23 bytes, heap pointer otherwise).
-- `memory.ts` — bump allocator for WASM linear memory.
+- `memory.ts` — size-class free-list allocator for WASM linear memory. Tracks every allocation in a JS-side `ptrSize` map and recycles freed blocks via `freeMap` size-class buckets. Double-free protection (pointer removed from `ptrSize` on first free) ensures safe reuse even with WASM code that frees the same pointer twice. Reuse is enabled by default. Includes a scratch arena (`scratchAlloc`/`scratchFreeAll`) for transient `writeStringStruct` allocations.
 
 ## String Event Dispatch (Phase 20)
 

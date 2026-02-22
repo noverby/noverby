@@ -16,9 +16,13 @@ let heapPointer = 0n;
  * JS-side size-class map: keys are block sizes (bigint), values are LIFO
  * stacks of free pointers.  Free = push, alloc = pop.  O(1) for both.
  *
- * Reuse is disabled by default because the compiled WASM code contains
- * use-after-free patterns that were previously masked by the no-op free.
- * See PLAN.md "Key insight (revised after P25.1)" for details.
+ * Reuse is enabled by default.  The compiled WASM code emits double-free
+ * calls (the same pointer freed more than once) due to Mojo's destructor
+ * mechanics.  The allocator handles this safely: alignedFree removes
+ * the pointer from ptrSize on first free, so subsequent frees of the
+ * same pointer are detected as "unknown" and silently ignored.  This
+ * prevents duplicate entries in the free list that would hand the same
+ * block to two different allocations.
  *
  * @type {Map<bigint, bigint[]>}
  */
@@ -35,9 +39,10 @@ let ptrSize = new Map();
 
 /**
  * Whether alignedAlloc may reuse freed blocks from freeMap.
- * Disabled by default — see the note on freeMap above.
+ * Enabled by default — double-free protection in alignedFree ensures
+ * safe reuse even with WASM code that frees the same pointer twice.
  */
-let reuseEnabled = false;
+let reuseEnabled = true;
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -50,8 +55,9 @@ export function getMemory() {
  * Enable or disable free-list reuse.
  *
  * When enabled, alignedAlloc will pop matching blocks from the free map
- * instead of always bumping.  Only enable this after confirming that the
- * WASM code has no use-after-free bugs.
+ * instead of always bumping.  Enabled by default — the allocator's
+ * double-free protection makes reuse safe even with WASM code that
+ * emits duplicate free calls.
  */
 export function setAllocatorReuse(on) {
 	reuseEnabled = on;
@@ -74,7 +80,10 @@ export function alignedAlloc(align, size) {
 	if (reuseEnabled) {
 		const bucket = freeMap.get(actual);
 		if (bucket !== undefined && bucket.length > 0) {
-			return bucket.pop();
+			const reused = bucket.pop();
+			// Re-register in ptrSize so a future free can look up the size.
+			ptrSize.set(reused, actual);
+			return reused;
 		}
 	}
 
@@ -103,7 +112,11 @@ export function alignedFree(ptr) {
 	if (ptr === 0n) return 1;
 
 	const size = ptrSize.get(ptr);
-	if (size === undefined) return 1; // unknown pointer — ignore
+	if (size === undefined) return 1; // unknown or already-freed pointer — ignore
+
+	// Remove from ptrSize so that a second free of the same pointer
+	// (double-free from WASM) is detected as "unknown" and ignored.
+	ptrSize.delete(ptr);
 
 	// Push onto the size-class bucket (O(1)).
 	let bucket = freeMap.get(size);
