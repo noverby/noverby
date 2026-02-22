@@ -91,7 +91,7 @@
 
 ## App Architectures (`examples/`)
 
-All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state — TodoApp's `input_text` field was migrated from plain `String` to `SignalString` via `create_signal_string()` (M19.7). Phase 20 adds string event dispatch infrastructure (`ACTION_SIGNAL_SET_STRING`, `dispatch_event_with_string`) enabling JS → WASM string value flow for input events.
+All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state — TodoApp's `input_text` field was migrated from plain `String` to `SignalString` via `create_signal_string()` (M19.7). Phase 20 adds string event dispatch infrastructure (`ACTION_SIGNAL_SET_STRING`, `dispatch_event_with_string`) enabling JS → WASM string value flow for input events. Phase 20.5 migrates the TodoApp to fully WASM-driven input binding using `bind_value()`, `oninput_set_string()`, and `onclick_custom()` — JS has no special-casing for any handler.
 
 ### CounterApp (`counter.mojo`) — simplest example
 
@@ -105,24 +105,27 @@ struct CounterApp:
 
 Lifecycle: `counter_app_init()` → `counter_app_rebuild()` → `counter_app_handle_event()` → `counter_app_flush()`.
 
-### TodoApp (`todo.mojo`) — keyed lists, multiple templates, custom handlers, SignalString
+### TodoApp (`todo.mojo`) — keyed lists, two-way input binding, custom handlers, SignalString
 
 ```txt
 struct TodoApp:
     var ctx: ComponentContext
     var list_version: SignalI32
-    var input_text: SignalString   # Phase 19: create_signal_string (no subscription)
+    var input_text: SignalString   # create_signal_string (no subscription, write-buffer)
     var items: KeyedList          # bundles template_id + FragmentSlot + scope_ids + handler_map
     var data: List[TodoItem]
-    var add_handler: UInt32
-    fn __init__: register_template("todo-app") + KeyedList(register_extra_template("todo-item"))
-                 + ctx.create_signal_string("") for input_text (Phase 19)
+    var add_handler: UInt32       # auto-registered by register_view() via onclick_custom()
+    fn __init__: create_signal_string → register_view("todo-app" with bind_value + oninput_set_string
+                 + onclick_custom) → view_event_handler_id(1) for add_handler
+                 + KeyedList(register_extra_template("todo-item"))
+    fn render: ctx.render_builder() → add_dyn_placeholder → build() (auto-populates bindings)
     fn build_item_vnode: items.begin_item(key, ctx) → ib.add_custom_event() (Phase 17)
     fn build_items_fragment: items.begin_rebuild → build each item → items.push_child
-    fn handle_event: items.get_action(handler_id) → toggle/remove item (Phase 17)
+    fn handle_event: if add_handler → read input_text.peek(), add_item, clear signal
+                     else → items.get_action(handler_id) → toggle/remove item
 ```
 
-Phase 19 migration: `input_text` changed from plain `String` to `SignalString` via `ctx.create_signal_string(String(""))`. Uses `create_` (not `use_`) because the input value is a write-buffer — it doesn't drive renders. WASM exports: `todo_set_input` uses `input_text.set(text)`, `todo_input_version` reads `input_text.version()`, `todo_input_is_empty` reads `input_text.is_empty()`.
+Phase 20.5 migration: TodoApp now uses `register_view()` with inline event/binding helpers for the app template. The input element has `bind_value(input_text)` + `oninput_set_string(input_text)` for Dioxus-style two-way binding. The Add button uses `onclick_custom()` — an inline custom handler auto-registered by `register_view()`. `handle_event()` handles the Add action entirely in WASM: reads `input_text.peek()`, calls `add_item()`, clears via `input_text.set("")`. `render()` uses `render_builder()` which auto-populates bind_value (reads signal → "value" attr) and event listeners. `todo_app_flush()` re-renders the app shell via `ctx.diff()` (to catch bind_value changes) before flushing items via KeyedList. JS dispatches events uniformly — `input`/`change` events go through `todo_dispatch_string()`, all others through `todo_handle_event()` — no special-casing. WASM exports: `todo_dispatch_string` for string events, `todo_add_handler_id` for the Add handler ID, plus existing `todo_set_input`, `todo_input_version`, `todo_input_is_empty`.
 
 ### BenchmarkApp (`bench.mojo`) — js-framework-benchmark, same pattern as todo
 
@@ -163,7 +166,7 @@ Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int3
 
 ## String Event Dispatch (Phase 20)
 
-Phase 20 adds the infrastructure for passing string values from DOM events to WASM `SignalString` signals, culminating in Dioxus-style two-way input binding.
+Phase 20 adds the infrastructure for passing string values from DOM events to WASM `SignalString` signals, culminating in Dioxus-style two-way input binding. Phase 20.5 completes the story by migrating TodoApp to a fully WASM-driven Add flow.
 
 **Dispatch path (M20.1 Mojo + M20.2 JS)**: JS EventBridge `handleEvent()` → for `input`/`change` events: extract `event.target.value` → `writeStringStruct(value)` → `dispatchWithStringFn(hid, eventType, stringPtr)` → WASM `dispatch_event_with_string(rt, handler_id, event_type, string_ptr)` → Runtime looks up handler → for `ACTION_SIGNAL_SET_STRING`: `write_signal_string(string_key, version_key, value)` → bumps version signal → marks subscriber scopes dirty. If string dispatch returns 0: try numeric fallback (`parseInt` + `dispatchWithValueFn`), then default no-payload dispatch. Non-input events (click, keydown, etc.) bypass string dispatch entirely.
 
@@ -177,17 +180,22 @@ Phase 20 adds the infrastructure for passing string values from DOM events to WA
 
 **Value binding (M20.4)**: `NODE_BIND_VALUE` node kind (tag 7) carries a SignalString reference (attr_name in `text`, string_key in `dynamic_index`, version_key in `operand`). `bind_value(signal: SignalString) -> Node` creates one with `attr_name="value"`; `bind_attr(attr_name, signal) -> Node` supports arbitrary attribute names. `_process_view_tree()` handles `NODE_BIND_VALUE` like `NODE_EVENT` — collects `_ValueBindingInfo` and replaces with `NODE_DYN_ATTR`. New `AutoBinding` tagged union (`AUTO_BIND_EVENT` / `AUTO_BIND_VALUE`) stores both events and value bindings in tree-walk order. `register_view()` interleaves them by `attr_idx`. `RenderBuilder.build()` auto-populates: events via `add_dyn_event()`, value bindings via `peek_signal_string()` + `add_dyn_text_attr()`. Falls back to legacy `EventBinding` path when no auto-bindings present.
 
-**Two-way binding pattern (M20.3 + M20.4)**:
+**Custom inline handler (M20.5)**: `onclick_custom() -> Node` creates a `NODE_EVENT` for `"click"` with `ACTION_CUSTOM` (value 255), `signal_key=0`, `operand=0`. When dispatched, the runtime marks the scope dirty and returns False — the app's event handler then performs custom routing based on the handler ID. Use `ctx.view_event_handler_id(index)` after `register_view()` to retrieve the auto-registered handler ID.
+
+**Two-way binding + custom action pattern (M20.3 + M20.4 + M20.5)**:
 
 ```mojo
 el_input(
     attr("type", "text"),
     bind_value(input_text),          # M20.4: value attr ← signal
     oninput_set_string(input_text),   # M20.3: signal ← input event
-)
+),
+el_button(text("Add"), onclick_custom()),  # M20.5: custom action in WASM
 ```
 
-Equivalent Dioxus: `input { value: "{text}", oninput: move |e| text.set(e.value()) }`
+Equivalent Dioxus: `input { value: "{text}", oninput: move |e| text.set(e.value()) }` + `button { onclick: move |_| { add(&text); text.set(""); }, "Add" }`
+
+**view_event_handler_id (M20.5)**: `ctx.view_event_handler_id(index: Int) -> UInt32` returns the handler ID for the Nth event registered by `register_view()` in tree-walk order. Example: after `register_view(el_div(el_input(bind_value(sig), oninput_set_string(sig)), el_button(text("Add"), onclick_custom()), ...))`, `view_event_handler_id(0)` = oninput handler, `view_event_handler_id(1)` = Add button handler.
 
 ## Node Kind Tags (`src/vdom/dsl.mojo`)
 
@@ -206,25 +214,26 @@ Equivalent Dioxus: `input { value: "{text}", oninput: move |e| text.set(e.value(
 
 | File | Lines | Role |
 |------|-------|------|
-| `src/main.mojo` | ~2,500 | All @export wrappers |
+| `src/main.mojo` | ~2,560 | All @export wrappers |
 | `src/signals/handle.mojo` | ~670 | SignalI32 + SignalBool + SignalString + MemoI32 + EffectHandle |
 | `src/signals/runtime.mojo` | ~630 | Reactive runtime + SignalStore + StringStore |
-| `src/component/context.mojo` | ~1,000 | ComponentContext + RenderBuilder + tree processing |
+| `src/component/context.mojo` | ~1,040 | ComponentContext + RenderBuilder + tree processing + view_event_handler_id |
 | `src/component/lifecycle.mojo` | ~350 | FragmentSlot + mount/diff helpers |
 | `src/component/app_shell.mojo` | ~350 | AppShell (low-level) |
 | `examples/counter/counter.mojo` | ~115 | Counter app |
-| `examples/todo/todo.mojo` | ~465 | Todo app (uses KeyedList + ItemBuilder + SignalString) |
+| `examples/todo/todo.mojo` | ~520 | Todo app (M20.5: WASM-driven Add, bind_value, oninput_set_string, onclick_custom) |
 | `examples/bench/bench.mojo` | ~430 | Benchmark app (uses KeyedList + ItemBuilder) |
 | `src/component/keyed_list.mojo` | ~595 | KeyedList + ItemBuilder + HandlerAction |
-| `src/vdom/dsl.mojo` | ~2,870 | Node DSL + el_* helpers + multi-arg overloads + conditional helpers + to_template |
+| `src/vdom/dsl.mojo` | ~2,900 | Node DSL + el_* helpers + multi-arg overloads + conditional helpers + onclick_custom + to_template |
 | `src/vdom/vnode.mojo` | ~600 | VNode + VNodeStore + VNodeBuilder |
 | `src/mutations/diff.mojo` | ~500 | DiffEngine (keyed reconciliation) |
 | `runtime/events.ts` | ~375 | EventBridge + DispatchWithStringFn (M20.2) |
 | `runtime/app.ts` | ~370 | createApp + createCounterApp + AppConfig with handleEventWithString |
 | `runtime/types.ts` | ~690 | WasmExports interface (Phase 20 string dispatch exports) |
 | `test-js/events.test.ts` | ~650 | EventBridge string dispatch tests (unit + WASM integration) |
-| `test-js/dsl.test.ts` | ~590 | DSL tests incl. M20.3/M20.4 string binding tests |
-| `CHANGELOG.md` | ~215 | Development history (Phases 0–20) |
+| `test-js/dsl.test.ts` | ~620 | DSL tests incl. M20.3/M20.4/M20.5 binding + onclick_custom tests |
+| `test-js/todo.test.ts` | ~1,060 | Todo app tests incl. M20.5 WASM-driven Add flow tests |
+| `CHANGELOG.md` | ~230 | Development history (Phases 0–20) |
 
 ## Common Patterns
 
@@ -244,6 +253,8 @@ Equivalent Dioxus: `input { value: "{text}", oninput: move |e| text.set(e.value(
 
 **Inline events in DSL**: `el_button(text("Up!"), onclick_add(count, 1))` — multi-arg overloads, extracted by `register_view()` / `setup_view()`.
 
+**Inline custom events (M20.5)**: `el_button(text("Add"), onclick_custom())` — creates NODE_EVENT with ACTION_CUSTOM, auto-registered by `register_view()`. Retrieve handler ID via `ctx.view_event_handler_id(index)` for app-specific routing.
+
 **Manual events**: `var hid = ctx.register_handler(HandlerEntry.custom(scope_id, "click"))`, then `vb.add_dyn_event("click", hid)`.
 
 **Keyed list rebuild (Phase 17+18 — via ItemBuilder)**: `var frag = self.items.begin_rebuild(ctx)` → for each item: `var ib = items.begin_item(key, ctx)` → `ib.add_dyn_text(...)` → `ib.add_custom_event("click", ACTION_TAG, item_id)` → `ib.add_class_if(condition, "class")` → `items.push_child(ctx, frag, ib.index())`.
@@ -259,6 +270,8 @@ Equivalent Dioxus: `input { value: "{text}", oninput: move |e| text.set(e.value(
 **Keyed list flush (via KeyedList)**: `items.flush(ctx, writer, frag_idx)` + `writer.finalize()`.
 
 **Flush lifecycle**: `if not ctx.consume_dirty(): return 0` → rebuild → `ctx.flush(writer, new_idx)` or `items.flush(ctx, writer, frag_idx)` + `writer.finalize()`.
+
+**Combined flush (M20.5 TodoApp)**: When the app shell has dynamic bindings (bind_value) AND a KeyedList: `ctx.consume_dirty()` → `render()` → `ctx.diff(writer, new_app_idx)` (catches bind_value changes) → `items.flush(ctx, writer, new_frag_idx)` → `writer.finalize()`. The diff emits SetAttribute for changed value bindings; dyn_node(0) stays as placeholder (diff no-ops, KeyedList manages content separately).
 
 ## Deferred Abstractions (Blocked on Mojo Roadmap)
 

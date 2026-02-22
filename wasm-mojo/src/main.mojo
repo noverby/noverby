@@ -60,6 +60,10 @@ from vdom.dsl_tests import (
     test_two_way_binding_element as _dsl_test_two_way_binding_element,
     test_bind_value_to_template as _dsl_test_bind_value_to_template,
     test_two_way_to_template as _dsl_test_two_way_to_template,
+    # Phase 20 — M20.5: onclick_custom tests
+    test_onclick_custom_node as _dsl_test_onclick_custom_node,
+    test_onclick_custom_in_element as _dsl_test_onclick_custom_in_element,
+    test_onclick_custom_with_binding as _dsl_test_onclick_custom_with_binding,
 )
 from scheduler import Scheduler
 from component import AppShell, app_shell_create
@@ -2213,6 +2217,36 @@ fn todo_add_item(app_ptr: Int64, text: String):
 
 
 @export
+fn todo_dispatch_string(
+    app_ptr: Int64, handler_id: Int32, event_type: Int32, value: String
+) -> Int32:
+    """Dispatch a string event (input/change) to the todo app.
+
+    Phase 20 (M20.5): Used by JS EventBridge for input events — extracts
+    event.target.value as a string and dispatches via the string dispatch
+    path.  For ACTION_SIGNAL_SET_STRING handlers, this writes the string
+    to the SignalString and bumps the version signal.
+
+    Returns 1 if the handler was found and action executed, 0 otherwise.
+    """
+    return _b2i(
+        _get[TodoApp](app_ptr)[0].ctx.dispatch_event_with_string(
+            UInt32(handler_id), UInt8(event_type), value
+        )
+    )
+
+
+@export
+fn todo_add_handler_id(app_ptr: Int64) -> Int32:
+    """Return the Add button handler ID (Phase 20 — M20.5).
+
+    After M20.5, the Add handler is auto-registered by register_view()
+    via onclick_custom().  This export lets JS and tests retrieve it.
+    """
+    return Int32(_get[TodoApp](app_ptr)[0].add_handler)
+
+
+@export
 fn todo_remove_item(app_ptr: Int64, item_id: Int32):
     """Remove an item by its ID."""
     _get[TodoApp](app_ptr)[0].remove_item(item_id)
@@ -3338,6 +3372,24 @@ fn dsl_test_bind_value_to_template() -> Int32:
 @export
 fn dsl_test_two_way_to_template() -> Int32:
     return _dsl_test_two_way_to_template()
+
+
+# ── Phase 20 — M20.5: onclick_custom tests ──────────────────────────────────
+
+
+@export
+fn dsl_test_onclick_custom_node() -> Int32:
+    return _dsl_test_onclick_custom_node()
+
+
+@export
+fn dsl_test_onclick_custom_in_element() -> Int32:
+    return _dsl_test_onclick_custom_in_element()
+
+
+@export
+fn dsl_test_onclick_custom_with_binding() -> Int32:
+    return _dsl_test_onclick_custom_with_binding()
 
 
 # ══════════════════════════════════════════════════════════════════════════════

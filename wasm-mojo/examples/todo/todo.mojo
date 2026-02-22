@@ -1,9 +1,14 @@
 # TodoApp — Self-contained todo list application.
 #
-# Migrated to Phase 19 Dioxus-style ergonomics:
-#   - `SignalString` for reactive input text (Phase 19 — replaces plain String field)
+# Migrated to Phase 20.5 — fully WASM-driven input binding:
+#   - `bind_value(input_text)` — two-way value binding (M20.4)
+#   - `oninput_set_string(input_text)` — inline input→signal binding (M20.3)
+#   - `onclick_custom()` — inline custom click handler (M20.5)
+#   - `register_view()` — auto-registers handlers + value bindings
+#   - `render_builder()` — auto-populates events + bind_value at render time
+#   - `SignalString` for reactive input text (Phase 19)
 #   - `begin_item()` replaces manual `create_scope()` + `item_builder()`
-#   - `add_custom_event()` replaces manual `register_handler()` + `add_dyn_event()` + `handler_map.append()`
+#   - `add_custom_event()` replaces manual `register_handler()` + `add_dyn_event()`
 #   - `get_action()` replaces manual handler_map lookup loop
 #   - `add_class_if()` replaces 4-line if/else class pattern (Phase 18)
 #   - `text_when()` replaces 4-line if/else text pattern (Phase 18)
@@ -12,23 +17,27 @@
 #   - Constructor-based setup (all init in __init__)
 #   - ctx.use_signal() for automatic scope subscription
 #
-# Phase 8 — Demonstrates:
-#   - Dynamic keyed lists (add, remove, toggle items)
-#   - Conditional rendering (show/hide completed indicator)
-#   - Fragment VNodes with keyed children
-#   - String data flow (input text from JS → WASM)
+# Phase 20.5 — WASM-Driven Add Flow:
+#   - Input value is synced to WASM SignalString via oninput_set_string (every keystroke)
+#   - Input's value attribute is bound to the signal via bind_value (auto-updated on render)
+#   - Add button click dispatches ACTION_CUSTOM → WASM reads signal, adds item, clears signal
+#   - JS has NO special-casing — uniform event dispatch for all handlers
+#   - Enter key → dispatches Add handler directly (signal already has current text)
 #
 # Architecture:
 #   - TodoApp struct holds all state: items list, input text, signals, handlers
 #   - Items are stored as a flat list of TodoItem structs (not signals)
 #   - A "list_version" signal is bumped on every list mutation to trigger re-render
-#   - JS calls specific exports (todo_add_item, todo_remove_item, etc.)
-#     then calls todo_flush() to get mutation bytes
+#   - JS dispatches events uniformly; WASM handles all routing
+#   - Flush re-renders app shell (for bind_value updates) and items (for list changes)
 #
-# Templates (built via DSL with multi-arg overloads):
+# Templates (built via DSL with inline events):
 #   - "todo-app": The app shell with input field + item list container
-#       div > [ input + button("Add") + ul > dynamic[0] ]
-#   - "todo-item": A single list item
+#       div > [ input(bind_value + oninput) + button("Add", onclick_custom) + ul > dyn_node[0] ]
+#       auto dyn_attr[0] = bind_value (value attr)
+#       auto dyn_attr[1] = oninput_set_string handler
+#       auto dyn_attr[2] = onclick_custom handler (Add button)
+#   - "todo-item": A single list item (unchanged from Phase 17)
 #       li > [ span > dynamic_text[0], button("✓") + button("✕") ]
 #       dynamic_attr[0] = click handler for toggle
 #       dynamic_attr[1] = click handler for remove
@@ -38,10 +47,13 @@
 #
 #     fn TodoApp() -> Element {
 #         let mut items = use_signal(|| vec![]);
+#         let mut text = use_signal(|| String::new());
 #         rsx! {
 #             div {
-#                 input { type: "text", placeholder: "What needs to be done?" }
-#                 button { onclick: move |_| add_item(), "Add" }
+#                 input { r#type: "text", value: "{text}",
+#                         oninput: move |e| text.set(e.value()),
+#                         placeholder: "What needs to be done?" }
+#                 button { onclick: move |_| { add_item(&text); text.set(""); }, "Add" }
 #                 ul { for item in items.read().iter() {
 #                     li { class: if item.completed { "completed" } else { "" },
 #                         span { "{item.text}" }
@@ -53,44 +65,42 @@
 #         }
 #     }
 #
-# Mojo equivalent (with Phase 17 abstractions):
+# Mojo equivalent (with Phase 20.5 two-way binding):
 #
 #     struct TodoApp:
 #         var ctx: ComponentContext
 #         var list_version: SignalI32
+#         var input_text: SignalString
 #         var items: KeyedList
 #
 #         fn __init__(out self):
 #             self.ctx = ComponentContext.create()
 #             self.list_version = self.ctx.use_signal(0)
 #             self.ctx.end_setup()
-#             self.ctx.register_template(
+#             self.input_text = self.ctx.create_signal_string(String(""))
+#             self.ctx.register_view(
 #                 el_div(
-#                     el_input(attr("type", "text"), attr("placeholder", "What needs to be done?")),
-#                     el_button(text("Add"), dyn_attr(0)),
+#                     el_input(
+#                         attr("type", "text"),
+#                         attr("placeholder", "What needs to be done?"),
+#                         bind_value(self.input_text),
+#                         oninput_set_string(self.input_text),
+#                     ),
+#                     el_button(text("Add"), onclick_custom()),
 #                     el_ul(dyn_node(0)),
 #                 ),
 #                 String("todo-app"),
 #             )
-#             self.items = KeyedList(self.ctx.register_extra_template(
-#                 el_li(
-#                     dyn_attr(2),
-#                     el_span(dyn_text(0)),
-#                     el_button(text("✓"), dyn_attr(0)),
-#                     el_button(text("✕"), dyn_attr(1)),
-#                 ),
-#                 String("todo-item"),
-#             ))
-#
-#         fn build_item_vnode(mut self, item: TodoItem) -> UInt32:
-#             var ib = self.items.begin_item(String(item.id), self.ctx)
-#             ib.add_dyn_text(text_when(item.completed, "✓ " + item.text, item.text))
-#             ib.add_custom_event(String("click"), TODO_ACTION_TOGGLE, item.id)
-#             ib.add_custom_event(String("click"), TODO_ACTION_REMOVE, item.id)
-#             ib.add_class_if(item.completed, String("completed"))
-#             return ib.index()
+#             self.add_handler = self.ctx.view_event_handler_id(1)
+#             self.items = KeyedList(self.ctx.register_extra_template(...))
 #
 #         fn handle_event(mut self, handler_id: UInt32) -> Bool:
+#             if handler_id == self.add_handler:
+#                 var t = self.input_text.peek()
+#                 if len(t) > 0:
+#                     self.add_item(t)
+#                     self.input_text.set(String(""))
+#                 return True
 #             var action = self.items.get_action(handler_id)
 #             if action.found:
 #                 if action.tag == TODO_ACTION_TOGGLE:
@@ -124,6 +134,10 @@ from vdom import (
     to_template,
     text_when,
     VNodeBuilder,
+    # Phase 20 — inline event/binding helpers
+    bind_value,
+    oninput_set_string,
+    onclick_custom,
 )
 
 
@@ -166,9 +180,11 @@ struct TodoApp(Movable):
     Uses KeyedList with Phase 17 ItemBuilder for ergonomic per-item
     building and HandlerAction for dispatch.
 
-    Phase 19: `input_text` is a `SignalString` created via
-    `create_signal_string()` (no scope subscription — the input value
-    is not rendered reactively, it's a write-buffer for the Add flow).
+    Phase 20.5: Fully WASM-driven Add flow.  The input element has
+    `bind_value(input_text)` for value → signal binding and
+    `oninput_set_string(input_text)` for signal ← input binding.
+    The Add button uses `onclick_custom()` — WASM reads the signal,
+    adds the item, and clears the signal.  JS has no special-casing.
 
     The item list lives inside the <ul> element of the app template.
     On initial mount, a placeholder comment node occupies the <ul>.
@@ -182,7 +198,7 @@ struct TodoApp(Movable):
     var data: List[TodoItem]
     var next_id: Int32
     var input_text: SignalString  # Phase 19: reactive string signal (no subscription)
-    # Handler ID for the app-level Add button
+    # Handler ID for the app-level Add button (auto-registered by register_view)
     var add_handler: UInt32
 
     fn __init__(out self):
@@ -190,12 +206,24 @@ struct TodoApp(Movable):
 
         Creates: ComponentContext (runtime, VNode store, element ID
         allocator, scheduler), root scope, list_version signal, the
-        app shell and item templates, and the Add button handler.
+        app shell and item templates.
 
-        Template "todo-app": div > [ input, button("Add") + dyn_attr[0], ul > dyn_node[0] ]
-        Template "todo-item": li + dyn_attr[2] > [ span > dyn_text[0],
-                                                    button("✓") + dyn_attr[0],
-                                                    button("✕") + dyn_attr[1] ]
+        Phase 20.5: Uses register_view() for the app template with inline
+        event/binding helpers.  The Add button handler is auto-registered
+        via onclick_custom() and retrieved via view_event_handler_id().
+
+        Template "todo-app" (via register_view with auto dyn_attr):
+            div > [ input(bind_value + oninput_set_string),
+                    button("Add", onclick_custom),
+                    ul > dyn_node[0] ]
+            auto dyn_attr[0] = bind_value (value attr from signal)
+            auto dyn_attr[1] = oninput_set_string handler
+            auto dyn_attr[2] = onclick_custom handler (Add button)
+
+        Template "todo-item" (via register_extra_template):
+            li + dyn_attr[2] > [ span > dyn_text[0],
+                                  button("✓") + dyn_attr[0],
+                                  button("✕") + dyn_attr[1] ]
 
         Uses multi-arg el_* overloads — no List[Node]() wrappers needed.
         """
@@ -204,8 +232,15 @@ struct TodoApp(Movable):
         self.list_version = self.ctx.use_signal(0)
         self.ctx.end_setup()
 
-        # 2. Register the "todo-app" template (sets ctx.template_id)
-        self.ctx.register_template(
+        # 2. Create input_text SignalString (before register_view, since
+        #    bind_value/oninput_set_string read the signal's keys)
+        self.input_text = self.ctx.create_signal_string(String(""))
+
+        # 3. Register the "todo-app" template via register_view()
+        #    with inline bindings and event handlers.
+        #    register_view() auto-assigns dyn_attr indices and registers
+        #    handlers for NODE_EVENT and NODE_BIND_VALUE nodes.
+        self.ctx.register_view(
             el_div(
                 el_input(
                     attr(String("type"), String("text")),
@@ -213,14 +248,20 @@ struct TodoApp(Movable):
                         String("placeholder"),
                         String("What needs to be done?"),
                     ),
+                    bind_value(self.input_text),
+                    oninput_set_string(self.input_text),
                 ),
-                el_button(text(String("Add")), dyn_attr(0)),
+                el_button(text(String("Add")), onclick_custom()),
                 el_ul(dyn_node(0)),
             ),
             String("todo-app"),
         )
 
-        # 3. Register the "todo-item" template via KeyedList
+        # 4. Extract the Add button handler ID (2nd event in tree-walk
+        #    order: oninput_set_string is 1st, onclick_custom is 2nd)
+        self.add_handler = self.ctx.view_event_handler_id(1)
+
+        # 5. Register the "todo-item" template via KeyedList
         self.items = KeyedList(
             self.ctx.register_extra_template(
                 el_li(
@@ -233,18 +274,9 @@ struct TodoApp(Movable):
             )
         )
 
-        # 4. Register the Add button handler
-        self.add_handler = self.ctx.register_handler(
-            HandlerEntry.custom(self.ctx.scope_id, String("click"))
-        )
-
-        # 5. Initialize remaining state
+        # 6. Initialize remaining state
         self.data = List[TodoItem]()
         self.next_id = 1
-        # Phase 19: input_text as SignalString — created (not used) since
-        # the input value doesn't drive renders.  Demonstrates the
-        # create_signal_string() path (no hook registration, no subscription).
-        self.input_text = self.ctx.create_signal_string(String(""))
 
     fn __moveinit__(out self, deinit other: Self):
         self.ctx = other.ctx^
@@ -343,16 +375,23 @@ struct TodoApp(Movable):
     fn handle_event(mut self, handler_id: UInt32) -> Bool:
         """Dispatch a click event by handler ID.
 
-        Uses Phase 17 `get_action()` to look up the handler in the
-        KeyedList's handler map and determine the action (toggle/remove)
-        and target item ID.
+        Phase 20.5: The Add handler is now fully WASM-driven — reads
+        the input text from the SignalString, adds the item, and clears
+        the signal.  JS no longer needs to read the DOM input value.
+
+        Uses Phase 17 `get_action()` to look up toggle/remove handlers
+        in the KeyedList's handler map.
 
         Returns True if the handler was found and the action executed,
-        False otherwise (e.g. the add_handler which JS handles specially).
+        False otherwise.
         """
         if handler_id == self.add_handler:
-            # Add handler — JS must read the input value and call add_item
-            return False
+            # Phase 20.5: WASM-driven Add — read signal, add item, clear
+            var input = self.input_text.peek()
+            if len(input) > 0:
+                self.add_item(input)
+                self.input_text.set(String(""))
+            return True
 
         var action = self.items.get_action(handler_id)
         if action.found:
@@ -364,22 +403,22 @@ struct TodoApp(Movable):
                 return True
         return False
 
-    fn build_app_vnode(mut self) -> UInt32:
-        """Build the app shell VNode (TemplateRef for todo-app).
+    fn render(mut self) -> UInt32:
+        """Build the app shell VNode using render_builder (auto-populates).
 
-        Template "todo-app": div > [ input, button("Add") + dynamic_attr[0], ul > dynamic[0] ]
-          dynamic_attr[0] = click on Add button
-          dynamic[0] = placeholder (item list managed separately)
+        Phase 20.5: Uses render_builder() which auto-populates all
+        bindings registered by register_view() in tree-walk order:
+          auto dyn_attr[0] = bind_value (reads input_text signal → "value" attr)
+          auto dyn_attr[1] = oninput_set_string event listener
+          auto dyn_attr[2] = onclick_custom event listener (Add button)
+          dyn_node[0]      = placeholder (item list managed by KeyedList)
         """
-        var vb = self.ctx.vnode_builder()
+        var vb = self.ctx.render_builder()
 
         # Dynamic node 0: placeholder in the <ul>
         vb.add_dyn_placeholder()
 
-        # Dynamic attr 0: click on Add button
-        vb.add_dyn_event(String("click"), self.add_handler)
-
-        return vb.index()
+        return vb.build()
 
 
 fn todo_app_init() -> UnsafePointer[TodoApp]:
@@ -409,13 +448,16 @@ fn todo_app_rebuild(
     Builds the app shell VNode and mounts it.  The <ul> starts with a
     placeholder comment node whose ElementId we save for later use.
 
+    Phase 20.5: Uses render() which auto-populates bind_value and
+    event handlers via render_builder().
+
     Returns the byte offset (length) of the mutation data written.
     """
     # Emit all registered templates so JS can build DOM from mutations
     app[0].ctx.shell.emit_templates(writer_ptr)
 
     # Build the app shell VNode (no items yet — just the template)
-    var app_vnode_idx = app[0].build_app_vnode()
+    var app_vnode_idx = app[0].render()
     app[0].ctx.current_vnode = Int(app_vnode_idx)
 
     # Build an empty items fragment and store it
@@ -451,7 +493,11 @@ fn todo_app_flush(
     app: UnsafePointer[TodoApp],
     writer_ptr: UnsafePointer[MutationWriter],
 ) -> Int32:
-    """Flush pending updates after a list mutation.
+    """Flush pending updates after a list mutation or input clear.
+
+    Phase 20.5: Re-renders the app shell VNode (to update bind_value
+    attribute when the signal changes, e.g. after Add clears input)
+    and flushes the item list via KeyedList.
 
     Uses KeyedList.flush() which delegates fragment transitions
     (empty↔populated) to the reusable flush_fragment lifecycle helper.
@@ -461,6 +507,14 @@ fn todo_app_flush(
     # Collect and consume dirty scopes via the scheduler
     if not app[0].ctx.consume_dirty():
         return 0
+
+    # Phase 20.5: Re-render app shell to pick up bind_value changes
+    # (e.g. input cleared after Add).  The diff detects changes in
+    # dynamic attrs (value binding) and emits SetAttribute mutations.
+    # dyn_node(0) stays as placeholder — diff sees placeholder vs
+    # placeholder and does nothing (KeyedList manages it separately).
+    var new_app_idx = app[0].render()
+    app[0].ctx.diff(writer_ptr, new_app_idx)
 
     # Build a new items fragment from the current item list
     var new_frag_idx = app[0].build_items_fragment()

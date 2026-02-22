@@ -606,6 +606,7 @@ from events.registry import (
     ACTION_SIGNAL_TOGGLE,
     ACTION_SIGNAL_SET_INPUT,
     ACTION_SIGNAL_SET_STRING,
+    ACTION_CUSTOM,
 )
 from signals.handle import SignalI32, SignalString
 
@@ -658,6 +659,28 @@ fn onclick_toggle(signal: SignalI32) -> Node:
         el_button(List[Node](text("Toggle"), onclick_toggle(flag)))
     """
     return Node.event_node(String("click"), ACTION_SIGNAL_TOGGLE, signal.key, 0)
+
+
+fn onclick_custom() -> Node:
+    """Create an inline click handler with custom action (app-defined logic).
+
+    The handler is registered with ACTION_CUSTOM.  When dispatched, the
+    runtime marks the scope dirty and returns False — the app's event
+    handler then performs custom routing based on the handler ID.
+
+    Use `ctx.view_event_handler_id(index)` after `register_view()` /
+    `setup_view()` to retrieve the auto-registered handler ID.
+
+    Equivalent to manual registration:
+        var hid = ctx.register_handler(HandlerEntry.custom(scope_id, "click"))
+
+    Usage:
+        el_button(text("Add"), onclick_custom())
+
+    Returns:
+        A NODE_EVENT node for "click" with ACTION_CUSTOM.
+    """
+    return Node.event_node(String("click"), ACTION_CUSTOM, 0, 0)
 
 
 fn on_event(

@@ -27,8 +27,8 @@ const NODE_DYN_TEXT = 2;
 const NODE_DYN_NODE = 3;
 const NODE_STATIC_ATTR = 4;
 const NODE_DYN_ATTR = 5;
-const NODE_EVENT = 6;
-const NODE_BIND_VALUE = 7;
+const _NODE_EVENT = 6;
+const _NODE_BIND_VALUE = 7;
 
 // ── HTML tag constants (matching src/vdom/tags.mojo) ────────────────────────
 
@@ -584,5 +584,30 @@ export function testDsl(fns: Fns): void {
 		fns.dsl_test_two_way_to_template(),
 		1,
 		"bind_value + oninput_set_string converts to 2 TATTR_DYNAMICs",
+	);
+
+	// ═════════════════════════════════════════════════════════════════════
+	// Section 8: Phase 20 — M20.5: onclick_custom
+	// ═════════════════════════════════════════════════════════════════════
+
+	suite("DSL — onclick_custom node");
+	assert(
+		fns.dsl_test_onclick_custom_node(),
+		1,
+		"onclick_custom creates NODE_EVENT with ACTION_CUSTOM",
+	);
+
+	suite("DSL — onclick_custom in element");
+	assert(
+		fns.dsl_test_onclick_custom_in_element(),
+		1,
+		"onclick_custom counts as dynamic attr inside button element",
+	);
+
+	suite("DSL — onclick_custom with binding pattern");
+	assert(
+		fns.dsl_test_onclick_custom_with_binding(),
+		1,
+		"onclick_custom + bind_value + oninput_set_string in sibling elements",
 	);
 }
