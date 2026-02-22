@@ -1,82 +1,48 @@
 // Benchmark App — Browser Entry Point
 //
-// Uses shared runtime from examples/lib/ for WASM env, protocol, and interpreter.
-// Templates are automatically registered from WASM via RegisterTemplate mutations.
+// Uses shared launch() from examples/lib/ for convention-based boot.
+// All WASM exports are discovered automatically by the "bench" prefix:
+//   bench_init, bench_rebuild, bench_flush
 //
-// Boots the Mojo WASM benchmark app (js-framework-benchmark style) in a
-// browser environment. Provides Create/Append/Update/Swap/Clear/Select/Remove
-// operations with timing display.
+// Unlike counter and todo, bench does not export bench_handle_event —
+// it uses manual event delegation on <tbody> and direct WASM calls for
+// each benchmark operation.  The launch() abstraction handles this
+// gracefully: when {app}_handle_event is missing, EventBridge dispatch
+// is a no-op (DOM listeners are still attached for NewEventListener
+// mutations).  All app-specific wiring is done in the onBoot callback.
 //
-// NOTE: This example uses direct boot.js imports rather than the shared
-// launch() from lib/app.js because it relies on:
-//   - Manual event delegation on <tbody> (not per-element EventBridge)
-//   - Direct WASM calls for each operation (no generic handle_event export)
-//   - Custom toolbar button wiring with timing display
-//
-// As these features move into WASM (event delegation, toolbar rendering),
-// bench will converge to the same launch() call used by counter and todo.
+// Phase 23: Bench converged to launch() — same boot infrastructure as
+// counter and todo, with onBoot for toolbar buttons, event delegation,
+// and timing display.
 
-import {
-	allocBuffer,
-	applyMutations,
-	createInterpreter,
-	EventBridge,
-	loadWasm,
-} from "../lib/boot.js";
+import { launch } from "../lib/app.js";
 
 const BUF_CAPACITY = 8 * 1024 * 1024; // 8 MB mutation buffer
 
-const statusEl = document.getElementById("status");
-const tbody = document.getElementById("tbody");
+launch({
+	app: "bench",
+	wasm: new URL("../../build/out.wasm", import.meta.url),
+	root: "#tbody",
+	bufferCapacity: BUF_CAPACITY,
+	clearRoot: false,
+	onBoot: ({ fns, appPtr, rootEl, flush }) => {
+		const statusEl = document.getElementById("status");
 
-function setStatus(text) {
-	statusEl.innerHTML = text;
-}
-
-function timeOp(name, fn) {
-	const start = performance.now();
-	fn();
-	const ms = (performance.now() - start).toFixed(1);
-	setStatus(
-		`<strong>${name}</strong>: <span class="timing">${ms}ms</span> — ${fns ? fns.bench_row_count(appPtr) : "?"} rows`,
-	);
-}
-
-let fns = null;
-let appPtr = null;
-let bufPtr = null;
-let interp = null;
-
-function flush() {
-	const len = fns.bench_flush(appPtr, bufPtr, BUF_CAPACITY);
-	if (len > 0) {
-		applyMutations(interp, bufPtr, len);
-	}
-}
-
-async function boot() {
-	try {
-		fns = await loadWasm(new URL("../../build/out.wasm", import.meta.url));
-
-		// 1. Initialize benchmark app
-		appPtr = fns.bench_init();
-
-		// 2. Create interpreter (empty — templates come from WASM via RegisterTemplate mutations)
-		interp = createInterpreter(tbody, new Map());
-		bufPtr = allocBuffer(BUF_CAPACITY);
-
-		// 3. Wire up event listener tracking via EventBridge (no-op dispatch —
-		// bench uses event delegation on tbody, not per-element listeners)
-		new EventBridge(interp, () => {});
-
-		// 4. Initial mount (RegisterTemplate + LoadTemplate in one pass)
-		const mountLen = fns.bench_rebuild(appPtr, bufPtr, BUF_CAPACITY);
-		if (mountLen > 0) {
-			applyMutations(interp, bufPtr, mountLen);
+		function setStatus(text) {
+			statusEl.innerHTML = text;
 		}
 
-		// 5. Event delegation on tbody
-		tbody.addEventListener("click", (e) => {
+		function timeOp(name, fn) {
+			const start = performance.now();
+			fn();
+			const ms = (performance.now() - start).toFixed(1);
+			setStatus(
+				`<strong>${name}</strong>: <span class="timing">${ms}ms</span> — ${fns.bench_row_count(appPtr)} rows`,
+			);
+		}
+
+		// Event delegation on tbody (rootEl)
+		rootEl.addEventListener("click", (e) => {
 			const a = e.target.closest("a");
 			if (!a) return;
 			const tr = a.closest("tr");
@@ -100,7 +66,7 @@ async function boot() {
 			}
 		});
 
-		// 6. Wire buttons
+		// Wire toolbar buttons
 		document.getElementById("btn-create1k").onclick = () => {
 			timeOp("Create 1,000 rows", () => {
 				fns.bench_create(appPtr, 1000);
@@ -144,13 +110,5 @@ async function boot() {
 		};
 
 		setStatus("Ready — click a button to start benchmarking");
-		console.log("🔥 Mojo Benchmark app running!");
-	} catch (err) {
-		console.error("Failed to boot:", err);
-		setStatus(
-			`<span style="color:#ee5a6f">Failed to load: ${err.message}</span>`,
-		);
-	}
-}
-
-boot();
+	},
+});
