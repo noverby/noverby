@@ -1,3 +1,6 @@
+install:
+    deno install
+
 dev:
     deno run -A npm:@rsbuild/core dev --open
 
