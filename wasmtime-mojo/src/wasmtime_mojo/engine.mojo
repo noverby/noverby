@@ -58,7 +58,7 @@ struct Engine:
         var config = wasm_config_new()
         # Pass null path → use default cache directory
         var err = wasmtime_config_cache_config_load(
-            config, UnsafePointer[UInt8]()
+            config, UnsafePointer[UInt8, MutExternalOrigin]()
         )
         if err:
             var msg = error_message(err)

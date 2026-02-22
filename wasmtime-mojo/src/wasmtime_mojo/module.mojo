@@ -19,11 +19,12 @@ Usage:
     var fast_module = Module.deserialize_file(engine.ptr(), "module.cwasm")
 """
 
-from memory import UnsafePointer
+from memory import UnsafePointer, alloc
 from pathlib import Path
 
 from ._types import EnginePtr, ModulePtr, ErrorPtr, WasmByteVec
 from ._lib import (
+    _as_ext,
     wasmtime_module_new,
     wasmtime_module_delete,
     wasmtime_module_serialize,
@@ -55,10 +56,10 @@ struct Module:
         Raises:
             Error: If compilation fails (e.g. invalid WASM binary).
         """
-        var module_out = UnsafePointer[ModulePtr].alloc(1)
+        var module_out = alloc[ModulePtr](1)
         module_out[] = ModulePtr()
 
-        var data_ptr = wasm_bytes.unsafe_ptr()
+        var data_ptr = _as_ext(wasm_bytes.unsafe_ptr())
         var err = wasmtime_module_new(
             engine_ptr,
             data_ptr,
@@ -155,12 +156,12 @@ struct Module:
         """
         # Build a null-terminated C string for the path
         var path_bytes = path.as_bytes()
-        var c_path = UnsafePointer[UInt8].alloc(len(path_bytes) + 1)
+        var c_path = alloc[UInt8](len(path_bytes) + 1)
         for i in range(len(path_bytes)):
             c_path[i] = path_bytes[i]
         c_path[len(path_bytes)] = 0  # null terminator
 
-        var module_out = UnsafePointer[ModulePtr].alloc(1)
+        var module_out = alloc[ModulePtr](1)
         module_out[] = ModulePtr()
 
         var err = wasmtime_module_deserialize_file(
