@@ -22,7 +22,7 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    nix-workspace.url = "github:noverby/nix-workspace";
+    nix-workspace.url = "git+https://tangled.org/@overby.me/overby.me?dir=nix-workspace";
   };
 
   outputs = inputs:

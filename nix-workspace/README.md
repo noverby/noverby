@@ -31,7 +31,7 @@ A Nickel-powered workspace manager for Nix flakes.
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    nix-workspace.url = "github:noverby/nix-workspace";
+    nix-workspace.url = "git+https://tangled.org/@overby.me/overby.me?dir=nix-workspace";
   };
 
   outputs = inputs:
@@ -77,6 +77,29 @@ nix build .#my-tool
 nix develop
 ```
 
+### Alternative: Use the CLI
+
+```shell
+# Install the CLI
+nix profile install "git+https://tangled.org/@overby.me/overby.me?dir=nix-workspace"
+
+# Initialize a new workspace
+nix-workspace init my-project
+cd my-project
+
+# Validate configuration
+nix-workspace check
+
+# Show workspace structure
+nix-workspace info
+
+# Build a package
+nix-workspace build my-tool
+
+# Enter a dev shell
+nix-workspace shell
+```
+
 ## Directory conventions
 
 Place `.ncl` files in convention directories and they are auto-discovered:
@@ -103,6 +126,83 @@ Convention directories are configurable:
   },
 }
 ```
+
+## CLI
+
+The `nix-workspace` CLI provides a standalone interface for working with workspaces without writing Nix code directly.
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `nix-workspace init [path]` | Initialize a new workspace with scaffold files |
+| `nix-workspace check` | Validate `workspace.ncl` against contracts |
+| `nix-workspace info` | Show workspace structure and discovered outputs |
+| `nix-workspace build [name]` | Build a package (delegates to `nix build`) |
+| `nix-workspace shell [name]` | Enter a dev shell (delegates to `nix develop`) |
+
+### Global flags
+
+| Flag | Description |
+|------|-------------|
+| `--format human\|json` | Output format (default: `human`) |
+| `--workspace-dir DIR` | Override workspace root directory |
+
+### JSON diagnostic output
+
+All commands support `--format json` for machine-parseable output, following the structured diagnostics schema from the spec:
+
+```shell
+nix-workspace check --format json
+```
+
+```json
+{
+  "diagnostics": [
+    {
+      "code": "NW001",
+      "severity": "error",
+      "file": "workspace.ncl",
+      "line": 3,
+      "message": "Expected System, got \"x86-linux\"",
+      "hint": "Did you mean \"x86_64-linux\"?"
+    }
+  ]
+}
+```
+
+### On-the-fly flake generation
+
+If a workspace has `workspace.ncl` but no `flake.nix`, the CLI generates a temporary flake automatically when running `build` or `shell` commands:
+
+```shell
+# Works even without a flake.nix!
+nix-workspace build hello
+nix-workspace shell
+```
+
+The generated flake reference can be customized via the `NIX_WORKSPACE_FLAKE_REF` environment variable.
+
+### Init options
+
+```shell
+# Initialize with specific systems and plugins
+nix-workspace init my-project \
+  --systems x86_64-linux,aarch64-linux,aarch64-darwin \
+  --plugins nix-workspace-rust \
+  --conventions packages,shells,modules
+
+# Initialize without generating a flake.nix (standalone mode)
+nix-workspace init my-project --no-flake
+```
+
+### Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `NIX_WORKSPACE_CONTRACTS` | Path to the nix-workspace contracts directory |
+| `NIX_WORKSPACE_PLUGINS` | Path to the nix-workspace plugins directory |
+| `NIX_WORKSPACE_FLAKE_REF` | Flake reference for on-the-fly generation |
 
 ## System multiplexing
 
@@ -400,6 +500,19 @@ The `build-system` field selects the Nix builder:
 }
 ```
 
+## Diagnostic codes
+
+Diagnostic codes are prefixed `NW` (nix-workspace) and grouped by category:
+
+| Range | Category |
+|-------|----------|
+| `NW0xx` | Contract violations (type/value errors) |
+| `NW1xx` | Discovery errors (missing files, bad directory structure) |
+| `NW2xx` | Namespace conflicts (duplicate names, invalid derivation names) |
+| `NW3xx` | Module errors (missing dependencies, circular imports) |
+| `NW4xx` | System/plugin errors (unsupported system, missing input) |
+| `NW5xx` | CLI errors (missing tool, tool failure) |
+
 ## Project structure
 
 ```text
@@ -464,7 +577,7 @@ nix-workspace/
 # Enter the dev shell
 nix develop
 
-# Run contract checks
+# Run all checks (contracts, integration tests, CLI tests)
 nix flake check
 
 # Validate contracts manually
@@ -481,6 +594,14 @@ nickel eval tests/unit/package.ncl     # PackageConfig tests
 nickel eval tests/unit/machine.ncl     # 93 tests
 nickel eval tests/unit/module.ncl      # 80 tests
 nickel eval tests/unit/workspace.ncl   # 82 tests
+
+# Run CLI tests
+cd cli && cargo test                   # 77 tests
+
+# Build the CLI
+cd cli && cargo build
+# or via Nix:
+nix build
 ```
 
 ## Roadmap
@@ -488,10 +609,10 @@ nickel eval tests/unit/workspace.ncl   # 82 tests
 See [SPEC.md](./SPEC.md) for the full specification and milestone details.
 
 - **v0.1 — Foundation** — Core contracts, package/shell discovery, system multiplexing ✅
-- **v0.2 — NixOS integration** — Machine and module configs, home-manager support ← _current_
-- **v0.3 — Subworkspaces** — Monorepo support with auto-namespacing
-- **v0.4 — Plugin system** — Extensible build systems and conventions
-- **v0.5 — Standalone CLI** — `nix-workspace init`, `check`, `build`, `shell`
+- **v0.2 — NixOS integration** — Machine and module configs, home-manager support ✅
+- **v0.3 — Subworkspaces** — Monorepo support with auto-namespacing ✅
+- **v0.4 — Plugin system** — Extensible build systems and conventions ✅
+- **v0.5 — Standalone CLI** — `nix-workspace init`, `check`, `build`, `shell` ✅
 - **v1.0 — Production ready** — Full coverage, migration guides, editor integration
 
 ## License

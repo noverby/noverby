@@ -1,0 +1,27 @@
+[package]
+name = "nix-workspace"
+version = "0.5.0"
+edition = "2024"
+description = "A Nickel-powered workspace manager for Nix flakes"
+license = "MIT"
+repository = "https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace"
+readme = "../README.md"
+
+[[bin]]
+name = "nix-workspace"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+walkdir = "2"
+owo-colors = "4"
+which = "7"
+tempfile = "3"
+
+[profile.release]
+strip = true
+lto = true
+opt-level = "z"
