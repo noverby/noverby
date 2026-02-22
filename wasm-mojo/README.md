@@ -172,6 +172,50 @@ wasm-mojo/
 └── CHANGELOG.md                  # Development history (Phases 0–14)
 ```
 
+## Mojo version
+
+Built on **Mojo 0.25.x**. Migration to **0.26.1** is tracked in
+[MIGRATION_PLAN.md](MIGRATION_PLAN.md).
+
+### Breaking changes (0.26.1)
+
+| ID | Change | Impact | Scope |
+|---|---|---|---|
+| **B1** | `List[T](a, b, c)` variadic initializer removed — use list literals `[a, b, c]` | Widespread | ~50–80 call sites |
+| **B2** | `alias` keyword deprecated — migrate to `comptime` | Pervasive | ~150+ declarations |
+| **B3** | `ImplicitlyBoolable` trait removed — `if ptr:` and `if count:` need explicit comparisons | Moderate | ~20–40 sites |
+| **B4** | `UInt` is now `Scalar[DType.uint]` — no implicit `Int` ↔ `UInt` conversion | Low | Audit needed |
+| **B5** | `Iterator` trait overhaul — `__has_next__()` removed, `__next__()` raises `StopIteration` | None | No custom iterators |
+| **B6** | `Error` no longer `Boolable` or `Defaultable` | Low | Grep for `Error()` |
+| **B7** | `InlineArray` no longer `ImplicitlyCopyable` | Low | Check implicit copies |
+| **B8** | `Writer.write_bytes()` → `write_string()`, `String.__init__(bytes:)` → `unsafe_from_utf8` | Low | Custom `Writer` impls |
+
+### New features to adopt (0.26.1)
+
+| ID | Feature | Opportunity |
+|---|---|---|
+| **F1** | **Typed errors** (`raises CustomError`) — zero-overhead on WASM | `EventError`, `DiffError`, `MutationError` types |
+| **F2** | **String UTF-8 safety** — `from_utf8`, `from_utf8_lossy`, `unsafe_from_utf8` constructors | Explicit safety in WASM ↔ JS string bridge |
+| **F3** | **Trait default impls** — `Writable`, `Equatable`, `Hashable` auto-derive from fields | Zero-boilerplate conformance for core structs |
+| **F4** | `Copyable` now refines `Movable` — remove redundant `Movable` declarations | Minor cleanup |
+| **F5** | `comptime(x)` expression — force compile-time evaluation inline | Cleaner template/config code |
+| **F6** | `-Xlinker` flag — pass options to linker from `mojo build` | Potentially simplify wasm-ld pipeline |
+| **F7** | `-Werror` flag — treat warnings as errors | Add to CI after migration |
+| **F8** | `conforms_to()` + `trait_downcast()` (experimental) — static trait dispatch | Stepping stone to generic `Signal[T]` |
+| **F9** | Expanded reflection — `struct_field_count`, `struct_field_names`, `offset_of` | Auto-generated encoders, debug formatters |
+| **F10** | `Never` type — functions guaranteed not to return | Annotate `abort()` wrappers |
+
+### Migration order
+
+1. **B3** — fix implicit bool conversions (hard compile errors)
+2. **B1** — update `List[T](...)` → list literals (most widespread)
+3. **B4–B8** — minor breaks (`UInt`, `Error`, `InlineArray`, `Writer`)
+4. **B2** — bulk `alias` → `comptime` find-replace (last, touches every file)
+5. **F1–F3** — adopt typed errors, UTF-8 constructors, trait defaults incrementally
+6. **F7** — enable `-Werror` in CI after all warnings resolved
+
+Verification: `just test-all` (996 Mojo + 1,222 JS tests) + manual check of all three example apps.
+
 ## Known limitations
 
 **`@export` only works in the main module.** Mojo's compiler aggressively eliminates dead code before LLVM IR generation. An `@export` decorator on a function in a submodule (e.g., `poc/arithmetic.mojo`) does **not** prevent it from being removed — the function must be called from `main.mojo` to survive. Importing a submodule function without calling it is also insufficient as a DCE anchor. This is why `main.mojo` contains ~419 thin `@export` wrappers that forward to submodule implementations: it is the only reliable way to guarantee WASM export visibility with the current Mojo toolchain. See [CHANGELOG.md § M10.22](CHANGELOG.md#phase-10--modularization--next-steps-) for the full investigation.
@@ -322,7 +366,7 @@ Adding a new test:
 
 All apps use `ComponentContext` for Dioxus-style ergonomics — constructor-based setup,
 `use_signal()` with operator overloading, inline event handlers, auto-numbered
-dynamic text slots, and multi-arg `el_*` overloads that eliminate `List[Node]()` wrappers:
+dynamic text slots, and multi-arg `el_*` overloads that eliminate list wrappers:
 
 ```mojo
 # Dioxus (Rust):
@@ -358,14 +402,18 @@ struct CounterApp:
         return vb.build()
 ```
 
+> **0.26.1 note:** Code examples below use `alias` and `List[T](...)` syntax from
+> Mojo 0.25.x. After migration, `alias` becomes `comptime` and `List[T](a, b, c)`
+> becomes `[a, b, c]` with typed list literals. See [MIGRATION_PLAN.md](MIGRATION_PLAN.md).
+
 Multi-template apps (todo, bench) use `KeyedList` with `ItemBuilder` for ergonomic
 per-item building, `HandlerAction` for event dispatch, and Phase 18 conditional
 helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate:
 
 ```mojo
 # Keyed list pattern (todo, bench) — Phase 17 + 18 ergonomics:
-alias TODO_ACTION_TOGGLE: UInt8 = 1
-alias TODO_ACTION_REMOVE: UInt8 = 2
+alias TODO_ACTION_TOGGLE: UInt8 = 1  # becomes `comptime` in 0.26.1
+alias TODO_ACTION_REMOVE: UInt8 = 2  # becomes `comptime` in 0.26.1
 
 struct TodoApp:
     var ctx: ComponentContext
@@ -515,11 +563,11 @@ They are documented here so they can be revisited as Mojo evolves:
 
 | Dioxus feature | Mojo blocker | Roadmap item | Status |
 |---|---|---|---|
-| **Closure event handlers** (`onclick: move \|_\| count += 1`) | No closures/function pointers in WASM; handlers use action-based structs | Lambda syntax (Phase 1), Closure refinement (Phase 1) | 🚧 In progress |
+| **Closure event handlers** (`onclick: move \|_\| count += 1`) | No closures/function pointers in WASM; handlers use action-based structs. 0.26.1 improves function type conversions (non-raising → raising, ref → value) but true closures still missing | Lambda syntax (Phase 1), Closure refinement (Phase 1) | 🚧 In progress |
 | **`rsx!` macro** (compile-time DSL) | No hygienic macros | Hygienic importable macros (Phase 2) | ⏰ Not started |
 | **`for` loops in views** (`for item in items { ... }`) | Views are static templates; iteration happens in build functions | Hygienic macros (Phase 2) | ⏰ Not started |
-| **Generic `Signal[T]`** (`use_signal(\|\| vec![])`) | Runtime stores fixed `Int32` signals; parametric stores need conditional conformance. Phase 18 added `SignalBool`, Phase 19 added `SignalString` as manual workarounds | Conditional conformance (Phase 1) | 🚧 In progress |
-| **Dynamic component dispatch** (trait objects for components) | No existentials/dynamic traits | Existentials / dynamic traits (Phase 2) | ⏰ Not started |
+| **Generic `Signal[T]`** (`use_signal(\|\| vec![])`) | Runtime stores fixed `Int32` signals; parametric stores need conditional conformance. Phase 18 added `SignalBool`, Phase 19 added `SignalString` as manual workarounds. **0.26.1 adds `conforms_to()` + `trait_downcast()` (experimental) enabling static dispatch on trait conformance, plus expanded reflection (`struct_field_count`, `struct_field_names`, `struct_field_types`, `offset_of`) — stepping stones toward a generic signal store** | Conditional conformance (Phase 1) | 🚧 Partially unblocked |
+| **Dynamic component dispatch** (trait objects for components) | No existentials/dynamic traits. 0.26.1: `AnyType` no longer requires `__del__()` (explicitly-destroyed types) helps but doesn't solve dispatch | Existentials / dynamic traits (Phase 2) | ⏰ Not started |
 | **Pattern matching on actions** | `if/elif` chains instead of `match` | Algebraic data types & pattern matching (Phase 2) | ⏰ Not started |
 | **Async data loading / suspense** | No `async`/`await` | First-class async support (Phase 2) | ⏰ Not started |
 | **Untyped Python-style code** | Explicit types required everywhere | Phase 3: Dynamic OOP | ⏰ Not started |
@@ -529,3 +577,13 @@ adopted — closures would eliminate `ItemBuilder.add_custom_event()` + `get_act
 macros would enable an `rsx!`-like DSL, and generic signals would replace the
 current `SignalI32` / `SignalBool` / `SignalString` / `MemoI32` handles with
 `Signal[Int32]`, `Signal[Bool]`, `Signal[String]`, etc.
+
+### 0.26.1 new features applicable to existing code
+
+Beyond unblocking deferred abstractions, Mojo 0.26.1 brings features that can
+improve wasm-mojo incrementally during the migration:
+
+- **Typed errors** (F1) — `raises CustomError` compiles as alternate return values with zero stack unwinding, ideal for WASM. Define `EventError`, `DiffError`, `MutationError` for the dispatch, diff, and mutation paths.
+- **String UTF-8 safety** (F2) — `String(from_utf8=span)`, `String(from_utf8_lossy=span)`, `String(unsafe_from_utf8=span)` for explicit guarantees in the WASM ↔ JS string bridge.
+- **Trait default impls** (F3) — `Writable`, `Equatable`, `Hashable` auto-derive from struct fields via reflection. Add conformance to `ElementId`, `Node`, `HandlerEntry`, `VNode` with zero boilerplate.
+- **`Never` type** (F10) — annotate unreachable code paths and `abort()` wrappers for compile-time safety.
