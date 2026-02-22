@@ -25,7 +25,10 @@ rules:
       - backend
       - homepage
       - config
-      - modules
+      - nixos
+      - home-manager
+      - devenv
+      - flake
       - nixos-rs
       - pkgs
       - pkg-config-rs

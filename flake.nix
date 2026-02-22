@@ -157,10 +157,10 @@
       flakelight.builtinFormatters = false;
 
       imports = [
-        ./modules/flakelight/libBuiltins.nix
-        ./modules/flakelight/secrets.nix
-        ./modules/flakelight/devenvModules.nix
-        ./modules/flakelight/devenvConfigurations.nix
+        ./flake/libBuiltins.nix
+        ./flake/secrets.nix
+        ./flake/devenvModules.nix
+        ./flake/devenvConfigurations.nix
 
         ./backend
         ./homepage
@@ -178,14 +178,13 @@
       ];
       nixDirAliases = {
         packages = ["pkgs"];
-        flakelightModules = ["modules/flakelight"];
+        flakelightModules = ["flake"];
         nixosConfigurations = ["config/nixos"];
-        nixosModules = ["modules/nixos" "modules/nixos/hardware" "modules/nixos/desktop"];
+        nixosModules = ["nixos" "nixos/hardware" "nixos/desktop"];
         homeConfigurations = ["config/home-manager"];
-        homeModules = ["modules/home-manager" "modules/home-manager/users" "modules/home-manager/desktop"];
+        homeModules = ["home-manager" "home-manager/users" "home-manager/desktop"];
         devenvConfiguration = ["config/devenv"];
-        devenvModules = ["modules/devenv"];
-        secrets = ["config/secrets"];
+        devenvModules = ["devenv"];
         withOverlays = ["config/with-overlays"];
       };
     };
