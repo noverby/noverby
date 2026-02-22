@@ -76,7 +76,7 @@ Phase 4: Output
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    nix-workspace.url = "github:example/nix-workspace";
+    nix-workspace.url = "git+https://tangled.org/@overby.me/overby.me?dir=nix-workspace";
   };
 
   outputs = inputs:
@@ -497,9 +497,22 @@ nix-workspace/
 │       ├── plugin.ncl         # Go contracts, go-modules/ convention, extensions
 │       └── builder.nix        # Enhanced Go builder (tags, ldflags, CGO, etc.)
 │
-├── src/                       # Rust CLI (standalone mode)
+├── cli/                       # Rust CLI (standalone mode)
 │   ├── Cargo.toml
-│   └── ...
+│   ├── Cargo.lock
+│   └── src/
+│       ├── main.rs            # Entry point, clap setup
+│       ├── commands/
+│       │   ├── mod.rs         # Subcommand enum + GlobalArgs
+│       │   ├── init.rs        # `nix-workspace init`
+│       │   ├── check.rs       # `nix-workspace check`
+│       │   ├── info.rs        # `nix-workspace info`
+│       │   ├── build.rs       # `nix-workspace build` (delegates to nix build)
+│       │   └── shell.rs       # `nix-workspace shell` (delegates to nix develop)
+│       ├── workspace.rs       # Workspace discovery (Rust-side directory scanning)
+│       ├── nickel.rs          # Nickel evaluation wrapper (shells out to nickel CLI)
+│       ├── diagnostics.rs     # Structured NW diagnostic types and formatting
+│       └── flake_gen.rs       # On-the-fly flake.nix generation
 │
 ├── examples/                  # Example workspaces
 │   ├── minimal/               # Single package workspace
@@ -599,11 +612,11 @@ nix-workspace/
 
 ### v0.5 — Standalone CLI
 
-- [ ] Rust CLI skeleton (`nix-workspace init`, `check`, `info`)
-- [ ] `nix-workspace build` delegating to `nix build`
-- [ ] `nix-workspace shell` delegating to `nix develop`
-- [ ] JSON diagnostic output via `--format json`
-- [ ] On-the-fly `flake.nix` generation for non-flake projects
+- [x] Rust CLI skeleton (`nix-workspace init`, `check`, `info`)
+- [x] `nix-workspace build` delegating to `nix build`
+- [x] `nix-workspace shell` delegating to `nix develop`
+- [x] JSON diagnostic output via `--format json`
+- [x] On-the-fly `flake.nix` generation for non-flake projects
 
 ### v1.0 — Production ready
 

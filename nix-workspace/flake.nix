@@ -40,14 +40,42 @@
     // eachSystem (
       system: let
         pkgs = nixpkgs.legacyPackages.${system};
+
+        # Build the Rust CLI
+        cli = pkgs.rustPlatform.buildRustPackage {
+          pname = "nix-workspace";
+          version = "0.5.0";
+          src = ./cli;
+          cargoLock.lockFile = ./cli/Cargo.lock;
+          meta = {
+            description = "A Nickel-powered workspace manager for Nix flakes";
+            homepage = "https://tangled.org/@overby.me/overby.me/tree/main/nix-workspace";
+            license = pkgs.lib.licenses.mit;
+            mainProgram = "nix-workspace";
+          };
+        };
       in {
+        # CLI package
+        packages.${system}.default = cli;
+        packages.${system}.nix-workspace = cli;
+
         # Dev shell for working on nix-workspace itself
         devShells.${system}.default = pkgs.mkShell {
           name = "nix-workspace-dev";
+          inputsFrom = [cli];
           packages = with pkgs; [
             nickel
             nls
+            cargo
+            rustc
+            rust-analyzer
+            clippy
+            rustfmt
           ];
+
+          # Point the CLI at our contracts and plugins directories for development
+          NIX_WORKSPACE_CONTRACTS = toString ./contracts;
+          NIX_WORKSPACE_PLUGINS = toString ./plugins;
         };
 
         # Run contract tests
@@ -200,6 +228,26 @@
               nix eval --extra-experimental-features nix-command \
                 --file ${./tests/integration/plugins.nix}
               echo "All plugin integration tests passed."
+              touch $out
+            '';
+
+          # v0.5: Rust CLI unit tests
+          cli =
+            pkgs.runCommand "nix-workspace-cli-tests"
+            {
+              nativeBuildInputs = with pkgs; [
+                cargo
+                rustc
+                rustPlatform.cargoSetupHook
+              ];
+            }
+            ''
+              cp -r ${./cli} cli
+              chmod -R u+w cli
+              cd cli
+              export HOME=$TMPDIR
+              cargo test 2>&1
+              echo "All CLI tests passed."
               touch $out
             '';
         };
