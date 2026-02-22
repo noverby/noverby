@@ -1,117 +1,86 @@
 # CounterApp — Self-contained counter application.
 #
-# Orchestrates all subsystems via ComponentContext:
-#   ComponentContext (AppShell, Runtime, VNodeStore, ElementIdAllocator, Scheduler)
-#   + Templates + VNodes + Create/Diff
+# This version uses the ergonomic register_view() + render_builder() API
+# with inline event handlers, achieving a Dioxus-like declarative style.
 #
-# This version uses the ergonomic reactive handles (SignalI32, MemoI32)
-# and ComponentContext to dramatically reduce boilerplate compared to
-# the raw AppShell API.
+# Compare with the Dioxus equivalent:
 #
-# Template structure (built via DSL):
+#     fn App() -> Element {
+#         let mut count = use_signal(|| 0);
+#         rsx! {
+#             h1 { "High-Five counter: {count}" }
+#             button { onclick: move |_| count += 1, "Up high!" }
+#             button { onclick: move |_| count -= 1, "Down low!" }
+#         }
+#     }
+#
+# Template structure (built via register_view with inline events):
 #   div
-#     span
-#       dynamic_text[0]      ← "Count: N"
-#     span
-#       dynamic_text[1]      ← "Doubled: 2N"
-#     button  (text: "+")
-#       dynamic_attr[0]      ← onclick → increment handler
-#     button  (text: "−")
-#       dynamic_attr[1]      ← onclick → decrement handler
+#     h1
+#       dynamic_text[0]      ← "High-Five counter: N"
+#     button  (text: "Up high!")
+#       dynamic_attr[0]      ← onclick → increment handler (auto-registered)
+#     button  (text: "Down low!")
+#       dynamic_attr[1]      ← onclick → decrement handler (auto-registered)
 
 from memory import UnsafePointer
 from bridge import MutationWriter
 from component import ComponentContext
-from signals import SignalI32, MemoI32
+from signals import SignalI32
+from signals.runtime import Runtime
 from vdom import (
     Node,
     el_div,
-    el_span,
+    el_h1,
     el_button,
     text,
     dyn_text,
-    dyn_attr,
-    VNodeBuilder,
+    onclick_add,
+    onclick_sub,
 )
-from signals.runtime import Runtime
 
 
 struct CounterApp(Movable):
     """Self-contained counter application state.
 
-    Uses ComponentContext + reactive handles for concise component authoring.
-    Compare with the Dioxus equivalent:
-
-        fn App() -> Element {
-            let mut count = use_signal(|| 0);
-            rsx! {
-                h1 { "High-Five counter: {count}" }
-                button { onclick: move |_| count += 1, "Up high!" }
-                button { onclick: move |_| count -= 1, "Down low!" }
-            }
-        }
+    Uses ComponentContext + register_view() + render_builder() for
+    Dioxus-like concise component authoring.  Inline event handlers
+    (onclick_add, onclick_sub) are co-located with the view definition
+    and auto-registered — no manual handler ID management needed.
     """
 
     var ctx: ComponentContext
     var count: SignalI32
-    var doubled: MemoI32
-    var incr_handler: UInt32
-    var decr_handler: UInt32
 
     fn __init__(out self):
         self.ctx = ComponentContext()
         self.count = SignalI32(0, UnsafePointer[Runtime]())
-        self.doubled = MemoI32(0, UnsafePointer[Runtime]())
-        self.incr_handler = 0
-        self.decr_handler = 0
 
     fn __moveinit__(out self, deinit other: Self):
         self.ctx = other.ctx^
-        self.count = other.count.copy()
-        self.doubled = other.doubled.copy()
-        self.incr_handler = other.incr_handler
-        self.decr_handler = other.decr_handler
+        self.count = other.count^
 
-    fn build_count_text(self) -> String:
-        """Build the display string "Count: N" from the current signal value."""
-        return String("Count: ") + String(self.count.peek())
-
-    fn build_doubled_text(mut self) -> String:
-        """Build the display string "Doubled: 2N" from the memo value.
-
-        Recomputes the memo if dirty (signal changed since last compute),
-        then reads the cached value.
-        """
-        if self.doubled.is_dirty():
-            self.doubled.begin_compute()
-            var val = self.count.read()
-            self.doubled.end_compute(val * 2)
-        return String("Doubled: ") + String(self.doubled.peek())
-
-    fn build_vnode(mut self) -> UInt32:
+    fn render(mut self) -> UInt32:
         """Build a fresh VNode for the counter component.
 
-        Creates a TemplateRef VNode with:
-          - dynamic_text[0] = "Count: N"
-          - dynamic_text[1] = "Doubled: 2N"
-          - dynamic_attr[0] = onclick → incr_handler
-          - dynamic_attr[1] = onclick → decr_handler
+        Uses render_builder() which auto-populates the event handler
+        attributes registered by register_view().  The component only
+        needs to provide dynamic text values.
 
         Returns the VNode index in the store.
         """
-        var vb = self.ctx.vnode_builder()
-        vb.add_dyn_text(self.build_count_text())
-        vb.add_dyn_text(self.build_doubled_text())
-        vb.add_dyn_event(String("click"), self.incr_handler)
-        vb.add_dyn_event(String("click"), self.decr_handler)
-        return vb.index()
+        var vb = self.ctx.render_builder()
+        vb.add_dyn_text(
+            String("High-Five counter: ") + String(self.count.peek())
+        )
+        return vb.build()
 
 
 fn counter_app_init() -> UnsafePointer[CounterApp]:
     """Initialize the counter app.  Returns a pointer to the app state.
 
     Creates: ComponentContext (runtime, VNode store, element ID allocator,
-    scheduler), scope, signals, memo, template, and event handlers.
+    scheduler), scope, signal, template with inline event handlers.
     """
     var app_ptr = UnsafePointer[CounterApp].alloc(1)
     app_ptr.init_pointee_move(CounterApp())
@@ -121,31 +90,34 @@ fn counter_app_init() -> UnsafePointer[CounterApp]:
 
     # 2. Create reactive state via hooks (auto-subscribes scope)
     app_ptr[0].count = app_ptr[0].ctx.use_signal(0)
-    app_ptr[0].doubled = app_ptr[0].ctx.use_memo(0)
 
     # 3. End setup (closes render bracket)
     app_ptr[0].ctx.end_setup()
 
-    # 4. Build and register the counter template via DSL:
-    #    div > [ span > dynamic_text[0],
-    #            span > dynamic_text[1],
-    #            button > text("+") + dynamic_attr[0],
-    #            button > text("−") + dynamic_attr[1] ]
-    app_ptr[0].ctx.register_template(
+    # 4. Register view with inline event handlers — Dioxus-like:
+    #    div > [ h1 > dynamic_text[0],
+    #            button > text("Up high!")  + onclick(count += 1),
+    #            button > text("Down low!") + onclick(count -= 1) ]
+    app_ptr[0].ctx.register_view(
         el_div(
             List[Node](
-                el_span(List[Node](dyn_text(0))),
-                el_span(List[Node](dyn_text(1))),
-                el_button(List[Node](text(String("+")), dyn_attr(0))),
-                el_button(List[Node](text(String("-")), dyn_attr(1))),
+                el_h1(List[Node](dyn_text(0))),
+                el_button(
+                    List[Node](
+                        text(String("Up high!")),
+                        onclick_add(app_ptr[0].count, 1),
+                    )
+                ),
+                el_button(
+                    List[Node](
+                        text(String("Down low!")),
+                        onclick_sub(app_ptr[0].count, 1),
+                    )
+                ),
             )
         ),
         String("counter"),
     )
-
-    # 5. Register event handlers via ergonomic helpers
-    app_ptr[0].incr_handler = app_ptr[0].ctx.on_click_add(app_ptr[0].count, 1)
-    app_ptr[0].decr_handler = app_ptr[0].ctx.on_click_sub(app_ptr[0].count, 1)
 
     return app_ptr
 
@@ -169,7 +141,7 @@ fn counter_app_rebuild(
 
     Returns the byte offset (length) of the mutation data written.
     """
-    var vnode_idx = app[0].build_vnode()
+    var vnode_idx = app[0].render()
     return app[0].ctx.mount(writer_ptr, vnode_idx)
 
 
@@ -199,7 +171,7 @@ fn counter_app_flush(
         return 0
 
     # Build a new VNode with updated state
-    var new_idx = app[0].build_vnode()
+    var new_idx = app[0].render()
 
     # Diff old → new and update current vnode
     app[0].ctx.diff(writer_ptr, new_idx)

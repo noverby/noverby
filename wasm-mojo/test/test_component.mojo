@@ -1039,24 +1039,23 @@ def test_shell_effect_drain_pending(w: UnsafePointer[WasmInstance]):
     w[].call_void("shell_destroy", args_ptr(shell))
 
 
-# ── Counter memo demo (M13.6) ───────────────────────────────────────────────
+# ── Counter doubled demo (inline computation, no memo) ──────────────────────
 
 
-def test_counter_memo_starts_dirty(w: UnsafePointer[WasmInstance]):
-    """Counter memo starts dirty after init (needs first computation)."""
+def test_counter_doubled_initial(w: UnsafePointer[WasmInstance]):
+    """Counter doubled value is 0 initially (computed inline as count * 2)."""
     var app = Int(w[].call_i64("counter_init", no_args()))
+    # counter_doubled_memo returns -1 (memo removed in ergonomic rewrite)
     var memo_id = w[].call_i32("counter_doubled_memo", args_ptr(app))
-    assert_true(memo_id >= 0, "doubled memo ID is non-negative")
-    # After init the first build_vnode hasn't run yet, but init does
-    # a begin_render/end_render cycle, so memo is created.
-    # The initial doubled value should be 0 (initial).
+    assert_equal(memo_id, -1, "doubled memo removed (returns -1)")
+    # counter_doubled_value computes count * 2 inline
     var doubled = w[].call_i32("counter_doubled_value", args_ptr(app))
     assert_equal(doubled, 0, "doubled starts at 0")
     w[].call_void("counter_destroy", args_ptr(app))
 
 
-def test_counter_memo_after_first_build(w: UnsafePointer[WasmInstance]):
-    """After first rebuild, memo is computed and value = count * 2 = 0."""
+def test_counter_doubled_after_first_build(w: UnsafePointer[WasmInstance]):
+    """After first rebuild, doubled = count * 2 = 0."""
     var app = Int(w[].call_i64("counter_init", no_args()))
     var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(4096)))
     _ = w[].call_i32("counter_rebuild", args_ptr_ptr_i32(app, buf, 4096))
@@ -1068,8 +1067,8 @@ def test_counter_memo_after_first_build(w: UnsafePointer[WasmInstance]):
     w[].call_void("counter_destroy", args_ptr(app))
 
 
-def test_counter_memo_after_increment(w: UnsafePointer[WasmInstance]):
-    """After increment + flush, memo recomputes to count * 2."""
+def test_counter_doubled_after_increment(w: UnsafePointer[WasmInstance]):
+    """After increment + flush, doubled = count * 2 = 2."""
     var app = Int(w[].call_i64("counter_init", no_args()))
     var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(4096)))
     # Initial mount
@@ -1087,7 +1086,7 @@ def test_counter_memo_after_increment(w: UnsafePointer[WasmInstance]):
     w[].call_void("counter_destroy", args_ptr(app))
 
 
-def test_counter_memo_multiple_increments(w: UnsafePointer[WasmInstance]):
+def test_counter_doubled_multiple_increments(w: UnsafePointer[WasmInstance]):
     """After 5 increments + flush, doubled = 10."""
     var app = Int(w[].call_i64("counter_init", no_args()))
     var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(4096)))
@@ -1105,7 +1104,7 @@ def test_counter_memo_multiple_increments(w: UnsafePointer[WasmInstance]):
     w[].call_void("counter_destroy", args_ptr(app))
 
 
-def test_counter_memo_decrement(w: UnsafePointer[WasmInstance]):
+def test_counter_doubled_decrement(w: UnsafePointer[WasmInstance]):
     """After decrement, doubled = -2."""
     var app = Int(w[].call_i64("counter_init", no_args()))
     var buf = Int(w[].call_i64("mutation_buf_alloc", args_i32(4096)))
@@ -1161,12 +1160,12 @@ fn main() raises:
     test_shell_use_memo_hook(w)
     test_shell_memo_parity_with_runtime(w)
     test_shell_memo_multiple_memos(w)
-    # Counter memo demo (M13.6)
-    test_counter_memo_starts_dirty(w)
-    test_counter_memo_after_first_build(w)
-    test_counter_memo_after_increment(w)
-    test_counter_memo_multiple_increments(w)
-    test_counter_memo_decrement(w)
+    # Counter doubled demo (inline computation, no memo)
+    test_counter_doubled_initial(w)
+    test_counter_doubled_after_first_build(w)
+    test_counter_doubled_after_increment(w)
+    test_counter_doubled_multiple_increments(w)
+    test_counter_doubled_decrement(w)
     # Shell effect helpers (M14.4)
     test_shell_effect_create_returns_valid_id(w)
     test_shell_effect_begin_end_run_clears_pending(w)

@@ -84,12 +84,19 @@ from .dsl import (
     NODE_DYN_NODE,
     NODE_STATIC_ATTR,
     NODE_DYN_ATTR,
+    NODE_EVENT,
     # Leaf constructors
     text,
     dyn_text,
     dyn_node,
     attr,
     dyn_attr,
+    # Inline event handler constructors
+    onclick_add,
+    onclick_sub,
+    onclick_set,
+    onclick_toggle,
+    on_event,
     # Generic element constructors
     el,
     el_empty,
