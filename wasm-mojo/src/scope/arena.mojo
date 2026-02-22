@@ -17,7 +17,7 @@ from .scope import ScopeState
 
 
 @fieldwise_init
-struct _ScopeSlotState(Copyable):
+struct _ScopeSlotState(Copyable, Equatable, Writable):
     """Tracks whether a scope slot is occupied or vacant."""
 
     var occupied: Bool

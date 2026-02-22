@@ -1,7 +1,7 @@
 build:
     mkdir -p build
     rm -f build/out.cwasm
-    mojo build --emit llvm -I examples -o build/out.ll src/main.mojo
+    mojo build -Werror --emit llvm -I examples -o build/out.ll src/main.mojo
     sed -i '/call void @llvm\.lifetime\.\(start\|end\)/d' build/out.ll
     sed -i 's/ nocreateundeforpoison//g' build/out.ll
     sed -i 's/ "target-cpu"="[^"]*"//g; s/ "target-features"="[^"]*"//g' build/out.ll

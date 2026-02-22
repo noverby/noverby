@@ -72,7 +72,7 @@ comptime ACTION_CUSTOM: UInt8 = 255
 # ── HandlerEntry ─────────────────────────────────────────────────────────────
 
 
-struct HandlerEntry(Copyable):
+struct HandlerEntry(Copyable, Equatable, Writable):
     """A single event handler entry in the registry.
 
     Fields:
@@ -255,7 +255,7 @@ struct HandlerEntry(Copyable):
 
 
 @fieldwise_init
-struct HandlerSlotState(Copyable):
+struct HandlerSlotState(Copyable, Equatable, Writable):
     """Tracks whether a handler slot is occupied or vacant."""
 
     var occupied: Bool

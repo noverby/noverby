@@ -85,12 +85,14 @@ from vdom import (
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-struct EventBinding(Copyable):
+struct EventBinding(Copyable, Equatable, Writable):
     """A registered event handler binding for use by RenderBuilder.
 
     Stores the event name and handler ID so that `RenderBuilder.build()`
     can automatically add dynamic event attributes to the VNode without
     the component author needing to track handler IDs manually.
+
+    `Equatable` and `Writable` are auto-derived from struct fields.
     """
 
     var event_name: String
@@ -1353,7 +1355,7 @@ struct ComponentContext(Movable):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-struct _EventInfo(Copyable):
+struct _EventInfo(Copyable, Equatable, Writable):
     """Internal: collected event handler info from a NODE_EVENT node."""
 
     var event_name: String
@@ -1391,7 +1393,7 @@ struct _EventInfo(Copyable):
         self.attr_idx = other.attr_idx
 
 
-struct _ValueBindingInfo(Copyable):
+struct _ValueBindingInfo(Copyable, Equatable, Writable):
     """Internal: collected value binding info from a NODE_BIND_VALUE node."""
 
     var attr_name: String

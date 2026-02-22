@@ -151,7 +151,7 @@ struct SignalEntry(Copyable):
 
 
 @fieldwise_init
-struct SignalSlotState(Copyable):
+struct SignalSlotState(Copyable, Equatable, Writable):
     """Tracks whether a signal slot is occupied or vacant."""
 
     var occupied: Bool
@@ -331,23 +331,12 @@ struct SignalStore(Movable):
 # while safely managing heap strings.
 
 
-struct _StringSlotState(Copyable):
+@fieldwise_init
+struct _StringSlotState(Copyable, Equatable, Writable):
     """Tracks whether a string slot is occupied or vacant."""
 
     var occupied: Bool
     var next_free: Int  # Only valid when not occupied; -1 = end of free list.
-
-    fn __init__(out self, occupied: Bool, next_free: Int):
-        self.occupied = occupied
-        self.next_free = next_free
-
-    fn __copyinit__(out self, other: Self):
-        self.occupied = other.occupied
-        self.next_free = other.next_free
-
-    fn __moveinit__(out self, deinit other: Self):
-        self.occupied = other.occupied
-        self.next_free = other.next_free
 
 
 struct StringStore(Movable):

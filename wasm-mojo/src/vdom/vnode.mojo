@@ -50,11 +50,15 @@ comptime DNODE_PLACEHOLDER: UInt8 = 1
 # ── AttributeValue ───────────────────────────────────────────────────────────
 
 
-struct AttributeValue(Copyable):
+struct AttributeValue(Copyable, Equatable, Writable):
     """The value of a dynamic attribute.
 
     Tagged union supporting text, integer, float, boolean, event handler
     reference, or none (attribute removal).
+
+    `Equatable` and `Writable` are auto-derived from all fields.  Since
+    named constructors always set inactive fields to defaults (empty
+    string, 0, False), field-by-field equality is semantically correct.
     """
 
     var kind: UInt8  # AVAL_*
@@ -202,12 +206,14 @@ struct AttributeValue(Copyable):
 # ── DynamicAttr ──────────────────────────────────────────────────────────────
 
 
-struct DynamicAttr(Copyable):
+struct DynamicAttr(Copyable, Equatable, Writable):
     """A dynamic attribute on a VNode's template instantiation.
 
     Each dynamic attribute specifies which element in the template it
     belongs to (via element_id), the attribute name, an optional namespace,
     and the current value.
+
+    `Equatable` and `Writable` are auto-derived from all fields.
     """
 
     var name: String
@@ -264,12 +270,14 @@ struct DynamicAttr(Copyable):
 # ── DynamicNode ──────────────────────────────────────────────────────────────
 
 
-struct DynamicNode(Copyable):
+struct DynamicNode(Copyable, Equatable, Writable):
     """A dynamic child node within a TemplateRef VNode.
 
     Dynamic nodes fill the slots identified by TemplateNode.Dynamic entries
     in the template.  They can be text nodes or placeholders.  More complex
     dynamic content (components, fragments) is handled by nesting VNodes.
+
+    `Equatable` and `Writable` are auto-derived from all fields.
     """
 
     var kind: UInt8  # DNODE_TEXT or DNODE_PLACEHOLDER

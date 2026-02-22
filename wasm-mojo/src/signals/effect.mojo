@@ -35,7 +35,7 @@ from memory import UnsafePointer
 # ── EffectEntry ──────────────────────────────────────────────────────────────
 
 
-struct EffectEntry(Copyable):
+struct EffectEntry(Copyable, Equatable, Writable):
     """A reactive side effect with dependency tracking.
 
     An effect has its own reactive context (context_id) that records
@@ -89,7 +89,7 @@ struct EffectEntry(Copyable):
 
 
 @fieldwise_init
-struct EffectSlotState(Copyable):
+struct EffectSlotState(Copyable, Equatable, Writable):
     """Tracks whether an effect slot is occupied or vacant."""
 
     var occupied: Bool
