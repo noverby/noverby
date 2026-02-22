@@ -11,7 +11,9 @@ All notable changes to wasm-mojo are documented here, organized by development p
 - **M19.5** — `add_dyn_text_signal(SignalString)` convenience on `RenderBuilder` (`src/component/context.mojo`) and `ItemBuilder` (`src/component/keyed_list.mojo`). Reads the signal's current value (via peek) and adds it as the next dynamic text slot — replaces the common `add_dyn_text(signal.get())` pattern.
 - **M19.6** — 38 new Mojo tests: 9 `StringStore` unit tests (create/read, write, count, contains, destroy, reuse slot, multiple entries, empty string, overwrite), 16 `SignalString` unit tests (get, peek, set, set empty, read subscribes, read returns value, version increments, is_empty true/false/after set, str, str empty, copy, multiple writes, concatenation pattern), 3 Runtime string signal tests (count, destroy, use_signal_string hook), 10 `ComponentContext` SignalString integration tests (use_signal_string, empty, subscribes scope, create_signal_string, no subscribe, set/get, version lifecycle, str interpolation, render builder, multiple signals, mixed with SignalI32).
 
-**Test count after M19.6:** 981 Mojo + 1,152 JS = 2,133 tests.
+- **M19.7** — TodoApp `input_text` migrated from plain `String` to `SignalString` (`examples/todo/todo.mojo`). Uses `ctx.create_signal_string(String(""))` (no scope subscription — the input value is a write-buffer, not rendered reactively). Updated `todo_set_input` export to use `input_text.set(text)` instead of direct assignment. Added `todo_input_version` and `todo_input_is_empty` WASM exports demonstrating `SignalString.version()` and `SignalString.is_empty()`. Added 12 new JS tests: version tracking (initial 0, increments on each set, list_version decoupled, scope not dirty), `is_empty` state transitions (empty on init, not empty after set, empty after clear).
+
+**Test count after M19.7:** 981 Mojo + 1,164 JS = 2,145 tests.
 
 ---
 

@@ -124,7 +124,7 @@ wasm-mojo/
 │   │   ├── index.html            # Browser entry point
 │   │   └── main.js               # JS harness
 │   ├── todo/                     # Todo list app
-│   │   ├── todo.mojo             # Mojo app (keyed lists, multi-template, custom handlers)
+│   │   ├── todo.mojo             # Mojo app (keyed lists, multi-template, custom handlers, SignalString)
 │   │   ├── index.html            # Browser entry point
 │   │   └── main.js               # JS harness
 │   ├── bench/                    # js-framework-benchmark

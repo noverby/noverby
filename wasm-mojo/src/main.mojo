@@ -2118,8 +2118,13 @@ fn todo_toggle_item(app_ptr: Int64, item_id: Int32):
 
 @export
 fn todo_set_input(app_ptr: Int64, text: String):
-    """Update the input text (stored in app state, no re-render)."""
-    _get[TodoApp](app_ptr)[0].input_text = text
+    """Update the input text via SignalString.set() (no re-render).
+
+    Phase 19: input_text is now a SignalString created via
+    create_signal_string() — no scope is subscribed, so set() bumps
+    the companion version signal but does NOT dirty any scope.
+    """
+    _get[TodoApp](app_ptr)[0].input_text.set(text)
 
 
 @export
@@ -2205,6 +2210,25 @@ fn todo_handler_map_count(app_ptr: Int64) -> Int32:
     equal 2 * item_count after a rebuild.
     """
     return Int32(_get[TodoApp](app_ptr)[0].items.handler_count())
+
+
+@export
+fn todo_input_version(app_ptr: Int64) -> Int32:
+    """Return the input text SignalString's version (Phase 19).
+
+    The version increments on every set() call — useful for staleness
+    checks and verifying that SignalString write tracking works.
+    """
+    return Int32(_get[TodoApp](app_ptr)[0].input_text.version())
+
+
+@export
+fn todo_input_is_empty(app_ptr: Int64) -> Int32:
+    """Return 1 if the input text is empty, 0 otherwise (Phase 19).
+
+    Demonstrates SignalString.is_empty() — reads via peek (no subscription).
+    """
+    return _b2i(_get[TodoApp](app_ptr)[0].input_text.is_empty())
 
 
 @export

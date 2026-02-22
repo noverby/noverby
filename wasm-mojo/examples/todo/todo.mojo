@@ -1,6 +1,7 @@
 # TodoApp — Self-contained todo list application.
 #
-# Migrated to Phase 18 Dioxus-style ergonomics:
+# Migrated to Phase 19 Dioxus-style ergonomics:
+#   - `SignalString` for reactive input text (Phase 19 — replaces plain String field)
 #   - `begin_item()` replaces manual `create_scope()` + `item_builder()`
 #   - `add_custom_event()` replaces manual `register_handler()` + `add_dyn_event()` + `handler_map.append()`
 #   - `get_action()` replaces manual handler_map lookup loop
@@ -104,7 +105,7 @@ from bridge import MutationWriter
 from mutations import CreateEngine
 from events import HandlerEntry
 from component import ComponentContext, KeyedList
-from signals import SignalI32
+from signals import SignalI32, SignalString
 from vdom import (
     VNode,
     VNodeStore,
@@ -165,6 +166,10 @@ struct TodoApp(Movable):
     Uses KeyedList with Phase 17 ItemBuilder for ergonomic per-item
     building and HandlerAction for dispatch.
 
+    Phase 19: `input_text` is a `SignalString` created via
+    `create_signal_string()` (no scope subscription — the input value
+    is not rendered reactively, it's a write-buffer for the Add flow).
+
     The item list lives inside the <ul> element of the app template.
     On initial mount, a placeholder comment node occupies the <ul>.
     KeyedList tracks the placeholder/anchor, current fragment,
@@ -176,7 +181,7 @@ struct TodoApp(Movable):
     var items: KeyedList  # bundles template_id + FragmentSlot + scope_ids + handler_map
     var data: List[TodoItem]
     var next_id: Int32
-    var input_text: String
+    var input_text: SignalString  # Phase 19: reactive string signal (no subscription)
     # Handler ID for the app-level Add button
     var add_handler: UInt32
 
@@ -236,7 +241,10 @@ struct TodoApp(Movable):
         # 5. Initialize remaining state
         self.data = List[TodoItem]()
         self.next_id = 1
-        self.input_text = String("")
+        # Phase 19: input_text as SignalString — created (not used) since
+        # the input value doesn't drive renders.  Demonstrates the
+        # create_signal_string() path (no hook registration, no subscription).
+        self.input_text = self.ctx.create_signal_string(String(""))
 
     fn __moveinit__(out self, deinit other: Self):
         self.ctx = other.ctx^
@@ -244,7 +252,9 @@ struct TodoApp(Movable):
         self.items = other.items^
         self.data = other.data^
         self.next_id = other.next_id
-        self.input_text = other.input_text^
+        self.input_text = (
+            other.input_text.copy()
+        )  # SignalString is Copyable (not ImplicitlyCopyable)
         self.add_handler = other.add_handler
 
     fn add_item(mut self, text: String):
