@@ -28,14 +28,24 @@
 #     ctx.register_template(view, "counter")
 #     var incr = ctx.on_click_add(count, 1)   # → UInt32 handler ID
 #
+# Multi-template apps (e.g. todo, bench) use register_extra_template():
+#
+#     var ctx = ComponentContext.create()
+#     var version = ctx.use_signal(0)
+#     ctx.end_setup()
+#     ctx.register_template(app_view, "todo-app")
+#     var item_tmpl = ctx.register_extra_template(item_view, "todo-item")
+#
 # ComponentContext manages:
 #   - AppShell creation and lifecycle
 #   - Root scope creation and render bracket
 #   - Signal/memo/effect creation with automatic scope subscription
-#   - Template registration
+#   - Template registration (single primary + extra templates)
 #   - Handler registration with short convenience methods
 #   - VNode building via the store
 #   - Event dispatch, flush, mount, diff lifecycle
+#   - Child scope creation and destruction (for keyed list items)
+#   - Fragment lifecycle (for dynamic keyed lists)
 #
 # Ownership: ComponentContext OWNS the AppShell and is responsible for
 # destroying it.  The reactive handles (SignalI32, MemoI32, EffectHandle)
@@ -47,6 +57,7 @@ from signals.handle import SignalI32, MemoI32, EffectHandle
 from events import HandlerEntry
 from bridge import MutationWriter
 from .app_shell import AppShell, app_shell_create
+from .lifecycle import FragmentSlot
 from vdom import (
     Node,
     NODE_EVENT,
@@ -54,6 +65,7 @@ from vdom import (
     NODE_DYN_TEXT,
     NODE_DYN_ATTR,
     DYN_TEXT_AUTO,
+    VNode,
     to_template,
     VNodeBuilder,
     VNodeStore,
@@ -388,6 +400,27 @@ struct ComponentContext(Movable):
         self.template_id = UInt32(
             self.shell.runtime[0].templates.register(template^)
         )
+
+    fn register_extra_template(mut self, view: Node, name: String) -> UInt32:
+        """Register an additional template without setting self.template_id.
+
+        Use this when a component needs multiple templates — for example,
+        an app shell template (registered via `register_template` or
+        `setup_view`) plus a list item template for keyed children.
+
+        Example (todo app):
+            ctx.register_template(app_view, "todo-app")
+            var item_tmpl = ctx.register_extra_template(item_view, "todo-item")
+
+        Args:
+            view: The root Node of the template tree (from DSL helpers).
+            name: The template name (for deduplication).
+
+        Returns:
+            The registered template ID for use with `vnode_builder_for()`.
+        """
+        var template = to_template(view, name)
+        return UInt32(self.shell.runtime[0].templates.register(template^))
 
     fn setup_view(mut self, view: Node, name: String):
         """End setup and register a view in one call.
@@ -813,6 +846,77 @@ struct ComponentContext(Movable):
         """
         return self.shell.finalize(writer_ptr)
 
+    # ── Child scopes (for keyed list items) ──────────────────────────
+
+    fn create_child_scope(mut self) -> UInt32:
+        """Create a child scope under the root scope.
+
+        Each keyed list item typically gets its own child scope so that
+        its event handlers can be cleaned up independently when the item
+        is removed or the list is rebuilt.
+
+        Returns:
+            The new child scope ID.
+        """
+        return self.shell.create_child_scope(self.scope_id)
+
+    fn destroy_child_scopes(mut self, scope_ids: List[UInt32]):
+        """Destroy a list of child scopes and clean up their handlers.
+
+        Call this before rebuilding a keyed list to release the old
+        per-item scopes and their registered event handlers.
+
+        Args:
+            scope_ids: The child scope IDs to destroy.
+        """
+        self.shell.destroy_child_scopes(scope_ids)
+
+    # ── Fragment lifecycle (for dynamic keyed lists) ─────────────────
+
+    fn flush_fragment(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter],
+        slot: FragmentSlot,
+        new_frag_idx: UInt32,
+    ) -> FragmentSlot:
+        """Flush a fragment slot: diff old vs new fragment and emit mutations.
+
+        Delegates to `AppShell.flush_fragment()` which handles all three
+        transitions: empty→populated, populated→populated, populated→empty.
+
+        Does NOT call `finalize()` — the caller must finalize the
+        mutation buffer after this returns.
+
+        Args:
+            writer_ptr: Pointer to the MutationWriter for output.
+            slot: The FragmentSlot tracking the current state.
+            new_frag_idx: Index of the new Fragment VNode in the store.
+
+        Returns:
+            Updated FragmentSlot with new state.
+        """
+        return self.shell.flush_fragment(writer_ptr, slot, new_frag_idx)
+
+    fn build_empty_fragment(self) -> UInt32:
+        """Create an empty Fragment VNode in the store.
+
+        Convenience for initializing a FragmentSlot before the first
+        list render.
+
+        Returns:
+            The VNode index of the empty fragment.
+        """
+        return self.shell.store[0].push(VNode.fragment())
+
+    fn push_fragment_child(self, frag_idx: UInt32, child_idx: UInt32):
+        """Append a child VNode to an existing Fragment VNode.
+
+        Args:
+            frag_idx: Index of the Fragment VNode.
+            child_idx: Index of the child VNode to append.
+        """
+        self.shell.store[0].push_fragment_child(frag_idx, child_idx)
+
     # ── Accessors for WASM exports ───────────────────────────────────
 
     fn runtime_ptr(self) -> UnsafePointer[Runtime]:
@@ -822,6 +926,13 @@ struct ComponentContext(Movable):
     fn store_ptr(self) -> UnsafePointer[VNodeStore]:
         """Return the VNode store pointer."""
         return self.shell.store
+
+    fn handler_count(self) -> UInt32:
+        """Return the number of live event handlers in the runtime.
+
+        Useful for testing and introspection.
+        """
+        return self.shell.runtime[0].handler_count()
 
     fn view_events(self) -> List[EventBinding]:
         """Return a copy of the registered view event bindings.

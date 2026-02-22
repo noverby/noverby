@@ -1,6 +1,15 @@
 # BenchmarkApp — js-framework-benchmark implementation.
 #
-# Phase 9 — Implements the standard benchmark operations:
+# Migrated to ComponentContext for Dioxus-like ergonomics:
+#   - Constructor-based setup (all init in __init__)
+#   - ctx.use_signal() for automatic scope subscription
+#   - ctx.register_extra_template() for the row template
+#   - ctx.create_child_scope() / ctx.destroy_child_scopes()
+#   - ctx.flush_fragment() for keyed list lifecycle
+#   - ctx.build_empty_fragment() / ctx.push_fragment_child()
+#   - SignalI32 handles with operator overloading
+#
+# Implements the standard benchmark operations:
 #   - Create N rows
 #   - Append N rows
 #   - Update every 10th row
@@ -23,12 +32,37 @@
 #
 # We use a simple linear congruential generator for pseudo-random labels
 # to match the benchmark's adjective + colour + noun pattern.
+#
+# Compare with old API:
+#
+#     # Old — manual AppShell + scope + signal + template registration:
+#     app_ptr[0].shell = app_shell_create()
+#     app_ptr[0].scope_id = app_ptr[0].shell.create_root_scope()
+#     _ = app_ptr[0].shell.begin_render(app_ptr[0].scope_id)
+#     app_ptr[0].version_signal = app_ptr[0].shell.use_signal_i32(0)
+#     app_ptr[0].selected_signal = app_ptr[0].shell.use_signal_i32(0)
+#     _ = app_ptr[0].shell.read_signal_i32(app_ptr[0].version_signal)
+#     _ = app_ptr[0].shell.read_signal_i32(app_ptr[0].selected_signal)
+#     app_ptr[0].shell.end_render(-1)
+#     var row_template = to_template(row_view, String("bench-row"))
+#     app_ptr[0].row_template_id = UInt32(
+#         app_ptr[0].shell.runtime[0].templates.register(row_template^)
+#     )
+#
+#     # New — ComponentContext ergonomic API:
+#     self.ctx = ComponentContext.create()
+#     self.version = self.ctx.use_signal(0)
+#     self.selected = self.ctx.use_signal(0)
+#     self.row_template_id = self.ctx.register_extra_template(
+#         row_view, String("bench-row"),
+#     )
 
 from memory import UnsafePointer
 from bridge import MutationWriter
 
 from events import HandlerEntry
-from component import AppShell, app_shell_create, FragmentSlot
+from component import ComponentContext, FragmentSlot
+from signals import SignalI32
 from vdom import (
     VNode,
     VNodeStore,
@@ -152,14 +186,18 @@ fn _noun(idx: Int) -> String:
 struct BenchmarkApp(Movable):
     """Js-framework-benchmark app state.
 
+    All setup — context creation, signal creation, and template
+    registration — happens in __init__.  The lifecycle functions are
+    thin delegations to ComponentContext.
+
     Manages a list of rows, selection state, and all rendering
-    infrastructure via AppShell (runtime, templates, vnode store, etc.).
+    infrastructure via ComponentContext (runtime, templates, vnode
+    store, etc.).
     """
 
-    var shell: AppShell
-    var scope_id: UInt32
-    var version_signal: UInt32  # bumped on list changes
-    var selected_signal: UInt32  # currently selected row id (0 = none)
+    var ctx: ComponentContext
+    var version: SignalI32  # bumped on list changes
+    var selected: SignalI32  # currently selected row id (0 = none)
     var row_template_id: UInt32
     var rows: List[BenchRow]
     var next_id: Int32
@@ -169,11 +207,44 @@ struct BenchmarkApp(Movable):
     var row_scope_ids: List[UInt32]
 
     fn __init__(out self):
-        self.shell = AppShell()
-        self.scope_id = 0
-        self.version_signal = 0
-        self.selected_signal = 0
-        self.row_template_id = 0
+        """Initialize the benchmark app with all reactive state and templates.
+
+        Creates: ComponentContext (runtime, VNode store, element ID
+        allocator, scheduler), root scope, version and selected signals,
+        and the row template.
+
+        Template "bench-row": tr + dyn_attr[0](class) > [
+            td > dyn_text[0],          ← id
+            td > a + dyn_attr[1] > dyn_text[1],  ← label + select click
+            td > a + dyn_attr[2] > text("×")      ← delete click
+        ]
+        """
+        # 1. Create context and signals
+        self.ctx = ComponentContext.create()
+        self.version = self.ctx.use_signal(0)
+        self.selected = self.ctx.use_signal(0)
+        self.ctx.end_setup()
+
+        # 2. Register the "bench-row" template (extra template — no primary)
+        self.row_template_id = self.ctx.register_extra_template(
+            el_tr(
+                List[Node](
+                    dyn_attr(0),  # class on <tr>
+                    el_td(List[Node](dyn_text(0))),
+                    el_td(
+                        List[Node](el_a(List[Node](dyn_attr(1), dyn_text(1))))
+                    ),
+                    el_td(
+                        List[Node](
+                            el_a(List[Node](dyn_attr(2), text(String("×"))))
+                        )
+                    ),
+                )
+            ),
+            String("bench-row"),
+        )
+
+        # 3. Initialize remaining state
         self.rows = List[BenchRow]()
         self.next_id = 1
         self.rng_state = 42
@@ -181,10 +252,9 @@ struct BenchmarkApp(Movable):
         self.row_scope_ids = List[UInt32]()
 
     fn __moveinit__(out self, deinit other: Self):
-        self.shell = other.shell^
-        self.scope_id = other.scope_id
-        self.version_signal = other.version_signal
-        self.selected_signal = other.selected_signal
+        self.ctx = other.ctx^
+        self.version = other.version^
+        self.selected = other.selected^
         self.row_template_id = other.row_template_id
         self.rows = other.rows^
         self.next_id = other.next_id
@@ -206,8 +276,7 @@ struct BenchmarkApp(Movable):
 
     fn _bump_version(mut self):
         """Increment the version signal to trigger re-render."""
-        var current = self.shell.peek_signal_i32(self.version_signal)
-        self.shell.write_signal_i32(self.version_signal, current + 1)
+        self.version += 1
 
     fn create_rows(mut self, count: Int):
         """Replace all rows with `count` newly generated rows."""
@@ -236,7 +305,7 @@ struct BenchmarkApp(Movable):
 
     fn select_row(mut self, id: Int32):
         """Select the row with the given id."""
-        self.shell.write_signal_i32(self.selected_signal, id)
+        self.selected.set(id)
 
     fn swap_rows(mut self, a: Int, b: Int):
         """Swap two rows by their list indices."""
@@ -276,11 +345,11 @@ struct BenchmarkApp(Movable):
           dynamic_attr[2] = click on delete <a> (remove)
         """
         # Create a child scope for this row's handlers
-        var child_scope = self.shell.create_child_scope(self.scope_id)
+        var child_scope = self.ctx.create_child_scope()
         self.row_scope_ids.append(child_scope)
 
         var vb = VNodeBuilder(
-            self.row_template_id, String(row.id), self.shell.store
+            self.row_template_id, String(row.id), self.ctx.store_ptr()
         )
 
         # Dynamic text 0: row id
@@ -290,7 +359,7 @@ struct BenchmarkApp(Movable):
         vb.add_dyn_text(row.label)
 
         # Dynamic attr 0: class on <tr> ("danger" if selected)
-        var selected = self.shell.peek_signal_i32(self.selected_signal)
+        var selected = self.selected.peek()
         var tr_class: String
         if selected == row.id:
             tr_class = String("danger")
@@ -299,13 +368,13 @@ struct BenchmarkApp(Movable):
         vb.add_dyn_text_attr(String("class"), tr_class)
 
         # Dynamic attr 1: click on label <a> (select — custom handler)
-        var select_handler = self.shell.runtime[0].register_handler(
+        var select_handler = self.ctx.register_handler(
             HandlerEntry.custom(child_scope, String("click"))
         )
         vb.add_dyn_event(String("click"), select_handler)
 
         # Dynamic attr 2: click on delete <a> (remove — custom handler)
-        var remove_handler = self.shell.runtime[0].register_handler(
+        var remove_handler = self.ctx.register_handler(
             HandlerEntry.custom(child_scope, String("click"))
         )
         vb.add_dyn_event(String("click"), remove_handler)
@@ -319,62 +388,29 @@ struct BenchmarkApp(Movable):
         then creates new child scopes for each row.
         """
         # Destroy old child scopes — cleans up their handlers automatically
-        self.shell.destroy_child_scopes(self.row_scope_ids)
+        self.ctx.destroy_child_scopes(self.row_scope_ids)
         self.row_scope_ids.clear()
-        var frag_idx = self.shell.store[0].push(VNode.fragment())
+        var frag_idx = self.ctx.build_empty_fragment()
         for i in range(len(self.rows)):
             var row_idx = self.build_row_vnode(self.rows[i].copy())
-            self.shell.store[0].push_fragment_child(frag_idx, row_idx)
+            self.ctx.push_fragment_child(frag_idx, row_idx)
         return frag_idx
 
 
 fn bench_app_init() -> UnsafePointer[BenchmarkApp]:
     """Initialize the benchmark app.  Returns a pointer to the app state.
 
-    Creates: AppShell (runtime, VNode store, element ID allocator,
-    scheduler), scope, signals, and the row template.
+    All setup happens in BenchmarkApp.__init__() — this function just
+    allocates the heap slot and moves the app into it.
     """
     var app_ptr = UnsafePointer[BenchmarkApp].alloc(1)
     app_ptr.init_pointee_move(BenchmarkApp())
-
-    # 1. Create subsystem instances via AppShell
-    app_ptr[0].shell = app_shell_create()
-
-    # 2. Create root scope and signals
-    app_ptr[0].scope_id = app_ptr[0].shell.create_root_scope()
-    _ = app_ptr[0].shell.begin_render(app_ptr[0].scope_id)
-    app_ptr[0].version_signal = app_ptr[0].shell.use_signal_i32(0)
-    app_ptr[0].selected_signal = app_ptr[0].shell.use_signal_i32(0)
-    # Read signals to subscribe scope
-    _ = app_ptr[0].shell.read_signal_i32(app_ptr[0].version_signal)
-    _ = app_ptr[0].shell.read_signal_i32(app_ptr[0].selected_signal)
-    app_ptr[0].shell.end_render(-1)
-
-    # 3. Build and register the "bench-row" template via DSL:
-    #    tr + dynamic_attr[0](class) > [
-    #        td > dynamic_text[0],          ← id
-    #        td > a + dynamic_attr[1] > dynamic_text[1],  ← label + select click
-    #        td > a + dynamic_attr[2] > text("×")         ← delete click
-    #    ]
-    var row_view = el_tr(
-        List[Node](
-            dyn_attr(0),  # class on <tr>
-            el_td(List[Node](dyn_text(0))),
-            el_td(List[Node](el_a(List[Node](dyn_attr(1), dyn_text(1))))),
-            el_td(List[Node](el_a(List[Node](dyn_attr(2), text(String("×")))))),
-        )
-    )
-    var row_template = to_template(row_view, String("bench-row"))
-    app_ptr[0].row_template_id = UInt32(
-        app_ptr[0].shell.runtime[0].templates.register(row_template^)
-    )
-
     return app_ptr
 
 
 fn bench_app_destroy(app_ptr: UnsafePointer[BenchmarkApp]):
     """Destroy the benchmark app and free all resources."""
-    app_ptr[0].shell.destroy()
+    app_ptr[0].ctx.destroy()
     app_ptr.destroy_pointee()
     app_ptr.free()
 
@@ -391,10 +427,10 @@ fn bench_app_rebuild(
     Returns byte offset (length) of mutation data.
     """
     # Emit all registered templates so JS can build DOM from mutations
-    app[0].shell.emit_templates(writer_ptr)
+    app[0].ctx.shell.emit_templates(writer_ptr)
 
     # Create an anchor placeholder
-    var anchor_eid = app[0].shell.eid_alloc[0].alloc()
+    var anchor_eid = app[0].ctx.shell.eid_alloc[0].alloc()
     writer_ptr[0].create_placeholder(anchor_eid.as_u32())
     writer_ptr[0].append_children(0, 1)
 
@@ -418,13 +454,13 @@ fn bench_app_flush(
     Returns byte offset (length) of mutation data, or 0 if nothing dirty.
     """
     # Collect and consume dirty scopes via the scheduler
-    if not app[0].shell.consume_dirty():
+    if not app[0].ctx.consume_dirty():
         return 0
 
     var new_frag_idx = app[0].build_rows_fragment()
 
-    # Flush via AppShell method (handles all three transitions)
-    app[0].row_slot = app[0].shell.flush_fragment(
+    # Flush via ComponentContext method (handles all three transitions)
+    app[0].row_slot = app[0].ctx.flush_fragment(
         writer_ptr, app[0].row_slot, new_frag_idx
     )
 

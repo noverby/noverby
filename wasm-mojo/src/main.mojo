@@ -2209,7 +2209,7 @@ fn todo_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
 @export
 fn todo_app_template_id(app_ptr: Int64) -> Int32:
     """Return the app template ID."""
-    return Int32(_get[TodoApp](app_ptr)[0].app_template_id)
+    return Int32(_get[TodoApp](app_ptr)[0].ctx.template_id)
 
 
 @export
@@ -2245,26 +2245,25 @@ fn todo_item_completed_at(app_ptr: Int64, index: Int32) -> Int32:
 @export
 fn todo_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the todo app has dirty scopes.  Returns 1 or 0."""
-    return _b2i(_get[TodoApp](app_ptr)[0].shell.has_dirty())
+    return _b2i(_get[TodoApp](app_ptr)[0].ctx.has_dirty())
 
 
 @export
 fn todo_list_version(app_ptr: Int64) -> Int32:
     """Return the current list version signal value."""
-    var app = _get[TodoApp](app_ptr)
-    return app[0].shell.peek_signal_i32(app[0].list_version_signal)
+    return _get[TodoApp](app_ptr)[0].list_version.peek()
 
 
 @export
 fn todo_scope_id(app_ptr: Int64) -> Int32:
     """Return the root scope ID."""
-    return Int32(_get[TodoApp](app_ptr)[0].scope_id)
+    return Int32(_get[TodoApp](app_ptr)[0].ctx.scope_id)
 
 
 @export
 fn todo_handler_count(app_ptr: Int64) -> Int32:
     """Return the number of live event handlers in the todo app's runtime."""
-    return Int32(_get[TodoApp](app_ptr)[0].shell.runtime[0].handler_count())
+    return Int32(_get[TodoApp](app_ptr)[0].ctx.handler_count())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2366,21 +2365,19 @@ fn bench_row_id_at(app_ptr: Int64, index: Int32) -> Int32:
 @export
 fn bench_selected(app_ptr: Int64) -> Int32:
     """Return the currently selected row id (0 = none)."""
-    var app = _get[BenchmarkApp](app_ptr)
-    return app[0].shell.peek_signal_i32(app[0].selected_signal)
+    return _get[BenchmarkApp](app_ptr)[0].selected.peek()
 
 
 @export
 fn bench_has_dirty(app_ptr: Int64) -> Int32:
     """Check if the benchmark app has dirty scopes.  Returns 1 or 0."""
-    return _b2i(_get[BenchmarkApp](app_ptr)[0].shell.has_dirty())
+    return _b2i(_get[BenchmarkApp](app_ptr)[0].ctx.has_dirty())
 
 
 @export
 fn bench_version(app_ptr: Int64) -> Int32:
     """Return the current version signal value."""
-    var app = _get[BenchmarkApp](app_ptr)
-    return app[0].shell.peek_signal_i32(app[0].version_signal)
+    return _get[BenchmarkApp](app_ptr)[0].version.peek()
 
 
 @export
@@ -2392,15 +2389,13 @@ fn bench_row_template_id(app_ptr: Int64) -> Int32:
 @export
 fn bench_scope_id(app_ptr: Int64) -> Int32:
     """Return the root scope ID."""
-    return Int32(_get[BenchmarkApp](app_ptr)[0].scope_id)
+    return Int32(_get[BenchmarkApp](app_ptr)[0].ctx.scope_id)
 
 
 @export
 fn bench_handler_count(app_ptr: Int64) -> Int32:
     """Return the number of live event handlers in the bench app's runtime."""
-    return Int32(
-        _get[BenchmarkApp](app_ptr)[0].shell.runtime[0].handler_count()
-    )
+    return Int32(_get[BenchmarkApp](app_ptr)[0].ctx.handler_count())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
