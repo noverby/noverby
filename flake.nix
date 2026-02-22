@@ -173,6 +173,7 @@
 
         ./wasm-mojo
         ./zed-mojo
+        ./zed-nickel
 
         ./nixos-rs
         ./systemd-rs
