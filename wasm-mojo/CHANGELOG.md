@@ -2,6 +2,34 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 40 — Modularize `src/main.mojo`
+
+Extracted all 15 demo/test app structs and lifecycle functions from `src/main.mojo` into dedicated modules under `src/apps/`. Only thin `@export` WASM wrappers remain in `main.mojo` (Mojo requires exports in the main compilation unit). The file shrank from ~10,035 to ~6,730 lines. Added top-level section dividers separating shared utilities, framework test/runtime exports, and app re-export wrappers. Cleaned up unused imports (`ChildComponent`, `CreateEngine`, DSL element helpers, and signal handle types no longer referenced after extraction).
+
+**Extracted modules (src/apps/):**
+
+- `child_counter.mojo` — ChildCounterApp (Phase 29)
+- `context_test.mojo` — ContextTestApp (Phase 31.1)
+- `child_context_test.mojo` — ChildContextTestApp (Phase 31.2)
+- `props_counter.mojo` — PropsCounterApp + CounterDisplay (Phase 31.3)
+- `theme_counter.mojo` — ThemeCounterApp + TCCounterChild + TCSummaryChild (Phase 31.4)
+- `safe_counter.mojo` — SafeCounterApp + SCNormalChild + SCFallbackChild (Phase 32.2)
+- `error_nest.mojo` — ErrorNestApp + 4 ENChild structs (Phase 32.3)
+- `data_loader.mojo` — DataLoaderApp + DLContentChild + DLSkeletonChild (Phase 33.2)
+- `suspense_nest.mojo` — SuspenseNestApp + 4 SNChild structs (Phase 33.3)
+- `effect_demo.mojo` — EffectDemoApp (Phase 34.1)
+- `effect_memo.mojo` — EffectMemoApp (Phase 34.2)
+- `memo_form.mojo` — MemoFormApp (Phase 35.2)
+- `memo_chain.mojo` — MemoChainApp (Phase 35.3)
+- `equality_demo.mojo` — EqualityDemoApp (Phase 37.3)
+- `batch_demo.mojo` — BatchDemoApp (Phase 38.2)
+
+Updated `AGENTS.md` (file size reference, WASM export pattern, app architecture headings) and `README.md` (project structure with `src/apps/`).
+
+**Test count after Phase 40:** unchanged — 1,323 Mojo (52 modules) + 3,090 JS (29 suites) = 4,413 tests.
+
+---
+
 ## Phase 39 — Mojo 0.26.1 Deferred Feature Adoption
 
 Re-evaluated all 7 deferred Mojo 0.26.1 features (F1, F2, F5, F6, F8, F9, F10) after 8 phases of development (Phases 31–38). All remain correctly deferred — no new application points. The codebase's WASM ABI architecture (`Int32`/`Bool` returns, no `raises`, no raw-bytes strings in `src/`, no unreachable paths) does not create the prerequisites these features need. Updated `MIGRATION_PLAN.md` with a "Phase 39 Re-evaluation" section documenting the analysis.
