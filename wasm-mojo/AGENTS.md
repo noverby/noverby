@@ -411,6 +411,48 @@ struct SuspenseNestApp:
 
 Lifecycle: `sn_init` → `sn_rebuild` → `sn_handle_event` → `sn_flush`. Inner load shows inner skeleton (outer content unaffected). Outer load shows outer skeleton (hides entire inner tree). Outer resolve reveals inner boundary (may still be pending). Inner resolve shows inner content. Both boundaries operate independently.
 
+### EffectDemoApp (`src/main.mojo`) — effect-in-flush pattern
+
+```txt
+struct EffectDemoApp:
+    var ctx: ComponentContext           # single root scope
+    var count: SignalI32               # input signal
+    var doubled: SignalI32             # derived by effect (count * 2)
+    var parity: SignalString           # derived by effect ("even" / "odd")
+    var count_effect: EffectHandle     # reacts to count, writes doubled + parity
+    var incr_handler: UInt32
+    fn __init__: ctx.create() → use_signal(0) × 2 + use_signal_string("even")
+                 + use_effect() → setup_view(h1 + button + 3 × p > dyn_text)
+    fn run_effects: if count_effect.is_pending() → begin_run → read count
+                    → set doubled(count*2) + set parity → end_run
+    fn render: 3 dyn_text slots (Count/Doubled/Parity)
+    fn flush: consume_dirty → run_effects → render → diff → finalize
+```
+
+Lifecycle: `ed_init` → `ed_rebuild` (run_effects + mount) → `ed_handle_event` (onclick_add count) → `ed_flush` (effect runs, derived state updated, DOM diffed). Effect drain-and-run pattern: effects execute between `consume_dirty()` and `render()` so all derived state is settled before rendering.
+
+### EffectMemoApp (`src/main.mojo`) — signal → memo → effect → signal chain
+
+```txt
+struct EffectMemoApp:
+    var ctx: ComponentContext           # single root scope
+    var input: SignalI32               # input signal
+    var tripled: MemoI32               # memo: input * 3
+    var label: SignalString            # derived by effect ("small" if tripled<10, "big" otherwise)
+    var label_effect: EffectHandle     # reads tripled memo, writes label
+    var incr_handler: UInt32
+    fn __init__: ctx.create() → use_signal(0) + use_memo(0) + use_signal_string("small")
+                 + use_effect() → setup_view(h1 + button + 3 × p > dyn_text)
+    fn run_memos_and_effects: if tripled.is_dirty() → begin_compute → read input
+                              → end_compute(input*3)
+                              if label_effect.is_pending() → begin_run → read tripled
+                              → set label → end_run
+    fn render: 3 dyn_text slots (Input/Tripled/Label)
+    fn flush: consume_dirty → run_memos_and_effects → render → diff → finalize
+```
+
+Lifecycle: `em_init` → `em_rebuild` (recompute memo + run effect + mount) → `em_handle_event` (onclick_add input) → `em_flush` (memo recomputed, effect runs, label updated, DOM diffed). Chain: input write → memo dirty → recompute memo → output signal write → effect pending → run effect → label signal write → render. Memos MUST be recomputed before effects that read their output.
+
 ## WASM Export Pattern (`src/main.mojo`)
 
 All exports follow this pattern — thin wrappers forwarding to app modules:
@@ -591,7 +633,7 @@ el_button(text("Add"), onclick_custom()),
 
 | File | Lines | Role |
 |------|-------|------|
-| `src/main.mojo` | ~8,090 | All @export wrappers (incl. SafeCounterApp, ErrorNestApp, DataLoaderApp, SuspenseNestApp, context/child test apps) |
+| `src/main.mojo` | ~8,610 | All @export wrappers (incl. SafeCounterApp, ErrorNestApp, DataLoaderApp, SuspenseNestApp, EffectDemoApp, EffectMemoApp, context/child test apps) |
 | `src/signals/handle.mojo` | ~680 | SignalI32 + SignalBool + SignalString + MemoI32 + EffectHandle |
 | `src/signals/runtime.mojo` | ~1,365 | Reactive runtime + SignalStore + StringStore |
 | `src/component/context.mojo` | ~2,140 | ComponentContext + RenderBuilder + tree processing + error boundary + view_event_handler_id |
@@ -607,7 +649,7 @@ el_button(text("Add"), onclick_custom()),
 | `src/mutations/diff.mojo` | ~970 | DiffEngine (keyed reconciliation) |
 | `runtime/memory.ts` | ~290 | Free-list allocator + scratch arena (Phase 25) |
 | `runtime/events.ts` | ~375 | EventBridge + DispatchWithStringFn (M20.2) |
-| `runtime/app.ts` | ~1,900 | createApp + app handles (Counter, Todo, Bench, SafeCounter, ErrorNest, DataLoader, SuspenseNest, etc.) |
+| `runtime/app.ts` | ~2,120 | createApp + app handles (Counter, Todo, Bench, SafeCounter, ErrorNest, DataLoader, SuspenseNest, EffectDemo, EffectMemo, etc.) |
 | `runtime/types.ts` | ~690 | WasmExports interface (Phase 20 string dispatch exports) |
 | `examples/lib/env.js` | ~250 | Browser free-list allocator + WASM imports (Phase 25) |
 | `test-js/allocator.test.ts` | ~980 | Allocator unit tests + WASM-integrated reuse tests (Phase 25) |
@@ -623,10 +665,49 @@ el_button(text("Add"), onclick_custom()),
 | `test-js/error_nest.test.ts` | ~645 | ErrorNestApp nested boundary tests (inner/outer crash/retry, DOM) |
 | `test-js/data_loader.test.ts` | ~500 | DataLoaderApp suspense tests (load/resolve lifecycle, DOM) |
 | `test-js/suspense_nest.test.ts` | ~690 | SuspenseNestApp nested suspense tests (inner/outer load/resolve, DOM) |
+| `test-js/effect_demo.test.ts` | ~560 | EffectDemoApp effect-in-flush tests (derived state, DOM, heapStats) |
+| `test-js/effect_memo.test.ts` | ~495 | EffectMemoApp memo+effect chain tests (threshold, derived state, DOM) |
+| `test/test_effect_demo.mojo` | ~475 | EffectDemoApp Mojo tests (18 tests: lifecycle, derived state, rapid) |
+| `test/test_effect_memo.mojo` | ~455 | EffectMemoApp Mojo tests (16 tests: memo chain, threshold, rapid) |
 | `test/wasm_harness.mojo` | ~1,400 | Mojo WASM test harness (includes free-list allocator, Phase 25) |
 | `CHANGELOG.md` | ~420 | Development history (Phases 0–32) |
 
 ## Common Patterns
+
+**Effect drain-and-run pattern (Phase 34):** Effects run between `consume_dirty()` and `render()` to settle derived state before rendering. The effect's `begin_run()` / `end_run()` bracket establishes a reactive context so signal reads during the effect body are tracked as dependencies:
+
+```text
+fn flush():
+    if not ctx.consume_dirty(): return 0
+    run_effects()       # drain pending effects → may write signals
+    var idx = render()  # all derived state settled
+    ctx.diff(writer, idx)
+    return ctx.finalize(writer)
+
+fn run_effects():
+    if effect.is_pending():
+        effect.begin_run()
+        var val = source_signal.read()   # re-subscribe
+        derived_signal.set(compute(val)) # write derived state
+        effect.end_run()
+```
+
+**Effect + memo chain pattern (Phase 34):** When effects depend on memos, recompute memos FIRST, then run effects. Memo recomputation may change the output signal, which marks dependent effects pending:
+
+```text
+fn run_memos_and_effects():
+    # Step 1: Recompute dirty memos
+    if memo.is_dirty():
+        memo.begin_compute()
+        var input = input_signal.read()  # re-subscribe memo
+        memo.end_compute(input * 3)
+    # Step 2: Run pending effects (may read memo output)
+    if effect.is_pending():
+        effect.begin_run()
+        var t = memo.read()              # re-subscribe effect to memo
+        label.set("small" if t < 10 else "big")
+        effect.end_run()
+```
 
 **Suspense flush pattern (Phase 33):** Check `ctx.is_pending()` in flush to switch between content and skeleton children. Uses the same `flush` / `flush_empty` alternation as error boundaries:
 

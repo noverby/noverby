@@ -1894,3 +1894,225 @@ export function createSuspenseNestApp(
 
 	return snHandle;
 }
+
+// ── Phase 34.1 — EffectDemoApp ──────────────────────────────────────────────
+
+export interface EffectDemoAppHandle extends AppHandle {
+	/** Current count signal value. */
+	getCount(): number;
+
+	/** Current doubled signal value (derived by effect). */
+	getDoubled(): number;
+
+	/** Current parity text ("even" or "odd", derived by effect). */
+	getParity(): string;
+
+	/** Whether the count effect is pending. */
+	isEffectPending(): boolean;
+
+	/** Whether any scope is dirty. */
+	hasDirty(): boolean;
+
+	/** Number of live scopes. */
+	scopeCount(): number;
+
+	/** Increment button handler ID. */
+	incrHandler: number;
+
+	/** Dispatch increment button + flush. */
+	increment(): void;
+}
+
+/**
+ * Create an EffectDemoApp wired to a DOM root element.
+ */
+export function createEffectDemoApp(
+	fns: WasmExports & Record<string, CallableFunction>,
+	root: Element,
+	doc?: Document,
+): EffectDemoAppHandle {
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		init: (f) => f.ed_init(),
+		rebuild: (f, app, buf, cap) => f.ed_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.ed_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.ed_handle_event(app, hid, evt),
+		destroy: (f, app) => f.ed_destroy(app),
+	});
+
+	const incrHandler = fns.ed_incr_handler(handle.appPtr) as number;
+
+	const edHandle: EffectDemoAppHandle = {
+		...handle,
+
+		incrHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
+
+		getCount(): number {
+			return fns.ed_count_value(handle.appPtr) as number;
+		},
+		getDoubled(): number {
+			return fns.ed_doubled_value(handle.appPtr) as number;
+		},
+		getParity(): string {
+			const outPtr = allocStringStruct();
+			fns.ed_parity_text(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+		isEffectPending(): boolean {
+			return (fns.ed_effect_is_pending(handle.appPtr) as number) !== 0;
+		},
+		hasDirty(): boolean {
+			return (fns.ed_has_dirty(handle.appPtr) as number) !== 0;
+		},
+		scopeCount(): number {
+			return fns.ed_scope_count(handle.appPtr) as number;
+		},
+
+		increment(): void {
+			handle.dispatchAndFlush(incrHandler);
+		},
+
+		destroy(): void {
+			handle.destroy();
+		},
+	};
+
+	return edHandle;
+}
+
+// ── Phase 34.2 — EffectMemoApp ──────────────────────────────────────────────
+
+export interface EffectMemoAppHandle extends AppHandle {
+	/** Current input signal value. */
+	getInput(): number;
+
+	/** Current tripled memo value (input * 3). */
+	getTripled(): number;
+
+	/** Current label text ("small" or "big", derived by effect from tripled). */
+	getLabel(): string;
+
+	/** Whether the label effect is pending. */
+	isEffectPending(): boolean;
+
+	/** Raw memo output value (same as tripled). */
+	getMemoValue(): number;
+
+	/** Whether any scope is dirty. */
+	hasDirty(): boolean;
+
+	/** Number of live scopes. */
+	scopeCount(): number;
+
+	/** Increment button handler ID. */
+	incrHandler: number;
+
+	/** Dispatch increment button + flush. */
+	increment(): void;
+}
+
+/**
+ * Create an EffectMemoApp wired to a DOM root element.
+ */
+export function createEffectMemoApp(
+	fns: WasmExports & Record<string, CallableFunction>,
+	root: Element,
+	doc?: Document,
+): EffectMemoAppHandle {
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		init: (f) => f.em_init(),
+		rebuild: (f, app, buf, cap) => f.em_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.em_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.em_handle_event(app, hid, evt),
+		destroy: (f, app) => f.em_destroy(app),
+	});
+
+	const incrHandler = fns.em_incr_handler(handle.appPtr) as number;
+
+	const emHandle: EffectMemoAppHandle = {
+		...handle,
+
+		incrHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
+
+		getInput(): number {
+			return fns.em_input_value(handle.appPtr) as number;
+		},
+		getTripled(): number {
+			return fns.em_tripled_value(handle.appPtr) as number;
+		},
+		getLabel(): string {
+			const outPtr = allocStringStruct();
+			fns.em_label_text(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+		isEffectPending(): boolean {
+			return (fns.em_effect_is_pending(handle.appPtr) as number) !== 0;
+		},
+		getMemoValue(): number {
+			return fns.em_memo_value(handle.appPtr) as number;
+		},
+		hasDirty(): boolean {
+			return (fns.em_has_dirty(handle.appPtr) as number) !== 0;
+		},
+		scopeCount(): number {
+			return fns.em_scope_count(handle.appPtr) as number;
+		},
+
+		increment(): void {
+			handle.dispatchAndFlush(incrHandler);
+		},
+
+		destroy(): void {
+			handle.destroy();
+		},
+	};
+
+	return emHandle;
+}

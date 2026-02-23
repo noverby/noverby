@@ -8,6 +8,8 @@ import { testCounter } from "./counter.test.ts";
 import { testDataLoader } from "./data_loader.test.ts";
 import { testDsl } from "./dsl.test.ts";
 import { testEffect } from "./effect.test.ts";
+import { testEffectDemo } from "./effect_demo.test.ts";
+import { testEffectMemo } from "./effect_memo.test.ts";
 import { testErrorNest } from "./error_nest.test.ts";
 import { testEvents } from "./events.test.ts";
 import { summary } from "./harness.ts";
@@ -53,6 +55,8 @@ async function run(): Promise<void> {
 	testErrorNest(fns);
 	testDataLoader(fns);
 	testSuspenseNest(fns);
+	testEffectDemo(fns);
+	testEffectMemo(fns);
 	testRouting(fns);
 
 	summary();
