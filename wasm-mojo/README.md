@@ -21,7 +21,8 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **ItemBuilder + HandlerAction** — ergonomic per-item building and event dispatch for keyed lists (`begin_item()`, `add_custom_event()`, `get_action()`)
 - **String event dispatch** — `ACTION_SIGNAL_SET_STRING` handlers pipe string values from DOM events directly into `SignalString` signals; JS EventBridge extracts `event.target.value` → `writeStringStruct()` → WASM `dispatch_event_with_string` with automatic fallback to numeric/default dispatch
 - **Two-way input binding** — Dioxus-style `oninput_set_string(signal)` + `bind_value(signal)` DSL helpers for inline string event handlers and auto-populated `value` attributes; `RenderBuilder.build()` reads `SignalString` at render time
-- **2,218 tests** — 996 Mojo (via wasmtime) + 1,222 JS (via Deno), all passing
+- **Error boundaries** — scope-level error catching with fallback UI and recovery; `use_error_boundary()` marks a scope as a boundary, `report_error()` propagates errors up the parent chain, `has_error()` / `clear_error()` drive flush-time content switching between normal and fallback children
+- **3,310 tests** — 1,080 Mojo (38 modules via wasmtime) + 2,230 JS (21 suites via Deno), all passing
 
 ## How it works
 
@@ -139,7 +140,7 @@ wasm-mojo/
 │       ├── interpreter.js        # DOM Interpreter class
 │       ├── protocol.js           # Op constants + MutationReader
 │       └── strings.js            # Mojo String ABI writeStringStruct()
-├── test/                         # Mojo tests (29 modules, 903 tests via wasmtime)
+├── test/                         # Mojo tests (38 modules, 1,080 tests via wasmtime)
 │   ├── wasm_harness.mojo         # WasmInstance harness using wasmtime-mojo FFI
 │   ├── test_signals.mojo         # Reactive signals
 │   ├── test_scopes.mojo          # Scope arena and hooks
@@ -152,11 +153,13 @@ wasm-mojo/
 │   ├── test_memo.mojo            # Memo store, runtime API, hooks, propagation
 │   ├── test_scheduler.mojo       # Scheduler ordering and dedup
 │   └── ...                       # + arithmetic, strings, boundaries, etc.
-├── test-js/                      # JS runtime integration tests (1,152 tests via Deno)
+├── test-js/                      # JS runtime integration tests (2,230 tests via Deno)
 │   ├── harness.ts                # Shared WASM loading and test helpers
 │   ├── counter.test.ts           # Full counter app lifecycle with DOM
 │   ├── todo.test.ts              # Todo app: add, remove, toggle, clear
 │   ├── bench.test.ts             # Benchmark operations + timing
+│   ├── safe_counter.test.ts      # SafeCounterApp error boundary crash/retry lifecycle
+│   ├── error_nest.test.ts        # ErrorNestApp nested boundary inner/outer crash/retry
 │   ├── dsl.test.ts               # DSL builder + VNodeBuilder round-trip
 │   ├── interpreter.test.ts       # DOM interpreter + template cache
 │   ├── memo.test.ts              # Memo lifecycle, dirty tracking, propagation
@@ -169,7 +172,7 @@ wasm-mojo/
 │   └── precompile.mojo           # .wasm → .cwasm via wasmtime AOT
 ├── justfile                      # Build and test commands
 ├── default.nix                   # Nix dev shell
-└── CHANGELOG.md                  # Development history (Phases 0–14)
+└── CHANGELOG.md                  # Development history (Phases 0–32)
 ```
 
 ## Mojo version
@@ -344,7 +347,7 @@ Adding a new test:
 
 ## Test results
 
-2,331 tests across 29 Mojo modules and 10 JS test suites:
+3,310 tests across 38 Mojo modules and 21 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -359,6 +362,9 @@ Adding a new test:
 - **Counter app** — init, mount, click, flush, DOM verification, memo (doubled count) demo
 - **Todo app** — add, remove, toggle, clear, keyed list transitions
 - **Benchmark** — create/append/update/swap/select/remove/clear 1000 rows, full DOM integration
+- **Context apps** — ComponentContext provide/consume surface, ChildComponentContext test harness, self-rendering child with props, shared context + cross-component communication (ThemeCounterApp)
+- **Safe counter app** — error boundary with crash/retry lifecycle, normal↔fallback child switching, count signal preservation across crash/recovery cycles, DOM verification of fallback UI
+- **Error nest app** — nested error boundaries with independent crash/retry, inner crash caught by inner boundary (only inner slot swaps), outer crash replaces entire inner tree, mixed crash/retry sequences, full recovery validation
 - **Memory** — allocation cycles, bounded growth, rapid write stability, free-list reuse, double-free protection, WASM-integrated reuse (text/attr/fragment/template diffs with reuse enabled)
 - **Arithmetic/strings** — original PoC interop regression suite
 
@@ -553,6 +559,71 @@ struct SearchApp:
 # Also available:
 #   onchange_set_string(signal)   — fires on "change" instead of "input"
 #   bind_attr("placeholder", sig) — bind any attribute, not just "value"
+```
+
+Phase 32 adds error boundaries — scope-level error catching with fallback UI
+and recovery. `use_error_boundary()` marks a scope as a boundary;
+`report_error()` propagates errors up the parent chain; `has_error()` /
+`clear_error()` drive flush-time content switching between normal and fallback
+children:
+
+```mojo
+# Dioxus (Rust):
+#     fn App() -> Element {
+#         rsx! {
+#             ErrorBoundary {
+#                 fallback: |err| rsx! { p { "Error: {err}" } button { onclick: |_| err.clear(), "Retry" } },
+#                 ChildComponent {}
+#             }
+#         }
+#     }
+
+# Mojo equivalent — error boundary pattern (Phase 32):
+struct SafeCounterApp:
+    var ctx: ComponentContext
+    var count: SignalI32
+    var normal: SCNormalChild            # normal content child
+    var fallback: SCFallbackChild        # fallback UI child
+    var crash_handler: UInt32
+    var retry_handler: UInt32
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.count = self.ctx.use_signal(0)
+        self.ctx.use_error_boundary()    # mark root as error boundary
+        self.ctx.setup_view(
+            el_div(
+                el_h1(dsl_text(String("Safe Counter"))),
+                el_button(dsl_text(String("+ 1")), onclick_add(self.count, 1)),
+                el_button(dsl_text(String("Crash")), onclick_custom()),
+                dyn_node(0),             # normal or fallback slot
+                dyn_node(1),
+            ),
+            String("safe-counter"),
+        )
+        # ... create normal + fallback child contexts ...
+
+    fn flush(mut self, writer: ...) -> Int32:
+        if self.ctx.has_error():
+            # Error state: hide normal, show fallback with error message
+            self.normal.child_ctx.flush_empty(writer)
+            var fb_idx = self.render_fallback()
+            self.fallback.child_ctx.flush(writer, fb_idx)
+        else:
+            # Normal state: show child, hide fallback
+            self.fallback.child_ctx.flush_empty(writer)
+            var child_idx = self.render_child()
+            self.normal.child_ctx.flush(writer, child_idx)
+        return self.ctx.finalize(writer)
+
+    fn handle_event(mut self, handler_id: UInt32, ...) -> Bool:
+        if handler_id == self.crash_handler:
+            _ = self.ctx.report_error(String("Simulated crash"))
+            return True
+        elif handler_id == self.retry_handler:
+            self.ctx.clear_error()       # next flush restores normal child
+            return True
+        return self.ctx.dispatch_event(handler_id, event_type)
 ```
 
 ## Deferred abstractions
