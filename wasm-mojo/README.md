@@ -353,7 +353,7 @@ Adding a new test:
 
 ## Test results
 
-4,235 tests across 49 Mojo modules and 27 JS test suites:
+4,311 tests across 50 Mojo modules and 28 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -381,7 +381,8 @@ Adding a new test:
 - **Memo chain app** — mixed-type memo chain (SignalI32 → MemoI32 → MemoBool → MemoString), ordered recomputation, threshold boundary exact (input=5 → is_big flips), chain propagation correctness, Phase 36 independent dirty verification, rapid 20 increments, heapStats bounded, DOM verification
 - **Memo propagation** — recursive memo → memo dirty propagation via worklist (Phase 36): 2/3/4-level chains, diamond dependencies (2-input and deep), scope and effect subscribers at end of chains, already-dirty skip (cycle guard), recompute clears dirty, recompute order matters, independent signal writes, re-subscription after recompute, destroyed memo safety, mixed types (I32 → Bool → String), string/bool memos in various positions, no-subscriber memo, memo + scope and memo + effect mixed subscribers, single-memo regression
 - **Memo equality** — equality-gated memo propagation (Phase 37): I32/Bool/String value-stable detection, value_changed flag tracking, _changed_signals accumulator, skip-if-unchanged in end_compute, chain cascades (clamped → label both stable), diamond dependencies with mixed stable/changed, regression cases
-- **Equality demo app** — clamped + threshold memo chain (SignalI32 → MemoI32(clamp) → MemoString(label)), within-range clamped changes with label stable, threshold crossing (label changes), clamped stabilization above max (zero-byte flush), consecutive stable flushes, full cycle round-trip (0→12→0), scope settling when chain is value-stable, handle_event marks dirty, memo count verification, destroy safety
+- **Equality demo app** — clamped + threshold memo chain (SignalI32 → MemoI32(clamp) → MemoString(label)), within-range clamped changes with label stable, threshold crossing (label changes), clamped stabilization above max (zero-byte flush), consecutive stable flushes, full cycle round-trip (0→12→0), scope settling when chain is value-stable, handle_event marks dirty, memo count verification, destroy safety, JS integration tests (DOM structure, clampedChanged/labelChanged queries, flush returns 0 when stable, dirty state after event)
+- **Scope settle** — dedicated runtime-level settle_scopes() unit tests: stable memo removes scope, changed memo keeps scope, mixed scopes, direct source signal subscription, scope subscribing to both stable memo and changed signal, no dirty scopes (no crash), all stable (both removed), no changed signals (all removed), 3-level chain cascade all stable, chain partial (A changed, B stable → scope removed), chain fully changed, diamond dependency, effect not affected by settle, idempotent settle, no-memos scenario
 - **Memory** — allocation cycles, bounded growth, rapid write stability, free-list reuse, double-free protection, WASM-integrated reuse (text/attr/fragment/template diffs with reuse enabled)
 - **Arithmetic/strings** — original PoC interop regression suite
 

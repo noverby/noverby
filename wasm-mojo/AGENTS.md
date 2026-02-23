@@ -714,7 +714,7 @@ el_button(text("Add"), onclick_custom()),
 | `src/mutations/diff.mojo` | ~970 | DiffEngine (keyed reconciliation) |
 | `runtime/memory.ts` | ~290 | Free-list allocator + scratch arena (Phase 25) |
 | `runtime/events.ts` | ~375 | EventBridge + DispatchWithStringFn (M20.2) |
-| `runtime/app.ts` | ~2,380 | createApp + app handles (Counter, Todo, Bench, SafeCounter, ErrorNest, DataLoader, SuspenseNest, EffectDemo, EffectMemo, MemoForm, MemoChain, etc.) |
+| `runtime/app.ts` | ~2,520 | createApp + app handles (Counter, Todo, Bench, SafeCounter, ErrorNest, DataLoader, SuspenseNest, EffectDemo, EffectMemo, MemoForm, MemoChain, EqualityDemo, etc.) |
 | `runtime/types.ts` | ~690 | WasmExports interface (Phase 20 string dispatch exports) |
 | `examples/lib/env.js` | ~250 | Browser free-list allocator + WASM imports (Phase 25) |
 | `test-js/allocator.test.ts` | ~980 | Allocator unit tests + WASM-integrated reuse tests (Phase 25) |
@@ -741,8 +741,10 @@ el_button(text("Add"), onclick_custom()),
 | `test/test_memo_chain.mojo` | ~703 | MemoChainApp Mojo tests (22 tests: memo chain, threshold, propagation, Phase 36 independent dirty) |
 | `test/test_memo_equality.mojo` | ~1,506 | Equality-gated memo propagation Mojo tests (22 tests: I32/Bool/String equality gates, value_changed flag, _changed_signals, chain cascades, diamond) |
 | `test/test_equality_demo.mojo` | ~886 | EqualityDemoApp Mojo tests (20 tests: clamp stabilization, threshold crossing, zero-byte flush, scope settling, round-trip) |
+| `test/test_scope_settle.mojo` | ~1,418 | Scope settle Mojo tests (16 tests: stable/changed scopes, mixed, chain cascade, diamond, effects, idempotent) |
 | `test-js/memo_form.test.ts` | ~495 | MemoFormApp JS tests (20 suites: DOM, input binding, memo dirty/clean, form validation) |
 | `test-js/memo_chain.test.ts` | ~582 | MemoChainApp JS tests (24 suites: DOM, chain propagation, threshold, heapStats, Phase 36 independent dirty) |
+| `test-js/equality_demo.test.ts` | ~490 | EqualityDemoApp JS tests (22 suites: DOM, clamp/label stability, flush returns 0, round-trip, dirty state) |
 | `test/wasm_harness.mojo` | ~1,400 | Mojo WASM test harness (includes free-list allocator, Phase 25) |
 | `CHANGELOG.md` | ~461 | Development history (Phases 0–37) |
 
