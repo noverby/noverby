@@ -1311,6 +1311,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-timedated"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+ "nix",
+ "tempfile",
+]
+
+[[package]]
 name = "systemd-timesyncd"
 version = "0.1.0"
 dependencies = [

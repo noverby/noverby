@@ -65,11 +65,11 @@
         withImportd = false;
         withKmod = false;
         withLocaled = true;
-        withMachined = false;
+        withMachined = true;
         withNetworkd = true;
         withPortabled = true;
         withSysupdate = false;
-        withTimedated = false;
+        withTimedated = true;
         withTpm2Tss = false;
         withTpm2Units = false;
         withUtmp = false;
