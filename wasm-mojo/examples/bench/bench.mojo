@@ -895,7 +895,7 @@ fn bench_app_destroy(app_ptr: UnsafePointer[BenchmarkApp, MutExternalOrigin]):
 
 
 fn bench_app_rebuild(
-    app: UnsafePointer[BenchmarkApp, MutExternalOrigin],
+    mut app: BenchmarkApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the benchmark app.
@@ -915,23 +915,23 @@ fn bench_app_rebuild(
     Returns byte offset (length) of mutation data.
     """
     # Emit all registered templates so JS can build DOM from mutations
-    app[0].ctx.shell.emit_templates(writer_ptr)
+    app.ctx.shell.emit_templates(writer_ptr)
 
     # Build the app shell VNode (no rows yet — just the template)
-    var app_vnode_idx = app[0].render()
-    app[0].ctx.current_vnode = Int(app_vnode_idx)
+    var app_vnode_idx = app.render()
+    app.ctx.current_vnode = Int(app_vnode_idx)
 
     # Build an empty rows fragment and store it
-    var frag_idx = app[0].build_rows_fragment()
+    var frag_idx = app.build_rows_fragment()
 
     # Create the app template via CreateEngine.
     # This emits LoadTemplate, AssignId, NewEventListener, and
     # CreatePlaceholder + ReplacePlaceholder for dynamic[0].
     var engine = CreateEngine(
         writer_ptr,
-        app[0].ctx.shell.eid_alloc,
-        app[0].ctx.shell.runtime,
-        app[0].ctx.shell.store,
+        app.ctx.shell.eid_alloc,
+        app.ctx.shell.runtime,
+        app.ctx.shell.store,
     )
     var num_roots = engine.create_node(app_vnode_idx)
 
@@ -939,10 +939,10 @@ fn bench_app_rebuild(
     # (dyn_node uses index 3 because 3 dyn_text nodes occupy indices 0-2)
     # Initialize the KeyedList's slot with the anchor and empty fragment.
     var anchor_id: UInt32 = 0
-    var app_vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(app_vnode_idx)
+    var app_vnode_ptr = app.ctx.store_ptr()[0].get_ptr(app_vnode_idx)
     if app_vnode_ptr[0].dyn_node_id_count() > 3:
         anchor_id = app_vnode_ptr[0].get_dyn_node_id(3)
-    app[0].rows_list.init_slot(anchor_id, frag_idx)
+    app.rows_list.init_slot(anchor_id, frag_idx)
 
     # Append the app shell to root element (id 0)
     writer_ptr[0].append_children(0, num_roots)
@@ -952,7 +952,7 @@ fn bench_app_rebuild(
 
 
 fn bench_app_flush(
-    app: UnsafePointer[BenchmarkApp, MutExternalOrigin],
+    mut app: BenchmarkApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates after a benchmark operation.
@@ -967,20 +967,20 @@ fn bench_app_flush(
     Returns byte offset (length) of mutation data, or 0 if nothing dirty.
     """
     # Collect and consume dirty scopes via the scheduler
-    if not app[0].ctx.consume_dirty():
+    if not app.ctx.consume_dirty():
         return 0
 
     # Re-render app shell to pick up any changes.
     # dyn_node(3) stays as placeholder — diff sees placeholder vs
     # placeholder and does nothing (KeyedList manages it separately).
-    var new_app_idx = app[0].render()
-    app[0].ctx.diff(writer_ptr, new_app_idx)
+    var new_app_idx = app.render()
+    app.ctx.diff(writer_ptr, new_app_idx)
 
     # Build a new rows fragment from the current row list
-    var new_frag_idx = app[0].build_rows_fragment()
+    var new_frag_idx = app.build_rows_fragment()
 
     # Flush via KeyedList (handles all three transitions)
-    app[0].rows_list.flush(app[0].ctx, writer_ptr, new_frag_idx)
+    app.rows_list.flush(app.ctx, writer_ptr, new_frag_idx)
 
     writer_ptr[0].finalize()
     return Int32(writer_ptr[0].offset)

@@ -191,23 +191,23 @@ fn _sc_destroy(
 
 
 fn _sc_rebuild(
-    app: UnsafePointer[SafeCounterApp, MutExternalOrigin],
+    mut app: SafeCounterApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the safe-counter app."""
     # 1. Render parent with placeholders
-    var parent_idx = app[0].render_parent()
-    app[0].ctx.current_vnode = Int(parent_idx)
+    var parent_idx = app.render_parent()
+    app.ctx.current_vnode = Int(parent_idx)
 
     # 2. Emit all templates (parent + normal child + fallback child)
-    app[0].ctx.shell.emit_templates(writer_ptr)
+    app.ctx.shell.emit_templates(writer_ptr)
 
     # 3. Create parent VNode tree
     var engine = _CreateEngine(
         writer_ptr,
-        app[0].ctx.shell.eid_alloc,
-        app[0].ctx.runtime_ptr(),
-        app[0].ctx.store_ptr(),
+        app.ctx.shell.eid_alloc,
+        app.ctx.runtime_ptr(),
+        app.ctx.store_ptr(),
     )
     var num_roots = engine.create_node(parent_idx)
 
@@ -215,19 +215,19 @@ fn _sc_rebuild(
     writer_ptr[0].append_children(0, num_roots)
 
     # 5. Extract anchors for child slots
-    var vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(parent_idx)
+    var vnode_ptr = app.ctx.store_ptr()[0].get_ptr(parent_idx)
     var normal_anchor: UInt32 = 0
     var fallback_anchor: UInt32 = 0
     if vnode_ptr[0].dyn_node_id_count() > 0:
         normal_anchor = vnode_ptr[0].get_dyn_node_id(0)
     if vnode_ptr[0].dyn_node_id_count() > 1:
         fallback_anchor = vnode_ptr[0].get_dyn_node_id(1)
-    app[0].normal.child_ctx.init_slot(normal_anchor)
-    app[0].fallback.child_ctx.init_slot(fallback_anchor)
+    app.normal.child_ctx.init_slot(normal_anchor)
+    app.fallback.child_ctx.init_slot(fallback_anchor)
 
     # 6. Flush normal child (initial render — no error state)
-    var normal_idx = app[0].normal.render()
-    app[0].normal.child_ctx.flush(writer_ptr, normal_idx)
+    var normal_idx = app.normal.render()
+    app.normal.child_ctx.flush(writer_ptr, normal_idx)
     # Fallback starts hidden — do NOT flush it
 
     # 7. Finalize
@@ -236,47 +236,47 @@ fn _sc_rebuild(
 
 
 fn _sc_handle_event(
-    app: UnsafePointer[SafeCounterApp, MutExternalOrigin],
+    mut app: SafeCounterApp,
     handler_id: UInt32,
     event_type: UInt8,
 ) -> Bool:
-    if handler_id == app[0].crash_handler:
+    if handler_id == app.crash_handler:
         # Simulate a crash: propagate error to this boundary
-        _ = app[0].ctx.report_error(String("Simulated crash"))
+        _ = app.ctx.report_error(String("Simulated crash"))
         return True
-    elif handler_id == app[0].retry_handler:
+    elif handler_id == app.retry_handler:
         # Clear error state — next flush restores normal content
-        app[0].ctx.clear_error()
+        app.ctx.clear_error()
         return True
     else:
-        return app[0].ctx.dispatch_event(handler_id, event_type)
+        return app.ctx.dispatch_event(handler_id, event_type)
 
 
 fn _sc_flush(
-    app: UnsafePointer[SafeCounterApp, MutExternalOrigin],
+    mut app: SafeCounterApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates with error boundary logic."""
-    var parent_dirty = app[0].ctx.consume_dirty()
-    var normal_dirty = app[0].normal.child_ctx.is_dirty()
-    var fallback_dirty = app[0].fallback.child_ctx.is_dirty()
+    var parent_dirty = app.ctx.consume_dirty()
+    var normal_dirty = app.normal.child_ctx.is_dirty()
+    var fallback_dirty = app.fallback.child_ctx.is_dirty()
 
     if not parent_dirty and not normal_dirty and not fallback_dirty:
         return 0
 
     # Diff parent shell (placeholder → placeholder = no mutations usually)
-    var new_parent_idx = app[0].render_parent()
-    app[0].ctx.diff(writer_ptr, new_parent_idx)
+    var new_parent_idx = app.render_parent()
+    app.ctx.diff(writer_ptr, new_parent_idx)
 
-    if app[0].ctx.has_error():
+    if app.ctx.has_error():
         # Error state: hide normal, show fallback with error message
-        app[0].normal.child_ctx.flush_empty(writer_ptr)
-        var fb_idx = app[0].fallback.render(app[0].ctx.error_message())
-        app[0].fallback.child_ctx.flush(writer_ptr, fb_idx)
+        app.normal.child_ctx.flush_empty(writer_ptr)
+        var fb_idx = app.fallback.render(app.ctx.error_message())
+        app.fallback.child_ctx.flush(writer_ptr, fb_idx)
     else:
         # Normal state: hide fallback, show normal
-        app[0].fallback.child_ctx.flush_empty(writer_ptr)
-        var normal_idx = app[0].normal.render()
-        app[0].normal.child_ctx.flush(writer_ptr, normal_idx)
+        app.fallback.child_ctx.flush_empty(writer_ptr)
+        var normal_idx = app.normal.render()
+        app.normal.child_ctx.flush(writer_ptr, normal_idx)
 
-    return app[0].ctx.finalize(writer_ptr)
+    return app.ctx.finalize(writer_ptr)

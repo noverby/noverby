@@ -117,7 +117,7 @@ fn _cc_destroy(app_ptr: UnsafePointer[ChildCounterApp, MutExternalOrigin]):
 
 
 fn _cc_rebuild(
-    app: UnsafePointer[ChildCounterApp, MutExternalOrigin],
+    mut app: ChildCounterApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the child-counter app.
@@ -135,18 +135,18 @@ fn _cc_rebuild(
     7. Finalize the mutation buffer (single OP_END).
     """
     # 1. Render parent with placeholder for child slot
-    var parent_idx = app[0].render_parent()
-    app[0].ctx.current_vnode = Int(parent_idx)
+    var parent_idx = app.render_parent()
+    app.ctx.current_vnode = Int(parent_idx)
 
     # 2. Emit all registered templates (parent + child)
-    app[0].ctx.shell.emit_templates(writer_ptr)
+    app.ctx.shell.emit_templates(writer_ptr)
 
     # 3. Create parent VNode tree (no finalize)
     var engine = _CreateEngine(
         writer_ptr,
-        app[0].ctx.shell.eid_alloc,
-        app[0].ctx.runtime_ptr(),
-        app[0].ctx.store_ptr(),
+        app.ctx.shell.eid_alloc,
+        app.ctx.runtime_ptr(),
+        app.ctx.store_ptr(),
     )
     var num_roots = engine.create_node(parent_idx)
 
@@ -155,18 +155,18 @@ fn _cc_rebuild(
 
     # 5. Extract anchor for the child slot (dyn_node[0])
     var anchor_id: UInt32 = 0
-    var vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(parent_idx)
+    var vnode_ptr = app.ctx.store_ptr()[0].get_ptr(parent_idx)
     if vnode_ptr[0].dyn_node_id_count() > 0:
         anchor_id = vnode_ptr[0].get_dyn_node_id(0)
-    app[0].child.init_slot(anchor_id)
+    app.child.init_slot(anchor_id)
 
     # 6. Build and flush the child VNode (create child DOM, replace placeholder)
-    var child_idx = app[0].build_child_vnode()
-    app[0].child.flush(
+    var child_idx = app.build_child_vnode()
+    app.child.flush(
         writer_ptr,
-        app[0].ctx.shell.eid_alloc,
-        app[0].ctx.runtime_ptr(),
-        app[0].ctx.store_ptr(),
+        app.ctx.shell.eid_alloc,
+        app.ctx.runtime_ptr(),
+        app.ctx.store_ptr(),
         child_idx,
     )
 
@@ -176,15 +176,15 @@ fn _cc_rebuild(
 
 
 fn _cc_handle_event(
-    app: UnsafePointer[ChildCounterApp, MutExternalOrigin],
+    mut app: ChildCounterApp,
     handler_id: UInt32,
     event_type: UInt8,
 ) -> Bool:
-    return app[0].ctx.dispatch_event(handler_id, event_type)
+    return app.ctx.dispatch_event(handler_id, event_type)
 
 
 fn _cc_flush(
-    app: UnsafePointer[ChildCounterApp, MutExternalOrigin],
+    mut app: ChildCounterApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates.
@@ -193,22 +193,22 @@ fn _cc_flush(
     2. Flush the child VNode (diff old vs new → SetText if count changed).
     3. Finalize the mutation buffer.
     """
-    if not app[0].ctx.consume_dirty():
+    if not app.ctx.consume_dirty():
         return 0
 
     # 1. Diff parent shell (placeholder → placeholder = no mutations)
-    var new_parent_idx = app[0].render_parent()
-    app[0].ctx.diff(writer_ptr, new_parent_idx)
+    var new_parent_idx = app.render_parent()
+    app.ctx.diff(writer_ptr, new_parent_idx)
 
     # 2. Build and flush child VNode
-    var child_idx = app[0].build_child_vnode()
-    app[0].child.flush(
+    var child_idx = app.build_child_vnode()
+    app.child.flush(
         writer_ptr,
-        app[0].ctx.shell.eid_alloc,
-        app[0].ctx.runtime_ptr(),
-        app[0].ctx.store_ptr(),
+        app.ctx.shell.eid_alloc,
+        app.ctx.runtime_ptr(),
+        app.ctx.store_ptr(),
         child_idx,
     )
 
     # 3. Finalize
-    return app[0].ctx.finalize(writer_ptr)
+    return app.ctx.finalize(writer_ptr)

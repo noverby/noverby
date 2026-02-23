@@ -279,23 +279,23 @@ fn _en_destroy(
 
 
 fn _en_rebuild(
-    app: UnsafePointer[ErrorNestApp, MutExternalOrigin],
+    mut app: ErrorNestApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the error-nest app."""
     # 1. Render parent with placeholder
-    var parent_idx = app[0].render_parent()
-    app[0].ctx.current_vnode = Int(parent_idx)
+    var parent_idx = app.render_parent()
+    app.ctx.current_vnode = Int(parent_idx)
 
     # 2. Emit all templates
-    app[0].ctx.shell.emit_templates(writer_ptr)
+    app.ctx.shell.emit_templates(writer_ptr)
 
     # 3. Create parent VNode tree
     var engine = _CreateEngine(
         writer_ptr,
-        app[0].ctx.shell.eid_alloc,
-        app[0].ctx.runtime_ptr(),
-        app[0].ctx.store_ptr(),
+        app.ctx.shell.eid_alloc,
+        app.ctx.runtime_ptr(),
+        app.ctx.store_ptr(),
     )
     var num_roots = engine.create_node(parent_idx)
 
@@ -303,23 +303,23 @@ fn _en_rebuild(
     writer_ptr[0].append_children(0, num_roots)
 
     # 5. Extract anchors for outer normal + outer fallback slots
-    var vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(parent_idx)
+    var vnode_ptr = app.ctx.store_ptr()[0].get_ptr(parent_idx)
     var outer_normal_anchor: UInt32 = 0
     var outer_fallback_anchor: UInt32 = 0
     if vnode_ptr[0].dyn_node_id_count() > 0:
         outer_normal_anchor = vnode_ptr[0].get_dyn_node_id(0)
     if vnode_ptr[0].dyn_node_id_count() > 1:
         outer_fallback_anchor = vnode_ptr[0].get_dyn_node_id(1)
-    app[0].outer_normal.child_ctx.init_slot(outer_normal_anchor)
-    app[0].outer_fallback.child_ctx.init_slot(outer_fallback_anchor)
+    app.outer_normal.child_ctx.init_slot(outer_normal_anchor)
+    app.outer_fallback.child_ctx.init_slot(outer_fallback_anchor)
 
     # 6. Flush outer normal child (initial render — no error)
-    var outer_normal_idx = app[0].outer_normal.render()
-    app[0].outer_normal.child_ctx.flush(writer_ptr, outer_normal_idx)
+    var outer_normal_idx = app.outer_normal.render()
+    app.outer_normal.child_ctx.flush(writer_ptr, outer_normal_idx)
 
     # 7. Extract anchors for inner normal + inner fallback slots
-    var on_vnode_ptr = (
-        app[0].outer_normal.child_ctx.store[0].get_ptr(outer_normal_idx)
+    var on_vnode_ptr = app.outer_normal.child_ctx.store[0].get_ptr(
+        outer_normal_idx
     )
     # dyn_node_ids[0] = text node (dyn_text[0] = "Status: OK")
     # dyn_node_ids[1] = placeholder (dyn_node[1] = inner normal slot)
@@ -330,16 +330,12 @@ fn _en_rebuild(
         inner_normal_anchor = on_vnode_ptr[0].get_dyn_node_id(1)
     if on_vnode_ptr[0].dyn_node_id_count() > 2:
         inner_fallback_anchor = on_vnode_ptr[0].get_dyn_node_id(2)
-    app[0].outer_normal.inner_normal.child_ctx.init_slot(inner_normal_anchor)
-    app[0].outer_normal.inner_fallback.child_ctx.init_slot(
-        inner_fallback_anchor
-    )
+    app.outer_normal.inner_normal.child_ctx.init_slot(inner_normal_anchor)
+    app.outer_normal.inner_fallback.child_ctx.init_slot(inner_fallback_anchor)
 
     # 8. Flush inner normal child
-    var inner_normal_idx = app[0].outer_normal.inner_normal.render()
-    app[0].outer_normal.inner_normal.child_ctx.flush(
-        writer_ptr, inner_normal_idx
-    )
+    var inner_normal_idx = app.outer_normal.inner_normal.render()
+    app.outer_normal.inner_normal.child_ctx.flush(writer_ptr, inner_normal_idx)
     # Inner fallback starts hidden — do NOT flush it
     # Outer fallback starts hidden — do NOT flush it
 
@@ -349,33 +345,33 @@ fn _en_rebuild(
 
 
 fn _en_handle_event(
-    app: UnsafePointer[ErrorNestApp, MutExternalOrigin],
+    mut app: ErrorNestApp,
     handler_id: UInt32,
     event_type: UInt8,
 ) -> Bool:
-    if handler_id == app[0].outer_crash_handler:
-        _ = app[0].ctx.report_error(String("Outer crash"))
+    if handler_id == app.outer_crash_handler:
+        _ = app.ctx.report_error(String("Outer crash"))
         return True
-    elif handler_id == app[0].inner_crash_handler:
+    elif handler_id == app.inner_crash_handler:
         # Inner crash: report from inner_crash button's scope (outer_normal)
         # to the inner boundary (outer_normal itself).
         # Since the inner crash button is registered under outer_normal's
         # scope and outer_normal IS the boundary, report_error on
         # outer_normal sets the error on itself.
-        _ = app[0].outer_normal.child_ctx.report_error(String("Inner crash"))
+        _ = app.outer_normal.child_ctx.report_error(String("Inner crash"))
         return True
-    elif handler_id == app[0].outer_retry_handler:
-        app[0].ctx.clear_error()
+    elif handler_id == app.outer_retry_handler:
+        app.ctx.clear_error()
         return True
-    elif handler_id == app[0].inner_retry_handler:
-        app[0].outer_normal.child_ctx.clear_error()
+    elif handler_id == app.inner_retry_handler:
+        app.outer_normal.child_ctx.clear_error()
         return True
     else:
-        return app[0].ctx.dispatch_event(handler_id, event_type)
+        return app.ctx.dispatch_event(handler_id, event_type)
 
 
 fn _en_flush(
-    app: UnsafePointer[ErrorNestApp, MutExternalOrigin],
+    mut app: ErrorNestApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates with nested error boundary logic.
@@ -392,11 +388,11 @@ fn _en_flush(
       3. Outer normal already mounted → leave outer_normal alone,
          handle inner state changes only.
     """
-    var parent_dirty = app[0].ctx.consume_dirty()
-    var on_dirty = app[0].outer_normal.child_ctx.is_dirty()
-    var of_dirty = app[0].outer_fallback.child_ctx.is_dirty()
-    var in_dirty = app[0].outer_normal.inner_normal.child_ctx.is_dirty()
-    var if_dirty = app[0].outer_normal.inner_fallback.child_ctx.is_dirty()
+    var parent_dirty = app.ctx.consume_dirty()
+    var on_dirty = app.outer_normal.child_ctx.is_dirty()
+    var of_dirty = app.outer_fallback.child_ctx.is_dirty()
+    var in_dirty = app.outer_normal.inner_normal.child_ctx.is_dirty()
+    var if_dirty = app.outer_normal.inner_fallback.child_ctx.is_dirty()
 
     if (
         not parent_dirty
@@ -408,32 +404,30 @@ fn _en_flush(
         return 0
 
     # Diff parent shell (placeholders → placeholders = no mutations usually)
-    var new_parent_idx = app[0].render_parent()
-    app[0].ctx.diff(writer_ptr, new_parent_idx)
+    var new_parent_idx = app.render_parent()
+    app.ctx.diff(writer_ptr, new_parent_idx)
 
-    if app[0].ctx.has_error():
+    if app.ctx.has_error():
         # ── Case 1: Outer error ──────────────────────────────────────
         # Hide inner children first (while outer_normal still mounted)
-        app[0].outer_normal.inner_normal.child_ctx.flush_empty(writer_ptr)
-        app[0].outer_normal.inner_fallback.child_ctx.flush_empty(writer_ptr)
+        app.outer_normal.inner_normal.child_ctx.flush_empty(writer_ptr)
+        app.outer_normal.inner_fallback.child_ctx.flush_empty(writer_ptr)
         # Hide outer normal
-        app[0].outer_normal.child_ctx.flush_empty(writer_ptr)
+        app.outer_normal.child_ctx.flush_empty(writer_ptr)
         # Show outer fallback
-        var of_idx = app[0].outer_fallback.render(app[0].ctx.error_message())
-        app[0].outer_fallback.child_ctx.flush(writer_ptr, of_idx)
-    elif not app[0].outer_normal.child_ctx.is_mounted():
+        var of_idx = app.outer_fallback.render(app.ctx.error_message())
+        app.outer_fallback.child_ctx.flush(writer_ptr, of_idx)
+    elif not app.outer_normal.child_ctx.is_mounted():
         # ── Case 2: Recovering from outer error ──────────────────────
         # Hide outer fallback
-        app[0].outer_fallback.child_ctx.flush_empty(writer_ptr)
+        app.outer_fallback.child_ctx.flush_empty(writer_ptr)
 
         # Restore outer normal
-        var on_idx = app[0].outer_normal.render()
-        app[0].outer_normal.child_ctx.flush(writer_ptr, on_idx)
+        var on_idx = app.outer_normal.render()
+        app.outer_normal.child_ctx.flush(writer_ptr, on_idx)
 
         # Re-extract inner anchors (outer_normal was recreated)
-        var on_vnode_ptr = (
-            app[0].outer_normal.child_ctx.store[0].get_ptr(on_idx)
-        )
+        var on_vnode_ptr = app.outer_normal.child_ctx.store[0].get_ptr(on_idx)
         # dyn_node_ids[0] = text node, [1] = inner normal, [2] = inner fallback
         var inner_normal_anchor: UInt32 = 0
         var inner_fallback_anchor: UInt32 = 0
@@ -441,43 +435,37 @@ fn _en_flush(
             inner_normal_anchor = on_vnode_ptr[0].get_dyn_node_id(1)
         if on_vnode_ptr[0].dyn_node_id_count() > 2:
             inner_fallback_anchor = on_vnode_ptr[0].get_dyn_node_id(2)
-        app[0].outer_normal.inner_normal.child_ctx.init_slot(
-            inner_normal_anchor
-        )
-        app[0].outer_normal.inner_fallback.child_ctx.init_slot(
+        app.outer_normal.inner_normal.child_ctx.init_slot(inner_normal_anchor)
+        app.outer_normal.inner_fallback.child_ctx.init_slot(
             inner_fallback_anchor
         )
 
         # Render inner state
-        if app[0].outer_normal.child_ctx.has_error():
+        if app.outer_normal.child_ctx.has_error():
             # Inner error persisted while outer was in error
-            var if_idx = app[0].outer_normal.inner_fallback.render(
-                app[0].outer_normal.child_ctx.error_message()
+            var if_idx = app.outer_normal.inner_fallback.render(
+                app.outer_normal.child_ctx.error_message()
             )
-            app[0].outer_normal.inner_fallback.child_ctx.flush(
-                writer_ptr, if_idx
-            )
+            app.outer_normal.inner_fallback.child_ctx.flush(writer_ptr, if_idx)
             # inner normal slot stays as placeholder — don't flush it
         else:
             # No inner error — show inner normal
-            var in_idx = app[0].outer_normal.inner_normal.render()
-            app[0].outer_normal.inner_normal.child_ctx.flush(writer_ptr, in_idx)
+            var in_idx = app.outer_normal.inner_normal.render()
+            app.outer_normal.inner_normal.child_ctx.flush(writer_ptr, in_idx)
             # inner fallback slot stays as placeholder — don't flush it
     else:
         # ── Case 3: Outer normal already mounted — inner changes only ─
-        if app[0].outer_normal.child_ctx.has_error():
+        if app.outer_normal.child_ctx.has_error():
             # Inner error: hide inner normal, show inner fallback
-            app[0].outer_normal.inner_normal.child_ctx.flush_empty(writer_ptr)
-            var if_idx = app[0].outer_normal.inner_fallback.render(
-                app[0].outer_normal.child_ctx.error_message()
+            app.outer_normal.inner_normal.child_ctx.flush_empty(writer_ptr)
+            var if_idx = app.outer_normal.inner_fallback.render(
+                app.outer_normal.child_ctx.error_message()
             )
-            app[0].outer_normal.inner_fallback.child_ctx.flush(
-                writer_ptr, if_idx
-            )
+            app.outer_normal.inner_fallback.child_ctx.flush(writer_ptr, if_idx)
         else:
             # No inner error: hide inner fallback, show inner normal
-            app[0].outer_normal.inner_fallback.child_ctx.flush_empty(writer_ptr)
-            var in_idx = app[0].outer_normal.inner_normal.render()
-            app[0].outer_normal.inner_normal.child_ctx.flush(writer_ptr, in_idx)
+            app.outer_normal.inner_fallback.child_ctx.flush_empty(writer_ptr)
+            var in_idx = app.outer_normal.inner_normal.render()
+            app.outer_normal.inner_normal.child_ctx.flush(writer_ptr, in_idx)
 
-    return app[0].ctx.finalize(writer_ptr)
+    return app.ctx.finalize(writer_ptr)

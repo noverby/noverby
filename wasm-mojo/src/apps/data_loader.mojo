@@ -162,23 +162,23 @@ fn _dl_destroy(
 
 
 fn _dl_rebuild(
-    app: UnsafePointer[DataLoaderApp, MutExternalOrigin],
+    mut app: DataLoaderApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the data-loader app."""
     # 1. Render parent with placeholders
-    var parent_idx = app[0].render_parent()
-    app[0].ctx.current_vnode = Int(parent_idx)
+    var parent_idx = app.render_parent()
+    app.ctx.current_vnode = Int(parent_idx)
 
     # 2. Emit all templates
-    app[0].ctx.shell.emit_templates(writer_ptr)
+    app.ctx.shell.emit_templates(writer_ptr)
 
     # 3. Create parent VNode tree
     var engine = _CreateEngine(
         writer_ptr,
-        app[0].ctx.shell.eid_alloc,
-        app[0].ctx.runtime_ptr(),
-        app[0].ctx.store_ptr(),
+        app.ctx.shell.eid_alloc,
+        app.ctx.runtime_ptr(),
+        app.ctx.store_ptr(),
     )
     var num_roots = engine.create_node(parent_idx)
 
@@ -186,19 +186,19 @@ fn _dl_rebuild(
     writer_ptr[0].append_children(0, num_roots)
 
     # 5. Extract anchors for content + skeleton slots
-    var vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(parent_idx)
+    var vnode_ptr = app.ctx.store_ptr()[0].get_ptr(parent_idx)
     var content_anchor: UInt32 = 0
     var skeleton_anchor: UInt32 = 0
     if vnode_ptr[0].dyn_node_id_count() > 0:
         content_anchor = vnode_ptr[0].get_dyn_node_id(0)
     if vnode_ptr[0].dyn_node_id_count() > 1:
         skeleton_anchor = vnode_ptr[0].get_dyn_node_id(1)
-    app[0].content.child_ctx.init_slot(content_anchor)
-    app[0].skeleton.child_ctx.init_slot(skeleton_anchor)
+    app.content.child_ctx.init_slot(content_anchor)
+    app.skeleton.child_ctx.init_slot(skeleton_anchor)
 
     # 6. Flush content child (initial render — no pending)
-    var content_idx = app[0].content.render(app[0].data_text)
-    app[0].content.child_ctx.flush(writer_ptr, content_idx)
+    var content_idx = app.content.render(app.data_text)
+    app.content.child_ctx.flush(writer_ptr, content_idx)
     # Skeleton starts hidden — do NOT flush it
 
     # 7. Finalize
@@ -207,28 +207,28 @@ fn _dl_rebuild(
 
 
 fn _dl_handle_event(
-    app: UnsafePointer[DataLoaderApp, MutExternalOrigin],
+    mut app: DataLoaderApp,
     handler_id: UInt32,
     event_type: UInt8,
 ) -> Bool:
-    if handler_id == app[0].load_handler:
-        app[0].ctx.set_pending(True)
+    if handler_id == app.load_handler:
+        app.ctx.set_pending(True)
         return True
     else:
-        return app[0].ctx.dispatch_event(handler_id, event_type)
+        return app.ctx.dispatch_event(handler_id, event_type)
 
 
 fn _dl_resolve(
-    app: UnsafePointer[DataLoaderApp, MutExternalOrigin],
+    mut app: DataLoaderApp,
     data: String,
 ):
     """Store resolved data and clear pending state."""
-    app[0].data_text = data
-    app[0].ctx.set_pending(False)
+    app.data_text = data
+    app.ctx.set_pending(False)
 
 
 fn _dl_flush(
-    app: UnsafePointer[DataLoaderApp, MutExternalOrigin],
+    mut app: DataLoaderApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates with suspense logic.
@@ -237,26 +237,26 @@ fn _dl_flush(
       1. Pending: hide content, show skeleton
       2. Not pending: hide skeleton, show content with current data
     """
-    var parent_dirty = app[0].ctx.consume_dirty()
-    var content_dirty = app[0].content.child_ctx.is_dirty()
-    var skeleton_dirty = app[0].skeleton.child_ctx.is_dirty()
+    var parent_dirty = app.ctx.consume_dirty()
+    var content_dirty = app.content.child_ctx.is_dirty()
+    var skeleton_dirty = app.skeleton.child_ctx.is_dirty()
 
     if not parent_dirty and not content_dirty and not skeleton_dirty:
         return 0
 
     # Diff parent shell (placeholders → placeholders = no mutations usually)
-    var new_parent_idx = app[0].render_parent()
-    app[0].ctx.diff(writer_ptr, new_parent_idx)
+    var new_parent_idx = app.render_parent()
+    app.ctx.diff(writer_ptr, new_parent_idx)
 
-    if app[0].ctx.is_pending():
+    if app.ctx.is_pending():
         # ── Pending: hide content, show skeleton ─────────────────────
-        app[0].content.child_ctx.flush_empty(writer_ptr)
-        var skel_idx = app[0].skeleton.render()
-        app[0].skeleton.child_ctx.flush(writer_ptr, skel_idx)
+        app.content.child_ctx.flush_empty(writer_ptr)
+        var skel_idx = app.skeleton.render()
+        app.skeleton.child_ctx.flush(writer_ptr, skel_idx)
     else:
         # ── Resolved: hide skeleton, show content ────────────────────
-        app[0].skeleton.child_ctx.flush_empty(writer_ptr)
-        var content_idx = app[0].content.render(app[0].data_text)
-        app[0].content.child_ctx.flush(writer_ptr, content_idx)
+        app.skeleton.child_ctx.flush_empty(writer_ptr)
+        var content_idx = app.content.render(app.data_text)
+        app.content.child_ctx.flush(writer_ptr, content_idx)
 
-    return app[0].ctx.finalize(writer_ptr)
+    return app.ctx.finalize(writer_ptr)

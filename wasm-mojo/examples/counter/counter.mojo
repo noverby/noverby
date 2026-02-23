@@ -233,7 +233,7 @@ fn counter_app_destroy(app_ptr: UnsafePointer[CounterApp, MutExternalOrigin]):
 
 
 fn counter_app_rebuild(
-    app: UnsafePointer[CounterApp, MutExternalOrigin],
+    mut app: CounterApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the counter app.
@@ -247,23 +247,23 @@ fn counter_app_rebuild(
 
     Returns the byte offset (length) of the mutation data written.
     """
-    var vnode_idx = app[0].render()
-    var result = app[0].ctx.mount(writer_ptr, vnode_idx)
+    var vnode_idx = app.render()
+    var result = app.ctx.mount(writer_ptr, vnode_idx)
 
     # Extract the anchor ElementId for the conditional slot (dyn_node[1]).
     # dyn_node_ids[0] is the dyn_text node, dyn_node_ids[1] is the
     # conditional placeholder.
     var anchor_id: UInt32 = 0
-    var app_vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(vnode_idx)
+    var app_vnode_ptr = app.ctx.store_ptr()[0].get_ptr(vnode_idx)
     if app_vnode_ptr[0].dyn_node_id_count() > 1:
         anchor_id = app_vnode_ptr[0].get_dyn_node_id(1)
-    app[0].cond_slot = ConditionalSlot(anchor_id)
+    app.cond_slot = ConditionalSlot(anchor_id)
 
     return result
 
 
 fn counter_app_handle_event(
-    app: UnsafePointer[CounterApp, MutExternalOrigin],
+    mut app: CounterApp,
     handler_id: UInt32,
     event_type: UInt8,
 ) -> Bool:
@@ -271,11 +271,11 @@ fn counter_app_handle_event(
 
     Returns True if an action was executed, False otherwise.
     """
-    return app[0].ctx.dispatch_event(handler_id, event_type)
+    return app.ctx.dispatch_event(handler_id, event_type)
 
 
 fn counter_app_flush(
-    app: UnsafePointer[CounterApp, MutExternalOrigin],
+    mut app: CounterApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates after event dispatch.
@@ -292,25 +292,25 @@ fn counter_app_flush(
     Returns the byte offset (length) of the mutation data written,
     or 0 if there was nothing to update.
     """
-    if not app[0].ctx.consume_dirty():
+    if not app.ctx.consume_dirty():
         return 0
 
     # 1. Re-render and diff the app shell
-    var new_idx = app[0].render()
-    app[0].ctx.diff(writer_ptr, new_idx)
+    var new_idx = app.render()
+    app.ctx.diff(writer_ptr, new_idx)
 
     # 2. Handle conditional detail section
-    if app[0].show_detail.get():
+    if app.show_detail.get():
         # Show or update the detail section
-        var detail_idx = app[0].build_detail()
-        app[0].cond_slot = app[0].ctx.flush_conditional_slot(
-            writer_ptr, app[0].cond_slot, detail_idx
+        var detail_idx = app.build_detail()
+        app.cond_slot = app.ctx.flush_conditional_slot(
+            writer_ptr, app.cond_slot, detail_idx
         )
     else:
         # Hide the detail section (back to placeholder)
-        app[0].cond_slot = app[0].ctx.flush_conditional_slot_empty(
-            writer_ptr, app[0].cond_slot
+        app.cond_slot = app.ctx.flush_conditional_slot_empty(
+            writer_ptr, app.cond_slot
         )
 
     # 3. Finalize the mutation buffer
-    return app[0].ctx.finalize(writer_ptr)
+    return app.ctx.finalize(writer_ptr)

@@ -2,6 +2,20 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 41 — Safe App Lifecycle References
+
+Converted all app lifecycle functions (`_xx_rebuild`, `_xx_flush`, `_xx_handle_event`, `_xx_resolve`) from `UnsafePointer[App]` to `mut App` (safe mutable reference). `UnsafePointer` is now confined to two places: `_init`/`_destroy` (heap allocation/deallocation) and `main.mojo` @export wrappers (WASM ABI boundary where `Int64` handles are converted to pointers). The `_get[App](ptr)[0]` dereference at the call site converts the pointer to a mutable reference; inside the lifecycle function, the borrow checker tracks `app` as a normal mutable reference — no `app[0].` dereferences needed.
+
+**Modules changed:**
+
+- `src/apps/` — 14 modules, ~45 lifecycle functions (all except `context_test.mojo` which has no lifecycle fns beyond init/destroy)
+- `examples/` — 4 modules (`counter.mojo`, `todo.mojo`, `bench.mojo`, `app.mojo`), ~11 lifecycle functions
+- `src/main.mojo` — ~61 call sites updated to add `[0]` dereference at the boundary
+
+**Note:** `MutationWriter` stays as `UnsafePointer` because `ComponentContext`, `CreateEngine`, and `DiffEngine` store it as a struct field — changing this requires lifetime-parameterized structs, which Mojo does not yet support.
+
+**Test count after Phase 41:** unchanged — 1,323 Mojo (52 modules) + 3,090 JS (29 suites) = 4,413 tests.
+
 ## Phase 40 — Modularize `src/main.mojo`
 
 Extracted all 15 demo/test app structs and lifecycle functions from `src/main.mojo` into dedicated modules under `src/apps/`. Only thin `@export` WASM wrappers remain in `main.mojo` (Mojo requires exports in the main compilation unit). The file shrank from ~10,035 to ~6,730 lines. Added top-level section dividers separating shared utilities, framework test/runtime exports, and app re-export wrappers. Cleaned up unused imports (`ChildComponent`, `CreateEngine`, DSL element helpers, and signal handle types no longer referenced after extraction).

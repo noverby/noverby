@@ -124,7 +124,7 @@ fn _ed_destroy(
 
 
 fn _ed_rebuild(
-    app: UnsafePointer[EffectDemoApp, MutExternalOrigin],
+    mut app: EffectDemoApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the effect-demo app.
@@ -133,26 +133,26 @@ fn _ed_rebuild(
     renders and mounts.
     """
     # Run initial effects — effect starts pending, so this sets doubled=0, parity="even"
-    app[0].run_effects()
+    app.run_effects()
     # Render with settled state
-    var vnode_idx = app[0].render()
-    var result = app[0].ctx.mount(writer_ptr, vnode_idx)
+    var vnode_idx = app.render()
+    var result = app.ctx.mount(writer_ptr, vnode_idx)
     # Consume dirty scopes left over from effect signal writes —
     # the DOM is already correct (rendered with settled state).
-    _ = app[0].ctx.consume_dirty()
+    _ = app.ctx.consume_dirty()
     return result
 
 
 fn _ed_handle_event(
-    app: UnsafePointer[EffectDemoApp, MutExternalOrigin],
+    mut app: EffectDemoApp,
     handler_id: UInt32,
     event_type: UInt8,
 ) -> Bool:
-    return app[0].ctx.dispatch_event(handler_id, event_type)
+    return app.ctx.dispatch_event(handler_id, event_type)
 
 
 fn _ed_flush(
-    app: UnsafePointer[EffectDemoApp, MutExternalOrigin],
+    mut app: EffectDemoApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates with effect drain-and-run pattern.
@@ -162,11 +162,11 @@ fn _ed_flush(
     3. render() — build VNode with all state settled
     4. diff + finalize — emit mutations
     """
-    if not app[0].ctx.consume_dirty():
+    if not app.ctx.consume_dirty():
         return 0
     # Run pending effects — they may write signals
-    app[0].run_effects()
+    app.run_effects()
     # Render with settled state
-    var new_idx = app[0].render()
-    app[0].ctx.diff(writer_ptr, new_idx)
-    return app[0].ctx.finalize(writer_ptr)
+    var new_idx = app.render()
+    app.ctx.diff(writer_ptr, new_idx)
+    return app.ctx.finalize(writer_ptr)

@@ -2455,7 +2455,7 @@ fn counter_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount) of the counter app.  Returns mutation byte length.
     """
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = counter_app_rebuild(_get[CounterApp](app_ptr), writer_ptr)
+    var offset = counter_app_rebuild(_get[CounterApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -2467,7 +2467,7 @@ fn counter_handle_event(
     """Dispatch an event to the counter app.  Returns 1 if action executed."""
     return _b2i(
         counter_app_handle_event(
-            _get[CounterApp](app_ptr), UInt32(handler_id), UInt8(event_type)
+            _get[CounterApp](app_ptr)[0], UInt32(handler_id), UInt8(event_type)
         )
     )
 
@@ -2477,7 +2477,7 @@ fn counter_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = counter_app_flush(_get[CounterApp](app_ptr), writer_ptr)
+    var offset = counter_app_flush(_get[CounterApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -2603,7 +2603,7 @@ fn todo_destroy(app_ptr: Int64):
 fn todo_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount) of the todo app.  Returns mutation byte length."""
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = todo_app_rebuild(_get[TodoApp](app_ptr), writer_ptr)
+    var offset = todo_app_rebuild(_get[TodoApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -2695,7 +2695,7 @@ fn todo_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = todo_app_flush(_get[TodoApp](app_ptr), writer_ptr)
+    var offset = todo_app_flush(_get[TodoApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -2894,7 +2894,7 @@ fn bench_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render of the benchmark table body.  Returns mutation byte length.
     """
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = bench_app_rebuild(_get[BenchmarkApp](app_ptr), writer_ptr)
+    var offset = bench_app_rebuild(_get[BenchmarkApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -2904,7 +2904,7 @@ fn bench_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0 if nothing dirty.
     """
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = bench_app_flush(_get[BenchmarkApp](app_ptr), writer_ptr)
+    var offset = bench_app_flush(_get[BenchmarkApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -4438,7 +4438,7 @@ fn cc_destroy(app_ptr: Int64):
 fn cc_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount).  Returns mutation byte length."""
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = _cc_rebuild(_get[ChildCounterApp](app_ptr), writer_ptr)
+    var offset = _cc_rebuild(_get[ChildCounterApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -4450,7 +4450,7 @@ fn cc_handle_event(
     """Dispatch an event.  Returns 1 if action executed."""
     return _b2i(
         _cc_handle_event(
-            _get[ChildCounterApp](app_ptr),
+            _get[ChildCounterApp](app_ptr)[0],
             UInt32(handler_id),
             UInt8(event_type),
         )
@@ -4461,7 +4461,7 @@ fn cc_handle_event(
 fn cc_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0."""
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = _cc_flush(_get[ChildCounterApp](app_ptr), writer_ptr)
+    var offset = _cc_flush(_get[ChildCounterApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -4559,7 +4559,9 @@ fn mv_destroy(app_ptr: Int64):
 fn mv_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount).  Returns mutation byte length."""
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = multi_view_app_rebuild(_get[MultiViewApp](app_ptr), writer_ptr)
+    var offset = multi_view_app_rebuild(
+        _get[MultiViewApp](app_ptr)[0], writer_ptr
+    )
     _free_writer(writer_ptr)
     return offset
 
@@ -4571,7 +4573,7 @@ fn mv_handle_event(
     """Dispatch an event.  Returns 1 if action executed."""
     return _b2i(
         multi_view_app_handle_event(
-            _get[MultiViewApp](app_ptr),
+            _get[MultiViewApp](app_ptr)[0],
             UInt32(handler_id),
             UInt8(event_type),
         )
@@ -4582,7 +4584,9 @@ fn mv_handle_event(
 fn mv_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0."""
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = multi_view_app_flush(_get[MultiViewApp](app_ptr), writer_ptr)
+    var offset = multi_view_app_flush(
+        _get[MultiViewApp](app_ptr)[0], writer_ptr
+    )
     _free_writer(writer_ptr)
     return offset
 
@@ -4593,7 +4597,7 @@ fn mv_navigate(app_ptr: Int64, path: String) -> Int32:
 
     Call mv_flush() after this to apply DOM mutations.
     """
-    return _b2i(multi_view_app_navigate(_get[MultiViewApp](app_ptr), path))
+    return _b2i(multi_view_app_navigate(_get[MultiViewApp](app_ptr)[0], path))
 
 
 @export
@@ -4851,7 +4855,7 @@ fn cct_destroy(app_ptr: Int64):
 fn cct_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount).  Returns mutation byte length."""
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = _cct_rebuild(_get[ChildContextTestApp](app_ptr), writer_ptr)
+    var offset = _cct_rebuild(_get[ChildContextTestApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -4865,7 +4869,7 @@ fn cct_handle_event(
     """Dispatch an event.  Returns 1 if action executed."""
     return _b2i(
         _cct_handle_event(
-            _get[ChildContextTestApp](app_ptr),
+            _get[ChildContextTestApp](app_ptr)[0],
             UInt32(handler_id),
             UInt8(event_type),
         )
@@ -4876,7 +4880,7 @@ fn cct_handle_event(
 fn cct_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0."""
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = _cct_flush(_get[ChildContextTestApp](app_ptr), writer_ptr)
+    var offset = _cct_flush(_get[ChildContextTestApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -5029,7 +5033,7 @@ fn pc_destroy(app_ptr: Int64):
 fn pc_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount).  Returns mutation byte length."""
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = _pc_rebuild(_get[PropsCounterApp](app_ptr), writer_ptr)
+    var offset = _pc_rebuild(_get[PropsCounterApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -5043,7 +5047,7 @@ fn pc_handle_event(
     """Dispatch an event.  Returns 1 if action executed."""
     return _b2i(
         _pc_handle_event(
-            _get[PropsCounterApp](app_ptr),
+            _get[PropsCounterApp](app_ptr)[0],
             UInt32(handler_id),
             UInt8(event_type),
         )
@@ -5054,7 +5058,7 @@ fn pc_handle_event(
 fn pc_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0."""
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = _pc_flush(_get[PropsCounterApp](app_ptr), writer_ptr)
+    var offset = _pc_flush(_get[PropsCounterApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -5207,7 +5211,7 @@ fn tc_destroy(app_ptr: Int64):
 fn tc_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Initial render (mount).  Returns mutation byte length."""
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = _tc_rebuild(_get[ThemeCounterApp](app_ptr), writer_ptr)
+    var offset = _tc_rebuild(_get[ThemeCounterApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -5221,7 +5225,7 @@ fn tc_handle_event(
     """Dispatch an event.  Returns 1 if action executed."""
     return _b2i(
         _tc_handle_event(
-            _get[ThemeCounterApp](app_ptr),
+            _get[ThemeCounterApp](app_ptr)[0],
             UInt32(handler_id),
             UInt8(event_type),
         )
@@ -5232,7 +5236,7 @@ fn tc_handle_event(
 fn tc_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
     """Flush pending updates.  Returns mutation byte length, or 0."""
     var writer_ptr = _alloc_writer(buf_ptr, capacity)
-    var offset = _tc_flush(_get[ThemeCounterApp](app_ptr), writer_ptr)
+    var offset = _tc_flush(_get[ThemeCounterApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return offset
 
@@ -5415,7 +5419,7 @@ fn sc_destroy(app_ptr: Int64):
 fn sc_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Initial mount.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _sc_rebuild(_get[SafeCounterApp](app_ptr), writer_ptr)
+    var result = _sc_rebuild(_get[SafeCounterApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -5424,7 +5428,9 @@ fn sc_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
 fn sc_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
     """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
     return _b2i(
-        _sc_handle_event(_get[SafeCounterApp](app_ptr), UInt32(hid), UInt8(evt))
+        _sc_handle_event(
+            _get[SafeCounterApp](app_ptr)[0], UInt32(hid), UInt8(evt)
+        )
     )
 
 
@@ -5432,7 +5438,7 @@ fn sc_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
 fn sc_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Flush pending updates.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _sc_flush(_get[SafeCounterApp](app_ptr), writer_ptr)
+    var result = _sc_flush(_get[SafeCounterApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -5584,7 +5590,7 @@ fn en_destroy(app_ptr: Int64):
 fn en_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Initial mount.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _en_rebuild(_get[ErrorNestApp](app_ptr), writer_ptr)
+    var result = _en_rebuild(_get[ErrorNestApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -5593,7 +5599,9 @@ fn en_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
 fn en_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
     """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
     return _b2i(
-        _en_handle_event(_get[ErrorNestApp](app_ptr), UInt32(hid), UInt8(evt))
+        _en_handle_event(
+            _get[ErrorNestApp](app_ptr)[0], UInt32(hid), UInt8(evt)
+        )
     )
 
 
@@ -5601,7 +5609,7 @@ fn en_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
 fn en_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Flush pending updates.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _en_flush(_get[ErrorNestApp](app_ptr), writer_ptr)
+    var result = _en_flush(_get[ErrorNestApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -5780,7 +5788,7 @@ fn dl_destroy(app_ptr: Int64):
 fn dl_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Initial mount.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _dl_rebuild(_get[DataLoaderApp](app_ptr), writer_ptr)
+    var result = _dl_rebuild(_get[DataLoaderApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -5789,7 +5797,9 @@ fn dl_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
 fn dl_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
     """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
     return _b2i(
-        _dl_handle_event(_get[DataLoaderApp](app_ptr), UInt32(hid), UInt8(evt))
+        _dl_handle_event(
+            _get[DataLoaderApp](app_ptr)[0], UInt32(hid), UInt8(evt)
+        )
     )
 
 
@@ -5797,7 +5807,7 @@ fn dl_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
 fn dl_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Flush pending updates.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _dl_flush(_get[DataLoaderApp](app_ptr), writer_ptr)
+    var result = _dl_flush(_get[DataLoaderApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -5805,7 +5815,7 @@ fn dl_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
 @export
 fn dl_resolve(app_ptr: Int64, data: String):
     """Resolve pending state with loaded data."""
-    _dl_resolve(_get[DataLoaderApp](app_ptr), data)
+    _dl_resolve(_get[DataLoaderApp](app_ptr)[0], data)
 
 
 @export
@@ -5898,7 +5908,7 @@ fn sn_destroy(app_ptr: Int64):
 fn sn_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Initial mount.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _sn_rebuild(_get[SuspenseNestApp](app_ptr), writer_ptr)
+    var result = _sn_rebuild(_get[SuspenseNestApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -5908,7 +5918,7 @@ fn sn_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
     """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
     return _b2i(
         _sn_handle_event(
-            _get[SuspenseNestApp](app_ptr), UInt32(hid), UInt8(evt)
+            _get[SuspenseNestApp](app_ptr)[0], UInt32(hid), UInt8(evt)
         )
     )
 
@@ -5917,7 +5927,7 @@ fn sn_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
 fn sn_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Flush pending updates.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _sn_flush(_get[SuspenseNestApp](app_ptr), writer_ptr)
+    var result = _sn_flush(_get[SuspenseNestApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -5925,13 +5935,13 @@ fn sn_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
 @export
 fn sn_outer_resolve(app_ptr: Int64, data: String):
     """Resolve outer pending state with data."""
-    _sn_outer_resolve(_get[SuspenseNestApp](app_ptr), data)
+    _sn_outer_resolve(_get[SuspenseNestApp](app_ptr)[0], data)
 
 
 @export
 fn sn_inner_resolve(app_ptr: Int64, data: String):
     """Resolve inner pending state with data."""
-    _sn_inner_resolve(_get[SuspenseNestApp](app_ptr), data)
+    _sn_inner_resolve(_get[SuspenseNestApp](app_ptr)[0], data)
 
 
 @export
@@ -6092,7 +6102,7 @@ fn ed_destroy(app_ptr: Int64):
 fn ed_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Initial mount.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _ed_rebuild(_get[EffectDemoApp](app_ptr), writer_ptr)
+    var result = _ed_rebuild(_get[EffectDemoApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -6101,7 +6111,9 @@ fn ed_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
 fn ed_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
     """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
     return _b2i(
-        _ed_handle_event(_get[EffectDemoApp](app_ptr), UInt32(hid), UInt8(evt))
+        _ed_handle_event(
+            _get[EffectDemoApp](app_ptr)[0], UInt32(hid), UInt8(evt)
+        )
     )
 
 
@@ -6109,7 +6121,7 @@ fn ed_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
 fn ed_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Flush pending updates.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _ed_flush(_get[EffectDemoApp](app_ptr), writer_ptr)
+    var result = _ed_flush(_get[EffectDemoApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -6186,7 +6198,7 @@ fn em_destroy(app_ptr: Int64):
 fn em_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Initial mount.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _em_rebuild(_get[EffectMemoApp](app_ptr), writer_ptr)
+    var result = _em_rebuild(_get[EffectMemoApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -6195,7 +6207,9 @@ fn em_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
 fn em_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
     """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
     return _b2i(
-        _em_handle_event(_get[EffectMemoApp](app_ptr), UInt32(hid), UInt8(evt))
+        _em_handle_event(
+            _get[EffectMemoApp](app_ptr)[0], UInt32(hid), UInt8(evt)
+        )
     )
 
 
@@ -6203,7 +6217,7 @@ fn em_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
 fn em_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Flush pending updates.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _em_flush(_get[EffectMemoApp](app_ptr), writer_ptr)
+    var result = _em_flush(_get[EffectMemoApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -6286,7 +6300,7 @@ fn mf_destroy(app_ptr: Int64):
 fn mf_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Initial mount.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _mf_rebuild(_get[MemoFormApp](app_ptr), writer_ptr)
+    var result = _mf_rebuild(_get[MemoFormApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -6295,7 +6309,7 @@ fn mf_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
 fn mf_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
     """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
     return _b2i(
-        _mf_handle_event(_get[MemoFormApp](app_ptr), UInt32(hid), UInt8(evt))
+        _mf_handle_event(_get[MemoFormApp](app_ptr)[0], UInt32(hid), UInt8(evt))
     )
 
 
@@ -6306,7 +6320,7 @@ fn mf_handle_event_string(
     """Dispatch a string event (input/change).  Returns 1 if handled."""
     return _b2i(
         _mf_handle_event_string(
-            _get[MemoFormApp](app_ptr), UInt32(hid), UInt8(evt), value
+            _get[MemoFormApp](app_ptr)[0], UInt32(hid), UInt8(evt), value
         )
     )
 
@@ -6315,7 +6329,7 @@ fn mf_handle_event_string(
 fn mf_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Flush pending updates.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _mf_flush(_get[MemoFormApp](app_ptr), writer_ptr)
+    var result = _mf_flush(_get[MemoFormApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -6412,7 +6426,7 @@ fn mc_destroy(app_ptr: Int64):
 fn mc_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Initial mount.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _mc_rebuild(_get[MemoChainApp](app_ptr), writer_ptr)
+    var result = _mc_rebuild(_get[MemoChainApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -6421,7 +6435,9 @@ fn mc_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
 fn mc_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
     """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
     return _b2i(
-        _mc_handle_event(_get[MemoChainApp](app_ptr), UInt32(hid), UInt8(evt))
+        _mc_handle_event(
+            _get[MemoChainApp](app_ptr)[0], UInt32(hid), UInt8(evt)
+        )
     )
 
 
@@ -6429,7 +6445,7 @@ fn mc_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
 fn mc_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Flush pending updates.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _mc_flush(_get[MemoChainApp](app_ptr), writer_ptr)
+    var result = _mc_flush(_get[MemoChainApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -6532,7 +6548,7 @@ fn eq_destroy(app_ptr: Int64):
 fn eq_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Initial render of the equality-demo app."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _eq_rebuild(_get[EqualityDemoApp](app_ptr), writer_ptr)
+    var result = _eq_rebuild(_get[EqualityDemoApp](app_ptr)[0], writer_ptr)
     return result
 
 
@@ -6540,7 +6556,7 @@ fn eq_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
 fn eq_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
     """Dispatch an event to the equality-demo app."""
     if _eq_handle_event(
-        _get[EqualityDemoApp](app_ptr), UInt32(hid), UInt8(evt)
+        _get[EqualityDemoApp](app_ptr)[0], UInt32(hid), UInt8(evt)
     ):
         return 1
     return 0
@@ -6550,7 +6566,7 @@ fn eq_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
 fn eq_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Flush pending updates for the equality-demo app."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _eq_flush(_get[EqualityDemoApp](app_ptr), writer_ptr)
+    var result = _eq_flush(_get[EqualityDemoApp](app_ptr)[0], writer_ptr)
     return result
 
 
@@ -6666,7 +6682,7 @@ fn bd_destroy(app_ptr: Int64):
 fn bd_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Initial mount.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _bd_rebuild(_get[BatchDemoApp](app_ptr), writer_ptr)
+    var result = _bd_rebuild(_get[BatchDemoApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
@@ -6675,7 +6691,9 @@ fn bd_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
 fn bd_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
     """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
     return _b2i(
-        _bd_handle_event(_get[BatchDemoApp](app_ptr), UInt32(hid), UInt8(evt))
+        _bd_handle_event(
+            _get[BatchDemoApp](app_ptr)[0], UInt32(hid), UInt8(evt)
+        )
     )
 
 
@@ -6683,7 +6701,7 @@ fn bd_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
 fn bd_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
     """Flush pending updates.  Returns mutation buffer length."""
     var writer_ptr = _alloc_writer(buf_ptr, cap)
-    var result = _bd_flush(_get[BatchDemoApp](app_ptr), writer_ptr)
+    var result = _bd_flush(_get[BatchDemoApp](app_ptr)[0], writer_ptr)
     _free_writer(writer_ptr)
     return result
 
