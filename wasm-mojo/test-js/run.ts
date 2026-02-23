@@ -16,6 +16,7 @@ import { summary } from "./harness.ts";
 import { testInterpreter } from "./interpreter.test.ts";
 import { testLifecycle } from "./lifecycle.test.ts";
 import { testMemo } from "./memo.test.ts";
+import { testMemoForm } from "./memo_form.test.ts";
 import { testMutations } from "./mutations.test.ts";
 import { testPhase8 } from "./phase8.test.ts";
 import { testPropsCounter } from "./props_counter.test.ts";
@@ -57,6 +58,7 @@ async function run(): Promise<void> {
 	testSuspenseNest(fns);
 	testEffectDemo(fns);
 	testEffectMemo(fns);
+	testMemoForm(fns);
 	testRouting(fns);
 
 	summary();
