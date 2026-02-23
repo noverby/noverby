@@ -18,6 +18,22 @@ Wired the existing scope-level error boundary infrastructure (Phase 8.4) into th
 
 ---
 
+## Phase 31 — Component Composition Tests
+
+Validated the component composition primitives (`ComponentContext` provide/consume, `ChildComponentContext` self-rendering children, context-based props, cross-component communication) with four dedicated test apps and comprehensive Mojo + JS test suites.
+
+- **P31.1** — ContextTestApp (`cta_*` exports). Minimal app exercising `ComponentContext.provide_context()`, `consume_context()`, `has_context()`, and typed signal-sharing helpers (`provide_signal_i32`, `consume_signal_i32`). Root scope + one child scope for parent-chain walk-up verification. Tests: provide + consume round-trip, missing key returns 0, signal sharing via context, signal write via consumed handle marks dirty, overwrite context key, multiple keys, child scope consumes parent context, destroy cleanup, independent instances. 18 Mojo tests + 13 JS suites.
+
+- **P31.2** — ChildContextTestApp (`cct_*` exports). Parent provides count signal via context; child (`ChildComponentContext`) consumes it and owns a local `show_hex: SignalBool` toggle. Demonstrates self-rendering via `child_ctx.render_builder()`, independent signal ownership, and DOM mount with parent + child visible. Tests: child use_signal independent, child signal write → child dirty only, parent signal write → parent dirty only, context prop round-trip, child self-render produces correct VNode, DOM mount, child local state update, parent prop update → child re-renders, mixed local + prop updates, destroy, multiple independent child contexts, rapid signal writes bounded memory. 22 Mojo tests + 15 JS suites.
+
+- **P31.3** — PropsCounterApp (`pc_*` exports). Counter app with self-rendering `CounterDisplay` child: parent has h1 + increment/decrement buttons + `dyn_node` slot; child displays "Count: N" or "Count: 0xN" with a local `show_hex` toggle button. Count signal shared via context props. Tests: increment/decrement update parent signal, toggle hex changes display format, toggle marks only child dirty, increment marks only parent dirty, DOM structure verification, hex format preserved across increments, flush returns 0 when clean, destroy, multiple instances, rapid increments bounded memory. 28 Mojo tests + 20 JS suites.
+
+- **P31.4** — ThemeCounterApp (`tc_*` exports). Parent with theme toggle (dark/light `SignalBool`) and two child components both consuming theme + count context: `TCCounterChild` (displays count with theme-dependent label, has Reset button writing to callback signal), `TCSummaryChild` (displays summary text with theme-dependent class). Demonstrates cross-component communication via context and upward communication via shared callback signal. Tests: increment updates both children, theme toggle updates both children, reset button resets count, theme toggle does not affect count, children have independent scope IDs, DOM structure, destroy, multiple instances, rapid increments bounded memory, theme + increment in same flush. 33 Mojo tests + 25 JS suites.
+
+**Test count after P31.4:** 1,080 Mojo (38 modules) + 2,230 JS (21 suites) = 3,310 tests.
+
+---
+
 ## Phase 30 — Client-Side Routing
 
 Added `Router` — a WASM-side struct mapping URL paths to branch tags (UInt8) with DOM view switching managed by an embedded `ConditionalSlot`. Combined with a new `MultiViewApp` example, this enables single-page apps with URL-based view switching within a single WASM instance. The JS runtime auto-detects routing support via the `{app}_navigate` export and wires `popstate` listeners and `<a>` click interception automatically.

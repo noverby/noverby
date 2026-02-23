@@ -250,6 +250,65 @@ Phase 24.2: Uses `setup_view()` for the app shell template ("bench-app") with in
 - **P24.3** ✅ — `performance.now()` WASM import for timing. `performance_now() -> Float64` via `external_call` — Mojo compiler emits unresolved symbol, `wasm-ld --allow-undefined` turns it into WASM import from `env` module, JS host provides `performance_now: () => performance.now()`. `format_timing_ms(ms) -> String` formats elapsed time to 1 decimal place with em-dash separator. `handle_event()` wraps each toolbar op with before/after `performance_now()`, stores formatted result in `timing_text`. `render()` emits `timing_text` as `dyn_text[1]` — diff detects change on flush, emits `SetText`. Added to `env.js` (browser), `env.ts` (Deno runtime), and `wasm_harness.mojo` (func[16]: deterministic mock clock, increments by 1.0 per call). WASM import count: 16 → 17. Exports: `bench_status_text(app_ptr) -> String`, `bench_handler_id_at(app_ptr, index) -> i32`.
 - **P24.4** ✅ — Fine-grained status bar with 3 `dyn_text` nodes. Split single `status_text` into `op_name` (dyn_text[0]), `timing_text` (dyn_text[1]), `row_count_text` (dyn_text[2]). Row list placeholder moved from `dyn_node(1)` to `dyn_node(3)`. Added `format_timing_ms(ms) -> String` (timing only with separator), `format_row_count(count) -> String` (comma-formatted with separator), `_format_number(n) -> String` (comma thousands). New exports: `bench_op_name`, `bench_timing_text`, `bench_row_count_text`. `bench_status_text` returns concatenation for backward compat. `bench/main.js` structurally identical to counter/todo (only `bufferCapacity` override remains).
 
+### ContextTestApp (`src/main.mojo`) — context (DI) surface test
+
+```txt
+struct ContextTestApp:
+    var ctx: ComponentContext
+    var child_scope_id: UInt32
+    var count: SignalI32
+    fn __init__: ctx.create() → use_signal → end_setup() → create_child_scope()
+```
+
+Minimal test app exercising `provide_context()`, `consume_context()`, `has_context()`, and typed signal-sharing helpers (`provide_signal_i32`, `consume_signal_i32`). Root scope + one child scope for parent-chain walk-up verification. WASM exports: `cta_init`, `cta_destroy`, `cta_provide_context`, `cta_consume_context`, `cta_has_context`, `cta_provide_signal_i32`, `cta_consume_signal_i32_from_child`, `cta_write_signal_via_child`, etc.
+
+### ChildContextTestApp (`src/main.mojo`) — self-rendering child test
+
+```txt
+struct ChildContextTestApp:
+    var ctx: ComponentContext
+    var count: SignalI32
+    var child_ctx: ChildComponentContext
+    var child_count: SignalI32      # consumed from parent context
+    var child_show_hex: SignalBool  # child-owned local state
+    fn __init__: ctx.create() → use_signal → setup_view → provide_signal_i32
+                 → create_child_context → child use_signal_bool
+    fn flush: parent diff + child flush (if dirty)
+```
+
+Lifecycle: `cct_init` → `cct_rebuild` → `cct_handle_event` → `cct_flush`. Parent provides count signal via context; child consumes it and owns a local `show_hex` toggle. Child self-renders via `child_ctx.render_builder()`. DOM shows parent h1 + buttons + child p with count text.
+
+### PropsCounterApp (`src/main.mojo`) — self-rendering child with props
+
+```txt
+struct PropsCounterApp:
+    var ctx: ComponentContext
+    var count: SignalI32
+    var display: CounterDisplay     # self-rendering child
+    fn __init__: ctx.create() → use_signal → setup_view(h1 + buttons + dyn_node)
+                 → create_child_context → child consume_signal_i32 + use_signal_bool
+    fn flush: parent diff + child flush (error boundary not involved)
+```
+
+Lifecycle: `pc_init` → `pc_rebuild` → `pc_handle_event` → `pc_flush`. Parent has increment/decrement buttons; child (`CounterDisplay`) displays "Count: N" or "Count: 0xN" with a local `show_hex` toggle button. Count signal shared from parent to child via context props.
+
+### ThemeCounterApp (`src/main.mojo`) — shared context + cross-component
+
+```txt
+struct ThemeCounterApp:
+    var ctx: ComponentContext
+    var count: SignalI32
+    var theme: SignalBool            # dark/light toggle
+    var on_reset: SignalI32          # callback signal for upward communication
+    var counter_child: TCCounterChild   # displays count + theme label + Reset button
+    var summary_child: TCSummaryChild   # displays summary text + theme class
+    fn __init__: ctx.create() → use_signal(count, theme, on_reset) → provide all via context
+                 → setup_view(buttons + dyn_node ×2) → create 2 child contexts
+    fn flush: check on_reset callback → parent diff + both children flush
+```
+
+Lifecycle: `tc_init` → `tc_rebuild` → `tc_handle_event` → `tc_flush`. Parent with theme toggle and two child components both consuming theme + count context. `TCCounterChild` has a Reset button that writes to a callback signal consumed by the parent — demonstrating upward communication via shared context.
+
 ### SafeCounterApp (`src/main.mojo`) — error boundary with crash/retry
 
 ```txt
@@ -500,10 +559,15 @@ el_button(text("Add"), onclick_custom()),
 | `test-js/events.test.ts` | ~650 | EventBridge string dispatch tests (unit + WASM integration) |
 | `test-js/dsl.test.ts` | ~620 | DSL tests incl. M20.3/M20.4/M20.5 binding + onclick_custom tests |
 | `test-js/todo.test.ts` | ~1,060 | Todo app tests incl. M20.5 WASM-driven Add flow tests |
+| `test-js/context.test.ts` | ~280 | ContextTestApp provide/consume tests (Phase 31.1) |
+| `test-js/child_context.test.ts` | ~480 | ChildContextTestApp self-rendering child tests (Phase 31.2) |
+| `test-js/child_component.test.ts` | ~710 | ChildComponent low-level tests |
+| `test-js/props_counter.test.ts` | ~550 | PropsCounterApp props + self-rendering child tests (Phase 31.3) |
+| `test-js/theme_counter.test.ts` | ~690 | ThemeCounterApp shared context + upward communication tests (Phase 31.4) |
 | `test-js/safe_counter.test.ts` | ~600 | SafeCounterApp error boundary tests (crash/retry lifecycle, DOM) |
 | `test-js/error_nest.test.ts` | ~645 | ErrorNestApp nested boundary tests (inner/outer crash/retry, DOM) |
 | `test/wasm_harness.mojo` | ~1,400 | Mojo WASM test harness (includes free-list allocator, Phase 25) |
-| `CHANGELOG.md` | ~400 | Development history (Phases 0–32) |
+| `CHANGELOG.md` | ~420 | Development history (Phases 0–32) |
 
 ## Common Patterns
 
