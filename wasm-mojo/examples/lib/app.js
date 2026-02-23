@@ -270,9 +270,10 @@ export async function launch(options) {
 			// Navigate helper: call WASM navigate + flush + pushState
 			function routerNavigate(path, pushHistory = true) {
 				if (handle.destroyed) return;
-				const result = navigateFn(handle.appPtr, path);
+				const pathPtr = writeStringStruct(path);
+				const result = navigateFn(handle.appPtr, pathPtr);
 				if (result) {
-					flush();
+					flush(); // flush calls scratchFreeAll — frees pathPtr
 					if (pushHistory) {
 						try {
 							history.pushState(null, "", path);
@@ -280,6 +281,9 @@ export async function launch(options) {
 							/* non-browser */
 						}
 					}
+				} else {
+					// No flush happened — free the scratch string manually
+					scratchFreeAll();
 				}
 			}
 

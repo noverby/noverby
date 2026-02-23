@@ -576,6 +576,128 @@ test_bench() {
     fi
 }
 
+# ── App test: Multi-View App ──────────────────────────────────────────────
+
+test_app() {
+    log_info ""
+    log_info "── Multi-View App ───────────────────────────────────────"
+
+    wd_navigate "$BASE_URL/examples/app/"
+
+    # Wait for WASM to load and mount (nav bar should appear)
+    if ! wd_wait_for_element "#root nav" 15; then
+        log_fail "App did not mount (no nav found within 15s)"
+        FAILED=$((FAILED + 1))
+        return
+    fi
+    sleep 0.5
+
+    # ── Initial state: app shell + counter view (default route "/") ──
+
+    assert_exists "app shell mounts with nav" "#root nav"
+    assert_count "nav has 2 buttons (Counter, Todo)" "#root nav button" 2
+    assert_exists "counter view mounted by default (h1)" "#root h1"
+    assert_text "initial counter is 0" "#root h1" "Count: 0"
+
+    # Counter view buttons (inside the content div, not the nav)
+    assert_exists "counter has + 1 button" "#root > div > div button:first-of-type"
+    assert_exists "counter has - 1 button" "#root > div > div button:nth-of-type(2)"
+
+    # ── Counter interactions ──
+
+    local btn_incr
+    btn_incr=$(wd_find "#root > div > div button:first-of-type" 2>/dev/null || true)
+    if [[ -n "$btn_incr" && "$btn_incr" != "null" ]]; then
+        wd_click "$btn_incr"
+        sleep 0.2
+        assert_text "counter after +1" "#root h1" "Count: 1"
+
+        wd_click "$btn_incr"
+        wd_click "$btn_incr"
+        sleep 0.2
+        assert_text "counter after 3 increments" "#root h1" "Count: 3"
+
+        local btn_decr
+        btn_decr=$(wd_find "#root > div > div button:nth-of-type(2)" 2>/dev/null || true)
+        if [[ -n "$btn_decr" && "$btn_decr" != "null" ]]; then
+            wd_click "$btn_decr"
+            sleep 0.2
+            assert_text "counter after decrement" "#root h1" "Count: 2"
+        fi
+    else
+        log_fail "Could not find counter +1 button"
+        FAILED=$((FAILED + 1))
+    fi
+
+    # ── Navigate to Todo view ──
+
+    local nav_todo
+    nav_todo=$(wd_find "#root nav button:nth-of-type(2)" 2>/dev/null || true)
+    if [[ -z "$nav_todo" || "$nav_todo" == "null" ]]; then
+        log_fail "Could not find Todo nav button"
+        FAILED=$((FAILED + 1))
+        return
+    fi
+
+    wd_click "$nav_todo"
+    sleep 0.5
+
+    # Counter h1 should be gone, todo h2 should appear
+    assert_exists "todo view has h2" "#root h2"
+    assert_text "todo shows 0 items" "#root h2" "Items: 0"
+    assert_exists "todo has Add item button" "#root > div > div button"
+
+    # ── Todo interactions ──
+
+    local add_btn
+    add_btn=$(wd_find "#root > div > div button" 2>/dev/null || true)
+    if [[ -n "$add_btn" && "$add_btn" != "null" ]]; then
+        wd_click "$add_btn"
+        sleep 0.3
+        assert_text "todo after 1 add" "#root h2" "Items: 1"
+
+        wd_click "$add_btn"
+        wd_click "$add_btn"
+        sleep 0.3
+        assert_text "todo after 3 adds" "#root h2" "Items: 3"
+    else
+        log_fail "Could not find Add item button"
+        FAILED=$((FAILED + 1))
+    fi
+
+    # ── Navigate back to Counter view ──
+
+    local nav_counter
+    nav_counter=$(wd_find "#root nav button:first-of-type" 2>/dev/null || true)
+    if [[ -z "$nav_counter" || "$nav_counter" == "null" ]]; then
+        log_fail "Could not find Counter nav button"
+        FAILED=$((FAILED + 1))
+        return
+    fi
+
+    wd_click "$nav_counter"
+    sleep 0.5
+
+    # Counter view should reappear — state may or may not persist depending
+    # on the router implementation; just check that it renders with a valid count
+    assert_exists "counter view restored (h1)" "#root h1"
+    local h1_eid h1_text
+    h1_eid=$(wd_find "#root h1" 2>/dev/null || true)
+    if [[ -n "$h1_eid" && "$h1_eid" != "null" ]]; then
+        h1_text=$(wd_text "$h1_eid")
+        if [[ "$h1_text" == Count:* ]]; then
+            log_ok "counter view shows valid count after route switch"
+            PASSED=$((PASSED + 1))
+        else
+            log_fail "counter h1 text unexpected: \"$h1_text\""
+            FAILED=$((FAILED + 1))
+        fi
+    fi
+
+    # Nav bar should still be present throughout
+    assert_count "nav still has 2 buttons after switching" "#root nav button" 2
+}
+
 # ── Run tests ──────────────────────────────────────────────────────────────
 
 log_info ""
@@ -584,6 +706,7 @@ log_info "Running browser tests (timeout: ${TIMEOUT}s per wait)..."
 if [[ -z "$APP_FILTER" || "$APP_FILTER" == "counter" ]]; then test_counter; fi
 if [[ -z "$APP_FILTER" || "$APP_FILTER" == "todo" ]];    then test_todo; fi
 if [[ -z "$APP_FILTER" || "$APP_FILTER" == "bench" ]];   then test_bench; fi
+if [[ -z "$APP_FILTER" || "$APP_FILTER" == "app" ]];     then test_app; fi
 
 # ── Summary (same format as test-boot.sh) ─────────────────────────────────
 
