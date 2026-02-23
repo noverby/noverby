@@ -1710,3 +1710,187 @@ export function createDataLoaderApp(
 
 	return dlHandle;
 }
+
+// ── SuspenseNestApp (Phase 33.3 — Nested suspense boundaries) ──────────────
+
+export interface SuspenseNestAppHandle extends AppHandle {
+	/** Whether the outer boundary is in pending state. */
+	isOuterPending(): boolean;
+
+	/** Whether the inner boundary is in pending state. */
+	isInnerPending(): boolean;
+
+	/** The current outer data text string. */
+	getOuterData(): string;
+
+	/** The current inner data text string. */
+	getInnerData(): string;
+
+	/** Whether the outer content child is mounted. */
+	outerContentMounted(): boolean;
+
+	/** Whether the outer skeleton child is mounted. */
+	outerSkeletonMounted(): boolean;
+
+	/** Whether the inner content child is mounted. */
+	innerContentMounted(): boolean;
+
+	/** Whether the inner skeleton child is mounted. */
+	innerSkeletonMounted(): boolean;
+
+	/** Whether any scope is dirty. */
+	hasDirty(): boolean;
+
+	/** Number of live scopes. */
+	scopeCount(): number;
+
+	/** Scope IDs. */
+	readonly outerScopeId: number;
+	readonly innerBoundaryScopeId: number;
+	readonly innerContentScopeId: number;
+	readonly innerSkeletonScopeId: number;
+	readonly outerSkeletonScopeId: number;
+
+	/** Handler IDs. */
+	outerLoadHandler: number;
+	innerLoadHandler: number;
+
+	/** Dispatch outer load button + flush (enters outer pending state). */
+	outerLoad(): void;
+
+	/** Dispatch inner load button + flush (enters inner pending state). */
+	innerLoad(): void;
+
+	/** Resolve outer pending state with data string + flush. */
+	outerResolve(data: string): void;
+
+	/** Resolve inner pending state with data string + flush. */
+	innerResolve(data: string): void;
+}
+
+/**
+ * Create a SuspenseNestApp wired to a DOM root element.
+ */
+export function createSuspenseNestApp(
+	fns: WasmExports & Record<string, CallableFunction>,
+	root: Element,
+	doc?: Document,
+): SuspenseNestAppHandle {
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		init: (f) => f.sn_init(),
+		rebuild: (f, app, buf, cap) => f.sn_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.sn_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.sn_handle_event(app, hid, evt),
+		destroy: (f, app) => f.sn_destroy(app),
+	});
+
+	const outerLoadHandler = fns.sn_outer_load_handler(handle.appPtr) as number;
+	const innerLoadHandler = fns.sn_inner_load_handler(handle.appPtr) as number;
+
+	const snHandle: SuspenseNestAppHandle = {
+		...handle,
+
+		outerLoadHandler,
+		innerLoadHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
+
+		get outerScopeId(): number {
+			return fns.sn_outer_scope_id(handle.appPtr) as number;
+		},
+		get innerBoundaryScopeId(): number {
+			return fns.sn_inner_boundary_scope_id(handle.appPtr) as number;
+		},
+		get innerContentScopeId(): number {
+			return fns.sn_inner_content_scope_id(handle.appPtr) as number;
+		},
+		get innerSkeletonScopeId(): number {
+			return fns.sn_inner_skeleton_scope_id(handle.appPtr) as number;
+		},
+		get outerSkeletonScopeId(): number {
+			return fns.sn_outer_skeleton_scope_id(handle.appPtr) as number;
+		},
+
+		isOuterPending(): boolean {
+			return (fns.sn_is_outer_pending(handle.appPtr) as number) !== 0;
+		},
+		isInnerPending(): boolean {
+			return (fns.sn_is_inner_pending(handle.appPtr) as number) !== 0;
+		},
+		getOuterData(): string {
+			const outPtr = allocStringStruct();
+			fns.sn_outer_data(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+		getInnerData(): string {
+			const outPtr = allocStringStruct();
+			fns.sn_inner_data(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+
+		outerContentMounted(): boolean {
+			return (fns.sn_outer_content_mounted(handle.appPtr) as number) !== 0;
+		},
+		outerSkeletonMounted(): boolean {
+			return (fns.sn_outer_skeleton_mounted(handle.appPtr) as number) !== 0;
+		},
+		innerContentMounted(): boolean {
+			return (fns.sn_inner_content_mounted(handle.appPtr) as number) !== 0;
+		},
+		innerSkeletonMounted(): boolean {
+			return (fns.sn_inner_skeleton_mounted(handle.appPtr) as number) !== 0;
+		},
+
+		hasDirty(): boolean {
+			return (fns.sn_has_dirty(handle.appPtr) as number) !== 0;
+		},
+		scopeCount(): number {
+			return fns.sn_scope_count(handle.appPtr) as number;
+		},
+
+		outerLoad(): void {
+			handle.dispatchAndFlush(outerLoadHandler);
+		},
+		innerLoad(): void {
+			handle.dispatchAndFlush(innerLoadHandler);
+		},
+		outerResolve(data: string): void {
+			const strPtr = writeStringStruct(data);
+			fns.sn_outer_resolve(handle.appPtr, strPtr);
+			handle.flushAndApply();
+		},
+		innerResolve(data: string): void {
+			const strPtr = writeStringStruct(data);
+			fns.sn_inner_resolve(handle.appPtr, strPtr);
+			handle.flushAndApply();
+		},
+
+		destroy(): void {
+			handle.destroy();
+		},
+	};
+
+	return snHandle;
+}
