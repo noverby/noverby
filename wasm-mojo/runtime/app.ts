@@ -788,3 +788,208 @@ export function createMultiViewApp(
 
 	return mvHandle;
 }
+
+// ── PropsCounterApp handle (Phase 31.3) ─────────────────────────────────────
+
+/**
+ * A fully wired props-counter app instance demonstrating self-rendering
+ * child components with props via context.
+ *
+ * Parent: div > h1("Props Counter") + button("+1") + button("-1") + dyn_node[0]
+ * Child (CounterDisplay): div > p(dyn_text) + button("Toggle hex")
+ *
+ * The parent provides the count signal via context (prop).
+ * The child consumes it and also owns a local show_hex toggle.
+ */
+export interface PropsCounterAppHandle extends AppHandle {
+	/** Increment handler ID (parent view_events[0]). */
+	incrHandler: number;
+
+	/** Decrement handler ID (parent view_events[1]). */
+	decrHandler: number;
+
+	/** Toggle hex handler ID (child event_bindings[0]). */
+	toggleHandler: number;
+
+	/** Read the current count value from WASM. */
+	getCount(): number;
+
+	/** Read the current show_hex flag (true/false). */
+	getShowHex(): boolean;
+
+	/** Simulate an increment click (dispatch + flush + apply). */
+	increment(): void;
+
+	/** Simulate a decrement click (dispatch + flush + apply). */
+	decrement(): void;
+
+	/** Simulate a toggle-hex click (dispatch + flush + apply). */
+	toggleHex(): void;
+
+	/** Return the child component's scope ID. */
+	childScopeId: number;
+
+	/** Return the child component's template ID. */
+	childTmplId: number;
+
+	/** Return the parent root scope ID. */
+	parentScopeId: number;
+
+	/** Return the parent template ID. */
+	parentTmplId: number;
+
+	/** Check whether the child is mounted in the DOM. */
+	isChildMounted(): boolean;
+
+	/** Check whether the child scope is dirty. */
+	isChildDirty(): boolean;
+
+	/** Check whether the parent scope is dirty. */
+	isParentDirty(): boolean;
+
+	/** Check whether any scope is dirty. */
+	hasDirty(): boolean;
+
+	/** Check whether the child has been rendered at least once. */
+	childHasRendered(): boolean;
+
+	/** Return the total number of registered handlers. */
+	handlerCount(): number;
+
+	/** Return the number of live scopes. */
+	scopeCount(): number;
+}
+
+// ── PropsCounter App factory ────────────────────────────────────────────────
+
+/**
+ * Create a props-counter app wired to a DOM root element (Phase 31.3).
+ *
+ * Thin wrapper around `createApp()` that adds props-counter-specific helpers.
+ * Demonstrates self-rendering child components with props via context DI.
+ *
+ * @param fns     - Instantiated WASM exports.
+ * @param root    - The mount-point DOM element.
+ * @param doc     - The Document to use for DOM operations.
+ * @param install - Whether to install DOM event delegation (default: false).
+ */
+export function createPropsCounterApp(
+	fns: WasmExports,
+	root: Element,
+	doc?: Document,
+	install = false,
+): PropsCounterAppHandle {
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		install,
+		init: (f) => f.pc_init(),
+		rebuild: (f, app, buf, cap) => f.pc_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.pc_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.pc_handle_event(app, hid, evt),
+		destroy: (f, app) => f.pc_destroy(app),
+	});
+
+	const incrHandler = fns.pc_incr_handler(handle.appPtr);
+	const decrHandler = fns.pc_decr_handler(handle.appPtr);
+	const toggleHandler = fns.pc_toggle_handler(handle.appPtr);
+
+	const pcHandle: PropsCounterAppHandle = {
+		...handle,
+		incrHandler,
+		decrHandler,
+		toggleHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
+
+		get childScopeId(): number {
+			return fns.pc_child_scope_id(handle.appPtr);
+		},
+
+		get childTmplId(): number {
+			return fns.pc_child_tmpl_id(handle.appPtr);
+		},
+
+		get parentScopeId(): number {
+			return fns.pc_parent_scope_id(handle.appPtr);
+		},
+
+		get parentTmplId(): number {
+			return fns.pc_parent_tmpl_id(handle.appPtr);
+		},
+
+		getCount(): number {
+			return fns.pc_count_value(handle.appPtr);
+		},
+
+		getShowHex(): boolean {
+			return fns.pc_show_hex(handle.appPtr) !== 0;
+		},
+
+		isChildMounted(): boolean {
+			return fns.pc_child_is_mounted(handle.appPtr) !== 0;
+		},
+
+		isChildDirty(): boolean {
+			return fns.pc_child_is_dirty(handle.appPtr) !== 0;
+		},
+
+		isParentDirty(): boolean {
+			return fns.pc_parent_is_dirty(handle.appPtr) !== 0;
+		},
+
+		hasDirty(): boolean {
+			return fns.pc_has_dirty(handle.appPtr) !== 0;
+		},
+
+		childHasRendered(): boolean {
+			return fns.pc_child_has_rendered(handle.appPtr) !== 0;
+		},
+
+		handlerCount(): number {
+			return fns.pc_handler_count(handle.appPtr);
+		},
+
+		scopeCount(): number {
+			return fns.pc_scope_count(handle.appPtr);
+		},
+
+		increment(): void {
+			handle.dispatchAndFlush(incrHandler);
+		},
+
+		decrement(): void {
+			handle.dispatchAndFlush(decrHandler);
+		},
+
+		toggleHex(): void {
+			handle.dispatchAndFlush(toggleHandler);
+		},
+
+		destroy(): void {
+			handle.destroy();
+		},
+	};
+
+	return pcHandle;
+}
