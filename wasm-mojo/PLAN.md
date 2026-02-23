@@ -3892,3 +3892,1065 @@ P37.5 depends on all above.
 | P37.4 (existing app updates + tests) | ~15 (flush functions) | ~50 | ~30 | 2 Mojo + 2 JS |
 | P37.5 (docs) | ~0 | ~80 | ~0 | 0 |
 | **Total** | **~115** | **~1,680** | **~330** | **60 Mojo + 24 JS = 84 tests** |
+
+---
+
+## Phase 37 Gap-Fill — Scope Settle Tests + EqualityDemoApp JS Tests
+
+Phase 37 shipped with all Mojo infrastructure, apps, and core tests.
+Two planned test artifacts were not created during the implementation
+pass: dedicated `settle_scopes()` unit tests (P37.2) and JS
+integration tests for the EqualityDemoApp (P37.3). This section
+fills those gaps before moving on to Phase 38.
+
+### P37 Gap-Fill Current state
+
+Phase 37 is implemented and passing:
+
+- `MemoEntry.value_changed` flag and equality-gated `end_compute`
+  for all three memo types (I32, Bool, String).
+- `_changed_signals` accumulator in the runtime, populated by
+  `write_signal` (source signals) and `end_compute` (when value
+  actually changed).
+- `settle_scopes()` removes eagerly-dirtied scopes whose subscribed
+  signals are all value-stable.
+- `EqualityDemoApp` demonstrates zero-byte flush when the memo chain
+  is value-stable.
+- 22 Mojo tests in `test/test_memo_equality.mojo` (P37.1).
+- 20 Mojo tests in `test/test_equality_demo.mojo` (P37.3).
+- All existing apps updated with `settle_scopes()` in flush (P37.4).
+- Documentation updated (P37.5).
+
+**Missing:**
+
+- `test/test_scope_settle.mojo` — 16 dedicated unit tests for
+  `settle_scopes()` at the runtime level (planned in P37.2).
+- `test-js/equality_demo.test.ts` — 22 JS integration suites
+  exercising the full WASM → JS → DOM pipeline (planned in P37.3).
+- `runtime/app.ts` — `EqualityDemoAppHandle` interface and
+  `createEqualityDemoApp()` factory (needed by the JS test).
+
+**Test count before gap-fill:** 1,266 Mojo (49 modules) + 2,969 JS
+(27 suites) = 4,235 tests.
+
+### P37 Gap-Fill Steps
+
+#### P37.6 — `test/test_scope_settle.mojo` (~16 tests)
+
+Dedicated unit tests for `settle_scopes()` behaviour at the runtime
+level. These test the runtime directly via WASM exports, without
+going through any app layer.
+
+##### Runtime WASM exports needed
+
+The existing Phase 37 exports are sufficient:
+
+- `runtime_settle_scopes(rt_ptr)` — run settle pass.
+- `runtime_clear_changed_signals(rt_ptr)` — reset tracking.
+- `runtime_signal_changed_this_cycle(rt_ptr, key)` — query.
+- `runtime_memo_did_value_change(rt_ptr, memo_id)` — query.
+- `runtime_create(...)`, `runtime_create_signal(...)`,
+  `runtime_write_signal(...)`, `runtime_create_memo(...)`,
+  `runtime_memo_begin_compute(...)`, `runtime_memo_end_compute(...)`,
+  `runtime_create_scope(...)`, `runtime_read_signal(...)`,
+  `runtime_dirty_scope_count(...)` etc. — standard runtime exports.
+
+No new WASM exports needed.
+
+##### Tests
+
+Each test creates a minimal runtime, signals, memos, and scopes via
+the existing runtime-level WASM exports.
+
+1. **test_settle_removes_scope_when_no_change** — signal → memo,
+   scope subscribes to memo output. Write same value to signal.
+   Recompute memo (value-stable). Call `settle_scopes()`. Assert
+   `dirty_scope_count == 0`.
+
+2. **test_settle_keeps_scope_when_changed** — signal → memo, scope
+   subscribes to memo output. Write different value. Recompute
+   memo (value changed). Settle. Assert scope still dirty.
+
+3. **test_settle_mixed_scopes** — scope_a subscribes to stable
+   memo output, scope_b subscribes to changed memo output. Settle.
+   Assert scope_a removed, scope_b kept.
+
+4. **test_settle_scope_subscribes_to_signal** — scope subscribes
+   directly to a source signal (no memo). Write signal. Settle.
+   Assert scope kept (source signals are always in
+   `_changed_signals`).
+
+5. **test_settle_scope_subscribes_to_both** — scope subscribes to
+   a stable memo output AND a changed source signal. Settle.
+   Assert scope kept (changed signal keeps it dirty).
+
+6. **test_settle_no_dirty_scopes** — no dirty scopes exist.
+   Settle. Assert no crash, dirty_scope_count still 0.
+
+7. **test_settle_all_stable** — two scopes, both subscribe to
+   stable memo outputs. Settle. Assert both removed.
+
+8. **test_settle_no_changed_signals** — dirty scopes exist but
+   `_changed_signals` is empty (cleared manually before settle).
+   Settle. Assert all scopes removed.
+
+9. **test_settle_chain_cascade** — signal → A → B → C (3-level
+   memo chain), scope at end subscribes to C's output. Write same
+   value to signal. Recompute A (stable), B (stable), C (stable).
+   Settle. Assert scope removed.
+
+10. **test_settle_chain_partial** — signal → A → B, scope
+    subscribes to B's output. Write new value. Recompute A
+    (changed), B recomputes but produces same value (stable).
+    Settle. Assert scope removed (B's output didn't change).
+
+11. **test_settle_chain_changed** — signal → A → B, scope
+    subscribes to B's output. Write value that propagates through
+    chain. Recompute A (changed), B (changed). Settle. Assert
+    scope kept.
+
+12. **test_settle_diamond** — signal → A and B (diamond). C reads
+    A + B. Scope subscribes to C's output. Write value, A stable,
+    B changed → C changed. Settle. Assert scope kept.
+
+13. **test_settle_with_direct_signal_sub** — scope subscribes to
+    raw source signal (no memo). Signal is written. Settle.
+    Assert scope kept (`write_signal` adds source to
+    `_changed_signals`).
+
+14. **test_settle_effect_not_affected** — effect is pending, memo
+    was stable. Call `settle_scopes()`. Assert effect still
+    pending (settle only affects scopes, not effects).
+
+15. **test_settle_idempotent** — call `settle_scopes()` twice in a
+    row. Assert same result on second call (no crash, no
+    double-removal, `_changed_signals` was cleared by first call).
+
+16. **test_settle_after_no_memos** — app has signals and scopes
+    but no memos. Write signal. Settle. Assert scope kept
+    (signal change is tracked directly).
+
+#### P37.7 — `test-js/equality_demo.test.ts` (~22 suites) + TypeScript handle
+
+JS-side integration tests exercising the full WASM → JS → DOM
+pipeline for the EqualityDemoApp.
+
+##### TypeScript handle (`runtime/app.ts`)
+
+Add `EqualityDemoAppHandle` interface and `createEqualityDemoApp()`
+factory following the established pattern:
+
+```typescript
+export interface EqualityDemoAppHandle extends AppHandle {
+  /** Current input signal value. */
+  getInput(): number;
+
+  /** Current clamped memo value (clamp(input, 0, 10)). */
+  getClamped(): number;
+
+  /** Current label memo text ("low" or "high"). */
+  getLabel(): string;
+
+  /** Whether the clamped memo needs recomputation. */
+  isClampedDirty(): boolean;
+
+  /** Whether the label memo needs recomputation. */
+  isLabelDirty(): boolean;
+
+  /** Whether the clamped memo's last recompute changed its value. */
+  clampedChanged(): boolean;
+
+  /** Whether the label memo's last recompute changed its value. */
+  labelChanged(): boolean;
+
+  /** Increment button handler ID. */
+  incrHandler: number;
+
+  /** Decrement button handler ID. */
+  decrHandler: number;
+
+  /** Whether any scope is dirty. */
+  hasDirty(): boolean;
+
+  /** Number of live scopes. */
+  scopeCount(): number;
+
+  /** Number of live memos. */
+  memoCount(): number;
+
+  /** Dispatch increment and flush. */
+  increment(): void;
+
+  /** Dispatch decrement and flush. */
+  decrement(): void;
+}
+```
+
+Factory:
+
+```typescript
+export function createEqualityDemoApp(
+  fns: WasmExports & Record<string, CallableFunction>,
+  root: Element,
+  doc?: Document,
+): EqualityDemoAppHandle {
+  const handle = createApp({
+    fns, root, doc,
+    init: (f) => f.eq_init(),
+    rebuild: (f, app, buf, cap) => f.eq_rebuild(app, buf, cap),
+    flush: (f, app, buf, cap) => f.eq_flush(app, buf, cap),
+    handleEvent: (f, app, hid, evt) => f.eq_handle_event(app, hid, evt),
+    destroy: (f, app) => f.eq_destroy(app),
+  });
+
+  const incrHandler = fns.eq_incr_handler(handle.appPtr) as number;
+  const decrHandler = fns.eq_decr_handler(handle.appPtr) as number;
+
+  const eqHandle: EqualityDemoAppHandle = {
+    ...handle,
+    incrHandler,
+    decrHandler,
+    // ... proxy appPtr/bufPtr/destroyed getters/setters ...
+    getInput: () => fns.eq_input_value(handle.appPtr) as number,
+    getClamped: () => fns.eq_clamped_value(handle.appPtr) as number,
+    getLabel: () => {
+      const outPtr = allocStringStruct();
+      fns.eq_label_text(handle.appPtr, outPtr);
+      return readStringStruct(outPtr);
+    },
+    isClampedDirty: () => (fns.eq_clamped_dirty(handle.appPtr) as number) !== 0,
+    isLabelDirty: () => (fns.eq_label_dirty(handle.appPtr) as number) !== 0,
+    clampedChanged: () => (fns.eq_clamped_changed(handle.appPtr) as number) !== 0,
+    labelChanged: () => (fns.eq_label_changed(handle.appPtr) as number) !== 0,
+    hasDirty: () => (fns.eq_has_dirty(handle.appPtr) as number) !== 0,
+    scopeCount: () => fns.eq_scope_count(handle.appPtr) as number,
+    memoCount: () => fns.eq_memo_count(handle.appPtr) as number,
+    increment: () => handle.dispatchAndFlush(incrHandler),
+    decrement: () => handle.dispatchAndFlush(decrHandler),
+    destroy: () => handle.destroy(),
+  };
+  return eqHandle;
+}
+```
+
+##### Test suites (`test-js/equality_demo.test.ts`)
+
+Each suite creates a DOM via linkedom, instantiates the WASM module,
+and exercises the full pipeline:
+
+1. **init and destroy** — lifecycle smoke test, no crash.
+2. **initial render** — correct DOM after rebuild: h1 "Equality
+   Gate", two buttons, two paragraphs.
+3. **initial DOM text** — paragraphs show "Clamped: 0" and
+   "Label: low".
+4. **increment within range** — input 0→1, flush, DOM shows
+   "Clamped: 1", "Label: low".
+5. **increment across threshold** — input 5→6, flush, DOM shows
+   "Clamped: 6", "Label: high".
+6. **increment at max (clamped stable)** — input 10→11, flush,
+   DOM still shows "Clamped: 10", "Label: high".
+7. **increment above max (chain stable)** — input 15→16, flush,
+   DOM still shows "Clamped: 10", "Label: high".
+8. **decrement within range** — input 5→4, flush, DOM shows
+   "Clamped: 4", "Label: low".
+9. **decrement across threshold** — input 6→5, flush, DOM shows
+   "Clamped: 5", "Label: low".
+10. **decrement at min (clamped stable)** — input 0→-1, flush,
+    DOM still shows "Clamped: 0", "Label: low".
+11. **clamped_changed after stable** — incr above max, assert
+    `clampedChanged()` returns false.
+12. **label_changed after stable** — same state, assert
+    `labelChanged()` returns false.
+13. **clamped_changed after value change** — incr within range,
+    assert `clampedChanged()` returns true.
+14. **label_changed after value change** — incr across threshold,
+    assert `labelChanged()` returns true.
+15. **flush returns 0 when stable** — incr above max, verify
+    `flush()` returns 0 bytes.
+16. **flush returns nonzero when changed** — incr across
+    threshold, verify `flush()` returns > 0 bytes.
+17. **multiple stable flushes** — 5 increments above max, each
+    raw flush returns 0.
+18. **full cycle round-trip** — increment 0→12, decrement 12→0,
+    verify all intermediate states correct.
+19. **scope count** — assert 1.
+20. **memo count** — assert 2.
+21. **dirty state after event** — dispatch incr, assert
+    `hasDirty()` true before flush.
+22. **destroy is clean** — no errors after destroy.
+
+##### `test-js/run.ts` update
+
+Add `equality_demo.test.ts` to the test runner import list.
+
+### P37 Gap-Fill Dependency graph
+
+```text
+P37.6 (test_scope_settle — uses existing runtime WASM exports)
+    │
+    └──► P37.8 (Docs — depends on both)
+    │
+P37.7 (equality_demo.test.ts + TS handle — uses existing eq_ WASM exports)
+    │
+    └──► P37.8 (Docs — depends on both)
+```
+
+P37.6 and P37.7 are independent of each other — they can be
+implemented in either order or in parallel. Both depend only on
+the existing Phase 37 WASM exports (no new Mojo code needed).
+
+### P37 Gap-Fill Estimated size
+
+| Step | ~Changed Mojo Lines | ~New Mojo Lines | ~New TS Lines | Tests |
+|------|--------------------|-----------------| --------------|-------|
+| P37.6 (test_scope_settle.mojo) | 0 | ~1,100 | 0 | 16 Mojo |
+| P37.7 (equality_demo.test.ts + TS handle) | 0 | 0 | ~650 | 22 JS |
+| **Total** | **0** | **~1,100** | **~650** | **16 Mojo + 22 JS = 38 tests** |
+
+**Test count after gap-fill:** 1,282 Mojo (50 modules) + 2,991 JS
+(28 suites) = 4,273 tests.
+
+---
+
+## Phase 38 — Batch Signal Writes
+
+### P38 Problem
+
+Each `write_signal` call immediately scans the written signal's
+subscriber list and propagates dirtiness through the entire memo
+chain via the Phase 36 worklist. This is correct but wasteful
+when a single logical operation writes multiple signals:
+
+```text
+# Form submission handler — writes 3 signals:
+name.set(String("Alice"))     # propagation pass 1: scan subs, worklist
+age.set(30)                   # propagation pass 2: scan subs, worklist
+role.set(String("admin"))     # propagation pass 3: scan subs, worklist
+```
+
+Each pass walks the subscriber → worklist chain independently.
+If multiple signals feed the same memo or scope, the intermediate
+dirty-marking is redundant — the first pass dirties the memo, the
+second pass checks `is_dirty()` and skips (cycle guard), but still
+scans the subscriber list to get there.
+
+In production-grade frameworks (Solid.js `batch()`, Dioxus
+`spawn()`/`batch()`, Leptos `batch()`), multi-write scenarios are
+batched into a single propagation pass:
+
+```text
+batch {
+    name.set("Alice")   // store value, defer propagation
+    age.set(30)          // store value, defer propagation
+    role.set("admin")    // store value, defer propagation
+}                        // single propagation pass over all 3
+```
+
+This is the natural optimization after equality gating (Phase 37):
+Phase 37 optimized **what** propagates (skip unchanged values),
+Phase 38 optimizes **when** propagation happens (defer until all
+writes complete).
+
+### P38 Current state
+
+After Phase 37:
+
+- `write_signal[T]` stores value, appends key to
+  `_changed_signals`, then immediately scans subscribers and
+  propagates via worklist.
+- `write_signal_string` stores string + bumps version signal,
+  which calls `write_signal[Int32]` for the version.
+- All signal writes in event handlers (`dispatch_event` →
+  `ACTION_SIGNAL_ADD_I32`, etc.) go through `write_signal`.
+- The flush cycle is: event → write_signal(s) → run_memos →
+  settle_scopes → consume_dirty → render → diff → finalize.
+- No concept of deferred or grouped writes.
+
+### P38 Target pattern
+
+```text
+fn dispatch_event(...):
+    # Current: each write_signal does full propagation
+    # Target:  batch all writes, single propagation at end
+
+    runtime.begin_batch()
+    name_signal.set(...)     # stores value, tracks key, NO propagation
+    age_signal.set(...)      # stores value, tracks key, NO propagation
+    role_signal.set(...)     # stores value, tracks key, NO propagation
+    runtime.end_batch()      # single combined propagation pass
+```
+
+Semantics:
+
+- **begin_batch()** — enter batch mode. Signal values are stored
+  immediately (reads see the new value), but subscriber scanning
+  and worklist propagation are deferred.
+- **end_batch()** — exit batch mode. Run one combined propagation
+  pass over all signals written during the batch. Equivalent to
+  `write_signal` for each key, but with deduplication: each memo
+  is marked dirty at most once, each scope is added to
+  `dirty_scopes` at most once, and the worklist is shared across
+  all source signals.
+- **Nesting** — `begin_batch()` can be called inside a batch
+  (increments depth counter). Only the outermost `end_batch()`
+  triggers propagation.
+- **Reads during batch** — `peek_signal` and `read_signal` return
+  the latest stored value. Subscriptions are tracked normally.
+  Only propagation is deferred.
+- **Empty batch** — `begin_batch()` + `end_batch()` with no writes
+  is a no-op.
+- **String signals** — `write_signal_string` in batch mode stores
+  the string and tracks the version key for deferred propagation.
+- **Interaction with settle_scopes** — `settle_scopes()` works the
+  same after `end_batch()`. The `_changed_signals` set is populated
+  by `end_batch()`'s propagation pass (source signals) and by
+  subsequent memo `end_compute` (when values change).
+
+### P38 Design
+
+#### Batch state in Runtime
+
+```mojo
+# New fields in Runtime:
+var _batch_depth: Int          # 0 = not batching, >0 = nested batch
+var _batch_keys: List[UInt32]  # signal keys written during batch
+var _batch_string_keys: List[Tuple[UInt32, UInt32]]
+    # (string_key, version_key) pairs for string signals written during batch
+```
+
+Initialize to 0 and empty lists in `__init__`.
+
+#### Modified `write_signal`
+
+```mojo
+fn write_signal[T: ...](mut self, key: UInt32, value: T):
+    # Always store the value immediately (reads see new value)
+    self.signals.write[T](key, value)
+
+    if self._batch_depth > 0:
+        # Batch mode: track the key, skip propagation
+        # Deduplicate: only add if not already in _batch_keys
+        var already = False
+        for i in range(len(self._batch_keys)):
+            if self._batch_keys[i] == key:
+                already = True
+                break
+        if not already:
+            self._batch_keys.append(key)
+        return
+
+    # Non-batch: immediate propagation (existing Phase 36 code)
+    self._changed_signals.append(key)
+    var memo_worklist = List[UInt32]()
+    var subs = self.signals.get_subscribers(key)
+    # ... existing Phase 1 + Phase 2 propagation ...
+```
+
+#### Modified `write_signal_string`
+
+```mojo
+fn write_signal_string(
+    mut self, string_key: UInt32, version_key: UInt32, value: String
+):
+    self.strings.write(string_key, value)
+
+    if self._batch_depth > 0:
+        # Batch mode: track the version key for deferred propagation
+        # Also bump the version value immediately so reads see it
+        var ver = self.peek_signal[Int32](version_key)
+        self.signals.write[Int32](version_key, ver + 1)
+        # Track the version key (it's what has subscribers)
+        var already = False
+        for i in range(len(self._batch_keys)):
+            if self._batch_keys[i] == version_key:
+                already = True
+                break
+        if not already:
+            self._batch_keys.append(version_key)
+        return
+
+    # Non-batch: existing code (bump version via write_signal)
+    var ver = self.peek_signal[Int32](version_key)
+    self.write_signal[Int32](version_key, ver + 1)
+```
+
+#### `begin_batch` / `end_batch`
+
+```mojo
+fn begin_batch(mut self):
+    """Enter batch mode.  Signal writes store values but defer propagation.
+
+    Can be nested — only the outermost `end_batch()` triggers
+    propagation.
+    """
+    self._batch_depth += 1
+
+fn end_batch(mut self):
+    """Exit batch mode.  On the outermost call, run a single combined
+    propagation pass over all signals written during the batch.
+
+    Decrements the batch depth.  If the depth reaches 0, runs
+    propagation for all keys in `_batch_keys`.
+    """
+    if self._batch_depth <= 0:
+        return  # not in a batch — no-op
+    self._batch_depth -= 1
+    if self._batch_depth > 0:
+        return  # still in a nested batch — defer
+
+    # Outermost end_batch: propagate all batched keys
+    if len(self._batch_keys) == 0:
+        return  # empty batch — no-op
+
+    # Combined propagation: shared worklist across all source signals
+    var memo_worklist = List[UInt32]()
+
+    for b in range(len(self._batch_keys)):
+        var key = self._batch_keys[b]
+        self._changed_signals.append(key)
+        var subs = self.signals.get_subscribers(key)
+
+        # Phase 1: direct subscribers (same logic as write_signal)
+        for i in range(len(subs)):
+            var ctx = subs[i]
+            if (ctx & SCOPE_CONTEXT_TAG) != 0:
+                var scope_id = ctx & ~SCOPE_CONTEXT_TAG
+                var found = False
+                for j in range(len(self.dirty_scopes)):
+                    if self.dirty_scopes[j] == scope_id:
+                        found = True
+                        break
+                if not found:
+                    self.dirty_scopes.append(scope_id)
+                continue
+            # Memo check
+            var is_memo = False
+            for m in range(len(self._memo_ctx_ids)):
+                if self._memo_ctx_ids[m] == ctx:
+                    var memo_id = self._memo_ids[m]
+                    if self.memos.contains(memo_id):
+                        if not self.memos.is_dirty(memo_id):
+                            self.memos.mark_dirty(memo_id)
+                            memo_worklist.append(memo_id)
+                    is_memo = True
+                    break
+            if is_memo:
+                continue
+            # Effect check
+            var is_effect = False
+            for e in range(len(self._effect_ctx_ids)):
+                if self._effect_ctx_ids[e] == ctx:
+                    var effect_id = self._effect_ids[e]
+                    if self.effects.contains(effect_id):
+                        self.effects.mark_pending(effect_id)
+                    is_effect = True
+                    break
+            if is_effect:
+                continue
+            # Unknown: treat as scope (legacy)
+            var found = False
+            for j in range(len(self.dirty_scopes)):
+                if self.dirty_scopes[j] == ctx:
+                    found = True
+                    break
+            if not found:
+                self.dirty_scopes.append(ctx)
+
+    # Phase 2: drain shared worklist (same as write_signal Phase 2)
+    var wl_idx = 0
+    while wl_idx < len(memo_worklist):
+        var mid = memo_worklist[wl_idx]
+        wl_idx += 1
+        if not self.memos.contains(mid):
+            continue
+        var out_key = self.memos.output_key(mid)
+        var out_subs = self.signals.get_subscribers(out_key)
+        for k in range(len(out_subs)):
+            var sub_ctx = out_subs[k]
+            # ... same scope/memo/effect/unknown classification ...
+            # (identical to write_signal Phase 2)
+
+    # Clear batch state
+    self._batch_keys = List[UInt32]()
+
+fn is_batching(self) -> Bool:
+    """Return True if currently inside a begin_batch/end_batch bracket."""
+    return self._batch_depth > 0
+```
+
+The key insight: the combined propagation uses a **single shared
+`memo_worklist`** across all source signals. This means a memo
+that subscribes to signals A and B is added to the worklist once
+(the `is_dirty()` guard deduplicates), rather than being processed
+twice in separate `write_signal` calls.
+
+#### Scope of change
+
+**Files modified:**
+
+| File | Changes |
+|------|---------|
+| `src/signals/runtime.mojo` | Add `_batch_depth`, `_batch_keys` fields; modify `write_signal`, `write_signal_string`; add `begin_batch`, `end_batch`, `is_batching` methods |
+| `src/component/app_shell.mojo` | Add `begin_batch`, `end_batch`, `is_batching` wrappers |
+| `src/component/context.mojo` | Add `begin_batch`, `end_batch`, `is_batching` wrappers |
+| `src/main.mojo` | Add WASM exports; add `BatchDemoApp` struct + lifecycle + exports |
+
+**Files added:**
+
+| File | Role |
+|------|------|
+| `test/test_batch.mojo` | Runtime-level batch unit tests (~22 tests) |
+| `test/test_batch_demo.mojo` | BatchDemoApp Mojo integration tests (~18 tests) |
+| `test-js/batch_demo.test.ts` | BatchDemoApp JS integration tests (~20 suites) |
+
+### P38 Steps
+
+#### P38.1 — Runtime batch infrastructure
+
+##### Mojo changes
+
+###### `src/signals/runtime.mojo` — batch state and modified `write_signal`
+
+Add to `Runtime.__init__`:
+
+```mojo
+self._batch_depth = 0
+self._batch_keys = List[UInt32]()
+```
+
+Add `begin_batch`, `end_batch`, `is_batching` methods as described
+in the Design section above.
+
+Modify `write_signal[T]`:
+
+- After `self.signals.write[T](key, value)`, check
+  `self._batch_depth > 0`.
+- If batching: append key to `_batch_keys` (deduplicating), return
+  early without subscriber scanning.
+- If not batching: existing Phase 36 propagation code (unchanged).
+
+Modify `write_signal_string`:
+
+- After `self.strings.write(string_key, value)`, check
+  `self._batch_depth > 0`.
+- If batching: bump version directly via `signals.write` (not
+  `write_signal`), append version key to `_batch_keys`, return.
+- If not batching: existing code (unchanged).
+
+###### `src/component/app_shell.mojo` — batch wrappers
+
+```mojo
+fn begin_batch(mut self):
+    """Enter batch mode for signal writes."""
+    self.runtime[0].begin_batch()
+
+fn end_batch(mut self):
+    """Exit batch mode and propagate all deferred writes."""
+    self.runtime[0].end_batch()
+
+fn is_batching(self) -> Bool:
+    """Return True if currently inside a batch."""
+    return self.runtime[0].is_batching()
+```
+
+###### `src/component/context.mojo` — batch wrappers
+
+```mojo
+fn begin_batch(mut self):
+    """Enter batch mode for signal writes."""
+    self.shell.runtime[0].begin_batch()
+
+fn end_batch(mut self):
+    """Exit batch mode and propagate all deferred writes."""
+    self.shell.runtime[0].end_batch()
+
+fn is_batching(self) -> Bool:
+    """Return True if currently inside a batch."""
+    return self.shell.runtime[0].is_batching()
+```
+
+##### WASM exports (in `src/main.mojo`)
+
+```mojo
+@export
+fn runtime_begin_batch(rt_ptr: Int64):
+    """Enter batch mode for signal writes."""
+    _get[Runtime](rt_ptr)[0].begin_batch()
+
+@export
+fn runtime_end_batch(rt_ptr: Int64):
+    """Exit batch mode and propagate all deferred writes."""
+    _get[Runtime](rt_ptr)[0].end_batch()
+
+@export
+fn runtime_is_batching(rt_ptr: Int64) -> Int32:
+    """Return 1 if currently inside a batch."""
+    if _get[Runtime](rt_ptr)[0].is_batching():
+        return 1
+    return 0
+```
+
+##### Test: `test/test_batch.mojo` (~22 tests)
+
+Runtime-level unit tests using the WASM test harness:
+
+1. **test_batch_single_signal** — begin_batch, write one signal,
+   end_batch. Assert memo is dirty (propagation happened).
+
+2. **test_batch_multi_signal_same_memo** — two signals feed the
+   same memo. begin_batch, write both, end_batch. Assert memo
+   dirty once.
+
+3. **test_batch_multi_signal_different_memos** — signal_a → memo_a,
+   signal_b → memo_b. Batch write both. Assert both memos dirty.
+
+4. **test_batch_defers_propagation** — begin_batch, write signal.
+   Assert memo is NOT dirty yet (propagation deferred). end_batch.
+   Assert memo dirty now.
+
+5. **test_batch_scope_dirty_after_end** — signal → scope (direct
+   subscription). Batch write signal. Assert scope NOT dirty
+   during batch. end_batch. Assert scope dirty.
+
+6. **test_batch_read_sees_new_value** — begin_batch, write
+   signal(42). peek_signal returns 42 (value stored immediately).
+
+7. **test_batch_read_signal_subscribes** — begin_batch, read_signal
+   in memo context. Assert subscription is tracked (not deferred).
+
+8. **test_batch_empty_noop** — begin_batch, end_batch with no
+   writes. Assert dirty_scope_count == 0.
+
+9. **test_batch_nested** — begin_batch, begin_batch (nested), write
+   signal, end_batch (inner — no propagation), assert memo NOT
+   dirty. end_batch (outer — propagation). Assert memo dirty.
+
+10. **test_batch_nested_depth3** — triple-nested. Only outermost
+    end_batch propagates.
+
+11. **test_batch_changed_signals_populated** — batch write signal.
+    After end_batch, assert `signal_changed_this_cycle(key)` is
+    true.
+
+12. **test_batch_string_signal** — batch write a string signal.
+    Assert version bumped, string value stored, propagation deferred
+    until end_batch.
+
+13. **test_batch_mixed_types** — batch write Int32, Bool (as Int32),
+    and string signals. All tracked and propagated on end_batch.
+
+14. **test_batch_dedup_keys** — write the same signal key twice in
+    a batch. Assert `_batch_keys` has it only once (second write
+    doesn't duplicate).
+
+15. **test_batch_effect_pending_after_end** — signal → effect.
+    Batch write. Assert effect NOT pending during batch.
+    end_batch. Assert effect pending.
+
+16. **test_batch_memo_worklist_shared** — signal_a → memo, signal_b
+    → memo (diamond into one memo). Batch write both. end_batch.
+    Assert memo dirty (added to worklist once, not twice).
+
+17. **test_batch_chain_propagation** — signal → memo_a → memo_b →
+    scope. Batch write signal. end_batch. Assert memo_a dirty,
+    memo_b dirty, scope dirty (full chain propagation).
+
+18. **test_batch_settle_after_batch** — batch write, end_batch,
+    run_memos (stable), settle_scopes. Assert scope removed.
+
+19. **test_batch_non_batch_still_works** — write_signal outside
+    batch. Assert immediate propagation (regression guard).
+
+20. **test_batch_end_without_begin** — call end_batch without
+    begin_batch. Assert no crash (no-op).
+
+21. **test_batch_is_batching_flag** — is_batching returns false
+    initially, true after begin_batch, false after end_batch.
+
+22. **test_batch_large_batch** — write 20 signals in one batch.
+    Assert all propagated correctly on end_batch.
+
+#### P38.2 — BatchDemoApp
+
+A demo app that demonstrates batch writes for a multi-field form.
+Two signals (first_name, last_name) feed into a MemoString
+(full_name) and two SignalI32 fields (first_len, last_len) also
+written during batch.
+
+##### App structure: BatchDemo
+
+```text
+  signal first_name (SignalString, starts at "")
+  signal last_name  (SignalString, starts at "")
+  memo   full_name  = first_name + " " + last_name   // MemoString
+  signal write_count (SignalI32, starts at 0)          // counts batch ops
+
+  UI:
+    <div>
+      <h1>Batch Demo</h1>
+      <button onclick="set_names">Set Names</button>
+      <button onclick="reset">Reset</button>
+      <p>Full: {full_name}</p>
+      <p>Writes: {write_count}</p>
+    </div>
+```
+
+Handlers:
+
+- **set_names**: `begin_batch()`, write first_name="Alice", write
+  last_name="Smith", write write_count += 1, `end_batch()`.
+  Result: one propagation pass. Memo recomputes to "Alice Smith".
+- **reset**: `begin_batch()`, write first_name="", last_name="",
+  write_count=0, `end_batch()`. Memo recomputes to " ".
+
+The write_count signal demonstrates that non-memo-related signals
+are also correctly batched.
+
+##### Mojo implementation (`src/main.mojo`)
+
+```mojo
+struct BatchDemoApp(Movable):
+    var ctx: ComponentContext
+    var first_name: SignalString
+    var last_name: SignalString
+    var full_name: MemoString
+    var write_count: _SignalI32
+    var set_handler: UInt32
+    var reset_handler: UInt32
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.first_name = self.ctx.create_signal_string(String(""))
+        self.last_name = self.ctx.create_signal_string(String(""))
+        self.full_name = self.ctx.use_memo_string(String(" "))
+        self.write_count = self.ctx.use_signal(0)
+        # setup_view with h1, 2 buttons, 2 paragraphs (2 dyn_text)
+        ...
+
+    fn run_memos(mut self):
+        if self.full_name.is_dirty():
+            self.full_name.begin_compute()
+            var f = self.first_name.read()
+            var l = self.last_name.read()
+            self.full_name.end_compute(f + String(" ") + l)
+
+    fn set_names(mut self, first: String, last: String):
+        self.ctx.begin_batch()
+        self.first_name.set(first)
+        self.last_name.set(last)
+        self.write_count += 1
+        self.ctx.end_batch()
+
+    fn reset(mut self):
+        self.ctx.begin_batch()
+        self.first_name.set(String(""))
+        self.last_name.set(String(""))
+        self.write_count.set(0)
+        self.ctx.end_batch()
+
+    fn render(mut self) -> UInt32:
+        var vb = self.ctx.render_builder()
+        vb.add_dyn_text(String("Full: ") + self.full_name.peek())
+        vb.add_dyn_text(String("Writes: ") + String(self.write_count.peek()))
+        return vb.build()
+```
+
+Flush follows the Phase 37 pattern:
+`has_dirty → run_memos → settle_scopes → consume_dirty → render →
+diff → finalize`.
+
+WASM exports with `bd_` prefix: `bd_init`, `bd_destroy`,
+`bd_rebuild`, `bd_handle_event`, `bd_flush`, `bd_set_names`,
+`bd_reset`, `bd_full_name_text`, `bd_write_count`,
+`bd_full_name_dirty`, `bd_full_name_changed`, `bd_has_dirty`,
+`bd_is_batching`, `bd_scope_count`, `bd_memo_count`.
+
+Note: `bd_set_names(app_ptr, first_ptr, last_ptr)` and `bd_reset(app_ptr)`
+are custom WASM exports that call the batch methods directly,
+bypassing the normal `dispatch_event` path. This allows tests to
+exercise batch semantics without requiring new handler actions.
+
+##### TypeScript handle
+
+```typescript
+export interface BatchDemoAppHandle extends AppHandle {
+  /** Current full_name memo text. */
+  getFullName(): string;
+
+  /** Current write_count signal value. */
+  getWriteCount(): number;
+
+  /** Whether the full_name memo needs recomputation. */
+  isFullNameDirty(): boolean;
+
+  /** Whether the full_name memo's last recompute changed. */
+  fullNameChanged(): boolean;
+
+  /** Whether any scope is dirty. */
+  hasDirty(): boolean;
+
+  /** Whether the runtime is in batch mode. */
+  isBatching(): boolean;
+
+  /** Number of live scopes. */
+  scopeCount(): number;
+
+  /** Number of live memos. */
+  memoCount(): number;
+
+  /** Set both names in a batch and flush. */
+  setNames(first: string, last: string): void;
+
+  /** Reset all state in a batch and flush. */
+  reset(): void;
+}
+```
+
+##### Test: `test/test_batch_demo.mojo` (~18 tests)
+
+1. **test_bd_initial_state** — full_name=" ", write_count=0.
+2. **test_bd_set_names** — set "Alice"+"Smith", full_name=
+   "Alice Smith", write_count=1.
+3. **test_bd_reset** — set names then reset, full_name=" ",
+   write_count=0.
+4. **test_bd_set_names_flush** — set names + flush, DOM correct.
+5. **test_bd_reset_flush** — reset + flush, DOM correct.
+6. **test_bd_set_names_memo_dirty** — after set_names (before
+   flush), full_name memo is dirty.
+7. **test_bd_not_batching_after_set** — is_batching returns false
+   after set_names completes (batch ended).
+8. **test_bd_memo_stable_same_names** — set same names twice.
+   Second flush: full_name unchanged → flush returns 0.
+9. **test_bd_set_then_reset** — set names, flush, reset, flush.
+   Verify both flushes produce mutations.
+10. **test_bd_multiple_sets** — 5 set_names calls with different
+    values, each flush correct.
+11. **test_bd_write_count_increments** — 3 set_names calls.
+    write_count=3.
+12. **test_bd_scope_count** — assert 1.
+13. **test_bd_memo_count** — assert 1.
+14. **test_bd_destroy_clean** — destroy, no crash.
+15. **test_bd_flush_returns_zero_when_clean** — flush without
+    events returns 0.
+16. **test_bd_handle_event_set** — dispatch set_handler event,
+    verify flush works.
+17. **test_bd_handle_event_reset** — dispatch reset_handler event,
+    verify flush works.
+18. **test_bd_rapid_10_sets** — 10 rapid set_names, verify final
+    state correct.
+
+##### Test: `test-js/batch_demo.test.ts` (~20 suites)
+
+JS-side integration tests:
+
+1. **init and destroy** — lifecycle.
+2. **initial render** — DOM: h1 "Batch Demo", two buttons, two
+   paragraphs with "Full: " and "Writes: 0".
+3. **set names** — DOM updates: "Full: Alice Smith", "Writes: 1".
+4. **reset** — DOM: "Full: ", "Writes: 0".
+5. **set then reset cycle** — verify both transitions.
+6. **multiple set operations** — 5 sets, final DOM correct.
+7. **write count accumulates** — 3 sets → "Writes: 3".
+8. **memo stable same names** — set "Alice"+"Smith" twice, second
+   flush zero bytes.
+9. **full_name_changed after set** — returns true.
+10. **full_name_changed after stable** — returns false.
+11. **flush returns 0 when clean** — no events, flush returns 0.
+12. **flush returns nonzero after set** — after set, flush > 0.
+13. **is_batching during normal operation** — returns false.
+14. **scope count** — 1.
+15. **memo count** — 1.
+16. **destroy is clean** — no errors.
+17. **double destroy safe** — no crash.
+18. **multiple independent instances** — two instances, independent
+    state.
+19. **rapid 10 sets** — verify final DOM correct.
+20. **heapStats bounded** — verify no unbounded growth.
+
+#### P38.3 — Documentation & AGENTS.md update
+
+##### Changes
+
+**AGENTS.md:**
+
+- **Common Patterns:** Add "Batch signal writes" pattern describing
+  `begin_batch` / `end_batch` semantics and the combined
+  propagation pass.
+- **BatchDemoApp architecture:** Add to App Architectures section
+  with the multi-field form example.
+- **File Size Reference:** Update line counts for `runtime.mojo`,
+  `context.mojo`, `app_shell.mojo`, `main.mojo`.
+
+**CHANGELOG.md:**
+
+- Add Phase 37 Gap-Fill entry summarizing P37.6 (scope settle
+  tests) and P37.7 (equality demo JS tests + TS handle).
+- Add Phase 38 entry summarizing P38.1 (batch infrastructure),
+  P38.2 (demo app), P38.3 (docs). Include test count delta.
+
+**README.md:**
+
+- Update test count.
+- Add "Batch signal writes" to Features list.
+- Add BatchDemoApp to the app list.
+- Update reactive model description to mention batching.
+
+### P38 Dependency graph
+
+```text
+P38.1 (Runtime batch infrastructure + tests)
+    │
+    ├──► P38.2 (BatchDemoApp — depends on begin/end_batch)
+    │        │
+    │        └──► P38.3 (Docs — depends on all above)
+    │
+    └──► P38.3 (Docs)
+```
+
+P38.1 must land first (batch API + unit tests).
+P38.2 depends on P38.1 (uses `begin_batch` / `end_batch`).
+P38.3 depends on both.
+
+### P38 Estimated size
+
+| Step | ~Changed Mojo Lines | ~New Mojo Lines | ~New TS Lines | Tests |
+|------|--------------------|-----------------| --------------|-------|
+| P38.1 (Runtime batch + tests) | ~100 (write_signal refactor) | ~1,500 | ~30 | 22 Mojo |
+| P38.2 (BatchDemoApp + tests) | ~0 | ~600 | ~650 | 18 Mojo + 20 JS |
+| P38.3 (Docs) | ~0 | ~80 | ~0 | 0 |
+| **Total** | **~100** | **~2,180** | **~680** | **40 Mojo + 20 JS = 60 tests** |
+
+**Test count after Phase 38:** 1,322 Mojo (52 modules) + 3,011 JS
+(29 suites) = 4,333 tests.
+
+## Combined dependency graph (Phase 37 Gap-Fill + 38)
+
+```text
+P37.6 (test_scope_settle — independent of P37.7 and P38)
+P37.7 (equality_demo.test.ts — independent of P37.6 and P38)
+    │
+    │ (P37 gap-fill complete, update docs)
+    │
+    ▼
+P38.1 (Runtime batch infrastructure)
+    │
+    └──► P38.2 (BatchDemoApp)
+              │
+              └──► P38.3 (Docs)
+```
+
+P37.6 and P37.7 are independent of each other and of Phase 38.
+They should land first to complete Phase 37. Phase 38 can start
+immediately after (or even in parallel, since it touches different
+files).
+
+## Combined estimated size (Phase 37 Gap-Fill + 38)
+
+| Phase | ~Changed Mojo | ~New Mojo | ~New TS | Tests |
+|-------|--------------|-----------|---------|-------|
+| P37 Gap-Fill | 0 | ~1,100 | ~650 | 16 Mojo + 22 JS = 38 |
+| Phase 38 | ~100 | ~2,180 | ~680 | 40 Mojo + 20 JS = 60 |
+| **Total** | **~100** | **~3,280** | **~1,330** | **56 Mojo + 42 JS = 98 tests** |
+
+**Test count after all:** 1,322 Mojo (52 modules) + 3,011 JS
+(29 suites) = 4,333 tests.
