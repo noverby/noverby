@@ -510,3 +510,40 @@ for F8).
 - 7 new features deferred with documented rationale
 - Build: zero warnings with `-Werror`
 - Tests: 1,385 JS tests passing
+
+---
+
+## Phase 39 Re-evaluation (post-Phase 38)
+
+After 8 more phases of development (Phases 31–38), the codebase has grown
+from ~5,500 to ~10,000 lines in `main.mojo`, from 28 to 52 Mojo test
+modules, and from 18 to 29 JS test suites (1,323 Mojo tests + 3,090 JS
+tests = 4,413 total). All 7 deferred features were re-examined for new
+application points.
+
+| ID | Feature | Re-evaluation | Action |
+|----|---------|---------------|--------|
+| **F1** | Typed errors | Still no `raises` in `src/`. The runtime uses `Bool`/`Int32` returns for WASM ABI compatibility. The test harness uses `raises` via wasmtime FFI, but typed errors there add complexity without benefit. | **Skip** |
+| **F2** | UTF-8 safety constructors | `test/wasm_harness.mojo` constructs strings from raw bytes (`read_string_struct`), but this is test-only infrastructure, not production code. No raw-bytes string construction in `src/`. | **Skip** |
+| **F5** | `comptime(x)` expression | Still no inline use case. All `comptime` declarations are named module-level constants. | **Skip** |
+| **F6** | `-Xlinker` flag | Still not applicable. Build uses custom `llc` + `wasm-ld` pipeline. | **Skip** — permanent |
+| **F8** | `conforms_to()` / `trait_downcast()` | Still experimental. Would need a generic `Signal[T]` or `Memo[T]` to target. The 6-type expansion (Phase 18–19 signals + Phase 35 memos) reduced urgency. Belongs in a dedicated "Generic Signal" phase. | **Skip** — blocked on generic store design |
+| **F9** | Reflection module | `struct_field_count`, `struct_field_names`, `struct_field_types` could auto-generate `__moveinit__` or debug formatters, but the reflection API is experimental and existing code works. | **Skip** |
+| **F10** | `Never` type | No `abort()` or unreachable branches in `src/`. The `if/elif` handler chains always have a fallback return. | **Skip** |
+
+**Conclusion:** All seven deferred features remain correctly deferred. None
+have gained natural application points in Phases 31–38. The codebase's
+architecture (WASM ABI with `Int32`/`Bool` returns, no `raises`, no raw-bytes
+strings in `src/`, no unreachable paths) does not create the prerequisites
+these features need.
+
+The features will become actionable when:
+
+- **F1** lands with a move to `raises`-based runtime methods (requires WASM
+  ABI design for alternate return values).
+- **F2** lands when `src/` code parses external bytes (e.g. a binary protocol
+  decoder reading strings from JS).
+- **F8** lands with a `Generic Signal[T]` refactor (requires conditional
+  conformance or a vtable-based store design).
+- **F10** lands when pattern matching on ADTs introduces exhaustive match arms
+  with unreachable fallbacks.
