@@ -1,4 +1,4 @@
-# Component package — re-exports AppShell, lifecycle helpers, ComponentContext, and KeyedList.
+# Component package — re-exports AppShell, lifecycle helpers, ComponentContext, KeyedList, and ChildComponent.
 
 from .app_shell import AppShell, app_shell_create
 from .lifecycle import (
@@ -22,3 +22,11 @@ from .context import (
     RenderBuilder,
 )
 from .keyed_list import KeyedList, ItemBuilder, HandlerAction
+from .child import (
+    ChildComponent,
+    ChildRenderBuilder,
+    ChildEventBinding,
+    ChildAutoBinding,
+    CHILD_BIND_EVENT,
+    CHILD_BIND_VALUE,
+)
