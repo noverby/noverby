@@ -2,6 +2,22 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 35 — Memo Type Expansion (MemoBool + MemoString)
+
+Expanded the memo system to support `MemoBool` and `MemoString` types, achieving type-parity with signals (`SignalI32`/`SignalBool`/`SignalString` ↔ `MemoI32`/`MemoBool`/`MemoString`). Demonstrated practical usage with two new demo apps exercising cross-type memo chains and form validation patterns.
+
+- **P35.1** — MemoBool + MemoString infrastructure. Added `MemoBool` and `MemoString` handle types mirroring `SignalBool` and `SignalString` ergonomics. `MemoBool` wraps an Int32 memo entry with `peek() -> Bool`, `read() -> Bool`, `is_dirty()`, `begin_compute()`, `end_compute(Bool)`. `MemoString` wraps a StringStore slot + version memo with `peek() -> String`, `read() -> String`, `is_dirty()`, `begin_compute()`, `end_compute(String)`. Runtime methods: `create_memo_bool()`, `create_memo_string()`, `destroy_memo_string()`. ComponentContext hooks: `use_memo_bool(initial)`, `use_memo_string(initial)`. AppShell wrappers: `create_memo_bool()`, `create_memo_string()`. WASM exports follow established patterns. 15 Mojo tests (test_memo_bool) + 17 Mojo tests (test_memo_string).
+
+- **P35.2** — MemoFormApp. Form validation demo: a `SignalString` input feeds a `MemoBool` (is_valid = len > 0) and a `MemoString` (status = "✓ Valid: ..." or "✗ Empty"). Demonstrates memo recomputation order (is_valid before status, since status reads is_valid), two-way input binding (`bind_value` + `oninput_set_string`), and cross-type memo dependencies. WASM exports: `mf_init`, `mf_destroy`, `mf_rebuild`, `mf_handle_event`, `mf_handle_event_string`, `mf_flush`, `mf_input_text`, `mf_is_valid`, `mf_status_text`, `mf_is_valid_dirty`, `mf_status_dirty`, `mf_set_input`, `mf_input_handler`, `mf_has_dirty`, `mf_scope_count`, `mf_memo_count`. 18 Mojo tests + 20 JS test suites.
+
+- **P35.3** — MemoChainApp. Mixed-type memo chain demo: `SignalI32` → `MemoI32` (doubled = input × 2) → `MemoBool` (is_big = doubled ≥ 10) → `MemoString` (label = "BIG" if is_big else "small"). Validates dirtiness propagation across memo types and deterministic recomputation order. Documents the runtime limitation that memo → memo chains require explicit ordered recomputation (runtime write propagation does not recursively mark downstream memos dirty). WASM exports: `mc_init`, `mc_destroy`, `mc_rebuild`, `mc_handle_event`, `mc_flush`, `mc_input_value`, `mc_doubled_value`, `mc_is_big`, `mc_label_text`, `mc_doubled_dirty`, `mc_is_big_dirty`, `mc_label_dirty`, `mc_incr_handler`, `mc_has_dirty`, `mc_scope_count`, `mc_memo_count`. 20 Mojo tests + 22 JS test suites.
+
+- **P35.4** — Documentation update. AGENTS.md updated with MemoBool/MemoString in Key Abstractions, MemoFormApp and MemoChainApp app architectures, memo type expansion and memo chain recomputation patterns in Common Patterns, and updated file sizes. CHANGELOG.md and README.md updated with Phase 35 summary, test counts, and memo chain code example.
+
+**Test count after P35.4:** 1,226 Mojo (46 modules) + 2,763 JS (27 suites) = 3,989 tests.
+
+---
+
 ## Phase 34 — Effects in Apps
 
 Validated the existing effect infrastructure (Phase 14) in real component lifecycles with signals, rendering, and DOM output. Established the effect drain-and-run pattern for flush cycles and demonstrated the full signal → memo → effect → signal reactive chain.
