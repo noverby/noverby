@@ -1,4 +1,4 @@
-# Component package — re-exports AppShell, lifecycle helpers, ComponentContext, KeyedList, and ChildComponent.
+# Component package — re-exports AppShell, lifecycle helpers, ComponentContext, KeyedList, ChildComponent, and Router.
 
 from .app_shell import AppShell, app_shell_create
 from .lifecycle import (
@@ -30,3 +30,4 @@ from .child import (
     CHILD_BIND_EVENT,
     CHILD_BIND_VALUE,
 )
+from .router import Router, RouteEntry

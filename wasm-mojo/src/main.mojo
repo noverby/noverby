@@ -112,6 +112,15 @@ from bench import (
     bench_app_rebuild,
     bench_app_flush,
 )
+from app import (
+    MultiViewApp,
+    multi_view_app_init,
+    multi_view_app_destroy,
+    multi_view_app_rebuild,
+    multi_view_app_handle_event,
+    multi_view_app_flush,
+    multi_view_app_navigate,
+)
 from memory import UnsafePointer, memset_zero, alloc
 
 
@@ -4409,3 +4418,142 @@ fn cc_parent_tmpl_id(app_ptr: Int64) -> Int32:
 fn cc_handler_count(app_ptr: Int64) -> Int32:
     """Return the total number of registered handlers."""
     return Int32(_get[ChildCounterApp](app_ptr)[0].ctx.handler_count())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 30 — Client-Side Routing (MultiViewApp)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@export
+fn mv_init() -> Int64:
+    """Initialize the multi-view app.  Returns app pointer."""
+    return _to_i64(multi_view_app_init())
+
+
+@export
+fn mv_destroy(app_ptr: Int64):
+    """Destroy the multi-view app."""
+    multi_view_app_destroy(_get[MultiViewApp](app_ptr))
+
+
+@export
+fn mv_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
+    """Initial render (mount).  Returns mutation byte length."""
+    var writer_ptr = _alloc_writer(buf_ptr, capacity)
+    var offset = multi_view_app_rebuild(_get[MultiViewApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return offset
+
+
+@export
+fn mv_handle_event(
+    app_ptr: Int64, handler_id: Int32, event_type: Int32
+) -> Int32:
+    """Dispatch an event.  Returns 1 if action executed."""
+    return _b2i(
+        multi_view_app_handle_event(
+            _get[MultiViewApp](app_ptr),
+            UInt32(handler_id),
+            UInt8(event_type),
+        )
+    )
+
+
+@export
+fn mv_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
+    """Flush pending updates.  Returns mutation byte length, or 0."""
+    var writer_ptr = _alloc_writer(buf_ptr, capacity)
+    var offset = multi_view_app_flush(_get[MultiViewApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return offset
+
+
+@export
+fn mv_navigate(app_ptr: Int64, path: String) -> Int32:
+    """Navigate to a URL path.  Returns 1 if route matched, 0 otherwise.
+
+    Call mv_flush() after this to apply DOM mutations.
+    """
+    return _b2i(multi_view_app_navigate(_get[MultiViewApp](app_ptr), path))
+
+
+@export
+fn mv_current_path(app_ptr: Int64) -> String:
+    """Return the currently active URL path."""
+    return _get[MultiViewApp](app_ptr)[0].router.current_path
+
+
+@export
+fn mv_current_branch(app_ptr: Int64) -> Int32:
+    """Return the currently active branch tag (0=counter, 1=todo, 255=none)."""
+    return Int32(_get[MultiViewApp](app_ptr)[0].router.current)
+
+
+@export
+fn mv_route_count(app_ptr: Int64) -> Int32:
+    """Return the number of registered routes."""
+    return Int32(_get[MultiViewApp](app_ptr)[0].router.route_count())
+
+
+@export
+fn mv_count_value(app_ptr: Int64) -> Int32:
+    """Peek the counter view's count signal value."""
+    return _get[MultiViewApp](app_ptr)[0].count.peek()
+
+
+@export
+fn mv_todo_count(app_ptr: Int64) -> Int32:
+    """Peek the todo view's item count signal value."""
+    return _get[MultiViewApp](app_ptr)[0].todo_count.peek()
+
+
+@export
+fn mv_nav_counter_handler(app_ptr: Int64) -> Int32:
+    """Return the Counter nav button handler ID."""
+    return Int32(_get[MultiViewApp](app_ptr)[0].nav_counter_handler)
+
+
+@export
+fn mv_nav_todo_handler(app_ptr: Int64) -> Int32:
+    """Return the Todo nav button handler ID."""
+    return Int32(_get[MultiViewApp](app_ptr)[0].nav_todo_handler)
+
+
+@export
+fn mv_todo_add_handler(app_ptr: Int64) -> Int32:
+    """Return the Todo Add button handler ID."""
+    return Int32(_get[MultiViewApp](app_ptr)[0].todo_add_handler)
+
+
+@export
+fn mv_counter_incr_handler(app_ptr: Int64) -> Int32:
+    """Return the counter +1 handler ID (from view_events on counter tmpl)."""
+    _ = _get[MultiViewApp](app_ptr)
+    # Counter view events are registered after nav events (0=nav_counter, 1=nav_todo)
+    # The counter template uses onclick_add/onclick_sub which are signal handlers,
+    # not custom handlers — they're registered by the template infrastructure.
+    # We expose the nav handlers instead; counter +/- go through dispatch_event.
+    return -1
+
+
+@export
+fn mv_has_dirty(app_ptr: Int64) -> Int32:
+    """Check if the multi-view app has dirty scopes.  Returns 1 or 0."""
+    return _b2i(_get[MultiViewApp](app_ptr)[0].ctx.has_dirty())
+
+
+@export
+fn mv_router_dirty(app_ptr: Int64) -> Int32:
+    """Check if the router has a pending route change.  Returns 1 or 0."""
+    if _get[MultiViewApp](app_ptr)[0].router.dirty:
+        return 1
+    return 0
+
+
+@export
+fn mv_cond_mounted(app_ptr: Int64) -> Int32:
+    """Return 1 if the router's conditional slot is mounted, 0 otherwise."""
+    if _get[MultiViewApp](app_ptr)[0].router.slot.mounted:
+        return 1
+    return 0

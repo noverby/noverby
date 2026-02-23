@@ -24,6 +24,11 @@
 import { EventBridge, EventType } from "./events.ts";
 import { Interpreter } from "./interpreter.ts";
 import { alignedAlloc, alignedFree, getMemory } from "./memory.ts";
+import {
+	allocStringStruct,
+	readStringStruct,
+	writeStringStruct,
+} from "./strings.ts";
 import { TemplateCache } from "./templates.ts";
 import type { WasmExports } from "./types.ts";
 
@@ -606,4 +611,180 @@ export function createChildCounterApp(
 	};
 
 	return ccHandle;
+}
+
+// ── MultiViewApp handle (Phase 30) ──────────────────────────────────────────
+
+/**
+ * A fully wired multi-view app instance with client-side routing.
+ *
+ * Returned by `createMultiViewApp`.  Extends `AppHandle` with
+ * routing-specific methods for programmatic navigation and view queries.
+ */
+export interface MultiViewAppHandle extends AppHandle {
+	/** Counter nav button handler ID. */
+	navCounterHandler: number;
+
+	/** Todo nav button handler ID. */
+	navTodoHandler: number;
+
+	/** Todo Add button handler ID. */
+	todoAddHandler: number;
+
+	/** Navigate to a URL path.  Returns true if route matched. */
+	navigate(path: string): boolean;
+
+	/** Get the currently active URL path. */
+	getCurrentPath(): string;
+
+	/** Get the currently active branch tag (0=counter, 1=todo, 255=none). */
+	getCurrentBranch(): number;
+
+	/** Get the number of registered routes. */
+	getRouteCount(): number;
+
+	/** Read the counter view's count value from WASM. */
+	getCountValue(): number;
+
+	/** Read the todo view's item count from WASM. */
+	getTodoCount(): number;
+
+	/** Check whether the router's conditional slot is mounted. */
+	isCondMounted(): boolean;
+
+	/** Check whether the router has a pending route change. */
+	isRouterDirty(): boolean;
+
+	/** Simulate a Counter nav click (dispatch + flush + apply). */
+	navToCounter(): void;
+
+	/** Simulate a Todo nav click (dispatch + flush + apply). */
+	navToTodo(): void;
+
+	/** Simulate a Todo Add click (dispatch + flush + apply). */
+	addTodoItem(): void;
+}
+
+// ── MultiViewApp factory ────────────────────────────────────────────────────
+
+/**
+ * Create a multi-view app wired to a DOM root element (Phase 30).
+ *
+ * Thin wrapper around `createApp()` that adds routing-specific helpers:
+ * `navigate()`, `getCurrentPath()`, `navToCounter()`, `navToTodo()`, etc.
+ *
+ * This is the headless-compatible version (no browser required).
+ * Pass a `Document` from linkedom/deno-dom for testing.
+ *
+ * @param fns     - Instantiated WASM exports.
+ * @param root    - The mount-point DOM element.
+ * @param doc     - The Document to use for DOM operations.
+ * @param install - Whether to install DOM event delegation (default: false).
+ */
+export function createMultiViewApp(
+	fns: WasmExports,
+	root: Element,
+	doc?: Document,
+	install = false,
+): MultiViewAppHandle {
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		install,
+		init: (f) => f.mv_init(),
+		rebuild: (f, app, buf, cap) => f.mv_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.mv_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.mv_handle_event(app, hid, evt),
+		destroy: (f, app) => f.mv_destroy(app),
+	});
+
+	const navCounterHandler = fns.mv_nav_counter_handler(handle.appPtr);
+	const navTodoHandler = fns.mv_nav_todo_handler(handle.appPtr);
+	const todoAddHandler = fns.mv_todo_add_handler(handle.appPtr);
+
+	const mvHandle: MultiViewAppHandle = {
+		...handle,
+		navCounterHandler,
+		navTodoHandler,
+		todoAddHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
+
+		navigate(path: string): boolean {
+			const strPtr = writeStringStruct(path);
+			const result = fns.mv_navigate(handle.appPtr, strPtr);
+			if (result) {
+				handle.flushAndApply();
+			}
+			return result !== 0;
+		},
+
+		getCurrentPath(): string {
+			const outPtr = allocStringStruct();
+			fns.mv_current_path(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+
+		getCurrentBranch(): number {
+			return fns.mv_current_branch(handle.appPtr);
+		},
+
+		getRouteCount(): number {
+			return fns.mv_route_count(handle.appPtr);
+		},
+
+		getCountValue(): number {
+			return fns.mv_count_value(handle.appPtr);
+		},
+
+		getTodoCount(): number {
+			return fns.mv_todo_count(handle.appPtr);
+		},
+
+		isCondMounted(): boolean {
+			return fns.mv_cond_mounted(handle.appPtr) !== 0;
+		},
+
+		isRouterDirty(): boolean {
+			return fns.mv_router_dirty(handle.appPtr) !== 0;
+		},
+
+		navToCounter(): void {
+			handle.dispatchAndFlush(navCounterHandler);
+		},
+
+		navToTodo(): void {
+			handle.dispatchAndFlush(navTodoHandler);
+		},
+
+		addTodoItem(): void {
+			handle.dispatchAndFlush(todoAddHandler);
+		},
+
+		destroy(): void {
+			handle.destroy();
+		},
+	};
+
+	return mvHandle;
 }
