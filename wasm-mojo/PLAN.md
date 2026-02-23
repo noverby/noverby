@@ -2671,3 +2671,1224 @@ be simplified, and both must be complete before documentation.
 | P36.2 (MemoChainApp simplification) | ~30 (simplify) | ~40 | ~20 | 2 Mojo + 2 JS |
 | P36.3 (docs) | ~0 | ~60 | ~0 | 0 |
 | **Total** | **~90** | **~650** | **~20** | **22 Mojo + 2 JS = 24 tests** |
+
+## Phase 37 — Equality-Gated Memo Propagation
+
+### P37 Problem
+
+Phase 36 made memo → memo dirty propagation correct by eagerly
+marking all transitive downstream memos dirty whenever a source
+signal is written. This is correct but **over-notifying**: every
+downstream memo, effect, and scope in the chain is marked dirty
+even when an intermediate memo recomputes to the **same value**.
+
+```text
+Current behaviour (Phase 36):
+
+    signal count = 5
+    memo is_positive = count > 0        // true
+    memo label = is_positive ? "+" : "-" // "+"
+
+    count.set(10)
+      → is_positive marked dirty  ✓ (correct)
+      → label marked dirty        ✗ (wasteful — is_positive is still true)
+      → scope marked dirty        ✗ (wasteful — label will be "+" again)
+
+    flush:
+      is_positive recomputes → true (unchanged)
+      label recomputes → "+" (unchanged)
+      scope re-renders → identical VNode → diff finds no mutations
+```
+
+The scope re-renders and diffs for nothing. In a real app with N
+downstream dependents of a stable intermediate memo, this wastes
+O(N) recomputation and diffing work every flush cycle.
+
+This is the classic "glitch" problem in reactive systems. SolidJS,
+Vue, and Dioxus all solve it with equality checking at the memo
+boundary: if a memo recomputes to the same value, don't propagate
+further.
+
+### P37 Current state
+
+Phase 36's `write_signal` uses a two-phase worklist to propagate
+dirtiness eagerly at signal-write time:
+
+1. **Phase 1** — Scan direct subscribers of the written signal:
+   memos → dirty + worklist; effects → pending; scopes → dirty.
+2. **Phase 2** — Drain worklist: for each memo, scan its output
+   signal's subscribers with the same classification.
+
+This is a **push-based eager** model: all transitive dirtiness is
+resolved immediately when the signal is written.
+
+The `memo_end_compute_*` methods write computed values directly to
+the `SignalStore` (bypassing `write_signal` to avoid re-entrant
+propagation). They clear the dirty flag and restore the reactive
+context — but they do NOT check whether the new value differs from
+the old one.
+
+The key insight is that `write_signal`'s eager propagation is a
+**pessimistic upper bound**: it marks everything that *could* be
+dirty. The equality check at recomputation time provides the
+**optimistic refinement**: it cancels dirtiness for subgraphs where
+the value didn't actually change.
+
+### P37 Target pattern
+
+After the fix, `memo_end_compute_*` checks whether the new value
+equals the old value. If unchanged, it clears dirty but does NOT
+propagate — and it **un-dirties** downstream subscribers that were
+eagerly marked by `write_signal`:
+
+```text
+Target behaviour (Phase 37):
+
+    signal count = 5
+    memo is_positive = count > 0        // true
+    memo label = is_positive ? "+" : "-" // "+"
+
+    count.set(10)
+      → is_positive marked dirty  ✓ (eager — may need recompute)
+      → label marked dirty        ✓ (eager — may need recompute)
+      → scope marked dirty        ✓ (eager — may need re-render)
+
+    flush (recompute in dependency order):
+      is_positive recomputes → true == true (unchanged!)
+        → label un-dirtied (equality gate cancels downstream)
+        → scope un-dirtied (equality gate cancels downstream)
+      label skipped (no longer dirty)
+      scope skipped (no longer dirty)
+      → zero mutations emitted
+```
+
+For apps like MemoChainApp, this means:
+
+```mojo
+# Phase 37: equality-gated — if doubled doesn't change,
+# is_big and label skip recomputation entirely.
+fn run_memos(mut self):
+    if self.doubled.is_dirty():
+        self.doubled.begin_compute()
+        var i = self.input.read()
+        self.doubled.end_compute(i * 2)
+        # If doubled computed the same value → is_big and label
+        # are automatically un-dirtied by the runtime.
+
+    if self.is_big.is_dirty():       # skipped if doubled unchanged
+        self.is_big.begin_compute()
+        var d = self.doubled.read()
+        self.is_big.end_compute(d >= 10)
+
+    if self.label.is_dirty():        # skipped if is_big unchanged
+        self.label.begin_compute()
+        var big = self.is_big.read()
+        self.label.end_compute(String("BIG") if big else String("small"))
+```
+
+No app-level code changes required — the equality gate is entirely
+inside `memo_end_compute_*`.
+
+### P37 Design
+
+#### Equality checking in `end_compute`
+
+Each `memo_end_compute_*` variant reads the old cached value from
+the output signal before writing the new one. If old == new, the
+memo is **value-stable**: its output didn't change despite its
+inputs being dirty.
+
+For the three memo types:
+
+| Type | Comparison | Storage |
+|------|-----------|---------|
+| `MemoI32` | `old_i32 == new_i32` | `signals.read[Int32](output_key)` |
+| `MemoBool` | `old_i32 == new_i32` (both stored as Int32 0/1) | `signals.read[Int32](output_key)` |
+| `MemoString` | `old_string == new_string` | `strings.read(string_key)` |
+
+The comparison is cheap: Int32 equality is a single instruction,
+and String equality short-circuits on length before comparing bytes.
+
+#### Un-dirtying downstream subscribers
+
+When a memo is value-stable, its output signal's subscribers were
+eagerly marked dirty by `write_signal` (Phase 36 worklist) but
+should NOT remain dirty. The runtime must **cancel** their dirtiness.
+
+The cancellation is a mirror of Phase 36's propagation: scan the
+stable memo's output signal subscribers and for each:
+
+- **Memo subscriber** → if dirty AND all of its input signals'
+  source memos are clean or value-stable, clear dirty. Add to an
+  **un-dirty worklist** to propagate cancellation further.
+- **Effect subscriber** → if pending AND all triggering memos are
+  stable, clear pending.
+- **Scope subscriber** → remove from `dirty_scopes`.
+
+The "all inputs stable" check is critical for diamond dependencies:
+
+```text
+Diamond: signal → memo A, signal → memo B, A+B → memo C
+
+Case 1: A stable, B changed → C stays dirty (correct)
+Case 2: A stable, B stable  → C un-dirtied (correct)
+Case 3: A changed, B stable → C stays dirty (correct)
+```
+
+#### Conservative un-dirtying (no "all inputs" check)
+
+The "all inputs stable" check is complex: it requires knowing all
+of a memo's input memos and whether each has been recomputed yet in
+this flush cycle. This is problematic because:
+
+1. Memos don't explicitly track their input memos — dependencies
+   are recorded as subscriber relationships on signals, not as
+   memo → memo edges.
+2. During flush, memos are recomputed in app-defined order, so some
+   upstream memos may not have been recomputed yet when a downstream
+   memo's un-dirtying is attempted.
+
+A simpler and fully correct approach: **do NOT un-dirty downstream
+memos eagerly. Instead, let the recomputation order handle it.**
+
+The key observation: apps already recompute memos in dependency
+order (upstream before downstream). If an upstream memo is
+value-stable, we skip writing its output signal, so when the
+downstream memo recomputes, it reads the **same old value** and
+will itself be value-stable (if its computation is pure). The
+equality check cascades naturally through the recomputation order.
+
+But this only saves the work of computing the downstream memo's
+body — it doesn't prevent the downstream memo from being dirty in
+the first place. The real win is skipping the **scope re-render and
+diff** when no memo output changed.
+
+#### Hybrid approach: selective un-dirtying
+
+The practical design:
+
+1. **`memo_end_compute_*` checks equality.** If value-stable:
+   - Clear dirty (as before).
+   - Call `_cancel_memo_dependents(memo_id)` to un-dirty
+     **direct downstream memos and effects only** (one level).
+   - Remove subscribed scopes from `dirty_scopes`.
+
+2. **`_cancel_memo_dependents` does NOT recurse.** It only processes
+   direct subscribers of the stable memo's output signal. This is
+   safe because:
+   - If a downstream memo is un-dirtied here but has OTHER dirty
+     sources, it will be re-dirtied when those sources' memos
+     recompute (they call `end_compute` which writes the output
+     signal, triggering subscriber notification).
+   - Wait — `end_compute` writes directly to `SignalStore`, not via
+     `write_signal`, so it does NOT re-notify subscribers. This is
+     by design (Phase 36).
+
+   Therefore, one-level un-dirtying is NOT safe for diamonds where
+   one parent changed and one didn't: the changed parent's
+   `end_compute` writes a new value but doesn't re-dirty the
+   downstream memo (because `end_compute` bypasses `write_signal`).
+
+3. **Resolution: recomputation-time re-dirtying.** When a memo
+   `end_compute` writes a **changed** value, it must re-dirty the
+   downstream memos that may have been un-dirtied by a stable
+   sibling. This means `end_compute` must:
+   - If value **changed**: propagate dirtiness to output subscribers
+     (mirrors `write_signal` Phase 2 logic, but only one level).
+   - If value **unchanged**: cancel dirtiness for output subscribers
+     (un-dirty one level).
+
+This is the correct and complete design:
+
+```text
+memo_end_compute(memo_id, new_value):
+    old_value = read output signal
+    write new_value to output signal
+    clear_dirty(memo_id)
+
+    if old_value == new_value:
+        # Value-stable: cancel downstream dirtiness
+        for sub in output_signal.subscribers:
+            if is_memo(sub) and is_dirty(sub):
+                clear_dirty(sub)       # un-dirty
+            if is_effect(sub) and is_pending(sub):
+                clear_pending(sub)     # un-pending
+            if is_scope(sub):
+                remove from dirty_scopes
+    else:
+        # Value changed: re-dirty downstream (in case a sibling
+        # stable memo un-dirtied them)
+        for sub in output_signal.subscribers:
+            if is_memo(sub) and not is_dirty(sub):
+                mark_dirty(sub)        # re-dirty
+            if is_effect(sub) and not is_pending(sub):
+                mark_pending(sub)      # re-pending
+            if is_scope(sub) and not in dirty_scopes:
+                add to dirty_scopes
+```
+
+Wait — Phase 36's `write_signal` already dirtied everything eagerly.
+If A is stable and un-dirties C, then B (which changed) must
+re-dirty C. But B's `end_compute` runs AFTER A's `end_compute` only
+if the app recomputes in the right order. Since memos are
+recomputed in dependency order (upstream first), and A and B are
+siblings (both direct children of the signal), their order is
+defined by code order in `run_memos()`. If A runs first and
+un-dirties C, then B runs and re-dirties C, this is correct. If B
+runs first (writes changed value, C was already dirty from Phase 36,
+no-op), then A runs and un-dirties C — WRONG! C should still be
+dirty because B changed.
+
+This shows that **one-level un-dirtying is order-dependent for
+diamonds**. The fix: A's un-dirty must check whether C has any OTHER
+dirty source memos before un-dirtying. But this requires the
+"all inputs stable" check we wanted to avoid.
+
+#### Final design: lazy equality (pull-based)
+
+The simplest correct design avoids un-dirtying entirely and instead
+uses **lazy equality** at the consumer side:
+
+1. `write_signal` eagerly marks all transitive memos dirty (Phase 36,
+   unchanged).
+
+2. `memo_end_compute_*` checks equality. Stores a `value_changed`
+   flag on the memo entry.
+   - If value **unchanged**: set `value_changed = False`.
+   - If value **changed**: set `value_changed = True`.
+   In both cases, clear `dirty` and write the value as before.
+
+3. In the flush loop, after recomputing all memos, add a
+   **settle pass**: walk the memo chain again and check which
+   scopes/effects actually need updating based on whether their
+   triggering memos had `value_changed = True`.
+
+Actually, this is still complex. Let's use the simplest correct
+approach:
+
+#### Simplest correct design: skip-if-unchanged in `end_compute`
+
+The minimal and fully correct design:
+
+1. `write_signal` remains unchanged (Phase 36 eager propagation).
+
+2. Each `memo_end_compute_*` variant compares old vs new value:
+   - If **unchanged**: clear dirty, restore context, but **do NOT
+     write to the output signal**. The output signal retains its
+     old value (which is the same). Since the output signal is not
+     written, and `end_compute` bypasses `write_signal`, no
+     subscribers are notified. The downstream memos remain dirty
+     from the Phase 36 eager propagation, but when they recompute,
+     they will read the same old value from this memo's output
+     signal and will themselves be value-stable (if pure). The
+     equality check cascades through the chain.
+   - If **changed**: write to the output signal as before. Clear
+     dirty, restore context. No additional propagation needed — the
+     eager Phase 36 propagation already marked everything dirty.
+
+3. **Scope un-dirtying**: After all memos are recomputed, if every
+   memo that a scope subscribes to was value-stable, the scope's
+   re-render will produce an identical VNode, and the diff will
+   emit zero mutations. This is wasted work but is a no-op in
+   practice (the diff is fast on identical VNodes).
+
+   For the full optimization (skip scope re-render entirely), add
+   a **settle check** after `run_memos()`: for each dirty scope,
+   check whether any of its triggering signals actually changed
+   version. If not, remove the scope from the dirty set. This is
+   Phase 37.2.
+
+4. **Effect un-pending**: Same principle — if the memo that an
+   effect reads was value-stable, the effect reads the same value
+   and its body is idempotent (presumably). But effects always
+   run when pending, so for correctness we let them run. A future
+   optimization could skip effects whose inputs are all stable.
+
+This design is:
+
+- **Correct for diamonds**: All downstream memos are dirty (from
+  Phase 36). They all recompute. If one parent changed and one
+  didn't, the downstream memo reads both outputs and computes a
+  potentially new value — equality check determines propagation.
+- **Correct for chains**: Each memo in order checks equality. If
+  stable, doesn't write output. Next memo reads old value, is also
+  stable. Cascades to the end.
+- **No un-dirtying logic**: Avoids the complex cancellation problem.
+  The "optimization" is simply skipping the output signal write,
+  which means downstream memos see the same value when they
+  recompute.
+- **Scope/effect savings**: The real CPU savings come from the
+  scope settle check (P37.2) which removes scopes from the dirty
+  set if their memo inputs were all value-stable.
+
+#### Scope of change
+
+- **`src/signals/memo.mojo`**: Add `value_changed: Bool` field to
+  `MemoEntry`. Default `True` (first compute always "changed").
+  Add `set_value_changed()` and `did_value_change()` accessors.
+
+- **`src/signals/runtime.mojo`**: Modify `memo_end_compute_i32`,
+  `memo_end_compute_bool`, `memo_end_compute_string` to compare
+  old vs new value before writing. Set `value_changed` accordingly.
+  If unchanged, skip the output signal write.
+
+  Add `settle_scopes()` method that walks `dirty_scopes` and removes
+  entries where all subscribing memos are value-stable (i.e.,
+  `did_value_change() == False`). This requires a reverse lookup:
+  for each scope, find which memos' output signals the scope
+  subscribes to, and check `value_changed` on each.
+
+  Simpler approach for `settle_scopes()`: walk dirty_scopes, for
+  each scope check if the scope's subscribed signals have changed
+  version since the last flush. Actually, the simplest correct
+  approach: for each dirty scope, check whether ANY signal it
+  subscribes to has a bumped version. If the scope subscribes to a
+  memo output signal that was NOT written (value-stable), that
+  signal's version is unchanged. If ALL subscribed signals have
+  unchanged versions, the scope can be un-dirtied.
+
+  Even simpler: track a `_changed_signals` set in the runtime during
+  the flush cycle. Each `memo_end_compute_*` that writes a changed
+  value adds the output_key to `_changed_signals`. Each
+  `write_signal` adds the written key. `settle_scopes()` checks
+  whether any of the scope's subscribed signals are in
+  `_changed_signals`.
+
+  Simplest of all: add a `flush_generation: UInt32` to the runtime,
+  bumped each flush. Add `last_change_gen: UInt32` to `SignalEntry`.
+  `write_signal` and value-changed `end_compute` set
+  `last_change_gen = flush_generation`. `settle_scopes()` checks
+  the scope's subscribed signals' `last_change_gen`.
+
+  For Phase 37, we'll use the `_changed_signals: List[UInt32]`
+  approach as it's the most straightforward.
+
+- **`src/main.mojo`**: Apps call `settle_scopes()` after
+  `run_memos()` in their flush functions. Add WASM export
+  `runtime_settle_scopes()`.
+
+  Alternatively, `settle_scopes()` is called automatically inside
+  `consume_dirty()` on the next flush, but that's too late — dirty
+  scopes are already consumed. Better: apps call it explicitly
+  between `run_memos()` and `render()`.
+
+  Best integration point: add it to `ComponentContext.consume_dirty()`
+  as an optional step, or provide a separate
+  `ctx.settle_after_memos()` method. For minimum disruption, expose
+  it as a runtime method and let apps opt in.
+
+  Actually, the cleanest integration: modify the existing
+  `_mc_flush` / `_em_flush` pattern to call settle after memos:
+
+  ```text
+  fn flush():
+      if not ctx.consume_dirty(): return 0
+      run_memos()
+      ctx.settle_scopes()    # NEW: remove scopes with no actual changes
+      run_effects()          # effects still run if pending
+      var new_idx = render()
+      ctx.diff(writer, new_idx)
+      return ctx.finalize(writer)
+  ```
+
+- **`src/component/context.mojo`**: Add `settle_scopes()` that
+  forwards to `runtime.settle_scopes()`.
+
+- **Tests**: New unit tests for equality checking at each memo type,
+  chain cascading, diamond correctness, scope settle, and effect
+  interaction. New EqualityDemoApp to demonstrate the optimization.
+
+- **No JS changes**: The TypeScript runtime is unaffected.
+
+### P37 Steps
+
+#### P37.1 — MemoEntry `value_changed` flag and equality checking
+
+Add the `value_changed` flag to `MemoEntry` and implement equality
+comparison in all three `memo_end_compute_*` variants.
+
+##### Mojo changes
+
+###### `src/signals/memo.mojo` — `MemoEntry` extension
+
+Add a `value_changed` field to `MemoEntry`:
+
+```mojo
+struct MemoEntry(Copyable, Equatable, Writable):
+    var context_id: UInt32
+    var output_key: UInt32
+    var string_key: UInt32
+    var scope_id: UInt32
+    var dirty: Bool
+    var computing: Bool
+    var value_changed: Bool     # NEW: True if last end_compute wrote a different value
+```
+
+Default to `True` in all constructors (first computation is always
+treated as a change — the initial value is "new" relative to the
+uninitialized state).
+
+Add accessors to `MemoStore`:
+
+```mojo
+fn set_value_changed(mut self, id: UInt32, changed: Bool):
+    """Set the value_changed flag after end_compute."""
+    ...
+
+fn did_value_change(self, id: UInt32) -> Bool:
+    """Check whether the last end_compute changed the value."""
+    ...
+```
+
+Update all `__init__`, `__copyinit__`, `__moveinit__` to include
+`value_changed`.
+
+###### `src/signals/runtime.mojo` — equality-gated `end_compute`
+
+Modify `memo_end_compute_i32`:
+
+```mojo
+fn memo_end_compute_i32(mut self, memo_id: UInt32, value: Int32):
+    if not self.memos.contains(memo_id):
+        return
+    var entry = self.memos.get(memo_id)
+    # Equality check: compare old vs new
+    var old_value = self.signals.read[Int32](entry.output_key)
+    var changed = (old_value != value)
+    if changed:
+        self.signals.write[Int32](entry.output_key, value)
+    self.memos.set_value_changed(memo_id, changed)
+    self.memos.clear_dirty(memo_id)
+    self.memos.set_computing(memo_id, False)
+    # Restore previous context
+    var prev = Int(self.signals.read[Int32](entry.context_id))
+    self.current_context = prev
+```
+
+Modify `memo_end_compute_bool`:
+
+```mojo
+fn memo_end_compute_bool(mut self, memo_id: UInt32, value: Bool):
+    if not self.memos.contains(memo_id):
+        return
+    var entry = self.memos.get(memo_id)
+    var val_i32: Int32
+    if value:
+        val_i32 = Int32(1)
+    else:
+        val_i32 = Int32(0)
+    # Equality check
+    var old_value = self.signals.read[Int32](entry.output_key)
+    var changed = (old_value != val_i32)
+    if changed:
+        self.signals.write[Int32](entry.output_key, val_i32)
+    self.memos.set_value_changed(memo_id, changed)
+    self.memos.clear_dirty(memo_id)
+    self.memos.set_computing(memo_id, False)
+    var prev = Int(self.signals.read[Int32](entry.context_id))
+    self.current_context = prev
+```
+
+Modify `memo_end_compute_string`:
+
+```mojo
+fn memo_end_compute_string(mut self, memo_id: UInt32, value: String):
+    if not self.memos.contains(memo_id):
+        return
+    var entry = self.memos.get(memo_id)
+    # Equality check: compare old string vs new string
+    var old_value = self.strings.read(entry.string_key)
+    var changed = (old_value != value)
+    if changed:
+        self.strings.write(entry.string_key, value)
+        # Bump version signal only when string actually changed
+        var ver = self.peek_signal[Int32](entry.output_key)
+        self.signals.write[Int32](entry.output_key, ver + 1)
+    self.memos.set_value_changed(memo_id, changed)
+    self.memos.clear_dirty(memo_id)
+    self.memos.set_computing(memo_id, False)
+    var prev = Int(self.signals.read[Int32](entry.context_id))
+    self.current_context = prev
+```
+
+Key detail for `MemoString`: the version signal is only bumped when
+the string actually changes. This is important because downstream
+subscribers track the version signal, not the string itself. If the
+version doesn't bump, downstream memos that `read()` the string
+memo will see the same version and won't be re-subscribed — but
+they were already eagerly marked dirty by Phase 36, so this doesn't
+affect correctness. The equality cascade works because the downstream
+memo reads the same string value and will itself be value-stable.
+
+Add `_changed_signals` tracking list to `Runtime`:
+
+```mojo
+var _changed_signals: List[UInt32]    # signal keys changed this flush cycle
+```
+
+In `write_signal`, after writing the value, add the key:
+
+```mojo
+fn write_signal[T: ...](mut self, key: UInt32, value: T):
+    self.signals.write[T](key, value)
+    self._changed_signals.append(key)
+    # ... existing propagation ...
+```
+
+In each `memo_end_compute_*`, when `changed` is True, add the
+output key:
+
+```mojo
+if changed:
+    self.signals.write[Int32](entry.output_key, value)
+    self._changed_signals.append(entry.output_key)
+```
+
+Add `clear_changed_signals()` to reset at the start of each flush:
+
+```mojo
+fn clear_changed_signals(mut self):
+    """Reset the changed-signals set.  Call at the start of each flush."""
+    self._changed_signals = List[UInt32]()
+```
+
+Add a WASM export `runtime_clear_changed_signals(rt_ptr)` (or
+integrate into `consume_dirty`). Best approach: call it
+automatically at the start of `drain_dirty()`:
+
+```mojo
+fn drain_dirty(mut self) -> List[UInt32]:
+    self._changed_signals = List[UInt32]()  # reset for this cycle
+    var result = self.dirty_scopes^
+    self.dirty_scopes = List[UInt32]()
+    return result^
+```
+
+Add a query method:
+
+```mojo
+fn signal_changed_this_cycle(self, key: UInt32) -> Bool:
+    """Check whether a signal was written with a new value this flush."""
+    for i in range(len(self._changed_signals)):
+        if self._changed_signals[i] == key:
+            return True
+    return False
+```
+
+Add `memo_did_value_change(memo_id) -> Bool` WASM export forwarding
+to `memos.did_value_change(memo_id)`.
+
+##### WASM exports (in `src/main.mojo`)
+
+```mojo
+@export
+fn memo_did_value_change(rt_ptr: Int64, memo_id: Int32) -> Int32:
+    """Check whether the last end_compute changed the memo's value."""
+    var rt = _get[Runtime](rt_ptr)
+    if rt[0].memos.did_value_change(UInt32(memo_id)):
+        return Int32(1)
+    return Int32(0)
+```
+
+##### Test: `test/test_memo_equality.mojo` (~22 tests)
+
+New test module for equality-gated memo behaviour. Uses the same
+`WasmInstance` + WASM harness pattern.
+
+Tests:
+
+1. **test_i32_same_value_no_change** — Create memo, compute with
+   value 42, compute again with 42. Assert `did_value_change` is
+   False on second compute.
+2. **test_i32_different_value_changed** — Compute with 42, then 43.
+   Assert `did_value_change` is True.
+3. **test_i32_initial_compute_changed** — First compute (value 0,
+   initial is 0). Assert `did_value_change` is True (first compute
+   always treated as change).
+4. **test_bool_same_value_no_change** — MemoBool compute True, then
+   True again. Assert not changed.
+5. **test_bool_different_value_changed** — MemoBool compute True,
+   then False. Assert changed.
+6. **test_bool_false_to_false_no_change** — MemoBool False → False.
+   Assert not changed.
+7. **test_string_same_value_no_change** — MemoString compute "hello",
+   then "hello" again. Assert not changed.
+8. **test_string_different_value_changed** — MemoString "hello" then
+   "world". Assert changed.
+9. **test_string_empty_to_empty_no_change** — MemoString "" → "".
+   Assert not changed.
+10. **test_string_version_not_bumped_when_stable** — MemoString
+    compute "hello" then "hello". Read the version signal before and
+    after. Assert version unchanged.
+11. **test_string_version_bumped_when_changed** — MemoString "hello"
+    then "world". Assert version bumped.
+12. **test_chain_cascade_stable** — signal(5) → memo_a(×2=10) →
+    memo_b(>0 = true). Write signal(5) (same value via
+    `write_signal`). Recompute memo_a → 10 == 10, stable. Recompute
+    memo_b → true == true, stable. Assert both `did_value_change`
+    False.
+13. **test_chain_cascade_changed** — signal(5) → memo_a(×2) →
+    memo_b(>10). Initial: a=10, b=false. Write signal(6). Recompute
+    a → 12 (changed). Recompute b → true (changed). Assert both
+    `did_value_change` True.
+14. **test_chain_partial_cascade** — signal(5) → memo_a(×2=10) →
+    memo_b(≥10 = true). Write signal(6). Recompute a → 12 (changed).
+    Recompute b → true (still true, stable). Assert a changed, b not
+    changed.
+15. **test_diamond_one_parent_changed** — signal → memo_a(×2),
+    signal → memo_b(+0, always same). Both feed memo_c(a + b).
+    Write signal(new value). Recompute a (changed), b (stable), c.
+    Assert c is dirty and recomputes correctly.
+16. **test_diamond_both_parents_stable** — signal → memo_a, memo_b.
+    Write same value to signal. Recompute a (stable), b (stable).
+    Assert c's inputs are unchanged, c recomputes to same value,
+    c is stable.
+17. **test_diamond_both_parents_changed** — Write different value.
+    Recompute a (changed), b (changed), c (changed). Assert all
+    `did_value_change` True.
+18. **test_changed_signals_tracking** — Write signal, assert it
+    appears in changed_signals. Memo end_compute with changed value,
+    assert output_key in changed_signals. Memo end_compute with
+    same value, assert output_key NOT in changed_signals.
+19. **test_changed_signals_reset_on_drain** — Write signal, drain
+    dirty, assert changed_signals is empty (reset happened).
+20. **test_mixed_type_chain_cascade** — signal(I32) → MemoI32 →
+    MemoBool → MemoString. Write same value. Recompute chain.
+    Assert all three stable.
+21. **test_mixed_type_chain_partial** — signal(I32=5) → doubled(10)
+    → is_big(true) → label("BIG"). Write signal(6) → doubled(12,
+    changed) → is_big(true, stable) → label("BIG", stable). Assert
+    doubled changed, is_big stable, label stable.
+22. **test_regression_changed_flag_reset** — Compute memo (changed),
+    then recompute with same value (stable), then recompute with
+    different value (changed). Assert flag toggles correctly across
+    multiple recomputations.
+
+#### P37.2 — Scope settle pass
+
+Add `settle_scopes()` to the runtime, which removes dirty scopes
+whose subscribed signals were all value-stable (not in
+`_changed_signals`).
+
+##### Mojo changes
+
+###### `src/signals/runtime.mojo` — `settle_scopes()`
+
+```mojo
+fn settle_scopes(mut self):
+    """Remove dirty scopes whose subscribed signals all have unchanged values.
+
+    After memo recomputation, some scopes may have been eagerly marked
+    dirty (Phase 36) but none of their subscribed signals actually
+    changed value.  This method checks each dirty scope and removes
+    those where no subscribed signal is in _changed_signals.
+
+    Call after run_memos() and before render() to skip unnecessary
+    re-renders.
+    """
+    var settled = List[UInt32]()
+    for i in range(len(self.dirty_scopes)):
+        var scope_id = self.dirty_scopes[i]
+        var any_changed = False
+        # Check all signals — if this scope subscribes to any signal
+        # that changed this cycle, keep it dirty.
+        for s in range(len(self.signals._entries)):
+            if s < len(self.signals._states) and self.signals._states[s].occupied:
+                var subs = self.signals._entries[s].subscribers
+                var tagged = scope_id | SCOPE_CONTEXT_TAG
+                for k in range(len(subs)):
+                    if subs[k] == tagged:
+                        # This scope subscribes to signal s.
+                        # Check if signal s changed this cycle.
+                        if self.signal_changed_this_cycle(UInt32(s)):
+                            any_changed = True
+                            break
+                if any_changed:
+                    break
+        if not any_changed:
+            settled.append(scope_id)
+    # Remove settled scopes from dirty_scopes
+    var new_dirty = List[UInt32]()
+    for i in range(len(self.dirty_scopes)):
+        var sid = self.dirty_scopes[i]
+        var is_settled = False
+        for j in range(len(settled)):
+            if settled[j] == sid:
+                is_settled = True
+                break
+        if not is_settled:
+            new_dirty.append(sid)
+    self.dirty_scopes = new_dirty^
+```
+
+Note: This scans all signals × dirty scopes, which is O(S × D)
+where S = total signals, D = dirty scopes. Both are small in
+practice (S < 100, D < 10 for typical apps). For production use,
+a more efficient reverse index (scope → subscribed signals) could
+be maintained, but for Phase 37 the linear scan is acceptable and
+avoids adding new data structures.
+
+Actually, a more efficient approach: for each dirty scope, check
+only the signals that the scope actually subscribes to. We can find
+those by scanning signal subscribers for the tagged scope ID. But
+this is still O(S) per scope.
+
+Better: maintain a `_scope_subscriptions: Dict[UInt32, List[UInt32]]`
+mapping scope_id → list of signal keys it subscribes to. But Mojo
+doesn't have Dict, and adding a parallel data structure is complex.
+
+For Phase 37, use the O(S × D) scan. It runs once per flush and
+is bounded by the (small) number of signals and dirty scopes in
+typical applications. Profile in Phase 38 if needed.
+
+Alternative simpler approach: instead of scanning all signals,
+scan only `_changed_signals` and check if any dirty scope subscribes
+to a changed signal:
+
+```mojo
+fn settle_scopes(mut self):
+    """Remove dirty scopes that don't subscribe to any changed signal."""
+    if len(self._changed_signals) == 0:
+        # No signals changed → all scopes are settled
+        self.dirty_scopes = List[UInt32]()
+        return
+    # Build set of scopes that subscribe to changed signals
+    var keep = List[UInt32]()
+    for i in range(len(self._changed_signals)):
+        var sig_key = self._changed_signals[i]
+        if Int(sig_key) >= len(self.signals._entries):
+            continue
+        if not self.signals._states[Int(sig_key)].occupied:
+            continue
+        var subs = self.signals._entries[Int(sig_key)].subscribers
+        for k in range(len(subs)):
+            var ctx = subs[k]
+            if (ctx & SCOPE_CONTEXT_TAG) != 0:
+                var scope_id = ctx & ~SCOPE_CONTEXT_TAG
+                # Check if this scope is in dirty_scopes
+                for d in range(len(self.dirty_scopes)):
+                    if self.dirty_scopes[d] == scope_id:
+                        # Keep this scope dirty
+                        var already = False
+                        for j in range(len(keep)):
+                            if keep[j] == scope_id:
+                                already = True
+                                break
+                        if not already:
+                            keep.append(scope_id)
+                        break
+    self.dirty_scopes = keep^
+```
+
+This is O(C × avg_subscribers × D) where C = changed signals (small),
+avg_subscribers is typically 1–3, and D = dirty scopes (small).
+Much more efficient than scanning all signals.
+
+Use this approach.
+
+###### `src/component/context.mojo` — `settle_scopes()` wrapper
+
+```mojo
+fn settle_scopes(mut self):
+    """Remove dirty scopes with no actual signal changes.
+
+    Call after run_memos() to skip re-renders for scopes whose
+    memo inputs were value-stable.
+    """
+    self.runtime()[0].settle_scopes()
+```
+
+Where `runtime()` returns the runtime pointer (already available
+via the AppShell or however ComponentContext accesses the runtime).
+
+###### `src/component/app_shell.mojo` — `settle_scopes()` wrapper
+
+```mojo
+fn settle_scopes(mut self):
+    """Remove dirty scopes with no actual signal changes."""
+    self.rt[0].settle_scopes()
+```
+
+##### WASM exports (in `src/main.mojo`)
+
+```mojo
+@export
+fn runtime_settle_scopes(rt_ptr: Int64):
+    """Remove dirty scopes whose signals didn't actually change."""
+    _get[Runtime](rt_ptr)[0].settle_scopes()
+```
+
+For app-level exports, each app that has memos can expose a settle
+step. But since `settle_scopes` operates on the runtime directly
+and apps already share the runtime through ComponentContext, apps
+just call `ctx.settle_scopes()` in their flush functions. No
+per-app WASM export needed.
+
+##### Test: `test/test_scope_settle.mojo` (~16 tests)
+
+New test module for scope settling behaviour.
+
+Tests:
+
+1. **test_settle_removes_scope_when_no_change** — signal → memo,
+   scope subscribes to memo output. Write same value to signal.
+   Recompute memo (stable). Call settle_scopes. Assert dirty_scopes
+   is empty.
+2. **test_settle_keeps_scope_when_changed** — Write different value.
+   Recompute memo (changed). Settle. Assert scope still dirty.
+3. **test_settle_mixed_scopes** — scope_a subscribes to stable memo,
+   scope_b subscribes to changed memo. Settle. Assert scope_a
+   removed, scope_b kept.
+4. **test_settle_scope_subscribes_to_signal** — scope subscribes
+   directly to a signal (no memo). Write signal (changed). Settle.
+   Assert scope kept (signal is in _changed_signals).
+5. **test_settle_scope_subscribes_to_both** — scope subscribes to
+   stable memo AND changed signal. Settle. Assert scope kept
+   (changed signal keeps it dirty).
+6. **test_settle_no_dirty_scopes** — No dirty scopes. Settle.
+   Assert no crash, dirty_scopes still empty.
+7. **test_settle_all_stable** — Multiple scopes, all subscribe to
+   stable memos. Settle. Assert all removed.
+8. **test_settle_no_changed_signals** — Dirty scopes exist but
+   _changed_signals is empty (possible after drain_dirty reset +
+   no writes). Settle. Assert all scopes removed.
+9. **test_settle_chain_cascade** — signal → A → B → C, scope at end.
+   Write same value. Recompute A (stable), B (stable), C (stable).
+   Settle. Assert scope removed.
+10. **test_settle_chain_partial** — signal → A → B, scope subscribes
+    to B. Write new value. Recompute A (changed), B (stable).
+    Settle. Assert scope removed (B's output didn't change).
+11. **test_settle_chain_changed** — signal → A → B, scope subscribes
+    to B. Write value that changes through chain. Recompute A
+    (changed), B (changed). Settle. Assert scope kept.
+12. **test_settle_diamond_one_stable** — signal → A, B. C reads
+    A + B. Scope subscribes to C. A stable, B changed, C changed.
+    Settle. Assert scope kept.
+13. **test_settle_with_direct_signal_sub** — scope subscribes to
+    raw signal (no memo). Signal is written. Settle. Assert scope
+    kept (signal write is in _changed_signals).
+14. **test_settle_effect_not_affected** — Verify settle_scopes does
+    not affect effect pending state. Effect is pending, memo was
+    stable. After settle, effect still pending (settle only affects
+    scopes).
+15. **test_settle_idempotent** — Call settle twice. Assert same
+    result (no crash, no double-removal).
+16. **test_regression_settle_after_no_memos** — App has signals and
+    scopes but no memos. Write signal. Settle. Assert scope kept
+    (signal change is tracked).
+
+#### P37.3 — EqualityDemoApp
+
+A demo app that demonstrates the equality gate in action. Uses a
+chain where an intermediate memo frequently stabilizes, showing
+that downstream memos and scopes skip unnecessary work.
+
+##### App structure: EqualityDemo
+
+```text
+  signal input (Int32, starts at 0)
+  memo clamped = clamp(input, 0, 10)     // MemoI32
+  memo label = clamped > 5 ? "high" : "low"  // MemoString
+
+  UI:
+    <div>
+      <h1>Equality Gate</h1>
+      <button onclick="+1">+ 1</button>
+      <button onclick="-1">- 1</button>
+      <p>Input: {input}</p>
+      <p>Clamped: {clamped}</p>
+      <p>Label: {label}</p>
+    </div>
+```
+
+Interesting behaviour:
+
+- Input 0→1: clamped 0→1 (changed), label "low"→"low" (stable!)
+- Input 5→6: clamped 5→6 (changed), label "low"→"high" (changed)
+- Input 10→11: clamped 10→10 (stable!), label "high"→"high" (stable!)
+- Input 11→12: clamped 10→10 (stable!), label "high"→"high" (stable!)
+
+When input exceeds 10, the entire downstream chain is value-stable —
+zero wasted recomputation.
+
+##### Mojo implementation (`src/main.mojo`)
+
+```mojo
+struct EqualityDemoApp(Movable):
+    var ctx: ComponentContext
+    var input: _SignalI32
+    var clamped: MemoI32
+    var label: MemoString
+    var incr_handler: UInt32
+    var decr_handler: UInt32
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.input = self.ctx.use_signal(0)
+        self.clamped = self.ctx.use_memo(0)
+        self.label = self.ctx.use_memo_string(String("low"))
+        # ... setup_view with el_div, buttons, paragraphs ...
+        self.incr_handler = self.ctx.view_event_handler_id(0)
+        self.decr_handler = self.ctx.view_event_handler_id(1)
+
+    fn run_memos(mut self):
+        if self.clamped.is_dirty():
+            self.clamped.begin_compute()
+            var i = self.input.read()
+            var c = i
+            if c < 0: c = 0
+            if c > 10: c = 10
+            self.clamped.end_compute(c)
+
+        if self.label.is_dirty():
+            self.label.begin_compute()
+            var c = self.clamped.read()
+            if c > 5:
+                self.label.end_compute(String("high"))
+            else:
+                self.label.end_compute(String("low"))
+
+    fn render(mut self) -> UInt32:
+        var vb = self.ctx.render_builder()
+        vb.add_dyn_text(String("Input: ") + String(self.input.peek()))
+        vb.add_dyn_text(String("Clamped: ") + String(self.clamped.peek()))
+        vb.add_dyn_text(String("Label: ") + self.label.peek())
+        return vb.build()
+```
+
+WASM exports follow the established `eq_` prefix pattern:
+`eq_init`, `eq_destroy`, `eq_rebuild`, `eq_handle_event`, `eq_flush`,
+`eq_input_value`, `eq_clamped_value`, `eq_label_text`,
+`eq_clamped_dirty`, `eq_label_dirty`, `eq_clamped_changed`,
+`eq_label_changed`, `eq_incr_handler`, `eq_decr_handler`,
+`eq_has_dirty`, `eq_scope_count`, `eq_memo_count`.
+
+##### TypeScript handle
+
+```typescript
+interface EqualityDemoAppHandle {
+  init(): bigint;
+  destroy(app: bigint): void;
+  rebuild(app: bigint, writer: bigint): number;
+  handleEvent(app: bigint, handlerId: number, eventType: number): boolean;
+  flush(app: bigint, writer: bigint): number;
+  inputValue(app: bigint): number;
+  clampedValue(app: bigint): number;
+  labelText(app: bigint): string;
+  clampedDirty(app: bigint): boolean;
+  labelDirty(app: bigint): boolean;
+  clampedChanged(app: bigint): boolean;
+  labelChanged(app: bigint): boolean;
+  incrHandler(app: bigint): number;
+  decrHandler(app: bigint): number;
+  hasDirty(app: bigint): boolean;
+  scopeCount(app: bigint): number;
+  memoCount(app: bigint): number;
+}
+```
+
+##### Test: `test/test_equality_demo.mojo` (~20 tests)
+
+1. **test_eq_initial_state** — input=0, clamped=0, label="low".
+2. **test_eq_incr_within_range** — input 0→1, clamped 0→1 (changed),
+   label "low"→"low" (stable). Assert clamped_changed=True,
+   label_changed=False.
+3. **test_eq_incr_across_threshold** — input 5→6, clamped 5→6
+   (changed), label "low"→"high" (changed).
+4. **test_eq_incr_at_max** — input 10→11, clamped 10→10 (stable),
+   label "high"→"high" (stable). Assert clamped_changed=False,
+   label_changed=False.
+5. **test_eq_incr_above_max** — input 15→16, clamped 10→10 (stable).
+6. **test_eq_decr_within_range** — input 5→4, clamped 5→4 (changed),
+   label "low"→"low" (stable).
+7. **test_eq_decr_across_threshold** — input 6→5, clamped 6→5
+   (changed), label "high"→"low" (changed).
+8. **test_eq_decr_at_min** — input 0→-1, clamped 0→0 (stable).
+9. **test_eq_decr_below_min** — input -5→-6, clamped 0→0 (stable).
+10. **test_eq_full_cycle** — increment from 0 to 12, then decrement
+    back to 0. Verify clamped stabilizes outside [0,10], label
+    stabilizes within each side of threshold.
+11. **test_eq_label_dirty_after_clamped_stable** — After clamp
+    stabilizes, assert label is NOT dirty (equality cascade).
+12. **test_eq_scope_settled_when_all_stable** — After incr above
+    max, run_memos + settle_scopes. Assert dirty_scopes empty.
+13. **test_eq_scope_dirty_when_label_changed** — After incr across
+    threshold, run_memos + settle_scopes. Assert scope still dirty.
+14. **test_eq_flush_returns_zero_when_stable** — Flush after incr
+    above max. Assert 0 bytes returned (no mutations).
+15. **test_eq_flush_returns_nonzero_when_changed** — Flush after
+    incr across threshold. Assert > 0 bytes.
+16. **test_eq_handle_event_marks_dirty** — dispatch incr event.
+    Assert has_dirty True.
+17. **test_eq_memo_count** — Assert memo_count == 2.
+18. **test_eq_destroy_clean** — Destroy app, no crash.
+19. **test_eq_initial_compute_all_changed** — After first rebuild,
+    both memos report value_changed True (initial compute).
+20. **test_eq_consecutive_stable_flushes** — Multiple increments
+    above max, each flush returns 0 (stable chain, no mutations).
+
+##### Test: `test-js/equality_demo.test.ts` (~22 suites)
+
+JS-side integration tests mirroring the Mojo tests, exercising the
+full WASM → JS → DOM pipeline:
+
+1. **init and destroy** — lifecycle smoke test.
+2. **initial render** — correct DOM content after rebuild.
+3. **increment within range** — DOM updates for input and clamped,
+   label unchanged.
+4. **increment across threshold** — DOM updates for all three.
+5. **increment at max (clamped stable)** — only input DOM updates.
+6. **increment above max (chain stable)** — only input DOM updates.
+7. **decrement within range** — DOM updates for input and clamped.
+8. **decrement across threshold** — all three update.
+9. **decrement at min (clamped stable)** — only input updates.
+10. **clamped_changed after stable** — assert eq_clamped_changed
+    returns 0.
+11. **label_changed after stable** — assert eq_label_changed
+    returns 0.
+12. **clamped_changed after value change** — returns 1.
+13. **label_changed after value change** — returns 1.
+14. **flush returns 0 when stable** — verify zero-byte flush.
+15. **flush returns nonzero when changed** — verify non-zero flush.
+16. **multiple stable flushes** — 5 increments above max, each
+    flush is zero-byte.
+17. **full cycle round-trip** — increment 0→12, decrement 12→0,
+    verify all intermediate states.
+18. **scope count** — 1.
+19. **memo count** — 2.
+20. **dirty state after event** — has_dirty returns true.
+21. **dirty state after stable flush** — has_dirty returns false.
+22. **destroy is clean** — no errors after destroy.
+
+#### P37.4 — Update existing apps to use `settle_scopes()`
+
+Update all apps with memo chains to call `ctx.settle_scopes()`
+after `run_memos()` in their flush functions. This is a one-line
+addition per app.
+
+##### Mojo changes
+
+###### `src/main.mojo` — flush functions
+
+Update `_mc_flush` (MemoChainApp):
+
+```mojo
+fn _mc_flush(...) -> Int32:
+    if not app[0].ctx.consume_dirty():
+        return 0
+    app[0].run_memos()
+    app[0].ctx.settle_scopes()    # NEW
+    var new_idx = app[0].render()
+    app[0].ctx.diff(writer_ptr, new_idx)
+    return app[0].ctx.finalize(writer_ptr)
+```
+
+Update `_em_flush` (EffectMemoApp):
+
+```mojo
+fn _em_flush(...) -> Int32:
+    if not app[0].ctx.consume_dirty():
+        return 0
+    app[0].run_memos_and_effects()
+    app[0].ctx.settle_scopes()    # NEW
+    var new_idx = app[0].render()
+    app[0].ctx.diff(writer_ptr, new_idx)
+    return app[0].ctx.finalize(writer_ptr)
+```
+
+Update `_mf_flush` (MemoFormApp) similarly.
+
+Note: `settle_scopes()` is called AFTER `run_memos()` (and
+`run_effects()` if applicable) because memos must be recomputed
+first to determine which output signals changed. Effects that write
+signals also add to `_changed_signals`. Only after all reactive
+computations are done can we safely determine which scopes actually
+need re-rendering.
+
+For apps without memos (CounterApp, TodoApp, BenchmarkApp), no
+change is needed — they don't have equality-gated chains and their
+scopes are dirty because signals changed directly.
+
+##### Test updates
+
+Add tests to existing app test suites verifying the settle
+optimization:
+
+**test/test_memo_chain.mojo** — 2 new tests:
+
+- **test_mc_stable_chain_no_rerender** — Set input to value that
+  produces the same doubled result (e.g., if doubled is clamped or
+  if input didn't change). Flush. Assert 0 bytes (settled).
+- **test_mc_settle_after_memos** — After run_memos where all memos
+  stable, assert has_dirty is False (scopes settled).
+
+**test-js/memo_chain.test.ts** — 2 new suites:
+
+- **stable chain produces zero-byte flush** — same pattern in JS.
+- **settled scope count** — after stable flush, scope count
+  unchanged, no DOM mutations.
+
+#### P37.5 — Documentation & AGENTS.md update
+
+##### Changes
+
+**AGENTS.md:**
+
+- **Common Patterns:** Add "Equality-gated memo propagation" pattern
+  describing the skip-if-unchanged optimization in `end_compute`
+  and the `settle_scopes()` flush integration.
+- **Common Patterns:** Update "Effect + memo chain pattern" to
+  mention that `settle_scopes()` should be called after memo
+  recomputation and effect execution.
+- **EqualityDemoApp architecture:** Add to App Architectures section
+  with the clamped + threshold memo chain example.
+- **File Size Reference:** Update line counts for `memo.mojo`,
+  `runtime.mojo`, `context.mojo`, `app_shell.mojo`, `main.mojo`.
+
+**CHANGELOG.md:**
+
+- Add Phase 37 entry summarizing P37.1 (equality checking),
+  P37.2 (scope settle), P37.3 (demo app), P37.4 (existing app
+  updates), P37.5 (docs). Include test count delta.
+
+**README.md:**
+
+- Update test count.
+- Add "Equality-gated memo propagation" to Features list.
+- Update MemoChainApp code example to mention that equality checking
+  cascades through the chain automatically.
+- Add EqualityDemoApp to the app list with a brief description.
+
+### P37 Dependency graph
+
+```text
+P37.1 (MemoEntry flag + equality in end_compute + changed_signals tracking)
+    │
+    ├──► P37.2 (settle_scopes — depends on _changed_signals)
+    │        │
+    │        ├──► P37.4 (Update existing apps — depends on settle_scopes)
+    │        │
+    │        └──► P37.3 (EqualityDemoApp — depends on equality + settle)
+    │                 │
+    └─────────────────┘
+                      │
+                      ▼
+                  P37.5 (Docs — depends on all above)
+```
+
+P37.1 must land first (equality checking + changed_signals).
+P37.2 depends on P37.1 (uses `_changed_signals`).
+P37.3 and P37.4 both depend on P37.2 (use `settle_scopes`).
+P37.3 and P37.4 are independent of each other.
+P37.5 depends on all above.
+
+### P37 Estimated size
+
+| Step | ~Changed Mojo Lines | ~New Mojo Lines | ~New TS Lines | Tests |
+|------|--------------------|-----------------| --------------|-------|
+| P37.1 (MemoEntry + equality + tests) | ~80 (end_compute refactor) | ~650 | ~0 | 22 Mojo |
+| P37.2 (settle_scopes + tests) | ~20 (runtime + context) | ~500 | ~0 | 16 Mojo |
+| P37.3 (EqualityDemoApp + tests) | ~0 | ~400 | ~300 | 20 Mojo + 22 JS |
+| P37.4 (existing app updates + tests) | ~15 (flush functions) | ~50 | ~30 | 2 Mojo + 2 JS |
+| P37.5 (docs) | ~0 | ~80 | ~0 | 0 |
+| **Total** | **~115** | **~1,680** | **~330** | **60 Mojo + 24 JS = 84 tests** |

@@ -408,6 +408,19 @@ struct AppShell(Movable):
             _ = self.next_dirty()
         return True
 
+    fn settle_scopes(mut self):
+        """Remove dirty scopes with no actual signal changes.
+
+        After memo recomputation, some scopes may have been eagerly
+        marked dirty (Phase 36) but none of their subscribed signals
+        actually changed value.  This method checks each dirty scope
+        and removes those where no subscribed signal changed.
+
+        Call after run_memos() and before render() to skip unnecessary
+        re-renders.
+        """
+        self.runtime[0].settle_scopes()
+
     # ── Fragment flush ───────────────────────────────────────────────
 
     fn flush_fragment(

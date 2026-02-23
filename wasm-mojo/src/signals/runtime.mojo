@@ -475,6 +475,12 @@ struct Runtime(Movable):
     # effects run after rendering, not during).
     var _effect_ctx_ids: List[UInt32]  # context IDs that belong to effects
     var _effect_ids: List[UInt32]  # corresponding effect IDs
+    # Changed-signals tracking for equality-gated memo propagation (Phase 37).
+    # Accumulates signal keys whose values actually changed during a flush
+    # cycle.  Populated by write_signal (source signals always change) and
+    # memo_end_compute_* (only when new != old).  Used by settle_scopes()
+    # to remove scopes whose subscribed signals are all value-stable.
+    var _changed_signals: List[UInt32]
 
     # ── Construction ─────────────────────────────────────────────────
 
@@ -494,6 +500,7 @@ struct Runtime(Movable):
         self._memo_ids = List[UInt32]()
         self._effect_ctx_ids = List[UInt32]()
         self._effect_ids = List[UInt32]()
+        self._changed_signals = List[UInt32]()
 
     fn __moveinit__(out self, deinit other: Self):
         self.signals = other.signals^
@@ -511,6 +518,7 @@ struct Runtime(Movable):
         self._memo_ids = other._memo_ids^
         self._effect_ctx_ids = other._effect_ctx_ids^
         self._effect_ids = other._effect_ids^
+        self._changed_signals = other._changed_signals^
 
     # ── Context management ───────────────────────────────────────────
 
@@ -588,6 +596,7 @@ struct Runtime(Movable):
             termination (each memo processed at most once per call).
         """
         self.signals.write[T](key, value)
+        self._changed_signals.append(key)
 
         var memo_worklist = List[UInt32]()
         var subs = self.signals.get_subscribers(key)
@@ -864,6 +873,91 @@ struct Runtime(Movable):
                 break
         if not found:
             self.dirty_scopes.append(scope_id)
+
+    # ── Changed-signals tracking (Phase 37) ──────────────────────────
+
+    fn signal_changed_this_cycle(self, key: UInt32) -> Bool:
+        """Check whether a signal was written with a new value this flush cycle.
+
+        Returns True if `key` appears in `_changed_signals`, meaning
+        either `write_signal` wrote it (source signal) or a memo's
+        `end_compute` wrote a changed value to it (memo output signal).
+        """
+        for i in range(len(self._changed_signals)):
+            if self._changed_signals[i] == key:
+                return True
+        return False
+
+    fn clear_changed_signals(mut self):
+        """Reset the changed-signals set.
+
+        Called at the end of `settle_scopes()` to prepare for the next
+        flush cycle.  Can also be called manually in tests.
+        """
+        self._changed_signals = List[UInt32]()
+
+    fn settle_scopes(mut self):
+        """Remove dirty scopes whose subscribed signals all have unchanged values.
+
+        After memo recomputation, some scopes may have been eagerly marked
+        dirty (Phase 36) but none of their subscribed signals actually
+        changed value.  This method checks each dirty scope and removes
+        those where no subscribed signal is in `_changed_signals`.
+
+        Call after `run_memos()` and before `render()` to skip unnecessary
+        re-renders.
+
+        Algorithm: scan `_changed_signals` and collect scope IDs that
+        subscribe to at least one changed signal.  Replace `dirty_scopes`
+        with only those scopes.  This is O(C × avg_subscribers × D) where
+        C = changed signals (small), avg_subscribers ≈ 1–3, D = dirty
+        scopes (small).  Much more efficient than scanning all signals.
+        """
+        if len(self._changed_signals) == 0:
+            # No signals changed at all → all scopes are settled
+            self.dirty_scopes = List[UInt32]()
+            self._changed_signals = List[UInt32]()
+            return
+
+        if len(self.dirty_scopes) == 0:
+            # No dirty scopes to settle
+            self._changed_signals = List[UInt32]()
+            return
+
+        # Build set of scopes that subscribe to at least one changed signal
+        var keep = List[UInt32]()
+        for i in range(len(self._changed_signals)):
+            var sig_key = self._changed_signals[i]
+            if Int(sig_key) >= len(self.signals._entries):
+                continue
+            if not self.signals._states[Int(sig_key)].occupied:
+                continue
+            var num_subs = len(self.signals._entries[Int(sig_key)].subscribers)
+            for k in range(num_subs):
+                var ctx = self.signals._entries[Int(sig_key)].subscribers[k]
+                if (ctx & SCOPE_CONTEXT_TAG) != 0:
+                    var scope_id = ctx & ~SCOPE_CONTEXT_TAG
+                    # Check if this scope is in dirty_scopes
+                    for d in range(len(self.dirty_scopes)):
+                        if self.dirty_scopes[d] == scope_id:
+                            # Keep this scope dirty — deduplicate
+                            var already = False
+                            for j in range(len(keep)):
+                                if keep[j] == scope_id:
+                                    already = True
+                                    break
+                            if not already:
+                                keep.append(scope_id)
+                            break
+        self.dirty_scopes = keep^
+        self._changed_signals = List[UInt32]()
+
+    fn memo_did_value_change(self, memo_id: UInt32) -> Bool:
+        """Check whether the last end_compute changed the memo's value.
+
+        Forwarding method for WASM exports and tests.
+        """
+        return self.memos.did_value_change(memo_id)
 
     # ── Scope management ─────────────────────────────────────────────
 
@@ -1258,14 +1352,28 @@ struct Runtime(Movable):
 
         Writes the computed value to the memo's output signal and clears
         the dirty flag.  Restores the previous reactive context.
+
+        Phase 37 equality gate: compares old vs new value before writing.
+        If the value is unchanged (value-stable), the output signal is
+        NOT written, so downstream memos that read it will see the same
+        value and can themselves be value-stable.  The `value_changed`
+        flag records whether the value actually changed; `_changed_signals`
+        is updated only when it did.
         """
         if not self.memos.contains(memo_id):
             return
         var entry = self.memos.get(memo_id)
-        # Store the result in the output signal (does NOT trigger dirty
-        # propagation through write_signal — we write directly to avoid
-        # recursive memo updates during computation).
-        self.signals.write[Int32](entry.output_key, value)
+        # Equality check: compare old cached value vs new computed value
+        var old_value = self.signals.read[Int32](entry.output_key)
+        var changed = old_value != value
+        if changed:
+            # Value changed — write to output signal (does NOT trigger
+            # dirty propagation through write_signal — we write directly
+            # to avoid recursive memo updates during computation).
+            self.signals.write[Int32](entry.output_key, value)
+            self._changed_signals.append(entry.output_key)
+        # Record whether this recomputation produced a new value
+        self.memos.set_value_changed(memo_id, changed)
         self.memos.clear_dirty(memo_id)
         self.memos.set_computing(memo_id, False)
         # Restore previous context
@@ -1372,6 +1480,10 @@ struct Runtime(Movable):
         Writes the computed Bool value (as Int32 0/1) to the memo's
         output signal and clears the dirty flag.  Restores the previous
         reactive context.
+
+        Phase 37 equality gate: compares old vs new value before writing.
+        If the Bool value is unchanged, the output signal is NOT written
+        and `value_changed` is set to False.
         """
         if not self.memos.contains(memo_id):
             return
@@ -1381,7 +1493,14 @@ struct Runtime(Movable):
             val_i32 = Int32(1)
         else:
             val_i32 = Int32(0)
-        self.signals.write[Int32](entry.output_key, val_i32)
+        # Equality check: compare old cached value vs new computed value
+        var old_value = self.signals.read[Int32](entry.output_key)
+        var changed = old_value != val_i32
+        if changed:
+            self.signals.write[Int32](entry.output_key, val_i32)
+            self._changed_signals.append(entry.output_key)
+        # Record whether this recomputation produced a new value
+        self.memos.set_value_changed(memo_id, changed)
         self.memos.clear_dirty(memo_id)
         self.memos.set_computing(memo_id, False)
         var prev = Int(self.signals.read[Int32](entry.context_id))
@@ -1433,15 +1552,26 @@ struct Runtime(Movable):
         Writes the computed string to the StringStore, bumps the version
         signal, clears the dirty flag, and restores the previous
         reactive context.
+
+        Phase 37 equality gate: compares old vs new string before writing.
+        If the string is unchanged, neither the StringStore nor the version
+        signal is updated, and `value_changed` is set to False.
         """
         if not self.memos.contains(memo_id):
             return
         var entry = self.memos.get(memo_id)
-        # Write the string to the StringStore
-        self.strings.write(entry.string_key, value)
-        # Bump the version signal (output_key) to notify subscribers
-        var ver = self.peek_signal[Int32](entry.output_key)
-        self.signals.write[Int32](entry.output_key, ver + 1)
+        # Equality check: compare old cached string vs new computed string
+        var old_value = self.strings.read(entry.string_key)
+        var changed = old_value != value
+        if changed:
+            # Write the string to the StringStore
+            self.strings.write(entry.string_key, value)
+            # Bump the version signal (output_key) to notify subscribers
+            var ver = self.peek_signal[Int32](entry.output_key)
+            self.signals.write[Int32](entry.output_key, ver + 1)
+            self._changed_signals.append(entry.output_key)
+        # Record whether this recomputation produced a new value
+        self.memos.set_value_changed(memo_id, changed)
         self.memos.clear_dirty(memo_id)
         self.memos.set_computing(memo_id, False)
         var prev = Int(self.signals.read[Int32](entry.context_id))

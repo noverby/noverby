@@ -18,6 +18,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **Effects in apps** — reactive side effects with derived state (effect drain-and-run pattern), signal → memo → effect → signal chains
 - **Memo type expansion** — `MemoBool` and `MemoString` achieve type-parity with signals (`SignalI32`/`SignalBool`/`SignalString` ↔ `MemoI32`/`MemoBool`/`MemoString`); mixed-type memo chains with ordered recomputation
 - **Recursive memo propagation** — `write_signal` automatically propagates dirtiness through memo → memo chains to arbitrary depth via worklist-based traversal; diamond dependencies handled correctly; scope context tagging prevents namespace collisions
+- **Equality-gated memo propagation** — memo `end_compute` compares old vs new value before writing; if the value is unchanged, the output signal is NOT written, downstream memos remain value-stable, and `settle_scopes()` removes eagerly-dirtied scopes — skipping unnecessary re-renders and DOM diffs entirely
 - **Ergonomic DSL** — `el_div`, `el_button`, `dyn_text` tag helpers with `to_template()` conversion
 - **AppShell abstraction** — single struct bundling runtime, store, allocator, and scheduler
 - **ComponentContext** — ergonomic Dioxus-style API with `use_signal()`, `setup_view()`, inline events, auto-numbered `dyn_text()`
@@ -26,7 +27,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **String event dispatch** — `ACTION_SIGNAL_SET_STRING` handlers pipe string values from DOM events directly into `SignalString` signals; JS EventBridge extracts `event.target.value` → `writeStringStruct()` → WASM `dispatch_event_with_string` with automatic fallback to numeric/default dispatch
 - **Two-way input binding** — Dioxus-style `oninput_set_string(signal)` + `bind_value(signal)` DSL helpers for inline string event handlers and auto-populated `value` attributes; `RenderBuilder.build()` reads `SignalString` at render time
 - **Error boundaries** — scope-level error catching with fallback UI and recovery; `use_error_boundary()` marks a scope as a boundary, `report_error()` propagates errors up the parent chain, `has_error()` / `clear_error()` drive flush-time content switching between normal and fallback children
-- **4,217 tests** — 1,248 Mojo (47 modules via wasmtime) + 2,969 JS (27 suites via Deno), all passing
+- **4,235 tests** — 1,266 Mojo (49 modules via wasmtime) + 2,969 JS (27 suites via Deno), all passing
 
 ## How it works
 
@@ -236,14 +237,15 @@ The framework follows the same reactive model as [Dioxus](https://dioxuslabs.com
 1. **Signals** hold state. Reading a signal inside a scope subscribes that scope.
 2. **Memos** (derived signals) cache computed values. A memo has its own reactive context: it auto-tracks which signals it reads during computation, caches the result, and marks subscribing scopes dirty when its inputs change. Memos are lazy — they only recompute when read while dirty. Dependency re-tracking on recompute means memos automatically adapt to conditional reads.
 3. **Writing** to a signal marks all subscribing scopes *and* all subscribing memos as dirty. Dirty memos propagate dirtiness to their own subscribers.
-4. **Dirty scopes** are collected into the **Scheduler** (height-ordered, deduplicated).
-5. Scopes are re-rendered in parent-before-child order, producing new VNode trees.
-6. The **diff engine** compares old and new VNode trees (with keyed reconciliation).
-7. Mutations are written to a **binary buffer** in shared WASM memory.
-8. The JS **interpreter** reads the buffer and applies DOM operations.
+4. **Equality gating** — when a memo recomputes to the same value, its output signal is NOT written. Downstream memos remain value-stable, and `settle_scopes()` removes eagerly-dirtied scopes whose subscribed signals all have unchanged values — skipping unnecessary re-renders.
+5. **Dirty scopes** are collected into the **Scheduler** (height-ordered, deduplicated).
+6. Scopes are re-rendered in parent-before-child order, producing new VNode trees.
+7. The **diff engine** compares old and new VNode trees (with keyed reconciliation).
+8. Mutations are written to a **binary buffer** in shared WASM memory.
+9. The JS **interpreter** reads the buffer and applies DOM operations.
 
 ```txt
-Signal write → memo dirty → scope dirty → scheduler → re-render → diff → mutations → DOM update
+Signal write → memo dirty → scope dirty → memo recompute → equality gate → settle scopes → scheduler → re-render → diff → mutations → DOM update
 ```
 
 ## Binary mutation protocol
@@ -351,7 +353,7 @@ Adding a new test:
 
 ## Test results
 
-4,217 tests across 47 Mojo modules and 27 JS test suites:
+4,235 tests across 49 Mojo modules and 27 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -378,6 +380,8 @@ Adding a new test:
 - **Memo form app** — form validation with SignalString input → MemoBool (is_valid) → MemoString (status), memo recomputation order (is_valid before status), two-way input binding (bind_value + oninput_set_string), dirty/clean tracking, derived state consistency, rapid 20 inputs, DOM verification
 - **Memo chain app** — mixed-type memo chain (SignalI32 → MemoI32 → MemoBool → MemoString), ordered recomputation, threshold boundary exact (input=5 → is_big flips), chain propagation correctness, Phase 36 independent dirty verification, rapid 20 increments, heapStats bounded, DOM verification
 - **Memo propagation** — recursive memo → memo dirty propagation via worklist (Phase 36): 2/3/4-level chains, diamond dependencies (2-input and deep), scope and effect subscribers at end of chains, already-dirty skip (cycle guard), recompute clears dirty, recompute order matters, independent signal writes, re-subscription after recompute, destroyed memo safety, mixed types (I32 → Bool → String), string/bool memos in various positions, no-subscriber memo, memo + scope and memo + effect mixed subscribers, single-memo regression
+- **Memo equality** — equality-gated memo propagation (Phase 37): I32/Bool/String value-stable detection, value_changed flag tracking, _changed_signals accumulator, skip-if-unchanged in end_compute, chain cascades (clamped → label both stable), diamond dependencies with mixed stable/changed, regression cases
+- **Equality demo app** — clamped + threshold memo chain (SignalI32 → MemoI32(clamp) → MemoString(label)), within-range clamped changes with label stable, threshold crossing (label changes), clamped stabilization above max (zero-byte flush), consecutive stable flushes, full cycle round-trip (0→12→0), scope settling when chain is value-stable, handle_event marks dirty, memo count verification, destroy safety
 - **Memory** — allocation cycles, bounded growth, rapid write stability, free-list reuse, double-free protection, WASM-integrated reuse (text/attr/fragment/template diffs with reuse enabled)
 - **Arithmetic/strings** — original PoC interop regression suite
 
