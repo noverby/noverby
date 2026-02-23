@@ -5516,3 +5516,279 @@ with the mechanical extraction.
 **Test count after all:** unchanged — 1,323 Mojo (52 modules)
 
 + 3,090 JS (29 suites) = 4,413 tests.
+
+---
+
+## Phase 41 — Safe App Lifecycle References
+
+### P41 Problem
+
+Every app lifecycle function (`_xx_rebuild`, `_xx_flush`,
+`_xx_handle_event`, `_xx_resolve`) takes
+`UnsafePointer[App, MutExternalOrigin]` even though the function
+body only ever dereferences it once (`app[0].method()`). The
+unsafety leaks from the WASM ABI boundary (`Int64` handles) into
+app-level code that should be completely safe.
+
+Current pattern (every app module):
+
+```mojo
+fn _bd_flush(
+    app: UnsafePointer[BatchDemoApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    if not app[0].ctx.has_dirty():
+        return 0
+    app[0].run_memos()
+    app[0].ctx.settle_scopes()
+    ...
+```
+
+The `app[0]` dereference produces a mutable reference — the same
+type that `mut app: BatchDemoApp` would give us. The pointer is
+never stored, never aliased, never offset. It is purely a
+consequence of the WASM boundary passing `Int64` handles.
+
+In Rust, the standard practice is to confine `unsafe` to the FFI
+boundary and present safe abstractions to all other code. Mojo
+supports the same pattern: `UnsafePointer[T][0]` produces a
+mutable reference that can be passed as a `mut` parameter.
+
+### P41 Current state
+
+- 15 app modules in `src/apps/` have lifecycle functions taking
+  `UnsafePointer[App]`.
+- 4 example app modules in `examples/` have the same pattern.
+- `src/main.mojo` @export wrappers call these lifecycle functions
+  by passing `_get[App](app_ptr)` (an `UnsafePointer`).
+- The `_init` and `_destroy` functions genuinely need
+  `UnsafePointer` because they allocate/free heap memory.
+- Query/accessor exports in `main.mojo` (e.g.
+  `_get[App](ptr)[0].count.peek()`) already dereference at the
+  boundary — these are fine and stay as-is.
+
+### P41 Target pattern
+
+Confine `UnsafePointer` to two places:
+
+1. **`_init` / `_destroy`** — heap allocation/deallocation
+   (inherently pointer-based).
+2. **`main.mojo` @export wrappers** — the `Int64` → pointer →
+   reference conversion at the WASM boundary.
+
+All other app lifecycle code uses safe mutable references:
+
+```mojo
+# src/apps/batch_demo.mojo — safe, no UnsafePointer in signature:
+fn _bd_flush(
+    mut app: BatchDemoApp,
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    if not app.ctx.has_dirty():
+        return 0
+    app.run_memos()
+    app.ctx.settle_scopes()
+    ...
+
+# src/main.mojo — unsafe confined to the boundary:
+@export
+fn bd_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _bd_flush(_get[BatchDemoApp](app_ptr)[0], writer_ptr)
+    _free_writer(writer_ptr)
+    return result
+```
+
+The `_get[App](app_ptr)[0]` dereference at the call site converts
+the `UnsafePointer` to a mutable reference. Inside `_bd_flush`,
+the borrow checker tracks `app` as a normal mutable reference.
+
+**Note:** `MutationWriter` stays as `UnsafePointer` for now.
+`ComponentContext.mount()`, `.diff()`, `.finalize()` and the
+`CreateEngine`/`DiffEngine` structs all store
+`UnsafePointer[MutationWriter]` as struct fields. Changing those
+requires lifetime-parameterized structs, which Mojo does not yet
+support. This is a separate, deeper refactor for a future phase.
+
+### P41 Design
+
+#### What changes
+
+For each app lifecycle function (rebuild, flush, handle_event,
+resolve):
+
+| Before | After |
+|--------|-------|
+| `app: UnsafePointer[App, MutExternalOrigin]` | `mut app: App` |
+| `app[0].method()` | `app.method()` |
+| `app[0].field` | `app.field` |
+
+#### What stays the same
+
+- `_init` functions — return `UnsafePointer[App]` (heap alloc).
+- `_destroy` functions — take `UnsafePointer[App]` (heap free).
+- `writer_ptr: UnsafePointer[MutationWriter]` parameter — stays
+  because the component infrastructure (`ComponentContext`,
+  `AppShell`, `CreateEngine`, `DiffEngine`) stores it as a
+  pointer field. Changing this is blocked on Mojo lifetime params.
+- Query/accessor @exports in `main.mojo` — already dereference
+  at the boundary.
+- `from memory import UnsafePointer, alloc` in app modules —
+  stays because `_init`/`_destroy` still need it.
+
+#### Call site changes in `main.mojo`
+
+```mojo
+# Before:
+var result = _bd_rebuild(_get[BatchDemoApp](app_ptr), writer_ptr)
+
+# After:
+var result = _bd_rebuild(_get[BatchDemoApp](app_ptr)[0], writer_ptr)
+```
+
+The only difference is `[0]` — converting the pointer to a
+reference at the call site.
+
+#### Scope of change
+
+| Location | Files | Functions changed |
+|----------|-------|-------------------|
+| `src/apps/` | 15 modules | ~45 lifecycle fns |
+| `examples/` | 4 modules | ~16 lifecycle fns |
+| `src/main.mojo` | 1 file | ~61 call sites |
+
+No new files. No test changes (the WASM export signatures are
+unchanged — only internal function signatures change). No TS
+changes.
+
+### P41 Steps
+
+#### P41.1 — Convert `src/apps/` lifecycle functions to safe references
+
+Change all lifecycle functions in the 15 `src/apps/` modules
+from `UnsafePointer[App]` to `mut App`. Leave `_init`/`_destroy`
+unchanged.
+
+##### Modules (alphabetical)
+
+| Module | Functions to change |
+|--------|-------------------|
+| `batch_demo.mojo` | `_bd_rebuild`, `_bd_handle_event`, `_bd_flush` |
+| `child_context_test.mojo` | `_cct_rebuild`, `_cct_handle_event`, `_cct_flush` |
+| `child_counter.mojo` | `_cc_rebuild`, `_cc_handle_event`, `_cc_flush` |
+| `context_test.mojo` | (no lifecycle fns beyond init/destroy) |
+| `data_loader.mojo` | `_dl_rebuild`, `_dl_handle_event`, `_dl_resolve`, `_dl_flush` |
+| `effect_demo.mojo` | `_ed_rebuild`, `_ed_handle_event`, `_ed_flush` |
+| `effect_memo.mojo` | `_em_rebuild`, `_em_handle_event`, `_em_flush` |
+| `equality_demo.mojo` | `_eq_rebuild`, `_eq_handle_event`, `_eq_flush` |
+| `error_nest.mojo` | `_en_rebuild`, `_en_handle_event`, `_en_flush` |
+| `memo_chain.mojo` | `_mc_rebuild`, `_mc_handle_event`, `_mc_flush` |
+| `memo_form.mojo` | `_mf_rebuild`, `_mf_handle_event`, `_mf_handle_event_string`, `_mf_flush` |
+| `props_counter.mojo` | `_pc_rebuild`, `_pc_handle_event`, `_pc_flush` |
+| `safe_counter.mojo` | `_sc_rebuild`, `_sc_handle_event`, `_sc_flush` |
+| `suspense_nest.mojo` | `_sn_rebuild`, `_sn_handle_event`, `_sn_outer_resolve`, `_sn_inner_resolve`, `_sn_flush` |
+| `theme_counter.mojo` | `_tc_rebuild`, `_tc_handle_event`, `_tc_flush` |
+
+##### Mechanical transform per function
+
+1. Change parameter: `app: UnsafePointer[App, MutExternalOrigin]`
+   → `mut app: App`
+2. Replace all `app[0].` → `app.` in the function body.
+3. Replace all `app[0]` (without dot, if any) → `app` (rare —
+   only in patterns like `if app[0].ctx...`).
+
+##### `main.mojo` call site updates
+
+For each lifecycle function import, the call site adds `[0]`:
+
+```mojo
+# rebuild: _xx_rebuild(_get[App](ptr), writer) → _xx_rebuild(_get[App](ptr)[0], writer)
+# flush:   _xx_flush(_get[App](ptr), writer)   → _xx_flush(_get[App](ptr)[0], writer)
+# handle:  _xx_handle_event(_get[App](ptr), h, e) → _xx_handle_event(_get[App](ptr)[0], h, e)
+# resolve: _xx_resolve(_get[App](ptr), data)   → _xx_resolve(_get[App](ptr)[0], data)
+```
+
+##### Verification
+
+- `just build` — WASM binary compiles with `-Werror`.
+- `just test` — all 52 Mojo test binaries pass.
+- `just test-js` — all 3,090 JS tests pass.
+
+#### P41.2 — Convert `examples/` lifecycle functions to safe references
+
+Same transform for the 4 example app modules:
+
+| Module | Functions to change |
+|--------|-------------------|
+| `examples/counter/counter.mojo` | `counter_app_rebuild`, `counter_app_handle_event`, `counter_app_flush` |
+| `examples/todo/todo.mojo` | `todo_app_rebuild`, `todo_app_flush` |
+| `examples/bench/bench.mojo` | `bench_app_rebuild`, `bench_app_flush` |
+| `examples/app/app.mojo` | `multi_view_app_rebuild`, `multi_view_app_handle_event`, `multi_view_app_flush`, `multi_view_app_navigate` |
+
+Same mechanical transform: parameter type change + `app[0].` →
+`app.` in bodies. Update `main.mojo` call sites to add `[0]`.
+
+**Note:** `todo_app_rebuild` and `bench_app_rebuild` have complex
+mount sequences that access `app[0].ctx.shell.eid_alloc`,
+`app[0].ctx.shell.runtime`, etc. These all become `app.ctx.shell.eid_alloc`,
+`app.ctx.shell.runtime` — straightforward member access on a
+mutable reference.
+
+##### Verification
+
+Same as P41.1.
+
+#### P41.3 — Documentation update
+
+##### Changes
+
+**AGENTS.md:**
+
+- Update "WASM Export Pattern" section to document the safe
+  reference pattern: lifecycle functions take `mut App`, only
+  `_init`/`_destroy` and `main.mojo` @export wrappers use
+  `UnsafePointer`.
+- Add a note under "Mojo Constraints" or "Common Patterns" about
+  the `UnsafePointer[T][0]` → `mut T` conversion pattern for FFI
+  boundaries.
+- Update "Deferred Abstractions" to note that
+  `UnsafePointer[MutationWriter]` in the component infrastructure
+  is blocked on Mojo lifetime-parameterized structs.
+
+**CHANGELOG.md:**
+
+- Add Phase 41 entry: "Converted all app lifecycle functions
+  (rebuild, flush, handle_event, resolve) from
+  `UnsafePointer[App]` to `mut App`. UnsafePointer now confined
+  to _init/_destroy (heap management) and main.mojo @export
+  wrappers (WASM ABI boundary)."
+
+### P41 Dependency graph
+
+```text
+P41.1 (src/apps/ — 15 modules, ~45 functions)
+    │
+    └──► P41.2 (examples/ — 4 modules, ~12 functions)
+              │
+              └──► P41.3 (Documentation)
+```
+
+P41.1 and P41.2 are independent (they touch different files) and
+could run in parallel. P41.3 depends on both being complete.
+
+### P41 Estimated size
+
+| Step | ~Changed Mojo Lines | ~New Mojo Lines | ~New TS Lines | Tests |
+|------|--------------------|-----------------| --------------|-------|
+| P41.1 (src/apps/ + main.mojo) | ~250 (signatures + bodies + call sites) | 0 | 0 | 0 |
+| P41.2 (examples/ + main.mojo) | ~150 (signatures + bodies + call sites) | 0 | 0 | 0 |
+| P41.3 (Documentation) | 0 | 0 | 0 | 0 |
+| **Total** | **~400 changed** | **0** | **0** | **0 tests** |
+
+Net code change: approximately zero (parameter types and member
+access syntax change, no new logic). The `[0]` dereference moves
+from the callee body to the caller call site.
+
+**Test count after Phase 41:** unchanged — 1,323 Mojo (52 modules)
+
++ 3,090 JS (29 suites) = 4,413 tests.
