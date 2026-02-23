@@ -25,9 +25,9 @@
 #   div
 #     h1 > dynamic_text[0]  ← "Count: N"
 #     button("+ 1")
-#       dynamic_attr[0]     ← onclick → increment
+#       dynamic_attr[0]     ← onclick → increment (manually registered)
 #     button("- 1")
-#       dynamic_attr[1]     ← onclick → decrement
+#       dynamic_attr[1]     ← onclick → decrement (manually registered)
 #
 # Todo view template ("mv-todo"):
 #   div
@@ -78,8 +78,7 @@ from vdom import (
     text,
     dyn_text,
     dyn_node,
-    onclick_add,
-    onclick_sub,
+    dyn_attr,
     onclick_custom,
 )
 
@@ -118,6 +117,11 @@ struct MultiViewApp(Movable):
     # Navigation handler IDs (from the app shell's onclick_custom events)
     var nav_counter_handler: UInt32
     var nav_todo_handler: UInt32
+
+    # Counter view handler IDs (manually registered — register_extra_template
+    # does not process NODE_EVENT nodes like register_view does)
+    var counter_incr_handler: UInt32
+    var counter_decr_handler: UInt32
 
     # Todo add handler ID (from the todo view — registered as a custom handler)
     var todo_add_handler: UInt32
@@ -159,15 +163,23 @@ struct MultiViewApp(Movable):
         self.nav_counter_handler = self.ctx.view_event_handler_id(0)
         self.nav_todo_handler = self.ctx.view_event_handler_id(1)
 
-        # Counter view template — standalone template for the counter branch
+        # Counter view template — standalone template for the counter branch.
+        # NOTE: register_extra_template does NOT process NODE_EVENT nodes
+        # (onclick_add/onclick_sub), so we use dyn_attr placeholders and
+        # register the handlers manually below.
         self.counter_tmpl = self.ctx.register_extra_template(
             el_div(
                 el_h1(dyn_text(0)),
-                el_button(text(String("+ 1")), onclick_add(self.count, 1)),
-                el_button(text(String("- 1")), onclick_sub(self.count, 1)),
+                el_button(text(String("+ 1")), dyn_attr(0)),
+                el_button(text(String("- 1")), dyn_attr(1)),
             ),
             String("mv-counter"),
         )
+
+        # Manually register counter signal handlers (same as what
+        # register_view would auto-do for onclick_add/onclick_sub)
+        self.counter_incr_handler = self.ctx.on_click_add(self.count, 1)
+        self.counter_decr_handler = self.ctx.on_click_sub(self.count, 1)
 
         # Todo view template — standalone template for the todo branch
         # Uses onclick_custom for the add button (app handles it)
@@ -199,6 +211,8 @@ struct MultiViewApp(Movable):
         self.router = other.router^
         self.count = other.count^
         self.counter_tmpl = other.counter_tmpl
+        self.counter_incr_handler = other.counter_incr_handler
+        self.counter_decr_handler = other.counter_decr_handler
         self.todo_count = other.todo_count^
         self.todo_next_id = other.todo_next_id
         self.todo_tmpl = other.todo_tmpl
@@ -226,8 +240,9 @@ struct MultiViewApp(Movable):
         """
         var vb = VNodeBuilder(self.counter_tmpl, self.ctx.store_ptr())
         vb.add_dyn_text(String("Count: ") + String(self.count.peek()))
-        # Event attrs: +1 and -1 buttons are auto-populated by the template
-        # since they use onclick_add/onclick_sub (not onclick_custom)
+        # Manually add event handlers for +1 and -1 buttons (dyn_attr slots 0, 1)
+        vb.add_dyn_event(String("click"), self.counter_incr_handler)
+        vb.add_dyn_event(String("click"), self.counter_decr_handler)
         return vb.index()
 
     fn build_todo_view(mut self) -> UInt32:
