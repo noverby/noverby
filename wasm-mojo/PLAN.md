@@ -2145,3 +2145,529 @@ instead.
 | Phase 34 (Effects) | ~530 Mojo, ~250 TS | 34 Mojo + 38 JS = 72 |
 | Phase 35 (Memo Expansion) | ~1,110 Mojo, ~440 TS | 68 Mojo + 42 JS = 110 |
 | **Total** | **~2,520 Mojo, ~1,000 TS** | **159 Mojo + 127 JS = 286 tests** |
+
+---
+
+## Phase 36 — Recursive Memo Propagation
+
+### P36 Problem
+
+When a signal is written, `Runtime.write_signal` marks direct memo
+subscribers dirty and then scans the memo's output signal subscribers —
+but only checks for **effects** and **scopes**. It does NOT check
+whether an output subscriber is another memo. This means memo → memo
+chains are broken at the propagation level:
+
+```text
+Current behaviour (Phase 35):
+
+    SignalI32 ──write──► MemoI32 (marked dirty ✓)
+                              │
+                              ▼ output subscribers scanned...
+                         MemoBool (subscriber is memo → NOT checked → NOT dirty ✗)
+                              │
+                              ▼ never reached
+                         MemoString (NOT dirty ✗)
+```
+
+As a result, apps with memo chains must use a manual workaround:
+check whether the head memo is dirty, and if so eagerly recompute
+**all** downstream memos in dependency order — even though the
+runtime should be able to mark them dirty automatically.
+
+From `MemoChainApp.run_memos()` (Phase 35):
+
+```mojo
+# Workaround: if head dirty, recompute entire chain
+if not self.doubled.is_dirty():
+    return
+# Must recompute all three in order — runtime doesn't mark
+# downstream memos dirty for memo → memo chains.
+self.doubled.begin_compute()
+...
+self.is_big.begin_compute()    # not marked dirty by runtime
+...
+self.label.begin_compute()     # not marked dirty by runtime
+...
+```
+
+### P36 Current state
+
+The propagation logic in `write_signal` (lines ~570–635 of
+`src/signals/runtime.mojo`) has three subscriber categories:
+
+1. **Memo subscriber** — mark dirty, then scan memo's output signal
+   subscribers for effects and scopes (ONE level only).
+2. **Effect subscriber** — mark pending.
+3. **Scope subscriber** — add to `dirty_scopes`.
+
+The inner loop after marking a memo dirty (step 1) mirrors the
+top-level loop's effect/scope checks but **omits the memo check**.
+This is the root cause: the inner loop is not recursive.
+
+Additionally, all three `memo_end_compute_*` methods write the
+computed value directly to the `SignalStore` (bypassing
+`write_signal`) to avoid re-entrant propagation during computation.
+This is correct — by the time a memo recomputes, all downstream
+memos should already be marked dirty from the original signal write.
+The fix is therefore entirely in `write_signal`'s propagation, not
+in end_compute.
+
+### P36 Target pattern
+
+After the fix, `write_signal` recursively marks all downstream
+memos dirty through memo → memo chains:
+
+```text
+Target behaviour (Phase 36):
+
+    SignalI32 ──write──► MemoI32 (marked dirty ✓)
+                              │
+                              ▼ output subscribers scanned...
+                         MemoBool (memo subscriber → marked dirty ✓)
+                              │
+                              ▼ output subscribers scanned...
+                         MemoString (memo subscriber → marked dirty ✓)
+                              │
+                              ▼ output subscribers scanned...
+                         Scope (added to dirty_scopes ✓)
+```
+
+Apps can then check each memo independently:
+
+```mojo
+# After fix: each memo checks is_dirty() independently
+fn run_memos(mut self):
+    if self.doubled.is_dirty():
+        self.doubled.begin_compute()
+        var i = self.input.read()
+        self.doubled.end_compute(i * 2)
+    if self.is_big.is_dirty():
+        self.is_big.begin_compute()
+        var d = self.doubled.read()
+        self.is_big.end_compute(d >= 10)
+    if self.label.is_dirty():
+        self.label.begin_compute()
+        var big = self.is_big.read()
+        self.label.end_compute(String("BIG") if big else String("small"))
+```
+
+Recomputation order still matters (upstream before downstream), but
+the app no longer needs to know the chain structure or gate on the
+head memo.
+
+### P36 Design
+
+#### Worklist-based propagation
+
+Replace the flat inner loop in `write_signal` with an iterative
+worklist that processes memo output subscribers to arbitrary depth.
+
+When a memo subscriber is found and marked dirty, the memo's ID is
+added to a worklist. After the top-level subscriber scan completes,
+the worklist is drained: for each memo, its output signal subscribers
+are scanned for memos (→ mark dirty, add to worklist), effects
+(→ mark pending), and scopes (→ add to dirty_scopes).
+
+```text
+fn write_signal(key, value):
+    signals.write(key, value)
+    var memo_worklist = List[UInt32]()
+
+    # Phase 1: scan direct subscribers of the written signal
+    for ctx in signals.get_subscribers(key):
+        if is_memo(ctx):
+            mark_dirty(memo_id)
+            memo_worklist.append(memo_id)
+        elif is_effect(ctx):
+            mark_pending(effect_id)
+        else:
+            add_dirty_scope(ctx)
+
+    # Phase 2: drain worklist — propagate through memo chains
+    while len(memo_worklist) > 0:
+        var mid = memo_worklist.pop()
+        var out_key = memos.output_key(mid)
+        for sub_ctx in signals.get_subscribers(out_key):
+            if is_memo(sub_ctx):
+                if not memos.is_dirty(downstream_id):
+                    memos.mark_dirty(downstream_id)
+                    memo_worklist.append(downstream_id)
+            elif is_effect(sub_ctx):
+                mark_pending(effect_id)
+            else:
+                add_dirty_scope(sub_ctx)
+```
+
+#### Cycle guard
+
+The `is_dirty()` check before adding to the worklist serves as a
+cycle guard: a memo that is already dirty is not re-processed.
+True cycles (memo A depends on memo B which depends on memo A) are
+impossible in practice — `begin_compute` clears old subscriptions
+and re-subscribes fresh, and a memo cannot read its own output
+during computation (the `computing` flag guards this). The dirty
+check prevents infinite loops in degenerate cases.
+
+#### Diamond dependency handling
+
+Diamond patterns (signal → memo A, signal → memo B, A+B → memo C)
+work correctly: memo C subscribes to both A's and B's output signals.
+When the signal is written:
+
+1. A is marked dirty (direct subscriber) → added to worklist.
+2. B is marked dirty (direct subscriber) → added to worklist.
+3. Worklist processes A → scans A's output subscribers → finds C
+   → C not dirty → marks C dirty → adds C to worklist.
+4. Worklist processes B → scans B's output subscribers → finds C
+   → C already dirty → skips (cycle guard).
+5. Worklist processes C → scans C's output subscribers → effects/scopes.
+
+C is correctly marked dirty exactly once.
+
+#### Scope of change
+
+- **`src/signals/runtime.mojo`**: Refactor `write_signal` inner loop.
+  Extract `_notify_subscriber` helper for the memo/effect/scope check
+  (used in both Phase 1 and Phase 2 of the propagation). Net change
+  is small: the existing inner loop becomes a worklist drain.
+
+- **`src/main.mojo` (MemoChainApp)**: Simplify `run_memos()` to check
+  each memo independently.
+
+- **Tests**: New unit tests for chain propagation at the runtime level,
+  plus updated MemoChainApp tests.
+
+- **No JS changes**: The TypeScript runtime is unaffected — propagation
+  is entirely within the Mojo WASM module.
+
+### P36 Steps
+
+#### P36.1 — Runtime worklist propagation
+
+Refactor `write_signal` in `src/signals/runtime.mojo` to use a
+worklist for recursive memo → memo dirty propagation.
+
+##### Mojo changes
+
+###### `src/signals/runtime.mojo` — `write_signal` refactor
+
+Replace the current flat propagation logic with a two-phase approach:
+
+**Phase 1** — Scan direct subscribers of the written signal. For each
+subscriber:
+
+- If memo → mark dirty, append to `memo_worklist`.
+- If effect → mark pending.
+- If scope → add to `dirty_scopes` (dedup).
+
+**Phase 2** — Drain `memo_worklist`. For each memo ID popped:
+
+- Get the memo's output signal key.
+- Scan the output signal's subscribers.
+- For each subscriber:
+  - If memo → check `is_dirty()`. If not dirty, mark dirty and
+    append to worklist. If already dirty, skip (cycle guard).
+  - If effect → mark pending.
+  - If scope → add to `dirty_scopes` (dedup).
+
+The helper logic for classifying a subscriber context ID
+(memo vs effect vs scope) is used in both phases. Extract into a
+local pattern or inline — Mojo does not support nested functions
+in structs, so the classification remains inline but structured
+identically in both phases.
+
+```mojo
+fn write_signal[
+    T: Copyable & ImplicitlyDestructible & AnyType
+](mut self, key: UInt32, value: T):
+    self.signals.write[T](key, value)
+
+    var memo_worklist = List[UInt32]()
+    var subs = self.signals.get_subscribers(key)
+
+    # Phase 1: direct subscribers of the written signal
+    for i in range(len(subs)):
+        var ctx = subs[i]
+        if self._mark_memo_if_subscriber(ctx, memo_worklist):
+            continue
+        if self._mark_effect_if_subscriber(ctx):
+            continue
+        self._add_dirty_scope(ctx)
+
+    # Phase 2: drain worklist — propagate through memo chains
+    while len(memo_worklist) > 0:
+        var mid = memo_worklist.pop()
+        if not self.memos.contains(mid):
+            continue
+        var out_key = self.memos.output_key(mid)
+        var out_subs = self.signals.get_subscribers(out_key)
+        for k in range(len(out_subs)):
+            var sub_ctx = out_subs[k]
+            if self._mark_memo_if_subscriber(sub_ctx, memo_worklist):
+                continue
+            if self._mark_effect_if_subscriber(sub_ctx):
+                continue
+            self._add_dirty_scope(sub_ctx)
+```
+
+Three small private helpers keep the logic DRY:
+
+```mojo
+fn _mark_memo_if_subscriber(
+    mut self,
+    ctx: UInt32,
+    mut worklist: List[UInt32],
+) -> Bool:
+    """If ctx is a memo's reactive context, mark it dirty and
+    add to worklist (if not already dirty).  Returns True if
+    ctx was a memo subscriber."""
+    for m in range(len(self._memo_ctx_ids)):
+        if self._memo_ctx_ids[m] == ctx:
+            var memo_id = self._memo_ids[m]
+            if self.memos.contains(memo_id):
+                if not self.memos.is_dirty(memo_id):
+                    self.memos.mark_dirty(memo_id)
+                    worklist.append(memo_id)
+            return True
+    return False
+
+fn _mark_effect_if_subscriber(mut self, ctx: UInt32) -> Bool:
+    """If ctx is an effect's reactive context, mark it pending.
+    Returns True if ctx was an effect subscriber."""
+    for e in range(len(self._effect_ctx_ids)):
+        if self._effect_ctx_ids[e] == ctx:
+            var effect_id = self._effect_ids[e]
+            if self.effects.contains(effect_id):
+                self.effects.mark_pending(effect_id)
+            return True
+    return False
+
+fn _add_dirty_scope(mut self, ctx: UInt32):
+    """Add ctx to dirty_scopes if not already present."""
+    for j in range(len(self.dirty_scopes)):
+        if self.dirty_scopes[j] == ctx:
+            return
+    self.dirty_scopes.append(ctx)
+```
+
+**Note on `_mark_memo_if_subscriber`:** The cycle guard is
+`not self.memos.is_dirty(memo_id)`. A memo that was ALREADY dirty
+(e.g., from a prior write in the same flush, or from Phase 1 in a
+diamond) is not re-added to the worklist. This guarantees
+termination: each memo is processed at most once per `write_signal`
+call.
+
+**Edge case — memo already dirty from Phase 1:** In a diamond
+(signal → memo A, signal → memo B, A+B → memo C), Phase 1 does NOT
+directly mark C dirty (C subscribes to A's and B's outputs, not to
+the signal). Phase 2 processes A → marks C dirty → adds to worklist.
+Phase 2 processes B → C already dirty → skips. Correct.
+
+**Edge case — memo marked dirty but memos.contains() is False:**
+The memo may have been destroyed between the subscriber registration
+and this write. The `contains()` check handles this safely.
+
+##### WASM exports
+
+No new exports needed. The change is internal to `write_signal`.
+Existing exports (`mc_doubled_dirty`, `mc_is_big_dirty`,
+`mc_label_dirty`, etc.) will now return correct values after a
+signal write without requiring manual recomputation.
+
+##### Test: `test/test_memo_propagation.mojo` (~20 tests)
+
+New test module dedicated to recursive propagation scenarios.
+Uses the same `WasmInstance` + WASM harness pattern as existing
+memo tests.
+
+Tests:
+
+1. **test_chain_2_level** — signal → memo A → memo B. Write signal,
+   assert both A and B are dirty.
+2. **test_chain_3_level** — signal → memo A → memo B → memo C. Write
+   signal, assert all three dirty.
+3. **test_chain_4_level** — signal → A → B → C → D. Write signal,
+   assert all four dirty.
+4. **test_chain_scope_at_end** — signal → memo A → memo B, scope
+   subscribes to B's output. Write signal, assert A dirty, B dirty,
+   scope in dirty_scopes.
+5. **test_chain_effect_at_end** — signal → memo A → memo B, effect
+   subscribes to B's output. Write signal, assert A dirty, B dirty,
+   effect pending.
+6. **test_diamond_2_inputs** — signal → memo A, signal → memo B,
+   memo C subscribes to both A and B outputs. Write signal, assert
+   all three dirty. C added to worklist only once.
+7. **test_diamond_deep** — signal → A → B, signal → C → B (B has two
+   parents). Write signal, assert A, B, C all dirty.
+8. **test_chain_already_dirty_skip** — signal → A → B. Manually mark
+   B dirty before writing signal. Write signal. Assert A dirty,
+   B still dirty (no double processing).
+9. **test_chain_recompute_clears_dirty** — signal → A → B. Write
+   signal (both dirty). Recompute A, recompute B. Assert both clean.
+10. **test_chain_recompute_order_matters** — signal → A → B. Write
+    signal. Recompute A (writes new output), recompute B (reads A's
+    output). Assert B's value reflects A's new output.
+11. **test_chain_independent_write** — signal1 → A, signal2 → B,
+    A → C. Write signal1, assert A and C dirty but B clean. Write
+    signal2, assert B dirty.
+12. **test_chain_propagation_after_resubscribe** — signal → A → B.
+    Compute both. Recompute A reading a DIFFERENT signal (re-tracking).
+    Write original signal, assert A NOT dirty (unsubscribed). Write
+    new signal, assert A dirty, B dirty.
+13. **test_chain_with_destroyed_memo** — signal → A → B. Destroy B.
+    Write signal. Assert A dirty, no crash (B's slot is vacant).
+14. **test_chain_mixed_types** — signal (Int32) → MemoI32 → MemoBool
+    → MemoString. Write signal, assert all three dirty. Mirrors
+    MemoChainApp topology.
+15. **test_chain_string_memo_at_end** — signal → MemoI32 → MemoString.
+    Write signal, assert both dirty. Recompute both, assert
+    MemoString has correct value.
+16. **test_chain_bool_memo_in_middle** — signal → MemoBool → MemoI32.
+    Write signal, assert both dirty.
+17. **test_chain_no_subscribers** — signal → memo A (no subscribers on
+    A's output). Write signal, assert A dirty, no crash.
+18. **test_chain_memo_to_memo_and_scope** — signal → A, scope and
+    memo B both subscribe to A's output. Write signal, assert A
+    dirty, B dirty, scope dirty.
+19. **test_chain_memo_to_memo_and_effect** — signal → A, effect and
+    memo B both subscribe to A's output. Write signal, assert A
+    dirty, B dirty, effect pending.
+20. **test_regression_single_memo** — signal → memo (no chain).
+    Write signal, assert memo dirty, scope dirty. Verifies the
+    refactored code doesn't break the existing single-level case.
+
+#### P36.2 — Simplify MemoChainApp
+
+With recursive propagation, `MemoChainApp.run_memos()` no longer
+needs to gate on the head memo. Each memo checks `is_dirty()`
+independently.
+
+##### Mojo changes
+
+###### `src/main.mojo` — `MemoChainApp.run_memos()`
+
+Replace the current "if head dirty, recompute all" pattern:
+
+```mojo
+# Before (Phase 35):
+fn run_memos(mut self):
+    if not self.doubled.is_dirty():
+        return
+    self.doubled.begin_compute()
+    var i = self.input.read()
+    self.doubled.end_compute(i * 2)
+    self.is_big.begin_compute()
+    var d = self.doubled.read()
+    self.is_big.end_compute(d >= 10)
+    self.label.begin_compute()
+    var big = self.is_big.read()
+    if big:
+        self.label.end_compute(String("BIG"))
+    else:
+        self.label.end_compute(String("small"))
+```
+
+With independent checks:
+
+```mojo
+# After (Phase 36):
+fn run_memos(mut self):
+    if self.doubled.is_dirty():
+        self.doubled.begin_compute()
+        var i = self.input.read()
+        self.doubled.end_compute(i * 2)
+    if self.is_big.is_dirty():
+        self.is_big.begin_compute()
+        var d = self.doubled.read()
+        self.is_big.end_compute(d >= 10)
+    if self.label.is_dirty():
+        self.label.begin_compute()
+        var big = self.is_big.read()
+        if big:
+            self.label.end_compute(String("BIG"))
+        else:
+            self.label.end_compute(String("small"))
+```
+
+The recomputation order (doubled → is_big → label) is still
+maintained by code order, but the gating logic is per-memo rather
+than all-or-nothing from the head.
+
+Remove the doc comment paragraph about the runtime limitation and
+the "eagerly recompute all three" rationale — that limitation is
+now fixed.
+
+##### Test updates
+
+Update `test/test_memo_chain.mojo` and `test-js/memo_chain.test.ts`
+to add tests verifying that individual memos in the chain are
+independently dirty after a signal write:
+
+- **test_chain_all_memos_dirty_after_increment** — After mc_handle_event
+  (increment), assert mc_doubled_dirty, mc_is_big_dirty, AND
+  mc_label_dirty are all 1. (In Phase 35, only mc_doubled_dirty was
+  guaranteed; the others relied on the app's explicit recomputation.)
+- **test_chain_partial_recompute** — After increment, recompute only
+  doubled (begin/end compute). Assert doubled clean, is_big still
+  dirty, label still dirty. Then recompute is_big. Assert is_big
+  clean, label still dirty. Then recompute label. Assert all clean.
+
+Existing tests continue to pass unchanged — the observable behaviour
+(final derived state after flush) is identical.
+
+#### P36.3 — Documentation & AGENTS.md update
+
+##### Changes
+
+**AGENTS.md:**
+
+- **Common Patterns:** Update "Memo type expansion pattern" to remove
+  the "runtime does not recursively propagate" caveat. Replace with
+  "the runtime automatically propagates dirtiness through memo → memo
+  chains (Phase 36); apps still recompute in dependency order but no
+  longer need to gate on the head memo."
+- **MemoChainApp architecture:** Update the `run_memos` pseudocode
+  to show independent `is_dirty()` checks. Remove the note about
+  runtime propagation limitation.
+- **Common Patterns:** Add "Worklist-based memo propagation" pattern
+  describing the two-phase approach.
+- **File Size Reference:** Update line counts for `runtime.mojo` and
+  `main.mojo`.
+
+**CHANGELOG.md:**
+
+- Add Phase 36 entry summarizing P36.1 (runtime), P36.2 (app
+  simplification), P36.3 (docs). Include test count delta.
+
+**README.md:**
+
+- Update test count.
+- Update the MemoChainApp code example in Ergonomic API to show
+  independent `is_dirty()` checks.
+- Add note to "Memo type expansion" section that recursive
+  propagation is now automatic.
+
+### P36 Dependency graph
+
+```text
+P36.1 (Runtime propagation)
+    │
+    ▼
+P36.2 (Simplify MemoChainApp)
+    │
+    ▼
+P36.3 (Docs)
+```
+
+Strictly sequential: the runtime fix must land before the app can
+be simplified, and both must be complete before documentation.
+
+### P36 Estimated size
+
+| Step | ~Changed Mojo Lines | ~New Mojo Lines | ~New TS Lines | Tests |
+|------|--------------------|-----------------| --------------|-------|
+| P36.1 (runtime + unit tests) | ~60 (refactor) | ~550 | ~0 | 20 Mojo |
+| P36.2 (MemoChainApp simplification) | ~30 (simplify) | ~40 | ~20 | 2 Mojo + 2 JS |
+| P36.3 (docs) | ~0 | ~60 | ~0 | 0 |
+| **Total** | **~90** | **~650** | **~20** | **22 Mojo + 2 JS = 24 tests** |
