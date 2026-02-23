@@ -1340,6 +1340,20 @@ struct ComponentContext(Movable):
         """
         self.shell.runtime[0].settle_scopes()
 
+    # ── Batch signal writes (Phase 38) ───────────────────────────────
+
+    fn begin_batch(mut self):
+        """Enter batch mode for signal writes."""
+        self.shell.runtime[0].begin_batch()
+
+    fn end_batch(mut self):
+        """Exit batch mode and propagate all deferred writes."""
+        self.shell.runtime[0].end_batch()
+
+    fn is_batching(self) -> Bool:
+        """Return True if currently inside a batch."""
+        return self.shell.runtime[0].is_batching()
+
     fn diff(
         mut self,
         writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],

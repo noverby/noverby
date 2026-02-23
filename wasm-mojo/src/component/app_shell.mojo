@@ -421,6 +421,20 @@ struct AppShell(Movable):
         """
         self.runtime[0].settle_scopes()
 
+    # ── Batch signal writes (Phase 38) ───────────────────────────────
+
+    fn begin_batch(mut self):
+        """Enter batch mode for signal writes."""
+        self.runtime[0].begin_batch()
+
+    fn end_batch(mut self):
+        """Exit batch mode and propagate all deferred writes."""
+        self.runtime[0].end_batch()
+
+    fn is_batching(self) -> Bool:
+        """Return True if currently inside a batch."""
+        return self.runtime[0].is_batching()
+
     # ── Fragment flush ───────────────────────────────────────────────
 
     fn flush_fragment(
