@@ -2,6 +2,20 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 38 — Batch Signal Writes
+
+Added `begin_batch()` / `end_batch()` to group multiple signal writes into a single propagation pass. During a batch, signal values are stored immediately (reads see the new value) but subscriber scanning and worklist propagation are deferred until the outermost `end_batch()`. This eliminates redundant intermediate dirty-marking when a single logical operation writes multiple signals.
+
+- **P38.1** — Runtime batch infrastructure. Added `_batch_depth: Int` and `_batch_keys: List[UInt32]` fields to `Runtime`. Modified `write_signal[T]` and `write_signal_string` to check `_batch_depth > 0` — if batching, the value is stored immediately but the signal key is appended to `_batch_keys` (deduplicated) and propagation is skipped. Added `begin_batch()` (increments depth), `end_batch()` (decrements depth; on outermost call, runs a single combined propagation pass over all batched keys using a shared worklist — memos marked dirty at most once via `is_dirty()` guard), and `is_batching()` methods. Added wrappers on `AppShell` and `ComponentContext`. WASM exports: `runtime_begin_batch`, `runtime_end_batch`, `runtime_is_batching`. 22 new Mojo tests in `test/test_batch.mojo` covering single/multi signal batches, deferred propagation, nested batches (depth 2 and 3), string signals, mixed types, key deduplication, effect pending, shared worklist, chain propagation, settle after batch, non-batch regression, end-without-begin safety, is_batching flag, and large batch (20 signals).
+
+- **P38.2** — BatchDemoApp. New demo app with a multi-field form: two `SignalString` fields (`first_name`, `last_name`) feed a `MemoString` (`full_name = first + " " + last`), and a `SignalI32` (`write_count`) tracks batch operations. `set_names(first, last)` wraps all three writes in `begin_batch`/`end_batch` for a single propagation pass. `reset()` similarly batches writes to clear all state. String signals use `create_signal_string` (no scope auto-subscribe) so the scope only reacts to memo output and write_count changes. WASM exports with `bd_` prefix. 19 new Mojo tests in `test/test_batch_demo.mojo` covering initial state, set_names, reset, flush mutations, memo dirty/stable, batching flag, set-then-reset cycle, multiple sets, write_count accumulation, scope/memo counts, destroy safety, handle_event dispatch, rapid 10 sets, and dirty flag lifecycle. `BatchDemoAppHandle` interface and `createBatchDemoApp()` factory added to `runtime/app.ts`. 20 new JS test suites in `test-js/batch_demo.test.ts` covering DOM rendering, set/reset cycles, multiple sets, write count accumulation, memo stability, fullNameChanged query, flush behavior, batching flag, scope/memo counts, destroy safety, double destroy, independent instances, rapid 10 sets, and individual signal values.
+
+- **P38.3** — Documentation update. CHANGELOG.md, README.md, and AGENTS.md updated with Phase 38 summary, BatchDemoApp architecture, batch signal writes pattern, and updated file size reference and test counts.
+
+**Test count after Phase 38:** 1,323 Mojo (52 modules) + 3,090 JS (29 suites) = 4,413 tests.
+
+---
+
 ## Phase 37 — Equality-Gated Memo Propagation
 
 Added equality checks to all memo types so that downstream updates only occur when memo values actually change. When a memo recomputes to the same value, its output signal is NOT written, downstream memos remain value-stable, and `settle_scopes()` removes eagerly-dirtied scopes — skipping unnecessary re-renders and DOM diffs entirely.

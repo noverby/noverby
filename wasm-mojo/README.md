@@ -19,6 +19,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **Memo type expansion** — `MemoBool` and `MemoString` achieve type-parity with signals (`SignalI32`/`SignalBool`/`SignalString` ↔ `MemoI32`/`MemoBool`/`MemoString`); mixed-type memo chains with ordered recomputation
 - **Recursive memo propagation** — `write_signal` automatically propagates dirtiness through memo → memo chains to arbitrary depth via worklist-based traversal; diamond dependencies handled correctly; scope context tagging prevents namespace collisions
 - **Equality-gated memo propagation** — memo `end_compute` compares old vs new value before writing; if the value is unchanged, the output signal is NOT written, downstream memos remain value-stable, and `settle_scopes()` removes eagerly-dirtied scopes — skipping unnecessary re-renders and DOM diffs entirely
+- **Batch signal writes** — `begin_batch()` / `end_batch()` group multiple signal writes into a single propagation pass; values are stored immediately (reads see new values) but subscriber scanning is deferred until the outermost `end_batch()`, which runs a combined propagation with a shared worklist — eliminating redundant intermediate dirty-marking
 - **Ergonomic DSL** — `el_div`, `el_button`, `dyn_text` tag helpers with `to_template()` conversion
 - **AppShell abstraction** — single struct bundling runtime, store, allocator, and scheduler
 - **ComponentContext** — ergonomic Dioxus-style API with `use_signal()`, `setup_view()`, inline events, auto-numbered `dyn_text()`
@@ -27,7 +28,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **String event dispatch** — `ACTION_SIGNAL_SET_STRING` handlers pipe string values from DOM events directly into `SignalString` signals; JS EventBridge extracts `event.target.value` → `writeStringStruct()` → WASM `dispatch_event_with_string` with automatic fallback to numeric/default dispatch
 - **Two-way input binding** — Dioxus-style `oninput_set_string(signal)` + `bind_value(signal)` DSL helpers for inline string event handlers and auto-populated `value` attributes; `RenderBuilder.build()` reads `SignalString` at render time
 - **Error boundaries** — scope-level error catching with fallback UI and recovery; `use_error_boundary()` marks a scope as a boundary, `report_error()` propagates errors up the parent chain, `has_error()` / `clear_error()` drive flush-time content switching between normal and fallback children
-- **4,235 tests** — 1,266 Mojo (49 modules via wasmtime) + 2,969 JS (27 suites via Deno), all passing
+- **4,413 tests** — 1,323 Mojo (52 modules via wasmtime) + 3,090 JS (29 suites via Deno), all passing
 
 ## How it works
 
@@ -238,14 +239,16 @@ The framework follows the same reactive model as [Dioxus](https://dioxuslabs.com
 2. **Memos** (derived signals) cache computed values. A memo has its own reactive context: it auto-tracks which signals it reads during computation, caches the result, and marks subscribing scopes dirty when its inputs change. Memos are lazy — they only recompute when read while dirty. Dependency re-tracking on recompute means memos automatically adapt to conditional reads.
 3. **Writing** to a signal marks all subscribing scopes *and* all subscribing memos as dirty. Dirty memos propagate dirtiness to their own subscribers.
 4. **Equality gating** — when a memo recomputes to the same value, its output signal is NOT written. Downstream memos remain value-stable, and `settle_scopes()` removes eagerly-dirtied scopes whose subscribed signals all have unchanged values — skipping unnecessary re-renders.
-5. **Dirty scopes** are collected into the **Scheduler** (height-ordered, deduplicated).
-6. Scopes are re-rendered in parent-before-child order, producing new VNode trees.
-7. The **diff engine** compares old and new VNode trees (with keyed reconciliation).
-8. Mutations are written to a **binary buffer** in shared WASM memory.
-9. The JS **interpreter** reads the buffer and applies DOM operations.
+5. **Batching** — `begin_batch()` / `end_batch()` defer propagation until all writes complete; the outermost `end_batch()` runs a single combined propagation pass with a shared worklist, deduplicating memo dirty-marking across multiple source signals.
+6. **Dirty scopes** are collected into the **Scheduler** (height-ordered, deduplicated).
+7. Scopes are re-rendered in parent-before-child order, producing new VNode trees.
+8. The **diff engine** compares old and new VNode trees (with keyed reconciliation).
+9. Mutations are written to a **binary buffer** in shared WASM memory.
+10. The JS **interpreter** reads the buffer and applies DOM operations.
 
 ```txt
 Signal write → memo dirty → scope dirty → memo recompute → equality gate → settle scopes → scheduler → re-render → diff → mutations → DOM update
+(with optional batching: begin_batch → N × signal write → end_batch → single combined propagation)
 ```
 
 ## Binary mutation protocol
@@ -353,7 +356,7 @@ Adding a new test:
 
 ## Test results
 
-4,311 tests across 50 Mojo modules and 28 JS test suites:
+4,413 tests across 52 Mojo modules and 29 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -383,6 +386,8 @@ Adding a new test:
 - **Memo equality** — equality-gated memo propagation (Phase 37): I32/Bool/String value-stable detection, value_changed flag tracking, _changed_signals accumulator, skip-if-unchanged in end_compute, chain cascades (clamped → label both stable), diamond dependencies with mixed stable/changed, regression cases
 - **Equality demo app** — clamped + threshold memo chain (SignalI32 → MemoI32(clamp) → MemoString(label)), within-range clamped changes with label stable, threshold crossing (label changes), clamped stabilization above max (zero-byte flush), consecutive stable flushes, full cycle round-trip (0→12→0), scope settling when chain is value-stable, handle_event marks dirty, memo count verification, destroy safety, JS integration tests (DOM structure, clampedChanged/labelChanged queries, flush returns 0 when stable, dirty state after event)
 - **Scope settle** — dedicated runtime-level settle_scopes() unit tests: stable memo removes scope, changed memo keeps scope, mixed scopes, direct source signal subscription, scope subscribing to both stable memo and changed signal, no dirty scopes (no crash), all stable (both removed), no changed signals (all removed), 3-level chain cascade all stable, chain partial (A changed, B stable → scope removed), chain fully changed, diamond dependency, effect not affected by settle, idempotent settle, no-memos scenario
+- **Batch signal writes** — runtime-level begin_batch/end_batch unit tests (Phase 38): single/multi signal batches, deferred propagation (memo NOT dirty during batch), nested batches (depth 2 and 3), string signals, mixed types, key deduplication, effect pending after end_batch, shared worklist (diamond into one memo), chain propagation, settle after batch, non-batch regression, end-without-begin safety, is_batching flag, large batch (20 signals)
+- **Batch demo app** — multi-field form with batched writes (Phase 38): two SignalString fields (first_name, last_name) → MemoString (full_name), SignalI32 (write_count), set_names/reset via begin_batch/end_batch, memo dirty/stable detection, write_count accumulation, rapid 10 sets, DOM verification, independent instances, JS integration (DOM structure, set/reset cycles, batching flag, fullNameChanged query)
 - **Memory** — allocation cycles, bounded growth, rapid write stability, free-list reuse, double-free protection, WASM-integrated reuse (text/attr/fragment/template diffs with reuse enabled)
 - **Arithmetic/strings** — original PoC interop regression suite
 
