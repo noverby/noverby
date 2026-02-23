@@ -445,3 +445,165 @@ export function createCounterApp(
 
 	return counterHandle;
 }
+
+// ── ChildCounterApp handle ──────────────────────────────────────────────────
+
+/**
+ * A fully wired child-counter app instance (Phase 29).
+ *
+ * Returned by `createChildCounterApp`.  Demonstrates component composition:
+ * the parent owns buttons and a dyn_node slot; a ChildComponent renders
+ * the display `<p>Count: N</p>` with its own scope.
+ */
+export interface ChildCounterAppHandle extends AppHandle {
+	/** Increment handler ID (parent view_events[0]). */
+	incrHandler: number;
+
+	/** Decrement handler ID (parent view_events[1]). */
+	decrHandler: number;
+
+	/** Read the current count value from WASM. */
+	getCount(): number;
+
+	/** Simulate an increment click (dispatch + flush + apply). */
+	increment(): void;
+
+	/** Simulate a decrement click (dispatch + flush + apply). */
+	decrement(): void;
+
+	/** Return the child component's scope ID. */
+	childScopeId: number;
+
+	/** Return the child component's template ID. */
+	childTmplId: number;
+
+	/** Return the parent root scope ID. */
+	parentScopeId: number;
+
+	/** Return the parent template ID. */
+	parentTmplId: number;
+
+	/** Return the number of event bindings on the child. */
+	childEventCount: number;
+
+	/** Check whether the child has been rendered at least once. */
+	childHasRendered(): boolean;
+
+	/** Check whether the child is mounted in the DOM. */
+	childIsMounted(): boolean;
+
+	/** Return the total number of registered handlers. */
+	handlerCount(): number;
+}
+
+// ── ChildCounter App factory ────────────────────────────────────────────────
+
+/**
+ * Create a child-counter app wired to a DOM root element (Phase 29).
+ *
+ * Thin wrapper around `createApp()` that adds child-counter-specific helpers.
+ * Demonstrates component composition: parent with buttons + child display.
+ *
+ * @param fns     - Instantiated WASM exports.
+ * @param root    - The mount-point DOM element.
+ * @param doc     - The Document to use for DOM operations.
+ * @param install - Whether to install DOM event delegation (default: false).
+ */
+export function createChildCounterApp(
+	fns: WasmExports,
+	root: Element,
+	doc?: Document,
+	install = false,
+): ChildCounterAppHandle {
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		install,
+		init: (f) => f.cc_init(),
+		rebuild: (f, app, buf, cap) => f.cc_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.cc_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.cc_handle_event(app, hid, evt),
+		destroy: (f, app) => f.cc_destroy(app),
+	});
+
+	const incrHandler = fns.cc_incr_handler(handle.appPtr);
+	const decrHandler = fns.cc_decr_handler(handle.appPtr);
+
+	const ccHandle: ChildCounterAppHandle = {
+		...handle,
+		incrHandler,
+		decrHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
+
+		get childScopeId(): number {
+			return fns.cc_child_scope_id(handle.appPtr);
+		},
+
+		get childTmplId(): number {
+			return fns.cc_child_tmpl_id(handle.appPtr);
+		},
+
+		get parentScopeId(): number {
+			return fns.cc_parent_scope_id(handle.appPtr);
+		},
+
+		get parentTmplId(): number {
+			return fns.cc_parent_tmpl_id(handle.appPtr);
+		},
+
+		get childEventCount(): number {
+			return fns.cc_child_event_count(handle.appPtr);
+		},
+
+		getCount(): number {
+			return fns.cc_count_value(handle.appPtr);
+		},
+
+		childHasRendered(): boolean {
+			return fns.cc_child_has_rendered(handle.appPtr) !== 0;
+		},
+
+		childIsMounted(): boolean {
+			return fns.cc_child_is_mounted(handle.appPtr) !== 0;
+		},
+
+		handlerCount(): number {
+			return fns.cc_handler_count(handle.appPtr);
+		},
+
+		increment(): void {
+			handle.dispatchAndFlush(incrHandler);
+		},
+
+		decrement(): void {
+			handle.dispatchAndFlush(decrHandler);
+		},
+
+		destroy(): void {
+			handle.destroy();
+		},
+	};
+
+	return ccHandle;
+}

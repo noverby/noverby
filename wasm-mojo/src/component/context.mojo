@@ -70,6 +70,13 @@ from .lifecycle import (
     flush_conditional,
     flush_conditional_empty,
 )
+from .child import (
+    ChildComponent,
+    ChildRenderBuilder,
+    ChildEventBinding,
+    ChildAutoBinding,
+    _ChildEventInfo,
+)
 from vdom import (
     Node,
     NODE_EVENT,
@@ -1276,6 +1283,123 @@ struct ComponentContext(Movable):
             scope_ids: The child scope IDs to destroy.
         """
         self.shell.destroy_child_scopes(scope_ids)
+
+    # ── Child component composition ──────────────────────────────────
+
+    fn create_child_component(
+        mut self, view: Node, name: String
+    ) -> ChildComponent:
+        """Create a child component with its own scope and template.
+
+        Processes the view tree for inline events (same as register_view),
+        registers the template via register_extra_template, creates a
+        child scope, and registers event handlers under the child scope.
+
+        The returned ChildComponent can produce VNodes via render_builder()
+        that plug into the parent's dyn_node() slots.
+
+        Example:
+            var child = ctx.create_child_component(
+                el_p(dyn_text()),
+                String("display"),
+            )
+
+            # In render:
+            var cvb = child.render_builder(ctx.store_ptr(), ctx.runtime_ptr())
+            cvb.add_dyn_text("Count: " + str(count.peek()))
+            var child_idx = cvb.build()
+            child.update_vnode(child_idx)
+            parent_vb.add_dyn_node(child_idx)
+
+        Args:
+            view: The root Node of the child's template tree (may contain
+                  NODE_EVENT nodes from onclick_add, onclick_sub, etc.,
+                  and auto-numbered dyn_text() nodes).
+            name: The template name (for deduplication).
+
+        Returns:
+            A ChildComponent handle with its own scope and template.
+        """
+        # 1. Create a child scope under the root scope
+        var child_scope_id = self.shell.create_child_scope(self.scope_id)
+
+        # 2. Process tree: auto-number dyn_text, replace NODE_EVENT and
+        #    NODE_BIND_VALUE with NODE_DYN_ATTR, collect info.
+        var events = List[_EventInfo]()
+        var value_bindings = List[_ValueBindingInfo]()
+        var attr_idx = UInt32(0)
+        var text_idx = UInt32(0)
+        var processed = _process_view_tree(
+            view, events, value_bindings, attr_idx, text_idx
+        )
+
+        # 3. Build and register template
+        var template = to_template(processed, name)
+        var tmpl_id = UInt32(
+            self.shell.runtime[0].templates.register(template^)
+        )
+
+        # 4. Register handlers under the CHILD scope and store bindings
+        var event_bindings = List[ChildEventBinding]()
+        var auto_bindings = List[ChildAutoBinding]()
+
+        var ev_idx = 0
+        var vb_idx = 0
+        var total_auto = len(events) + len(value_bindings)
+        for _ in range(total_auto):
+            var use_event: Bool
+            if ev_idx < len(events) and vb_idx < len(value_bindings):
+                use_event = (
+                    events[ev_idx].attr_idx <= value_bindings[vb_idx].attr_idx
+                )
+            elif ev_idx < len(events):
+                use_event = True
+            else:
+                use_event = False
+
+            if use_event:
+                var handler_id = self.shell.runtime[0].register_handler(
+                    HandlerEntry(
+                        child_scope_id,
+                        events[ev_idx].action,
+                        events[ev_idx].signal_key,
+                        events[ev_idx].operand,
+                        events[ev_idx].event_name,
+                    )
+                )
+                event_bindings.append(
+                    ChildEventBinding(events[ev_idx].event_name, handler_id)
+                )
+                auto_bindings.append(
+                    ChildAutoBinding.event(
+                        events[ev_idx].event_name, handler_id
+                    )
+                )
+                ev_idx += 1
+            else:
+                auto_bindings.append(
+                    ChildAutoBinding.value(
+                        value_bindings[vb_idx].attr_name,
+                        value_bindings[vb_idx].string_key,
+                        value_bindings[vb_idx].version_key,
+                    )
+                )
+                vb_idx += 1
+
+        return ChildComponent(
+            child_scope_id, tmpl_id, event_bindings^, auto_bindings^
+        )
+
+    fn destroy_child_component(mut self, child: ChildComponent):
+        """Destroy a child component's scope and handlers.
+
+        Convenience method that delegates to `child.destroy()` with
+        the context's runtime pointer.
+
+        Args:
+            child: The ChildComponent to destroy.
+        """
+        child.destroy(self.shell.runtime)
 
     # ── Fragment lifecycle (for dynamic keyed lists) ─────────────────
 

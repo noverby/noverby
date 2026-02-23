@@ -1,6 +1,7 @@
 import { instantiate } from "../runtime/mod.ts";
 import { testAllocator, testAllocatorReuse } from "./allocator.test.ts";
 import { testBench } from "./bench.test.ts";
+import { testChildComponent } from "./child_component.test.ts";
 import { testCounter } from "./counter.test.ts";
 import { testDsl } from "./dsl.test.ts";
 import { testEffect } from "./effect.test.ts";
@@ -34,6 +35,7 @@ async function run(): Promise<void> {
 	testEvents(fns);
 	testAllocatorReuse(fns);
 	testLifecycle(fns);
+	testChildComponent(fns);
 
 	summary();
 }
