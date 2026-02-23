@@ -1,534 +1,842 @@
-# Roadmap — Phases 26–30
+# Phase 31 — Component Props & Context
 
-Future work for wasm-mojo, building on the completed allocator (Phase 25).
+## Problem
 
----
+Phase 29 introduced `ChildComponent` for component composition, but the
+current pattern has significant limitations:
 
-## Phase 26 — App Lifecycle (Destroy / Recreate)
+1. **Children are display-only.** The parent builds the child's VNode
+   directly (`child.render_builder()` → `add_dyn_text()` → `build()`),
+   which means the parent must know the child's template structure. The
+   child has no way to manage its own rendering.
 
-Phase 25 solved the allocator side: freed memory is now safely reused. But
-nobody has proven the full app destroy→recreate loop works end-to-end. The
-`launch()` function in `examples/lib/app.js` does not expose `destroy()` at
-all, and the TS-side `createApp()` destroy path (`runtime/app.ts`) has never
-been exercised in a create→use→destroy→create cycle.
+2. **No child-owned state.** `ChildComponent` has its own scope, but
+   there is no API to create signals, memos, or effects under that
+   scope. All reactive state lives in the parent.
 
-### Problem
+3. **No props mechanism.** Data flows from parent to child only through
+   the parent manually building the child's VNode with hardcoded values.
+   There is no ergonomic way to pass reactive signal handles as "props"
+   that the child can subscribe to.
 
-- `launch()` returns an `AppHandle` with `{ fns, appPtr, interp, bufPtr,
-  bufferCapacity, rootEl, flush }` — no `destroy`.
-- The `{app}_destroy` WASM exports exist for all three apps but are only
-  called from the TS `createApp().destroy()` path, which is never used in
-  production or tests.
-- DOM cleanup is unverified: stale event listeners, orphan nodes, template
-  cache entries from old app instances may leak.
-- The js-framework-benchmark requires a "warmup" pattern:
-  create→destroy→create→measure. Without lifecycle support this is impossible.
+4. **Context DI is buried.** `ScopeState.provide_context()` and
+   `ScopeArena.consume_context()` exist (Phase 8.3) but are not surfaced
+   on `ComponentContext`. No app code uses them. The parent-chain walk-up
+   is fully implemented but untested at the component level.
 
-### Design
+5. **No upward communication pattern.** Children cannot notify parents
+   of events beyond mutating shared signals (which requires the parent
+   to know the child's internal signal keys).
 
-**JS browser runtime** (`examples/lib/app.js`):
+### Current ChildCounterApp pattern (Phase 29)
 
-- Add `{app}_destroy` to the convention-discovery list in `launch()`.
-- Add `destroy()` to the returned `AppHandle`:
-  1. Call `mutation_buf_free(bufPtr)` to free the WASM-side buffer.
-  2. Call `{app}_destroy(appPtr)` to free WASM-side app state.
-  3. Call `eventBridge.uninstall()` to remove DOM listeners.
-  4. Clear `rootEl.innerHTML` (or `rootEl.replaceChildren()`) to remove
-     rendered DOM.
-  5. Null out handle fields to prevent use-after-destroy.
+```mojo
+struct ChildCounterApp:
+    var ctx: ComponentContext       # parent owns everything
+    var count: SignalI32            # parent-owned signal
+    var child: ChildComponent       # display-only child
 
-**TS test runtime** (`runtime/app.ts`):
-
-- `createApp().destroy()` already calls `events.uninstall()` +
-  `destroyApp(fns, appPtr)`. Extend to also free the mutation buffer and
-  provide a `destroyed` flag.
-
-**Allocator reset considerations**:
-
-- The allocator state (`ptrSize`, `freeMap`, heap pointer) is per-WASM-instance,
-  not per-app. Destroying one app should not reset the allocator — freed
-  blocks simply go back to the free list for the next app to reuse.
-- `heapStats()` should show free blocks increasing after destroy and
-  heap pointer staying stable (or even decreasing in effective usage)
-  after recreate.
-
-### Steps
-
-#### P26.1 — Wire `destroy()` into `launch()` AppHandle
-
-- Discover `{app}_destroy` in `launch()` (alongside `_init`, `_rebuild`,
-  `_flush`).
-- Add `destroy()` method to the returned handle: free buffer, destroy app,
-  uninstall events, clear DOM.
-- Guard against double-destroy (idempotent).
-
-#### P26.2 — Multi-app lifecycle JS tests
-
-New test file `test-js/lifecycle.test.ts`:
-
-- Create counter app → click a few times → destroy → verify root is empty.
-- Create counter app → destroy → create counter app → click → flush →
-  verify DOM is correct and heap pointer is bounded.
-- Create→destroy × 10 loop with `heapStats()` assertions: free bytes
-  should grow (or stay stable), heap pointer should not grow linearly.
-- Create todo app → add items → destroy → create todo app → verify
-  clean slate (0 items, fresh handler IDs).
-- Destroy with no prior flush (dirty state) — should not crash.
-- Double-destroy — should be a safe no-op.
-
-#### P26.3 — Multi-app lifecycle Mojo tests
-
-Extend `test/wasm_harness.mojo` tests:
-
-- `counter_app_init → use → counter_app_destroy → counter_app_init → use`
-  cycle with heap stats checks.
-- Todo app create→add→destroy→create cycle.
-- Verify `aligned_free` calls during destroy don't corrupt the free list.
-
-#### P26.4 — Bench warmup pattern
-
-- Create bench app → create 1k rows → destroy → create bench app →
-  create 1k rows → measure timing.
-- Verify heap stays bounded across the warmup cycle.
-- This validates the js-framework-benchmark warmup requirement.
-
-### Estimated size
-
-| Step | Scope | ~Lines |
-|------|-------|--------|
-| P26.1 | Wire destroy into launch() | ~40 |
-| P26.2 | JS lifecycle tests | ~300 |
-| P26.3 | Mojo lifecycle tests | ~100 |
-| P26.4 | Bench warmup pattern | ~80 |
-| **Total** | | **~520** |
-
----
-
-## Phase 27 — RemoveAttribute Mutation
-
-The protocol has `SetAttribute` (opcode `0x0A`) but no `RemoveAttribute`.
-Currently, "removing" an attribute means setting it to an empty string, which
-is semantically wrong for boolean attributes like `disabled`, `checked`,
-`hidden`, `selected`, and `open`.
-
-### Problem
-
-- `class_if(false, "active")` returns `""`, which sets `class=""` rather
-  than removing the `class` attribute entirely. For CSS selectors like
-  `[class]` or boolean attributes, this is incorrect.
-- The diff engine has no way to express "this attribute was present before
-  and should now be absent."
-- Dioxus has `RemoveAttribute` in its mutation protocol — we should match.
-
-### Design
-
-**New opcode**: `OP_REMOVE_ATTRIBUTE = 0x11`
-
-Wire format:
-
-```txt
-| op (u8) | id (u32) | ns (u8) | name_len (u16) | name ([u8]) |
+    fn build_child_vnode(mut self) -> UInt32:
+        # Parent knows child's template structure — tight coupling
+        var cvb = self.child.render_builder(ctx.store_ptr(), ctx.runtime_ptr())
+        cvb.add_dyn_text("Count: " + str(self.count.peek()))
+        return cvb.build()
 ```
 
-Same as `SetAttribute` but without the value payload.
+### Target pattern (Phase 31)
 
-**MutationWriter** (`src/bridge/protocol.mojo`):
+```mojo
+struct CounterDisplay:
+    var child_ctx: ChildComponentContext
+    var count: SignalI32            # received from parent via context
+    var show_hex: SignalBool        # child-owned local state
 
-- Add `remove_attribute(id, ns, name)` method.
+    fn render(mut self) -> UInt32:
+        var vb = self.child_ctx.render_builder()
+        if self.show_hex.get():
+            vb.add_dyn_text("Count: 0x" + hex(self.count.peek()))
+        else:
+            vb.add_dyn_text("Count: " + str(self.count.peek()))
+        return vb.build()
 
-**DiffEngine** (`src/mutations/diff.mojo`):
+struct ParentApp:
+    var ctx: ComponentContext
+    var count: SignalI32
+    var display: CounterDisplay     # self-rendering child
 
-- When diffing dynamic attributes: if old has a value and new has
-  `AVAL_NONE` (or a new sentinel `AVAL_REMOVED`), emit `RemoveAttribute`
-  instead of `SetAttribute` with empty string.
-
-**Protocol reader** (`runtime/protocol.ts`, `examples/lib/protocol.js`):
-
-- Add `Op.RemoveAttribute = 0x11` opcode.
-- Add `MutationRemoveAttribute` interface and parser case.
-
-**Interpreter** (`runtime/interpreter.ts`, `examples/lib/interpreter.js`):
-
-- Handle `RemoveAttribute`: call `element.removeAttribute(name)` (or
-  `element.removeAttributeNS(ns, name)` when ns > 0).
-
-**DSL**:
-
-- Add `AVAL_NONE` sentinel to `AttributeValue` for "no value / remove".
-- `class_if(false, name)` could return `AVAL_NONE` instead of `""` —
-  or introduce `remove_attr(name)` node type.
-- `bind_value` should emit `RemoveAttribute` when the signal is empty
-  (instead of `value=""`), depending on the attribute semantics.
-
-### Steps
-
-#### P27.1 — Protocol + MutationWriter
-
-- Add `OP_REMOVE_ATTRIBUTE` opcode to `protocol.mojo`.
-- Add `remove_attribute(id, ns, name)` to `MutationWriter`.
-- Add `Op.RemoveAttribute` to `runtime/protocol.ts` and
-  `examples/lib/protocol.js`.
-- Add `MutationRemoveAttribute` type and parser case.
-- Protocol round-trip tests (write in WASM, read in JS).
-
-#### P27.2 — Interpreter
-
-- Handle `Op.RemoveAttribute` in both interpreters.
-- Test: `SetAttribute("class", "foo")` → `RemoveAttribute("class")` →
-  verify `element.getAttribute("class")` is `null`.
-
-#### P27.3 — DiffEngine integration
-
-- Add `AVAL_NONE` sentinel to `AttributeValue`.
-- DiffEngine: when new attr is `AVAL_NONE` and old was a real value,
-  emit `RemoveAttribute`.
-- DiffEngine: when old attr is `AVAL_NONE` and new has a value,
-  emit `SetAttribute` (attribute appears for the first time).
-- Test: template with dynamic bool attr, diff true→false emits
-  `RemoveAttribute`.
-
-#### P27.4 — DSL helpers for boolean attributes
-
-- `bool_attr(name)` → `Node` that produces `SetAttribute(name, "")`
-  when true and `RemoveAttribute(name)` when false (for `disabled`,
-  `checked`, `hidden`, etc.).
-- `dyn_bool_attr(name, condition)` → dynamic attribute that diffs
-  correctly with `RemoveAttribute`.
-- Update `ItemBuilder.add_dyn_bool_attr()` to use `AVAL_NONE` when
-  the condition is false.
-- Todo app: add a `disabled` attribute to the Add button when
-  input is empty (exercises the full path).
-
-### Estimated size
-
-| Step | Scope | ~Lines |
-|------|-------|--------|
-| P27.1 | Protocol + writer | ~80 |
-| P27.2 | Interpreter | ~40 |
-| P27.3 | DiffEngine + AVAL_NONE | ~100 |
-| P27.4 | DSL bool attr helpers | ~120 |
-| **Total** | | **~340** |
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.count = self.ctx.use_signal(0)
+        # Provide count signal to descendants via context
+        self.ctx.provide_signal_i32(PROP_COUNT, self.count)
+        ...
+        # Child creates its own context, consumes the prop
+        var child_ctx = self.ctx.create_child_context(
+            el_p(dyn_text()), String("display"),
+        )
+        var received_count = child_ctx.consume_signal_i32(PROP_COUNT)
+        var local_toggle = child_ctx.use_signal_bool(False)
+        self.display = CounterDisplay(child_ctx^, received_count, local_toggle)
+```
 
 ---
 
-## Phase 28 — Conditional Rendering
+## Design
 
-Currently, conditional UI is handled with text-level workarounds:
-`text_when(cond, "yes", "no")`, `class_if(cond, "hidden")`. There is no
-way to render entirely different VNode subtrees based on a signal value.
-The diff engine already handles "different template or different VNode kind
-→ full replacement" (strategy 2), so the infrastructure exists — it just
-needs a clean API surface.
+### Context keys
 
-### Problem
+Context keys are `UInt32` identifiers chosen by the application. To avoid
+collisions, the convention is `comptime` constants:
 
-- Showing/hiding a section requires CSS tricks (`class_if(show, "hidden")`),
-  which keeps the DOM nodes alive and accessible to screen readers.
-- Rendering different content based on state (e.g. loading spinner vs
-  data, login form vs dashboard) requires full subtree replacement.
-- `FragmentSlot` handles empty↔populated transitions for keyed lists, but
-  there is no equivalent for arbitrary conditional branches.
-
-### Design
-
-A **`ConditionalSlot`** that manages an if/else (or multi-branch) VNode
-in a dynamic node position.
-
-```txt
-# In the component's view:
-el_div(
-    dyn_text(),           # dynamic_nodes[0] — title
-    dyn_node(1),          # dynamic_nodes[1] — conditional slot
-)
-
-# In render():
-if show_detail.read():
-    builder.add_dyn_node(detail_vnode_idx)
-else:
-    builder.add_dyn_placeholder()
+```mojo
+comptime PROP_COUNT: UInt32 = 1
+comptime PROP_THEME: UInt32 = 2
+comptime CTX_SELECTED_ID: UInt32 = 100
 ```
 
-The diff engine already handles the transitions:
+Context values are `Int32` — sufficient for signal keys, enum values,
+boolean flags, and small integers. Signal handles are reconstructed from
+the key + shared runtime pointer.
 
-- **Placeholder → VNode**: `ReplacePlaceholder` + create new node.
-- **VNode → Placeholder**: `ReplaceWith` placeholder.
-- **VNode A → VNode B** (different templates): full replacement.
-- **Same template**: efficient dynamic-only diff.
+### ChildComponentContext
 
-What's missing is a **component-level helper** to track the current
-branch and emit the right VNode on each render.
+A new struct in `src/component/child_context.mojo` that wraps:
 
-### Steps
+- A `ChildComponent` (scope, template, ConditionalSlot, bindings)
+- Pointers to the shared `Runtime`, `VNodeStore`, `StringStore`
+- The parent's `scope_id` (for context walk-up)
+- The child's `scope_id` (for signal/memo creation and dirty tracking)
 
-#### P28.1 — ConditionalSlot struct
+It provides a subset of `ComponentContext`'s API:
 
-New struct in `src/component/lifecycle.mojo`:
+- `use_signal(initial) -> SignalI32` — creates signal under child scope
+- `use_signal_bool(initial) -> SignalBool`
+- `use_signal_string(initial) -> SignalString`
+- `use_memo(initial) -> MemoI32`
+- `consume_signal_i32(key) -> SignalI32` — walks up scope chain
+- `consume_signal_bool(key) -> SignalBool`
+- `consume_signal_string(key) -> SignalString`
+- `consume_context(key) -> Int32` — raw context lookup
+- `render_builder() -> ChildRenderBuilder`
+- `is_dirty() -> Bool`
 
-- `ConditionalSlot` — tracks current branch (tag + VNode index).
-- `set_branch(tag, vnode_idx)` — set the current branch.
-- `set_empty()` — set to placeholder (no content).
-- Integrates with `VNodeBuilder.add_dyn_node()` /
-  `add_dyn_placeholder()`.
+It does NOT own the `AppShell` — the parent `ComponentContext` does. The
+child context holds non-owning pointers to the shared stores, just like
+signal handles do.
 
-#### P28.2 — ComponentContext helpers
+### Signal sharing via context
 
-- `ctx.conditional_slot()` → `ConditionalSlot` (convenience constructor).
-- Document the pattern: `if cond: slot.set_branch(1, build_detail())`
-  `else: slot.set_empty()`.
-- The diff engine handles the rest — no new mutation opcodes needed.
+Parent provides a signal by storing its key in scope context:
 
-#### P28.3 — Counter app: show/hide detail
+```text
+provide_signal_i32(PROP_COUNT, count)
+  → self.shell.runtime[0].scopes.provide_context(
+        self.scope_id, PROP_COUNT, Int32(count.key))
+```
 
-Extend the counter app with a conditional section:
+Child consumes it by looking up the key and reconstructing a handle:
 
-- Add a `show_detail: SignalBool` toggle.
-- When true, render a `<div>` with additional info (e.g. "Count is
-  even/odd", doubled value from memo).
-- When false, render a placeholder.
-- Button to toggle `show_detail`.
-- Tests: toggle on → verify detail DOM exists. Toggle off → verify
-  detail DOM removed. Toggle on→off→on → verify correct content.
+```text
+consume_signal_i32(PROP_COUNT)
+  → var (found, raw_key) = runtime[0].scopes.consume_context(
+        self.child_scope_id, PROP_COUNT)
+  → return SignalI32(UInt32(raw_key), self.runtime)
+```
 
-#### P28.4 — Todo app: empty state
+Since the child scope's `parent_id` is the parent scope's ID (set by
+`create_child_scope`), the walk-up finds the parent's context entry
+automatically.
 
-- When the todo list is empty, show a placeholder message ("No items
-  yet — add one above!") instead of an empty `<ul>`.
-- Uses `ConditionalSlot`: empty list → message VNode, non-empty →
-  `<ul>` with keyed items.
-- Tests: start with 0 items → message visible. Add item → message
-  gone, list visible. Remove all items → message returns.
+### Upward communication
 
-### Estimated size
+No new primitive is needed. The parent provides a "callback signal" —
+a `SignalI32` whose value the child writes to signal an action:
 
-| Step | Scope | ~Lines |
-|------|-------|--------|
-| P28.1 | ConditionalSlot struct | ~60 |
-| P28.2 | ComponentContext helpers | ~30 |
-| P28.3 | Counter show/hide detail | ~120 |
-| P28.4 | Todo empty state | ~80 |
-| **Total** | | **~290** |
+```mojo
+# Parent
+var on_action = ctx.use_signal(0)  # 0 = no action
+ctx.provide_signal_i32(CB_ACTION, on_action)
+
+# Child
+var on_action = child_ctx.consume_signal_i32(CB_ACTION)
+# In event handler:
+on_action.set(ACTION_DELETE)  # marks parent scope dirty
+```
+
+The parent checks `on_action.peek()` during flush and resets it. This
+is the same pattern as Elm/Redux command signals and works within the
+existing reactive system.
+
+### Dirty tracking
+
+Child-owned signals are created under the child scope, so writing them
+marks the child scope dirty — not the parent. The parent must check
+`child_ctx.is_dirty()` during flush and re-render the child if needed.
+
+Prop signals (parent-owned, consumed by child) mark the *parent* scope
+dirty when written (since the parent scope subscribes during its render).
+The child reads them via `peek()` during its own render, so the parent
+must flush the child whenever the parent itself is dirty. This matches
+the existing ChildCounterApp pattern.
 
 ---
 
-## Phase 29 — Component Composition
+## Steps
 
-All three apps are monolithic: a single `ComponentContext` owns the entire
-view tree. Dioxus uses nested component functions that each own their own
-reactive scope. wasm-mojo should support rendering child components within
-a parent's template, each with independent reactivity.
+### P31.1 — ComponentContext provide/consume + signal helpers
 
-### Problem
+Surface the scope context DI mechanism on `ComponentContext` and add
+typed signal-sharing helpers.
 
-- A parent component cannot embed a child component in its template.
-  The `dyn_node()` slot expects a VNode index, but there is no way for
-  a child component to produce a VNode that plugs into the parent's
-  dynamic node slot.
-- Child components need their own `ScopeState` for independent
-  dirty tracking — a change in a child signal should only re-render
-  that child, not the entire parent.
-- Lifecycle: parent destroy must cascade to child scopes.
+**`src/component/context.mojo` additions:**
 
-### Design
+```mojo
+# ── Context (Dependency Injection) ───────────────────────────────
 
-**`ChildComponent`** — a handle that wraps a child scope + template +
-VNode builder.
+fn provide_context(mut self, key: UInt32, value: Int32):
+    """Provide a context value at the root scope."""
+    self.shell.runtime[0].scopes.provide_context(
+        self.scope_id, key, value
+    )
 
-```txt
-# Parent setup:
-var child = ctx.create_child_component()
+fn consume_context(self, key: UInt32) -> Tuple[Bool, Int32]:
+    """Look up a context value walking up the scope tree."""
+    return self.shell.runtime[0].scopes.consume_context(
+        self.scope_id, key
+    )
 
-# Parent render:
-builder.add_dyn_node(child.render(ctx))
+fn has_context(self, key: UInt32) -> Bool:
+    """Check whether a context value is reachable."""
+    return self.consume_context(key)[0]
 
-# Child setup (in a builder callback or init function):
-child.use_signal(...)
-child.setup_view(child_view, "child-name")
+# ── Signal sharing via context ───────────────────────────────────
 
-# Parent flush:
-# The diff engine diffs the child's VNode like any other dynamic node.
-# If only the child's signals changed, only the child's dynamic
-# slots produce mutations.
+fn provide_signal_i32(mut self, key: UInt32, signal: SignalI32):
+    """Provide a signal handle to descendants via context."""
+    self.provide_context(key, Int32(signal.key))
+
+fn provide_signal_bool(mut self, key: UInt32, signal: SignalBool):
+    """Provide a bool signal handle to descendants via context."""
+    self.provide_context(key, signal.peek_i32())
+    # Store the actual signal key, not the value
+    self.shell.runtime[0].scopes.provide_context(
+        self.scope_id, key, Int32(signal.key)
+    )
+
+fn provide_signal_string(mut self, key: UInt32, signal: SignalString):
+    """Provide a string signal handle to descendants via context."""
+    self.provide_context(key, Int32(signal.key))
+
+fn consume_signal_i32(self, key: UInt32) -> SignalI32:
+    """Look up a SignalI32 from an ancestor's context."""
+    var result = self.consume_context(key)
+    return SignalI32(UInt32(result[1]), self.shell.runtime)
+
+fn consume_signal_bool(self, key: UInt32) -> SignalBool:
+    """Look up a SignalBool from an ancestor's context."""
+    var result = self.consume_context(key)
+    return SignalBool(UInt32(result[1]), self.shell.runtime)
+
+fn consume_signal_string(self, key: UInt32) -> SignalString:
+    """Look up a SignalString from an ancestor's context."""
+    var result = self.consume_context(key)
+    return SignalString(
+        UInt32(result[1]),
+        self.shell.runtime,
+        self.shell.string_store,
+    )
 ```
 
-**Scope hierarchy**: Child components get their own `ScopeState` via
-`ctx.create_child_scope()`. The scheduler processes child scopes at
-their correct height (children after parents that depend on them).
-Destroying the parent destroys all child scopes automatically.
+**`src/main.mojo` WASM exports (thin wrappers):**
 
-**Incremental flush**: When only a child's scope is dirty, the parent
-diff should skip unchanged dynamic slots (it already does — same
-template + same dynamic values = 0 mutations). The child's
-dynamic nodes will diff and produce targeted SetText/SetAttribute
-mutations.
+- `ctx_provide_context(app_ptr, key, value)`
+- `ctx_consume_context(app_ptr, key) -> Int32`
+- `ctx_has_context(app_ptr, key) -> Int32`
+- `ctx_provide_signal_i32(app_ptr, key, signal_key)`
+- `ctx_consume_signal_i32(app_ptr, key) -> Int32` (returns signal key)
 
-### Steps
+**Tests:**
 
-#### P29.1 — ChildComponent struct
+Mojo (`test/test_context.mojo`, new module, ~15 tests):
 
-New struct in `src/component/`:
+- `provide_context` stores value at root scope
+- `consume_context` retrieves value from same scope
+- `consume_context` walks up parent chain (provide at root, consume at child)
+- `consume_context` returns (False, 0) for missing key
+- `has_context` returns True/False correctly
+- `provide_context` overwrites existing key
+- `provide_signal_i32` round-trips through consume
+- `provide_signal_bool` round-trips through consume
+- `provide_signal_string` round-trips through consume
+- consumed signal handle reads correct value
+- consumed signal handle writes propagate to parent
+- writing consumed signal marks parent scope dirty
+- multiple context keys coexist
+- context survives across flush cycles
+- context cleaned up on destroy
 
-- Wraps a child scope ID + template ID + VNode index.
-- `render(ctx) -> UInt32` — builds the child VNode via its
-  `RenderBuilder`, returns the VNode index for the parent's
-  `add_dyn_node()`.
-- `is_dirty(ctx) -> Bool` — check if the child's scope is dirty.
-- `destroy(ctx)` — destroy child scope + handlers.
+JS (`test-js/context.test.ts`, new file, ~10 tests):
 
-#### P29.2 — ComponentContext child component API
+- provide + consume round-trip via WASM exports
+- missing key returns 0
+- signal sharing via context (provide, consume, read value)
+- signal write via consumed handle marks dirty
+- overwrite context key
+- multiple keys
+- child scope consumes parent context
+- context across rebuild cycles
+- destroy cleanup
+- independent instances don't share context
 
-- `ctx.create_child_component(view, name) -> ChildComponent`.
-- Registers the child's template via `register_extra_template()`.
-- Creates a child scope via `create_child_scope()`.
-- Processes the child's view tree for inline events.
+### P31.2 — ChildComponentContext
 
-#### P29.3 — Flush integration
+New struct that gives child components their own reactive state and
+access to parent-provided context.
 
-- When flushing, the parent diff walks dynamic nodes. If a dynamic
-  node is a child component's VNode, the diff engine handles it
-  normally (same template = diff dynamics, different = replace).
-- Test: parent with two children, change one child's signal →
-  only that child's SetText emitted.
+**New file: `src/component/child_context.mojo`**
 
-#### P29.4 — Counter with child component
+```mojo
+struct ChildComponentContext(Movable):
+    """Context for a self-rendering child component.
 
-Extract the counter's display into a child component:
+    Wraps a ChildComponent and provides signal/memo creation under
+    the child's scope, context consumption from ancestors, and a
+    render_builder() for self-rendering.
 
-- Parent: toolbar buttons + `dyn_node()` slot for the display child.
-- Child: `<p>Count: {n}</p>` with its own signals fed from parent.
-- Verify: clicking increment only emits SetText for the child's
-  dynamic text, not a full parent re-render.
+    Does NOT own the AppShell — the parent ComponentContext does.
+    Holds non-owning pointers to the shared Runtime, VNodeStore,
+    StringStore, and ElementIdAllocator.
 
-### Estimated size
+    Usage:
+        var child_ctx = parent_ctx.create_child_context(
+            el_p(dyn_text()), String("display"),
+        )
+        var local_state = child_ctx.use_signal(0)
+        var prop = child_ctx.consume_signal_i32(PROP_COUNT)
+    """
 
-| Step | Scope | ~Lines |
-|------|-------|--------|
-| P29.1 | ChildComponent struct | ~120 |
-| P29.2 | ComponentContext API | ~80 |
-| P29.3 | Flush integration + tests | ~150 |
-| P29.4 | Counter with child | ~100 |
-| **Total** | | **~450** |
+    var child: ChildComponent
+    var scope_id: UInt32
+    var runtime: UnsafePointer[Runtime, MutExternalOrigin]
+    var store: UnsafePointer[VNodeStore, MutExternalOrigin]
+    var string_store: UnsafePointer[StringStore, MutExternalOrigin]
+    var eid_alloc: UnsafePointer[ElementIdAllocator, MutExternalOrigin]
 
----
+    # ── Signal creation (under child scope) ──────────────────────
 
-## Phase 30 — Client-Side Routing
+    fn use_signal(mut self, initial: Int32) -> SignalI32:
+        """Create an Int32 signal under the child scope."""
 
-With app lifecycle (Phase 26) and component composition (Phase 29),
-the pieces exist for a single-page app with URL-based view switching.
+    fn use_signal_bool(mut self, initial: Bool) -> SignalBool:
+        """Create a Bool signal under the child scope."""
 
-### Problem
+    fn use_signal_string(mut self, initial: String) -> SignalString:
+        """Create a String signal under the child scope."""
 
-- Each example app (`counter`, `todo`, `bench`) runs as a standalone
-  page with its own HTML file and `launch()` call.
-- There is no way to switch between views within a single WASM instance.
-- Browser back/forward navigation is not handled.
+    fn use_memo(mut self, initial: Int32) -> MemoI32:
+        """Create a memo under the child scope."""
 
-### Design
+    # ── Context consumption ──────────────────────────────────────
 
-**`Router`** — a WASM-side struct that maps URL paths to component
-constructors (or branch tags).
+    fn consume_context(self, key: UInt32) -> Tuple[Bool, Int32]:
+        """Look up a context value walking up from child scope."""
 
-```txt
-Router:
-    routes: Dict[String, UInt8]    # path → branch tag
-    current: UInt8                 # active branch
-    slot: ConditionalSlot          # Phase 28
+    fn consume_signal_i32(self, key: UInt32) -> SignalI32:
+        """Look up a SignalI32 from an ancestor's context."""
 
-    fn navigate(path: String):
-        current = routes[path]
-        slot.set_branch(current, build_for_branch(current))
-        mark_dirty()
+    fn consume_signal_bool(self, key: UInt32) -> SignalBool:
+        """Look up a SignalBool from an ancestor's context."""
+
+    fn consume_signal_string(self, key: UInt32) -> SignalString:
+        """Look up a SignalString from an ancestor's context."""
+
+    # ── Context provision (at child scope) ───────────────────────
+
+    fn provide_context(mut self, key: UInt32, value: Int32):
+        """Provide a context value at the child scope."""
+
+    fn provide_signal_i32(mut self, key: UInt32, signal: SignalI32):
+        """Provide a signal to descendants via child scope context."""
+
+    # ── Rendering ────────────────────────────────────────────────
+
+    fn render_builder(self) -> ChildRenderBuilder:
+        """Create a ChildRenderBuilder for this child's template."""
+
+    # ── Slot / flush delegation ──────────────────────────────────
+
+    fn init_slot(mut self, anchor_id: UInt32):
+        """Initialize the ConditionalSlot after parent mount."""
+
+    fn flush(mut self, writer_ptr, new_vnode_idx: UInt32):
+        """Flush the child: create or diff its VNode in the DOM."""
+
+    fn flush_empty(mut self, writer_ptr):
+        """Hide the child: remove its DOM content."""
+
+    # ── State queries ────────────────────────────────────────────
+
+    fn is_dirty(self) -> Bool:
+        """Check if the child scope or any of its signals changed."""
+
+    fn is_mounted(self) -> Bool:
+        """Check whether the child is in the DOM."""
+
+    fn has_rendered(self) -> Bool:
+        """Check whether this child has rendered at least once."""
+
+    # ── Destroy ──────────────────────────────────────────────────
+
+    fn destroy(self):
+        """Destroy the child scope, its signals, and handlers."""
 ```
 
-**JS side**:
+**`src/component/context.mojo` addition:**
 
-- `popstate` listener → call `router_navigate(app, path)` WASM export.
-- `launch()` option: `routes: { "/": "counter", "/todo": "todo" }`.
-- `pushState` / `replaceState` wrappers called from WASM via imports.
+```mojo
+fn create_child_context(
+    mut self, view: Node, name: String,
+) -> ChildComponentContext:
+    """Create a ChildComponentContext for a self-rendering child.
 
-**WASM imports needed**:
+    Same as create_child_component() but returns a richer context
+    that supports signal creation, context consumption, and
+    self-rendering.
+    """
+    var child = self.create_child_component(view, name)
+    return ChildComponentContext(
+        child^,
+        child.scope_id,
+        self.shell.runtime,
+        self.shell.store,
+        self.shell.string_store,
+        self.shell.eid_alloc,
+    )
 
-- `push_state(path_ptr)` — calls `history.pushState(null, "", path)`.
-- `replace_state(path_ptr)` — calls `history.replaceState(...)`.
+fn destroy_child_context(mut self, child_ctx: ChildComponentContext):
+    """Destroy a ChildComponentContext and its resources."""
+    child_ctx.destroy()
+```
 
-### Steps
+**Signal creation under child scope:**
 
-#### P30.1 — Router struct + navigate export
+The child scope already exists (via `create_child_scope`). To create
+signals under it, `ChildComponentContext.use_signal()` directly calls
+`runtime[0].create_signal(initial)` and pushes a hook onto the child
+scope. The signal key is stored in the child scope's hook storage,
+matching the pattern in `ComponentContext.use_signal()` but targeting
+the child scope ID instead of the root scope.
 
-- `Router` struct with route table + `ConditionalSlot`.
-- `router_navigate(app, path: String)` WASM export.
-- `router_current_path(app) -> String` query export.
+Implementation note: `ComponentContext.use_signal()` calls
+`self.shell.use_signal_i32(initial)` which creates the signal in the
+store and pushes a hook at the current scope (tracked via
+`begin_render`/`end_render`). For `ChildComponentContext`, we bypass
+AppShell and call `Runtime` methods directly, explicitly targeting the
+child scope ID. No render bracket is needed — signals are always
+created (never re-retrieved via cursor) because child components
+don't re-run their setup.
 
-#### P30.2 — JS history integration
+**Exports and updates:**
 
-- Add `push_state` and `replace_state` WASM imports to `env.js`
-  and `env.ts`.
-- Add `popstate` listener in `launch()` that calls
-  `router_navigate`.
-- `<a>` click interception (prevent default, push state, navigate).
+- Export `ChildComponentContext` from `component/__init__.mojo`
+- Add WASM exports for child context signal creation and context
+  consumption (used by test harness)
 
-#### P30.3 — Demo: multi-view app
+**Tests:**
 
-- New example: `examples/app/` — a single WASM app that hosts
-  counter + todo behind route switches.
-- `/` → counter view, `/todo` → todo view.
-- Nav bar with links rendered from WASM (uses `onclick_custom` +
-  `push_state` import).
-- Browser back/forward works via `popstate` → `router_navigate`.
+Mojo (`test/test_child_context.mojo`, new module, ~20 tests):
 
-#### P30.4 — Route transition tests
+- create child context returns valid scope/template
+- child scope is distinct from parent scope
+- `use_signal` creates signal under child scope
+- `use_signal_bool` under child scope
+- `use_signal_string` under child scope
+- `use_memo` under child scope
+- child signal write marks child scope dirty (not parent)
+- child signal write does not mark parent dirty
+- parent signal write marks parent dirty (not child)
+- `consume_signal_i32` retrieves parent-provided signal
+- `consume_signal_bool` retrieves parent-provided signal
+- consumed signal reads correct value
+- consumed signal write propagates to parent scope
+- `render_builder` produces valid VNode
+- `is_dirty` reflects child scope state
+- `init_slot` + `flush` produces mutations
+- `flush` on clean child returns 0
+- child context provides context to grandchild
+- destroy cleans up child scope and signals
+- destroy then recreate cycle
 
-- Navigate `/` → `/todo` → `/` → verify correct DOM at each step.
-- Browser back (simulated `popstate`) → verify previous view restored.
-- Direct navigation to `/todo` → verify todo view rendered.
-- `heapStats()` bounded across route transitions (Phase 25 allocator
-  reclaims destroyed view memory).
+JS (`test-js/child_context.test.ts`, new file, ~15 tests):
 
-### Estimated size
+- create child context, verify scope/template IDs
+- child `use_signal` independent from parent signals
+- child signal write → child dirty, parent clean
+- parent signal write → parent dirty, child clean
+- context prop round-trip (provide at parent, consume at child)
+- child self-render via render_builder produces correct VNode
+- DOM mount with child context (parent + child visible)
+- child local state update → only child SetText mutation
+- parent prop update → child re-renders with new value
+- mixed local + prop updates in single flush
+- destroy does not crash
+- destroy + recreate cycle
+- multiple independent child contexts
+- rapid signal writes bounded memory
+- child provides context to sibling (negative — siblings can't see
+  each other's context)
 
-| Step | Scope | ~Lines |
-|------|-------|--------|
-| P30.1 | Router struct + exports | ~120 |
-| P30.2 | JS history integration | ~80 |
-| P30.3 | Multi-view demo app | ~200 |
-| P30.4 | Route transition tests | ~150 |
-| **Total** | | **~550** |
+### P31.3 — PropsCounterApp demo (self-rendering child with props)
+
+A new demo app that replaces the Phase 29 `ChildCounterApp` pattern
+with the new `ChildComponentContext` approach. The child component:
+
+- Receives the `count` signal from the parent via context (prop)
+- Owns local state: `show_hex: SignalBool` (display format toggle)
+- Renders itself via `child_ctx.render_builder()`
+- Has its own event handler (toggle button) under the child scope
+
+**`src/main.mojo` additions:**
+
+```mojo
+comptime PROP_COUNT: UInt32 = 1
+
+struct CounterDisplay:
+    """Self-rendering child: displays count with format toggle."""
+    var child_ctx: ChildComponentContext
+    var count: SignalI32           # consumed from parent context
+    var show_hex: SignalBool       # child-owned local state
+
+    fn __init__(
+        out self,
+        var child_ctx: ChildComponentContext,
+        count: SignalI32,
+        show_hex: SignalBool,
+    ):
+        self.child_ctx = child_ctx^
+        self.count = count
+        self.show_hex = show_hex
+
+    fn render(mut self) -> UInt32:
+        var vb = self.child_ctx.render_builder()
+        var val = self.count.peek()
+        if self.show_hex.get():
+            vb.add_dyn_text("Count: 0x" + hex(val))
+        else:
+            vb.add_dyn_text("Count: " + str(val))
+        return vb.build()
+
+struct PropsCounterApp:
+    """Counter app demonstrating props & child-owned state."""
+    var ctx: ComponentContext
+    var count: SignalI32
+    var display: CounterDisplay
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.count = self.ctx.use_signal(0)
+        # Provide count to descendants
+        self.ctx.provide_signal_i32(PROP_COUNT, self.count)
+        self.ctx.setup_view(
+            el_div(
+                el_h1(text("Props Counter")),
+                el_button(text("+ 1"), onclick_add(self.count, 1)),
+                el_button(text("- 1"), onclick_sub(self.count, 1)),
+                dyn_node(0),     # child slot
+            ),
+            String("props-counter"),
+        )
+        # Create self-rendering child with format toggle
+        var child_ctx = self.ctx.create_child_context(
+            el_div(
+                el_p(dyn_text()),
+                el_button(text("Toggle hex"), onclick_toggle(...)),
+            ),
+            String("counter-display"),
+        )
+        var prop_count = child_ctx.consume_signal_i32(PROP_COUNT)
+        var show_hex = child_ctx.use_signal_bool(False)
+        self.display = CounterDisplay(child_ctx^, prop_count, show_hex)
+```
+
+**Template structure:**
+
+Parent ("props-counter"):
+
+```text
+div
+  h1 > "Props Counter"
+  button > "+" + dynamic_attr[0]  ← onclick_add
+  button > "-" + dynamic_attr[1]  ← onclick_sub
+  dyn_node[0]                     ← child slot
+```
+
+Child ("counter-display"):
+
+```text
+div
+  p > dynamic_text[0]             ← "Count: N" or "Count: 0xN"
+  button > "Toggle hex"
+    dynamic_attr[0]               ← onclick_toggle(show_hex)
+```
+
+**Lifecycle functions:**
+
+- `props_counter_init` → allocate + construct `PropsCounterApp`
+- `props_counter_destroy` → destroy child context + parent context + free
+- `props_counter_rebuild` → emit templates, mount parent, extract anchor,
+  init child slot, flush child (initial render), finalize
+- `props_counter_handle_event` → try child toggle handler, fall back to
+  parent signal dispatch
+- `props_counter_flush` → check parent dirty OR child dirty; re-render
+  parent shell (diff), re-render child (self-render + flush), finalize
+
+**WASM exports (~16):**
+
+- `pc_init`, `pc_destroy`, `pc_rebuild`, `pc_handle_event`, `pc_flush`
+- `pc_count_value`, `pc_show_hex`, `pc_toggle_handler`
+- `pc_child_scope_id`, `pc_child_tmpl_id`, `pc_child_is_mounted`
+- `pc_child_is_dirty`, `pc_parent_scope_id`, `pc_parent_tmpl_id`
+- `pc_has_dirty`, `pc_handler_count`
+
+**`runtime/app.ts` additions:**
+
+```typescript
+interface PropsCounterAppHandle extends AppHandle {
+    getCountValue(): number;
+    getShowHex(): boolean;
+    toggleHex(): void;
+    isChildMounted(): boolean;
+    isChildDirty(): boolean;
+    getChildScopeId(): number;
+}
+
+function createPropsCounterApp(): PropsCounterAppHandle;
+```
+
+**Tests:**
+
+Mojo (`test/test_props_counter.mojo`, new module, ~15 tests):
+
+- init creates app with distinct parent/child scopes
+- count starts at 0, show_hex starts false
+- increment updates count signal
+- child receives count via context prop
+- child show_hex toggle changes child state
+- child show_hex toggle marks child dirty (not parent)
+- parent increment marks parent dirty
+- child self-render produces correct text ("Count: 0")
+- child self-render with hex ("Count: 0x0")
+- flush after increment emits child SetText
+- flush after toggle emits child SetText (format change)
+- mixed increment + toggle in sequence
+- destroy cleans up both scopes
+- destroy + recreate cycle
+- 10 rapid increment cycles
+
+JS (`test-js/props_counter.test.ts`, new file, ~20 tests):
+
+- pc_init state validation (scope IDs, handler IDs, initial values)
+- pc_rebuild produces mutations (RegisterTemplate ×2, mount, child create)
+- increment updates parent signal, child re-renders with new count
+- toggle hex changes display format without affecting count
+- toggle hex marks only child dirty
+- increment marks only parent dirty
+- DOM mount: parent div with h1 + 2 buttons + child div with p + button
+- increment → child text updates ("Count: 1")
+- toggle → child text updates ("Count: 0x0")
+- increment after toggle → hex format preserved ("Count: 0x1")
+- 10 increments → correct count
+- toggle on → toggle off → decimal restored
+- flush returns 0 when clean
+- minimal mutations: only SetText for unchanged parent shell
+- destroy does not crash
+- double destroy safe
+- destroy + recreate cycle
+- multiple independent instances
+- rapid 100 increments bounded memory
+- child toggle does not affect parent DOM
+
+### P31.4 — SharedContext app + cross-component tests
+
+A more complex demo showing multiple children sharing parent context
+and communicating upward via callback signals. Validates the full
+props & context system end-to-end.
+
+#### App structure: ThemeCounter
+
+A parent app with a theme toggle (dark/light) and two child components
+that both consume the theme context:
+
+- **CounterChild**: displays count with theme-dependent label
+- **SummaryChild**: displays summary text ("N clicks so far") with
+  theme-dependent styling class
+
+The parent also receives upward communication: CounterChild has a
+"Reset" button that writes to a callback signal consumed by the parent.
+
+```mojo
+comptime CTX_THEME: UInt32 = 10       # 0 = light, 1 = dark
+comptime CTX_COUNT: UInt32 = 11       # count signal key
+comptime CTX_ON_RESET: UInt32 = 12    # callback signal key
+
+struct ThemeCounterApp:
+    var ctx: ComponentContext
+    var count: SignalI32
+    var theme: SignalBool           # False = light, True = dark
+    var on_reset: SignalI32         # callback: child writes 1 to request reset
+
+    var counter_child: CounterChild
+    var summary_child: SummaryChild
+```
+
+**Parent template ("theme-counter"):**
+
+```text
+div
+  button > "Toggle theme" + dynamic_attr[0]  ← onclick_toggle(theme)
+  button > "Increment"    + dynamic_attr[1]  ← onclick_add(count, 1)
+  dyn_node[0]             ← counter child slot
+  dyn_node[1]             ← summary child slot
+```
+
+**CounterChild template ("counter-display"):**
+
+```text
+div
+  p > dynamic_text[0]                        ← "Count: N" or "Theme: dark, Count: N"
+  button > "Reset" + dynamic_attr[0]         ← onclick: set on_reset to 1
+```
+
+**SummaryChild template ("summary-display"):**
+
+```text
+p
+  dynamic_text[0]                            ← "N clicks so far"
+  dynamic_attr[0]                            ← class = "light" or "dark"
+```
+
+**Lifecycle:**
+
+- Parent provides `CTX_THEME`, `CTX_COUNT`, `CTX_ON_RESET` via context
+- Each child consumes what it needs
+- CounterChild consumes `CTX_COUNT` + `CTX_THEME` + `CTX_ON_RESET`
+- SummaryChild consumes `CTX_COUNT` + `CTX_THEME`
+- Parent flush checks `on_reset.peek()`: if 1, resets count to 0 and
+  clears the callback signal
+- Each child self-renders; parent flushes both children
+
+**WASM exports (~20):**
+
+- `tc_init`, `tc_destroy`, `tc_rebuild`, `tc_handle_event`, `tc_flush`
+- `tc_count_value`, `tc_theme_is_dark`, `tc_on_reset_value`
+- `tc_counter_scope_id`, `tc_summary_scope_id`
+- `tc_counter_is_mounted`, `tc_summary_is_mounted`
+- `tc_counter_is_dirty`, `tc_summary_is_dirty`
+- `tc_toggle_theme_handler`, `tc_increment_handler`, `tc_reset_handler`
+- `tc_counter_child_text`, `tc_summary_child_text`
+- `tc_has_dirty`, `tc_handler_count`
+
+**`runtime/app.ts` additions:**
+
+```typescript
+interface ThemeCounterAppHandle extends AppHandle {
+    getCountValue(): number;
+    isDarkTheme(): boolean;
+    toggleTheme(): void;
+    increment(): void;
+    resetViaChild(): void;
+    getCounterText(): string;
+    getSummaryText(): string;
+    isCounterMounted(): boolean;
+    isSummaryMounted(): boolean;
+}
+
+function createThemeCounterApp(): ThemeCounterAppHandle;
+```
+
+**Tests:**
+
+Mojo (`test/test_theme_counter.mojo`, new module, ~20 tests):
+
+- init creates 3 distinct scopes (parent, counter child, summary child)
+- count starts at 0, theme starts light
+- increment updates count
+- both children consume same count signal
+- theme toggle updates theme signal
+- counter child reads theme from context
+- summary child reads theme from context
+- callback signal starts at 0
+- child reset writes to callback signal
+- parent flush detects reset callback and clears count
+- counter child self-render with light theme
+- counter child self-render with dark theme
+- summary child self-render with light theme
+- summary child self-render with dark theme
+- mixed: increment + toggle theme + flush
+- reset callback: count returns to 0
+- multiple increment → reset → increment cycle
+- destroy cleans up all 3 scopes
+- 10 create/destroy cycles bounded memory
+- rapid 50 increments + 10 theme toggles
+
+JS (`test-js/theme_counter.test.ts`, new file, ~25 tests):
+
+- tc_init state validation (3 scopes, handler IDs, initial values)
+- tc_rebuild mounts parent + both children
+- increment → both children update
+- theme toggle → both children update format/class
+- DOM: parent div with 2 buttons + counter child div + summary p
+- increment → counter shows "Count: 1", summary shows "1 clicks"
+- theme toggle → counter shows "Theme: dark, Count: 0"
+- summary gets "dark" class after theme toggle
+- reset button → count returns to 0, both children update
+- increment → reset → increment cycle
+- theme toggle does not affect count
+- both children re-render on count change
+- only counter child has reset button handler
+- children have independent scope IDs
+- flush returns 0 when clean
+- minimal mutations per interaction
+- destroy does not crash
+- double destroy safe
+- destroy + recreate cycle
+- multiple independent instances
+- rapid increments bounded memory
+- theme toggle + increment in same flush
+- reset + increment in same flush (reset wins — count goes to 0, then +1 = 1)
+- 5 create/destroy cycles with state verification
+- children not dirty when parent-only change already flushed
 
 ---
 
 ## Dependency graph
 
-```txt
-Phase 25 (Allocator) ✅
+```text
+P31.1 (Context surface)
     │
     ▼
-Phase 26 (App Lifecycle) ──────────────────────┐
-    │                                           │
-    ▼                                           │
-Phase 27 (RemoveAttribute) ─── independent ─────┤
-    │                                           │
-    ▼                                           │
-Phase 28 (Conditional Rendering) ───────────────┤
-    │                                           │
-    ▼                                           │
-Phase 29 (Component Composition) ───────────────┤
-    │                                           │
-    ▼                                           │
-Phase 30 (Routing) ◄────────────────────────────┘
+P31.2 (ChildComponentContext)
+    │
+    ├──────────────────────┐
+    ▼                      ▼
+P31.3 (PropsCounter)    P31.4 (ThemeCounter)
 ```
 
-Phase 26 is the natural first step — it validates Phase 25 and unblocks
-everything downstream. Phases 27 and 28 are independent of each other
-and can be done in either order. Phase 29 builds on 28 (ConditionalSlot
-for slot management). Phase 30 depends on 26 (lifecycle), 28
-(conditional rendering), and 29 (composition).
+P31.1 is the foundation — it surfaces the existing DI mechanism. P31.2
+builds on it with child-scope signal creation. P31.3 and P31.4 are
+independent demos that validate the APIs from P31.1 and P31.2.
 
-## Summary
+---
 
-| Phase | Feature | ~Lines | Depends on |
-|-------|---------|--------|------------|
-| 26 | App Lifecycle | ~520 | 25 ✅ |
-| 27 | RemoveAttribute | ~340 | — |
-| 28 | Conditional Rendering | ~290 | — |
-| 29 | Component Composition | ~450 | 28 |
-| 30 | Client-Side Routing | ~550 | 26, 28, 29 |
-| **Total** | | **~2,150** | |
+## Estimated size
+
+| Step | Description | ~New Lines | Tests |
+|------|-------------|-----------|-------|
+| P31.1 | Context surface + signal helpers | ~120 Mojo, ~80 TS | 15 Mojo + 10 JS |
+| P31.2 | ChildComponentContext struct | ~350 Mojo, ~60 TS | 20 Mojo + 15 JS |
+| P31.3 | PropsCounterApp demo | ~280 Mojo, ~100 TS | 15 Mojo + 20 JS |
+| P31.4 | ThemeCounterApp demo | ~350 Mojo, ~120 TS | 20 Mojo + 25 JS |
+| **Total** | | **~1,100 Mojo, ~360 TS** | **70 Mojo + 70 JS = 140 tests** |
+
+**Projected test count after P31.4:** ~1,070 Mojo + ~1,854 JS = ~2,924 tests.
