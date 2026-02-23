@@ -2,6 +2,14 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 39 — Mojo 0.26.1 Deferred Feature Adoption
+
+Re-evaluated all 7 deferred Mojo 0.26.1 features (F1, F2, F5, F6, F8, F9, F10) after 8 phases of development (Phases 31–38). All remain correctly deferred — no new application points. The codebase's WASM ABI architecture (`Int32`/`Bool` returns, no `raises`, no raw-bytes strings in `src/`, no unreachable paths) does not create the prerequisites these features need. Updated `MIGRATION_PLAN.md` with a "Phase 39 Re-evaluation" section documenting the analysis.
+
+**Test count after Phase 39:** unchanged — 1,323 Mojo (52 modules) + 3,090 JS (29 suites) = 4,413 tests.
+
+---
+
 ## Phase 38 — Batch Signal Writes
 
 Added `begin_batch()` / `end_batch()` to group multiple signal writes into a single propagation pass. During a batch, signal values are stored immediately (reads see the new value) but subscriber scanning and worklist propagation are deferred until the outermost `end_batch()`. This eliminates redundant intermediate dirty-marking when a single logical operation writes multiple signals.

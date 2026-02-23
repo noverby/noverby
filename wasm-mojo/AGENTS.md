@@ -16,7 +16,9 @@
 
 ## Mojo 0.26.1 Migration
 
-Migration to Mojo 0.26.1 is tracked in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). Summary for agents:
+Migration to Mojo 0.26.1 is tracked in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). Summary for agents.
+
+> **Phase 39 re-evaluation (post-Phase 38):** All 7 deferred features (F1, F2, F5, F6, F8, F9, F10) were re-examined after Phases 31–38. None have gained natural application points. All remain correctly deferred — see `MIGRATION_PLAN.md` "Phase 39 Re-evaluation" section for details.
 
 ### Breaking Changes
 
@@ -63,12 +65,23 @@ if ptr != UnsafePointer[T]():       # not: if ptr:
 
 ### Migration Order
 
-1. **B3** — Fix `ImplicitlyBoolable` (hard compile errors, scattered)
-2. **B1** — Update `List[T](...)` → list literals (most widespread)
-3. **B4–B8** — Minor breaks (`UInt`, `Error`, `InlineArray`, `Writer`)
-4. **B2** — Bulk `alias` → `comptime` (mechanical, last to avoid merge conflicts)
-5. **F1–F3** — Adopt new features incrementally
-6. **F7** — Enable `-Werror` in CI after all warnings resolved
+1. ✅ **B3** — Fix `ImplicitlyBoolable` (hard compile errors, scattered)
+2. ✅ **B1** — Update `List[T](...)` → list literals (most widespread)
+3. ✅ **B4–B8** — Minor breaks (`UInt`, `Error`, `InlineArray`, `Writer`)
+4. ✅ **B2** — Bulk `alias` → `comptime` (mechanical, last to avoid merge conflicts)
+5. ✅ **F3** — Default trait impls (auto-derived `Equatable`, `Writable`)
+6. ✅ **F4** — Remove redundant `Movable` declarations
+7. ✅ **F7** — Enable `-Werror` in build
+
+### Deferred (re-evaluated at Phase 39 — all remain deferred)
+
+- 🟡 **F1** — Typed errors — no `raises` functions in `src/`; runtime uses `Bool`/`Int32` returns for WASM ABI.
+- 🟡 **F2** — UTF-8 constructors — no raw-bytes string construction in `src/` (only in test harness).
+- 🟡 **F5** — `comptime(x)` expression — all constants are named module-level declarations; no inline use case.
+- 🟡 **F6** — `-Xlinker` flag — permanently not applicable (custom `llc` + `wasm-ld` pipeline).
+- 🟡 **F8** — `conforms_to()` / `trait_downcast()` — blocked on generic `Signal[T]` store design.
+- 🟡 **F9** — Reflection module — experimental; existing hand-written protocol works.
+- 🟡 **F10** — `Never` type — no `abort()` or unreachable code paths in `src/`.
 
 ## Key Abstractions (dependency order)
 
