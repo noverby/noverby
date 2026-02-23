@@ -5,6 +5,7 @@ import { useQuery } from "gql";
 import { usePathList, useSession } from "hooks";
 import { getName } from "mime";
 import { Suspense, startTransition, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 const BreadcrumbsLink = ({
@@ -24,6 +25,7 @@ const BreadcrumbsLink = ({
 	index: number;
 	start: number;
 }) => {
+	const { t } = useTranslation();
 	const divRef = useRef<HTMLSpanElement>(null);
 	const navigate = useNavigate();
 	const [searchParams] = useSearchParams();
@@ -100,7 +102,7 @@ const BreadcrumbsLink = ({
 								color: "common.white",
 							}}
 						>
-							{node?.name ?? "Ukendt"}
+							{node?.name ?? t("common.unknown")}
 						</Typography>
 					</Collapse>
 				</Box>
@@ -129,7 +131,7 @@ const BreadcrumbsLink = ({
 								color: "common.white",
 							}}
 						>
-							Hjem
+							{t("common.home")}
 						</Typography>
 					</Collapse>
 				</Box>

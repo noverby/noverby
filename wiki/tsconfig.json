@@ -24,7 +24,8 @@
 			"core/constants": ["core/constants"],
 			"core/util": ["core/util"],
 			"core/bugfender": ["core/bugfender"],
-			"core/theme/*": ["core/theme/*"]
+			"core/theme/*": ["core/theme/*"],
+			"i18n": ["core/i18n/i18n"]
 		},
 		"skipLibCheck": true,
 		"resolveJsonModule": true,

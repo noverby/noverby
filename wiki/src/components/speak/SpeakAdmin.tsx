@@ -3,8 +3,10 @@ import { Button, ButtonGroup, TextField } from "@mui/material";
 import { AdminCard } from "comps";
 import type { Node } from "hooks";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const SpeakAdmin = ({ node, time }: { node: Node; time: number }) => {
+	const { t } = useTranslation();
 	const get = node.useSubsGet();
 	const speakerlist = get("speakerlist");
 	const update = node.useUpdate({ refetch: false });
@@ -37,7 +39,7 @@ const SpeakAdmin = ({ node, time }: { node: Node; time: number }) => {
 
 	return (
 		(owner && (
-			<AdminCard title="Administrer Talerlisten">
+			<AdminCard title={t("speak.manageSpeakerList")}>
 				<ButtonGroup variant="contained" sx={{ m: 2, boxShadow: 0 }}>
 					<Button
 						color="secondary"
@@ -45,7 +47,7 @@ const SpeakAdmin = ({ node, time }: { node: Node; time: number }) => {
 						endIcon={mutable ? <Lock /> : <LockOpen />}
 						onClick={() => handleLockSpeak(!mutable)}
 					>
-						{mutable ? "Luk" : "Åben"}
+						{mutable ? t("speak.close") : t("speak.open")}
 					</Button>
 
 					<Button
@@ -54,7 +56,7 @@ const SpeakAdmin = ({ node, time }: { node: Node; time: number }) => {
 						endIcon={<Clear />}
 						onClick={handleRemoveSpeaks}
 					>
-						Ryd
+						{t("speak.clear")}
 					</Button>
 					<Button
 						color="secondary"
@@ -67,7 +69,7 @@ const SpeakAdmin = ({ node, time }: { node: Node; time: number }) => {
 				</ButtonGroup>
 
 				<TextField
-					label="Taletid"
+					label={t("speak.speakingTime")}
 					type="number"
 					color="secondary"
 					value={timeBox}

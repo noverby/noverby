@@ -4,6 +4,7 @@ import type { Maybe } from "gql";
 import { withSuspense } from "hoc";
 import { type Node, useNode } from "hooks";
 import { IconId } from "mime";
+import { useTranslation } from "react-i18next";
 
 const MimeAvatar = ({
 	mimeId,
@@ -28,6 +29,7 @@ const MimeAvatar = ({
 };
 
 const Avatar = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const query = node?.useQuery();
 	const type = query?.data?.({ path: "type" });
 	const mimeId = query?.mimeId;
@@ -69,7 +71,7 @@ const Avatar = ({ node }: { node: Node }) => {
 				horizontal: "right",
 			}}
 			badgeContent={
-				<Tooltip title="Ikke indsendt">
+				<Tooltip title={t("layout.notSubmitted")}>
 					<MuiAvatar
 						sx={{
 							width: 18,

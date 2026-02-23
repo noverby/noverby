@@ -20,9 +20,11 @@ import { AddQuestionButton, AutoButton } from "comps";
 import { order_by } from "gql";
 import { type Node, useLink, useScreen } from "hooks";
 import { IconId } from "mime";
+import { useTranslation } from "react-i18next";
 import { TransitionGroup } from "react-transition-group";
 
 const QuestionList = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const screen = useScreen();
 	const link = useLink();
 	const query = node.useQuery();
@@ -36,7 +38,7 @@ const QuestionList = ({ node }: { node: Node }) => {
 	return (
 		<Card sx={{ m: 0 }}>
 			<CardHeader
-				title={<Typography>Spørgsmål</Typography>}
+				title={<Typography>{t("vote.questions")}</Typography>}
 				avatar={
 					<Avatar
 						sx={{
@@ -51,7 +53,7 @@ const QuestionList = ({ node }: { node: Node }) => {
 						<CardActions sx={{ p: 0 }}>
 							{query?.isContextOwner && !screen && (
 								<AutoButton
-									text="Sorter"
+									text={t("mime.sort")}
 									icon={<LowPriority />}
 									onClick={() => link.push([], "sort")}
 								/>
@@ -121,7 +123,7 @@ const QuestionList = ({ node }: { node: Node }) => {
 										<DoNotDisturb />
 									</Avatar>
 								</ListItemAvatar>
-								<ListItemText primary="Ingen spørgsmål" />
+								<ListItemText primary={t("vote.noQuestions")} />
 							</ListItemButton>
 						</Collapse>
 					)}

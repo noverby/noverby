@@ -21,6 +21,7 @@ import { resolve } from "gql";
 import { type Node, useLink, useSession } from "hooks";
 import { getName, IconId } from "mime";
 import { startTransition, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { v4 as uuid } from "uuid";
 
 const contextPerm = [
@@ -165,6 +166,7 @@ const AddContentDialog = ({
 	app?: string;
 	mutable?: boolean;
 }) => {
+	const { t } = useTranslation();
 	const link = useLink();
 	const [error, setError] = useState("");
 	const [titel, setTitel] = useState<string>(initTitel ?? "");
@@ -237,7 +239,7 @@ const AddContentDialog = ({
 
 				if (redirect) link.push([key], app);
 			} catch (_) {
-				setError("Indhold med dette navn eksisterer allerede");
+				setError(t("content.contentNameExists"));
 			}
 		});
 	};
@@ -251,7 +253,7 @@ const AddContentDialog = ({
 					.map((child) => child.key),
 			);
 			if (keys?.includes(getKey(titel) ?? "")) {
-				setError("Indhold med dette navn eksisterer allerede");
+				setError(t("content.contentNameExists"));
 			}
 		};
 		checkKeys();
@@ -260,7 +262,9 @@ const AddContentDialog = ({
 	return (
 		<Dialog maxWidth="xs" fullWidth open={open} onClose={() => setOpen(false)}>
 			<DialogTitle color="secondary">
-				Tilføj {mimes.length > 1 ? "indhold" : getName(mimes[0])}
+				{mimes.length > 1
+					? t("content.addContent")
+					: t("content.addType", { type: getName(mimes[0]) })}
 			</DialogTitle>
 			<DialogContent>
 				<Stack sx={{ mt: 1 }} spacing={2}>
@@ -270,7 +274,7 @@ const AddContentDialog = ({
 							helperText={error}
 							autoFocus
 							required
-							label="Titel"
+							label={t("common.title")}
 							fullWidth
 							value={titel}
 							onChange={(e) => {
@@ -282,9 +286,9 @@ const AddContentDialog = ({
 					)}
 					{mimes.length > 1 && (
 						<FormControl required fullWidth>
-							<InputLabel required>Type</InputLabel>
+							<InputLabel required>{t("common.type")}</InputLabel>
 							<Select
-								label="Type_"
+								label={t("common.type")}
 								fullWidth
 								required
 								value={mimeId}
@@ -318,7 +322,9 @@ const AddContentDialog = ({
 							autoFocus
 							required
 							label={getName(mimeId)}
-							placeholder={`Indsæt ${getName(mimeId).toLowerCase()}`}
+							placeholder={t("content.insertPlaceholder", {
+								name: getName(mimeId).toLowerCase(),
+							})}
 							fullWidth
 							value={text}
 							onChange={(e) => setText(e.target.value)}
@@ -327,7 +333,7 @@ const AddContentDialog = ({
 					{mimeId === "wiki/file" && (
 						<>
 							<FileUploader
-								text="Upload Fil"
+								text={t("content.uploadFile")}
 								onNewFile={({ fileId, file }) => {
 									setFileId(fileId);
 									setType(file.type);
@@ -336,9 +342,9 @@ const AddContentDialog = ({
 								}}
 							/>
 							{fileName && (
-								<Typography
-									sx={{ mt: 1 }}
-								>{`Fil uploadet: ${fileName}`}</Typography>
+								<Typography sx={{ mt: 1 }}>
+									{t("content.fileUploaded", { fileName })}
+								</Typography>
 							)}
 						</>
 					)}
@@ -350,7 +356,7 @@ const AddContentDialog = ({
 					color="secondary"
 					variant="outlined"
 				>
-					Anuller
+					{t("common.cancel")}
 				</Button>
 				<Button
 					disabled={
@@ -364,7 +370,7 @@ const AddContentDialog = ({
 					color="secondary"
 					variant="outlined"
 				>
-					Tilføj
+					{t("common.add")}
 				</Button>
 			</DialogActions>
 		</Dialog>

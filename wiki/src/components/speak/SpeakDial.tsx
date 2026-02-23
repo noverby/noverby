@@ -3,8 +3,10 @@ import { useUserDisplayName } from "@nhost/react";
 import { avatars } from "comps";
 import { type Node, useSession } from "hooks";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const SpeakDial = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const [session] = useSession();
 	const displayName = useUserDisplayName();
 	const [open, setOpen] = useState(false);
@@ -30,7 +32,7 @@ const SpeakDial = ({ node }: { node: Node }) => {
 
 	return (
 		<SpeedDial
-			ariaLabel="Kom på talerlisten"
+			ariaLabel={t("speak.joinSpeakerList")}
 			sx={{
 				position: "fixed",
 				bottom: (t) => t.spacing(9),
@@ -47,7 +49,7 @@ const SpeakDial = ({ node }: { node: Node }) => {
 						<SpeedDialAction
 							key={key}
 							icon={action.avatar}
-							tooltipTitle={action.name}
+							tooltipTitle={t(action.nameKey)}
 							tooltipOpen
 							onClick={handleAddSpeak(key)}
 						/>

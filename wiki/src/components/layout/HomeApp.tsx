@@ -14,6 +14,7 @@ import { useAuthenticationStatus, useUserDisplayName } from "@nhost/react";
 import { AddContentFab, HeaderCard, HomeList, InvitesUserList } from "comps";
 import { useNode } from "hooks";
 import { Suspense } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 const AddContentFabSuspense = () => {
@@ -22,6 +23,7 @@ const AddContentFabSuspense = () => {
 };
 
 const HomeApp = () => {
+	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const { isAuthenticated } = useAuthenticationStatus();
 	const displayName = useUserDisplayName();
@@ -44,7 +46,7 @@ const HomeApp = () => {
 					</Card>
 				) : (
 					<HeaderCard
-						title="Velkommen til RadikalWiki"
+						title={t("layout.welcomeTitle")}
 						avatar={
 							<Avatar
 								sx={{
@@ -58,10 +60,8 @@ const HomeApp = () => {
 						<CardContent>
 							{(!isAuthenticated && (
 								<>
-									<Typography>Log ind eller registrer dig.</Typography>
-									<Typography>
-										Husk at bruge den email, som du registrerede dig med hos RU.
-									</Typography>
+									<Typography>{t("layout.loginOrRegister")}</Typography>
+									<Typography>{t("layout.rememberEmail")}</Typography>
 									<Stack direction="row">
 										<Button
 											startIcon={<Login />}
@@ -69,7 +69,7 @@ const HomeApp = () => {
 											variant="outlined"
 											onClick={() => navigate("/user/login")}
 										>
-											Log ind
+											{t("common.logIn")}
 										</Button>
 										<Box sx={{ p: 1 }} />
 										<Button
@@ -78,22 +78,19 @@ const HomeApp = () => {
 											variant="outlined"
 											onClick={() => navigate("/user/register")}
 										>
-											Registrer
+											{t("auth.register")}
 										</Button>
 									</Stack>
 								</>
 							)) || (
 								<>
-									<Typography sx={{ mb: 1 }}>Hej {displayName}!</Typography>
 									<Typography sx={{ mb: 1 }}>
-										Accepter venligst dine invitationer til grupper og
-										begivenheder.
+										{t("layout.greeting", { name: displayName })}
 									</Typography>
-									<Typography>
-										Hvis der ikke forekommer nogen invitationer, så har du højst
-										sandsynligt brugt en anden email, end den som er registreret
-										ved Radikal Ungdom.
+									<Typography sx={{ mb: 1 }}>
+										{t("layout.acceptInvitations")}
 									</Typography>
+									<Typography>{t("layout.noInvitationsHint")}</Typography>
 								</>
 							)}
 						</CardContent>

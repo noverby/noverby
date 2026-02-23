@@ -19,11 +19,13 @@ import {
 	useEffect,
 	useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 type Mode = "login" | "register" | "reset-password" | "set-password";
 
 const LoginForm = ({ mode }: { mode: Mode }) => {
+	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const { isAuthenticated } = useAuthenticationStatus();
 	const [_, setSession] = useSession();
@@ -53,7 +55,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 		if (name) {
 			setNameError("");
 		} else {
-			setNameError("Mangler navn");
+			setNameError(t("auth.missingName"));
 		}
 	};
 
@@ -64,7 +66,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 			setEmailError("");
 			setPasswordError("");
 		} else {
-			setEmailError("Mangler email");
+			setEmailError(t("auth.missingEmail"));
 		}
 	};
 
@@ -76,7 +78,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 			setPasswordError("");
 			setPasswordRepeatError("");
 		} else {
-			setPasswordError("Kodeord er ikke ens");
+			setPasswordError(t("auth.passwordMismatch"));
 		}
 	};
 
@@ -87,17 +89,17 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 			setPasswordError("");
 			setPasswordRepeatError("");
 		} else {
-			setPasswordRepeatError("Kodeord er ikke ens");
+			setPasswordRepeatError(t("auth.passwordMismatch"));
 		}
 	};
 
 	const onLogin = async () => {
 		if (email === "") {
-			setEmailError("Mangler email");
+			setEmailError(t("auth.missingEmail"));
 			return;
 		}
 		if (password === "") {
-			setPasswordError("Mangler kodeord");
+			setPasswordError(t("auth.missingPassword"));
 			return;
 		}
 		const { error } = await nhost.auth.signIn({
@@ -113,14 +115,12 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 
 			if (error.error === "unverified-user") {
 				nhost.auth.sendVerificationEmail({ email });
-				setEmailError(
-					"Email ikke verificeret. Tjek din indbakke. Evt. også spam.",
-				);
+				setEmailError(t("auth.emailNotVerified"));
 				setLoading(false);
 				return;
 			}
-			setEmailError("Forkert email eller kode");
-			setPasswordError("Forkert email eller kode");
+			setEmailError(t("auth.wrongCredentials"));
+			setPasswordError(t("auth.wrongCredentials"));
 			setLoading(false);
 			return;
 		}
@@ -139,19 +139,19 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 
 	const onRegister = async () => {
 		if (name === "") {
-			setNameError("Mangler navn");
+			setNameError(t("auth.missingName"));
 			return;
 		}
 		if (email === "") {
-			setEmailError("Mangler email");
+			setEmailError(t("auth.missingEmail"));
 			return;
 		}
 		if (password === "") {
-			setPasswordError("Mangler kodeord");
+			setPasswordError(t("auth.missingPassword"));
 			return;
 		}
 		if (passwordRepeat === "") {
-			setPasswordRepeatError("Gentag kodeord");
+			setPasswordRepeatError(t("auth.repeatPassword"));
 			return;
 		}
 		const { error } = await nhost.auth.signUp({
@@ -162,10 +162,10 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 		if (error) {
 			switch (error.error) {
 				case "invalid-email":
-					setEmailError("Email er ikke valid");
+					setEmailError(t("auth.invalidEmail"));
 					break;
 				case "email-already-in-use":
-					setEmailError("Email er allerede i brugt");
+					setEmailError(t("auth.emailAlreadyInUse"));
 					break;
 				default:
 					setEmailError(error?.message);
@@ -178,11 +178,11 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 
 	const onSetPassword = async () => {
 		if (password === "") {
-			setPasswordError("Mangler kodeord");
+			setPasswordError(t("auth.missingPassword"));
 			return;
 		}
 		if (passwordRepeat === "") {
-			setPasswordRepeatError("Gentag kodeord");
+			setPasswordRepeatError(t("auth.repeatPassword"));
 			return;
 		}
 		const { error } = await nhost.auth.changePassword({
@@ -199,7 +199,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 
 	const onSendResetEmail = async () => {
 		if (email === "") {
-			setEmailError("Mangler email");
+			setEmailError(t("auth.missingEmail"));
 			return;
 		}
 		const { error } = await nhost.auth.resetPassword({
@@ -208,10 +208,10 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 		if (error) {
 			switch (error.error) {
 				case "invalid-email":
-					setEmailError("Invalid email");
+					setEmailError(t("auth.invalidEmail"));
 					break;
 				case "user-not-found":
-					setEmailError("Ingen bruger eksisterer med denne email");
+					setEmailError(t("auth.userNotFound"));
 					break;
 				default:
 					setEmailError(error.message);
@@ -255,12 +255,12 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 
 	const text =
 		mode === "login"
-			? "Log Ind"
+			? t("auth.login")
 			: mode === "register"
-				? "Registrer"
+				? t("auth.register")
 				: mode === "reset-password"
-					? "Nulstil Kodeord"
-					: "Sæt Kodeord";
+					? t("auth.resetPassword")
+					: t("auth.setPassword");
 
 	return (
 		<Container sx={{ padding: 3 }} maxWidth="xs">
@@ -273,7 +273,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 							fullWidth
 							error={!!errorName}
 							helperText={errorName}
-							label="Fulde navn"
+							label={t("auth.fullName")}
 							name="fullname"
 							variant="outlined"
 							onChange={onNameChange}
@@ -284,7 +284,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 							fullWidth
 							error={!!errorEmail}
 							helperText={errorEmail}
-							label="Email"
+							label={t("auth.email")}
 							autoComplete="username"
 							name="email"
 							variant="outlined"
@@ -296,7 +296,11 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 							fullWidth
 							error={!!errorPassword}
 							helperText={errorPassword}
-							label={mode === "set-password" ? "Nyt kodeord" : "Kodeord"}
+							label={
+								mode === "set-password"
+									? t("auth.newPassword")
+									: t("auth.password")
+							}
 							autoComplete="current-password"
 							name="password"
 							type="password"
@@ -309,7 +313,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 							fullWidth
 							error={!!errorPasswordRepeat}
 							helperText={errorPasswordRepeat}
-							label="Gentag Kodeord"
+							label={t("auth.repeatPassword")}
 							name="password"
 							type="password"
 							variant="outlined"
@@ -357,7 +361,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 							startIcon={<HowToReg />}
 							onClick={() => navigate("/user/register")}
 						>
-							Registrer
+							{t("auth.register")}
 						</Button>
 					)}
 					{["login"].includes(mode) && (
@@ -368,7 +372,7 @@ const LoginForm = ({ mode }: { mode: Mode }) => {
 							startIcon={<Email />}
 							onClick={() => navigate("/user/reset-password")}
 						>
-							Nulstil kodeord
+							{t("auth.resetPassword")}
 						</Button>
 					)}
 				</Stack>

@@ -38,6 +38,7 @@ import {
 	useEffect,
 	useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 
 const DrawerElement = ({
 	id,
@@ -60,6 +61,7 @@ const DrawerElement = ({
 	childIndex: number;
 	iconIndex?: number;
 }) => {
+	const { t } = useTranslation();
 	const node = useNode({ id });
 	const query = node.useQuery();
 	const link = useLink();
@@ -113,7 +115,7 @@ const DrawerElement = ({
 					<Badge
 						badgeContent={
 							query?.mutable ? (
-								<Tooltip title="Ikke indsendt">
+								<Tooltip title={t("layout.notSubmitted")}>
 									<Avatar
 										sx={{
 											width: 15,
@@ -294,6 +296,7 @@ const DrawerList = ({
 };
 
 const MenuList = ({ setOpen }: { setOpen: (open: boolean) => void }) => {
+	const { t } = useTranslation();
 	const link = useLink();
 	const [listOpenValue, setListOpen] = useState<boolean[][]>([]);
 	const listOpen = useDeferredValue(listOpenValue);
@@ -358,7 +361,7 @@ const MenuList = ({ setOpen }: { setOpen: (open: boolean) => void }) => {
 						<ListItemIcon>
 							<FileOpen />
 						</ListItemIcon>
-						<ListItemText primary="Aktuelle Punkt" />
+						<ListItemText primary={t("layout.currentItem")} />
 					</ListItemButton>
 					<Divider />
 				</>
@@ -403,6 +406,7 @@ const Drawer = ({
 	open: boolean;
 	setOpen: (val: boolean) => void;
 }) => {
+	const { t } = useTranslation();
 	const link = useLink();
 	const largeScreen = useMediaQuery("(min-width:1200px)");
 	const path = usePathList();
@@ -504,7 +508,7 @@ const Drawer = ({
 										<MimeAvatar mimeId="app/home" />
 									</IconButton>
 									<Typography sx={{ m: 2, color: "common.white" }}>
-										Hjem
+										{t("common.home")}
 									</Typography>
 								</>
 							) : (

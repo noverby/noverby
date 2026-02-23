@@ -2,9 +2,10 @@ import { CardHeader, Skeleton, Tooltip, Typography } from "@mui/material";
 import { Stack } from "@mui/system";
 import { ContentToolbar, MemberChips, MimeAvatar, MimeAvatarNode } from "comps";
 import formatDistance from "date-fns/formatDistance";
-import { da } from "date-fns/locale";
+import { da, enUS } from "date-fns/locale";
 import { type Node, useScreen } from "hooks";
 import { Suspense } from "react";
+import { useTranslation } from "react-i18next";
 
 const Title = ({ node }: { node: Node }) => {
 	const query = node.useQuery();
@@ -19,7 +20,9 @@ const Title = ({ node }: { node: Node }) => {
 };
 
 const Subtitle = ({ node }: { node: Node }) => {
+	const { t, i18n } = useTranslation();
 	const query = node.useQuery();
+	const locale = i18n.language === "da" ? da : enUS;
 
 	return (
 		<Tooltip
@@ -31,12 +34,11 @@ const Subtitle = ({ node }: { node: Node }) => {
 				sx={{ color: "common.black" }}
 			>
 				{query?.createdAt
-					? `
-                Oprettet
-                ${formatDistance(new Date(), new Date(query?.createdAt), {
-									locale: da,
-								})} siden
-            `
+					? t("content.createdAgo", {
+							time: formatDistance(new Date(), new Date(query?.createdAt), {
+								locale,
+							}),
+						})
 					: ""}
 			</Typography>
 		</Tooltip>
@@ -54,12 +56,13 @@ const ContentHeader = ({
 	child?: boolean;
 	add?: boolean;
 }) => {
+	const { t } = useTranslation();
 	return (
 		<>
 			<CardHeader
 				title={
 					child ? (
-						"Mappe"
+						t("mime.folder")
 					) : (
 						<Suspense fallback={<Skeleton width={10} />}>
 							<Title node={node} />

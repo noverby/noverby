@@ -19,8 +19,10 @@ import {
 	useSubscription,
 } from "gql";
 import { startTransition } from "react";
+import { useTranslation } from "react-i18next";
 
 const ListSuspense = () => {
+	const { t } = useTranslation();
 	const sub = useSubscription();
 	const userId = useUserId();
 	const email = useUserEmail();
@@ -155,7 +157,9 @@ const ListSuspense = () => {
 							</ListItemAvatar>
 						)}
 						<ListItemText primary={parent?.name} />
-						<Tooltip title={`Accepter invitation til ${parent?.name}`}>
+						<Tooltip
+							title={t("invite.acceptInvitation", { name: parent?.name })}
+						>
 							<IconButton onClick={handleAcceptInvite(id)}>
 								<Add />
 							</IconButton>
@@ -176,28 +180,31 @@ const ListSuspense = () => {
 							<DoNotDisturb />
 						</Avatar>
 					</ListItemAvatar>
-					<ListItemText primary="Ingen invitationer" />
+					<ListItemText primary={t("invite.noInvitations")} />
 				</ListItem>
 			)}
 		</List>
 	);
 };
 
-const InvitesUserList = () => (
-	<HeaderCard
-		avatar={
-			<Avatar
-				sx={{
-					bgcolor: "primary.main",
-				}}
-			>
-				<ContactMail />
-			</Avatar>
-		}
-		title="Invitationer"
-	>
-		<ListSuspense />
-	</HeaderCard>
-);
+const InvitesUserList = () => {
+	const { t } = useTranslation();
+	return (
+		<HeaderCard
+			avatar={
+				<Avatar
+					sx={{
+						bgcolor: "primary.main",
+					}}
+				>
+					<ContactMail />
+				</Avatar>
+			}
+			title={t("invite.invitations")}
+		>
+			<ListSuspense />
+		</HeaderCard>
+	);
+};
 
 export default InvitesUserList;

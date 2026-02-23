@@ -16,9 +16,11 @@ import { parseISO } from "date-fns";
 import { resolve } from "gql";
 import { type Node, useFile, useLink } from "hooks";
 import { startTransition, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Descendant } from "slate";
 
 const Editor = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const link = useLink();
 	const query = node.useQuery();
 	const update = node.useUpdate({
@@ -88,7 +90,7 @@ const Editor = ({ node }: { node: Node }) => {
 			].includes(query?.mimeId ?? "")
 		) {
 			if (members.length === 0) {
-				setAuthorError("Tilføj mindst 1 forfatter");
+				setAuthorError(t("content.addAtLeastOneAuthor"));
 				return;
 			}
 			await nodeMembers.delete();
@@ -122,14 +124,18 @@ const Editor = ({ node }: { node: Node }) => {
 							<TextField
 								value={name}
 								onChange={(e) => setName(e.target.value)}
-								label="Titel"
+								label={t("common.title")}
 								variant="outlined"
 								fullWidth
 								multiline
 							/>
 							<ButtonGroup>
 								<DeleteButton node={node} />
-								<AutoButton text="Gem" icon={<Save />} onClick={handleSave()} />
+								<AutoButton
+									text={t("common.save")}
+									icon={<Save />}
+									onClick={handleSave()}
+								/>
 								{query?.mutable && (
 									<PublishButton
 										node={node}
@@ -162,7 +168,7 @@ const Editor = ({ node }: { node: Node }) => {
 					</Grid>
 					<Grid>
 						<FileUploader
-							text="Upload Billede"
+							text={t("content.uploadImage")}
 							onNewFile={({ fileId }: { fileId?: string }) => {
 								fileId && setFileId(fileId);
 							}}
@@ -173,7 +179,7 @@ const Editor = ({ node }: { node: Node }) => {
 						<Grid container>
 							{image && (
 								<Grid size={{ xs: 3 }}>
-									<Image alt="Billede for indhold" src={image} />
+									<Image alt={t("content.imageAlt")} src={image} />
 								</Grid>
 							)}
 						</Grid>

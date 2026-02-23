@@ -2,6 +2,7 @@ import { Autocomplete, Button, Grid, TextField } from "@mui/material";
 import { order_by, resolve } from "gql";
 import type { Node } from "hooks";
 import { startTransition, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 type Option = {
 	name?: string;
@@ -11,6 +12,7 @@ type Option = {
 };
 
 const InvitesTextField = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const nodeMembers = node.useMembers();
 	const [value, setValue] = useState<Option[]>([]);
 	const [options, setOptions] = useState<Option[]>([]);
@@ -70,7 +72,7 @@ const InvitesTextField = ({ node }: { node: Node }) => {
 				<Autocomplete
 					multiple
 					color="primary"
-					noOptionsText="Ingen match"
+					noOptionsText={t("common.noMatch")}
 					options={options}
 					getOptionLabel={(option) => option.email ?? option?.name ?? ""}
 					defaultValue={options}
@@ -91,15 +93,15 @@ const InvitesTextField = ({ node }: { node: Node }) => {
 							{...params}
 							color="primary"
 							variant="outlined"
-							label="Inviter"
-							placeholder="Navn eller Email"
+							label={t("invite.invite")}
+							placeholder={t("invite.nameOrEmail")}
 						/>
 					)}
 				/>
 			</Grid>
 			<Grid size={{ xs: 6 }}>
 				<Button onClick={handleAddInvites} color="primary" variant="contained">
-					Tilføj
+					{t("common.add")}
 				</Button>
 			</Grid>
 		</Grid>

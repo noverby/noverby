@@ -19,9 +19,11 @@ import { AddCommentButton, AutoButton } from "comps";
 import { order_by } from "gql";
 import { type Node, useLink, useScreen } from "hooks";
 import { IconId } from "mime";
+import { useTranslation } from "react-i18next";
 import { TransitionGroup } from "react-transition-group";
 
 const CommentList = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const screen = useScreen();
 	const link = useLink();
 	const query = node.useQuery();
@@ -34,7 +36,7 @@ const CommentList = ({ node }: { node: Node }) => {
 	return (
 		<Card sx={{ m: 0 }}>
 			<CardHeader
-				title={<Typography>Kommentarer</Typography>}
+				title={<Typography>{t("vote.comments")}</Typography>}
 				avatar={
 					<Avatar
 						sx={{
@@ -49,7 +51,7 @@ const CommentList = ({ node }: { node: Node }) => {
 						<CardActions sx={{ p: 0 }}>
 							{query?.isContextOwner && !screen && (
 								<AutoButton
-									text="Sorter"
+									text={t("mime.sort")}
 									icon={<LowPriority />}
 									onClick={() => link.push([], "sort")}
 								/>
@@ -118,7 +120,7 @@ const CommentList = ({ node }: { node: Node }) => {
 										<DoNotDisturb />
 									</Avatar>
 								</ListItemAvatar>
-								<ListItemText primary="Ingen kommentarer" />
+								<ListItemText primary={t("vote.noComments")} />
 							</ListItemButton>
 						</Collapse>
 					)}

@@ -10,8 +10,10 @@ import { useUserId } from "@nhost/react";
 import { Image } from "comps";
 import { type Node, useFiles, useLink, useScreen } from "hooks";
 import { IconId } from "mime";
+import { useTranslation } from "react-i18next";
 
 const CandidateList = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const link = useLink();
 	const screen = useScreen();
 	const largeScreen = useMediaQuery("(min-width:1200px)");
@@ -48,7 +50,7 @@ const CandidateList = ({ node }: { node: Node }) => {
 					>
 						{images?.[index] ? (
 							<Image
-								alt="Billede for indhold"
+								alt={t("content.imageAlt")}
 								layout="fill"
 								src={images?.[index]}
 							/>

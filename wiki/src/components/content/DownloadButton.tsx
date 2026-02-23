@@ -6,8 +6,10 @@ import type { Node } from "hooks";
 import HTMLtoDOCX from "html-to-docx";
 import { getLetter } from "mime";
 import { nhost } from "nhost";
+import { useTranslation } from "react-i18next";
 
 const DownloadButton = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const query = node.useQuery();
 	const id = query?.id;
 	const mimeId = query?.mimeId;
@@ -71,7 +73,7 @@ const DownloadButton = ({ node }: { node: Node }) => {
 		});
 
 		const formatedMembers = members?.length
-			? `<i>Stillet af: ${members}</i>`
+			? `<i>${t("folder.proposedBy")}: ${members}</i>`
 			: "";
 
 		const prefix =
@@ -140,7 +142,7 @@ const DownloadButton = ({ node }: { node: Node }) => {
 	return (
 		<AutoButton
 			key="download"
-			text="Download"
+			text={t("common.download")}
 			icon={<GetApp />}
 			onClick={handleDownload}
 		/>

@@ -9,6 +9,7 @@ import {
 import { AutoButton } from "comps";
 import type { Node } from "hooks";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const PublishButton = ({
 	node,
@@ -17,6 +18,7 @@ const PublishButton = ({
 	node: Node;
 	handlePublish?: () => Promise<void>;
 }) => {
+	const { t } = useTranslation();
 	const [open, setOpen] = useState(false);
 	const update = node.useUpdate();
 	const query = node.useQuery();
@@ -33,15 +35,13 @@ const PublishButton = ({
 		<>
 			<AutoButton
 				key="sent"
-				text="Indsend"
+				text={t("content.submit")}
 				icon={<Publish />}
 				onClick={() => setOpen(true)}
 			/>
 			<Dialog open={open} onClose={() => setOpen(false)}>
-				<DialogTitle>Bekræft Indsendelse</DialogTitle>
-				<DialogContent>
-					Når du har indsendt, så er det ikke muligt at redigere mere.
-				</DialogContent>
+				<DialogTitle>{t("content.confirmSubmit")}</DialogTitle>
+				<DialogContent>{t("content.submitWarning")}</DialogContent>
 				<DialogActions>
 					<Button
 						endIcon={<Publish />}
@@ -52,7 +52,7 @@ const PublishButton = ({
 							setOpen(false);
 						}}
 					>
-						Indsend
+						{t("content.submit")}
 					</Button>
 				</DialogActions>
 			</Dialog>

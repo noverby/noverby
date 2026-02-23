@@ -3,8 +3,10 @@ import { Fab, useScrollTrigger, Zoom } from "@mui/material";
 import { AddContentDialog } from "comps";
 import { type Node, useScreen } from "hooks";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const AddContentFab = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const trigger = useScrollTrigger({
 		target:
 			typeof document !== "undefined"
@@ -38,11 +40,11 @@ const AddContentFab = ({ node }: { node: Node }) => {
 					}}
 					variant={!trigger ? "extended" : "circular"}
 					color="primary"
-					aria-label="Tilføj indhold"
+					aria-label={t("content.addContent")}
 					onClick={() => setOpen(true)}
 				>
 					<Add sx={{ mr: !trigger ? 1 : 0 }} />
-					{!trigger && "Tilføj"}
+					{!trigger && t("common.add")}
 				</Fab>
 			</Zoom>
 			<AddContentDialog

@@ -28,11 +28,13 @@ import {
 	useEffect,
 	useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 type Vote = boolean[];
 
 const VoteApp = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const [session] = useSession();
 	const userId = useUserId();
 	const _navigate = useNavigate();
@@ -88,25 +90,19 @@ const VoteApp = ({ node }: { node: Node }) => {
 			return true;
 		}
 		if (selected > 1 && vote[vote.length - 1]) {
-			setHelperText("Blank kan kun vælges alene");
+			setHelperText(t("vote.blankOnlyAlone"));
 			setError(true);
 			return false;
 		}
 
 		if (submit && (minVote ?? 1) > selected) {
-			setHelperText(
-				`Vælg venligst mindst ${minVote} mulighed${
-					(minVote ?? 1) > 1 ? "er" : ""
-				}`,
-			);
+			setHelperText(t("vote.selectAtLeast", { count: minVote }));
 			setError(true);
 			return false;
 		}
 
 		if ((maxVote ?? 1) < selected) {
-			setHelperText(
-				`Vælg venligst max ${maxVote} mulighed${(maxVote ?? 1) > 1 ? "er" : ""}`,
-			);
+			setHelperText(t("vote.selectAtMost", { count: maxVote }));
 			setError(true);
 			return false;
 		}
@@ -156,15 +152,15 @@ const VoteApp = ({ node }: { node: Node }) => {
 
 	const status = (
 		<HeaderCard
-			title={canVote ? "Du har stemmeret" : "Du har ikke stemmeret"}
+			title={canVote ? t("vote.hasVotingRight") : t("vote.noVotingRight")}
 			subtitle={
 				(poll?.mimeId === "vote/poll" &&
 					canVote &&
-					(checkUnique ? "Du har ikke stemt" : "Du har stemt")) ||
+					(checkUnique ? t("vote.hasNotVoted") : t("vote.hasVoted"))) ||
 				""
 			}
 			avatar={
-				<Tooltip title="Opdater status">
+				<Tooltip title={t("vote.updateStatus")}>
 					<Avatar
 						onClick={() => window.location.reload()}
 						onMouseEnter={() => setRefresh(true)}
@@ -191,7 +187,7 @@ const VoteApp = ({ node }: { node: Node }) => {
 		<Stack spacing={1}>
 			{status}
 			<HeaderCard
-				title="Ingen afstemning nu"
+				title={t("vote.noVoteNow")}
 				avatar={
 					<Avatar
 						sx={{
@@ -240,7 +236,7 @@ const VoteApp = ({ node }: { node: Node }) => {
 								endIcon={<HowToVote />}
 								sx={{ m: [1, 1, 0, 0] }}
 							>
-								Stem
+								{t("vote.castVote")}
 							</Button>
 						</FormControl>
 					</form>

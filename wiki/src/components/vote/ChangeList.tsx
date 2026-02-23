@@ -30,6 +30,7 @@ import { order_by } from "gql";
 import { type Node, useLink, useNode, useScreen } from "hooks";
 import { IconId } from "mime";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { TransitionGroup } from "react-transition-group";
 
 const ChildListElement = ({ id, index }: { id: string; index: number }) => {
@@ -69,6 +70,7 @@ const ChildListElement = ({ id, index }: { id: string; index: number }) => {
 };
 
 const ChildListRaw = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const children = node.useQuery()?.children({
 		where: { mimeId: { _eq: "vote/change" } },
 		order_by: [{ index: order_by.asc }],
@@ -94,7 +96,7 @@ const ChildListRaw = ({ node }: { node: Node }) => {
 									<DoNotDisturb />
 								</Avatar>
 							</ListItemAvatar>
-							<ListItemText primary="Ingen ændringsforslag" />
+							<ListItemText primary={t("vote.noAmendments")} />
 						</ListItemButton>
 					</Collapse>
 				)}
@@ -104,6 +106,7 @@ const ChildListRaw = ({ node }: { node: Node }) => {
 };
 
 const ChangeList = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const screen = useScreen();
 	const link = useLink();
 	const query = node.useQuery();
@@ -113,7 +116,7 @@ const ChangeList = ({ node }: { node: Node }) => {
 	return (
 		<Card sx={{ m: 0 }}>
 			<CardHeader
-				title={<Typography> Ændringsforslag </Typography>}
+				title={<Typography>{t("vote.amendments")}</Typography>}
 				avatar={
 					<Avatar
 						sx={{
@@ -127,7 +130,7 @@ const ChangeList = ({ node }: { node: Node }) => {
 					<CardActions sx={{ p: 0 }}>
 						{query?.isContextOwner && (
 							<AutoButton
-								text="Sorter"
+								text={t("mime.sort")}
 								icon={<LowPriority />}
 								onClick={() => link.push([], "sort")}
 							/>

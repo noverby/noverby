@@ -3,6 +3,7 @@ import { Fab, Tooltip } from "@mui/material";
 import type { nodes } from "gql";
 import { type Node, useLink } from "hooks";
 import { startTransition } from "react";
+import { useTranslation } from "react-i18next";
 
 const SortFab = ({
 	node,
@@ -11,6 +12,7 @@ const SortFab = ({
 	node: Node;
 	elements: Partial<nodes>[];
 }) => {
+	const { t } = useTranslation();
 	const link = useLink();
 	const update = node.useUpdate();
 
@@ -25,7 +27,7 @@ const SortFab = ({
 	};
 
 	return (
-		<Tooltip title="Gem sortering">
+		<Tooltip title={t("sort.saveSorting")}>
 			<Fab
 				sx={{
 					position: "fixed",

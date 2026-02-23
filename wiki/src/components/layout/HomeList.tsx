@@ -13,6 +13,7 @@ import { fromId } from "core/path";
 import { order_by, resolve, useQuery } from "gql";
 import { useLink, useSession } from "hooks";
 import { Fragment, startTransition } from "react";
+import { useTranslation } from "react-i18next";
 
 const abriv: { [name: string]: string } = {
 	Hovedbestyrelsesmøde: "HB",
@@ -63,6 +64,7 @@ const groupBy = <T,>(list: Array<T>, keyGetter: (item: T) => string) => {
 };
 
 const HomeList = ({ setOpen }: { setOpen?: (open: boolean) => void }) => {
+	const { t } = useTranslation();
 	const link = useLink();
 	const userId = useUserId();
 	const query = useQuery();
@@ -151,7 +153,7 @@ const HomeList = ({ setOpen }: { setOpen?: (open: boolean) => void }) => {
 							<Group />
 						</Avatar>
 					</ListItemAvatar>
-					<ListItemText primary="Grupper" />
+					<ListItemText primary={t("layout.groups")} />
 				</ListItem>
 				{groups.map(({ id = "0", name }) => {
 					const item = (
@@ -189,7 +191,7 @@ const HomeList = ({ setOpen }: { setOpen?: (open: boolean) => void }) => {
 									<GroupRemove />
 								</Avatar>
 							</ListItemAvatar>
-							<ListItemText primary="Ingen grupper" />
+							<ListItemText primary={t("layout.noGroups")} />
 						</ListItem>
 					</ListItemButton>
 				)}
@@ -201,7 +203,7 @@ const HomeList = ({ setOpen }: { setOpen?: (open: boolean) => void }) => {
 							<Event />
 						</Avatar>
 					</ListItemAvatar>
-					<ListItemText primary="Begivenheder" />
+					<ListItemText primary={t("layout.events")} />
 				</ListItem>
 				{[...eventByYears.entries()].map(([year, events]) => {
 					return (
@@ -254,7 +256,7 @@ const HomeList = ({ setOpen }: { setOpen?: (open: boolean) => void }) => {
 									<EventBusy />
 								</Avatar>
 							</ListItemAvatar>
-							<ListItemText primary="Ingen begivenheder" />
+							<ListItemText primary={t("layout.noEvents")} />
 						</ListItem>
 					</ListItemButton>
 				)}

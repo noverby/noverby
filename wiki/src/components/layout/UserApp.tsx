@@ -11,8 +11,10 @@ import { HeaderCard, Link } from "comps";
 import { useQuery } from "gql";
 import type { Node } from "hooks";
 import { IconId } from "mime";
+import { useTranslation } from "react-i18next";
 
 const UserApp = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const query = useQuery();
 	const nodes = query.nodes({
 		where: {
@@ -21,7 +23,7 @@ const UserApp = ({ node }: { node: Node }) => {
 	});
 	return (
 		<>
-			<HeaderCard title="Medlemskaber" avatar={<Group />}>
+			<HeaderCard title={t("layout.memberships")} avatar={<Group />}>
 				<List>
 					{query
 						?.members({
@@ -42,12 +44,12 @@ const UserApp = ({ node }: { node: Node }) => {
 							</ListItemButton>
 						)) ?? (
 						<ListItem>
-							<ListItemText primary="Ingen medlemskaber" />
+							<ListItemText primary={t("layout.noMemberships")} />
 						</ListItem>
 					)}
 				</List>
 			</HeaderCard>
-			<HeaderCard title="Begivenheder" avatar={<Event />}>
+			<HeaderCard title={t("layout.events")} avatar={<Event />}>
 				<List>
 					{query
 						?.members({
@@ -68,12 +70,12 @@ const UserApp = ({ node }: { node: Node }) => {
 							</ListItemButton>
 						)) ?? (
 						<ListItem>
-							<ListItemText primary="Ingen medlemskaber" />
+							<ListItemText primary={t("layout.noMemberships")} />
 						</ListItem>
 					)}
 				</List>
 			</HeaderCard>
-			<HeaderCard title="Indhold" avatar={<Subject />}>
+			<HeaderCard title={t("layout.content")} avatar={<Subject />}>
 				<List>
 					{nodes?.map(({ id, name, mimeId, parent }) => (
 						<ListItemButton key={id} component={Link} href={id ?? ""}>
@@ -90,7 +92,7 @@ const UserApp = ({ node }: { node: Node }) => {
 						</ListItemButton>
 					)) ?? (
 						<ListItem>
-							<ListItemText primary="Intet indhold" />
+							<ListItemText primary={t("common.noContent")} />
 						</ListItem>
 					)}
 				</List>
