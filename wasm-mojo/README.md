@@ -16,6 +16,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **Scoped components** — hierarchical scopes with hooks, context, error boundaries, and suspense boundaries
 - **Suspense** — pending state with skeleton fallback and JS-triggered resolve; nested boundaries with independent inner/outer lifecycle
 - **Effects in apps** — reactive side effects with derived state (effect drain-and-run pattern), signal → memo → effect → signal chains
+- **Memo type expansion** — `MemoBool` and `MemoString` achieve type-parity with signals (`SignalI32`/`SignalBool`/`SignalString` ↔ `MemoI32`/`MemoBool`/`MemoString`); mixed-type memo chains with ordered recomputation
 - **Ergonomic DSL** — `el_div`, `el_button`, `dyn_text` tag helpers with `to_template()` conversion
 - **AppShell abstraction** — single struct bundling runtime, store, allocator, and scheduler
 - **ComponentContext** — ergonomic Dioxus-style API with `use_signal()`, `setup_view()`, inline events, auto-numbered `dyn_text()`
@@ -24,7 +25,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **String event dispatch** — `ACTION_SIGNAL_SET_STRING` handlers pipe string values from DOM events directly into `SignalString` signals; JS EventBridge extracts `event.target.value` → `writeStringStruct()` → WASM `dispatch_event_with_string` with automatic fallback to numeric/default dispatch
 - **Two-way input binding** — Dioxus-style `oninput_set_string(signal)` + `bind_value(signal)` DSL helpers for inline string event handlers and auto-populated `value` attributes; `RenderBuilder.build()` reads `SignalString` at render time
 - **Error boundaries** — scope-level error catching with fallback UI and recovery; `use_error_boundary()` marks a scope as a boundary, `report_error()` propagates errors up the parent chain, `has_error()` / `clear_error()` drive flush-time content switching between normal and fallback children
-- **3,764 tests** — 1,156 Mojo (42 modules via wasmtime) + 2,608 JS (26 suites via Deno), all passing
+- **3,989 tests** — 1,226 Mojo (46 modules via wasmtime) + 2,763 JS (27 suites via Deno), all passing
 
 ## How it works
 
@@ -349,7 +350,7 @@ Adding a new test:
 
 ## Test results
 
-3,764 tests across 42 Mojo modules and 26 JS test suites:
+3,989 tests across 46 Mojo modules and 27 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -371,6 +372,10 @@ Adding a new test:
 - **Suspense nest app** — nested suspense boundaries with independent inner/outer load/resolve, inner load shows inner skeleton (outer unaffected), outer load shows outer skeleton (hides inner tree), outer resolve reveals persisted inner pending state, mixed load/resolve sequences, full recovery validation
 - **Effect demo app** — effect-in-flush pattern with count signal and derived state (doubled, parity), effect drain-and-run lifecycle, effect starts pending → runs on rebuild, increment marks effect pending → flush runs effect → derived state updated, re-subscription each run, rapid 20 increments, heapStats bounded, DOM verification
 - **Effect memo app** — signal → memo → effect → signal chain, input signal feeds tripled memo (input × 3), effect reads memo output to derive label ("small"/"big" threshold at tripled ≥ 10), memo recomputed before effects, threshold transition exact (3→small, 4→big), derived state chain consistent, rapid 20 increments, heapStats bounded, DOM verification
+- **Memo bool** — MemoBool create/destroy, peek/read, dirty tracking, begin_compute/end_compute, auto-track subscription, hooks integration
+- **Memo string** — MemoString create/destroy, peek/read, dirty tracking, begin_compute/end_compute with StringStore, version tracking, lifecycle cleanup, hooks integration
+- **Memo form app** — form validation with SignalString input → MemoBool (is_valid) → MemoString (status), memo recomputation order (is_valid before status), two-way input binding (bind_value + oninput_set_string), dirty/clean tracking, derived state consistency, rapid 20 inputs, DOM verification
+- **Memo chain app** — mixed-type memo chain (SignalI32 → MemoI32 → MemoBool → MemoString), ordered recomputation, threshold boundary exact (input=5 → is_big flips), chain propagation correctness, rapid 20 increments, heapStats bounded, DOM verification
 - **Memory** — allocation cycles, bounded growth, rapid write stability, free-list reuse, double-free protection, WASM-integrated reuse (text/attr/fragment/template diffs with reuse enabled)
 - **Arithmetic/strings** — original PoC interop regression suite
 
@@ -686,6 +691,68 @@ struct DataLoaderApp:
 #     self.ctx.set_pending(False)          # next flush restores content
 ```
 
+### Memo type expansion (Phase 35)
+
+`MemoBool` and `MemoString` provide the same ergonomic handle pattern as `MemoI32`,
+enabling derived state of any supported type. Mixed-type memo chains require
+explicit ordered recomputation — the runtime does not recursively propagate
+dirtiness through memo → memo chains:
+
+```mojo
+# Mixed-type memo chain: SignalI32 → MemoI32 → MemoBool → MemoString
+struct MemoChainApp:
+    var ctx: ComponentContext
+    var input: SignalI32
+    var doubled: MemoI32               # input * 2
+    var is_big: MemoBool               # doubled >= 10
+    var label: MemoString              # "BIG" if is_big else "small"
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.input = self.ctx.use_signal(0)
+        self.doubled = self.ctx.use_memo(0)
+        self.is_big = self.ctx.use_memo_bool(False)
+        self.label = self.ctx.use_memo_string(String("small"))
+        self.ctx.setup_view(
+            el_div(
+                el_h1(dsl_text(String("Memo Chain"))),
+                el_button(dsl_text(String("+ 1")), dsl_onclick_add(self.input, 1)),
+                el_p(dsl_dyn_text()),   # "Input: N"
+                el_p(dsl_dyn_text()),   # "Doubled: N"
+                el_p(dsl_dyn_text()),   # "Is Big: true/false"
+                el_p(dsl_dyn_text()),   # "Label: small/BIG"
+            ),
+            String("memo-chain"),
+        )
+
+    fn run_memos(mut self):
+        # Head memo dirty → recompute entire chain in order
+        if not self.doubled.is_dirty():
+            return
+        self.doubled.begin_compute()
+        var i = self.input.read()
+        self.doubled.end_compute(i * 2)
+
+        self.is_big.begin_compute()
+        var d = self.doubled.read()
+        self.is_big.end_compute(d >= 10)
+
+        self.label.begin_compute()
+        var big = self.is_big.read()
+        if big:
+            self.label.end_compute(String("BIG"))
+        else:
+            self.label.end_compute(String("small"))
+
+    fn flush(mut self, writer: ...) -> Int32:
+        if not self.ctx.consume_dirty():
+            return 0
+        self.run_memos()             # settle all derived state
+        var idx = self.render()
+        self.ctx.diff(writer, idx)
+        return self.ctx.finalize(writer)
+```
+
 ### Effect drain-and-run pattern (Phase 34)
 
 Effects run between `consume_dirty()` and `render()` to settle derived state before rendering.
@@ -765,7 +832,7 @@ They are documented here so they can be revisited as Mojo evolves:
 | **Closure event handlers** (`onclick: move \|_\| count += 1`) | No closures/function pointers in WASM; handlers use action-based structs. 0.26.1 improves function type conversions (non-raising → raising, ref → value) but true closures still missing | Lambda syntax (Phase 1), Closure refinement (Phase 1) | 🚧 In progress |
 | **`rsx!` macro** (compile-time DSL) | No hygienic macros | Hygienic importable macros (Phase 2) | ⏰ Not started |
 | **`for` loops in views** (`for item in items { ... }`) | Views are static templates; iteration happens in build functions | Hygienic macros (Phase 2) | ⏰ Not started |
-| **Generic `Signal[T]`** (`use_signal(\|\| vec![])`) | Runtime stores fixed `Int32` signals; parametric stores need conditional conformance. Phase 18 added `SignalBool`, Phase 19 added `SignalString` as manual workarounds. **0.26.1 adds `conforms_to()` + `trait_downcast()` (experimental) enabling static dispatch on trait conformance, plus expanded reflection (`struct_field_count`, `struct_field_names`, `struct_field_types`, `offset_of`) — stepping stones toward a generic signal store** | Conditional conformance (Phase 1) | 🚧 Partially unblocked |
+| **Generic `Signal[T]`** (`use_signal(\|\| vec![])`) | Runtime stores fixed `Int32` signals; parametric stores need conditional conformance. Phase 18 added `SignalBool`, Phase 19 added `SignalString`, Phase 35 added `MemoBool` + `MemoString` — three memo types now match three signal types, reducing urgency. **0.26.1 adds `conforms_to()` + `trait_downcast()` (experimental) enabling static dispatch on trait conformance, plus expanded reflection (`struct_field_count`, `struct_field_names`, `struct_field_types`, `offset_of`) — stepping stones toward a generic signal store** | Conditional conformance (Phase 1) | 🚧 Partially unblocked |
 | **Dynamic component dispatch** (trait objects for components) | No existentials/dynamic traits. 0.26.1: `AnyType` no longer requires `__del__()` (explicitly-destroyed types) helps but doesn't solve dispatch | Existentials / dynamic traits (Phase 2) | ⏰ Not started |
 | **Pattern matching on actions** | `if/elif` chains instead of `match` | Algebraic data types & pattern matching (Phase 2) | ⏰ Not started |
 | ~~**Async data loading / suspense**~~ | **Suspense (simulated) implemented in Phase 33.** True async still blocked on first-class async. Synchronous suspense with JS-triggered resolve available now | First-class async support (Phase 2) | ✅ Simulated |
@@ -774,8 +841,8 @@ They are documented here so they can be revisited as Mojo evolves:
 When these Mojo features land, the corresponding Dioxus patterns can be
 adopted — closures would eliminate `ItemBuilder.add_custom_event()` + `get_action()`,
 macros would enable an `rsx!`-like DSL, and generic signals would replace the
-current `SignalI32` / `SignalBool` / `SignalString` / `MemoI32` handles with
-`Signal[Int32]`, `Signal[Bool]`, `Signal[String]`, etc.
+current `SignalI32` / `SignalBool` / `SignalString` / `MemoI32` / `MemoBool` / `MemoString` handles with
+`Signal[Int32]`, `Signal[Bool]`, `Signal[String]`, `Memo[Int32]`, `Memo[Bool]`, `Memo[String]`, etc.
 
 ### 0.26.1 new features applicable to existing code
 

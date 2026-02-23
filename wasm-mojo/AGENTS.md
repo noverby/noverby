@@ -81,6 +81,8 @@ if ptr != UnsafePointer[T]():       # not: if ptr:
 - `SignalBool` (`signals/handle.mojo`) — Phase 18 ergonomic boolean signal wrapping Int32 (0/1). `get() -> Bool`, `read() -> Bool` (with context subscription), `set(Bool)`, `toggle()`, `peek_i32() -> Int32`, `version()`, `__str__()` ("true"/"false"). Created via `ctx.use_signal_bool(initial)` or `ctx.create_signal_bool(initial)`.
 - `SignalString` (`signals/handle.mojo`) — Phase 19 ergonomic reactive string signal. Wraps a `string_key` (index in StringStore) + `version_key` (companion Int32 signal in SignalStore for subscriber tracking). `get() -> String` / `peek() -> String` (read without subscribing), `read() -> String` (subscribe context via version signal), `set(String)` (write + bump version → marks subscribers dirty), `version() -> UInt32`, `is_empty() -> Bool`, `__str__() -> String`. Created via `ctx.use_signal_string(initial)` or `ctx.create_signal_string(initial)`.
 - `MemoI32` — derived signal with lazy recomputation and auto dependency tracking.
+- `MemoBool` (`signals/handle.mojo`) — Phase 35 ergonomic boolean memo wrapping an Int32 memo entry (0/1). `peek() -> Bool` (read without subscribing), `read() -> Bool` (read with context subscription), `is_dirty() -> Bool`, `begin_compute()`, `end_compute(Bool)`, `copy() -> Self`. Created via `ctx.use_memo_bool(initial)`. Recomputation follows the same begin/end bracket as `MemoI32`.
+- `MemoString` (`signals/handle.mojo`) — Phase 35 ergonomic string memo. Wraps a `string_key` (StringStore slot) + `version_key` (companion Int32 memo in MemoStore for dirty/version tracking). `peek() -> String` (read without subscribing), `read() -> String` (read with context subscription via version memo), `is_dirty() -> Bool`, `begin_compute()`, `end_compute(String)`, `copy() -> Self`. Created via `ctx.use_memo_string(initial)`. Lifecycle mirrors `SignalString` (StringStore + version signal) but uses memo infrastructure for lazy recomputation.
 - `EffectHandle` — reactive side effects.
 
 ### Scopes (`src/scope/`)
@@ -453,6 +455,50 @@ struct EffectMemoApp:
 
 Lifecycle: `em_init` → `em_rebuild` (recompute memo + run effect + mount) → `em_handle_event` (onclick_add input) → `em_flush` (memo recomputed, effect runs, label updated, DOM diffed). Chain: input write → memo dirty → recompute memo → output signal write → effect pending → run effect → label signal write → render. Memos MUST be recomputed before effects that read their output.
 
+### MemoFormApp (`src/main.mojo`) — MemoBool + MemoString form validation
+
+```txt
+struct MemoFormApp:
+    var ctx: ComponentContext           # single root scope
+    var input: SignalString             # text input signal
+    var is_valid: MemoBool             # memo: len(input) > 0
+    var status: MemoString             # memo: "✓ Valid: ..." or "✗ Empty"
+    var input_handler: UInt32
+    fn __init__: ctx.create() → use_signal_string("") + use_memo_bool(False)
+                 + use_memo_string("✗ Empty") → setup_view(h1 + input[bind_value
+                 + oninput_set_string] + 2 × p > dyn_text)
+    fn run_memos: if is_valid.is_dirty() → begin_compute → read input
+                  → end_compute(len > 0)
+                  if status.is_dirty() → begin_compute → read input + is_valid
+                  → end_compute("✓ Valid: ..." or "✗ Empty")
+    fn render: 2 dyn_text slots (Valid: true/false, Status: ...)
+    fn flush: consume_dirty → run_memos → render → diff → finalize
+```
+
+Lifecycle: `mf_init` → `mf_rebuild` (run_memos + mount) → `mf_handle_event_string` (oninput_set_string writes input) → `mf_flush` (memos recomputed, DOM diffed). Memo recomputation order: is_valid FIRST (depends on input), then status (depends on input + is_valid). Uses two-way input binding (`bind_value` + `oninput_set_string`). WASM exports: `mf_init`, `mf_destroy`, `mf_rebuild`, `mf_handle_event`, `mf_handle_event_string`, `mf_flush`, `mf_input_text`, `mf_is_valid`, `mf_status_text`, `mf_is_valid_dirty`, `mf_status_dirty`, `mf_set_input`, `mf_input_handler`, `mf_has_dirty`, `mf_scope_count`, `mf_memo_count`.
+
+### MemoChainApp (`src/main.mojo`) — mixed-type memo chain
+
+```txt
+struct MemoChainApp:
+    var ctx: ComponentContext           # single root scope
+    var input: SignalI32               # input signal
+    var doubled: MemoI32               # memo: input * 2
+    var is_big: MemoBool               # memo: doubled >= 10
+    var label: MemoString              # memo: "BIG" if is_big else "small"
+    var incr_handler: UInt32
+    fn __init__: ctx.create() → use_signal(0) + use_memo(0) + use_memo_bool(False)
+                 + use_memo_string("small") → setup_view(h1 + button + 4 × p > dyn_text)
+    fn run_memos: if doubled.is_dirty() →
+                    begin_compute → read input → end_compute(input * 2)
+                    begin_compute → read doubled → end_compute(doubled >= 10)
+                    begin_compute → read is_big → end_compute("BIG" or "small")
+    fn render: 4 dyn_text slots (Input/Doubled/Is Big/Label)
+    fn flush: consume_dirty → run_memos → render → diff → finalize
+```
+
+Lifecycle: `mc_init` → `mc_rebuild` (run_memos + mount) → `mc_handle_event` (onclick_add input) → `mc_flush` (memo chain recomputed, DOM diffed). Chain: `SignalI32` → `MemoI32` → `MemoBool` → `MemoString`. Recomputation is triggered when the head memo (doubled) is dirty — all three memos are eagerly recomputed in dependency order because the runtime's write propagation does not recursively mark downstream memos dirty (memo → memo propagation not supported). WASM exports: `mc_init`, `mc_destroy`, `mc_rebuild`, `mc_handle_event`, `mc_flush`, `mc_input_value`, `mc_doubled_value`, `mc_is_big`, `mc_label_text`, `mc_doubled_dirty`, `mc_is_big_dirty`, `mc_label_dirty`, `mc_incr_handler`, `mc_has_dirty`, `mc_scope_count`, `mc_memo_count`.
+
 ## WASM Export Pattern (`src/main.mojo`)
 
 All exports follow this pattern — thin wrappers forwarding to app modules:
@@ -633,13 +679,12 @@ el_button(text("Add"), onclick_custom()),
 
 | File | Lines | Role |
 |------|-------|------|
-| `src/main.mojo` | ~8,610 | All @export wrappers (incl. SafeCounterApp, ErrorNestApp, DataLoaderApp, SuspenseNestApp, EffectDemoApp, EffectMemoApp, context/child test apps) |
-| `src/signals/handle.mojo` | ~680 | SignalI32 + SignalBool + SignalString + MemoI32 + EffectHandle |
-| `src/signals/runtime.mojo` | ~1,365 | Reactive runtime + SignalStore + StringStore |
-| `src/component/context.mojo` | ~2,140 | ComponentContext + RenderBuilder + tree processing + error boundary + view_event_handler_id |
-| `src/component/child_context.mojo` | ~500 | ChildComponentContext (child scope API + error boundary methods) |
-| `src/component/lifecycle.mojo` | ~580 | FragmentSlot + mount/diff helpers |
-| `src/component/app_shell.mojo` | ~460 | AppShell (low-level) |
+| `src/main.mojo` | ~9,310 | All @export wrappers (incl. SafeCounterApp, ErrorNestApp, DataLoaderApp, SuspenseNestApp, EffectDemoApp, EffectMemoApp, MemoFormApp, MemoChainApp, context/child test apps) |
+| `src/signals/handle.mojo` | ~980 | SignalI32 + SignalBool + SignalString + MemoI32 + MemoBool + MemoString + EffectHandle |
+| `src/signals/runtime.mojo` | ~1,545 | Reactive runtime + SignalStore + StringStore + memo bool/string methods |
+| `src/component/context.mojo` | ~2,270 | ComponentContext + RenderBuilder + tree processing + error boundary + view_event_handler_id + memo bool/string hooks |
+| `src/component/child_context.mojo` | ~570 | ChildComponentContext (child scope API + error boundary methods + memo bool/string hooks) |
+| `src/component/app_shell.mojo` | ~503 | AppShell (low-level + memo bool/string wrappers) |
 | `examples/counter/counter.mojo` | ~115 | Counter app |
 | `examples/todo/todo.mojo` | ~520 | Todo app (M20.5: WASM-driven Add, bind_value, oninput_set_string, onclick_custom) |
 | `examples/bench/bench.mojo` | ~985 | Benchmark app (uses KeyedList + ItemBuilder + performance_now timing + 3 dyn_text status bar) |
@@ -649,7 +694,7 @@ el_button(text("Add"), onclick_custom()),
 | `src/mutations/diff.mojo` | ~970 | DiffEngine (keyed reconciliation) |
 | `runtime/memory.ts` | ~290 | Free-list allocator + scratch arena (Phase 25) |
 | `runtime/events.ts` | ~375 | EventBridge + DispatchWithStringFn (M20.2) |
-| `runtime/app.ts` | ~2,120 | createApp + app handles (Counter, Todo, Bench, SafeCounter, ErrorNest, DataLoader, SuspenseNest, EffectDemo, EffectMemo, etc.) |
+| `runtime/app.ts` | ~2,380 | createApp + app handles (Counter, Todo, Bench, SafeCounter, ErrorNest, DataLoader, SuspenseNest, EffectDemo, EffectMemo, MemoForm, MemoChain, etc.) |
 | `runtime/types.ts` | ~690 | WasmExports interface (Phase 20 string dispatch exports) |
 | `examples/lib/env.js` | ~250 | Browser free-list allocator + WASM imports (Phase 25) |
 | `test-js/allocator.test.ts` | ~980 | Allocator unit tests + WASM-integrated reuse tests (Phase 25) |
@@ -669,8 +714,14 @@ el_button(text("Add"), onclick_custom()),
 | `test-js/effect_memo.test.ts` | ~495 | EffectMemoApp memo+effect chain tests (threshold, derived state, DOM) |
 | `test/test_effect_demo.mojo` | ~475 | EffectDemoApp Mojo tests (18 tests: lifecycle, derived state, rapid) |
 | `test/test_effect_memo.mojo` | ~455 | EffectMemoApp Mojo tests (16 tests: memo chain, threshold, rapid) |
+| `test/test_memo_bool.mojo` | ~694 | MemoBool Mojo tests (15 tests: create, peek, dirty, recompute, hooks) |
+| `test/test_memo_string.mojo` | ~831 | MemoString Mojo tests (17 tests: create, peek, dirty, recompute, lifecycle, hooks) |
+| `test/test_memo_form.mojo` | ~514 | MemoFormApp Mojo tests (18 tests: lifecycle, derived state, dirty tracking, form validation) |
+| `test/test_memo_chain.mojo` | ~586 | MemoChainApp Mojo tests (20 tests: memo chain, threshold, propagation, rapid) |
+| `test-js/memo_form.test.ts` | ~495 | MemoFormApp JS tests (20 suites: DOM, input binding, memo dirty/clean, form validation) |
+| `test-js/memo_chain.test.ts` | ~531 | MemoChainApp JS tests (22 suites: DOM, chain propagation, threshold, heapStats) |
 | `test/wasm_harness.mojo` | ~1,400 | Mojo WASM test harness (includes free-list allocator, Phase 25) |
-| `CHANGELOG.md` | ~420 | Development history (Phases 0–32) |
+| `CHANGELOG.md` | ~430 | Development history (Phases 0–35) |
 
 ## Common Patterns
 
@@ -761,6 +812,27 @@ Error propagation: `ctx.report_error(msg)` walks the scope parent chain via `Sco
 
 **String signal in render (Phase 19)**: `vb.add_dyn_text_signal(name)` → reads `name.get()` and adds as dynamic text. Works on both `RenderBuilder` and `ItemBuilder`.
 
+**Memo type expansion pattern (Phase 35):** `MemoBool` and `MemoString` mirror the signal type expansion (Phase 18–19). `MemoBool` wraps an Int32 memo entry with boolean ergonomics; `MemoString` wraps a StringStore slot + version memo. Memo recomputation order is critical for correctness in chains — recompute upstream memos before downstream memos that read their output. For mixed-type chains (e.g., `SignalI32` → `MemoI32` → `MemoBool` → `MemoString`), check `is_dirty()` on the head memo and eagerly recompute all memos in dependency order because the runtime does not recursively propagate dirtiness through memo → memo chains:
+
+```text
+fn run_memos():
+    if not self.doubled.is_dirty(): return
+    # Step 1: doubled (depends on input signal)
+    self.doubled.begin_compute()
+    var i = self.input.read()
+    self.doubled.end_compute(i * 2)
+    # Step 2: is_big (depends on doubled memo)
+    self.is_big.begin_compute()
+    var d = self.doubled.read()
+    self.is_big.end_compute(d >= 10)
+    # Step 3: label (depends on is_big memo)
+    self.label.begin_compute()
+    var big = self.is_big.read()
+    self.label.end_compute("BIG" if big else "small")
+```
+
+**MemoString lifecycle:** `MemoString` uses the same dual-key pattern as `SignalString`: a `string_key` in `StringStore` for heap-safe string storage, and a `version_key` in `MemoStore` for dirty/version tracking. `end_compute(String)` writes to both: the string value to `StringStore` and the version to the memo entry. `read()` subscribes via the version memo. Cleanup requires `destroy_memo_string()` to free the StringStore slot.
+
 **Keyed list dispatch (Phase 17 — via HandlerAction)**: `var action = self.items.get_action(handler_id)` → `if action.found: match action.tag`.
 
 **Keyed list rebuild (Phase 16 — manual)**: `var frag = self.items.begin_rebuild(ctx)` → for each item: `items.create_scope(ctx)` → `items.item_builder(key, ctx)` → register handlers → `items.push_child(ctx, frag, idx)`.
@@ -776,7 +848,7 @@ Error propagation: `ctx.report_error(msg)` walks the scope parent chain via `Sco
 - **Closure event handlers** → blocked on Lambda syntax + Closure refinement (Phase 1, 🚧). Would eliminate `ItemBuilder.add_custom_event()` + `get_action()`. Phase 20 string dispatch + inline DSL helpers (`oninput_set_string`, `bind_value`) address this for input events. **0.26.1 progress:** Function type conversions improved (non-raising → raising, ref → value), but true closures/function pointers in WASM still missing.
 - **`rsx!` macro** → blocked on Hygienic importable macros (Phase 2, ⏰). Would enable compile-time DSL like Dioxus. **0.26.1 progress:** None.
 - **`for` loops in views** → blocked on macros (Phase 2, ⏰). Currently iteration happens in build functions. **0.26.1 progress:** None.
-- **Generic `Signal[T]`** → blocked on Conditional conformance (Phase 1, 🚧). Currently `SignalI32` / `SignalBool` / `SignalString` / `MemoI32` (Phase 18 added `SignalBool`, Phase 19 added `SignalString`). **0.26.1 progress:** Experimental `conforms_to()` + `trait_downcast()` enable static dispatch on trait conformance; expanded reflection (`struct_field_count`, `struct_field_names`, `struct_field_types`) enables field introspection. Still blocked on full conditional conformance for parametric stores.
+- **Generic `Signal[T]`** → blocked on Conditional conformance (Phase 1, 🚧). Currently `SignalI32` / `SignalBool` / `SignalString` / `MemoI32` / `MemoBool` / `MemoString` (Phase 18 added `SignalBool`, Phase 19 added `SignalString`, Phase 35 added `MemoBool` + `MemoString` — three memo types now match three signal types, reducing urgency). **0.26.1 progress:** Experimental `conforms_to()` + `trait_downcast()` enable static dispatch on trait conformance; expanded reflection (`struct_field_count`, `struct_field_names`, `struct_field_types`) enables field introspection. Still blocked on full conditional conformance for parametric stores.
 - **Dynamic component dispatch** → blocked on Existentials / dynamic traits (Phase 2, ⏰). **0.26.1 progress:** `AnyType` no longer requires `__del__()` (explicitly-destroyed types help), but doesn't solve dispatch.
 - **Pattern matching on actions** → blocked on ADTs & pattern matching (Phase 2, ⏰). Currently `if/elif` chains. **0.26.1 progress:** None.
 - ~~**Async data loading / suspense**~~ → **Suspense (simulated) implemented in Phase 33.** True async/await still blocked on First-class async (Phase 2, ⏰), but synchronous suspense with JS-triggered resolve is now available. `use_suspense_boundary()` marks a scope as a suspense boundary; `set_pending(True/False)` toggles pending state; `is_pending()` drives flush-time content/skeleton switching. JS resolves by calling a WASM export that stores data and clears pending. Demonstrated with DataLoaderApp (single boundary) and SuspenseNestApp (nested boundaries).
