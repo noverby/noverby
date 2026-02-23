@@ -416,6 +416,28 @@ struct ChildComponentContext(Movable):
         """Return the number of auto-bindings on this child."""
         return self.child.auto_binding_count()
 
+    # ── Error reporting ──────────────────────────────────────────────
+
+    fn report_error(self, message: String) -> Int:
+        """Propagate an error from this child scope to the nearest boundary.
+
+        Walks up the parent chain from the child scope.  If a boundary
+        is found, sets the error on it and marks it dirty so the next
+        flush picks up the state change.
+
+        Args:
+            message: Description of the error.
+
+        Returns:
+            The boundary scope ID as Int, or -1 if no boundary found.
+        """
+        var boundary_id = self.runtime[0].scopes.propagate_error(
+            self.scope_id, message
+        )
+        if boundary_id != -1:
+            self.runtime[0].mark_scope_dirty(UInt32(boundary_id))
+        return boundary_id
+
     # ── Destroy ──────────────────────────────────────────────────────
 
     fn destroy(self):

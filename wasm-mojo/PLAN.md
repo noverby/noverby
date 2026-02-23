@@ -1,831 +1,895 @@
-# Phase 31 — Component Props & Context
+# Phase 32 — Error Boundaries
 
 ## Problem
 
-Phase 29 introduced `ChildComponent` for component composition, but the
-current pattern has significant limitations:
+Phase 8.4 added low-level error boundary infrastructure to the scope
+system — `ScopeState` has `is_error_boundary`, `has_error`,
+`error_message` fields with setters/getters, `ScopeArena` has
+`find_error_boundary()` and `propagate_error()` parent-chain walk-up,
+and there are WASM exports (`err_set_boundary`, `err_propagate`, etc.)
+with unit tests in `phase8.test.ts`. However:
 
-1. **Children are display-only.** The parent builds the child's VNode
-   directly (`child.render_builder()` → `add_dyn_text()` → `build()`),
-   which means the parent must know the child's template structure. The
-   child has no way to manage its own rendering.
+1. **ComponentContext has no error boundary API.** The scope plumbing
+   exists but is not surfaced on `ComponentContext` or
+   `ChildComponentContext`. No component code uses error boundaries.
 
-2. **No child-owned state.** `ChildComponent` has its own scope, but
-   there is no API to create signals, memos, or effects under that
-   scope. All reactive state lives in the parent.
+2. **No integration with the render/flush cycle.** When an error
+   boundary captures an error, nothing happens in the DOM — children
+   continue rendering normally. There is no mechanism to swap between
+   normal content and a fallback UI based on error state.
 
-3. **No props mechanism.** Data flows from parent to child only through
-   the parent manually building the child's VNode with hardcoded values.
-   There is no ergonomic way to pass reactive signal handles as "props"
-   that the child can subscribe to.
+3. **No fallback rendering pattern.** Error boundaries in React/Dioxus
+   catch errors in their child tree and render fallback UI. We have
+   `ConditionalSlot` for show/hide transitions, but no established
+   pattern for error-driven content switching.
 
-4. **Context DI is buried.** `ScopeState.provide_context()` and
-   `ScopeArena.consume_context()` exist (Phase 8.3) but are not surfaced
-   on `ComponentContext`. No app code uses them. The parent-chain walk-up
-   is fully implemented but untested at the component level.
+4. **No recovery mechanism.** Clearing an error should re-render the
+   normal child tree, but there is no demo or test showing this
+   lifecycle.
 
-5. **No upward communication pattern.** Children cannot notify parents
-   of events beyond mutating shared signals (which requires the parent
-   to know the child's internal signal keys).
+5. **No demonstration app.** Without a working error boundary demo,
+   the feature is theoretical — never validated end-to-end with DOM
+   rendering, event handling, and recovery.
 
-### Current ChildCounterApp pattern (Phase 29)
+### Current state (Phase 31)
+
+Error boundary scope fields exist but are dead code at the component
+level:
 
 ```mojo
-struct ChildCounterApp:
-    var ctx: ComponentContext       # parent owns everything
-    var count: SignalI32            # parent-owned signal
-    var child: ChildComponent       # display-only child
+# scope/scope.mojo — fields exist but component layer ignores them
+var is_error_boundary: Bool
+var has_error: Bool
+var error_message: String
 
-    fn build_child_vnode(mut self) -> UInt32:
-        # Parent knows child's template structure — tight coupling
-        var cvb = self.child.render_builder(ctx.store_ptr(), ctx.runtime_ptr())
-        cvb.add_dyn_text("Count: " + str(self.count.peek()))
-        return cvb.build()
+# scope/arena.mojo — walk-up exists but ComponentContext doesn't call it
+fn find_error_boundary(self, scope_id: UInt32) -> Int
+fn propagate_error(mut self, scope_id: UInt32, message: String) -> Int
 ```
 
-### Target pattern (Phase 31)
+### Target pattern (Phase 32)
 
 ```mojo
-struct CounterDisplay:
-    var child_ctx: ChildComponentContext
-    var count: SignalI32            # received from parent via context
-    var show_hex: SignalBool        # child-owned local state
+comptime CTX_THEME: UInt32 = 1
 
-    fn render(mut self) -> UInt32:
-        var vb = self.child_ctx.render_builder()
-        if self.show_hex.get():
-            vb.add_dyn_text("Count: 0x" + hex(self.count.peek()))
-        else:
-            vb.add_dyn_text("Count: " + str(self.count.peek()))
-        return vb.build()
-
-struct ParentApp:
+struct SafeCounterApp:
     var ctx: ComponentContext
     var count: SignalI32
-    var display: CounterDisplay     # self-rendering child
+    var child: ChildComponentContext          # normal content
+    var fallback: ChildComponentContext        # fallback UI
+    var retry_handler: UInt32
 
     fn __init__(out self):
         self.ctx = ComponentContext.create()
         self.count = self.ctx.use_signal(0)
-        # Provide count signal to descendants via context
-        self.ctx.provide_signal_i32(PROP_COUNT, self.count)
-        ...
-        # Child creates its own context, consumes the prop
+        # Mark root scope as error boundary
+        self.ctx.use_error_boundary()
+        self.ctx.setup_view(
+            el_div(
+                el_h1(text("Safe Counter")),
+                el_button(text("+ 1"), onclick_add(self.count, 1)),
+                dyn_node(0),   # normal content OR fallback
+                dyn_node(1),   # second slot for the other state
+            ),
+            String("safe-counter"),
+        )
+        # Normal child: displays count
         var child_ctx = self.ctx.create_child_context(
             el_p(dyn_text()), String("display"),
         )
-        var received_count = child_ctx.consume_signal_i32(PROP_COUNT)
-        var local_toggle = child_ctx.use_signal_bool(False)
-        self.display = CounterDisplay(child_ctx^, received_count, local_toggle)
+        self.child = child_ctx^
+        # Fallback child: shows error + retry button
+        self.retry_handler = self.ctx.register_custom_handler(String("click"))
+        var fb_ctx = self.ctx.create_child_context(
+            el_div(
+                el_p(dyn_text()),
+                el_button(text("Retry"), dyn_attr(0)),
+            ),
+            String("fallback"),
+        )
+        self.fallback = fb_ctx^
+
+    fn flush(mut self, writer: ...) -> Int32:
+        if self.ctx.has_error():
+            # Error state: hide normal child, show fallback
+            self.child.flush_empty(writer)
+            var fb_idx = self.render_fallback()
+            self.fallback.flush(writer, fb_idx)
+        else:
+            # Normal state: show child, hide fallback
+            self.fallback.flush_empty(writer)
+            var child_idx = self.render_child()
+            self.child.flush(writer, child_idx)
+        return self.ctx.finalize(writer)
+
+    fn handle_event(mut self, handler_id: UInt32, ...) -> Bool:
+        if handler_id == self.retry_handler:
+            self.ctx.clear_error()    # clears error → next flush shows child
+            return True
+        return self.ctx.dispatch_event(handler_id, event_type)
 ```
 
 ---
 
 ## Design
 
-### Context keys
+### Error boundary lifecycle
 
-Context keys are `UInt32` identifiers chosen by the application. To avoid
-collisions, the convention is `comptime` constants:
-
-```mojo
-comptime PROP_COUNT: UInt32 = 1
-comptime PROP_THEME: UInt32 = 2
-comptime CTX_SELECTED_ID: UInt32 = 100
-```
-
-Context values are `Int32` — sufficient for signal keys, enum values,
-boolean flags, and small integers. Signal handles are reconstructed from
-the key + shared runtime pointer.
-
-### ChildComponentContext
-
-A new struct in `src/component/child_context.mojo` that wraps:
-
-- A `ChildComponent` (scope, template, ConditionalSlot, bindings)
-- Pointers to the shared `Runtime`, `VNodeStore`, `StringStore`
-- The parent's `scope_id` (for context walk-up)
-- The child's `scope_id` (for signal/memo creation and dirty tracking)
-
-It provides a subset of `ComponentContext`'s API:
-
-- `use_signal(initial) -> SignalI32` — creates signal under child scope
-- `use_signal_bool(initial) -> SignalBool`
-- `use_signal_string(initial) -> SignalString`
-- `use_memo(initial) -> MemoI32`
-- `consume_signal_i32(key) -> SignalI32` — walks up scope chain
-- `consume_signal_bool(key) -> SignalBool`
-- `consume_signal_string(key) -> SignalString`
-- `consume_context(key) -> Int32` — raw context lookup
-- `render_builder() -> ChildRenderBuilder`
-- `is_dirty() -> Bool`
-
-It does NOT own the `AppShell` — the parent `ComponentContext` does. The
-child context holds non-owning pointers to the shared stores, just like
-signal handles do.
-
-### Signal sharing via context
-
-Parent provides a signal by storing its key in scope context:
+The error boundary lifecycle integrates with the existing
+`ConditionalSlot`-based flush pattern:
 
 ```text
-provide_signal_i32(PROP_COUNT, count)
-  → self.shell.runtime[0].scopes.provide_context(
-        self.scope_id, PROP_COUNT, Int32(count.key))
+             ┌─────────┐
+             │  Normal  │ ← initial state: child rendered, fallback hidden
+             └────┬─────┘
+                  │ report_error("boom")
+                  ▼
+           ┌──────────────┐
+           │  Error State  │ ← boundary.has_error = true
+           │  (fallback)   │   child.flush_empty() + fallback.flush(vnode)
+           └──────┬────────┘
+                  │ clear_error()
+                  ▼
+             ┌─────────┐
+             │  Normal  │ ← child re-renders, fallback hidden
+             └──────────┘
 ```
 
-Child consumes it by looking up the key and reconstructing a handle:
+### ComponentContext surface
+
+New methods on `ComponentContext`:
+
+| Method | Description |
+|--------|-------------|
+| `use_error_boundary()` | Mark root scope as error boundary |
+| `report_error(msg)` | Propagate error from root scope upward |
+| `has_error() -> Bool` | Check if boundary has captured an error |
+| `error_message() -> String` | Get the captured error message |
+| `clear_error()` | Clear error state, allow re-render |
+
+New methods on `ChildComponentContext`:
+
+| Method | Description |
+|--------|-------------|
+| `report_error(msg)` | Propagate error from child scope upward |
+
+### Propagation mechanics
+
+Error propagation reuses the existing `ScopeArena.propagate_error()`
+which walks the parent chain from the reporting scope to the nearest
+ancestor with `is_error_boundary = true` and sets the error there.
 
 ```text
-consume_signal_i32(PROP_COUNT)
-  → var (found, raw_key) = runtime[0].scopes.consume_context(
-        self.child_scope_id, PROP_COUNT)
-  → return SignalI32(UInt32(raw_key), self.runtime)
+Root (boundary) ← error lands here
+  └─ Child A
+       └─ Child B  ← report_error("crash") starts here
 ```
 
-Since the child scope's `parent_id` is the parent scope's ID (set by
-`create_child_scope`), the walk-up finds the parent's context entry
-automatically.
+When `propagate_error()` returns -1 (no boundary found), the error is
+unhandled. The `report_error()` method on ComponentContext returns the
+boundary scope ID (or -1) so the caller can detect unhandled errors.
 
-### Upward communication
+### Flush integration
 
-No new primitive is needed. The parent provides a "callback signal" —
-a `SignalI32` whose value the child writes to signal an action:
+The error boundary owner checks `has_error()` during flush:
 
-```mojo
-# Parent
-var on_action = ctx.use_signal(0)  # 0 = no action
-ctx.provide_signal_i32(CB_ACTION, on_action)
+- **No error:** flush normal children, hide fallback children
+- **Error present:** hide normal children, flush fallback with error
+  message text
+- **Error cleared:** re-flush normal children (creates from scratch
+  if previously hidden), hide fallback
 
-# Child
-var on_action = child_ctx.consume_signal_i32(CB_ACTION)
-# In event handler:
-on_action.set(ACTION_DELETE)  # marks parent scope dirty
-```
-
-The parent checks `on_action.peek()` during flush and resets it. This
-is the same pattern as Elm/Redux command signals and works within the
-existing reactive system.
+This is the same `flush` / `flush_empty` alternation that
+`ConditionalSlot` already supports — error boundaries don't need a
+new slot type.
 
 ### Dirty tracking
 
-Child-owned signals are created under the child scope, so writing them
-marks the child scope dirty — not the parent. The parent must check
-`child_ctx.is_dirty()` during flush and re-render the child if needed.
+When `report_error()` sets the error on a boundary scope, it must
+mark that scope dirty so the next flush picks up the state change.
+`propagate_error()` already sets `has_error` on the boundary scope;
+we add a `mark_scope_dirty()` call after successful propagation.
 
-Prop signals (parent-owned, consumed by child) mark the *parent* scope
-dirty when written (since the parent scope subscribes during its render).
-The child reads them via `peek()` during its own render, so the parent
-must flush the child whenever the parent itself is dirty. This matches
-the existing ChildCounterApp pattern.
+Similarly, `clear_error()` must mark the boundary scope dirty.
+
+### JS runtime
+
+No new JS runtime infrastructure is needed. Error boundaries are
+entirely WASM-side — the JS runtime just applies mutations as usual.
+The fallback UI is rendered through the same mutation protocol.
 
 ---
 
 ## Steps
 
-### P31.1 — ComponentContext provide/consume + signal helpers
+### P32.1 — ComponentContext error boundary surface
 
-Surface the scope context DI mechanism on `ComponentContext` and add
-typed signal-sharing helpers.
+**Goal:** Surface the existing scope error boundary infrastructure on
+`ComponentContext` and `ChildComponentContext` with ergonomic methods.
 
-**`src/component/context.mojo` additions:**
+#### Mojo changes
 
-```mojo
-# ── Context (Dependency Injection) ───────────────────────────────
-
-fn provide_context(mut self, key: UInt32, value: Int32):
-    """Provide a context value at the root scope."""
-    self.shell.runtime[0].scopes.provide_context(
-        self.scope_id, key, value
-    )
-
-fn consume_context(self, key: UInt32) -> Tuple[Bool, Int32]:
-    """Look up a context value walking up the scope tree."""
-    return self.shell.runtime[0].scopes.consume_context(
-        self.scope_id, key
-    )
-
-fn has_context(self, key: UInt32) -> Bool:
-    """Check whether a context value is reachable."""
-    return self.consume_context(key)[0]
-
-# ── Signal sharing via context ───────────────────────────────────
-
-fn provide_signal_i32(mut self, key: UInt32, signal: SignalI32):
-    """Provide a signal handle to descendants via context."""
-    self.provide_context(key, Int32(signal.key))
-
-fn provide_signal_bool(mut self, key: UInt32, signal: SignalBool):
-    """Provide a bool signal handle to descendants via context."""
-    self.provide_context(key, signal.peek_i32())
-    # Store the actual signal key, not the value
-    self.shell.runtime[0].scopes.provide_context(
-        self.scope_id, key, Int32(signal.key)
-    )
-
-fn provide_signal_string(mut self, key: UInt32, signal: SignalString):
-    """Provide a string signal handle to descendants via context."""
-    self.provide_context(key, Int32(signal.key))
-
-fn consume_signal_i32(self, key: UInt32) -> SignalI32:
-    """Look up a SignalI32 from an ancestor's context."""
-    var result = self.consume_context(key)
-    return SignalI32(UInt32(result[1]), self.shell.runtime)
-
-fn consume_signal_bool(self, key: UInt32) -> SignalBool:
-    """Look up a SignalBool from an ancestor's context."""
-    var result = self.consume_context(key)
-    return SignalBool(UInt32(result[1]), self.shell.runtime)
-
-fn consume_signal_string(self, key: UInt32) -> SignalString:
-    """Look up a SignalString from an ancestor's context."""
-    var result = self.consume_context(key)
-    return SignalString(
-        UInt32(result[1]),
-        self.shell.runtime,
-        self.shell.string_store,
-    )
-```
-
-**`src/main.mojo` WASM exports (thin wrappers):**
-
-- `ctx_provide_context(app_ptr, key, value)`
-- `ctx_consume_context(app_ptr, key) -> Int32`
-- `ctx_has_context(app_ptr, key) -> Int32`
-- `ctx_provide_signal_i32(app_ptr, key, signal_key)`
-- `ctx_consume_signal_i32(app_ptr, key) -> Int32` (returns signal key)
-
-**Tests:**
-
-Mojo (`test/test_context.mojo`, new module, ~15 tests):
-
-- `provide_context` stores value at root scope
-- `consume_context` retrieves value from same scope
-- `consume_context` walks up parent chain (provide at root, consume at child)
-- `consume_context` returns (False, 0) for missing key
-- `has_context` returns True/False correctly
-- `provide_context` overwrites existing key
-- `provide_signal_i32` round-trips through consume
-- `provide_signal_bool` round-trips through consume
-- `provide_signal_string` round-trips through consume
-- consumed signal handle reads correct value
-- consumed signal handle writes propagate to parent
-- writing consumed signal marks parent scope dirty
-- multiple context keys coexist
-- context survives across flush cycles
-- context cleaned up on destroy
-
-JS (`test-js/context.test.ts`, new file, ~10 tests):
-
-- provide + consume round-trip via WASM exports
-- missing key returns 0
-- signal sharing via context (provide, consume, read value)
-- signal write via consumed handle marks dirty
-- overwrite context key
-- multiple keys
-- child scope consumes parent context
-- context across rebuild cycles
-- destroy cleanup
-- independent instances don't share context
-
-### P31.2 — ChildComponentContext
-
-New struct that gives child components their own reactive state and
-access to parent-provided context.
-
-**New file: `src/component/child_context.mojo`**
+**`src/component/context.mojo`** — Add to `ComponentContext`:
 
 ```mojo
-struct ChildComponentContext(Movable):
-    """Context for a self-rendering child component.
+# ── Error Boundary ───────────────────────────────────────────────
 
-    Wraps a ChildComponent and provides signal/memo creation under
-    the child's scope, context consumption from ancestors, and a
-    render_builder() for self-rendering.
+fn use_error_boundary(mut self):
+    """Mark the root scope as an error boundary.
 
-    Does NOT own the AppShell — the parent ComponentContext does.
-    Holds non-owning pointers to the shared Runtime, VNodeStore,
-    StringStore, and ElementIdAllocator.
-
-    Usage:
-        var child_ctx = parent_ctx.create_child_context(
-            el_p(dyn_text()), String("display"),
-        )
-        var local_state = child_ctx.use_signal(0)
-        var prop = child_ctx.consume_signal_i32(PROP_COUNT)
+    Call during setup (before end_setup). When a descendant scope
+    reports an error via `report_error()`, this scope captures it.
+    Check `has_error()` during flush to switch to fallback rendering.
     """
-
-    var child: ChildComponent
-    var scope_id: UInt32
-    var runtime: UnsafePointer[Runtime, MutExternalOrigin]
-    var store: UnsafePointer[VNodeStore, MutExternalOrigin]
-    var string_store: UnsafePointer[StringStore, MutExternalOrigin]
-    var eid_alloc: UnsafePointer[ElementIdAllocator, MutExternalOrigin]
-
-    # ── Signal creation (under child scope) ──────────────────────
-
-    fn use_signal(mut self, initial: Int32) -> SignalI32:
-        """Create an Int32 signal under the child scope."""
-
-    fn use_signal_bool(mut self, initial: Bool) -> SignalBool:
-        """Create a Bool signal under the child scope."""
-
-    fn use_signal_string(mut self, initial: String) -> SignalString:
-        """Create a String signal under the child scope."""
-
-    fn use_memo(mut self, initial: Int32) -> MemoI32:
-        """Create a memo under the child scope."""
-
-    # ── Context consumption ──────────────────────────────────────
-
-    fn consume_context(self, key: UInt32) -> Tuple[Bool, Int32]:
-        """Look up a context value walking up from child scope."""
-
-    fn consume_signal_i32(self, key: UInt32) -> SignalI32:
-        """Look up a SignalI32 from an ancestor's context."""
-
-    fn consume_signal_bool(self, key: UInt32) -> SignalBool:
-        """Look up a SignalBool from an ancestor's context."""
-
-    fn consume_signal_string(self, key: UInt32) -> SignalString:
-        """Look up a SignalString from an ancestor's context."""
-
-    # ── Context provision (at child scope) ───────────────────────
-
-    fn provide_context(mut self, key: UInt32, value: Int32):
-        """Provide a context value at the child scope."""
-
-    fn provide_signal_i32(mut self, key: UInt32, signal: SignalI32):
-        """Provide a signal to descendants via child scope context."""
-
-    # ── Rendering ────────────────────────────────────────────────
-
-    fn render_builder(self) -> ChildRenderBuilder:
-        """Create a ChildRenderBuilder for this child's template."""
-
-    # ── Slot / flush delegation ──────────────────────────────────
-
-    fn init_slot(mut self, anchor_id: UInt32):
-        """Initialize the ConditionalSlot after parent mount."""
-
-    fn flush(mut self, writer_ptr, new_vnode_idx: UInt32):
-        """Flush the child: create or diff its VNode in the DOM."""
-
-    fn flush_empty(mut self, writer_ptr):
-        """Hide the child: remove its DOM content."""
-
-    # ── State queries ────────────────────────────────────────────
-
-    fn is_dirty(self) -> Bool:
-        """Check if the child scope or any of its signals changed."""
-
-    fn is_mounted(self) -> Bool:
-        """Check whether the child is in the DOM."""
-
-    fn has_rendered(self) -> Bool:
-        """Check whether this child has rendered at least once."""
-
-    # ── Destroy ──────────────────────────────────────────────────
-
-    fn destroy(self):
-        """Destroy the child scope, its signals, and handlers."""
-```
-
-**`src/component/context.mojo` addition:**
-
-```mojo
-fn create_child_context(
-    mut self, view: Node, name: String,
-) -> ChildComponentContext:
-    """Create a ChildComponentContext for a self-rendering child.
-
-    Same as create_child_component() but returns a richer context
-    that supports signal creation, context consumption, and
-    self-rendering.
-    """
-    var child = self.create_child_component(view, name)
-    return ChildComponentContext(
-        child^,
-        child.scope_id,
-        self.shell.runtime,
-        self.shell.store,
-        self.shell.string_store,
-        self.shell.eid_alloc,
+    self.shell.runtime[0].scopes.set_error_boundary(
+        self.scope_id, True
     )
 
-fn destroy_child_context(mut self, child_ctx: ChildComponentContext):
-    """Destroy a ChildComponentContext and its resources."""
-    child_ctx.destroy()
+fn report_error(mut self, message: String) -> Int:
+    """Propagate an error from this scope to the nearest boundary.
+
+    Walks up the parent chain from the root scope. If a boundary
+    is found, sets the error on it and marks it dirty.
+
+    Args:
+        message: Description of the error.
+
+    Returns:
+        The boundary scope ID as Int, or -1 if no boundary found.
+    """
+    var boundary_id = self.shell.runtime[0].scopes.propagate_error(
+        self.scope_id, message
+    )
+    if boundary_id != -1:
+        self.shell.runtime[0].mark_scope_dirty(UInt32(boundary_id))
+    return boundary_id
+
+fn has_error(self) -> Bool:
+    """Check whether this scope (as a boundary) has captured an error.
+
+    Returns:
+        True if an error has been propagated to this boundary.
+    """
+    return self.shell.runtime[0].scopes.has_error(self.scope_id)
+
+fn error_message(self) -> String:
+    """Get the error message captured by this boundary.
+
+    Returns:
+        The error message string, or empty if no error.
+    """
+    return self.shell.runtime[0].scopes.get_error_message(
+        self.scope_id
+    )
+
+fn clear_error(mut self):
+    """Clear the error state on this boundary scope.
+
+    After clearing, the next flush should render normal children
+    instead of the fallback UI. Marks the scope dirty.
+    """
+    self.shell.runtime[0].scopes.clear_error(self.scope_id)
+    self.shell.runtime[0].mark_scope_dirty(self.scope_id)
 ```
 
-**Signal creation under child scope:**
-
-The child scope already exists (via `create_child_scope`). To create
-signals under it, `ChildComponentContext.use_signal()` directly calls
-`runtime[0].create_signal(initial)` and pushes a hook onto the child
-scope. The signal key is stored in the child scope's hook storage,
-matching the pattern in `ComponentContext.use_signal()` but targeting
-the child scope ID instead of the root scope.
-
-Implementation note: `ComponentContext.use_signal()` calls
-`self.shell.use_signal_i32(initial)` which creates the signal in the
-store and pushes a hook at the current scope (tracked via
-`begin_render`/`end_render`). For `ChildComponentContext`, we bypass
-AppShell and call `Runtime` methods directly, explicitly targeting the
-child scope ID. No render bracket is needed — signals are always
-created (never re-retrieved via cursor) because child components
-don't re-run their setup.
-
-**Exports and updates:**
-
-- Export `ChildComponentContext` from `component/__init__.mojo`
-- Add WASM exports for child context signal creation and context
-  consumption (used by test harness)
-
-**Tests:**
-
-Mojo (`test/test_child_context.mojo`, new module, ~20 tests):
-
-- create child context returns valid scope/template
-- child scope is distinct from parent scope
-- `use_signal` creates signal under child scope
-- `use_signal_bool` under child scope
-- `use_signal_string` under child scope
-- `use_memo` under child scope
-- child signal write marks child scope dirty (not parent)
-- child signal write does not mark parent dirty
-- parent signal write marks parent dirty (not child)
-- `consume_signal_i32` retrieves parent-provided signal
-- `consume_signal_bool` retrieves parent-provided signal
-- consumed signal reads correct value
-- consumed signal write propagates to parent scope
-- `render_builder` produces valid VNode
-- `is_dirty` reflects child scope state
-- `init_slot` + `flush` produces mutations
-- `flush` on clean child returns 0
-- child context provides context to grandchild
-- destroy cleans up child scope and signals
-- destroy then recreate cycle
-
-JS (`test-js/child_context.test.ts`, new file, ~15 tests):
-
-- create child context, verify scope/template IDs
-- child `use_signal` independent from parent signals
-- child signal write → child dirty, parent clean
-- parent signal write → parent dirty, child clean
-- context prop round-trip (provide at parent, consume at child)
-- child self-render via render_builder produces correct VNode
-- DOM mount with child context (parent + child visible)
-- child local state update → only child SetText mutation
-- parent prop update → child re-renders with new value
-- mixed local + prop updates in single flush
-- destroy does not crash
-- destroy + recreate cycle
-- multiple independent child contexts
-- rapid signal writes bounded memory
-- child provides context to sibling (negative — siblings can't see
-  each other's context)
-
-### P31.3 — PropsCounterApp demo (self-rendering child with props)
-
-A new demo app that replaces the Phase 29 `ChildCounterApp` pattern
-with the new `ChildComponentContext` approach. The child component:
-
-- Receives the `count` signal from the parent via context (prop)
-- Owns local state: `show_hex: SignalBool` (display format toggle)
-- Renders itself via `child_ctx.render_builder()`
-- Has its own event handler (toggle button) under the child scope
-
-**`src/main.mojo` additions:**
+**`src/component/child_context.mojo`** — Add to `ChildComponentContext`:
 
 ```mojo
-comptime PROP_COUNT: UInt32 = 1
+# ── Error reporting ──────────────────────────────────────────────
 
-struct CounterDisplay:
-    """Self-rendering child: displays count with format toggle."""
-    var child_ctx: ChildComponentContext
-    var count: SignalI32           # consumed from parent context
-    var show_hex: SignalBool       # child-owned local state
+fn report_error(self, message: String) -> Int:
+    """Propagate an error from this child scope to the nearest boundary.
 
-    fn __init__(
-        out self,
-        var child_ctx: ChildComponentContext,
-        count: SignalI32,
-        show_hex: SignalBool,
-    ):
-        self.child_ctx = child_ctx^
-        self.count = count
-        self.show_hex = show_hex
+    Walks up the parent chain from the child scope. If a boundary
+    is found, sets the error on it and marks it dirty.
 
-    fn render(mut self) -> UInt32:
-        var vb = self.child_ctx.render_builder()
-        var val = self.count.peek()
-        if self.show_hex.get():
-            vb.add_dyn_text("Count: 0x" + hex(val))
-        else:
-            vb.add_dyn_text("Count: " + str(val))
-        return vb.build()
+    Args:
+        message: Description of the error.
 
-struct PropsCounterApp:
-    """Counter app demonstrating props & child-owned state."""
-    var ctx: ComponentContext
-    var count: SignalI32
-    var display: CounterDisplay
-
-    fn __init__(out self):
-        self.ctx = ComponentContext.create()
-        self.count = self.ctx.use_signal(0)
-        # Provide count to descendants
-        self.ctx.provide_signal_i32(PROP_COUNT, self.count)
-        self.ctx.setup_view(
-            el_div(
-                el_h1(text("Props Counter")),
-                el_button(text("+ 1"), onclick_add(self.count, 1)),
-                el_button(text("- 1"), onclick_sub(self.count, 1)),
-                dyn_node(0),     # child slot
-            ),
-            String("props-counter"),
-        )
-        # Create self-rendering child with format toggle
-        var child_ctx = self.ctx.create_child_context(
-            el_div(
-                el_p(dyn_text()),
-                el_button(text("Toggle hex"), onclick_toggle(...)),
-            ),
-            String("counter-display"),
-        )
-        var prop_count = child_ctx.consume_signal_i32(PROP_COUNT)
-        var show_hex = child_ctx.use_signal_bool(False)
-        self.display = CounterDisplay(child_ctx^, prop_count, show_hex)
+    Returns:
+        The boundary scope ID as Int, or -1 if no boundary found.
+    """
+    var boundary_id = self.runtime[0].scopes.propagate_error(
+        self.scope_id, message
+    )
+    if boundary_id != -1:
+        self.runtime[0].mark_scope_dirty(UInt32(boundary_id))
+    return boundary_id
 ```
 
-**Template structure:**
+**`src/component/__init__.mojo`** — No changes needed (methods are on
+existing exported structs).
 
-Parent ("props-counter"):
+#### WASM exports (in `src/main.mojo`)
 
-```text
-div
-  h1 > "Props Counter"
-  button > "+" + dynamic_attr[0]  ← onclick_add
-  button > "-" + dynamic_attr[1]  ← onclick_sub
-  dyn_node[0]                     ← child slot
-```
-
-Child ("counter-display"):
-
-```text
-div
-  p > dynamic_text[0]             ← "Count: N" or "Count: 0xN"
-  button > "Toggle hex"
-    dynamic_attr[0]               ← onclick_toggle(show_hex)
-```
-
-**Lifecycle functions:**
-
-- `props_counter_init` → allocate + construct `PropsCounterApp`
-- `props_counter_destroy` → destroy child context + parent context + free
-- `props_counter_rebuild` → emit templates, mount parent, extract anchor,
-  init child slot, flush child (initial render), finalize
-- `props_counter_handle_event` → try child toggle handler, fall back to
-  parent signal dispatch
-- `props_counter_flush` → check parent dirty OR child dirty; re-render
-  parent shell (diff), re-render child (self-render + flush), finalize
-
-**WASM exports (~16):**
-
-- `pc_init`, `pc_destroy`, `pc_rebuild`, `pc_handle_event`, `pc_flush`
-- `pc_count_value`, `pc_show_hex`, `pc_toggle_handler`
-- `pc_child_scope_id`, `pc_child_tmpl_id`, `pc_child_is_mounted`
-- `pc_child_is_dirty`, `pc_parent_scope_id`, `pc_parent_tmpl_id`
-- `pc_has_dirty`, `pc_handler_count`
-
-**`runtime/app.ts` additions:**
-
-```typescript
-interface PropsCounterAppHandle extends AppHandle {
-    getCountValue(): number;
-    getShowHex(): boolean;
-    toggleHex(): void;
-    isChildMounted(): boolean;
-    isChildDirty(): boolean;
-    getChildScopeId(): number;
-}
-
-function createPropsCounterApp(): PropsCounterAppHandle;
-```
-
-**Tests:**
-
-Mojo (`test/test_props_counter.mojo`, new module, ~15 tests):
-
-- init creates app with distinct parent/child scopes
-- count starts at 0, show_hex starts false
-- increment updates count signal
-- child receives count via context prop
-- child show_hex toggle changes child state
-- child show_hex toggle marks child dirty (not parent)
-- parent increment marks parent dirty
-- child self-render produces correct text ("Count: 0")
-- child self-render with hex ("Count: 0x0")
-- flush after increment emits child SetText
-- flush after toggle emits child SetText (format change)
-- mixed increment + toggle in sequence
-- destroy cleans up both scopes
-- destroy + recreate cycle
-- 10 rapid increment cycles
-
-JS (`test-js/props_counter.test.ts`, new file, ~20 tests):
-
-- pc_init state validation (scope IDs, handler IDs, initial values)
-- pc_rebuild produces mutations (RegisterTemplate ×2, mount, child create)
-- increment updates parent signal, child re-renders with new count
-- toggle hex changes display format without affecting count
-- toggle hex marks only child dirty
-- increment marks only parent dirty
-- DOM mount: parent div with h1 + 2 buttons + child div with p + button
-- increment → child text updates ("Count: 1")
-- toggle → child text updates ("Count: 0x0")
-- increment after toggle → hex format preserved ("Count: 0x1")
-- 10 increments → correct count
-- toggle on → toggle off → decimal restored
-- flush returns 0 when clean
-- minimal mutations: only SetText for unchanged parent shell
-- destroy does not crash
-- double destroy safe
-- destroy + recreate cycle
-- multiple independent instances
-- rapid 100 increments bounded memory
-- child toggle does not affect parent DOM
-
-### P31.4 — SharedContext app + cross-component tests
-
-A more complex demo showing multiple children sharing parent context
-and communicating upward via callback signals. Validates the full
-props & context system end-to-end.
-
-#### App structure: ThemeCounter
-
-A parent app with a theme toggle (dark/light) and two child components
-that both consume the theme context:
-
-- **CounterChild**: displays count with theme-dependent label
-- **SummaryChild**: displays summary text ("N clicks so far") with
-  theme-dependent styling class
-
-The parent also receives upward communication: CounterChild has a
-"Reset" button that writes to a callback signal consumed by the parent.
+Thin wrappers for testing the new ComponentContext surface:
 
 ```mojo
-comptime CTX_THEME: UInt32 = 10       # 0 = light, 1 = dark
-comptime CTX_COUNT: UInt32 = 11       # count signal key
-comptime CTX_ON_RESET: UInt32 = 12    # callback signal key
+# ── ErrorBoundary test helpers ───────────────────────────────────
 
-struct ThemeCounterApp:
-    var ctx: ComponentContext
-    var count: SignalI32
-    var theme: SignalBool           # False = light, True = dark
-    var on_reset: SignalI32         # callback: child writes 1 to request reset
-
-    var counter_child: CounterChild
-    var summary_child: SummaryChild
+# Tested through ErrorBoundaryApp and ErrorNestApp exports (P32.2/P32.3).
+# No standalone exports needed — the existing err_* exports from
+# Phase 8.4 cover low-level testing.
 ```
 
-**Parent template ("theme-counter"):**
+#### Test: `test/test_error_boundary.mojo`
+
+New test module with ~15 tests:
+
+1. `ctx_use_error_boundary_marks_scope` — after `use_error_boundary()`,
+   scope is a boundary
+2. `ctx_has_error_initially_false` — boundary starts with no error
+3. `ctx_error_message_initially_empty` — no message before error
+4. `ctx_report_error_finds_boundary` — propagation returns boundary ID
+5. `ctx_report_error_sets_has_error` — `has_error()` returns True
+6. `ctx_report_error_stores_message` — `error_message()` matches
+7. `ctx_clear_error_resets_state` — `has_error()` False after clear
+8. `ctx_clear_error_empty_message` — message empty after clear
+9. `ctx_report_error_no_boundary_returns_neg1` — no boundary → -1
+10. `ctx_child_report_error_reaches_parent` — child scope error
+    propagates to parent boundary
+11. `ctx_report_error_marks_dirty` — boundary scope is dirty after
+    propagation
+12. `ctx_clear_error_marks_dirty` — scope dirty after clear
+13. `ctx_multiple_errors_last_wins` — second error overwrites first
+14. `ctx_error_after_clear_works` — error → clear → error cycle
+15. `ctx_boundary_is_not_own_boundary` — reporting from the boundary
+    scope itself walks to its parent (if any)
+
+#### Test: `test-js/error_boundary.test.ts`
+
+JS tests exercising the low-level error boundary API via existing
+`err_*` exports, plus new app-level tests in P32.2:
+
+1. `boundary_flag_survives_scope_lifecycle` — create scope, set
+   boundary, verify across dirty cycles
+2. `propagate_marks_boundary_dirty` — verify dirty_scopes contains
+   boundary after propagation (via runtime query exports)
+3. `clear_marks_boundary_dirty` — verify dirty_scopes after clear
+
+---
+
+### P32.2 — ErrorBoundaryApp demo
+
+**Goal:** A working error boundary app where a child can "crash," the
+parent catches the error and shows fallback UI, and a Retry button
+recovers.
+
+#### App structure: SafeCounter
 
 ```text
-div
-  button > "Toggle theme" + dynamic_attr[0]  ← onclick_toggle(theme)
-  button > "Increment"    + dynamic_attr[1]  ← onclick_add(count, 1)
-  dyn_node[0]             ← counter child slot
-  dyn_node[1]             ← summary child slot
-```
+SafeCounterApp (root scope = error boundary)
+├── h1 "Safe Counter"
+├── button "+ 1"  (onclick_add count)
+├── button "Crash"  (onclick_custom → report_error)
+├── dyn_node[0]   ← normal child OR fallback child
+└── (second dyn_node[1] for the hidden slot)
 
-**CounterChild template ("counter-display"):**
+Normal child (CounterDisplayChild):
+    p > dyn_text("Count: N")
 
-```text
-div
-  p > dynamic_text[0]                        ← "Count: N" or "Theme: dark, Count: N"
-  button > "Reset" + dynamic_attr[0]         ← onclick: set on_reset to 1
-```
-
-**SummaryChild template ("summary-display"):**
-
-```text
-p
-  dynamic_text[0]                            ← "N clicks so far"
-  dynamic_attr[0]                            ← class = "light" or "dark"
+Fallback child (ErrorFallbackChild):
+    div > p(dyn_text("Error: ...")) + button("Retry")
 ```
 
 **Lifecycle:**
 
-- Parent provides `CTX_THEME`, `CTX_COUNT`, `CTX_ON_RESET` via context
-- Each child consumes what it needs
-- CounterChild consumes `CTX_COUNT` + `CTX_THEME` + `CTX_ON_RESET`
-- SummaryChild consumes `CTX_COUNT` + `CTX_THEME`
-- Parent flush checks `on_reset.peek()`: if 1, resets count to 0 and
-  clears the callback signal
-- Each child self-renders; parent flushes both children
+1. **Init:** Parent creates error boundary, two child contexts (normal
+   + fallback), and a custom "Crash" handler. Normal child is shown,
+   fallback is hidden.
+2. **Increment:** Parent's count signal updates → normal child re-renders
+   with new count.
+3. **Crash:** Crash button dispatched → parent calls
+   `report_error("Simulated crash")` → parent scope marked dirty.
+4. **Flush (error state):** `has_error()` returns True → normal child
+   hidden (`flush_empty`), fallback shown with error message.
+5. **Retry:** Retry button dispatched → parent calls `clear_error()` →
+   scope marked dirty.
+6. **Flush (recovered):** `has_error()` returns False → fallback hidden,
+   normal child re-renders (creates from scratch since it was hidden).
+7. **Count preserved:** The count signal value persists across
+   crash/recovery cycles because the signal lives on the parent scope.
+
+#### Mojo implementation (`src/main.mojo`)
+
+```mojo
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 32.2 — SafeCounterApp (error boundary demo)
+# ══════════════════════════════════════════════════════════════════════════════
+
+comptime _SC_PROP_COUNT: UInt32 = 20
+
+
+struct SCNormalChild(Movable):
+    """Normal content child: displays count.
+
+    Template: p > dyn_text("Count: N")
+    Consumes count signal from parent context.
+    """
+    var child_ctx: ChildComponentContext
+    var count: SignalI32
+
+    fn __init__(
+        out self,
+        var child_ctx: ChildComponentContext,
+        var count: SignalI32,
+    ):
+        self.child_ctx = child_ctx^
+        self.count = count^
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.child_ctx = other.child_ctx^
+        self.count = other.count^
+
+    fn render(mut self) -> UInt32:
+        var vb = self.child_ctx.render_builder()
+        vb.add_dyn_text(
+            String("Count: ") + String(self.count.peek())
+        )
+        return vb.build()
+
+
+struct SCFallbackChild(Movable):
+    """Fallback child: shows error message + retry button.
+
+    Template: div > p(dyn_text) + button("Retry", dyn_attr[0])
+    """
+    var child_ctx: ChildComponentContext
+
+    fn __init__(out self, var child_ctx: ChildComponentContext):
+        self.child_ctx = child_ctx^
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.child_ctx = other.child_ctx^
+
+    fn render(mut self, error_msg: String) -> UInt32:
+        var vb = self.child_ctx.render_builder()
+        vb.add_dyn_text(String("Error: ") + error_msg)
+        return vb.build()
+
+
+struct SafeCounterApp(Movable):
+    """Counter app with error boundary.
+
+    Parent: div > h1("Safe Counter") + button("+1") + button("Crash")
+            + dyn_node[0] + dyn_node[1]
+    Normal: p > dyn_text("Count: N")
+    Fallback: div > p(dyn_text("Error: ...")) + button("Retry")
+
+    The Crash button triggers report_error(). The parent catches it
+    and swaps to fallback UI. Retry clears the error and restores
+    normal rendering.
+    """
+    var ctx: ComponentContext
+    var count: SignalI32
+    var normal: SCNormalChild
+    var fallback: SCFallbackChild
+    var crash_handler: UInt32
+    var retry_handler: UInt32
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.count = self.ctx.use_signal(0)
+        self.ctx.use_error_boundary()
+        self.ctx.provide_signal_i32(_SC_PROP_COUNT, self.count)
+        # ... setup_view with buttons and dyn_node slots ...
+        # ... create normal + fallback child contexts ...
+        # ... register crash + retry custom handlers ...
+        ...
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.ctx = other.ctx^
+        self.count = other.count^
+        self.normal = other.normal^
+        self.fallback = other.fallback^
+        self.crash_handler = other.crash_handler
+        self.retry_handler = other.retry_handler
+
+    fn render_parent(mut self) -> UInt32:
+        var pvb = self.ctx.render_builder()
+        pvb.add_dyn_placeholder()  # dyn_node[0]
+        pvb.add_dyn_placeholder()  # dyn_node[1]
+        return pvb.build()
+```
+
+**Lifecycle functions:**
+
+- `_sc_init() -> UnsafePointer[SafeCounterApp]` — allocate + create
+- `_sc_destroy(app_ptr)` — destroy children, context, free
+- `_sc_rebuild(app, writer) -> Int32` — mount parent, extract anchors,
+  init both child slots, flush normal child, finalize
+- `_sc_handle_event(app, handler_id, event_type) -> Bool` — route
+  crash handler → `report_error()`, retry handler → `clear_error()`,
+  else → `dispatch_event()`
+- `_sc_flush(app, writer) -> Int32` — check `has_error()`:
+  - If error: `normal.flush_empty()` + `fallback.flush(error_vnode)`
+  - If no error: `fallback.flush_empty()` + `normal.flush(count_vnode)`
 
 **WASM exports (~20):**
 
-- `tc_init`, `tc_destroy`, `tc_rebuild`, `tc_handle_event`, `tc_flush`
-- `tc_count_value`, `tc_theme_is_dark`, `tc_on_reset_value`
-- `tc_counter_scope_id`, `tc_summary_scope_id`
-- `tc_counter_is_mounted`, `tc_summary_is_mounted`
-- `tc_counter_is_dirty`, `tc_summary_is_dirty`
-- `tc_toggle_theme_handler`, `tc_increment_handler`, `tc_reset_handler`
-- `tc_counter_child_text`, `tc_summary_child_text`
-- `tc_has_dirty`, `tc_handler_count`
-
-**`runtime/app.ts` additions:**
-
-```typescript
-interface ThemeCounterAppHandle extends AppHandle {
-    getCountValue(): number;
-    isDarkTheme(): boolean;
-    toggleTheme(): void;
-    increment(): void;
-    resetViaChild(): void;
-    getCounterText(): string;
-    getSummaryText(): string;
-    isCounterMounted(): boolean;
-    isSummaryMounted(): boolean;
-}
-
-function createThemeCounterApp(): ThemeCounterAppHandle;
+```mojo
+@export fn sc_init() -> Int64
+@export fn sc_destroy(app_ptr: Int64)
+@export fn sc_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32
+@export fn sc_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32
+@export fn sc_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32
+@export fn sc_count_value(app_ptr: Int64) -> Int32
+@export fn sc_has_error(app_ptr: Int64) -> Int32
+@export fn sc_error_message(app_ptr: Int64) -> String
+@export fn sc_crash_handler(app_ptr: Int64) -> Int32
+@export fn sc_retry_handler(app_ptr: Int64) -> Int32
+@export fn sc_incr_handler(app_ptr: Int64) -> Int32
+@export fn sc_normal_mounted(app_ptr: Int64) -> Int32
+@export fn sc_fallback_mounted(app_ptr: Int64) -> Int32
+@export fn sc_normal_has_rendered(app_ptr: Int64) -> Int32
+@export fn sc_fallback_has_rendered(app_ptr: Int64) -> Int32
+@export fn sc_has_dirty(app_ptr: Int64) -> Int32
+@export fn sc_handler_count(app_ptr: Int64) -> Int32
+@export fn sc_scope_count(app_ptr: Int64) -> Int32
+@export fn sc_parent_scope_id(app_ptr: Int64) -> Int32
+@export fn sc_normal_scope_id(app_ptr: Int64) -> Int32
+@export fn sc_fallback_scope_id(app_ptr: Int64) -> Int32
 ```
 
-**Tests:**
+#### TypeScript handle
 
-Mojo (`test/test_theme_counter.mojo`, new module, ~20 tests):
+**`runtime/app.ts`** — Add `SafeCounterAppHandle` and
+`createSafeCounterApp()`:
 
-- init creates 3 distinct scopes (parent, counter child, summary child)
-- count starts at 0, theme starts light
-- increment updates count
-- both children consume same count signal
-- theme toggle updates theme signal
-- counter child reads theme from context
-- summary child reads theme from context
-- callback signal starts at 0
-- child reset writes to callback signal
-- parent flush detects reset callback and clears count
-- counter child self-render with light theme
-- counter child self-render with dark theme
-- summary child self-render with light theme
-- summary child self-render with dark theme
-- mixed: increment + toggle theme + flush
-- reset callback: count returns to 0
-- multiple increment → reset → increment cycle
-- destroy cleans up all 3 scopes
-- 10 create/destroy cycles bounded memory
-- rapid 50 increments + 10 theme toggles
+```typescript
+interface SafeCounterAppHandle extends AppHandle {
+  getCount(): number;
+  hasError(): boolean;
+  getErrorMessage(): string;
+  isNormalMounted(): boolean;
+  isFallbackMounted(): boolean;
+  normalHasRendered(): boolean;
+  fallbackHasRendered(): boolean;
+  hasDirty(): boolean;
+  handlerCount(): number;
+  scopeCount(): number;
+  increment(): void;
+  crash(): void;
+  retry(): void;
+}
+```
 
-JS (`test-js/theme_counter.test.ts`, new file, ~25 tests):
+#### Test: `test/test_safe_counter.mojo` (~18 tests)
 
-- tc_init state validation (3 scopes, handler IDs, initial values)
-- tc_rebuild mounts parent + both children
-- increment → both children update
-- theme toggle → both children update format/class
-- DOM: parent div with 2 buttons + counter child div + summary p
-- increment → counter shows "Count: 1", summary shows "1 clicks"
-- theme toggle → counter shows "Theme: dark, Count: 0"
-- summary gets "dark" class after theme toggle
-- reset button → count returns to 0, both children update
-- increment → reset → increment cycle
-- theme toggle does not affect count
-- both children re-render on count change
-- only counter child has reset button handler
-- children have independent scope IDs
-- flush returns 0 when clean
-- minimal mutations per interaction
-- destroy does not crash
-- double destroy safe
-- destroy + recreate cycle
-- multiple independent instances
-- rapid increments bounded memory
-- theme toggle + increment in same flush
-- reset + increment in same flush (reset wins — count goes to 0, then +1 = 1)
-- 5 create/destroy cycles with state verification
-- children not dirty when parent-only change already flushed
+1. `sc_init_creates_app` — pointer is valid
+2. `sc_count_starts_at_0` — initial count is 0
+3. `sc_has_error_initially_false` — no error at start
+4. `sc_error_message_initially_empty` — empty string
+5. `sc_normal_mounted_after_rebuild` — normal child is in DOM
+6. `sc_fallback_not_mounted_initially` — fallback hidden
+7. `sc_increment_updates_count` — count changes
+8. `sc_crash_sets_error` — `has_error()` true after crash
+9. `sc_crash_stores_message` — error message matches
+10. `sc_flush_after_crash_hides_normal` — normal unmounted
+11. `sc_flush_after_crash_shows_fallback` — fallback mounted
+12. `sc_retry_clears_error` — `has_error()` false after retry
+13. `sc_flush_after_retry_shows_normal` — normal remounted
+14. `sc_flush_after_retry_hides_fallback` — fallback unmounted
+15. `sc_count_preserved_after_crash_recovery` — signal persists
+16. `sc_multiple_crash_retry_cycles` — 5 cycles work
+17. `sc_destroy_does_not_crash` — clean shutdown
+18. `sc_rapid_increments_after_recovery` — 20 increments post-recovery
+
+#### Test: `test-js/safe_counter.test.ts` (~22 suites)
+
+1. `sc_init state validation` — count=0, no error, handlers valid
+2. `sc_rebuild produces mutations` — RegisterTemplate, LoadTemplate,
+   AppendChildren, SetText "Count: 0"
+3. `sc_increment updates count` — count changes to 1
+4. `sc_flush after increment` — SetText "Count: 1"
+5. `sc_crash sets error state` — hasError true, message matches
+6. `sc_flush after crash swaps to fallback` — DOM shows "Error: ..."
+7. `sc_normal hidden after crash` — normal child unmounted
+8. `sc_fallback visible after crash` — fallback child mounted
+9. `sc_retry clears error` — hasError false
+10. `sc_flush after retry restores normal` — DOM shows "Count: N"
+11. `sc_fallback hidden after retry` — fallback unmounted
+12. `sc_count preserved across crash/retry` — value unchanged
+13. `sc_increment after recovery works` — count continues
+14. `sc_DOM structure initial` — h1 + buttons + p("Count: 0")
+15. `sc_DOM structure error state` — h1 + buttons + div(p("Error:...") +
+    button("Retry"))
+16. `sc_DOM structure recovered` — back to h1 + buttons + p("Count: N")
+17. `sc_multiple crash/retry cycles` — 3 full cycles
+18. `sc_crash without increment` — error at count=0
+19. `sc_rapid increments then crash` — 10 increments then crash
+20. `sc_destroy does not crash` — clean shutdown
+21. `sc_double destroy safe` — no crash on double destroy
+22. `sc_multiple independent instances` — two instances isolated
+
+Register in `test-js/run.ts`.
+
+---
+
+### P32.3 — ErrorNestApp demo (nested error boundaries)
+
+**Goal:** Demonstrate nested error boundaries where inner boundaries
+catch inner errors and outer boundaries catch outer errors.
+
+#### App structure: ErrorNest
+
+```text
+ErrorNestApp (outer boundary)
+├── h1 "Nested Boundaries"
+├── button "Outer Crash"   (crashes to outer boundary)
+├── dyn_node[0]  ← outer normal content / outer fallback
+│
+├── OuterNormalChild (inner boundary)
+│   ├── p > dyn_text("Status: OK")
+│   ├── button "Inner Crash"   (crashes to inner boundary)
+│   └── dyn_node[0]  ← inner normal content / inner fallback
+│   │
+│   ├── InnerNormalChild
+│   │   └── p > dyn_text("Inner: working")
+│   │
+│   └── InnerFallbackChild
+│       └── p > dyn_text("Inner error: ...") + button("Inner Retry")
+│
+├── OuterFallbackChild
+│   └── p > dyn_text("Outer error: ...") + button("Outer Retry")
+```
+
+**Key scenarios:**
+
+1. **Inner crash:** Inner child reports error → caught by inner
+   boundary (OuterNormalChild) → inner content swaps to inner fallback
+   while outer content remains unaffected.
+2. **Inner retry:** Clears inner error → inner content restored.
+3. **Outer crash:** Button on outer scope reports error → caught by
+   outer boundary (ErrorNestApp root) → entire inner boundary + its
+   children swapped to outer fallback.
+4. **Outer retry:** Clears outer error → inner boundary + children
+   restored.
+5. **Both errors:** Inner crash then outer crash → outer fallback
+   shown (overrides inner state visually). Outer retry → inner
+   boundary visible again, still in error state (inner fallback
+   shown). Inner retry → fully recovered.
+
+#### Mojo implementation (`src/main.mojo`)
+
+Structs:
+
+- `InnerNormalChild` — displays "Inner: working"
+- `InnerFallbackChild` — displays "Inner error: {msg}" + Inner Retry
+  button
+- `ENOuterNormal` — inner boundary managing InnerNormal +
+  InnerFallback, with "Inner Crash" button
+- `ENOuterFallback` — displays "Outer error: {msg}" + Outer Retry
+  button
+- `ErrorNestApp` — outer boundary managing OuterNormal +
+  OuterFallback, with "Outer Crash" button
+
+Lifecycle functions: `_en_init`, `_en_destroy`, `_en_rebuild`,
+`_en_handle_event`, `_en_flush`.
+
+**WASM exports (~25):**
+
+```mojo
+@export fn en_init() -> Int64
+@export fn en_destroy(app_ptr: Int64)
+@export fn en_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32
+@export fn en_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32
+@export fn en_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32
+@export fn en_has_outer_error(app_ptr: Int64) -> Int32
+@export fn en_has_inner_error(app_ptr: Int64) -> Int32
+@export fn en_outer_error_message(app_ptr: Int64) -> String
+@export fn en_inner_error_message(app_ptr: Int64) -> String
+@export fn en_outer_crash_handler(app_ptr: Int64) -> Int32
+@export fn en_inner_crash_handler(app_ptr: Int64) -> Int32
+@export fn en_outer_retry_handler(app_ptr: Int64) -> Int32
+@export fn en_inner_retry_handler(app_ptr: Int64) -> Int32
+@export fn en_outer_normal_mounted(app_ptr: Int64) -> Int32
+@export fn en_outer_fallback_mounted(app_ptr: Int64) -> Int32
+@export fn en_inner_normal_mounted(app_ptr: Int64) -> Int32
+@export fn en_inner_fallback_mounted(app_ptr: Int64) -> Int32
+@export fn en_has_dirty(app_ptr: Int64) -> Int32
+@export fn en_handler_count(app_ptr: Int64) -> Int32
+@export fn en_scope_count(app_ptr: Int64) -> Int32
+@export fn en_outer_scope_id(app_ptr: Int64) -> Int32
+@export fn en_inner_boundary_scope_id(app_ptr: Int64) -> Int32
+@export fn en_inner_normal_scope_id(app_ptr: Int64) -> Int32
+@export fn en_inner_fallback_scope_id(app_ptr: Int64) -> Int32
+@export fn en_outer_fallback_scope_id(app_ptr: Int64) -> Int32
+```
+
+#### TypeScript handle
+
+**`runtime/app.ts`** — Add `ErrorNestAppHandle` and
+`createErrorNestApp()`:
+
+```typescript
+interface ErrorNestAppHandle extends AppHandle {
+  hasOuterError(): boolean;
+  hasInnerError(): boolean;
+  getOuterErrorMessage(): string;
+  getInnerErrorMessage(): string;
+  outerNormalMounted(): boolean;
+  outerFallbackMounted(): boolean;
+  innerNormalMounted(): boolean;
+  innerFallbackMounted(): boolean;
+  hasDirty(): boolean;
+  handlerCount(): number;
+  scopeCount(): number;
+  outerCrash(): void;
+  innerCrash(): void;
+  outerRetry(): void;
+  innerRetry(): void;
+}
+```
+
+#### Test: `test/test_error_nest.mojo` (~20 tests)
+
+1. `en_init_creates_app` — pointer valid
+2. `en_no_errors_initially` — both boundaries clean
+3. `en_all_normal_mounted_after_rebuild` — outer + inner normal visible
+4. `en_no_fallbacks_initially` — both fallbacks hidden
+5. `en_inner_crash_sets_inner_error` — inner `has_error` true
+6. `en_inner_crash_preserves_outer` — outer still clean
+7. `en_flush_after_inner_crash` — inner fallback shown, inner normal
+   hidden, outer normal still mounted
+8. `en_inner_retry_clears_inner_error` — inner clean again
+9. `en_flush_after_inner_retry` — inner normal restored
+10. `en_outer_crash_sets_outer_error` — outer `has_error` true
+11. `en_flush_after_outer_crash` — outer fallback shown, outer normal
+    hidden (inner boundary + children also hidden)
+12. `en_outer_retry_restores_outer_normal` — outer normal + inner
+    boundary visible again
+13. `en_inner_crash_then_outer_crash` — both errors set, outer
+    fallback takes precedence visually
+14. `en_outer_retry_reveals_inner_error` — after outer retry, inner
+    still in error (inner fallback shown)
+15. `en_inner_retry_after_outer_retry` — full recovery
+16. `en_multiple_inner_crash_retry_cycles` — 5 inner cycles
+17. `en_multiple_outer_crash_retry_cycles` — 5 outer cycles
+18. `en_mixed_crash_retry_sequence` — inner→outer→outer_retry→
+    inner_retry
+19. `en_destroy_does_not_crash` — clean shutdown
+20. `en_destroy_with_active_error` — destroy while error is set
+
+#### Test: `test-js/error_nest.test.ts` (~25 suites)
+
+1. `en_init state validation` — no errors, handlers valid and distinct
+2. `en_rebuild produces mutations` — RegisterTemplate ×N, LoadTemplate,
+   AppendChildren, SetText for initial content
+3. `en_DOM structure initial` — h1 + outer button + status p + inner
+   button + inner p
+4. `en_inner crash — DOM shows inner fallback` — inner fallback text
+   visible, inner normal text gone
+5. `en_inner crash — outer content unaffected` — outer status p still
+   shows "Status: OK"
+6. `en_inner retry — DOM restored` — inner normal text visible again
+7. `en_outer crash — DOM shows outer fallback` — outer fallback text,
+   all inner content gone
+8. `en_outer retry — DOM restored with inner` — all content back
+9. `en_inner then outer crash` — outer fallback shown
+10. `en_outer retry reveals inner fallback` — inner fallback visible
+    after outer retry
+11. `en_inner retry after outer retry — full recovery` — everything
+    normal
+12. `en_error messages correct` — inner vs outer message strings
+13. `en_scope IDs all distinct` — no overlap
+14. `en_handler IDs all distinct` — 4 unique handlers
+15. `en_flush returns 0 when clean` — no mutations when no changes
+16. `en_inner crash flush produces minimal mutations` — only inner
+    slot changes
+17. `en_outer crash flush produces minimal mutations` — only outer
+    slot changes
+18. `en_5 inner crash/retry cycles` — DOM correct each time
+19. `en_5 outer crash/retry cycles` — DOM correct each time
+20. `en_destroy does not crash` — clean shutdown
+21. `en_double destroy safe` — no crash
+22. `en_multiple independent instances` — two instances isolated
+23. `en_rapid alternating crashes` — 10 inner/outer alternations
+24. `en_heapStats bounded across error cycles` — memory stable
+25. `en_destroy with active errors` — no crash
+
+Register in `test-js/run.ts`.
+
+---
+
+### P32.4 — Documentation & AGENTS.md update
+
+**Goal:** Update project documentation to reflect the new error
+boundary APIs and patterns.
+
+#### Changes
+
+**`AGENTS.md`** — Update Component Layer section:
+
+- Add `use_error_boundary()`, `report_error()`, `has_error()`,
+  `error_message()`, `clear_error()` to ComponentContext API list
+- Add `report_error()` to ChildComponentContext API list
+- Add "Error Boundary Pattern" to Common Patterns section:
+
+  ```text
+  **Error boundary flush pattern:** Check `ctx.has_error()` in flush
+  to switch between normal and fallback children:
+      if ctx.has_error():
+          normal_child.flush_empty(writer)
+          fallback_child.flush(writer, fallback_vnode)
+      else:
+          fallback_child.flush_empty(writer)
+          normal_child.flush(writer, normal_vnode)
+  ```
+
+- Add SafeCounterApp and ErrorNestApp to App Architectures section
+- Update File Size Reference with new file sizes
+- Update Deferred Abstractions to note that error boundaries are now
+  implemented
+
+**`CHANGELOG.md`** — Add Phase 32 entry at the top:
+
+```markdown
+## Phase 32 — Error Boundaries
+
+Wired the existing scope-level error boundary infrastructure (Phase
+8.4) into the component layer — `ComponentContext` and
+`ChildComponentContext` now have ergonomic error boundary methods.
+Demonstrated with two apps: SafeCounterApp (single boundary with
+crash/retry) and ErrorNestApp (nested boundaries with independent
+error/recovery).
+
+- **P32.1** — ComponentContext error boundary surface. Added
+  `use_error_boundary()`, `report_error()`, `has_error()`,
+  `error_message()`, `clear_error()` to ComponentContext. Added
+  `report_error()` to ChildComponentContext. Error propagation
+  walks the scope parent chain to the nearest boundary, sets the
+  error, and marks the boundary dirty for the next flush cycle.
+
+- **P32.2** — SafeCounterApp demo. Parent with error boundary,
+  count signal, Crash button, and two child components (normal
+  display + error fallback). Crash triggers `report_error()` →
+  fallback shown with error message. Retry calls `clear_error()`
+  → normal child re-renders. Count signal persists across crash/
+  recovery cycles.
+
+- **P32.3** — ErrorNestApp demo. Nested error boundaries: outer
+  boundary on root, inner boundary on a child component. Inner
+  crash caught by inner boundary (only inner slot swaps). Outer
+  crash caught by outer boundary (entire inner tree replaced).
+  Recovery at each level is independent. Mixed crash/retry
+  sequences validated.
+
+- **P32.4** — Documentation update. AGENTS.md, CHANGELOG.md, and
+  README.md updated with error boundary API, patterns, and test
+  counts.
+
+**Test count after P32.4:** ~X Mojo (Y modules) + ~Z JS = ~W tests.
+```
+
+**`README.md`** — Update:
+
+- Features list: add "Error Boundaries — scope-level error catching
+  with fallback UI and recovery"
+- Test count in Features section
+- Test results section: add Error Boundary test descriptions
+- Ergonomic API section: add error boundary code example
 
 ---
 
 ## Dependency graph
 
 ```text
-P31.1 (Context surface)
-    │
-    ▼
-P31.2 (ChildComponentContext)
+P32.1 (ComponentContext error boundary surface)
     │
     ├──────────────────────┐
     ▼                      ▼
-P31.3 (PropsCounter)    P31.4 (ThemeCounter)
+P32.2 (SafeCounter)    P32.3 (ErrorNest)
+    │                      │
+    └──────────┬───────────┘
+               ▼
+        P32.4 (Documentation)
 ```
 
-P31.1 is the foundation — it surfaces the existing DI mechanism. P31.2
-builds on it with child-scope signal creation. P31.3 and P31.4 are
-independent demos that validate the APIs from P31.1 and P31.2.
+P32.1 is the foundation — it surfaces the existing scope infrastructure
+on ComponentContext/ChildComponentContext. P32.2 and P32.3 are
+independent demos that validate the APIs from P32.1. P32.4 updates
+documentation after the demos are validated.
 
 ---
 
@@ -833,10 +897,10 @@ independent demos that validate the APIs from P31.1 and P31.2.
 
 | Step | Description | ~New Lines | Tests |
 |------|-------------|-----------|-------|
-| P31.1 | Context surface + signal helpers | ~120 Mojo, ~80 TS | 15 Mojo + 10 JS |
-| P31.2 | ChildComponentContext struct | ~350 Mojo, ~60 TS | 20 Mojo + 15 JS |
-| P31.3 | PropsCounterApp demo | ~280 Mojo, ~100 TS | 15 Mojo + 20 JS |
-| P31.4 | ThemeCounterApp demo | ~350 Mojo, ~120 TS | 20 Mojo + 25 JS |
-| **Total** | | **~1,100 Mojo, ~360 TS** | **70 Mojo + 70 JS = 140 tests** |
+| P32.1 | Context error boundary surface | ~80 Mojo, ~30 TS | 15 Mojo + 3 JS |
+| P32.2 | SafeCounterApp demo | ~350 Mojo, ~120 TS | 18 Mojo + 22 JS |
+| P32.3 | ErrorNestApp demo | ~450 Mojo, ~140 TS | 20 Mojo + 25 JS |
+| P32.4 | Documentation update | ~0 Mojo, ~50 prose | 0 |
+| **Total** | | **~880 Mojo, ~340 TS** | **53 Mojo + 50 JS = 103 tests** |
 
-**Projected test count after P31.4:** ~1,070 Mojo + ~1,854 JS = ~2,924 tests.
+**Projected test count after P32.4:** ~36+ Mojo modules + ~2,094 JS ≈ 2,094+ tests.

@@ -5950,3 +5950,437 @@ fn tc_summary_has_rendered(app_ptr: Int64) -> Int32:
     return _b2i(
         _get[ThemeCounterApp](app_ptr)[0].summary_child.child_ctx.has_rendered()
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 32.2 — SafeCounterApp (error boundary demo)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# A counter app with an error boundary.  The parent has a count signal,
+# increment/crash buttons, and two child components occupying two dyn_node
+# slots.  The "normal" child displays the count; the "fallback" child
+# shows the error message and a Retry button.
+#
+# On Crash: parent calls report_error() → has_error() becomes True →
+#   flush hides normal child, shows fallback with error message.
+# On Retry: parent calls clear_error() → has_error() becomes False →
+#   flush hides fallback, shows normal child (re-creates from scratch).
+# Count signal persists across crash/recovery since it lives on the parent.
+
+
+comptime _SC_PROP_COUNT: UInt32 = 20
+
+# Import onclick_custom for the crash/retry buttons
+from vdom import onclick_custom as dsl_onclick_custom
+
+
+struct SCNormalChild(Movable):
+    """Normal content child: displays count.
+
+    Template: p > dyn_text("Count: N")
+    Consumes count signal from parent context.
+    """
+
+    var child_ctx: ChildComponentContext
+    var count: _SignalI32
+
+    fn __init__(
+        out self,
+        var child_ctx: ChildComponentContext,
+        var count: _SignalI32,
+    ):
+        self.child_ctx = child_ctx^
+        self.count = count^
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.child_ctx = other.child_ctx^
+        self.count = other.count^
+
+    fn render(mut self) -> UInt32:
+        var vb = self.child_ctx.render_builder()
+        vb.add_dyn_text(String("Count: ") + String(self.count.peek()))
+        return vb.build()
+
+
+struct SCFallbackChild(Movable):
+    """Fallback child: shows error message + retry button.
+
+    Template: div > p(dyn_text("Error: ...")) + button("Retry", onclick_custom)
+    The retry button's onclick_custom handler is registered under the
+    fallback child's scope by create_child_context.  The parent routes
+    the handler ID in _sc_handle_event.
+    """
+
+    var child_ctx: ChildComponentContext
+
+    fn __init__(out self, var child_ctx: ChildComponentContext):
+        self.child_ctx = child_ctx^
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.child_ctx = other.child_ctx^
+
+    fn render(mut self, error_msg: String) -> UInt32:
+        var vb = self.child_ctx.render_builder()
+        vb.add_dyn_text(String("Error: ") + error_msg)
+        return vb.build()
+
+
+struct SafeCounterApp(Movable):
+    """Counter app with error boundary.
+
+    Parent template:
+        div > h1("Safe Counter") + button("+1") + button("Crash", onclick_custom)
+              + dyn_node[0] + dyn_node[1]
+
+    dyn_node[0] = normal child slot (p > dyn_text)
+    dyn_node[1] = fallback child slot (div > p(dyn_text) + button("Retry"))
+
+    The Crash button triggers report_error().  The parent catches it
+    and swaps to fallback UI.  Retry clears the error and restores
+    normal rendering.  Count signal persists across crash/recovery.
+    """
+
+    var ctx: ComponentContext
+    var count: _SignalI32
+    var normal: SCNormalChild
+    var fallback: SCFallbackChild
+    var crash_handler: UInt32
+    var retry_handler: UInt32
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.count = self.ctx.use_signal(0)
+        self.ctx.use_error_boundary()
+        self.ctx.provide_signal_i32(_SC_PROP_COUNT, self.count)
+        # Use onclick_custom() in the view tree for the crash button.
+        # setup_view() will auto-register the handler under the root scope.
+        self.ctx.setup_view(
+            el_div(
+                el_h1(dsl_text(String("Safe Counter"))),
+                el_button(
+                    dsl_text(String("+ 1")),
+                    dsl_onclick_add(self.count, 1),
+                ),
+                el_button(
+                    dsl_text(String("Crash")),
+                    dsl_onclick_custom(),
+                ),
+                dsl_dyn_node(0),
+                dsl_dyn_node(1),
+            ),
+            String("safe-counter"),
+        )
+        # Crash handler is the first onclick_custom in the view tree
+        # (onclick_add is index 0, onclick_custom is index 1).
+        self.crash_handler = self.ctx.view_event_handler_id(1)
+
+        # Normal child: displays count
+        var normal_ctx = self.ctx.create_child_context(
+            el_p(dsl_dyn_text()),
+            String("sc-normal"),
+        )
+        var prop_count = normal_ctx.consume_signal_i32(_SC_PROP_COUNT)
+        self.normal = SCNormalChild(normal_ctx^, prop_count^)
+
+        # Fallback child: shows error + retry button.
+        # onclick_custom() in the child view tree gets auto-registered
+        # under the fallback child's scope by create_child_context.
+        var fallback_ctx = self.ctx.create_child_context(
+            el_div(
+                el_p(dsl_dyn_text()),
+                el_button(
+                    dsl_text(String("Retry")),
+                    dsl_onclick_custom(),
+                ),
+            ),
+            String("sc-fallback"),
+        )
+        # Retry handler is the first (and only) event on the fallback child
+        self.retry_handler = fallback_ctx.event_handler_id(0)
+        self.fallback = SCFallbackChild(fallback_ctx^)
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.ctx = other.ctx^
+        self.count = other.count^
+        self.normal = other.normal^
+        self.fallback = other.fallback^
+        self.crash_handler = other.crash_handler
+        self.retry_handler = other.retry_handler
+
+    fn render_parent(mut self) -> UInt32:
+        """Build the parent VNode with placeholders for both child slots."""
+        var pvb = self.ctx.render_builder()
+        pvb.add_dyn_placeholder()  # dyn_node[0] — normal child
+        pvb.add_dyn_placeholder()  # dyn_node[1] — fallback child
+        return pvb.build()
+
+
+fn _sc_init() -> UnsafePointer[SafeCounterApp, MutExternalOrigin]:
+    var app_ptr = alloc[SafeCounterApp](1)
+    app_ptr.init_pointee_move(SafeCounterApp())
+    return app_ptr
+
+
+fn _sc_destroy(
+    app_ptr: UnsafePointer[SafeCounterApp, MutExternalOrigin],
+):
+    app_ptr[0].ctx.destroy_child_context(app_ptr[0].normal.child_ctx)
+    app_ptr[0].ctx.destroy_child_context(app_ptr[0].fallback.child_ctx)
+    app_ptr[0].ctx.destroy()
+    app_ptr.destroy_pointee()
+    app_ptr.free()
+
+
+fn _sc_rebuild(
+    app: UnsafePointer[SafeCounterApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Initial render (mount) of the safe-counter app."""
+    # 1. Render parent with placeholders
+    var parent_idx = app[0].render_parent()
+    app[0].ctx.current_vnode = Int(parent_idx)
+
+    # 2. Emit all templates (parent + normal child + fallback child)
+    app[0].ctx.shell.emit_templates(writer_ptr)
+
+    # 3. Create parent VNode tree
+    var engine = _CreateEngine(
+        writer_ptr,
+        app[0].ctx.shell.eid_alloc,
+        app[0].ctx.runtime_ptr(),
+        app[0].ctx.store_ptr(),
+    )
+    var num_roots = engine.create_node(parent_idx)
+
+    # 4. Append to root element
+    writer_ptr[0].append_children(0, num_roots)
+
+    # 5. Extract anchors for child slots
+    var vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(parent_idx)
+    var normal_anchor: UInt32 = 0
+    var fallback_anchor: UInt32 = 0
+    if vnode_ptr[0].dyn_node_id_count() > 0:
+        normal_anchor = vnode_ptr[0].get_dyn_node_id(0)
+    if vnode_ptr[0].dyn_node_id_count() > 1:
+        fallback_anchor = vnode_ptr[0].get_dyn_node_id(1)
+    app[0].normal.child_ctx.init_slot(normal_anchor)
+    app[0].fallback.child_ctx.init_slot(fallback_anchor)
+
+    # 6. Flush normal child (initial render — no error state)
+    var normal_idx = app[0].normal.render()
+    app[0].normal.child_ctx.flush(writer_ptr, normal_idx)
+    # Fallback starts hidden — do NOT flush it
+
+    # 7. Finalize
+    writer_ptr[0].finalize()
+    return Int32(writer_ptr[0].offset)
+
+
+fn _sc_handle_event(
+    app: UnsafePointer[SafeCounterApp, MutExternalOrigin],
+    handler_id: UInt32,
+    event_type: UInt8,
+) -> Bool:
+    if handler_id == app[0].crash_handler:
+        # Simulate a crash: propagate error to this boundary
+        _ = app[0].ctx.report_error(String("Simulated crash"))
+        return True
+    elif handler_id == app[0].retry_handler:
+        # Clear error state — next flush restores normal content
+        app[0].ctx.clear_error()
+        return True
+    else:
+        return app[0].ctx.dispatch_event(handler_id, event_type)
+
+
+fn _sc_flush(
+    app: UnsafePointer[SafeCounterApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Flush pending updates with error boundary logic."""
+    var parent_dirty = app[0].ctx.consume_dirty()
+    var normal_dirty = app[0].normal.child_ctx.is_dirty()
+    var fallback_dirty = app[0].fallback.child_ctx.is_dirty()
+
+    if not parent_dirty and not normal_dirty and not fallback_dirty:
+        return 0
+
+    # Diff parent shell (placeholder → placeholder = no mutations usually)
+    var new_parent_idx = app[0].render_parent()
+    app[0].ctx.diff(writer_ptr, new_parent_idx)
+
+    if app[0].ctx.has_error():
+        # Error state: hide normal, show fallback with error message
+        app[0].normal.child_ctx.flush_empty(writer_ptr)
+        var fb_idx = app[0].fallback.render(app[0].ctx.error_message())
+        app[0].fallback.child_ctx.flush(writer_ptr, fb_idx)
+    else:
+        # Normal state: hide fallback, show normal
+        app[0].fallback.child_ctx.flush_empty(writer_ptr)
+        var normal_idx = app[0].normal.render()
+        app[0].normal.child_ctx.flush(writer_ptr, normal_idx)
+
+    return app[0].ctx.finalize(writer_ptr)
+
+
+# ── SafeCounterApp WASM exports ─────────────────────────────────────────────
+
+
+@export
+fn sc_init() -> Int64:
+    """Initialize the safe-counter app.  Returns app pointer."""
+    return _to_i64(_sc_init())
+
+
+@export
+fn sc_destroy(app_ptr: Int64):
+    """Destroy the safe-counter app."""
+    _sc_destroy(_get[SafeCounterApp](app_ptr))
+
+
+@export
+fn sc_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    """Initial mount.  Returns mutation buffer length."""
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _sc_rebuild(_get[SafeCounterApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return result
+
+
+@export
+fn sc_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
+    """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
+    return _b2i(
+        _sc_handle_event(_get[SafeCounterApp](app_ptr), UInt32(hid), UInt8(evt))
+    )
+
+
+@export
+fn sc_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    """Flush pending updates.  Returns mutation buffer length."""
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _sc_flush(_get[SafeCounterApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return result
+
+
+@export
+fn sc_count_value(app_ptr: Int64) -> Int32:
+    """Return the current count value."""
+    return _get[SafeCounterApp](app_ptr)[0].count.peek()
+
+
+@export
+fn sc_has_error(app_ptr: Int64) -> Int32:
+    """Return 1 if the error boundary has captured an error."""
+    return _b2i(_get[SafeCounterApp](app_ptr)[0].ctx.has_error())
+
+
+@export
+fn sc_error_message(app_ptr: Int64) -> String:
+    """Return the captured error message."""
+    return _get[SafeCounterApp](app_ptr)[0].ctx.error_message()
+
+
+@export
+fn sc_crash_handler(app_ptr: Int64) -> Int32:
+    """Return the crash handler ID."""
+    return Int32(_get[SafeCounterApp](app_ptr)[0].crash_handler)
+
+
+@export
+fn sc_retry_handler(app_ptr: Int64) -> Int32:
+    """Return the retry handler ID."""
+    return Int32(_get[SafeCounterApp](app_ptr)[0].retry_handler)
+
+
+@export
+fn sc_incr_handler(app_ptr: Int64) -> Int32:
+    """Return the increment handler ID (view_events[0])."""
+    var events = _get[SafeCounterApp](app_ptr)[0].ctx.view_events()
+    if len(events) > 0:
+        return Int32(events[0].handler_id)
+    return -1
+
+
+@export
+fn sc_normal_mounted(app_ptr: Int64) -> Int32:
+    """Return 1 if the normal child is currently mounted in the DOM."""
+    return _b2i(_get[SafeCounterApp](app_ptr)[0].normal.child_ctx.is_mounted())
+
+
+@export
+fn sc_fallback_mounted(app_ptr: Int64) -> Int32:
+    """Return 1 if the fallback child is currently mounted in the DOM."""
+    return _b2i(
+        _get[SafeCounterApp](app_ptr)[0].fallback.child_ctx.is_mounted()
+    )
+
+
+@export
+fn sc_normal_has_rendered(app_ptr: Int64) -> Int32:
+    """Return 1 if the normal child has rendered at least once."""
+    return _b2i(
+        _get[SafeCounterApp](app_ptr)[0].normal.child_ctx.has_rendered()
+    )
+
+
+@export
+fn sc_fallback_has_rendered(app_ptr: Int64) -> Int32:
+    """Return 1 if the fallback child has rendered at least once."""
+    return _b2i(
+        _get[SafeCounterApp](app_ptr)[0].fallback.child_ctx.has_rendered()
+    )
+
+
+@export
+fn sc_has_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if any scope is dirty."""
+    var app = _get[SafeCounterApp](app_ptr)
+    if len(app[0].ctx.shell.runtime[0].dirty_scopes) > 0:
+        return 1
+    return 0
+
+
+@export
+fn sc_handler_count(app_ptr: Int64) -> Int32:
+    """Return the total number of registered handlers."""
+    return Int32(_get[SafeCounterApp](app_ptr)[0].ctx.handler_count())
+
+
+@export
+fn sc_scope_count(app_ptr: Int64) -> Int32:
+    """Return the number of live scopes."""
+    return Int32(
+        _get[SafeCounterApp](app_ptr)[0].ctx.shell.runtime[0].scope_count()
+    )
+
+
+@export
+fn sc_parent_scope_id(app_ptr: Int64) -> Int32:
+    """Return the parent (root) scope ID."""
+    return Int32(_get[SafeCounterApp](app_ptr)[0].ctx.scope_id)
+
+
+@export
+fn sc_normal_scope_id(app_ptr: Int64) -> Int32:
+    """Return the normal child's scope ID."""
+    return Int32(_get[SafeCounterApp](app_ptr)[0].normal.child_ctx.scope_id)
+
+
+@export
+fn sc_fallback_scope_id(app_ptr: Int64) -> Int32:
+    """Return the fallback child's scope ID."""
+    return Int32(_get[SafeCounterApp](app_ptr)[0].fallback.child_ctx.scope_id)
+
+
+@export
+fn sc_normal_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if the normal child scope is dirty."""
+    return _b2i(_get[SafeCounterApp](app_ptr)[0].normal.child_ctx.is_dirty())
+
+
+@export
+fn sc_fallback_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if the fallback child scope is dirty."""
+    return _b2i(_get[SafeCounterApp](app_ptr)[0].fallback.child_ctx.is_dirty())
