@@ -15,6 +15,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **Event system** — DOM events delegated through WASM with action-based handlers
 - **Scoped components** — hierarchical scopes with hooks, context, error boundaries, and suspense boundaries
 - **Suspense** — pending state with skeleton fallback and JS-triggered resolve; nested boundaries with independent inner/outer lifecycle
+- **Effects in apps** — reactive side effects with derived state (effect drain-and-run pattern), signal → memo → effect → signal chains
 - **Ergonomic DSL** — `el_div`, `el_button`, `dyn_text` tag helpers with `to_template()` conversion
 - **AppShell abstraction** — single struct bundling runtime, store, allocator, and scheduler
 - **ComponentContext** — ergonomic Dioxus-style API with `use_signal()`, `setup_view()`, inline events, auto-numbered `dyn_text()`
@@ -23,7 +24,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **String event dispatch** — `ACTION_SIGNAL_SET_STRING` handlers pipe string values from DOM events directly into `SignalString` signals; JS EventBridge extracts `event.target.value` → `writeStringStruct()` → WASM `dispatch_event_with_string` with automatic fallback to numeric/default dispatch
 - **Two-way input binding** — Dioxus-style `oninput_set_string(signal)` + `bind_value(signal)` DSL helpers for inline string event handlers and auto-populated `value` attributes; `RenderBuilder.build()` reads `SignalString` at render time
 - **Error boundaries** — scope-level error catching with fallback UI and recovery; `use_error_boundary()` marks a scope as a boundary, `report_error()` propagates errors up the parent chain, `has_error()` / `clear_error()` drive flush-time content switching between normal and fallback children
-- **3,640 tests** — 1,122 Mojo (40 modules via wasmtime) + 2,518 JS (24 suites via Deno), all passing
+- **3,764 tests** — 1,156 Mojo (42 modules via wasmtime) + 2,608 JS (26 suites via Deno), all passing
 
 ## How it works
 
@@ -348,7 +349,7 @@ Adding a new test:
 
 ## Test results
 
-3,640 tests across 40 Mojo modules and 24 JS test suites:
+3,764 tests across 42 Mojo modules and 26 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -368,6 +369,8 @@ Adding a new test:
 - **Error nest app** — nested error boundaries with independent crash/retry, inner crash caught by inner boundary (only inner slot swaps), outer crash replaces entire inner tree, mixed crash/retry sequences, full recovery validation
 - **Data loader app** — suspense with load/resolve lifecycle, load button sets pending → skeleton shown, JS-triggered resolve → content shown with data, reload cycles, multiple load/resolve cycles, DOM verification
 - **Suspense nest app** — nested suspense boundaries with independent inner/outer load/resolve, inner load shows inner skeleton (outer unaffected), outer load shows outer skeleton (hides inner tree), outer resolve reveals persisted inner pending state, mixed load/resolve sequences, full recovery validation
+- **Effect demo app** — effect-in-flush pattern with count signal and derived state (doubled, parity), effect drain-and-run lifecycle, effect starts pending → runs on rebuild, increment marks effect pending → flush runs effect → derived state updated, re-subscription each run, rapid 20 increments, heapStats bounded, DOM verification
+- **Effect memo app** — signal → memo → effect → signal chain, input signal feeds tripled memo (input × 3), effect reads memo output to derive label ("small"/"big" threshold at tripled ≥ 10), memo recomputed before effects, threshold transition exact (3→small, 4→big), derived state chain consistent, rapid 20 increments, heapStats bounded, DOM verification
 - **Memory** — allocation cycles, bounded growth, rapid write stability, free-list reuse, double-free protection, WASM-integrated reuse (text/attr/fragment/template diffs with reuse enabled)
 - **Arithmetic/strings** — original PoC interop regression suite
 
@@ -681,6 +684,74 @@ struct DataLoaderApp:
 # fn resolve(data: String):
 #     self.data_text = data
 #     self.ctx.set_pending(False)          # next flush restores content
+```
+
+### Effect drain-and-run pattern (Phase 34)
+
+Effects run between `consume_dirty()` and `render()` to settle derived state before rendering.
+The `begin_run()` / `end_run()` bracket re-subscribes the effect to its dependencies each run:
+
+```mojo
+struct EffectDemoApp:
+    var ctx: ComponentContext
+    var count: SignalI32
+    var doubled: SignalI32          # written by effect
+    var parity: SignalString        # written by effect
+    var count_effect: EffectHandle
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.count = self.ctx.use_signal(0)
+        self.doubled = self.ctx.use_signal(0)
+        self.parity = self.ctx.use_signal_string(String("even"))
+        self.count_effect = self.ctx.use_effect()
+        self.ctx.setup_view(
+            el_div(
+                el_h1(text(String("Effect Demo"))),
+                el_button(text(String("+ 1")), onclick_add(self.count, 1)),
+                el_p(dyn_text()),   # "Count: N"
+                el_p(dyn_text()),   # "Doubled: N"
+                el_p(dyn_text()),   # "Parity: even/odd"
+            ),
+            String("effect-demo"),
+        )
+
+    fn run_effects(mut self):
+        if self.count_effect.is_pending():
+            self.count_effect.begin_run()
+            var c = self.count.read()   # re-subscribe to count
+            self.doubled.set(c * 2)
+            self.parity.set(String("even") if c % 2 == 0 else String("odd"))
+            self.count_effect.end_run()
+
+    fn flush(mut self, writer: ...) -> Int32:
+        if not self.ctx.consume_dirty():
+            return 0
+        self.run_effects()   # effects settle derived state
+        var idx = self.render()
+        self.ctx.diff(writer, idx)
+        return self.ctx.finalize(writer)
+```
+
+For memo + effect chains, recompute memos first — memo output changes mark dependent effects pending:
+
+```mojo
+# Signal → Memo → Effect → Signal chain (EffectMemoApp)
+fn run_memos_and_effects(mut self):
+    # Step 1: Recompute dirty memos
+    if self.tripled.is_dirty():
+        self.tripled.begin_compute()
+        var i = self.input.read()        # re-subscribe memo to input
+        self.tripled.end_compute(i * 3)
+    # Step 2: Run effects that read memo output
+    if self.label_effect.is_pending():
+        self.label_effect.begin_run()
+        var t = self.tripled.read()      # re-subscribe to memo output
+        if t < 10:
+            self.label.set(String("small"))
+        else:
+            self.label.set(String("big"))
+        self.label_effect.end_run()
 ```
 
 ## Deferred abstractions

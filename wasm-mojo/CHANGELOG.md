@@ -2,6 +2,20 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 34 — Effects in Apps
+
+Validated the existing effect infrastructure (Phase 14) in real component lifecycles with signals, rendering, and DOM output. Established the effect drain-and-run pattern for flush cycles and demonstrated the full signal → memo → effect → signal reactive chain.
+
+- **P34.1** — EffectDemoApp. A count signal with an effect that computes derived state (doubled = count × 2, parity = "even"/"odd"). Demonstrates the effect-in-flush pattern: `consume_dirty()` → `run_effects()` → `render()` → `diff()`. Effect starts pending (initial run), runs during rebuild to settle initial state, then re-runs on each flush after increment. The `begin_run()` / `end_run()` bracket re-subscribes the effect to count on each execution. WASM exports: `ed_init`, `ed_destroy`, `ed_rebuild`, `ed_handle_event`, `ed_flush`, `ed_count_value`, `ed_doubled_value`, `ed_parity_text`, `ed_effect_is_pending`, `ed_incr_handler`, `ed_has_dirty`, `ed_scope_count`. 18 Mojo tests + 20 JS test suites.
+
+- **P34.2** — EffectMemoApp. Full signal → memo → effect → signal chain: input signal feeds a tripled memo (input × 3), and a label effect reads the memo output to derive a label ("small" if tripled < 10, "big" otherwise). Memos are recomputed before effects in the flush cycle — memo recomputation may change the output signal, which marks dependent effects pending. WASM exports: `em_init`, `em_destroy`, `em_rebuild`, `em_handle_event`, `em_flush`, `em_input_value`, `em_tripled_value`, `em_label_text`, `em_effect_is_pending`, `em_memo_value`, `em_incr_handler`, `em_has_dirty`, `em_scope_count`. 16 Mojo tests + 18 JS test suites.
+
+- **P34.3** — Documentation update. AGENTS.md updated with EffectDemoApp and EffectMemoApp app architectures, effect drain-and-run pattern and effect + memo chain pattern in Common Patterns, and updated file sizes. CHANGELOG.md and README.md updated with Phase 34 summary and test counts.
+
+**Test count after P34.3:** 1,156 Mojo (42 modules) + 2,608 JS (26 suites) = 3,764 tests.
+
+---
+
 ## Phase 33 — Suspense
 
 Wired the existing scope-level suspense infrastructure (Phase 8.4) into the component layer — `ComponentContext` and `ChildComponentContext` now have ergonomic suspense methods. Demonstrated with two apps: DataLoaderApp (single boundary with load/resolve lifecycle) and SuspenseNestApp (nested boundaries with independent inner/outer pending states).

@@ -92,7 +92,13 @@ from vdom import (
     onclick_toggle as dsl_onclick_toggle,
     onclick_set as dsl_onclick_set,
 )
-from signals.handle import SignalI32 as _SignalI32, SignalBool, SignalString
+from signals.handle import (
+    SignalI32 as _SignalI32,
+    SignalBool,
+    SignalString,
+    MemoI32,
+    EffectHandle,
+)
 
 from counter import (
     CounterApp,
@@ -8084,4 +8090,520 @@ fn sn_outer_skeleton_scope_id(app_ptr: Int64) -> Int32:
     """Return the outer skeleton child's scope ID."""
     return Int32(
         _get[SuspenseNestApp](app_ptr)[0].outer_skeleton.child_ctx.scope_id
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 34.1 — EffectDemoApp (effect-in-flush pattern)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Demonstrates reactive effects running in the flush cycle.  A count signal
+# drives an effect that computes derived state (doubled, parity).
+#
+# Structure:
+#   EffectDemoApp (single root scope, no child components)
+#   ├── h1 "Effect Demo"
+#   ├── button "+ 1"  (onclick_add count)
+#   ├── p > dyn_text("Count: N")
+#   ├── p > dyn_text("Doubled: N")
+#   └── p > dyn_text("Parity: even/odd")
+#
+# Lifecycle:
+#   1. Init: count=0, doubled=0, parity="even", effect starts pending
+#   2. Rebuild: run_effects (sets doubled=0, parity="even") → render → mount
+#   3. Increment: count += 1 → scope dirty + effect pending
+#   4. Flush: consume_dirty → run_effects → render → diff → mutations
+#
+# The effect reads count (re-subscribing each run), then writes doubled
+# and parity.  The drain-and-run pattern ensures all derived state is
+# settled before render().
+
+
+struct EffectDemoApp(Movable):
+    """Effect demo app — count signal with derived doubled + parity via effect.
+
+    Demonstrates the effect-in-flush pattern where effects run between
+    consume_dirty() and render() to settle derived state.
+    """
+
+    var ctx: ComponentContext
+    var count: _SignalI32
+    var doubled: _SignalI32
+    var parity: SignalString
+    var count_effect: EffectHandle
+    var incr_handler: UInt32
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.count = self.ctx.use_signal(0)
+        self.doubled = self.ctx.use_signal(0)
+        self.parity = self.ctx.use_signal_string(String("even"))
+        self.count_effect = self.ctx.use_effect()
+        self.ctx.setup_view(
+            el_div(
+                el_h1(dsl_text(String("Effect Demo"))),
+                el_button(
+                    dsl_text(String("+ 1")),
+                    dsl_onclick_add(self.count, 1),
+                ),
+                el_p(dsl_dyn_text()),
+                el_p(dsl_dyn_text()),
+                el_p(dsl_dyn_text()),
+            ),
+            String("effect-demo"),
+        )
+        self.incr_handler = self.ctx.view_event_handler_id(0)
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.ctx = other.ctx^
+        self.count = other.count.copy()
+        self.doubled = other.doubled.copy()
+        self.parity = other.parity^
+        self.count_effect = other.count_effect.copy()
+        self.incr_handler = other.incr_handler
+
+    fn run_effects(mut self):
+        """Drain and execute pending effects.
+
+        The count_effect reads count (re-subscribing), then writes
+        doubled and parity signals.  This is the drain-and-run pattern:
+        effects run after consume_dirty() and before render().
+        """
+        if self.count_effect.is_pending():
+            self.count_effect.begin_run()
+            var c = self.count.read()  # re-subscribe to count
+            self.doubled.set(c * 2)
+            if c % 2 == 0:
+                self.parity.set(String("even"))
+            else:
+                self.parity.set(String("odd"))
+            self.count_effect.end_run()
+
+    fn render(mut self) -> UInt32:
+        """Build a fresh VNode with 3 dyn_text slots."""
+        var vb = self.ctx.render_builder()
+        vb.add_dyn_text(String("Count: ") + String(self.count.peek()))
+        vb.add_dyn_text(String("Doubled: ") + String(self.doubled.peek()))
+        vb.add_dyn_text(String("Parity: ") + String(self.parity.peek()))
+        return vb.build()
+
+
+# ── EffectDemoApp lifecycle functions ────────────────────────────────────────
+
+
+fn _ed_init() -> UnsafePointer[EffectDemoApp, MutExternalOrigin]:
+    var app_ptr = alloc[EffectDemoApp](1)
+    app_ptr.init_pointee_move(EffectDemoApp())
+    return app_ptr
+
+
+fn _ed_destroy(
+    app_ptr: UnsafePointer[EffectDemoApp, MutExternalOrigin],
+):
+    app_ptr[0].ctx.destroy()
+    app_ptr.destroy_pointee()
+    app_ptr.free()
+
+
+fn _ed_rebuild(
+    app: UnsafePointer[EffectDemoApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Initial render (mount) of the effect-demo app.
+
+    Runs effects first to settle derived state (doubled, parity), then
+    renders and mounts.
+    """
+    # Run initial effects — effect starts pending, so this sets doubled=0, parity="even"
+    app[0].run_effects()
+    # Render with settled state
+    var vnode_idx = app[0].render()
+    var result = app[0].ctx.mount(writer_ptr, vnode_idx)
+    # Consume dirty scopes left over from effect signal writes —
+    # the DOM is already correct (rendered with settled state).
+    _ = app[0].ctx.consume_dirty()
+    return result
+
+
+fn _ed_handle_event(
+    app: UnsafePointer[EffectDemoApp, MutExternalOrigin],
+    handler_id: UInt32,
+    event_type: UInt8,
+) -> Bool:
+    return app[0].ctx.dispatch_event(handler_id, event_type)
+
+
+fn _ed_flush(
+    app: UnsafePointer[EffectDemoApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Flush pending updates with effect drain-and-run pattern.
+
+    1. consume_dirty() — collect dirty scopes
+    2. run_effects() — effects may write signals (more dirty is OK)
+    3. render() — build VNode with all state settled
+    4. diff + finalize — emit mutations
+    """
+    if not app[0].ctx.consume_dirty():
+        return 0
+    # Run pending effects — they may write signals
+    app[0].run_effects()
+    # Render with settled state
+    var new_idx = app[0].render()
+    app[0].ctx.diff(writer_ptr, new_idx)
+    return app[0].ctx.finalize(writer_ptr)
+
+
+# ── EffectDemoApp WASM exports ───────────────────────────────────────────────
+
+
+@export
+fn ed_init() -> Int64:
+    """Initialize the effect-demo app.  Returns app pointer."""
+    return _to_i64(_ed_init())
+
+
+@export
+fn ed_destroy(app_ptr: Int64):
+    """Destroy the effect-demo app."""
+    _ed_destroy(_get[EffectDemoApp](app_ptr))
+
+
+@export
+fn ed_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    """Initial mount.  Returns mutation buffer length."""
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _ed_rebuild(_get[EffectDemoApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return result
+
+
+@export
+fn ed_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
+    """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
+    return _b2i(
+        _ed_handle_event(_get[EffectDemoApp](app_ptr), UInt32(hid), UInt8(evt))
+    )
+
+
+@export
+fn ed_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    """Flush pending updates.  Returns mutation buffer length."""
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _ed_flush(_get[EffectDemoApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return result
+
+
+@export
+fn ed_count_value(app_ptr: Int64) -> Int32:
+    """Return the current count signal value."""
+    return _get[EffectDemoApp](app_ptr)[0].count.peek()
+
+
+@export
+fn ed_doubled_value(app_ptr: Int64) -> Int32:
+    """Return the current doubled signal value."""
+    return _get[EffectDemoApp](app_ptr)[0].doubled.peek()
+
+
+@export
+fn ed_parity_text(app_ptr: Int64) -> String:
+    """Return the current parity text ("even" or "odd")."""
+    return _get[EffectDemoApp](app_ptr)[0].parity.peek()
+
+
+@export
+fn ed_effect_is_pending(app_ptr: Int64) -> Int32:
+    """Return 1 if the count effect is pending."""
+    return _b2i(_get[EffectDemoApp](app_ptr)[0].count_effect.is_pending())
+
+
+@export
+fn ed_incr_handler(app_ptr: Int64) -> Int32:
+    """Return the increment button handler ID."""
+    return Int32(_get[EffectDemoApp](app_ptr)[0].incr_handler)
+
+
+@export
+fn ed_has_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if any scope is dirty."""
+    var app = _get[EffectDemoApp](app_ptr)
+    if len(app[0].ctx.shell.runtime[0].dirty_scopes) > 0:
+        return 1
+    return 0
+
+
+@export
+fn ed_scope_count(app_ptr: Int64) -> Int32:
+    """Return the number of live scopes."""
+    return Int32(
+        _get[EffectDemoApp](app_ptr)[0].ctx.shell.runtime[0].scope_count()
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 34.2 — EffectMemoApp (signal → memo → effect → signal chain)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Demonstrates the full reactive chain: signal → memo → effect → signal.
+# An input signal feeds a memo (tripled = input * 3), and an effect reads
+# the memo output to produce a label ("small" if tripled < 10, "big"
+# otherwise).
+#
+# Structure:
+#   EffectMemoApp (single root scope, no child components)
+#   ├── h1 "Effect + Memo"
+#   ├── button "+ 1"  (onclick_add input)
+#   ├── p > dyn_text("Input: N")
+#   ├── p > dyn_text("Tripled: N")     ← memo output (input * 3)
+#   └── p > dyn_text("Label: ...")     ← effect reads tripled, writes label
+#
+# Chain:
+#   input signal → tripled memo (input * 3)
+#                    → label effect reads tripled.read()
+#                      → writes label signal ("small" / "big")
+#                        → render
+#
+# Lifecycle:
+#   1. Init: input=0, tripled=0, label="small", effect starts pending
+#   2. Rebuild: recompute memo + run effect → mount
+#   3. Increment: input += 1 → scope dirty + memo dirty
+#   4. Flush: consume_dirty → recompute memo → run effect → render → diff
+
+
+struct EffectMemoApp(Movable):
+    """Effect + memo chain demo app.
+
+    Demonstrates the signal → memo → effect → signal reactive chain
+    where a memo derives a value and an effect reads it to produce
+    further derived state.
+    """
+
+    var ctx: ComponentContext
+    var input: _SignalI32
+    var tripled: MemoI32
+    var label: SignalString
+    var label_effect: EffectHandle
+    var incr_handler: UInt32
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.input = self.ctx.use_signal(0)
+        self.tripled = self.ctx.use_memo(0)
+        self.label = self.ctx.use_signal_string(String("small"))
+        self.label_effect = self.ctx.use_effect()
+        self.ctx.setup_view(
+            el_div(
+                el_h1(dsl_text(String("Effect + Memo"))),
+                el_button(
+                    dsl_text(String("+ 1")),
+                    dsl_onclick_add(self.input, 1),
+                ),
+                el_p(dsl_dyn_text()),
+                el_p(dsl_dyn_text()),
+                el_p(dsl_dyn_text()),
+            ),
+            String("effect-memo"),
+        )
+        self.incr_handler = self.ctx.view_event_handler_id(0)
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.ctx = other.ctx^
+        self.input = other.input.copy()
+        self.tripled = other.tripled.copy()
+        self.label = other.label^
+        self.label_effect = other.label_effect.copy()
+        self.incr_handler = other.incr_handler
+
+    fn run_memos_and_effects(mut self):
+        """Recompute memos, then drain and execute pending effects.
+
+        Order matters: memos must be recomputed first so that effects
+        reading their output see the fresh value.  The memo recomputation
+        may mark the effect pending (if the output value changed).
+
+        Chain: input → tripled memo → label effect → label signal.
+        """
+        # Step 1: Recompute tripled memo if dirty
+        if self.tripled.is_dirty():
+            self.tripled.begin_compute()
+            var i = self.input.read()  # re-subscribe memo to input
+            self.tripled.end_compute(i * 3)
+
+        # Step 2: Run label effect if pending
+        if self.label_effect.is_pending():
+            self.label_effect.begin_run()
+            var t = self.tripled.read()  # re-subscribe effect to tripled output
+            if t < 10:
+                self.label.set(String("small"))
+            else:
+                self.label.set(String("big"))
+            self.label_effect.end_run()
+
+    fn render(mut self) -> UInt32:
+        """Build a fresh VNode with 3 dyn_text slots."""
+        var vb = self.ctx.render_builder()
+        vb.add_dyn_text(String("Input: ") + String(self.input.peek()))
+        vb.add_dyn_text(String("Tripled: ") + String(self.tripled.peek()))
+        vb.add_dyn_text(String("Label: ") + String(self.label.peek()))
+        return vb.build()
+
+
+# ── EffectMemoApp lifecycle functions ────────────────────────────────────────
+
+
+fn _em_init() -> UnsafePointer[EffectMemoApp, MutExternalOrigin]:
+    var app_ptr = alloc[EffectMemoApp](1)
+    app_ptr.init_pointee_move(EffectMemoApp())
+    return app_ptr
+
+
+fn _em_destroy(
+    app_ptr: UnsafePointer[EffectMemoApp, MutExternalOrigin],
+):
+    app_ptr[0].ctx.destroy()
+    app_ptr.destroy_pointee()
+    app_ptr.free()
+
+
+fn _em_rebuild(
+    app: UnsafePointer[EffectMemoApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Initial render (mount) of the effect-memo app.
+
+    Recomputes memo and runs effects to settle derived state, then
+    renders and mounts.
+    """
+    # Run initial memo recomputation + effects
+    app[0].run_memos_and_effects()
+    # Render with settled state
+    var vnode_idx = app[0].render()
+    var result = app[0].ctx.mount(writer_ptr, vnode_idx)
+    # Consume dirty scopes left over from memo/effect signal writes
+    _ = app[0].ctx.consume_dirty()
+    return result
+
+
+fn _em_handle_event(
+    app: UnsafePointer[EffectMemoApp, MutExternalOrigin],
+    handler_id: UInt32,
+    event_type: UInt8,
+) -> Bool:
+    return app[0].ctx.dispatch_event(handler_id, event_type)
+
+
+fn _em_flush(
+    app: UnsafePointer[EffectMemoApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Flush pending updates with memo + effect drain-and-run pattern.
+
+    1. consume_dirty() — collect dirty scopes
+    2. run_memos_and_effects() — recompute memos, then run effects
+    3. render() — build VNode with all state settled
+    4. diff + finalize — emit mutations
+    """
+    if not app[0].ctx.consume_dirty():
+        return 0
+    # Recompute memos + run pending effects
+    app[0].run_memos_and_effects()
+    # Render with settled state
+    var new_idx = app[0].render()
+    app[0].ctx.diff(writer_ptr, new_idx)
+    return app[0].ctx.finalize(writer_ptr)
+
+
+# ── EffectMemoApp WASM exports ───────────────────────────────────────────────
+
+
+@export
+fn em_init() -> Int64:
+    """Initialize the effect-memo app.  Returns app pointer."""
+    return _to_i64(_em_init())
+
+
+@export
+fn em_destroy(app_ptr: Int64):
+    """Destroy the effect-memo app."""
+    _em_destroy(_get[EffectMemoApp](app_ptr))
+
+
+@export
+fn em_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    """Initial mount.  Returns mutation buffer length."""
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _em_rebuild(_get[EffectMemoApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return result
+
+
+@export
+fn em_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
+    """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
+    return _b2i(
+        _em_handle_event(_get[EffectMemoApp](app_ptr), UInt32(hid), UInt8(evt))
+    )
+
+
+@export
+fn em_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    """Flush pending updates.  Returns mutation buffer length."""
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _em_flush(_get[EffectMemoApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return result
+
+
+@export
+fn em_input_value(app_ptr: Int64) -> Int32:
+    """Return the current input signal value."""
+    return _get[EffectMemoApp](app_ptr)[0].input.peek()
+
+
+@export
+fn em_tripled_value(app_ptr: Int64) -> Int32:
+    """Return the current tripled memo value."""
+    return _get[EffectMemoApp](app_ptr)[0].tripled.peek()
+
+
+@export
+fn em_label_text(app_ptr: Int64) -> String:
+    """Return the current label text ("small" or "big")."""
+    return _get[EffectMemoApp](app_ptr)[0].label.peek()
+
+
+@export
+fn em_effect_is_pending(app_ptr: Int64) -> Int32:
+    """Return 1 if the label effect is pending."""
+    return _b2i(_get[EffectMemoApp](app_ptr)[0].label_effect.is_pending())
+
+
+@export
+fn em_memo_value(app_ptr: Int64) -> Int32:
+    """Return the raw memo output value (same as tripled)."""
+    return _get[EffectMemoApp](app_ptr)[0].tripled.peek()
+
+
+@export
+fn em_incr_handler(app_ptr: Int64) -> Int32:
+    """Return the increment button handler ID."""
+    return Int32(_get[EffectMemoApp](app_ptr)[0].incr_handler)
+
+
+@export
+fn em_has_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if any scope is dirty."""
+    var app = _get[EffectMemoApp](app_ptr)
+    if len(app[0].ctx.shell.runtime[0].dirty_scopes) > 0:
+        return 1
+    return 0
+
+
+@export
+fn em_scope_count(app_ptr: Int64) -> Int32:
+    """Return the number of live scopes."""
+    return Int32(
+        _get[EffectMemoApp](app_ptr)[0].ctx.shell.runtime[0].scope_count()
     )
