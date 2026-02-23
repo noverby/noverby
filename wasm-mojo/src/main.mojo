@@ -75,6 +75,7 @@ from component import (
     app_shell_create,
     ComponentContext,
     ChildComponent,
+    ChildComponentContext,
 )
 from mutations import CreateEngine as _CreateEngine
 from vdom import (
@@ -87,8 +88,9 @@ from vdom import (
     dyn_node as dsl_dyn_node,
     onclick_add as dsl_onclick_add,
     onclick_sub as dsl_onclick_sub,
+    onclick_toggle as dsl_onclick_toggle,
 )
-from signals.handle import SignalI32 as _SignalI32
+from signals.handle import SignalI32 as _SignalI32, SignalBool
 
 from counter import (
     CounterApp,
@@ -4749,3 +4751,333 @@ fn cta_scope_count(app_ptr: Int64) -> Int32:
     return Int32(
         _get[ContextTestApp](app_ptr)[0].ctx.shell.runtime[0].scope_count()
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 31.2 — ChildContextTestApp (ChildComponentContext test harness)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# A test app demonstrating ChildComponentContext — a self-rendering child
+# component with its own signals, context consumption, and rendering.
+# The parent provides a count signal via context; the child consumes it
+# and also owns a local bool signal (show_hex toggle).
+
+comptime _CCT_PROP_COUNT: UInt32 = 1
+
+
+struct ChildContextTestApp(Movable):
+    """Test app for ChildComponentContext.
+
+    Parent: root scope with count signal, provided via context.
+    Child: ChildComponentContext with consumed count + local show_hex signal.
+    """
+
+    var ctx: ComponentContext
+    var count: _SignalI32
+    var child_ctx: ChildComponentContext
+    var child_count: _SignalI32  # consumed from parent context
+    var child_show_hex: SignalBool  # child-owned local state
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.count = self.ctx.use_signal(0)
+        self.ctx.setup_view(
+            el_div(
+                el_h1(dsl_text(String("ChildContext Test"))),
+                el_button(
+                    dsl_text(String("+")),
+                    dsl_onclick_add(self.count, 1),
+                ),
+                dsl_dyn_node(0),
+            ),
+            String("cct-parent"),
+        )
+        # Provide count signal to descendants
+        self.ctx.provide_signal_i32(_CCT_PROP_COUNT, self.count)
+        # Create self-rendering child with toggle
+        self.child_ctx = self.ctx.create_child_context(
+            el_p(dsl_dyn_text()),
+            String("cct-child"),
+        )
+        self.child_count = self.child_ctx.consume_signal_i32(_CCT_PROP_COUNT)
+        self.child_show_hex = self.child_ctx.use_signal_bool(False)
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.ctx = other.ctx^
+        self.count = other.count^
+        self.child_ctx = other.child_ctx^
+        self.child_count = other.child_count^
+        self.child_show_hex = other.child_show_hex^
+
+    fn render_parent(mut self) -> UInt32:
+        """Build the parent VNode with a placeholder for the child slot."""
+        var pvb = self.ctx.render_builder()
+        pvb.add_dyn_placeholder()
+        return pvb.build()
+
+    fn render_child(mut self) -> UInt32:
+        """Build the child's VNode with current count value."""
+        var cvb = self.child_ctx.render_builder()
+        var val = self.child_count.peek()
+        if self.child_show_hex.get():
+            cvb.add_dyn_text(String("Count: 0x") + String(hex(val)))
+        else:
+            cvb.add_dyn_text(String("Count: ") + String(val))
+        return cvb.build()
+
+
+fn _cct_init() -> UnsafePointer[ChildContextTestApp, MutExternalOrigin]:
+    var app_ptr = alloc[ChildContextTestApp](1)
+    app_ptr.init_pointee_move(ChildContextTestApp())
+    return app_ptr
+
+
+fn _cct_destroy(
+    app_ptr: UnsafePointer[ChildContextTestApp, MutExternalOrigin],
+):
+    app_ptr[0].ctx.destroy_child_context(app_ptr[0].child_ctx)
+    app_ptr[0].ctx.destroy()
+    app_ptr.destroy_pointee()
+    app_ptr.free()
+
+
+fn _cct_rebuild(
+    app: UnsafePointer[ChildContextTestApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Initial render (mount) of the child-context test app."""
+    # 1. Render parent with placeholder
+    var parent_idx = app[0].render_parent()
+    app[0].ctx.current_vnode = Int(parent_idx)
+
+    # 2. Emit all templates
+    app[0].ctx.shell.emit_templates(writer_ptr)
+
+    # 3. Create parent VNode tree
+    var engine = _CreateEngine(
+        writer_ptr,
+        app[0].ctx.shell.eid_alloc,
+        app[0].ctx.runtime_ptr(),
+        app[0].ctx.store_ptr(),
+    )
+    var num_roots = engine.create_node(parent_idx)
+
+    # 4. Append to root element
+    writer_ptr[0].append_children(0, num_roots)
+
+    # 5. Extract anchor for child slot
+    var anchor_id: UInt32 = 0
+    var vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(parent_idx)
+    if vnode_ptr[0].dyn_node_id_count() > 0:
+        anchor_id = vnode_ptr[0].get_dyn_node_id(0)
+    app[0].child_ctx.init_slot(anchor_id)
+
+    # 6. Build and flush child
+    var child_idx = app[0].render_child()
+    app[0].child_ctx.flush(writer_ptr, child_idx)
+
+    # 7. Finalize
+    writer_ptr[0].finalize()
+    return Int32(writer_ptr[0].offset)
+
+
+fn _cct_handle_event(
+    app: UnsafePointer[ChildContextTestApp, MutExternalOrigin],
+    handler_id: UInt32,
+    event_type: UInt8,
+) -> Bool:
+    return app[0].ctx.dispatch_event(handler_id, event_type)
+
+
+fn _cct_flush(
+    app: UnsafePointer[ChildContextTestApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Flush pending updates."""
+    var parent_dirty = app[0].ctx.consume_dirty()
+    var child_dirty = app[0].child_ctx.is_dirty()
+
+    if not parent_dirty and not child_dirty:
+        return 0
+
+    # Diff parent shell
+    var new_parent_idx = app[0].render_parent()
+    app[0].ctx.diff(writer_ptr, new_parent_idx)
+
+    # Build and flush child
+    var child_idx = app[0].render_child()
+    app[0].child_ctx.flush(writer_ptr, child_idx)
+
+    return app[0].ctx.finalize(writer_ptr)
+
+
+# ── ChildContextTestApp WASM exports ────────────────────────────────────────
+
+
+@export
+fn cct_init() -> Int64:
+    """Initialize the child-context test app.  Returns app pointer."""
+    return _to_i64(_cct_init())
+
+
+@export
+fn cct_destroy(app_ptr: Int64):
+    """Destroy the child-context test app."""
+    _cct_destroy(_get[ChildContextTestApp](app_ptr))
+
+
+@export
+fn cct_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
+    """Initial render (mount).  Returns mutation byte length."""
+    var writer_ptr = _alloc_writer(buf_ptr, capacity)
+    var offset = _cct_rebuild(_get[ChildContextTestApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return offset
+
+
+@export
+fn cct_handle_event(
+    app_ptr: Int64,
+    handler_id: Int32,
+    event_type: Int32,
+) -> Int32:
+    """Dispatch an event.  Returns 1 if action executed."""
+    return _b2i(
+        _cct_handle_event(
+            _get[ChildContextTestApp](app_ptr),
+            UInt32(handler_id),
+            UInt8(event_type),
+        )
+    )
+
+
+@export
+fn cct_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
+    """Flush pending updates.  Returns mutation byte length, or 0."""
+    var writer_ptr = _alloc_writer(buf_ptr, capacity)
+    var offset = _cct_flush(_get[ChildContextTestApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return offset
+
+
+@export
+fn cct_count_value(app_ptr: Int64) -> Int32:
+    """Peek the current count signal value."""
+    return _get[ChildContextTestApp](app_ptr)[0].count.peek()
+
+
+@export
+fn cct_show_hex(app_ptr: Int64) -> Int32:
+    """Return 1 if show_hex is True, 0 otherwise."""
+    return _b2i(_get[ChildContextTestApp](app_ptr)[0].child_show_hex.get())
+
+
+@export
+fn cct_parent_scope_id(app_ptr: Int64) -> Int32:
+    """Return the parent scope ID."""
+    return Int32(_get[ChildContextTestApp](app_ptr)[0].ctx.scope_id)
+
+
+@export
+fn cct_child_scope_id(app_ptr: Int64) -> Int32:
+    """Return the child scope ID."""
+    return Int32(_get[ChildContextTestApp](app_ptr)[0].child_ctx.scope_id)
+
+
+@export
+fn cct_child_tmpl_id(app_ptr: Int64) -> Int32:
+    """Return the child template ID."""
+    return Int32(_get[ChildContextTestApp](app_ptr)[0].child_ctx.template_id())
+
+
+@export
+fn cct_parent_tmpl_id(app_ptr: Int64) -> Int32:
+    """Return the parent template ID."""
+    return Int32(_get[ChildContextTestApp](app_ptr)[0].ctx.template_id)
+
+
+@export
+fn cct_child_is_mounted(app_ptr: Int64) -> Int32:
+    """Return 1 if child is mounted, 0 otherwise."""
+    return _b2i(_get[ChildContextTestApp](app_ptr)[0].child_ctx.is_mounted())
+
+
+@export
+fn cct_child_is_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if child scope is dirty, 0 otherwise."""
+    return _b2i(_get[ChildContextTestApp](app_ptr)[0].child_ctx.is_dirty())
+
+
+@export
+fn cct_parent_is_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if parent scope is in the dirty queue, 0 otherwise."""
+    var app = _get[ChildContextTestApp](app_ptr)
+    var scope_id = app[0].ctx.scope_id
+    for i in range(len(app[0].ctx.shell.runtime[0].dirty_scopes)):
+        if app[0].ctx.shell.runtime[0].dirty_scopes[i] == scope_id:
+            return 1
+    return 0
+
+
+@export
+fn cct_has_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if any scope is dirty, 0 otherwise."""
+    var app = _get[ChildContextTestApp](app_ptr)
+    if app[0].ctx.has_dirty():
+        return 1
+    if app[0].child_ctx.is_dirty():
+        return 1
+    return 0
+
+
+@export
+fn cct_handler_count(app_ptr: Int64) -> Int32:
+    """Return the total number of registered handlers."""
+    return Int32(_get[ChildContextTestApp](app_ptr)[0].ctx.handler_count())
+
+
+@export
+fn cct_incr_handler(app_ptr: Int64) -> Int32:
+    """Return the increment handler ID (parent view_events[0])."""
+    var events = _get[ChildContextTestApp](app_ptr)[0].ctx.view_events()
+    if len(events) > 0:
+        return Int32(events[0].handler_id)
+    return -1
+
+
+@export
+fn cct_scope_count(app_ptr: Int64) -> Int32:
+    """Return the number of live scopes."""
+    return Int32(
+        _get[ChildContextTestApp](app_ptr)[0].ctx.shell.runtime[0].scope_count()
+    )
+
+
+@export
+fn cct_child_count_signal_key(app_ptr: Int64) -> Int32:
+    """Return the child's consumed count signal key."""
+    return Int32(_get[ChildContextTestApp](app_ptr)[0].child_count.key)
+
+
+@export
+fn cct_parent_count_signal_key(app_ptr: Int64) -> Int32:
+    """Return the parent's count signal key."""
+    return Int32(_get[ChildContextTestApp](app_ptr)[0].count.key)
+
+
+@export
+fn cct_toggle_hex(app_ptr: Int64):
+    """Toggle the show_hex signal (child-owned)."""
+    _get[ChildContextTestApp](app_ptr)[0].child_show_hex.toggle()
+
+
+@export
+fn cct_set_count(app_ptr: Int64, value: Int32):
+    """Set the count signal directly (for testing)."""
+    _get[ChildContextTestApp](app_ptr)[0].count.set(value)
+
+
+@export
+fn cct_child_has_rendered(app_ptr: Int64) -> Int32:
+    """Return 1 if child has rendered, 0 otherwise."""
+    return _b2i(_get[ChildContextTestApp](app_ptr)[0].child_ctx.has_rendered())

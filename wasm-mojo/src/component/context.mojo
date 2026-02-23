@@ -77,6 +77,7 @@ from .child import (
     ChildAutoBinding,
     _ChildEventInfo,
 )
+from .child_context import ChildComponentContext
 from vdom import (
     Node,
     NODE_EVENT,
@@ -1431,6 +1432,51 @@ struct ComponentContext(Movable):
             child: The ChildComponent to destroy.
         """
         child.destroy(self.shell.runtime)
+
+    # ── Child component context (self-rendering children) ────────────
+
+    fn create_child_context(
+        mut self,
+        view: Node,
+        name: String,
+    ) -> ChildComponentContext:
+        """Create a ChildComponentContext for a self-rendering child.
+
+        Same as create_child_component() but returns a richer context
+        that supports signal creation, context consumption, and
+        self-rendering.
+
+        The returned ChildComponentContext wraps the ChildComponent and
+        holds non-owning pointers to the shared Runtime, VNodeStore,
+        and ElementIdAllocator.
+
+        Args:
+            view: The root Node of the child's template tree.
+            name: The template name (for deduplication).
+
+        Returns:
+            A ChildComponentContext with signal/context/render APIs.
+        """
+        var child = self.create_child_component(view, name)
+        var child_scope_id = child.scope_id
+        return ChildComponentContext(
+            child^,
+            child_scope_id,
+            self.shell.runtime,
+            self.shell.store,
+            self.shell.eid_alloc,
+        )
+
+    fn destroy_child_context(mut self, child_ctx: ChildComponentContext):
+        """Destroy a ChildComponentContext and its resources.
+
+        Delegates to the child context's destroy() method which cleans
+        up the child scope, its signals, and handlers.
+
+        Args:
+            child_ctx: The ChildComponentContext to destroy.
+        """
+        child_ctx.destroy()
 
     # ── Context (Dependency Injection) ───────────────────────────────
 
