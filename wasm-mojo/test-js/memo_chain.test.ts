@@ -255,7 +255,7 @@ export function testMemoChain(fns: Fns): void {
 	}
 
 	// ═════════════════════════════════════════════════════════════════════
-	// Section 9: all memos dirty after increment
+	// Section 9: all memos dirty after increment (Phase 36 propagation)
 	// ═════════════════════════════════════════════════════════════════════
 
 	suite("MemoChain — all memos dirty after increment");
@@ -265,10 +265,11 @@ export function testMemoChain(fns: Fns): void {
 		// Dispatch increment without flush
 		fns.mc_handle_event(h.appPtr, h.incrHandler, 0);
 
+		// Phase 36: recursive memo propagation marks ALL downstream
+		// memos dirty through the chain, not just the direct subscriber.
 		assert(h.isDoubledDirty(), true, "doubled dirty after increment");
-		// Note: is_big and label may or may not be dirty (memo→memo
-		// propagation is not recursive in the runtime), but doubled
-		// is always dirty because it directly subscribes to input.
+		assert(h.isBigDirty(), true, "is_big dirty after increment (propagated)");
+		assert(h.isLabelDirty(), true, "label dirty after increment (propagated)");
 
 		h.flushAndApply();
 		h.destroy();
@@ -525,6 +526,56 @@ export function testMemoChain(fns: Fns): void {
 		assert(h.getDoubled(), 0, "doubled = 0 after rebuild");
 		assert(h.isBig(), false, "is_big = false after rebuild");
 		assert(h.getLabel(), "small", 'label = "small" after rebuild');
+
+		h.destroy();
+	}
+
+	// ═════════════════════════════════════════════════════════════════════
+	// Section 23: all memos independently dirty after increment (Phase 36)
+	// ═════════════════════════════════════════════════════════════════════
+
+	suite("MemoChain — all memos independently dirty after increment (Phase 36)");
+	{
+		const h = createMC(fns);
+
+		// Dispatch increment WITHOUT flushing
+		fns.mc_handle_event(h.appPtr, h.incrHandler, 0);
+
+		// Phase 36 recursive propagation: all three memos should be
+		// independently dirty after a single signal write.
+		assert(h.isDoubledDirty(), true, "doubled dirty (direct subscriber)");
+		assert(h.isBigDirty(), true, "is_big dirty (propagated via doubled)");
+		assert(h.isLabelDirty(), true, "label dirty (propagated via is_big)");
+
+		h.flushAndApply();
+		h.destroy();
+	}
+
+	// ═════════════════════════════════════════════════════════════════════
+	// Section 24: partial recompute — memos settle independently (Phase 36)
+	// ═════════════════════════════════════════════════════════════════════
+
+	suite("MemoChain — partial recompute settles independently (Phase 36)");
+	{
+		const h = createMC(fns);
+
+		// Dispatch increment — all three memos dirty
+		fns.mc_handle_event(h.appPtr, h.incrHandler, 0);
+		assert(h.isDoubledDirty(), true, "doubled dirty before flush");
+		assert(h.isBigDirty(), true, "is_big dirty before flush");
+		assert(h.isLabelDirty(), true, "label dirty before flush");
+
+		// Flush recomputes all memos — all clean afterwards
+		h.flushAndApply();
+		assert(h.isDoubledDirty(), false, "doubled clean after flush");
+		assert(h.isBigDirty(), false, "is_big clean after flush");
+		assert(h.isLabelDirty(), false, "label clean after flush");
+
+		// Final state correct: input=1, doubled=2, is_big=false, label="small"
+		assert(h.getInput(), 1, "input = 1");
+		assert(h.getDoubled(), 2, "doubled = 2");
+		assert(h.isBig(), false, "is_big = false (doubled < 10)");
+		assert(h.getLabel(), "small", 'label = "small"');
 
 		h.destroy();
 	}

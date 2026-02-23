@@ -9082,39 +9082,30 @@ struct MemoChainApp(Movable):
                         → label ("BIG" if is_big else "small")
 
         Order matters: each memo must see the fresh value from the
-        previous memo in the chain.
-
-        Note: The runtime's write_signal propagation marks direct memo
-        subscribers dirty, but does NOT recursively propagate through
-        memo → memo chains (the inner propagation loop only checks for
-        effects and scopes).  Therefore we always recompute all memos
-        in order when the first memo in the chain is dirty, ensuring
-        downstream memos see fresh values.
+        previous memo in the chain.  The runtime automatically
+        propagates dirtiness through memo → memo chains (Phase 36),
+        so each memo checks is_dirty() independently.
         """
-        # If the head of the chain is dirty, recompute the entire chain.
-        # Downstream memos may not be marked dirty by the runtime
-        # (memo → memo propagation not supported), so we eagerly
-        # recompute all three in dependency order.
-        if not self.doubled.is_dirty():
-            return
+        # Each memo checks is_dirty() independently — the runtime's
+        # worklist-based propagation (Phase 36) marks all downstream
+        # memos dirty when the input signal is written.
+        if self.doubled.is_dirty():
+            self.doubled.begin_compute()
+            var i = self.input.read()  # subscribes memo to input
+            self.doubled.end_compute(i * 2)
 
-        # Step 1: Recompute doubled (depends on input)
-        self.doubled.begin_compute()
-        var i = self.input.read()  # subscribes memo to input
-        self.doubled.end_compute(i * 2)
+        if self.is_big.is_dirty():
+            self.is_big.begin_compute()
+            var d = self.doubled.read()  # subscribes memo to doubled
+            self.is_big.end_compute(d >= 10)
 
-        # Step 2: Recompute is_big (depends on doubled)
-        self.is_big.begin_compute()
-        var d = self.doubled.read()  # subscribes memo to doubled
-        self.is_big.end_compute(d >= 10)
-
-        # Step 3: Recompute label (depends on is_big)
-        self.label.begin_compute()
-        var big = self.is_big.read()  # subscribes memo to is_big
-        if big:
-            self.label.end_compute(String("BIG"))
-        else:
-            self.label.end_compute(String("small"))
+        if self.label.is_dirty():
+            self.label.begin_compute()
+            var big = self.is_big.read()  # subscribes memo to is_big
+            if big:
+                self.label.end_compute(String("BIG"))
+            else:
+                self.label.end_compute(String("small"))
 
     fn render(mut self) -> UInt32:
         """Build a fresh VNode with 4 dyn_text slots."""

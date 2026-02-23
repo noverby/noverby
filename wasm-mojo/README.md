@@ -17,6 +17,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **Suspense** — pending state with skeleton fallback and JS-triggered resolve; nested boundaries with independent inner/outer lifecycle
 - **Effects in apps** — reactive side effects with derived state (effect drain-and-run pattern), signal → memo → effect → signal chains
 - **Memo type expansion** — `MemoBool` and `MemoString` achieve type-parity with signals (`SignalI32`/`SignalBool`/`SignalString` ↔ `MemoI32`/`MemoBool`/`MemoString`); mixed-type memo chains with ordered recomputation
+- **Recursive memo propagation** — `write_signal` automatically propagates dirtiness through memo → memo chains to arbitrary depth via worklist-based traversal; diamond dependencies handled correctly; scope context tagging prevents namespace collisions
 - **Ergonomic DSL** — `el_div`, `el_button`, `dyn_text` tag helpers with `to_template()` conversion
 - **AppShell abstraction** — single struct bundling runtime, store, allocator, and scheduler
 - **ComponentContext** — ergonomic Dioxus-style API with `use_signal()`, `setup_view()`, inline events, auto-numbered `dyn_text()`
@@ -25,7 +26,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **String event dispatch** — `ACTION_SIGNAL_SET_STRING` handlers pipe string values from DOM events directly into `SignalString` signals; JS EventBridge extracts `event.target.value` → `writeStringStruct()` → WASM `dispatch_event_with_string` with automatic fallback to numeric/default dispatch
 - **Two-way input binding** — Dioxus-style `oninput_set_string(signal)` + `bind_value(signal)` DSL helpers for inline string event handlers and auto-populated `value` attributes; `RenderBuilder.build()` reads `SignalString` at render time
 - **Error boundaries** — scope-level error catching with fallback UI and recovery; `use_error_boundary()` marks a scope as a boundary, `report_error()` propagates errors up the parent chain, `has_error()` / `clear_error()` drive flush-time content switching between normal and fallback children
-- **3,989 tests** — 1,226 Mojo (46 modules via wasmtime) + 2,763 JS (27 suites via Deno), all passing
+- **4,217 tests** — 1,248 Mojo (47 modules via wasmtime) + 2,969 JS (27 suites via Deno), all passing
 
 ## How it works
 
@@ -350,7 +351,7 @@ Adding a new test:
 
 ## Test results
 
-3,989 tests across 46 Mojo modules and 27 JS test suites:
+4,217 tests across 47 Mojo modules and 27 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -375,7 +376,8 @@ Adding a new test:
 - **Memo bool** — MemoBool create/destroy, peek/read, dirty tracking, begin_compute/end_compute, auto-track subscription, hooks integration
 - **Memo string** — MemoString create/destroy, peek/read, dirty tracking, begin_compute/end_compute with StringStore, version tracking, lifecycle cleanup, hooks integration
 - **Memo form app** — form validation with SignalString input → MemoBool (is_valid) → MemoString (status), memo recomputation order (is_valid before status), two-way input binding (bind_value + oninput_set_string), dirty/clean tracking, derived state consistency, rapid 20 inputs, DOM verification
-- **Memo chain app** — mixed-type memo chain (SignalI32 → MemoI32 → MemoBool → MemoString), ordered recomputation, threshold boundary exact (input=5 → is_big flips), chain propagation correctness, rapid 20 increments, heapStats bounded, DOM verification
+- **Memo chain app** — mixed-type memo chain (SignalI32 → MemoI32 → MemoBool → MemoString), ordered recomputation, threshold boundary exact (input=5 → is_big flips), chain propagation correctness, Phase 36 independent dirty verification, rapid 20 increments, heapStats bounded, DOM verification
+- **Memo propagation** — recursive memo → memo dirty propagation via worklist (Phase 36): 2/3/4-level chains, diamond dependencies (2-input and deep), scope and effect subscribers at end of chains, already-dirty skip (cycle guard), recompute clears dirty, recompute order matters, independent signal writes, re-subscription after recompute, destroyed memo safety, mixed types (I32 → Bool → String), string/bool memos in various positions, no-subscriber memo, memo + scope and memo + effect mixed subscribers, single-memo regression
 - **Memory** — allocation cycles, bounded growth, rapid write stability, free-list reuse, double-free protection, WASM-integrated reuse (text/attr/fragment/template diffs with reuse enabled)
 - **Arithmetic/strings** — original PoC interop regression suite
 
@@ -694,9 +696,9 @@ struct DataLoaderApp:
 ### Memo type expansion (Phase 35)
 
 `MemoBool` and `MemoString` provide the same ergonomic handle pattern as `MemoI32`,
-enabling derived state of any supported type. Mixed-type memo chains require
-explicit ordered recomputation — the runtime does not recursively propagate
-dirtiness through memo → memo chains:
+enabling derived state of any supported type. The runtime automatically propagates
+dirtiness through memo → memo chains (Phase 36), so each memo checks `is_dirty()`
+independently. Recomputation order still matters (upstream before downstream):
 
 ```mojo
 # Mixed-type memo chain: SignalI32 → MemoI32 → MemoBool → MemoString
@@ -726,23 +728,26 @@ struct MemoChainApp:
         )
 
     fn run_memos(mut self):
-        # Head memo dirty → recompute entire chain in order
-        if not self.doubled.is_dirty():
-            return
-        self.doubled.begin_compute()
-        var i = self.input.read()
-        self.doubled.end_compute(i * 2)
+        # Each memo checks is_dirty() independently — the runtime's
+        # worklist-based propagation (Phase 36) marks all downstream
+        # memos dirty when the input signal is written.
+        if self.doubled.is_dirty():
+            self.doubled.begin_compute()
+            var i = self.input.read()
+            self.doubled.end_compute(i * 2)
 
-        self.is_big.begin_compute()
-        var d = self.doubled.read()
-        self.is_big.end_compute(d >= 10)
+        if self.is_big.is_dirty():
+            self.is_big.begin_compute()
+            var d = self.doubled.read()
+            self.is_big.end_compute(d >= 10)
 
-        self.label.begin_compute()
-        var big = self.is_big.read()
-        if big:
-            self.label.end_compute(String("BIG"))
-        else:
-            self.label.end_compute(String("small"))
+        if self.label.is_dirty():
+            self.label.begin_compute()
+            var big = self.is_big.read()
+            if big:
+                self.label.end_compute(String("BIG"))
+            else:
+                self.label.end_compute(String("small"))
 
     fn flush(mut self, writer: ...) -> Int32:
         if not self.ctx.consume_dirty():

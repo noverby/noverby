@@ -489,15 +489,14 @@ struct MemoChainApp:
     var incr_handler: UInt32
     fn __init__: ctx.create() → use_signal(0) + use_memo(0) + use_memo_bool(False)
                  + use_memo_string("small") → setup_view(h1 + button + 4 × p > dyn_text)
-    fn run_memos: if doubled.is_dirty() →
-                    begin_compute → read input → end_compute(input * 2)
-                    begin_compute → read doubled → end_compute(doubled >= 10)
-                    begin_compute → read is_big → end_compute("BIG" or "small")
+    fn run_memos: if doubled.is_dirty() → begin_compute → read input → end_compute(input * 2)
+                  if is_big.is_dirty() → begin_compute → read doubled → end_compute(doubled >= 10)
+                  if label.is_dirty() → begin_compute → read is_big → end_compute("BIG" or "small")
     fn render: 4 dyn_text slots (Input/Doubled/Is Big/Label)
     fn flush: consume_dirty → run_memos → render → diff → finalize
 ```
 
-Lifecycle: `mc_init` → `mc_rebuild` (run_memos + mount) → `mc_handle_event` (onclick_add input) → `mc_flush` (memo chain recomputed, DOM diffed). Chain: `SignalI32` → `MemoI32` → `MemoBool` → `MemoString`. Recomputation is triggered when the head memo (doubled) is dirty — all three memos are eagerly recomputed in dependency order because the runtime's write propagation does not recursively mark downstream memos dirty (memo → memo propagation not supported). WASM exports: `mc_init`, `mc_destroy`, `mc_rebuild`, `mc_handle_event`, `mc_flush`, `mc_input_value`, `mc_doubled_value`, `mc_is_big`, `mc_label_text`, `mc_doubled_dirty`, `mc_is_big_dirty`, `mc_label_dirty`, `mc_incr_handler`, `mc_has_dirty`, `mc_scope_count`, `mc_memo_count`.
+Lifecycle: `mc_init` → `mc_rebuild` (run_memos + mount) → `mc_handle_event` (onclick_add input) → `mc_flush` (memo chain recomputed, DOM diffed). Chain: `SignalI32` → `MemoI32` → `MemoBool` → `MemoString`. The runtime automatically propagates dirtiness through memo → memo chains (Phase 36 worklist-based propagation), so each memo checks `is_dirty()` independently. Recomputation order (doubled → is_big → label) is still maintained by code order to ensure upstream values are fresh. WASM exports: `mc_init`, `mc_destroy`, `mc_rebuild`, `mc_handle_event`, `mc_flush`, `mc_input_value`, `mc_doubled_value`, `mc_is_big`, `mc_label_text`, `mc_doubled_dirty`, `mc_is_big_dirty`, `mc_label_dirty`, `mc_incr_handler`, `mc_has_dirty`, `mc_scope_count`, `mc_memo_count`.
 
 ## WASM Export Pattern (`src/main.mojo`)
 
@@ -679,9 +678,9 @@ el_button(text("Add"), onclick_custom()),
 
 | File | Lines | Role |
 |------|-------|------|
-| `src/main.mojo` | ~9,310 | All @export wrappers (incl. SafeCounterApp, ErrorNestApp, DataLoaderApp, SuspenseNestApp, EffectDemoApp, EffectMemoApp, MemoFormApp, MemoChainApp, context/child test apps) |
+| `src/main.mojo` | ~9,300 | All @export wrappers (incl. SafeCounterApp, ErrorNestApp, DataLoaderApp, SuspenseNestApp, EffectDemoApp, EffectMemoApp, MemoFormApp, MemoChainApp, context/child test apps) |
 | `src/signals/handle.mojo` | ~980 | SignalI32 + SignalBool + SignalString + MemoI32 + MemoBool + MemoString + EffectHandle |
-| `src/signals/runtime.mojo` | ~1,545 | Reactive runtime + SignalStore + StringStore + memo bool/string methods |
+| `src/signals/runtime.mojo` | ~1,620 | Reactive runtime + SignalStore + StringStore + memo bool/string methods + worklist propagation (Phase 36) |
 | `src/component/context.mojo` | ~2,270 | ComponentContext + RenderBuilder + tree processing + error boundary + view_event_handler_id + memo bool/string hooks |
 | `src/component/child_context.mojo` | ~570 | ChildComponentContext (child scope API + error boundary methods + memo bool/string hooks) |
 | `src/component/app_shell.mojo` | ~503 | AppShell (low-level + memo bool/string wrappers) |
@@ -717,11 +716,12 @@ el_button(text("Add"), onclick_custom()),
 | `test/test_memo_bool.mojo` | ~694 | MemoBool Mojo tests (15 tests: create, peek, dirty, recompute, hooks) |
 | `test/test_memo_string.mojo` | ~831 | MemoString Mojo tests (17 tests: create, peek, dirty, recompute, lifecycle, hooks) |
 | `test/test_memo_form.mojo` | ~514 | MemoFormApp Mojo tests (18 tests: lifecycle, derived state, dirty tracking, form validation) |
-| `test/test_memo_chain.mojo` | ~586 | MemoChainApp Mojo tests (20 tests: memo chain, threshold, propagation, rapid) |
+| `test/test_memo_propagation.mojo` | ~1,341 | Recursive memo propagation Mojo tests (20 tests: chain depth, diamond, mixed types, scope/effect at end) |
+| `test/test_memo_chain.mojo` | ~703 | MemoChainApp Mojo tests (22 tests: memo chain, threshold, propagation, Phase 36 independent dirty) |
 | `test-js/memo_form.test.ts` | ~495 | MemoFormApp JS tests (20 suites: DOM, input binding, memo dirty/clean, form validation) |
-| `test-js/memo_chain.test.ts` | ~531 | MemoChainApp JS tests (22 suites: DOM, chain propagation, threshold, heapStats) |
+| `test-js/memo_chain.test.ts` | ~582 | MemoChainApp JS tests (24 suites: DOM, chain propagation, threshold, heapStats, Phase 36 independent dirty) |
 | `test/wasm_harness.mojo` | ~1,400 | Mojo WASM test harness (includes free-list allocator, Phase 25) |
-| `CHANGELOG.md` | ~430 | Development history (Phases 0–35) |
+| `CHANGELOG.md` | ~430+ | Development history (Phases 0–36) |
 
 ## Common Patterns
 
@@ -812,24 +812,25 @@ Error propagation: `ctx.report_error(msg)` walks the scope parent chain via `Sco
 
 **String signal in render (Phase 19)**: `vb.add_dyn_text_signal(name)` → reads `name.get()` and adds as dynamic text. Works on both `RenderBuilder` and `ItemBuilder`.
 
-**Memo type expansion pattern (Phase 35):** `MemoBool` and `MemoString` mirror the signal type expansion (Phase 18–19). `MemoBool` wraps an Int32 memo entry with boolean ergonomics; `MemoString` wraps a StringStore slot + version memo. Memo recomputation order is critical for correctness in chains — recompute upstream memos before downstream memos that read their output. For mixed-type chains (e.g., `SignalI32` → `MemoI32` → `MemoBool` → `MemoString`), check `is_dirty()` on the head memo and eagerly recompute all memos in dependency order because the runtime does not recursively propagate dirtiness through memo → memo chains:
+**Memo type expansion pattern (Phase 35):** `MemoBool` and `MemoString` mirror the signal type expansion (Phase 18–19). `MemoBool` wraps an Int32 memo entry with boolean ergonomics; `MemoString` wraps a StringStore slot + version memo. Memo recomputation order is critical for correctness in chains — recompute upstream memos before downstream memos that read their output. The runtime automatically propagates dirtiness through memo → memo chains (Phase 36 worklist-based propagation), so each memo checks `is_dirty()` independently:
 
 ```text
 fn run_memos():
-    if not self.doubled.is_dirty(): return
-    # Step 1: doubled (depends on input signal)
-    self.doubled.begin_compute()
-    var i = self.input.read()
-    self.doubled.end_compute(i * 2)
-    # Step 2: is_big (depends on doubled memo)
-    self.is_big.begin_compute()
-    var d = self.doubled.read()
-    self.is_big.end_compute(d >= 10)
-    # Step 3: label (depends on is_big memo)
-    self.label.begin_compute()
-    var big = self.is_big.read()
-    self.label.end_compute("BIG" if big else "small")
+    if self.doubled.is_dirty():
+        self.doubled.begin_compute()
+        var i = self.input.read()
+        self.doubled.end_compute(i * 2)
+    if self.is_big.is_dirty():
+        self.is_big.begin_compute()
+        var d = self.doubled.read()
+        self.is_big.end_compute(d >= 10)
+    if self.label.is_dirty():
+        self.label.begin_compute()
+        var big = self.is_big.read()
+        self.label.end_compute("BIG" if big else "small")
 ```
+
+**Worklist-based memo propagation (Phase 36):** `write_signal` uses a two-phase approach to propagate dirtiness through memo → memo chains to arbitrary depth. Phase 1 scans the written signal's direct subscribers — memos are marked dirty and added to a worklist; effects are marked pending; scopes are added to `dirty_scopes`. Phase 2 drains the worklist: for each memo, its output signal's subscribers are scanned with the same memo/effect/scope classification. The `is_dirty()` check serves as a cycle guard — a memo already dirty is not re-added to the worklist, guaranteeing termination (each memo processed at most once). Diamond dependencies (signal → A, signal → B, A+B → C) are handled correctly: C is marked dirty once when the first parent is processed, then skipped when the second parent is processed. Scope reactive contexts are tagged with `SCOPE_CONTEXT_TAG` (bit 31) to prevent false matches against memo/effect context IDs which are bare signal keys.
 
 **MemoString lifecycle:** `MemoString` uses the same dual-key pattern as `SignalString`: a `string_key` in `StringStore` for heap-safe string storage, and a `version_key` in `MemoStore` for dirty/version tracking. `end_compute(String)` writes to both: the string value to `StringStore` and the version to the memo entry. `read()` subscribes via the version memo. Cleanup requires `destroy_memo_string()` to free the StringStore slot.
 

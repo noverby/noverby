@@ -34,6 +34,15 @@ from scope import ScopeArena, ScopeState, HOOK_SIGNAL, HOOK_MEMO, HOOK_EFFECT
 from vdom import TemplateRegistry, VNodeStore
 from .memo import MemoStore, MemoEntry, MEMO_NO_STRING
 from .effect import EffectStore, EffectEntry
+
+# Tag bit used to distinguish scope reactive contexts from signal keys.
+# Scope IDs (from ScopeArena) and signal keys (from SignalStore) share
+# the UInt32 namespace.  When a scope is used as a reactive context
+# (i.e. subscribed to signals during rendering), its scope_id is ORed
+# with this tag.  This prevents false matches against memo/effect
+# context IDs (which are bare signal keys) in write_signal's
+# subscriber classification.
+comptime SCOPE_CONTEXT_TAG: UInt32 = UInt32(0x80000000)
 from events import (
     HandlerRegistry,
     HandlerEntry,
@@ -561,57 +570,61 @@ struct Runtime(Movable):
     fn write_signal[
         T: Copyable & ImplicitlyDestructible & AnyType
     ](mut self, key: UInt32, value: T):
-        """Write a signal and collect dirty scopes.
+        """Write a signal and propagate dirtiness through memo chains.
 
-        After writing, the signal's subscribers are appended to
-        `dirty_scopes`.  The scheduler should drain `dirty_scopes`
-        to re-render affected components.
+        Two-phase propagation (Phase 36):
+
+        Phase 1 — Scan direct subscribers of the written signal:
+          - Memo subscriber → mark dirty, add to worklist.
+          - Effect subscriber → mark pending.
+          - Scope subscriber → add to dirty_scopes.
+
+        Phase 2 — Drain worklist to propagate through memo → memo
+        chains to arbitrary depth:
+          - For each memo in the worklist, scan its output signal's
+            subscribers and apply the same memo/effect/scope logic.
+          - The is_dirty() check serves as a cycle guard: a memo
+            already dirty is not re-added to the worklist, guaranteeing
+            termination (each memo processed at most once per call).
         """
         self.signals.write[T](key, value)
+
+        var memo_worklist = List[UInt32]()
         var subs = self.signals.get_subscribers(key)
+
+        # Phase 1: direct subscribers of the written signal
         for i in range(len(subs)):
             var ctx = subs[i]
-            # 1. Check if this subscriber is a memo's reactive context
+            # 1. Check for scope tag (SCOPE_CONTEXT_TAG) first — scope
+            #    IDs are tagged to avoid collisions with signal keys
+            #    used as memo/effect context IDs.
+            if (ctx & SCOPE_CONTEXT_TAG) != 0:
+                var scope_id = ctx & ~SCOPE_CONTEXT_TAG
+                var found = False
+                for j in range(len(self.dirty_scopes)):
+                    if self.dirty_scopes[j] == scope_id:
+                        found = True
+                        break
+                if not found:
+                    self.dirty_scopes.append(scope_id)
+                continue
+            # 2. Check if this subscriber is a memo's reactive context
             var is_memo = False
             for m in range(len(self._memo_ctx_ids)):
                 if self._memo_ctx_ids[m] == ctx:
-                    # Mark the memo dirty
                     var memo_id = self._memo_ids[m]
                     if self.memos.contains(memo_id):
-                        self.memos.mark_dirty(memo_id)
-                        # Propagate: notify the memo's output signal subscribers
-                        var out_key = self.memos.output_key(memo_id)
-                        var out_subs = self.signals.get_subscribers(out_key)
-                        for k in range(len(out_subs)):
-                            var scope_ctx = out_subs[k]
-                            # Check if this subscriber is an effect context
-                            var is_eff = False
-                            for e2 in range(len(self._effect_ctx_ids)):
-                                if self._effect_ctx_ids[e2] == scope_ctx:
-                                    var eff_id = self._effect_ids[e2]
-                                    if self.effects.contains(eff_id):
-                                        self.effects.mark_pending(eff_id)
-                                    is_eff = True
-                                    break
-                            if not is_eff:
-                                # Normal scope subscriber
-                                var found2 = False
-                                for j2 in range(len(self.dirty_scopes)):
-                                    if self.dirty_scopes[j2] == scope_ctx:
-                                        found2 = True
-                                        break
-                                if not found2:
-                                    self.dirty_scopes.append(scope_ctx)
+                        if not self.memos.is_dirty(memo_id):
+                            self.memos.mark_dirty(memo_id)
+                            memo_worklist.append(memo_id)
                     is_memo = True
                     break
             if is_memo:
                 continue
-            # 2. Check if this subscriber is an effect's reactive context
+            # 3. Check if this subscriber is an effect's reactive context
             var is_effect = False
             for e in range(len(self._effect_ctx_ids)):
                 if self._effect_ctx_ids[e] == ctx:
-                    # Mark the effect pending (but do NOT add to dirty_scopes —
-                    # effects run after rendering, not during)
                     var effect_id = self._effect_ids[e]
                     if self.effects.contains(effect_id):
                         self.effects.mark_pending(effect_id)
@@ -619,7 +632,7 @@ struct Runtime(Movable):
                     break
             if is_effect:
                 continue
-            # 3. Normal scope subscriber — append if not already queued
+            # 4. Untagged, unknown subscriber — treat as scope (legacy)
             var found = False
             for j in range(len(self.dirty_scopes)):
                 if self.dirty_scopes[j] == ctx:
@@ -627,6 +640,64 @@ struct Runtime(Movable):
                     break
             if not found:
                 self.dirty_scopes.append(ctx)
+
+        # Phase 2: drain worklist — propagate through memo → memo chains
+        # Use index-based iteration instead of pop() to avoid potential
+        # issues with List[UInt32].pop() semantics.  The list may grow
+        # during iteration as downstream memos are discovered.
+        var wl_idx = 0
+        while wl_idx < len(memo_worklist):
+            var mid = memo_worklist[wl_idx]
+            wl_idx += 1
+            if not self.memos.contains(mid):
+                continue
+            var out_key = self.memos.output_key(mid)
+            var out_subs = self.signals.get_subscribers(out_key)
+            for k in range(len(out_subs)):
+                var sub_ctx = out_subs[k]
+                # Check for scope tag first
+                if (sub_ctx & SCOPE_CONTEXT_TAG) != 0:
+                    var scope_id = sub_ctx & ~SCOPE_CONTEXT_TAG
+                    var found2 = False
+                    for j2 in range(len(self.dirty_scopes)):
+                        if self.dirty_scopes[j2] == scope_id:
+                            found2 = True
+                            break
+                    if not found2:
+                        self.dirty_scopes.append(scope_id)
+                    continue
+                # Check if this subscriber is a memo's reactive context
+                var is_memo2 = False
+                for m2 in range(len(self._memo_ctx_ids)):
+                    if self._memo_ctx_ids[m2] == sub_ctx:
+                        var downstream_id = self._memo_ids[m2]
+                        if self.memos.contains(downstream_id):
+                            if not self.memos.is_dirty(downstream_id):
+                                self.memos.mark_dirty(downstream_id)
+                                memo_worklist.append(downstream_id)
+                        is_memo2 = True
+                        break
+                if is_memo2:
+                    continue
+                # Check if this subscriber is an effect's reactive context
+                var is_eff = False
+                for e2 in range(len(self._effect_ctx_ids)):
+                    if self._effect_ctx_ids[e2] == sub_ctx:
+                        var eff_id = self._effect_ids[e2]
+                        if self.effects.contains(eff_id):
+                            self.effects.mark_pending(eff_id)
+                        is_eff = True
+                        break
+                if is_eff:
+                    continue
+                # Untagged, unknown subscriber — treat as scope (legacy)
+                var found2 = False
+                for j2 in range(len(self.dirty_scopes)):
+                    if self.dirty_scopes[j2] == sub_ctx:
+                        found2 = True
+                        break
+                if not found2:
+                    self.dirty_scopes.append(sub_ctx)
 
     fn peek_signal[T: Copyable & AnyType](self, key: UInt32) -> T:
         """Read a signal without subscribing."""
@@ -835,17 +906,18 @@ struct Runtime(Movable):
         """Begin rendering a scope.
 
         Sets the current scope, begins the render pass on the scope state,
-        and sets the reactive context to the scope ID (so signal reads
-        during rendering are tracked).
+        and sets the reactive context to the scope ID tagged with
+        SCOPE_CONTEXT_TAG (so signal reads during rendering are tracked
+        and the subscriber can be distinguished from memo/effect contexts).
 
         Returns the previous scope ID (as Int, -1 if none) for restoration.
         """
         var prev_scope = self.current_scope
         self.current_scope = Int(scope_id)
         self.scopes.begin_render(scope_id)
-        # Also set the reactive context to this scope so signal reads
-        # during rendering auto-subscribe this scope.
-        self.set_context(scope_id)
+        # Tag the scope ID so it can be distinguished from memo/effect
+        # context IDs (which are bare signal keys) in write_signal.
+        self.set_context(scope_id | SCOPE_CONTEXT_TAG)
         return prev_scope
 
     fn end_scope_render(mut self, prev_scope: Int):
@@ -857,7 +929,7 @@ struct Runtime(Movable):
         if prev_scope == -1:
             self.clear_context()
         else:
-            self.set_context(UInt32(prev_scope))
+            self.set_context(UInt32(prev_scope) | SCOPE_CONTEXT_TAG)
 
     # ── Hook-based signal creation ───────────────────────────────────
 
