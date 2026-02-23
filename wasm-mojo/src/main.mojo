@@ -4557,3 +4557,195 @@ fn mv_cond_mounted(app_ptr: Int64) -> Int32:
     if _get[MultiViewApp](app_ptr)[0].router.slot.mounted:
         return 1
     return 0
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 31.1 — Context Test App (ComponentContext provide/consume surface)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# A minimal test app that exercises ComponentContext.provide_context(),
+# consume_context(), and the typed signal-sharing helpers.  Has a root
+# scope + one child scope so that parent-chain walk-up can be verified.
+
+
+struct ContextTestApp(Movable):
+    """Minimal app for testing ComponentContext context (DI) surface.
+
+    Creates a root scope with a count signal, a child scope, and
+    provides the count signal via context so the child can consume it.
+    """
+
+    var ctx: ComponentContext
+    var child_scope_id: UInt32
+    var count: _SignalI32
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.count = self.ctx.use_signal(0)
+        self.ctx.end_setup()
+        # Create a child scope under the root
+        self.child_scope_id = self.ctx.create_child_scope()
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.ctx = other.ctx^
+        self.child_scope_id = other.child_scope_id
+        self.count = other.count^
+
+
+fn _cta_init() -> UnsafePointer[ContextTestApp, MutExternalOrigin]:
+    var app_ptr = alloc[ContextTestApp](1)
+    app_ptr.init_pointee_move(ContextTestApp())
+    return app_ptr
+
+
+fn _cta_destroy(app_ptr: UnsafePointer[ContextTestApp, MutExternalOrigin]):
+    # Destroy child scope
+    var scope_ids = List[UInt32]()
+    scope_ids.append(app_ptr[0].child_scope_id)
+    app_ptr[0].ctx.destroy_child_scopes(scope_ids)
+    app_ptr[0].ctx.destroy()
+    app_ptr.destroy_pointee()
+    app_ptr.free()
+
+
+# ── ContextTestApp WASM exports ─────────────────────────────────────────────
+
+
+@export
+fn cta_init() -> Int64:
+    """Initialize the context test app.  Returns app pointer."""
+    return _to_i64(_cta_init())
+
+
+@export
+fn cta_destroy(app_ptr: Int64):
+    """Destroy the context test app."""
+    _cta_destroy(_get[ContextTestApp](app_ptr))
+
+
+@export
+fn cta_root_scope_id(app_ptr: Int64) -> Int32:
+    """Return the root scope ID."""
+    return Int32(_get[ContextTestApp](app_ptr)[0].ctx.scope_id)
+
+
+@export
+fn cta_child_scope_id(app_ptr: Int64) -> Int32:
+    """Return the child scope ID."""
+    return Int32(_get[ContextTestApp](app_ptr)[0].child_scope_id)
+
+
+@export
+fn cta_count_value(app_ptr: Int64) -> Int32:
+    """Peek the current count signal value."""
+    return _get[ContextTestApp](app_ptr)[0].count.peek()
+
+
+@export
+fn cta_count_signal_key(app_ptr: Int64) -> Int32:
+    """Return the count signal's internal key."""
+    return Int32(_get[ContextTestApp](app_ptr)[0].count.key)
+
+
+@export
+fn cta_provide_context(app_ptr: Int64, key: Int32, value: Int32):
+    """Provide a context value at the root scope via ComponentContext."""
+    _get[ContextTestApp](app_ptr)[0].ctx.provide_context(UInt32(key), value)
+
+
+@export
+fn cta_consume_context(app_ptr: Int64, key: Int32) -> Int32:
+    """Consume a context value from the root scope.  Returns 0 if not found."""
+    return _get[ContextTestApp](app_ptr)[0].ctx.consume_context(UInt32(key))[1]
+
+
+@export
+fn cta_has_context(app_ptr: Int64, key: Int32) -> Int32:
+    """Check whether a context value is reachable.  Returns 1 or 0."""
+    return _b2i(_get[ContextTestApp](app_ptr)[0].ctx.has_context(UInt32(key)))
+
+
+@export
+fn cta_consume_from_child(app_ptr: Int64, key: Int32) -> Int32:
+    """Consume a context value starting from the child scope (walks up to parent).
+
+    Returns 0 if not found.
+    """
+    var app = _get[ContextTestApp](app_ptr)
+    return (
+        app[0]
+        .ctx.shell.runtime[0]
+        .scopes.consume_context(app[0].child_scope_id, UInt32(key))[1]
+    )
+
+
+@export
+fn cta_consume_found_from_child(app_ptr: Int64, key: Int32) -> Int32:
+    """Check whether a context value is reachable from the child scope.
+
+    Returns 1 if found, 0 if not.
+    """
+    var app = _get[ContextTestApp](app_ptr)
+    return _b2i(
+        app[0]
+        .ctx.shell.runtime[0]
+        .scopes.consume_context(app[0].child_scope_id, UInt32(key))[0]
+    )
+
+
+@export
+fn cta_provide_signal_i32(app_ptr: Int64, ctx_key: Int32):
+    """Provide the count signal at the root scope via provide_signal_i32."""
+    var app = _get[ContextTestApp](app_ptr)
+    app[0].ctx.provide_signal_i32(UInt32(ctx_key), app[0].count)
+
+
+@export
+fn cta_consume_signal_i32_from_child(app_ptr: Int64, ctx_key: Int32) -> Int32:
+    """Consume a SignalI32 from the child scope via context, return its peek value.
+
+    Reconstructs the signal handle from context and reads the value.
+    Returns the signal value (not the signal key).
+    """
+    var app = _get[ContextTestApp](app_ptr)
+    # Walk up from child scope to find the signal key
+    var result = (
+        app[0]
+        .ctx.shell.runtime[0]
+        .scopes.consume_context(app[0].child_scope_id, UInt32(ctx_key))
+    )
+    if not result[0]:
+        return -9999  # sentinel: context key not found
+    var signal = _SignalI32(UInt32(result[1]), app[0].ctx.shell.runtime)
+    return signal.peek()
+
+
+@export
+fn cta_write_signal_via_child(app_ptr: Int64, ctx_key: Int32, value: Int32):
+    """Consume a SignalI32 from child scope context, then write to it.
+
+    This tests that writing a consumed signal marks the parent scope dirty.
+    """
+    var app = _get[ContextTestApp](app_ptr)
+    var result = (
+        app[0]
+        .ctx.shell.runtime[0]
+        .scopes.consume_context(app[0].child_scope_id, UInt32(ctx_key))
+    )
+    if result[0]:
+        var signal = _SignalI32(UInt32(result[1]), app[0].ctx.shell.runtime)
+        signal.set(value)
+
+
+@export
+fn cta_has_dirty(app_ptr: Int64) -> Int32:
+    """Check if the app has dirty scopes.  Returns 1 or 0."""
+    return _b2i(_get[ContextTestApp](app_ptr)[0].ctx.has_dirty())
+
+
+@export
+fn cta_scope_count(app_ptr: Int64) -> Int32:
+    """Return the number of live scopes."""
+    return Int32(
+        _get[ContextTestApp](app_ptr)[0].ctx.shell.runtime[0].scope_count()
+    )

@@ -1432,6 +1432,146 @@ struct ComponentContext(Movable):
         """
         child.destroy(self.shell.runtime)
 
+    # ── Context (Dependency Injection) ───────────────────────────────
+
+    fn provide_context(mut self, key: UInt32, value: Int32):
+        """Provide a context value at the root scope.
+
+        Stores a key-value pair in the root scope's context map.
+        Child scopes (and their descendants) can retrieve this value
+        via `consume_context()` which walks up the scope tree.
+
+        If the key already exists, the value is updated.
+
+        Args:
+            key: A unique UInt32 identifier for the context entry.
+            value: The Int32 value to provide.
+        """
+        self.shell.runtime[0].scopes.provide_context(self.scope_id, key, value)
+
+    fn consume_context(self, key: UInt32) -> Tuple[Bool, Int32]:
+        """Look up a context value walking up the scope tree.
+
+        Starts at the root scope and walks up the parent chain until
+        a matching key is found or the root is reached.
+
+        Args:
+            key: The context key to look up.
+
+        Returns:
+            A tuple of (found: Bool, value: Int32).
+        """
+        return self.shell.runtime[0].scopes.consume_context(self.scope_id, key)
+
+    fn has_context(self, key: UInt32) -> Bool:
+        """Check whether a context value is reachable from the root scope.
+
+        Equivalent to `consume_context(key)[0]`.
+
+        Args:
+            key: The context key to check.
+
+        Returns:
+            True if a value for the key is found in the scope tree.
+        """
+        return self.consume_context(key)[0]
+
+    # ── Signal sharing via context ───────────────────────────────────
+
+    fn provide_signal_i32(mut self, key: UInt32, signal: SignalI32):
+        """Provide a SignalI32 handle to descendants via context.
+
+        Stores the signal's internal key in the scope's context map
+        so that descendants can reconstruct a handle via
+        `consume_signal_i32()`.
+
+        Args:
+            key: A unique UInt32 context key for this signal prop.
+            signal: The SignalI32 to share.
+        """
+        self.provide_context(key, Int32(signal.key))
+
+    fn provide_signal_bool(mut self, key: UInt32, signal: SignalBool):
+        """Provide a SignalBool handle to descendants via context.
+
+        Stores the signal's internal key in the scope's context map.
+
+        Args:
+            key: A unique UInt32 context key for this signal prop.
+            signal: The SignalBool to share.
+        """
+        self.provide_context(key, Int32(signal.key))
+
+    fn provide_signal_string(mut self, key: UInt32, signal: SignalString):
+        """Provide a SignalString handle to descendants via context.
+
+        Stores the signal's string key in the scope's context map.
+        The version key is stored at `key + 1` so that the consumer
+        can reconstruct a full SignalString handle.
+
+        Convention: the caller must reserve two consecutive context
+        keys — `key` for the string key and `key + 1` for the version
+        key.
+
+        Args:
+            key: A unique UInt32 context key for this signal prop.
+            signal: The SignalString to share.
+        """
+        self.provide_context(key, Int32(signal.string_key))
+        self.provide_context(key + 1, Int32(signal.version_key))
+
+    fn consume_signal_i32(self, key: UInt32) -> SignalI32:
+        """Look up a SignalI32 from an ancestor's context.
+
+        Retrieves the signal key stored by `provide_signal_i32()` and
+        reconstructs a SignalI32 handle pointing at the same underlying
+        signal in the shared Runtime.
+
+        Args:
+            key: The context key used in `provide_signal_i32()`.
+
+        Returns:
+            A SignalI32 handle for the shared signal.
+        """
+        var result = self.consume_context(key)
+        return SignalI32(UInt32(result[1]), self.shell.runtime)
+
+    fn consume_signal_bool(self, key: UInt32) -> SignalBool:
+        """Look up a SignalBool from an ancestor's context.
+
+        Retrieves the signal key stored by `provide_signal_bool()` and
+        reconstructs a SignalBool handle.
+
+        Args:
+            key: The context key used in `provide_signal_bool()`.
+
+        Returns:
+            A SignalBool handle for the shared signal.
+        """
+        var result = self.consume_context(key)
+        return SignalBool(UInt32(result[1]), self.shell.runtime)
+
+    fn consume_signal_string(self, key: UInt32) -> SignalString:
+        """Look up a SignalString from an ancestor's context.
+
+        Retrieves both the string key (at `key`) and version key
+        (at `key + 1`) stored by `provide_signal_string()` and
+        reconstructs a SignalString handle.
+
+        Args:
+            key: The context key used in `provide_signal_string()`.
+
+        Returns:
+            A SignalString handle for the shared signal.
+        """
+        var str_result = self.consume_context(key)
+        var ver_result = self.consume_context(key + 1)
+        return SignalString(
+            UInt32(str_result[1]),
+            UInt32(ver_result[1]),
+            self.shell.runtime,
+        )
+
     # ── Fragment lifecycle (for dynamic keyed lists) ─────────────────
 
     fn flush_fragment(
