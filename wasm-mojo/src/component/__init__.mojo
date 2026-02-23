@@ -30,4 +30,5 @@ from .child import (
     CHILD_BIND_EVENT,
     CHILD_BIND_VALUE,
 )
+from .child_context import ChildComponentContext
 from .router import Router, RouteEntry
