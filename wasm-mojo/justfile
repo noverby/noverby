@@ -62,6 +62,18 @@ test-js: build
 
 test-all: test test-js
 
+# End-to-end browser tests via headless Servo + WebDriver
+test-browser:
+    bash test-browser.sh
+
+# Browser tests with verbose Servo output (debugging)
+test-browser-verbose:
+    bash test-browser.sh --verbose
+
+# Single app browser test
+test-browser-app app:
+    bash test-browser.sh --app {{ app }}
+
 serve: build
     @echo "Open http://localhost:4507/examples/counter/"
     @echo "Open http://localhost:4507/examples/todo/"

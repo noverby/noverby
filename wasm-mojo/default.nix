@@ -9,6 +9,8 @@
       llvmPackages_latest.lld
       wasmtime.lib
       wasmtime.dev
+      servo
+      jq
     ];
   };
 }
