@@ -1,5 +1,6 @@
 import { instantiate } from "../runtime/mod.ts";
 import { testAllocator, testAllocatorReuse } from "./allocator.test.ts";
+import { testBatchDemo } from "./batch_demo.test.ts";
 import { testBench } from "./bench.test.ts";
 import { testChildComponent } from "./child_component.test.ts";
 import { testChildContext } from "./child_context.test.ts";
@@ -63,6 +64,7 @@ async function run(): Promise<void> {
 	testMemoForm(fns);
 	testMemoChain(fns);
 	testEqualityDemo(fns);
+	testBatchDemo(fns);
 	testRouting(fns);
 
 	summary();

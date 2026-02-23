@@ -9700,3 +9700,335 @@ fn eq_memo_count(app_ptr: Int64) -> Int32:
     return Int32(
         _get[EqualityDemoApp](app_ptr)[0].ctx.shell.runtime[0].memos.count()
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 38.2 — BatchDemoApp (batch signal writes)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Demonstrates batch writes for a multi-field form.  Two string signals
+# (first_name, last_name) feed into a MemoString (full_name), and a
+# SignalI32 (write_count) tracks how many batch operations have occurred.
+#
+# `set_names` and `reset` wrap their writes in begin_batch/end_batch so
+# that all signal writes happen as a single propagation pass.
+#
+# Structure:
+#   BatchDemoApp (single root scope, no child components)
+#   ├── h1 "Batch Demo"
+#   ├── button "Set Names" (onclick_custom)
+#   ├── button "Reset" (onclick_custom)
+#   ├── p > dyn_text("Full: ...")           ← MemoString
+#   └── p > dyn_text("Writes: N")          ← SignalI32
+#
+# Lifecycle:
+#   1. Init: first_name="", last_name="", full_name=" ", write_count=0.
+#   2. Rebuild: recompute memo → render → mount.
+#   3. set_names("Alice", "Smith"): batch writes first/last name + bumps
+#      write_count.  One propagation pass.  full_name = "Alice Smith".
+#   4. reset(): batch writes both names to "" + write_count to 0.
+#      full_name = " ".
+
+
+struct BatchDemoApp(Movable):
+    """Batch signal writes demo app — multi-field form with batched updates.
+
+    Demonstrates Phase 38 batch signal writes where multiple signal
+    writes are grouped into a single propagation pass via
+    begin_batch/end_batch.
+    """
+
+    var ctx: ComponentContext
+    var first_name: SignalString
+    var last_name: SignalString
+    var full_name: MemoString
+    var write_count: _SignalI32
+    var set_handler: UInt32
+    var reset_handler: UInt32
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        # Create string signals without auto-subscribing the scope —
+        # the scope subscribes to memo outputs and write_count instead.
+        self.first_name = self.ctx.create_signal_string(String(""))
+        self.last_name = self.ctx.create_signal_string(String(""))
+        self.full_name = self.ctx.use_memo_string(String(" "))
+        self.write_count = self.ctx.use_signal(0)
+        self.ctx.setup_view(
+            el_div(
+                el_h1(dsl_text(String("Batch Demo"))),
+                el_button(
+                    dsl_text(String("Set Names")),
+                    dsl_onclick_custom(),
+                ),
+                el_button(
+                    dsl_text(String("Reset")),
+                    dsl_onclick_custom(),
+                ),
+                el_p(dsl_dyn_text()),
+                el_p(dsl_dyn_text()),
+            ),
+            String("batch-demo"),
+        )
+        self.set_handler = self.ctx.view_event_handler_id(0)
+        self.reset_handler = self.ctx.view_event_handler_id(1)
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.ctx = other.ctx^
+        self.first_name = other.first_name^
+        self.last_name = other.last_name^
+        self.full_name = other.full_name.copy()
+        self.write_count = other.write_count.copy()
+        self.set_handler = other.set_handler
+        self.reset_handler = other.reset_handler
+
+    fn run_memos(mut self):
+        """Recompute the full_name memo if dirty.
+
+        Chain: first_name + last_name → full_name (concatenation)
+        """
+        if self.full_name.is_dirty():
+            self.full_name.begin_compute()
+            var f = self.first_name.read()
+            var l = self.last_name.read()
+            self.full_name.end_compute(f + String(" ") + l)
+
+    fn set_names(mut self, first: String, last: String):
+        """Set both names and bump write_count in a single batch.
+
+        All three signal writes happen inside begin_batch/end_batch,
+        so only one propagation pass occurs at end_batch.
+        """
+        self.ctx.begin_batch()
+        self.first_name.set(first)
+        self.last_name.set(last)
+        self.write_count += 1
+        self.ctx.end_batch()
+
+    fn reset(mut self):
+        """Reset all state in a single batch.
+
+        Writes first_name="", last_name="", write_count=0.
+        """
+        self.ctx.begin_batch()
+        self.first_name.set(String(""))
+        self.last_name.set(String(""))
+        self.write_count.set(0)
+        self.ctx.end_batch()
+
+    fn render(mut self) -> UInt32:
+        """Build a fresh VNode with 2 dyn_text slots."""
+        var vb = self.ctx.render_builder()
+        vb.add_dyn_text(String("Full: ") + self.full_name.peek())
+        vb.add_dyn_text(String("Writes: ") + String(self.write_count.peek()))
+        return vb.build()
+
+
+# ── BatchDemoApp lifecycle functions ─────────────────────────────────────────
+
+
+fn _bd_init() -> UnsafePointer[BatchDemoApp, MutExternalOrigin]:
+    var app_ptr = alloc[BatchDemoApp](1)
+    app_ptr.init_pointee_move(BatchDemoApp())
+    return app_ptr
+
+
+fn _bd_destroy(
+    app_ptr: UnsafePointer[BatchDemoApp, MutExternalOrigin],
+):
+    app_ptr[0].ctx.destroy()
+    app_ptr.destroy_pointee()
+    app_ptr.free()
+
+
+fn _bd_rebuild(
+    app: UnsafePointer[BatchDemoApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Initial render (mount) of the batch-demo app.
+
+    Recomputes memo to settle derived state, then renders and mounts.
+    """
+    # Run initial memo recomputation
+    app[0].run_memos()
+    # Render with settled state
+    var vnode_idx = app[0].render()
+    var result = app[0].ctx.mount(writer_ptr, vnode_idx)
+    # Consume dirty scopes left over from memo signal writes
+    _ = app[0].ctx.consume_dirty()
+    return result
+
+
+fn _bd_handle_event(
+    app: UnsafePointer[BatchDemoApp, MutExternalOrigin],
+    handler_id: UInt32,
+    event_type: UInt8,
+) -> Bool:
+    return app[0].ctx.dispatch_event(handler_id, event_type)
+
+
+fn _bd_flush(
+    app: UnsafePointer[BatchDemoApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Flush pending updates with batch-aware memo chain.
+
+    1. has_dirty() gate — bail early if nothing to do
+    2. run_memos() — recompute full_name
+    3. settle_scopes() — remove scopes with no actual signal changes
+    4. consume_dirty() — drain remaining dirty scopes via scheduler
+    5. render() + diff + finalize — emit mutations
+    """
+    if not app[0].ctx.has_dirty():
+        return 0
+    # Recompute memo chain (while scopes are still in dirty_scopes)
+    app[0].run_memos()
+    # Phase 37: filter dirty_scopes before consuming
+    app[0].ctx.settle_scopes()
+    if not app[0].ctx.has_dirty():
+        return 0
+    _ = app[0].ctx.consume_dirty()
+    # Render with settled state
+    var new_idx = app[0].render()
+    app[0].ctx.diff(writer_ptr, new_idx)
+    return app[0].ctx.finalize(writer_ptr)
+
+
+# ── BatchDemoApp WASM exports ────────────────────────────────────────────────
+
+
+@export
+fn bd_init() -> Int64:
+    """Initialize the batch-demo app.  Returns app pointer."""
+    return _to_i64(_bd_init())
+
+
+@export
+fn bd_destroy(app_ptr: Int64):
+    """Destroy the batch-demo app."""
+    _bd_destroy(_get[BatchDemoApp](app_ptr))
+
+
+@export
+fn bd_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    """Initial mount.  Returns mutation buffer length."""
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _bd_rebuild(_get[BatchDemoApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return result
+
+
+@export
+fn bd_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
+    """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
+    return _b2i(
+        _bd_handle_event(_get[BatchDemoApp](app_ptr), UInt32(hid), UInt8(evt))
+    )
+
+
+@export
+fn bd_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    """Flush pending updates.  Returns mutation buffer length."""
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _bd_flush(_get[BatchDemoApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return result
+
+
+@export
+fn bd_set_names(app_ptr: Int64, first: String, last: String):
+    """Set both names in a batch (begin_batch + writes + end_batch).
+
+    This is a custom WASM export that calls the batch method directly,
+    bypassing the normal dispatch_event path.
+    """
+    _get[BatchDemoApp](app_ptr)[0].set_names(first, last)
+
+
+@export
+fn bd_reset(app_ptr: Int64):
+    """Reset all state in a batch (begin_batch + writes + end_batch)."""
+    _get[BatchDemoApp](app_ptr)[0].reset()
+
+
+@export
+fn bd_full_name_text(app_ptr: Int64) -> String:
+    """Return the current full_name memo text."""
+    return _get[BatchDemoApp](app_ptr)[0].full_name.peek()
+
+
+@export
+fn bd_write_count(app_ptr: Int64) -> Int32:
+    """Return the current write_count signal value."""
+    return _get[BatchDemoApp](app_ptr)[0].write_count.peek()
+
+
+@export
+fn bd_first_name_text(app_ptr: Int64) -> String:
+    """Return the current first_name signal text."""
+    return _get[BatchDemoApp](app_ptr)[0].first_name.peek()
+
+
+@export
+fn bd_last_name_text(app_ptr: Int64) -> String:
+    """Return the current last_name signal text."""
+    return _get[BatchDemoApp](app_ptr)[0].last_name.peek()
+
+
+@export
+fn bd_full_name_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if the full_name memo needs recomputation."""
+    return _b2i(_get[BatchDemoApp](app_ptr)[0].full_name.is_dirty())
+
+
+@export
+fn bd_full_name_changed(app_ptr: Int64) -> Int32:
+    """Return 1 if the full_name memo's last recompute changed its value."""
+    return _b2i(
+        _get[BatchDemoApp](app_ptr)[0]
+        .ctx.shell.runtime[0]
+        .memo_did_value_change(_get[BatchDemoApp](app_ptr)[0].full_name.id)
+    )
+
+
+@export
+fn bd_has_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if any scope is dirty."""
+    var app = _get[BatchDemoApp](app_ptr)
+    if len(app[0].ctx.shell.runtime[0].dirty_scopes) > 0:
+        return 1
+    return 0
+
+
+@export
+fn bd_is_batching(app_ptr: Int64) -> Int32:
+    """Return 1 if the runtime is currently in batch mode."""
+    return _b2i(_get[BatchDemoApp](app_ptr)[0].ctx.is_batching())
+
+
+@export
+fn bd_set_handler(app_ptr: Int64) -> Int32:
+    """Return the set-names button handler ID."""
+    return Int32(_get[BatchDemoApp](app_ptr)[0].set_handler)
+
+
+@export
+fn bd_reset_handler(app_ptr: Int64) -> Int32:
+    """Return the reset button handler ID."""
+    return Int32(_get[BatchDemoApp](app_ptr)[0].reset_handler)
+
+
+@export
+fn bd_scope_count(app_ptr: Int64) -> Int32:
+    """Return the number of live scopes."""
+    return Int32(
+        _get[BatchDemoApp](app_ptr)[0].ctx.shell.runtime[0].scope_count()
+    )
+
+
+@export
+fn bd_memo_count(app_ptr: Int64) -> Int32:
+    """Return the number of live memos."""
+    return Int32(
+        _get[BatchDemoApp](app_ptr)[0].ctx.shell.runtime[0].memos.count()
+    )

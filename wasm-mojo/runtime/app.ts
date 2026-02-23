@@ -2519,3 +2519,151 @@ export function createEqualityDemoApp(
 
 	return eqHandle;
 }
+
+// ── Phase 38.2 — BatchDemoApp ───────────────────────────────────────────────
+
+export interface BatchDemoAppHandle extends AppHandle {
+	/** Current full_name memo text. */
+	getFullName(): string;
+
+	/** Current write_count signal value. */
+	getWriteCount(): number;
+
+	/** Current first_name signal text. */
+	getFirstName(): string;
+
+	/** Current last_name signal text. */
+	getLastName(): string;
+
+	/** Whether the full_name memo needs recomputation. */
+	isFullNameDirty(): boolean;
+
+	/** Whether the full_name memo's last recompute changed its value. */
+	fullNameChanged(): boolean;
+
+	/** Whether any scope is dirty. */
+	hasDirty(): boolean;
+
+	/** Whether the runtime is in batch mode. */
+	isBatching(): boolean;
+
+	/** Number of live scopes. */
+	scopeCount(): number;
+
+	/** Number of live memos. */
+	memoCount(): number;
+
+	/** Set-names button handler ID. */
+	setHandler: number;
+
+	/** Reset button handler ID. */
+	resetHandler: number;
+
+	/** Set both names in a batch and flush. */
+	setNames(first: string, last: string): void;
+
+	/** Reset all state in a batch and flush. */
+	reset(): void;
+}
+
+export function createBatchDemoApp(
+	fns: WasmExports & Record<string, CallableFunction>,
+	root: Element,
+	doc?: Document,
+): BatchDemoAppHandle {
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		init: (f) => f.bd_init(),
+		rebuild: (f, app, buf, cap) => f.bd_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.bd_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.bd_handle_event(app, hid, evt),
+		destroy: (f, app) => f.bd_destroy(app),
+	});
+
+	const setHandler = fns.bd_set_handler(handle.appPtr) as number;
+	const resetHandler = fns.bd_reset_handler(handle.appPtr) as number;
+
+	const bdHandle: BatchDemoAppHandle = {
+		...handle,
+
+		setHandler,
+		resetHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
+
+		getFullName(): string {
+			const outPtr = allocStringStruct();
+			fns.bd_full_name_text(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+		getWriteCount(): number {
+			return fns.bd_write_count(handle.appPtr) as number;
+		},
+		getFirstName(): string {
+			const outPtr = allocStringStruct();
+			fns.bd_first_name_text(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+		getLastName(): string {
+			const outPtr = allocStringStruct();
+			fns.bd_last_name_text(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+		isFullNameDirty(): boolean {
+			return (fns.bd_full_name_dirty(handle.appPtr) as number) !== 0;
+		},
+		fullNameChanged(): boolean {
+			return (fns.bd_full_name_changed(handle.appPtr) as number) !== 0;
+		},
+		hasDirty(): boolean {
+			return (fns.bd_has_dirty(handle.appPtr) as number) !== 0;
+		},
+		isBatching(): boolean {
+			return (fns.bd_is_batching(handle.appPtr) as number) !== 0;
+		},
+		scopeCount(): number {
+			return fns.bd_scope_count(handle.appPtr) as number;
+		},
+		memoCount(): number {
+			return fns.bd_memo_count(handle.appPtr) as number;
+		},
+
+		setNames(first: string, last: string): void {
+			const firstPtr = writeStringStruct(first);
+			const lastPtr = writeStringStruct(last);
+			fns.bd_set_names(handle.appPtr, firstPtr, lastPtr);
+			handle.flushAndApply();
+		},
+		reset(): void {
+			fns.bd_reset(handle.appPtr);
+			handle.flushAndApply();
+		},
+
+		destroy(): void {
+			handle.destroy();
+		},
+	};
+
+	return bdHandle;
+}

@@ -518,6 +518,28 @@ struct EqualityDemoApp:
 
 Lifecycle: `eq_init` → `eq_rebuild` (run_memos + mount) → `eq_handle_event` (onclick_add/sub input) → `eq_flush` (memo chain recomputed with equality gating, settle_scopes filters stable scopes, DOM diffed only if needed). Chain: `SignalI32(input)` → `MemoI32(clamped)` → `MemoString(label)`. The input signal uses `create_signal` (not `use_signal`) so the scope does NOT auto-subscribe to it — the scope only subscribes to memo outputs (clamped, label) via `use_memo` / `use_memo_string`. When the memo chain is value-stable (e.g. input exceeds the clamp max of 10), `settle_scopes()` removes the scope and flush returns 0 bytes (no mutations, no DOM work). WASM exports: `eq_init`, `eq_destroy`, `eq_rebuild`, `eq_handle_event`, `eq_flush`, `eq_input_value`, `eq_clamped_value`, `eq_label_text`, `eq_clamped_dirty`, `eq_label_dirty`, `eq_clamped_changed`, `eq_label_changed`, `eq_incr_handler`, `eq_decr_handler`, `eq_has_dirty`, `eq_scope_count`, `eq_memo_count`.
 
+### BatchDemoApp (`src/main.mojo`) — batch signal writes
+
+```txt
+struct BatchDemoApp:
+    var ctx: ComponentContext           # single root scope
+    var first_name: SignalString        # string signal (create_signal_string — no scope auto-subscribe)
+    var last_name: SignalString         # string signal (create_signal_string — no scope auto-subscribe)
+    var full_name: MemoString           # memo: first_name + " " + last_name
+    var write_count: SignalI32          # counts batch operations (use_signal — scope subscribes)
+    var set_handler: UInt32
+    var reset_handler: UInt32
+    fn __init__: ctx.create() → create_signal_string("") × 2 + use_memo_string(" ") + use_signal(0)
+                 → setup_view(h1 + 2 × button(onclick_custom) + 2 × p > dyn_text)
+    fn run_memos: if full_name.is_dirty() → begin_compute → read first/last → concat → end_compute
+    fn set_names(first, last): begin_batch → set first/last + write_count += 1 → end_batch
+    fn reset: begin_batch → set first/last="" + write_count=0 → end_batch
+    fn render: 2 dyn_text slots (Full/Writes)
+    fn flush: has_dirty → run_memos → settle_scopes → consume_dirty → render → diff → finalize
+```
+
+Lifecycle: `bd_init` → `bd_rebuild` (run_memos + mount) → `bd_set_names(first, last)` (batch writes 3 signals, single propagation) → `bd_flush` (memo recomputed, DOM diffed). The string signals use `create_signal_string` (not `use_signal_string`) so the scope does NOT auto-subscribe to them — the scope only subscribes to the memo output (full_name) and write_count. `set_names` and `reset` wrap all writes in `begin_batch`/`end_batch` so that only one propagation pass occurs regardless of how many signals are written. WASM exports: `bd_init`, `bd_destroy`, `bd_rebuild`, `bd_handle_event`, `bd_flush`, `bd_set_names`, `bd_reset`, `bd_full_name_text`, `bd_write_count`, `bd_first_name_text`, `bd_last_name_text`, `bd_full_name_dirty`, `bd_full_name_changed`, `bd_has_dirty`, `bd_is_batching`, `bd_set_handler`, `bd_reset_handler`, `bd_scope_count`, `bd_memo_count`.
+
 ## WASM Export Pattern (`src/main.mojo`)
 
 All exports follow this pattern — thin wrappers forwarding to app modules:
@@ -698,13 +720,13 @@ el_button(text("Add"), onclick_custom()),
 
 | File | Lines | Role |
 |------|-------|------|
-| `src/main.mojo` | ~9,685 | All @export wrappers (incl. SafeCounterApp, ErrorNestApp, DataLoaderApp, SuspenseNestApp, EffectDemoApp, EffectMemoApp, MemoFormApp, MemoChainApp, EqualityDemoApp, context/child test apps) |
+| `src/main.mojo` | ~10,035 | All @export wrappers (incl. SafeCounterApp, ErrorNestApp, DataLoaderApp, SuspenseNestApp, EffectDemoApp, EffectMemoApp, MemoFormApp, MemoChainApp, EqualityDemoApp, BatchDemoApp, context/child test apps) |
 | `src/signals/handle.mojo` | ~980 | SignalI32 + SignalBool + SignalString + MemoI32 + MemoBool + MemoString + EffectHandle |
 | `src/signals/memo.mojo` | ~458 | MemoEntry + MemoStore (value_changed flag, Phase 37) |
-| `src/signals/runtime.mojo` | ~1,747 | Reactive runtime + SignalStore + StringStore + memo bool/string methods + worklist propagation (Phase 36) + equality-gated end_compute + settle_scopes + _changed_signals (Phase 37) |
-| `src/component/context.mojo` | ~2,281 | ComponentContext + RenderBuilder + tree processing + error boundary + view_event_handler_id + memo bool/string hooks + settle_scopes wrapper |
+| `src/signals/runtime.mojo` | ~1,850 | Reactive runtime + SignalStore + StringStore + memo bool/string methods + worklist propagation (Phase 36) + equality-gated end_compute + settle_scopes + _changed_signals (Phase 37) + batch signal writes (Phase 38) |
+| `src/component/context.mojo` | ~2,295 | ComponentContext + RenderBuilder + tree processing + error boundary + view_event_handler_id + memo bool/string hooks + settle_scopes wrapper + batch wrappers |
 | `src/component/child_context.mojo` | ~570 | ChildComponentContext (child scope API + error boundary methods + memo bool/string hooks) |
-| `src/component/app_shell.mojo` | ~516 | AppShell (low-level + memo bool/string wrappers + settle_scopes wrapper) |
+| `src/component/app_shell.mojo` | ~530 | AppShell (low-level + memo bool/string wrappers + settle_scopes wrapper + batch wrappers) |
 | `examples/counter/counter.mojo` | ~115 | Counter app |
 | `examples/todo/todo.mojo` | ~520 | Todo app (M20.5: WASM-driven Add, bind_value, oninput_set_string, onclick_custom) |
 | `examples/bench/bench.mojo` | ~985 | Benchmark app (uses KeyedList + ItemBuilder + performance_now timing + 3 dyn_text status bar) |
@@ -714,7 +736,7 @@ el_button(text("Add"), onclick_custom()),
 | `src/mutations/diff.mojo` | ~970 | DiffEngine (keyed reconciliation) |
 | `runtime/memory.ts` | ~290 | Free-list allocator + scratch arena (Phase 25) |
 | `runtime/events.ts` | ~375 | EventBridge + DispatchWithStringFn (M20.2) |
-| `runtime/app.ts` | ~2,520 | createApp + app handles (Counter, Todo, Bench, SafeCounter, ErrorNest, DataLoader, SuspenseNest, EffectDemo, EffectMemo, MemoForm, MemoChain, EqualityDemo, etc.) |
+| `runtime/app.ts` | ~2,670 | createApp + app handles (Counter, Todo, Bench, SafeCounter, ErrorNest, DataLoader, SuspenseNest, EffectDemo, EffectMemo, MemoForm, MemoChain, EqualityDemo, BatchDemo, etc.) |
 | `runtime/types.ts` | ~690 | WasmExports interface (Phase 20 string dispatch exports) |
 | `examples/lib/env.js` | ~250 | Browser free-list allocator + WASM imports (Phase 25) |
 | `test-js/allocator.test.ts` | ~980 | Allocator unit tests + WASM-integrated reuse tests (Phase 25) |
@@ -745,8 +767,11 @@ el_button(text("Add"), onclick_custom()),
 | `test-js/memo_form.test.ts` | ~495 | MemoFormApp JS tests (20 suites: DOM, input binding, memo dirty/clean, form validation) |
 | `test-js/memo_chain.test.ts` | ~582 | MemoChainApp JS tests (24 suites: DOM, chain propagation, threshold, heapStats, Phase 36 independent dirty) |
 | `test-js/equality_demo.test.ts` | ~490 | EqualityDemoApp JS tests (22 suites: DOM, clamp/label stability, flush returns 0, round-trip, dirty state) |
+| `test/test_batch.mojo` | ~1,350 | Batch signal writes Mojo tests (22 tests: single/multi signal, deferred propagation, nested batches, string signals, chain propagation, settle) |
+| `test/test_batch_demo.mojo` | ~718 | BatchDemoApp Mojo tests (19 tests: lifecycle, set_names, reset, memo dirty/stable, write_count, rapid sets, dirty flag) |
+| `test-js/batch_demo.test.ts` | ~452 | BatchDemoApp JS tests (20 suites: DOM, set/reset cycle, multiple sets, write count, memo stable, batching flag, independent instances, rapid sets) |
 | `test/wasm_harness.mojo` | ~1,400 | Mojo WASM test harness (includes free-list allocator, Phase 25) |
-| `CHANGELOG.md` | ~461 | Development history (Phases 0–37) |
+| `CHANGELOG.md` | ~500 | Development history (Phases 0–38) |
 
 ## Common Patterns
 
@@ -880,6 +905,17 @@ fn flush():
 ```
 
 Key design points: (1) `settle_scopes()` must run BEFORE `consume_dirty()` because `consume_dirty()` drains `dirty_scopes`; (2) `_changed_signals` is cleared at the end of `settle_scopes()` to prepare for the next flush cycle; (3) the algorithm is O(C × avg_subscribers × D) where C = changed signals, avg_subscribers ≈ 1–3, D = dirty scopes — efficient for typical apps; (4) scopes that subscribe directly to source signals (via `use_signal`) will always be kept dirty when those signals change — use `create_signal` (no auto-subscribe) for signals that feed into memo chains where the scope should only react to memo output changes.
+
+**Batch signal writes (Phase 38):** `begin_batch()` / `end_batch()` group multiple signal writes into a single propagation pass. During a batch, signal values are stored immediately (reads see the new value) but subscriber scanning and worklist propagation are deferred. The outermost `end_batch()` runs a combined propagation pass over all written signals using a single shared worklist — a memo that subscribes to multiple batched signals is added to the worklist at most once (`is_dirty()` deduplicates). Batches can be nested (depth counter); only the outermost `end_batch()` triggers propagation. String signals bump their version key immediately during batch but defer propagation of that version key:
+
+```text
+fn set_names(mut self, first: String, last: String):
+    self.ctx.begin_batch()
+    self.first_name.set(first)   # stores value, defers propagation
+    self.last_name.set(last)     # stores value, defers propagation
+    self.write_count += 1        # stores value, defers propagation
+    self.ctx.end_batch()         # single combined propagation pass
+```
 
 **MemoString lifecycle:** `MemoString` uses the same dual-key pattern as `SignalString`: a `string_key` in `StringStore` for heap-safe string storage, and a `version_key` in `MemoStore` for dirty/version tracking. `end_compute(String)` writes to both: the string value to `StringStore` and the version to the memo entry. `read()` subscribes via the version memo. Cleanup requires `destroy_memo_string()` to free the StringStore slot.
 
