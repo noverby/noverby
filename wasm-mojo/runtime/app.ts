@@ -2377,3 +2377,145 @@ export function createMemoChainApp(
 
 	return mcHandle;
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Phase 37.7 — EqualityDemoApp (equality-gated memo chain)
+// ══════════════════════════════════════════════════════════════════════════════
+
+export interface EqualityDemoAppHandle extends AppHandle {
+	/** Current input signal value. */
+	getInput(): number;
+
+	/** Current clamped memo value (clamp(input, 0, 10)). */
+	getClamped(): number;
+
+	/** Current label memo text ("low" or "high"). */
+	getLabel(): string;
+
+	/** Whether the clamped memo needs recomputation. */
+	isClampedDirty(): boolean;
+
+	/** Whether the label memo needs recomputation. */
+	isLabelDirty(): boolean;
+
+	/** Whether the clamped memo's last recompute changed its value. */
+	clampedChanged(): boolean;
+
+	/** Whether the label memo's last recompute changed its value. */
+	labelChanged(): boolean;
+
+	/** Increment button handler ID. */
+	incrHandler: number;
+
+	/** Decrement button handler ID. */
+	decrHandler: number;
+
+	/** Whether any scope is dirty. */
+	hasDirty(): boolean;
+
+	/** Number of live scopes. */
+	scopeCount(): number;
+
+	/** Number of live memos. */
+	memoCount(): number;
+
+	/** Dispatch increment and flush. */
+	increment(): void;
+
+	/** Dispatch decrement and flush. */
+	decrement(): void;
+}
+
+export function createEqualityDemoApp(
+	fns: WasmExports & Record<string, CallableFunction>,
+	root: Element,
+	doc?: Document,
+): EqualityDemoAppHandle {
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		init: (f) => f.eq_init(),
+		rebuild: (f, app, buf, cap) => f.eq_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.eq_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.eq_handle_event(app, hid, evt),
+		destroy: (f, app) => f.eq_destroy(app),
+	});
+
+	const incrHandler = fns.eq_incr_handler(handle.appPtr) as number;
+	const decrHandler = fns.eq_decr_handler(handle.appPtr) as number;
+
+	const eqHandle: EqualityDemoAppHandle = {
+		...handle,
+
+		incrHandler,
+		decrHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
+
+		getInput(): number {
+			return fns.eq_input_value(handle.appPtr) as number;
+		},
+		getClamped(): number {
+			return fns.eq_clamped_value(handle.appPtr) as number;
+		},
+		getLabel(): string {
+			const outPtr = allocStringStruct();
+			fns.eq_label_text(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+		isClampedDirty(): boolean {
+			return (fns.eq_clamped_dirty(handle.appPtr) as number) !== 0;
+		},
+		isLabelDirty(): boolean {
+			return (fns.eq_label_dirty(handle.appPtr) as number) !== 0;
+		},
+		clampedChanged(): boolean {
+			return (fns.eq_clamped_changed(handle.appPtr) as number) !== 0;
+		},
+		labelChanged(): boolean {
+			return (fns.eq_label_changed(handle.appPtr) as number) !== 0;
+		},
+		hasDirty(): boolean {
+			return (fns.eq_has_dirty(handle.appPtr) as number) !== 0;
+		},
+		scopeCount(): number {
+			return fns.eq_scope_count(handle.appPtr) as number;
+		},
+		memoCount(): number {
+			return fns.eq_memo_count(handle.appPtr) as number;
+		},
+
+		increment(): void {
+			handle.dispatchAndFlush(incrHandler);
+		},
+		decrement(): void {
+			handle.dispatchAndFlush(decrHandler);
+		},
+
+		destroy(): void {
+			handle.destroy();
+		},
+	};
+
+	return eqHandle;
+}

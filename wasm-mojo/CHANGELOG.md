@@ -18,6 +18,16 @@ Added equality checks to all memo types so that downstream updates only occur wh
 
 **Test count after P37.5:** 1,266 Mojo (49 modules) + 2,969 JS (27 suites) = 4,235 tests.
 
+### Phase 37 Gap-Fill — Scope Settle Tests + EqualityDemoApp JS Tests
+
+Filled the two test gaps identified after Phase 37 shipped: dedicated `settle_scopes()` unit tests and JS integration tests for the EqualityDemoApp.
+
+- **P37.6** — `test/test_scope_settle.mojo` (16 tests). Dedicated runtime-level unit tests for `settle_scopes()` behaviour, exercising the algorithm directly via WASM exports without any app layer. Covers: stable memo removes scope, changed memo keeps scope, mixed scopes (one stable + one changed), direct source signal subscription (kept), scope subscribing to both stable memo and changed signal (kept), no dirty scopes (no crash), all stable (both removed), no changed signals (all removed), 3-level chain cascade all stable, chain partial (A changed, B stable → scope removed), chain fully changed (scope kept), diamond dependency, direct signal subscription, effect not affected by settle, idempotent settle (calling twice safe), and no-memos scenario (signals and scopes only).
+
+- **P37.7** — `test-js/equality_demo.test.ts` (22 suites) + TypeScript handle. Added `EqualityDemoAppHandle` interface and `createEqualityDemoApp()` factory to `runtime/app.ts` following the established pattern. JS integration tests exercise the full WASM → JS → DOM pipeline: init/destroy lifecycle, initial render and DOM text, increment/decrement within range, across threshold (label "low"→"high"), at max/min (clamped stable), above max (chain fully stable), `clampedChanged()`/`labelChanged()` queries, flush returns 0 when stable vs nonzero when changed, multiple consecutive stable flushes, full cycle round-trip (0→12→0), scope count, memo count, dirty state after event, and destroy safety.
+
+**Test count after P37 Gap-Fill:** 1,282 Mojo (50 modules) + 3,029 JS (28 suites) = 4,311 tests.
+
 ---
 
 ## Phase 36 — Recursive Memo Propagation
