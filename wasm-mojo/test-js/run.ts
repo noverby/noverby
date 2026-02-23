@@ -20,6 +20,7 @@ import { testPropsCounter } from "./props_counter.test.ts";
 import { testProtocol } from "./protocol.test.ts";
 import { testRouting } from "./routing.test.ts";
 import { testSafeCounter } from "./safe_counter.test.ts";
+import { testSuspenseNest } from "./suspense_nest.test.ts";
 import { testThemeCounter } from "./theme_counter.test.ts";
 import { testTodo } from "./todo.test.ts";
 
@@ -51,6 +52,7 @@ async function run(): Promise<void> {
 	testSafeCounter(fns);
 	testErrorNest(fns);
 	testDataLoader(fns);
+	testSuspenseNest(fns);
 	testRouting(fns);
 
 	summary();
