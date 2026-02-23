@@ -1,7 +1,6 @@
 {lib, ...}: {
   nix = {
     settings = {
-      netrc-file = "/home/noverby/.netrc";
       max-jobs = 100;
       connect-timeout = 10;
       stalled-download-timeout = 10;
