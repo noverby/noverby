@@ -17,6 +17,7 @@ import { testPhase8 } from "./phase8.test.ts";
 import { testPropsCounter } from "./props_counter.test.ts";
 import { testProtocol } from "./protocol.test.ts";
 import { testRouting } from "./routing.test.ts";
+import { testThemeCounter } from "./theme_counter.test.ts";
 import { testTodo } from "./todo.test.ts";
 
 async function run(): Promise<void> {
@@ -43,6 +44,7 @@ async function run(): Promise<void> {
 	testContext(fns);
 	testChildContext(fns);
 	testPropsCounter(fns);
+	testThemeCounter(fns);
 	testRouting(fns);
 
 	summary();
