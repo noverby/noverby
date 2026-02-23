@@ -2,6 +2,22 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 32 — Error Boundaries
+
+Wired the existing scope-level error boundary infrastructure (Phase 8.4) into the component layer — `ComponentContext` and `ChildComponentContext` now have ergonomic error boundary methods. Demonstrated with two apps: SafeCounterApp (single boundary with crash/retry) and ErrorNestApp (nested boundaries with independent error/recovery).
+
+- **P32.1** — ComponentContext error boundary surface. Added `use_error_boundary()`, `report_error()`, `has_error()`, `error_message()`, `clear_error()` to `ComponentContext`. Added `use_error_boundary()`, `report_error()`, `has_error()`, `error_message()`, `clear_error()` to `ChildComponentContext`. Error propagation walks the scope parent chain to the nearest boundary, sets the error, and marks the boundary dirty for the next flush cycle.
+
+- **P32.2** — SafeCounterApp demo. Parent with error boundary, count signal, Crash button, and two child components (normal display + error fallback). Normal child consumes count via `consume_signal_i32()` and displays "Count: N". Fallback child shows "Error: ..." message + Retry button. Crash triggers `report_error()` → fallback shown with error message. Retry calls `clear_error()` → normal child re-renders. Count signal persists across crash/recovery cycles. WASM exports: `sc_init`, `sc_destroy`, `sc_rebuild`, `sc_handle_event`, `sc_flush`, `sc_count_value`, `sc_has_error`, `sc_error_message`, `sc_crash_handler`, `sc_retry_handler`, plus child mount/incr/scope query helpers. 22 Mojo tests + 22 JS test suites.
+
+- **P32.3** — ErrorNestApp demo. Nested error boundaries: outer boundary on root, inner boundary on a child component. Inner crash caught by inner boundary (only inner slot swaps to inner fallback). Outer crash caught by outer boundary (entire inner tree replaced by outer fallback). Recovery at each level is independent. Mixed crash/retry sequences validated — outer retry reveals persisted inner error state. WASM exports: `en_init`, `en_destroy`, `en_rebuild`, `en_handle_event`, `en_flush`, `en_has_outer_error`, `en_has_inner_error`, `en_outer_error_message`, `en_inner_error_message`, `en_outer_crash_handler`, `en_inner_crash_handler`, `en_outer_retry_handler`, `en_inner_retry_handler`, plus child mount/scope query helpers. 24 Mojo tests + 25 JS test suites.
+
+- **P32.4** — Documentation update. AGENTS.md updated with error boundary API methods on ComponentContext and ChildComponentContext, SafeCounterApp and ErrorNestApp app architectures, error boundary flush pattern in Common Patterns, and updated file sizes. CHANGELOG.md and README.md updated with Phase 32 summary, test counts, and error boundary code example.
+
+**Test count after P32.4:** 1,080 Mojo (38 modules) + 2,230 JS (21 suites) = 3,310 tests.
+
+---
+
 ## Phase 30 — Client-Side Routing
 
 Added `Router` — a WASM-side struct mapping URL paths to branch tags (UInt8) with DOM view switching managed by an embedded `ConditionalSlot`. Combined with a new `MultiViewApp` example, this enables single-page apps with URL-based view switching within a single WASM instance. The JS runtime auto-detects routing support via the `{app}_navigate` export and wires `popstate` listeners and `<a>` click interception automatically.

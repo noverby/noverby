@@ -145,10 +145,22 @@ if ptr != UnsafePointer[T]():       # not: if ptr:
 - **`ItemBuilder`** — Phase 17 ergonomic per-item builder wrapping VNodeBuilder + child scope + handler map pointer. Methods: `add_dyn_text(value)`, `add_dyn_text_signal(SignalString)` (Phase 19 — read signal + add as dyn text), `add_dyn_text_attr(name, value)`, `add_dyn_bool_attr(name, value)`, `add_dyn_event(event, handler_id)`, `add_custom_event(event, action_tag, data)` (registers handler + maps action + adds event attr in one call), `add_class_if(condition, class_name)` (Phase 18 — conditional CSS class in one call), `add_class_when(condition, true_class, false_class)` (Phase 18 — binary class switching), `add_dyn_placeholder()`, `index()`.
 - **`HandlerAction`** — Phase 17 result of `KeyedList.get_action(handler_id)`. Fields: `tag: UInt8` (app-defined action), `data: Int32` (e.g. item ID), `found: Bool`.
 - **Lifecycle helpers**: `mount_vnode()`, `diff_and_finalize()`, `flush_fragment()`.
+- **Error boundary methods** on `ComponentContext`:
+  - `ctx.use_error_boundary()` — mark root scope as an error boundary (call during setup).
+  - `ctx.report_error(message) -> Int` — propagate error to nearest boundary; returns boundary scope ID or -1.
+  - `ctx.has_error() -> Bool` — check if this boundary has captured an error.
+  - `ctx.error_message() -> String` — get the captured error message.
+  - `ctx.clear_error()` — clear error state and mark scope dirty for re-render.
+- **Error boundary methods** on `ChildComponentContext`:
+  - `child_ctx.use_error_boundary()` — mark child scope as an error boundary.
+  - `child_ctx.report_error(message) -> Int` — propagate error from child scope to nearest boundary.
+  - `child_ctx.has_error() -> Bool` — check if this child boundary has captured an error.
+  - `child_ctx.error_message() -> String` — get the captured error message.
+  - `child_ctx.clear_error()` — clear error state on child boundary.
 
-## App Architectures (`examples/`)
+## App Architectures (`examples/` and `src/main.mojo`)
 
-All three apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state — TodoApp's `input_text` field was migrated from plain `String` to `SignalString` via `create_signal_string()` (M19.7). Phase 20 adds string event dispatch infrastructure (`ACTION_SIGNAL_SET_STRING`, `dispatch_event_with_string`) enabling JS → WASM string value flow for input events. Phase 20.5 migrates the TodoApp to fully WASM-driven input binding using `bind_value()`, `oninput_set_string()`, and `onclick_custom()` — JS has no special-casing for any handler. Phase 21 introduces `launch()` (`examples/lib/app.js`) — a convention-based app launcher that eliminates per-app boot boilerplate. Phase 22 adds WASM-driven Enter key handling; counter and todo now use identical zero-config launch() calls. Phase 23 converges bench to launch() with `onBoot` for toolbar wiring and event delegation — all three apps now use the shared boot infrastructure.
+All three example apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state — TodoApp's `input_text` field was migrated from plain `String` to `SignalString` via `create_signal_string()` (M19.7). Phase 20 adds string event dispatch infrastructure (`ACTION_SIGNAL_SET_STRING`, `dispatch_event_with_string`) enabling JS → WASM string value flow for input events. Phase 20.5 migrates the TodoApp to fully WASM-driven input binding using `bind_value()`, `oninput_set_string()`, and `onclick_custom()` — JS has no special-casing for any handler. Phase 21 introduces `launch()` (`examples/lib/app.js`) — a convention-based app launcher that eliminates per-app boot boilerplate. Phase 22 adds WASM-driven Enter key handling; counter and todo now use identical zero-config launch() calls. Phase 23 converges bench to launch() with `onBoot` for toolbar wiring and event delegation — all three apps now use the shared boot infrastructure. Phase 32 adds error boundary demo apps (SafeCounterApp, ErrorNestApp) in `src/main.mojo` — these are test-only apps exercising `use_error_boundary()`, `report_error()`, `has_error()`, `clear_error()` with fallback UI switching.
 
 ### CounterApp (`counter.mojo`) — simplest example
 
@@ -237,6 +249,53 @@ Phase 24.2: Uses `setup_view()` for the app shell template ("bench-app") with in
 - **P24.2** ✅ — WASM-rendered toolbar with `onclick_custom` handlers. Entire app shell (h1, 6 buttons, status 3 `dyn_text` at dynamic_nodes[0-2], table with thead + tbody > `dyn_node(3)` at dynamic_nodes[3]) rendered from WASM via `setup_view()`. Root changed from `#tbody` to `#root`. 6 handler IDs extracted via `view_event_handler_id()`. `handle_event()` routes toolbar button clicks to benchmark operations + existing row click dispatch. `bench/index.html` simplified to `<div id="root">` + styles. `bench/main.js` reduced to 7-line `launch()` call. Tests updated: `createDOM()` creates root div, DOM tests query rendered tbody, handler lifecycle tests account for 6 toolbar base handlers. **Gotcha:** `dyn_text` and `dyn_node` share the `dynamic_nodes` index space — three auto-numbered `dyn_text()` get indices 0-2, so `dyn_node` must use 3.
 - **P24.3** ✅ — `performance.now()` WASM import for timing. `performance_now() -> Float64` via `external_call` — Mojo compiler emits unresolved symbol, `wasm-ld --allow-undefined` turns it into WASM import from `env` module, JS host provides `performance_now: () => performance.now()`. `format_timing_ms(ms) -> String` formats elapsed time to 1 decimal place with em-dash separator. `handle_event()` wraps each toolbar op with before/after `performance_now()`, stores formatted result in `timing_text`. `render()` emits `timing_text` as `dyn_text[1]` — diff detects change on flush, emits `SetText`. Added to `env.js` (browser), `env.ts` (Deno runtime), and `wasm_harness.mojo` (func[16]: deterministic mock clock, increments by 1.0 per call). WASM import count: 16 → 17. Exports: `bench_status_text(app_ptr) -> String`, `bench_handler_id_at(app_ptr, index) -> i32`.
 - **P24.4** ✅ — Fine-grained status bar with 3 `dyn_text` nodes. Split single `status_text` into `op_name` (dyn_text[0]), `timing_text` (dyn_text[1]), `row_count_text` (dyn_text[2]). Row list placeholder moved from `dyn_node(1)` to `dyn_node(3)`. Added `format_timing_ms(ms) -> String` (timing only with separator), `format_row_count(count) -> String` (comma-formatted with separator), `_format_number(n) -> String` (comma thousands). New exports: `bench_op_name`, `bench_timing_text`, `bench_row_count_text`. `bench_status_text` returns concatenation for backward compat. `bench/main.js` structurally identical to counter/todo (only `bufferCapacity` override remains).
+
+### SafeCounterApp (`src/main.mojo`) — error boundary with crash/retry
+
+```txt
+struct SafeCounterApp:
+    var ctx: ComponentContext       # root scope = error boundary
+    var count: SignalI32
+    var normal: SCNormalChild       # display child (count text)
+    var fallback: SCFallbackChild   # fallback child (error + retry button)
+    var crash_handler: UInt32       # onclick_custom for crash button
+    var retry_handler: UInt32       # onclick_custom for retry button
+    fn __init__: ctx.create() → use_signal → use_error_boundary() → provide_signal_i32
+                 → setup_view(h1 + button(+1) + button(Crash) + dyn_node(0) + dyn_node(1))
+                 → create_child_context(normal) → create_child_context(fallback)
+    fn flush: if ctx.has_error() → normal.flush_empty + fallback.flush
+              else → fallback.flush_empty + normal.flush
+    fn handle_event: crash_handler → ctx.report_error("Simulated crash")
+                     retry_handler → ctx.clear_error()
+                     else → ctx.dispatch_event()
+```
+
+Lifecycle: `sc_init` → `sc_rebuild` → `sc_handle_event` → `sc_flush`. Error boundary alternates between normal child (count display) and fallback child (error message + retry button). Count signal persists across crash/recovery cycles.
+
+### ErrorNestApp (`src/main.mojo`) — nested error boundaries
+
+```txt
+struct ErrorNestApp:
+    var ctx: ComponentContext           # outer boundary (root scope)
+    var outer_normal: ENOuterNormalChild  # outer normal child (inner boundary)
+    var outer_fallback: ENOuterFallbackChild  # outer fallback
+    var outer_crash_handler: UInt32
+    var outer_retry_handler: UInt32
+    var inner_crash_handler: UInt32
+    var inner_retry_handler: UInt32
+    fn __init__: ctx.create() → use_error_boundary() → setup_view(h1 + buttons + dyn_node)
+                 → outer_normal child (use_error_boundary on child scope)
+                   └── inner_normal child + inner_fallback child
+                 → outer_fallback child
+    fn flush: if ctx.has_error() → outer_normal.flush_empty + outer_fallback.flush
+              else → outer_fallback.flush_empty + outer_normal.flush (recurses into inner boundary)
+    fn handle_event: outer_crash → ctx.report_error()
+                     outer_retry → ctx.clear_error()
+                     inner_crash → outer_normal.child_ctx.report_error()  (walks to inner boundary)
+                     inner_retry → outer_normal.child_ctx.clear_error()
+```
+
+Lifecycle: `en_init` → `en_rebuild` → `en_handle_event` → `en_flush`. Inner crash caught by inner boundary (only inner slot swaps). Outer crash caught by outer boundary (entire inner tree replaced by outer fallback). Recovery at each level is independent.
 
 ## WASM Export Pattern (`src/main.mojo`)
 
@@ -418,32 +477,48 @@ el_button(text("Add"), onclick_custom()),
 
 | File | Lines | Role |
 |------|-------|------|
-| `src/main.mojo` | ~2,600 | All @export wrappers |
-| `src/signals/handle.mojo` | ~670 | SignalI32 + SignalBool + SignalString + MemoI32 + EffectHandle |
-| `src/signals/runtime.mojo` | ~630 | Reactive runtime + SignalStore + StringStore |
-| `src/component/context.mojo` | ~1,040 | ComponentContext + RenderBuilder + tree processing + view_event_handler_id |
-| `src/component/lifecycle.mojo` | ~350 | FragmentSlot + mount/diff helpers |
-| `src/component/app_shell.mojo` | ~350 | AppShell (low-level) |
+| `src/main.mojo` | ~7,050 | All @export wrappers (incl. SafeCounterApp, ErrorNestApp, context/child test apps) |
+| `src/signals/handle.mojo` | ~680 | SignalI32 + SignalBool + SignalString + MemoI32 + EffectHandle |
+| `src/signals/runtime.mojo` | ~1,365 | Reactive runtime + SignalStore + StringStore |
+| `src/component/context.mojo` | ~2,140 | ComponentContext + RenderBuilder + tree processing + error boundary + view_event_handler_id |
+| `src/component/child_context.mojo` | ~500 | ChildComponentContext (child scope API + error boundary methods) |
+| `src/component/lifecycle.mojo` | ~580 | FragmentSlot + mount/diff helpers |
+| `src/component/app_shell.mojo` | ~460 | AppShell (low-level) |
 | `examples/counter/counter.mojo` | ~115 | Counter app |
 | `examples/todo/todo.mojo` | ~520 | Todo app (M20.5: WASM-driven Add, bind_value, oninput_set_string, onclick_custom) |
 | `examples/bench/bench.mojo` | ~985 | Benchmark app (uses KeyedList + ItemBuilder + performance_now timing + 3 dyn_text status bar) |
-| `src/component/keyed_list.mojo` | ~595 | KeyedList + ItemBuilder + HandlerAction |
-| `src/vdom/dsl.mojo` | ~2,900 | Node DSL + el_* helpers + multi-arg overloads + conditional helpers + onclick_custom + to_template |
-| `src/vdom/vnode.mojo` | ~600 | VNode + VNodeStore + VNodeBuilder |
-| `src/mutations/diff.mojo` | ~500 | DiffEngine (keyed reconciliation) |
+| `src/component/keyed_list.mojo` | ~670 | KeyedList + ItemBuilder + HandlerAction |
+| `src/vdom/dsl.mojo` | ~3,630 | Node DSL + el_* helpers + multi-arg overloads + conditional helpers + onclick_custom + to_template |
+| `src/vdom/vnode.mojo` | ~800 | VNode + VNodeStore + VNodeBuilder |
+| `src/mutations/diff.mojo` | ~970 | DiffEngine (keyed reconciliation) |
 | `runtime/memory.ts` | ~290 | Free-list allocator + scratch arena (Phase 25) |
 | `runtime/events.ts` | ~375 | EventBridge + DispatchWithStringFn (M20.2) |
-| `runtime/app.ts` | ~370 | createApp + createCounterApp + AppConfig with handleEventWithString |
+| `runtime/app.ts` | ~1,580 | createApp + app handles (Counter, Todo, Bench, SafeCounter, ErrorNest, etc.) |
 | `runtime/types.ts` | ~690 | WasmExports interface (Phase 20 string dispatch exports) |
 | `examples/lib/env.js` | ~250 | Browser free-list allocator + WASM imports (Phase 25) |
 | `test-js/allocator.test.ts` | ~980 | Allocator unit tests + WASM-integrated reuse tests (Phase 25) |
 | `test-js/events.test.ts` | ~650 | EventBridge string dispatch tests (unit + WASM integration) |
 | `test-js/dsl.test.ts` | ~620 | DSL tests incl. M20.3/M20.4/M20.5 binding + onclick_custom tests |
 | `test-js/todo.test.ts` | ~1,060 | Todo app tests incl. M20.5 WASM-driven Add flow tests |
-| `test/wasm_harness.mojo` | ~1,440 | Mojo WASM test harness (includes free-list allocator, Phase 25) |
-| `CHANGELOG.md` | ~270 | Development history (Phases 0–25) |
+| `test-js/safe_counter.test.ts` | ~600 | SafeCounterApp error boundary tests (crash/retry lifecycle, DOM) |
+| `test-js/error_nest.test.ts` | ~645 | ErrorNestApp nested boundary tests (inner/outer crash/retry, DOM) |
+| `test/wasm_harness.mojo` | ~1,400 | Mojo WASM test harness (includes free-list allocator, Phase 25) |
+| `CHANGELOG.md` | ~400 | Development history (Phases 0–32) |
 
 ## Common Patterns
+
+**Error boundary flush pattern (Phase 32):** Check `ctx.has_error()` in flush to switch between normal and fallback children. Uses the same `flush` / `flush_empty` alternation as `ConditionalSlot`:
+
+```text
+if ctx.has_error():
+    normal_child.flush_empty(writer)       # hide normal content
+    fallback_child.flush(writer, fb_vnode) # show fallback with error message
+else:
+    fallback_child.flush_empty(writer)     # hide fallback
+    normal_child.flush(writer, child_vnode) # show normal content
+```
+
+Error propagation: `ctx.report_error(msg)` walks the scope parent chain via `ScopeArena.propagate_error()` to the nearest `is_error_boundary` ancestor, sets the error, and marks the boundary dirty. `ctx.clear_error()` clears the error and marks dirty. No new JS runtime infrastructure — fallback UI renders through the same mutation protocol.
 
 **String event dispatch (Phase 20 — manual)**: Register a handler with `HandlerEntry.signal_set_string(scope_id, signal.string_key, signal.version_key, String("input"))`, then dispatch from JS via `dispatch_event_with_string(rt, handler_id, event_type, string_value)`. The runtime writes the string to the `SignalString` and bumps the version signal.
 
@@ -490,3 +565,4 @@ el_button(text("Add"), onclick_custom()),
 - **Dynamic component dispatch** → blocked on Existentials / dynamic traits (Phase 2, ⏰). **0.26.1 progress:** `AnyType` no longer requires `__del__()` (explicitly-destroyed types help), but doesn't solve dispatch.
 - **Pattern matching on actions** → blocked on ADTs & pattern matching (Phase 2, ⏰). Currently `if/elif` chains. **0.26.1 progress:** None.
 - **Async data loading / suspense** → blocked on First-class async (Phase 2, ⏰). **0.26.1 progress:** None.
+- ~~**Error boundaries**~~ → **Implemented in Phase 32.** Scope-level error boundary infrastructure (Phase 8.4) is now surfaced on `ComponentContext` and `ChildComponentContext` with `use_error_boundary()`, `report_error()`, `has_error()`, `error_message()`, `clear_error()`. Demonstrated with SafeCounterApp (single boundary) and ErrorNestApp (nested boundaries).
