@@ -58,6 +58,8 @@ from signals.handle import (
     SignalBool,
     SignalString,
     MemoI32,
+    MemoBool,
+    MemoString,
     EffectHandle,
 )
 from signals.runtime import StringStore
@@ -669,6 +671,70 @@ struct ComponentContext(Movable):
         """
         var memo_id = self.shell.create_memo_i32(self.scope_id, initial)
         return MemoI32(memo_id, self.shell.runtime)
+
+    # ── MemoBool hooks ───────────────────────────────────────────────
+
+    fn use_memo_bool(mut self, initial: Bool) -> MemoBool:
+        """Create a Bool memo and subscribe the root scope to it.
+
+        Must be called during setup (before end_setup).
+
+        Args:
+            initial: The initial cached Bool value.
+
+        Returns:
+            A MemoBool handle with read/recompute methods.
+        """
+        var memo_id = self.shell.use_memo_bool(initial)
+        # Read during render to subscribe the scope to memo output
+        _ = self.shell.memo_read_bool(memo_id)
+        return MemoBool(memo_id, self.shell.runtime)
+
+    fn create_memo_bool(mut self, initial: Bool) -> MemoBool:
+        """Create a Bool memo without the hook system.
+
+        Can be called at any time.  Does NOT auto-subscribe.
+
+        Args:
+            initial: The initial cached Bool value.
+
+        Returns:
+            A MemoBool handle.
+        """
+        var memo_id = self.shell.create_memo_bool(self.scope_id, initial)
+        return MemoBool(memo_id, self.shell.runtime)
+
+    # ── MemoString hooks ─────────────────────────────────────────────
+
+    fn use_memo_string(mut self, initial: String) -> MemoString:
+        """Create a String memo and subscribe the root scope to it.
+
+        Must be called during setup (before end_setup).
+
+        Args:
+            initial: The initial cached String value.
+
+        Returns:
+            A MemoString handle with read/recompute methods.
+        """
+        var memo_id = self.shell.use_memo_string(initial)
+        # Read during render to subscribe the scope to memo output
+        _ = self.shell.memo_read_string(memo_id)
+        return MemoString(memo_id, self.shell.runtime)
+
+    fn create_memo_string(mut self, initial: String) -> MemoString:
+        """Create a String memo without the hook system.
+
+        Can be called at any time.  Does NOT auto-subscribe.
+
+        Args:
+            initial: The initial cached String value.
+
+        Returns:
+            A MemoString handle.
+        """
+        var memo_id = self.shell.create_memo_string(self.scope_id, initial)
+        return MemoString(memo_id, self.shell.runtime)
 
     # ── Effect hooks ─────────────────────────────────────────────────
 

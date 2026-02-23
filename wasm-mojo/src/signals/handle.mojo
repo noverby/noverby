@@ -679,3 +679,301 @@ struct SignalString(Copyable, Stringable):
         For reactive display, use read() explicitly.
         """
         return self.get()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MemoBool — Ergonomic handle for a Bool memo (computed/derived signal)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+struct MemoBool(Copyable, Stringable):
+    """Ergonomic handle wrapping a Bool memo ID + runtime pointer.
+
+    Memos are derived values that cache their result and recompute only
+    when their dependencies change.  MemoBool stores a Bool value
+    (as Int32 0/1) in the output signal.
+
+    Typical usage:
+
+        var is_valid = MemoBool(memo_id, runtime_ptr)
+
+        # In render / flush:
+        if is_valid.is_dirty():
+            is_valid.begin_compute()
+            var name = name_signal.read()  # subscribes memo to signal
+            is_valid.end_compute(len(name) > 0)
+
+        var text = "Valid: " + str(is_valid)
+
+    The handle does NOT own the Runtime — it holds a non-owning pointer.
+    """
+
+    var id: UInt32
+    var runtime: UnsafePointer[Runtime, MutExternalOrigin]
+
+    # ── Construction ─────────────────────────────────────────────────
+
+    fn __init__(
+        out self, id: UInt32, runtime: UnsafePointer[Runtime, MutExternalOrigin]
+    ):
+        """Create a memo handle from a raw ID and runtime pointer.
+
+        Args:
+            id: The memo's ID in the Runtime's MemoStore.
+            runtime: Non-owning pointer to the Runtime.
+        """
+        self.id = id
+        self.runtime = runtime
+
+    fn __copyinit__(out self, other: Self):
+        self.id = other.id
+        self.runtime = other.runtime
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.id = other.id
+        self.runtime = other.runtime
+
+    # ── Read ─────────────────────────────────────────────────────────
+
+    fn read(self) -> Bool:
+        """Read the memo's cached value (with context tracking).
+
+        If a scope or effect is currently active, it will be subscribed
+        to this memo's output signal and marked dirty when the memo
+        recomputes to a new value.
+
+        Returns:
+            The cached Bool value.
+        """
+        return self.runtime[0].memo_read_bool(self.id)
+
+    fn peek(self) -> Bool:
+        """Read the memo's cached value WITHOUT subscribing.
+
+        Returns:
+            The cached Bool value.
+        """
+        return (
+            self.runtime[0].peek_signal[Int32](
+                self.runtime[0].memos.output_key(self.id)
+            )
+            != 0
+        )
+
+    # ── Dirty / Recompute lifecycle ──────────────────────────────────
+
+    fn is_dirty(self) -> Bool:
+        """Check whether the memo needs recomputation.
+
+        A memo becomes dirty when any of its input signals are written.
+
+        Returns:
+            True if the memo should be recomputed before reading.
+        """
+        return self.runtime[0].memo_is_dirty(self.id)
+
+    fn begin_compute(self):
+        """Begin memo recomputation.
+
+        Sets the memo's reactive context as current, so any signals
+        read during computation will be tracked as dependencies.
+        Must be paired with end_compute().
+        """
+        self.runtime[0].memo_begin_compute(self.id)
+
+    fn end_compute(self, value: Bool):
+        """End memo recomputation and cache the result.
+
+        Writes the computed value to the memo's output signal and
+        restores the previous reactive context.
+
+        Args:
+            value: The newly computed Bool value to cache.
+        """
+        self.runtime[0].memo_end_compute_bool(self.id, value)
+
+    fn recompute_from(self, value: Bool):
+        """Convenience: begin_compute + end_compute in one call.
+
+        Use this when the computation doesn't need to read any signals
+        inside the compute bracket (e.g. when the component already has
+        the value).  Note: this does NOT set up dependency tracking for
+        signals read outside the bracket.
+
+        For proper dependency tracking, use begin_compute/end_compute
+        and read signals between them.
+
+        Args:
+            value: The newly computed value.
+        """
+        self.begin_compute()
+        self.end_compute(value)
+
+    # ── Stringable ───────────────────────────────────────────────────
+
+    fn __str__(self) -> String:
+        """Return the memo's cached value as a String.
+
+        Uses peek() so it does NOT subscribe the calling context.
+        """
+        if self.peek():
+            return String("True")
+        else:
+            return String("False")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MemoString — Ergonomic handle for a String memo (computed/derived signal)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+struct MemoString(Copyable, Stringable):
+    """Ergonomic handle wrapping a String memo ID + runtime pointer.
+
+    MemoString stores its cached value in the StringStore (same pattern
+    as SignalString), with a companion version signal for subscriber
+    tracking.
+
+    Typical usage:
+
+        var status = MemoString(memo_id, runtime_ptr)
+
+        # In render / flush:
+        if status.is_dirty():
+            status.begin_compute()
+            var count = count_signal.read()  # subscribes memo to signal
+            if count > 0:
+                status.end_compute(String("positive"))
+            else:
+                status.end_compute(String("zero"))
+
+        var text = "Status: " + str(status)
+
+    The handle does NOT own the Runtime — it holds a non-owning pointer.
+    """
+
+    var id: UInt32
+    var runtime: UnsafePointer[Runtime, MutExternalOrigin]
+
+    # ── Construction ─────────────────────────────────────────────────
+
+    fn __init__(
+        out self, id: UInt32, runtime: UnsafePointer[Runtime, MutExternalOrigin]
+    ):
+        """Create a memo handle from a raw ID and runtime pointer.
+
+        Args:
+            id: The memo's ID in the Runtime's MemoStore.
+            runtime: Non-owning pointer to the Runtime.
+        """
+        self.id = id
+        self.runtime = runtime
+
+    fn __copyinit__(out self, other: Self):
+        self.id = other.id
+        self.runtime = other.runtime
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.id = other.id
+        self.runtime = other.runtime
+
+    # ── Read ─────────────────────────────────────────────────────────
+
+    fn read(self) -> String:
+        """Read the memo's cached value (with context tracking).
+
+        Subscribes the current reactive context via the version signal,
+        so the reader is notified when the memo recomputes to a new value.
+
+        Returns:
+            A copy of the cached String value.
+        """
+        return self.runtime[0].memo_read_string(self.id)
+
+    fn peek(self) -> String:
+        """Read the memo's cached value WITHOUT subscribing.
+
+        Returns:
+            A copy of the cached String value.
+        """
+        return self.runtime[0].memo_peek_string(self.id)
+
+    fn get(self) -> String:
+        """Alias for read() — read with context tracking.
+
+        Matches the SignalString API for consistency.
+
+        Returns:
+            A copy of the cached String value.
+        """
+        return self.read()
+
+    # ── Dirty / Recompute lifecycle ──────────────────────────────────
+
+    fn is_dirty(self) -> Bool:
+        """Check whether the memo needs recomputation.
+
+        A memo becomes dirty when any of its input signals are written.
+
+        Returns:
+            True if the memo should be recomputed before reading.
+        """
+        return self.runtime[0].memo_is_dirty(self.id)
+
+    fn begin_compute(self):
+        """Begin memo recomputation.
+
+        Sets the memo's reactive context as current, so any signals
+        read during computation will be tracked as dependencies.
+        Must be paired with end_compute().
+        """
+        self.runtime[0].memo_begin_compute(self.id)
+
+    fn end_compute(self, value: String):
+        """End memo recomputation and cache the result.
+
+        Writes the computed string to the StringStore, bumps the
+        version signal, and restores the previous reactive context.
+
+        Args:
+            value: The newly computed String value to cache.
+        """
+        self.runtime[0].memo_end_compute_string(self.id, value)
+
+    fn recompute_from(self, value: String):
+        """Convenience: begin_compute + end_compute in one call.
+
+        Use this when the computation doesn't need to read any signals
+        inside the compute bracket (e.g. when the component already has
+        the value).  Note: this does NOT set up dependency tracking for
+        signals read outside the bracket.
+
+        For proper dependency tracking, use begin_compute/end_compute
+        and read signals between them.
+
+        Args:
+            value: The newly computed value.
+        """
+        self.begin_compute()
+        self.end_compute(value)
+
+    # ── Queries ──────────────────────────────────────────────────────
+
+    fn is_empty(self) -> Bool:
+        """Check whether the cached string value is empty.
+
+        Uses peek() so it does NOT subscribe the calling context.
+
+        Returns:
+            True if the string is empty, False otherwise.
+        """
+        return len(self.peek()) == 0
+
+    # ── Stringable ───────────────────────────────────────────────────
+
+    fn __str__(self) -> String:
+        """Return the memo's cached value as a String.
+
+        Uses peek() so it does NOT subscribe the calling context.
+        """
+        return self.peek()
