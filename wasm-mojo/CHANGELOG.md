@@ -2,6 +2,20 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 36 — Recursive Memo Propagation
+
+Fixed the runtime so that `write_signal` recursively propagates dirtiness through memo → memo chains to arbitrary depth, eliminating the need for manual all-or-nothing recomputation in apps with memo chains. Also fixed a namespace collision between scope IDs and signal keys that caused false subscriber classification.
+
+- **P36.1** — Runtime worklist propagation. Refactored `write_signal` in `src/signals/runtime.mojo` to use a two-phase approach: Phase 1 scans direct subscribers of the written signal (memos → mark dirty + add to worklist; effects → mark pending; scopes → add to dirty_scopes). Phase 2 drains the worklist — for each memo, its output signal's subscribers are scanned with the same memo/effect/scope classification. The `is_dirty()` check serves as a cycle guard (each memo processed at most once). Diamond dependencies handled correctly (C marked dirty once when first parent processed, skipped on second). Added `SCOPE_CONTEXT_TAG` (bit 31) to tag scope reactive contexts in `begin_scope_render` / `end_scope_render`, preventing false matches against memo/effect context IDs (which are bare signal keys from different allocators). 20 new Mojo tests in `test/test_memo_propagation.mojo` covering 2/3/4-level chains, diamond patterns, mixed types (I32 → Bool → String), scope/effect at end of chains, destroyed memo safety, re-subscription, and single-memo regression.
+
+- **P36.2** — Simplified MemoChainApp. Replaced the "if head dirty, recompute all" pattern in `MemoChainApp.run_memos()` with independent `is_dirty()` checks per memo. Each memo now checks its own dirty flag (set automatically by the runtime's recursive propagation) rather than gating on the head memo. Recomputation order (doubled → is_big → label) is still maintained by code order. Removed the doc comment about the runtime limitation. 2 new Mojo tests (`test_mc_all_memos_dirty_after_increment`, `test_mc_partial_recompute`) + 2 new JS test suites verifying all three memos are independently dirty after a single signal write and settle independently after flush.
+
+- **P36.3** — Documentation update. AGENTS.md updated: MemoChainApp architecture shows independent `is_dirty()` checks; "Memo type expansion pattern" updated to reflect automatic propagation; added "Worklist-based memo propagation" pattern; file size references updated. CHANGELOG.md and README.md updated with Phase 36 summary and test counts.
+
+**Test count after P36.3:** 1,248 Mojo (47 modules) + 2,969 JS (27 suites) = 4,217 tests.
+
+---
+
 ## Phase 35 — Memo Type Expansion (MemoBool + MemoString)
 
 Expanded the memo system to support `MemoBool` and `MemoString` types, achieving type-parity with signals (`SignalI32`/`SignalBool`/`SignalString` ↔ `MemoI32`/`MemoBool`/`MemoString`). Demonstrated practical usage with two new demo apps exercising cross-type memo chains and form validation patterns.

@@ -515,6 +515,117 @@ fn test_mc_threshold_boundary_exact(
     _destroy_mc(w, app, buf)
 
 
+# ── Test: all memos dirty after increment (Phase 36) ────────────────────────
+
+
+fn test_mc_all_memos_dirty_after_increment(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
+) raises:
+    """After increment, all three memos are independently dirty.
+
+    Phase 36 recursive propagation marks downstream memos dirty
+    through memo → memo chains, so doubled, is_big, AND label
+    should all be dirty after a single signal write.
+    """
+    var t = _create_mc(w)
+    var app = t[0]
+    var buf = t[1]
+    # After rebuild, all memos are clean
+    assert_equal(
+        w[].call_i32("mc_doubled_dirty", args_ptr(app)),
+        0,
+        msg="doubled clean after rebuild",
+    )
+    assert_equal(
+        w[].call_i32("mc_is_big_dirty", args_ptr(app)),
+        0,
+        msg="is_big clean after rebuild",
+    )
+    assert_equal(
+        w[].call_i32("mc_label_dirty", args_ptr(app)),
+        0,
+        msg="label clean after rebuild",
+    )
+    # Increment — signal write should dirty ALL memos via propagation
+    _incr(w, app)
+    assert_equal(
+        w[].call_i32("mc_doubled_dirty", args_ptr(app)),
+        1,
+        msg="doubled dirty after increment",
+    )
+    assert_equal(
+        w[].call_i32("mc_is_big_dirty", args_ptr(app)),
+        1,
+        msg="is_big dirty after increment (propagated)",
+    )
+    assert_equal(
+        w[].call_i32("mc_label_dirty", args_ptr(app)),
+        1,
+        msg="label dirty after increment (propagated)",
+    )
+    _destroy_mc(w, app, buf)
+
+
+# ── Test: partial recompute (Phase 36) ──────────────────────────────────────
+
+
+fn test_mc_partial_recompute(
+    w: UnsafePointer[WasmInstance, MutExternalOrigin],
+) raises:
+    """After increment, flush recomputes all independently-dirty memos.
+
+    Verifies that flush settles the full chain: doubled clean,
+    is_big clean, label clean — each was dirty independently and
+    each was recomputed independently by run_memos().
+    """
+    var t = _create_mc(w)
+    var app = t[0]
+    var buf = t[1]
+    # Increment to trigger dirtiness
+    _incr(w, app)
+    # All three dirty before flush
+    assert_equal(
+        w[].call_i32("mc_doubled_dirty", args_ptr(app)),
+        1,
+        msg="doubled dirty before flush",
+    )
+    assert_equal(
+        w[].call_i32("mc_is_big_dirty", args_ptr(app)),
+        1,
+        msg="is_big dirty before flush",
+    )
+    assert_equal(
+        w[].call_i32("mc_label_dirty", args_ptr(app)),
+        1,
+        msg="label dirty before flush",
+    )
+    # Flush — run_memos recomputes each independently
+    _ = _flush(w, app, buf)
+    # All three clean after flush
+    assert_equal(
+        w[].call_i32("mc_doubled_dirty", args_ptr(app)),
+        0,
+        msg="doubled clean after flush",
+    )
+    assert_equal(
+        w[].call_i32("mc_is_big_dirty", args_ptr(app)),
+        0,
+        msg="is_big clean after flush",
+    )
+    assert_equal(
+        w[].call_i32("mc_label_dirty", args_ptr(app)),
+        0,
+        msg="label clean after flush",
+    )
+    # Values are correct
+    assert_equal(w[].call_i32("mc_input_value", args_ptr(app)), 1)
+    assert_equal(w[].call_i32("mc_doubled_value", args_ptr(app)), 2)
+    assert_false(_is_big(w, app), msg="is_big False at doubled=2")
+    var label = _label_text(w, app)
+    assert_equal(label, String("small"))
+    _destroy_mc(w, app, buf)
+
+
 # ── Test runner ──────────────────────────────────────────────────────────────
 
 
@@ -583,4 +694,10 @@ fn main() raises:
     test_mc_threshold_boundary_exact(wp)
     print("  ✓ threshold boundary exact")
 
-    print("  ✓ test_memo_chain — memo_chain: 20/20 passed")
+    test_mc_all_memos_dirty_after_increment(wp)
+    print("  ✓ all memos dirty after increment (Phase 36)")
+
+    test_mc_partial_recompute(wp)
+    print("  ✓ partial recompute (Phase 36)")
+
+    print("  ✓ test_memo_chain — memo_chain: 22/22 passed")
