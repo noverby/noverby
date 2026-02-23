@@ -2190,6 +2190,41 @@ fn runtime_signal_changed(rt_ptr: Int64, key: Int32) -> Int32:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Phase 38 — Batch Signal Writes Exports
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@export
+fn runtime_begin_batch(rt_ptr: Int64):
+    """Enter batch mode for signal writes.
+
+    While batching, signal writes store values immediately (reads see
+    the new value) but defer subscriber scanning and worklist propagation
+    until the outermost end_batch().  Can be nested.
+    """
+    _get[Runtime](rt_ptr)[0].begin_batch()
+
+
+@export
+fn runtime_end_batch(rt_ptr: Int64):
+    """Exit batch mode and propagate all deferred writes.
+
+    On the outermost call, runs a single combined propagation pass
+    over all signals written during the batch.  Nested calls just
+    decrement the depth counter.
+    """
+    _get[Runtime](rt_ptr)[0].end_batch()
+
+
+@export
+fn runtime_is_batching(rt_ptr: Int64) -> Int32:
+    """Return 1 if currently inside a begin_batch/end_batch bracket."""
+    if _get[Runtime](rt_ptr)[0].is_batching():
+        return 1
+    return 0
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Phase 14 — Effect (Reactive Side Effect) Exports
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -2878,26 +2913,8 @@ fn bench_row_count_text(app_ptr: Int64) -> String:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Phase 9.4 — Signal Write Batching
+# Phase 9.4 — Signal Write Batching (replaced by Phase 38 exports above)
 # ══════════════════════════════════════════════════════════════════════════════
-
-
-@export
-fn runtime_begin_batch(rt_ptr: Int64):
-    """Begin a signal write batch.
-
-    While batching, signal writes still update values and accumulate
-    dirty scopes, but no duplicate entries are added.  Call
-    runtime_end_batch() to finalize.
-    """
-    # Batching is implicit — dirty_scopes already deduplicates.
-    pass
-
-
-@export
-fn runtime_end_batch(rt_ptr: Int64):
-    """End a signal write batch.  The dirty queue is ready for drain."""
-    pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════

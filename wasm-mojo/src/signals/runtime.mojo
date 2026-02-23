@@ -481,6 +481,13 @@ struct Runtime(Movable):
     # memo_end_compute_* (only when new != old).  Used by settle_scopes()
     # to remove scopes whose subscribed signals are all value-stable.
     var _changed_signals: List[UInt32]
+    # Batch signal writes (Phase 38).
+    # When _batch_depth > 0, write_signal stores values immediately but
+    # defers subscriber scanning and worklist propagation until the
+    # outermost end_batch().  _batch_keys collects the signal keys
+    # written during the batch (deduplicated).
+    var _batch_depth: Int
+    var _batch_keys: List[UInt32]
 
     # ── Construction ─────────────────────────────────────────────────
 
@@ -501,6 +508,8 @@ struct Runtime(Movable):
         self._effect_ctx_ids = List[UInt32]()
         self._effect_ids = List[UInt32]()
         self._changed_signals = List[UInt32]()
+        self._batch_depth = 0
+        self._batch_keys = List[UInt32]()
 
     fn __moveinit__(out self, deinit other: Self):
         self.signals = other.signals^
@@ -519,6 +528,8 @@ struct Runtime(Movable):
         self._effect_ctx_ids = other._effect_ctx_ids^
         self._effect_ids = other._effect_ids^
         self._changed_signals = other._changed_signals^
+        self._batch_depth = other._batch_depth
+        self._batch_keys = other._batch_keys^
 
     # ── Context management ───────────────────────────────────────────
 
@@ -580,6 +591,9 @@ struct Runtime(Movable):
     ](mut self, key: UInt32, value: T):
         """Write a signal and propagate dirtiness through memo chains.
 
+        If currently inside a batch (Phase 38), the value is stored
+        immediately but propagation is deferred until end_batch().
+
         Two-phase propagation (Phase 36):
 
         Phase 1 — Scan direct subscribers of the written signal:
@@ -596,6 +610,19 @@ struct Runtime(Movable):
             termination (each memo processed at most once per call).
         """
         self.signals.write[T](key, value)
+
+        if self._batch_depth > 0:
+            # Batch mode: track the key, skip propagation
+            var already = False
+            for i in range(len(self._batch_keys)):
+                if self._batch_keys[i] == key:
+                    already = True
+                    break
+            if not already:
+                self._batch_keys.append(key)
+            return
+
+        # Non-batch: immediate propagation
         self._changed_signals.append(key)
 
         var memo_worklist = List[UInt32]()
@@ -778,13 +805,32 @@ struct Runtime(Movable):
         Updates the StringStore entry and bumps the version signal,
         which marks all subscribers dirty via the existing mechanism.
 
+        If currently inside a batch (Phase 38), the string value and
+        version are stored immediately but propagation is deferred
+        until end_batch().
+
         Args:
             string_key: The key in the StringStore.
             version_key: The companion version signal key.
             value: The new string value.
         """
         self.strings.write(string_key, value)
-        # Bump the version signal — this triggers subscriber notification
+
+        if self._batch_depth > 0:
+            # Batch mode: bump version directly (no propagation),
+            # track version_key for deferred propagation
+            var ver = self.peek_signal[Int32](version_key)
+            self.signals.write[Int32](version_key, ver + 1)
+            var already = False
+            for i in range(len(self._batch_keys)):
+                if self._batch_keys[i] == version_key:
+                    already = True
+                    break
+            if not already:
+                self._batch_keys.append(version_key)
+            return
+
+        # Non-batch: bump the version signal — triggers subscriber notification
         var ver = self.peek_signal[Int32](version_key)
         self.write_signal[Int32](version_key, ver + 1)
 
@@ -895,6 +941,147 @@ struct Runtime(Movable):
         flush cycle.  Can also be called manually in tests.
         """
         self._changed_signals = List[UInt32]()
+
+    # ── Batch signal writes (Phase 38) ───────────────────────────────
+
+    fn begin_batch(mut self):
+        """Enter batch mode.  Signal writes store values but defer propagation.
+
+        Can be nested — only the outermost `end_batch()` triggers
+        propagation.
+        """
+        self._batch_depth += 1
+
+    fn end_batch(mut self):
+        """Exit batch mode.  On the outermost call, run a single combined
+        propagation pass over all signals written during the batch.
+
+        Decrements the batch depth.  If the depth reaches 0, runs
+        propagation for all keys in `_batch_keys` using a single
+        shared worklist — a memo that subscribes to multiple batched
+        signals is added to the worklist at most once.
+        """
+        if self._batch_depth <= 0:
+            return  # not in a batch — no-op
+        self._batch_depth -= 1
+        if self._batch_depth > 0:
+            return  # still in a nested batch — defer
+
+        # Outermost end_batch: propagate all batched keys
+        if len(self._batch_keys) == 0:
+            return  # empty batch — no-op
+
+        # Combined propagation: shared worklist across all source signals
+        var memo_worklist = List[UInt32]()
+
+        for b in range(len(self._batch_keys)):
+            var key = self._batch_keys[b]
+            self._changed_signals.append(key)
+            var subs = self.signals.get_subscribers(key)
+
+            # Phase 1: direct subscribers (same logic as write_signal)
+            for i in range(len(subs)):
+                var ctx = subs[i]
+                if (ctx & SCOPE_CONTEXT_TAG) != 0:
+                    var scope_id = ctx & ~SCOPE_CONTEXT_TAG
+                    var found = False
+                    for j in range(len(self.dirty_scopes)):
+                        if self.dirty_scopes[j] == scope_id:
+                            found = True
+                            break
+                    if not found:
+                        self.dirty_scopes.append(scope_id)
+                    continue
+                # Memo check
+                var is_memo = False
+                for m in range(len(self._memo_ctx_ids)):
+                    if self._memo_ctx_ids[m] == ctx:
+                        var memo_id = self._memo_ids[m]
+                        if self.memos.contains(memo_id):
+                            if not self.memos.is_dirty(memo_id):
+                                self.memos.mark_dirty(memo_id)
+                                memo_worklist.append(memo_id)
+                        is_memo = True
+                        break
+                if is_memo:
+                    continue
+                # Effect check
+                var is_effect = False
+                for e in range(len(self._effect_ctx_ids)):
+                    if self._effect_ctx_ids[e] == ctx:
+                        var effect_id = self._effect_ids[e]
+                        if self.effects.contains(effect_id):
+                            self.effects.mark_pending(effect_id)
+                        is_effect = True
+                        break
+                if is_effect:
+                    continue
+                # Unknown: treat as scope (legacy)
+                var found = False
+                for j in range(len(self.dirty_scopes)):
+                    if self.dirty_scopes[j] == ctx:
+                        found = True
+                        break
+                if not found:
+                    self.dirty_scopes.append(ctx)
+
+        # Phase 2: drain shared worklist (same as write_signal Phase 2)
+        var wl_idx = 0
+        while wl_idx < len(memo_worklist):
+            var mid = memo_worklist[wl_idx]
+            wl_idx += 1
+            if not self.memos.contains(mid):
+                continue
+            var out_key = self.memos.output_key(mid)
+            var out_subs = self.signals.get_subscribers(out_key)
+            for k in range(len(out_subs)):
+                var sub_ctx = out_subs[k]
+                if (sub_ctx & SCOPE_CONTEXT_TAG) != 0:
+                    var scope_id = sub_ctx & ~SCOPE_CONTEXT_TAG
+                    var found2 = False
+                    for j2 in range(len(self.dirty_scopes)):
+                        if self.dirty_scopes[j2] == scope_id:
+                            found2 = True
+                            break
+                    if not found2:
+                        self.dirty_scopes.append(scope_id)
+                    continue
+                var is_memo2 = False
+                for m2 in range(len(self._memo_ctx_ids)):
+                    if self._memo_ctx_ids[m2] == sub_ctx:
+                        var downstream_id = self._memo_ids[m2]
+                        if self.memos.contains(downstream_id):
+                            if not self.memos.is_dirty(downstream_id):
+                                self.memos.mark_dirty(downstream_id)
+                                memo_worklist.append(downstream_id)
+                        is_memo2 = True
+                        break
+                if is_memo2:
+                    continue
+                var is_eff = False
+                for e2 in range(len(self._effect_ctx_ids)):
+                    if self._effect_ctx_ids[e2] == sub_ctx:
+                        var eff_id = self._effect_ids[e2]
+                        if self.effects.contains(eff_id):
+                            self.effects.mark_pending(eff_id)
+                        is_eff = True
+                        break
+                if is_eff:
+                    continue
+                var found2 = False
+                for j2 in range(len(self.dirty_scopes)):
+                    if self.dirty_scopes[j2] == sub_ctx:
+                        found2 = True
+                        break
+                if not found2:
+                    self.dirty_scopes.append(sub_ctx)
+
+        # Clear batch state
+        self._batch_keys = List[UInt32]()
+
+    fn is_batching(self) -> Bool:
+        """Return True if currently inside a begin_batch/end_batch bracket."""
+        return self._batch_depth > 0
 
     fn settle_scopes(mut self):
         """Remove dirty scopes whose subscribed signals all have unchanged values.
