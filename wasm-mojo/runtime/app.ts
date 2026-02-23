@@ -1215,3 +1215,175 @@ export function createThemeCounterApp(
 
 	return tcHandle;
 }
+
+// ── SafeCounterApp (Phase 32 — Error Boundaries) ───────────────────────────
+
+/**
+ * SafeCounterApp handle — counter with error boundary, crash/retry lifecycle.
+ *
+ * Parent has an error boundary, count signal, Crash button, and two child
+ * components (normal display + error fallback).  Crash triggers report_error()
+ * → fallback shown.  Retry calls clear_error() → normal child restored.
+ */
+export interface SafeCounterAppHandle extends AppHandle {
+	/** Handler IDs for programmatic dispatch. */
+	incrHandler: number;
+	crashHandler: number;
+	retryHandler: number;
+
+	/** Scope IDs. */
+	readonly parentScopeId: number;
+	readonly normalScopeId: number;
+	readonly fallbackScopeId: number;
+
+	/** Current count value. */
+	getCount(): number;
+
+	/** Whether the error boundary has captured an error. */
+	hasError(): boolean;
+
+	/** The captured error message (read from WASM String struct). */
+	getErrorMessage(): string;
+
+	/** Whether the normal child is mounted in the DOM. */
+	isNormalMounted(): boolean;
+
+	/** Whether the fallback child is mounted in the DOM. */
+	isFallbackMounted(): boolean;
+
+	/** Whether the normal child has rendered at least once. */
+	normalHasRendered(): boolean;
+
+	/** Whether the fallback child has rendered at least once. */
+	fallbackHasRendered(): boolean;
+
+	/** Whether any scope is dirty. */
+	hasDirty(): boolean;
+
+	/** Total number of registered handlers. */
+	handlerCount(): number;
+
+	/** Number of live scopes. */
+	scopeCount(): number;
+
+	/** Dispatch increment + flush. */
+	increment(): void;
+
+	/** Dispatch crash + flush. */
+	crash(): void;
+
+	/** Dispatch retry + flush. */
+	retry(): void;
+}
+
+/**
+ * Create a SafeCounterApp wired to a DOM root element.
+ */
+export function createSafeCounterApp(
+	fns: WasmExports & Record<string, CallableFunction>,
+	root: Element,
+	doc?: Document,
+): SafeCounterAppHandle {
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		init: (f) => f.sc_init(),
+		rebuild: (f, app, buf, cap) => f.sc_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.sc_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.sc_handle_event(app, hid, evt),
+		destroy: (f, app) => f.sc_destroy(app),
+	});
+
+	const incrHandler = fns.sc_incr_handler(handle.appPtr) as number;
+	const crashHandler = fns.sc_crash_handler(handle.appPtr) as number;
+	const retryHandler = fns.sc_retry_handler(handle.appPtr) as number;
+
+	const scHandle: SafeCounterAppHandle = {
+		...handle,
+
+		incrHandler,
+		crashHandler,
+		retryHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
+
+		get parentScopeId(): number {
+			return fns.sc_parent_scope_id(handle.appPtr) as number;
+		},
+		get normalScopeId(): number {
+			return fns.sc_normal_scope_id(handle.appPtr) as number;
+		},
+		get fallbackScopeId(): number {
+			return fns.sc_fallback_scope_id(handle.appPtr) as number;
+		},
+
+		getCount(): number {
+			return fns.sc_count_value(handle.appPtr) as number;
+		},
+		hasError(): boolean {
+			return (fns.sc_has_error(handle.appPtr) as number) !== 0;
+		},
+		getErrorMessage(): string {
+			const outPtr = allocStringStruct();
+			fns.sc_error_message(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+		isNormalMounted(): boolean {
+			return (fns.sc_normal_mounted(handle.appPtr) as number) !== 0;
+		},
+		isFallbackMounted(): boolean {
+			return (fns.sc_fallback_mounted(handle.appPtr) as number) !== 0;
+		},
+		normalHasRendered(): boolean {
+			return (fns.sc_normal_has_rendered(handle.appPtr) as number) !== 0;
+		},
+		fallbackHasRendered(): boolean {
+			return (fns.sc_fallback_has_rendered(handle.appPtr) as number) !== 0;
+		},
+		hasDirty(): boolean {
+			return (fns.sc_has_dirty(handle.appPtr) as number) !== 0;
+		},
+		handlerCount(): number {
+			return fns.sc_handler_count(handle.appPtr) as number;
+		},
+		scopeCount(): number {
+			return fns.sc_scope_count(handle.appPtr) as number;
+		},
+
+		increment(): void {
+			handle.dispatchAndFlush(incrHandler);
+		},
+		crash(): void {
+			handle.dispatchAndFlush(crashHandler);
+		},
+		retry(): void {
+			handle.dispatchAndFlush(retryHandler);
+		},
+
+		destroy(): void {
+			handle.destroy();
+		},
+	};
+
+	return scHandle;
+}

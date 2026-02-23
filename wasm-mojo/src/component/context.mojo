@@ -1618,6 +1618,77 @@ struct ComponentContext(Movable):
             self.shell.runtime,
         )
 
+    # ── Error Boundary ───────────────────────────────────────────────
+
+    fn use_error_boundary(mut self):
+        """Mark the root scope as an error boundary.
+
+        Call during setup (before end_setup / setup_view).  When a
+        descendant scope reports an error via ``report_error()``, this
+        scope captures it.  Check ``has_error()`` during flush to
+        switch between normal content and fallback UI.
+
+        Example::
+
+            self.ctx = ComponentContext.create()
+            self.ctx.use_error_boundary()
+            # ... use_signal, setup_view, etc. ...
+        """
+        self.shell.runtime[0].scopes.set_error_boundary(self.scope_id, True)
+
+    fn report_error(mut self, message: String) -> Int:
+        """Report an error to the nearest error boundary.
+
+        First checks whether this scope itself is a boundary — if so,
+        the error is set directly on it.  Otherwise walks up the parent
+        chain via ``propagate_error()``.  In both cases the boundary
+        scope is marked dirty so the next flush picks up the change.
+
+        Args:
+            message: Description of the error.
+
+        Returns:
+            The boundary scope ID as Int, or -1 if no boundary found.
+        """
+        # If this scope is itself a boundary, set the error directly
+        # (propagate_error only checks ancestors, not self).
+        if self.shell.runtime[0].scopes.is_error_boundary(self.scope_id):
+            self.shell.runtime[0].scopes.set_error(self.scope_id, message)
+            self.shell.runtime[0].mark_scope_dirty(self.scope_id)
+            return Int(self.scope_id)
+        var boundary_id = self.shell.runtime[0].scopes.propagate_error(
+            self.scope_id, message
+        )
+        if boundary_id != -1:
+            self.shell.runtime[0].mark_scope_dirty(UInt32(boundary_id))
+        return boundary_id
+
+    fn has_error(self) -> Bool:
+        """Check whether this scope (as a boundary) has captured an error.
+
+        Returns:
+            True if an error has been propagated to this boundary.
+        """
+        return self.shell.runtime[0].scopes.has_error(self.scope_id)
+
+    fn error_message(self) -> String:
+        """Get the error message captured by this boundary.
+
+        Returns:
+            The error message string, or empty if no error.
+        """
+        return self.shell.runtime[0].scopes.get_error_message(self.scope_id)
+
+    fn clear_error(mut self):
+        """Clear the error state on this boundary scope.
+
+        After clearing, the next flush should render normal children
+        instead of fallback UI.  Marks the scope dirty so the flush
+        cycle processes the state change.
+        """
+        self.shell.runtime[0].scopes.clear_error(self.scope_id)
+        self.shell.runtime[0].mark_scope_dirty(self.scope_id)
+
     # ── Fragment lifecycle (for dynamic keyed lists) ─────────────────
 
     fn flush_fragment(
