@@ -3,6 +3,8 @@
 [default.extend-words]
 # Upstream API name from openssh-sftp-client crate
 clonable = "clonable"
+# GraphQL NOT IN operator
+nin = "nin"
 
 [default]
 extend-ignore-re = [
@@ -19,7 +21,7 @@ extend-ignore-re = [
 
 [files]
 extend-exclude = [
-  "wiki/core/i18n/locales/da/translations.json",
+  "wiki/core/i18n/locales/da/translation.json",
   "config/secrets/*.age",
 ]
 ignore-hidden = false
