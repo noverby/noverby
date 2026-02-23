@@ -2116,3 +2116,130 @@ export function createEffectMemoApp(
 
 	return emHandle;
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Phase 35.2 — MemoFormApp (MemoBool + MemoString in a form)
+// ══════════════════════════════════════════════════════════════════════════════
+
+export interface MemoFormAppHandle extends AppHandle {
+	/** Current input signal text. */
+	getInput(): string;
+
+	/** Whether the is_valid memo is True (input non-empty). */
+	isValid(): boolean;
+
+	/** Current status memo text ("✓ Valid: ..." or "✗ Empty"). */
+	getStatus(): string;
+
+	/** Whether the is_valid memo needs recomputation. */
+	isValidDirty(): boolean;
+
+	/** Whether the status memo needs recomputation. */
+	isStatusDirty(): boolean;
+
+	/** Set the input signal directly (test helper). */
+	setInput(value: string): void;
+
+	/** Whether any scope is dirty. */
+	hasDirty(): boolean;
+
+	/** Number of live memos. */
+	getMemoCount(): number;
+
+	/** Number of live scopes. */
+	scopeCount(): number;
+
+	/** The oninput_set_string handler ID. */
+	inputHandler: number;
+}
+
+/**
+ * Create a MemoFormApp wired to a DOM root element.
+ */
+export function createMemoFormApp(
+	fns: WasmExports & Record<string, CallableFunction>,
+	root: Element,
+	doc?: Document,
+): MemoFormAppHandle {
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		init: (f) => f.mf_init(),
+		rebuild: (f, app, buf, cap) => f.mf_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.mf_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.mf_handle_event(app, hid, evt),
+		handleEventWithString: (f, app, hid, evt, strPtr) =>
+			f.mf_handle_event_string(app, hid, evt, strPtr),
+		destroy: (f, app) => f.mf_destroy(app),
+	});
+
+	const inputHandler = fns.mf_input_handler(handle.appPtr) as number;
+
+	const mfHandle: MemoFormAppHandle = {
+		...handle,
+
+		inputHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
+
+		getInput(): string {
+			const outPtr = allocStringStruct();
+			fns.mf_input_text(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+		isValid(): boolean {
+			return (fns.mf_is_valid(handle.appPtr) as number) !== 0;
+		},
+		getStatus(): string {
+			const outPtr = allocStringStruct();
+			fns.mf_status_text(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+		isValidDirty(): boolean {
+			return (fns.mf_is_valid_dirty(handle.appPtr) as number) !== 0;
+		},
+		isStatusDirty(): boolean {
+			return (fns.mf_status_dirty(handle.appPtr) as number) !== 0;
+		},
+		setInput(value: string): void {
+			const strPtr = writeStringStruct(value);
+			fns.mf_set_input(handle.appPtr, strPtr);
+			handle.flushAndApply();
+		},
+		hasDirty(): boolean {
+			return (fns.mf_has_dirty(handle.appPtr) as number) !== 0;
+		},
+		getMemoCount(): number {
+			return fns.mf_memo_count(handle.appPtr) as number;
+		},
+		scopeCount(): number {
+			return fns.mf_scope_count(handle.appPtr) as number;
+		},
+
+		destroy(): void {
+			handle.destroy();
+		},
+	};
+
+	return mfHandle;
+}
