@@ -7052,3 +7052,365 @@ fn en_outer_fallback_scope_id(app_ptr: Int64) -> Int32:
     return Int32(
         _get[ErrorNestApp](app_ptr)[0].outer_fallback.child_ctx.scope_id
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 33.2 — DataLoaderApp (suspense demo)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Demonstrates suspense with a "Load" button that triggers pending state,
+# a skeleton UI shown while pending, and a JS-triggered resolve that
+# displays the loaded content.
+#
+# Uses the same two-slot pattern as SafeCounterApp / ErrorNestApp:
+# separate dyn_node slots for content and skeleton.  On pending, the
+# content slot is emptied and the skeleton slot is filled (and vice
+# versa on resolve).
+#
+# Structure:
+#   DataLoaderApp (root scope = suspense boundary)
+#   ├── h1 "Data Loader"
+#   ├── button "Load"  (onclick_custom → set_pending)
+#   ├── dyn_node[0]  ← content slot
+#   ├── dyn_node[1]  ← skeleton slot
+#   │
+#   DLContentChild:     p > dyn_text("Data: ...")
+#   DLSkeletonChild:    p > dyn_text("Loading...")
+#
+# Lifecycle:
+#   1. Init: content shown ("Data: (none)"), skeleton hidden
+#   2. Load: set_pending(True) → next flush shows skeleton
+#   3. Resolve: JS calls dl_resolve(data) → set_pending(False) → next flush
+#      shows content with loaded data
+#   4. Re-load: repeat cycle with new data
+
+
+struct DLContentChild(Movable):
+    """Content child: displays loaded data.
+
+    Template: p > dyn_text("Data: ...")
+    """
+
+    var child_ctx: ChildComponentContext
+
+    fn __init__(out self, var child_ctx: ChildComponentContext):
+        self.child_ctx = child_ctx^
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.child_ctx = other.child_ctx^
+
+    fn render(mut self, data: String) -> UInt32:
+        var vb = self.child_ctx.render_builder()
+        vb.add_dyn_text(String("Data: ") + data)
+        return vb.build()
+
+
+struct DLSkeletonChild(Movable):
+    """Skeleton child: loading placeholder.
+
+    Template: p > dyn_text("Loading...")
+    """
+
+    var child_ctx: ChildComponentContext
+
+    fn __init__(out self, var child_ctx: ChildComponentContext):
+        self.child_ctx = child_ctx^
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.child_ctx = other.child_ctx^
+
+    fn render(mut self) -> UInt32:
+        var vb = self.child_ctx.render_builder()
+        vb.add_dyn_text(String("Loading..."))
+        return vb.build()
+
+
+struct DataLoaderApp(Movable):
+    """Suspense demo app with load/resolve lifecycle.
+
+    Parent: div > h1("Data Loader") + button("Load") + dyn_node[0] + dyn_node[1]
+    Content: p > dyn_text("Data: ...")
+    Skeleton: p > dyn_text("Loading...")
+    """
+
+    var ctx: ComponentContext
+    var content: DLContentChild
+    var skeleton: DLSkeletonChild
+    var data_text: String
+    var load_handler: UInt32
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.ctx.use_suspense_boundary()
+        self.data_text = String("(none)")
+        self.ctx.setup_view(
+            el_div(
+                el_h1(dsl_text(String("Data Loader"))),
+                el_button(
+                    dsl_text(String("Load")),
+                    dsl_onclick_custom(),
+                ),
+                dsl_dyn_node(0),
+                dsl_dyn_node(1),
+            ),
+            String("data-loader"),
+        )
+        self.load_handler = self.ctx.view_event_handler_id(0)
+        # Content child
+        var content_ctx = self.ctx.create_child_context(
+            el_p(dsl_dyn_text()),
+            String("dl-content"),
+        )
+        self.content = DLContentChild(content_ctx^)
+        # Skeleton child
+        var skel_ctx = self.ctx.create_child_context(
+            el_p(dsl_dyn_text()),
+            String("dl-skeleton"),
+        )
+        self.skeleton = DLSkeletonChild(skel_ctx^)
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.ctx = other.ctx^
+        self.content = other.content^
+        self.skeleton = other.skeleton^
+        self.data_text = other.data_text^
+        self.load_handler = other.load_handler
+
+    fn render_parent(mut self) -> UInt32:
+        """Build the parent VNode with placeholders for both slots."""
+        var pvb = self.ctx.render_builder()
+        pvb.add_dyn_placeholder()  # dyn_node[0] — content slot
+        pvb.add_dyn_placeholder()  # dyn_node[1] — skeleton slot
+        return pvb.build()
+
+
+# ── DataLoaderApp lifecycle functions ────────────────────────────────────────
+
+
+fn _dl_init() -> UnsafePointer[DataLoaderApp, MutExternalOrigin]:
+    var app_ptr = alloc[DataLoaderApp](1)
+    app_ptr.init_pointee_move(DataLoaderApp())
+    return app_ptr
+
+
+fn _dl_destroy(
+    app_ptr: UnsafePointer[DataLoaderApp, MutExternalOrigin],
+):
+    app_ptr[0].ctx.destroy_child_context(app_ptr[0].content.child_ctx)
+    app_ptr[0].ctx.destroy_child_context(app_ptr[0].skeleton.child_ctx)
+    app_ptr[0].ctx.destroy()
+    app_ptr.destroy_pointee()
+    app_ptr.free()
+
+
+fn _dl_rebuild(
+    app: UnsafePointer[DataLoaderApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Initial render (mount) of the data-loader app."""
+    # 1. Render parent with placeholders
+    var parent_idx = app[0].render_parent()
+    app[0].ctx.current_vnode = Int(parent_idx)
+
+    # 2. Emit all templates
+    app[0].ctx.shell.emit_templates(writer_ptr)
+
+    # 3. Create parent VNode tree
+    var engine = _CreateEngine(
+        writer_ptr,
+        app[0].ctx.shell.eid_alloc,
+        app[0].ctx.runtime_ptr(),
+        app[0].ctx.store_ptr(),
+    )
+    var num_roots = engine.create_node(parent_idx)
+
+    # 4. Append to root element
+    writer_ptr[0].append_children(0, num_roots)
+
+    # 5. Extract anchors for content + skeleton slots
+    var vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(parent_idx)
+    var content_anchor: UInt32 = 0
+    var skeleton_anchor: UInt32 = 0
+    if vnode_ptr[0].dyn_node_id_count() > 0:
+        content_anchor = vnode_ptr[0].get_dyn_node_id(0)
+    if vnode_ptr[0].dyn_node_id_count() > 1:
+        skeleton_anchor = vnode_ptr[0].get_dyn_node_id(1)
+    app[0].content.child_ctx.init_slot(content_anchor)
+    app[0].skeleton.child_ctx.init_slot(skeleton_anchor)
+
+    # 6. Flush content child (initial render — no pending)
+    var content_idx = app[0].content.render(app[0].data_text)
+    app[0].content.child_ctx.flush(writer_ptr, content_idx)
+    # Skeleton starts hidden — do NOT flush it
+
+    # 7. Finalize
+    writer_ptr[0].finalize()
+    return Int32(writer_ptr[0].offset)
+
+
+fn _dl_handle_event(
+    app: UnsafePointer[DataLoaderApp, MutExternalOrigin],
+    handler_id: UInt32,
+    event_type: UInt8,
+) -> Bool:
+    if handler_id == app[0].load_handler:
+        app[0].ctx.set_pending(True)
+        return True
+    else:
+        return app[0].ctx.dispatch_event(handler_id, event_type)
+
+
+fn _dl_resolve(
+    app: UnsafePointer[DataLoaderApp, MutExternalOrigin],
+    data: String,
+):
+    """Store resolved data and clear pending state."""
+    app[0].data_text = data
+    app[0].ctx.set_pending(False)
+
+
+fn _dl_flush(
+    app: UnsafePointer[DataLoaderApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Flush pending updates with suspense logic.
+
+    Two cases:
+      1. Pending: hide content, show skeleton
+      2. Not pending: hide skeleton, show content with current data
+    """
+    var parent_dirty = app[0].ctx.consume_dirty()
+    var content_dirty = app[0].content.child_ctx.is_dirty()
+    var skeleton_dirty = app[0].skeleton.child_ctx.is_dirty()
+
+    if not parent_dirty and not content_dirty and not skeleton_dirty:
+        return 0
+
+    # Diff parent shell (placeholders → placeholders = no mutations usually)
+    var new_parent_idx = app[0].render_parent()
+    app[0].ctx.diff(writer_ptr, new_parent_idx)
+
+    if app[0].ctx.is_pending():
+        # ── Pending: hide content, show skeleton ─────────────────────
+        app[0].content.child_ctx.flush_empty(writer_ptr)
+        var skel_idx = app[0].skeleton.render()
+        app[0].skeleton.child_ctx.flush(writer_ptr, skel_idx)
+    else:
+        # ── Resolved: hide skeleton, show content ────────────────────
+        app[0].skeleton.child_ctx.flush_empty(writer_ptr)
+        var content_idx = app[0].content.render(app[0].data_text)
+        app[0].content.child_ctx.flush(writer_ptr, content_idx)
+
+    return app[0].ctx.finalize(writer_ptr)
+
+
+# ── DataLoaderApp WASM exports ───────────────────────────────────────────────
+
+
+@export
+fn dl_init() -> Int64:
+    """Initialize the data-loader app.  Returns app pointer."""
+    return _to_i64(_dl_init())
+
+
+@export
+fn dl_destroy(app_ptr: Int64):
+    """Destroy the data-loader app."""
+    _dl_destroy(_get[DataLoaderApp](app_ptr))
+
+
+@export
+fn dl_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    """Initial mount.  Returns mutation buffer length."""
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _dl_rebuild(_get[DataLoaderApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return result
+
+
+@export
+fn dl_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
+    """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
+    return _b2i(
+        _dl_handle_event(_get[DataLoaderApp](app_ptr), UInt32(hid), UInt8(evt))
+    )
+
+
+@export
+fn dl_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    """Flush pending updates.  Returns mutation buffer length."""
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _dl_flush(_get[DataLoaderApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return result
+
+
+@export
+fn dl_resolve(app_ptr: Int64, data: String):
+    """Resolve pending state with loaded data."""
+    _dl_resolve(_get[DataLoaderApp](app_ptr), data)
+
+
+@export
+fn dl_is_pending(app_ptr: Int64) -> Int32:
+    """Return 1 if the app is in pending (loading) state."""
+    return _b2i(_get[DataLoaderApp](app_ptr)[0].ctx.is_pending())
+
+
+@export
+fn dl_data_text(app_ptr: Int64) -> String:
+    """Return the current data text."""
+    return _get[DataLoaderApp](app_ptr)[0].data_text
+
+
+@export
+fn dl_load_handler(app_ptr: Int64) -> Int32:
+    """Return the load button handler ID."""
+    return Int32(_get[DataLoaderApp](app_ptr)[0].load_handler)
+
+
+@export
+fn dl_content_mounted(app_ptr: Int64) -> Int32:
+    """Return 1 if the content child is mounted."""
+    return _b2i(_get[DataLoaderApp](app_ptr)[0].content.child_ctx.is_mounted())
+
+
+@export
+fn dl_skeleton_mounted(app_ptr: Int64) -> Int32:
+    """Return 1 if the skeleton child is mounted."""
+    return _b2i(_get[DataLoaderApp](app_ptr)[0].skeleton.child_ctx.is_mounted())
+
+
+@export
+fn dl_has_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if any scope is dirty."""
+    var app = _get[DataLoaderApp](app_ptr)
+    if len(app[0].ctx.shell.runtime[0].dirty_scopes) > 0:
+        return 1
+    return 0
+
+
+@export
+fn dl_scope_count(app_ptr: Int64) -> Int32:
+    """Return the number of live scopes."""
+    return Int32(
+        _get[DataLoaderApp](app_ptr)[0].ctx.shell.runtime[0].scope_count()
+    )
+
+
+@export
+fn dl_parent_scope_id(app_ptr: Int64) -> Int32:
+    """Return the parent (root) scope ID."""
+    return Int32(_get[DataLoaderApp](app_ptr)[0].ctx.scope_id)
+
+
+@export
+fn dl_content_scope_id(app_ptr: Int64) -> Int32:
+    """Return the content child's scope ID."""
+    return Int32(_get[DataLoaderApp](app_ptr)[0].content.child_ctx.scope_id)
+
+
+@export
+fn dl_skeleton_scope_id(app_ptr: Int64) -> Int32:
+    """Return the skeleton child's scope ID."""
+    return Int32(_get[DataLoaderApp](app_ptr)[0].skeleton.child_ctx.scope_id)

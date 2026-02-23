@@ -1579,3 +1579,134 @@ export function createErrorNestApp(
 
 	return enHandle;
 }
+
+// ── DataLoaderApp (Phase 33.2 — Suspense demo) ─────────────────────────────
+
+export interface DataLoaderAppHandle extends AppHandle {
+	/** Whether the app is in pending (loading) state. */
+	isPending(): boolean;
+
+	/** The current data text string. */
+	getDataText(): string;
+
+	/** Whether the content child is mounted in the DOM. */
+	isContentMounted(): boolean;
+
+	/** Whether the skeleton child is mounted in the DOM. */
+	isSkeletonMounted(): boolean;
+
+	/** Whether any scope is dirty. */
+	hasDirty(): boolean;
+
+	/** Number of live scopes. */
+	scopeCount(): number;
+
+	/** Scope IDs. */
+	readonly parentScopeId: number;
+	readonly contentScopeId: number;
+	readonly skeletonScopeId: number;
+
+	/** Load button handler ID. */
+	loadHandler: number;
+
+	/** Dispatch load button + flush (enters pending state). */
+	load(): void;
+
+	/** Resolve pending state with data string + flush. */
+	resolve(data: string): void;
+}
+
+/**
+ * Create a DataLoaderApp wired to a DOM root element.
+ */
+export function createDataLoaderApp(
+	fns: WasmExports & Record<string, CallableFunction>,
+	root: Element,
+	doc?: Document,
+): DataLoaderAppHandle {
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		init: (f) => f.dl_init(),
+		rebuild: (f, app, buf, cap) => f.dl_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.dl_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.dl_handle_event(app, hid, evt),
+		destroy: (f, app) => f.dl_destroy(app),
+	});
+
+	const loadHandler = fns.dl_load_handler(handle.appPtr) as number;
+
+	const dlHandle: DataLoaderAppHandle = {
+		...handle,
+
+		loadHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
+
+		get parentScopeId(): number {
+			return fns.dl_parent_scope_id(handle.appPtr) as number;
+		},
+		get contentScopeId(): number {
+			return fns.dl_content_scope_id(handle.appPtr) as number;
+		},
+		get skeletonScopeId(): number {
+			return fns.dl_skeleton_scope_id(handle.appPtr) as number;
+		},
+
+		isPending(): boolean {
+			return (fns.dl_is_pending(handle.appPtr) as number) !== 0;
+		},
+		getDataText(): string {
+			const outPtr = allocStringStruct();
+			fns.dl_data_text(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+		isContentMounted(): boolean {
+			return (fns.dl_content_mounted(handle.appPtr) as number) !== 0;
+		},
+		isSkeletonMounted(): boolean {
+			return (fns.dl_skeleton_mounted(handle.appPtr) as number) !== 0;
+		},
+		hasDirty(): boolean {
+			return (fns.dl_has_dirty(handle.appPtr) as number) !== 0;
+		},
+		scopeCount(): number {
+			return fns.dl_scope_count(handle.appPtr) as number;
+		},
+
+		load(): void {
+			handle.dispatchAndFlush(loadHandler);
+		},
+		resolve(data: string): void {
+			const strPtr = writeStringStruct(data);
+			fns.dl_resolve(handle.appPtr, strPtr);
+			handle.flushAndApply();
+		},
+
+		destroy(): void {
+			handle.destroy();
+		},
+	};
+
+	return dlHandle;
+}

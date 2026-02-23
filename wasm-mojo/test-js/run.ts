@@ -5,6 +5,7 @@ import { testChildComponent } from "./child_component.test.ts";
 import { testChildContext } from "./child_context.test.ts";
 import { testContext } from "./context.test.ts";
 import { testCounter } from "./counter.test.ts";
+import { testDataLoader } from "./data_loader.test.ts";
 import { testDsl } from "./dsl.test.ts";
 import { testEffect } from "./effect.test.ts";
 import { testErrorNest } from "./error_nest.test.ts";
@@ -49,6 +50,7 @@ async function run(): Promise<void> {
 	testThemeCounter(fns);
 	testSafeCounter(fns);
 	testErrorNest(fns);
+	testDataLoader(fns);
 	testRouting(fns);
 
 	summary();

@@ -1788,6 +1788,65 @@ struct ComponentContext(Movable):
         self.shell.runtime[0].scopes.clear_error(self.scope_id)
         self.shell.runtime[0].mark_scope_dirty(self.scope_id)
 
+    # ── Suspense ─────────────────────────────────────────────────────
+
+    fn use_suspense_boundary(mut self):
+        """Mark the root scope as a suspense boundary.
+
+        Call during setup (before end_setup / setup_view).  When a
+        descendant scope is pending, this boundary should show fallback
+        UI.  Check ``has_pending()`` during flush to switch between
+        content and skeleton.
+
+        Example::
+
+            self.ctx = ComponentContext.create()
+            self.ctx.use_suspense_boundary()
+            # ... use_signal, setup_view, etc. ...
+        """
+        self.shell.runtime[0].scopes.set_suspense_boundary(self.scope_id, True)
+
+    fn set_pending(mut self, pending: Bool):
+        """Set the pending (loading) state on the root scope.
+
+        When pending is True, the nearest suspense boundary ancestor
+        (or self if self is a boundary) should show fallback UI.
+        Marks the boundary scope dirty so the next flush picks up
+        the change.
+
+        Args:
+            pending: True to enter pending state, False to resolve.
+        """
+        self.shell.runtime[0].scopes.set_pending(self.scope_id, pending)
+        var boundary_id = self.shell.runtime[0].scopes.find_suspense_boundary(
+            self.scope_id
+        )
+        if boundary_id != -1:
+            self.shell.runtime[0].mark_scope_dirty(UInt32(boundary_id))
+        elif self.shell.runtime[0].scopes.is_suspense_boundary(self.scope_id):
+            self.shell.runtime[0].mark_scope_dirty(self.scope_id)
+
+    fn has_pending(self) -> Bool:
+        """Check whether any descendant of this scope is pending.
+
+        Scans all live scopes for pending descendants. Used by
+        suspense boundaries to decide whether to show fallback.
+
+        Returns:
+            True if any descendant scope is in pending state.
+        """
+        return self.shell.runtime[0].scopes.has_pending_descendant(
+            self.scope_id
+        )
+
+    fn is_pending(self) -> Bool:
+        """Check whether this scope itself is in pending state.
+
+        Returns:
+            True if this scope is pending.
+        """
+        return self.shell.runtime[0].scopes.is_pending(self.scope_id)
+
     # ── Fragment lifecycle (for dynamic keyed lists) ─────────────────
 
     fn flush_fragment(
