@@ -2243,3 +2243,137 @@ export function createMemoFormApp(
 
 	return mfHandle;
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Phase 35.3 — MemoChainApp (mixed-type memo chain)
+// ══════════════════════════════════════════════════════════════════════════════
+
+export interface MemoChainAppHandle extends AppHandle {
+	/** Current input signal value. */
+	getInput(): number;
+
+	/** Current doubled memo value (input * 2). */
+	getDoubled(): number;
+
+	/** Whether the is_big memo is True (doubled >= 10). */
+	isBig(): boolean;
+
+	/** Current label memo text ("small" or "BIG"). */
+	getLabel(): string;
+
+	/** Whether the doubled memo needs recomputation. */
+	isDoubledDirty(): boolean;
+
+	/** Whether the is_big memo needs recomputation. */
+	isBigDirty(): boolean;
+
+	/** Whether the label memo needs recomputation. */
+	isLabelDirty(): boolean;
+
+	/** Dispatch increment button + flush. */
+	increment(): void;
+
+	/** Whether any scope is dirty. */
+	hasDirty(): boolean;
+
+	/** Number of live memos. */
+	getMemoCount(): number;
+
+	/** Number of live scopes. */
+	scopeCount(): number;
+
+	/** Increment button handler ID. */
+	incrHandler: number;
+}
+
+/**
+ * Create a MemoChainApp wired to a DOM root element.
+ */
+export function createMemoChainApp(
+	fns: WasmExports & Record<string, CallableFunction>,
+	root: Element,
+	doc?: Document,
+): MemoChainAppHandle {
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		init: (f) => f.mc_init(),
+		rebuild: (f, app, buf, cap) => f.mc_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.mc_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.mc_handle_event(app, hid, evt),
+		destroy: (f, app) => f.mc_destroy(app),
+	});
+
+	const incrHandler = fns.mc_incr_handler(handle.appPtr) as number;
+
+	const mcHandle: MemoChainAppHandle = {
+		...handle,
+
+		incrHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
+
+		getInput(): number {
+			return fns.mc_input_value(handle.appPtr) as number;
+		},
+		getDoubled(): number {
+			return fns.mc_doubled_value(handle.appPtr) as number;
+		},
+		isBig(): boolean {
+			return (fns.mc_is_big(handle.appPtr) as number) !== 0;
+		},
+		getLabel(): string {
+			const outPtr = allocStringStruct();
+			fns.mc_label_text(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+		isDoubledDirty(): boolean {
+			return (fns.mc_doubled_dirty(handle.appPtr) as number) !== 0;
+		},
+		isBigDirty(): boolean {
+			return (fns.mc_is_big_dirty(handle.appPtr) as number) !== 0;
+		},
+		isLabelDirty(): boolean {
+			return (fns.mc_label_dirty(handle.appPtr) as number) !== 0;
+		},
+		hasDirty(): boolean {
+			return (fns.mc_has_dirty(handle.appPtr) as number) !== 0;
+		},
+		getMemoCount(): number {
+			return fns.mc_memo_count(handle.appPtr) as number;
+		},
+		scopeCount(): number {
+			return fns.mc_scope_count(handle.appPtr) as number;
+		},
+
+		increment(): void {
+			handle.dispatchAndFlush(incrHandler);
+		},
+
+		destroy(): void {
+			handle.destroy();
+		},
+	};
+
+	return mcHandle;
+}

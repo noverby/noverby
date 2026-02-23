@@ -8999,3 +8999,310 @@ fn mf_memo_count(app_ptr: Int64) -> Int32:
     return Int32(
         _get[MemoFormApp](app_ptr)[0].ctx.shell.runtime[0].memos.count()
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 35.3 — MemoChainApp (mixed-type memo chain)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Demonstrates a multi-level mixed-type memo chain:
+#   SignalI32 → MemoI32 → MemoBool → MemoString
+#
+# Validates that dirtiness propagates correctly across memo types and
+# that recomputation order is deterministic.
+#
+# Structure:
+#   MemoChainApp (single root scope, no child components)
+#   ├── h1 "Memo Chain"
+#   ├── button "+ 1" (onclick_add input)
+#   ├── p > dyn_text("Input: N")
+#   ├── p > dyn_text("Doubled: N")          ← MemoI32 (input * 2)
+#   ├── p > dyn_text("Is Big: true/false")  ← MemoBool (doubled >= 10)
+#   └── p > dyn_text("Label: small/BIG")    ← MemoString (is_big ? "BIG" : "small")
+#
+# Lifecycle:
+#   1. Init: input=0, doubled=0, is_big=False, label="small". All memos dirty.
+#   2. Rebuild: recompute chain → render → mount.
+#   3. Increment to 5: input=5 → doubled=10 → is_big=True → label="BIG".
+#   4. Increment to 6: input=6 → doubled=12 → is_big=True → label="BIG".
+
+
+struct MemoChainApp(Movable):
+    """Mixed-type memo chain demo app.
+
+    Demonstrates the full SignalI32 → MemoI32 → MemoBool → MemoString
+    reactive chain where each memo derives from the previous one's
+    output, exercising cross-type memo propagation.
+    """
+
+    var ctx: ComponentContext
+    var input: _SignalI32
+    var doubled: MemoI32
+    var is_big: MemoBool
+    var label: MemoString
+    var incr_handler: UInt32
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.input = self.ctx.use_signal(0)
+        self.doubled = self.ctx.use_memo(0)
+        self.is_big = self.ctx.use_memo_bool(False)
+        self.label = self.ctx.use_memo_string(String("small"))
+        var children = List[Node]()
+        children.append(el_h1(dsl_text(String("Memo Chain"))))
+        children.append(
+            el_button(
+                dsl_text(String("+ 1")),
+                dsl_onclick_add(self.input, 1),
+            )
+        )
+        children.append(el_p(dsl_dyn_text()))
+        children.append(el_p(dsl_dyn_text()))
+        children.append(el_p(dsl_dyn_text()))
+        children.append(el_p(dsl_dyn_text()))
+        self.ctx.setup_view(
+            el_div(children^),
+            String("memo-chain"),
+        )
+        self.incr_handler = self.ctx.view_event_handler_id(0)
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.ctx = other.ctx^
+        self.input = other.input.copy()
+        self.doubled = other.doubled.copy()
+        self.is_big = other.is_big.copy()
+        self.label = other.label.copy()
+        self.incr_handler = other.incr_handler
+
+    fn run_memos(mut self):
+        """Recompute all memos in dependency order.
+
+        Chain: input → doubled (input * 2)
+                      → is_big (doubled >= 10)
+                        → label ("BIG" if is_big else "small")
+
+        Order matters: each memo must see the fresh value from the
+        previous memo in the chain.
+
+        Note: The runtime's write_signal propagation marks direct memo
+        subscribers dirty, but does NOT recursively propagate through
+        memo → memo chains (the inner propagation loop only checks for
+        effects and scopes).  Therefore we always recompute all memos
+        in order when the first memo in the chain is dirty, ensuring
+        downstream memos see fresh values.
+        """
+        # If the head of the chain is dirty, recompute the entire chain.
+        # Downstream memos may not be marked dirty by the runtime
+        # (memo → memo propagation not supported), so we eagerly
+        # recompute all three in dependency order.
+        if not self.doubled.is_dirty():
+            return
+
+        # Step 1: Recompute doubled (depends on input)
+        self.doubled.begin_compute()
+        var i = self.input.read()  # subscribes memo to input
+        self.doubled.end_compute(i * 2)
+
+        # Step 2: Recompute is_big (depends on doubled)
+        self.is_big.begin_compute()
+        var d = self.doubled.read()  # subscribes memo to doubled
+        self.is_big.end_compute(d >= 10)
+
+        # Step 3: Recompute label (depends on is_big)
+        self.label.begin_compute()
+        var big = self.is_big.read()  # subscribes memo to is_big
+        if big:
+            self.label.end_compute(String("BIG"))
+        else:
+            self.label.end_compute(String("small"))
+
+    fn render(mut self) -> UInt32:
+        """Build a fresh VNode with 4 dyn_text slots."""
+        var vb = self.ctx.render_builder()
+        vb.add_dyn_text(String("Input: ") + String(self.input.peek()))
+        vb.add_dyn_text(String("Doubled: ") + String(self.doubled.peek()))
+        if self.is_big.peek():
+            vb.add_dyn_text(String("Is Big: true"))
+        else:
+            vb.add_dyn_text(String("Is Big: false"))
+        vb.add_dyn_text(String("Label: ") + self.label.peek())
+        return vb.build()
+
+
+# ── MemoChainApp lifecycle functions ─────────────────────────────────────────
+
+
+fn _mc_init() -> UnsafePointer[MemoChainApp, MutExternalOrigin]:
+    var app_ptr = alloc[MemoChainApp](1)
+    app_ptr.init_pointee_move(MemoChainApp())
+    return app_ptr
+
+
+fn _mc_destroy(
+    app_ptr: UnsafePointer[MemoChainApp, MutExternalOrigin],
+):
+    app_ptr[0].ctx.destroy()
+    app_ptr.destroy_pointee()
+    app_ptr.free()
+
+
+fn _mc_rebuild(
+    app: UnsafePointer[MemoChainApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Initial render (mount) of the memo-chain app.
+
+    Recomputes the full memo chain to settle derived state, then
+    renders and mounts.
+    """
+    # Run initial memo recomputation
+    app[0].run_memos()
+    # Render with settled state
+    var vnode_idx = app[0].render()
+    var result = app[0].ctx.mount(writer_ptr, vnode_idx)
+    # Consume dirty scopes left over from memo signal writes
+    _ = app[0].ctx.consume_dirty()
+    return result
+
+
+fn _mc_handle_event(
+    app: UnsafePointer[MemoChainApp, MutExternalOrigin],
+    handler_id: UInt32,
+    event_type: UInt8,
+) -> Bool:
+    return app[0].ctx.dispatch_event(handler_id, event_type)
+
+
+fn _mc_flush(
+    app: UnsafePointer[MemoChainApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Flush pending updates with memo chain recomputation.
+
+    1. consume_dirty() — collect dirty scopes
+    2. run_memos() — recompute doubled → is_big → label
+    3. render() — build VNode with all state settled
+    4. diff + finalize — emit mutations
+    """
+    if not app[0].ctx.consume_dirty():
+        return 0
+    # Recompute memo chain
+    app[0].run_memos()
+    # Render with settled state
+    var new_idx = app[0].render()
+    app[0].ctx.diff(writer_ptr, new_idx)
+    return app[0].ctx.finalize(writer_ptr)
+
+
+# ── MemoChainApp WASM exports ────────────────────────────────────────────────
+
+
+@export
+fn mc_init() -> Int64:
+    """Initialize the memo-chain app.  Returns app pointer."""
+    return _to_i64(_mc_init())
+
+
+@export
+fn mc_destroy(app_ptr: Int64):
+    """Destroy the memo-chain app."""
+    _mc_destroy(_get[MemoChainApp](app_ptr))
+
+
+@export
+fn mc_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    """Initial mount.  Returns mutation buffer length."""
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _mc_rebuild(_get[MemoChainApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return result
+
+
+@export
+fn mc_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
+    """Dispatch an event.  Returns 1 if handled, 0 otherwise."""
+    return _b2i(
+        _mc_handle_event(_get[MemoChainApp](app_ptr), UInt32(hid), UInt8(evt))
+    )
+
+
+@export
+fn mc_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    """Flush pending updates.  Returns mutation buffer length."""
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _mc_flush(_get[MemoChainApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return result
+
+
+@export
+fn mc_input_value(app_ptr: Int64) -> Int32:
+    """Return the current input signal value."""
+    return _get[MemoChainApp](app_ptr)[0].input.peek()
+
+
+@export
+fn mc_doubled_value(app_ptr: Int64) -> Int32:
+    """Return the current doubled memo value."""
+    return _get[MemoChainApp](app_ptr)[0].doubled.peek()
+
+
+@export
+fn mc_is_big(app_ptr: Int64) -> Int32:
+    """Return 1 if the is_big memo is True, 0 otherwise."""
+    return _b2i(_get[MemoChainApp](app_ptr)[0].is_big.peek())
+
+
+@export
+fn mc_label_text(app_ptr: Int64) -> String:
+    """Return the current label memo text."""
+    return _get[MemoChainApp](app_ptr)[0].label.peek()
+
+
+@export
+fn mc_doubled_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if the doubled memo needs recomputation."""
+    return _b2i(_get[MemoChainApp](app_ptr)[0].doubled.is_dirty())
+
+
+@export
+fn mc_is_big_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if the is_big memo needs recomputation."""
+    return _b2i(_get[MemoChainApp](app_ptr)[0].is_big.is_dirty())
+
+
+@export
+fn mc_label_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if the label memo needs recomputation."""
+    return _b2i(_get[MemoChainApp](app_ptr)[0].label.is_dirty())
+
+
+@export
+fn mc_incr_handler(app_ptr: Int64) -> Int32:
+    """Return the increment button handler ID."""
+    return Int32(_get[MemoChainApp](app_ptr)[0].incr_handler)
+
+
+@export
+fn mc_has_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if any scope is dirty."""
+    var app = _get[MemoChainApp](app_ptr)
+    if len(app[0].ctx.shell.runtime[0].dirty_scopes) > 0:
+        return 1
+    return 0
+
+
+@export
+fn mc_scope_count(app_ptr: Int64) -> Int32:
+    """Return the number of live scopes."""
+    return Int32(
+        _get[MemoChainApp](app_ptr)[0].ctx.shell.runtime[0].scope_count()
+    )
+
+
+@export
+fn mc_memo_count(app_ptr: Int64) -> Int32:
+    """Return the number of live memos."""
+    return Int32(
+        _get[MemoChainApp](app_ptr)[0].ctx.shell.runtime[0].memos.count()
+    )
