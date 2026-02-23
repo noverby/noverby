@@ -7,6 +7,7 @@ import { testContext } from "./context.test.ts";
 import { testCounter } from "./counter.test.ts";
 import { testDsl } from "./dsl.test.ts";
 import { testEffect } from "./effect.test.ts";
+import { testErrorNest } from "./error_nest.test.ts";
 import { testEvents } from "./events.test.ts";
 import { summary } from "./harness.ts";
 import { testInterpreter } from "./interpreter.test.ts";
@@ -47,6 +48,7 @@ async function run(): Promise<void> {
 	testPropsCounter(fns);
 	testThemeCounter(fns);
 	testSafeCounter(fns);
+	testErrorNest(fns);
 	testRouting(fns);
 
 	summary();
