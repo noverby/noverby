@@ -320,17 +320,29 @@ export interface CounterAppHandle extends AppHandle {
 	/** Decrement handler ID (for programmatic dispatch). */
 	decrHandler: number;
 
+	/** Toggle detail handler ID (for programmatic dispatch). */
+	toggleHandler: number;
+
 	/** Read the current count value from WASM. */
 	getCount(): number;
 
 	/** Read the current doubled memo value from WASM. */
 	getDoubled(): number;
 
+	/** Read the show_detail signal value (true = detail visible). */
+	getShowDetail(): boolean;
+
+	/** Check whether the conditional detail slot is mounted in the DOM. */
+	isDetailMounted(): boolean;
+
 	/** Simulate an increment click (dispatch + flush + apply). */
 	increment(): void;
 
 	/** Simulate a decrement click (dispatch + flush + apply). */
 	decrement(): void;
+
+	/** Simulate a toggle-detail click (dispatch + flush + apply). */
+	toggleDetail(): void;
 }
 
 // ── Counter App factory ─────────────────────────────────────────────────────
@@ -369,11 +381,13 @@ export function createCounterApp(
 
 	const incrHandler = fns.counter_incr_handler(handle.appPtr);
 	const decrHandler = fns.counter_decr_handler(handle.appPtr);
+	const toggleHandler = fns.counter_toggle_handler(handle.appPtr);
 
 	const counterHandle: CounterAppHandle = {
 		...handle,
 		incrHandler,
 		decrHandler,
+		toggleHandler,
 
 		get destroyed(): boolean {
 			return handle.destroyed;
@@ -404,12 +418,24 @@ export function createCounterApp(
 			return fns.counter_doubled_value(handle.appPtr);
 		},
 
+		getShowDetail(): boolean {
+			return fns.counter_show_detail(handle.appPtr) !== 0;
+		},
+
+		isDetailMounted(): boolean {
+			return fns.counter_cond_mounted(handle.appPtr) !== 0;
+		},
+
 		increment(): void {
 			handle.dispatchAndFlush(incrHandler);
 		},
 
 		decrement(): void {
 			handle.dispatchAndFlush(decrHandler);
+		},
+
+		toggleDetail(): void {
+			handle.dispatchAndFlush(toggleHandler);
 		},
 
 		destroy(): void {

@@ -55,6 +55,7 @@ interface TodoAppHandle {
 	itemCompletedAt(index: number): boolean;
 	listVersion(): number;
 	hasDirty(): boolean;
+	isEmptyMsgMounted(): boolean;
 	flush(): number;
 	destroy(): void;
 }
@@ -116,6 +117,10 @@ function createTodoApp(fns: Fns, root: Element, doc: Document): TodoAppHandle {
 
 		hasDirty(): boolean {
 			return fns.todo_has_dirty(handle.appPtr) === 1;
+		},
+
+		isEmptyMsgMounted(): boolean {
+			return fns.todo_empty_msg_mounted(handle.appPtr) === 1;
 		},
 
 		flush(): number {
@@ -297,16 +302,32 @@ export function testTodo(fns: Fns): void {
 		const { document, root } = createDOM();
 		const app = createTodoApp(fns, root, document);
 
-		// The app template: div > [ input, button("Add"), ul ]
+		// The app template: div > [ input, button("Add"), ul, empty-msg ]
 		const div = root.firstChild;
 		assert(div !== null, true, "root has a child");
 		assert((div as Element).tagName, "DIV", "first child is div");
 
 		const children = (div as Element).childNodes;
-		assert(children.length, 3, "div has 3 children (input, button, ul)");
+		assert(
+			children.length,
+			4,
+			"div has 4 children (input, button, ul, empty msg)",
+		);
 		assert(children[0].tagName, "INPUT", "first child is input");
 		assert(children[1].tagName, "BUTTON", "second child is button");
 		assert(children[2].tagName, "UL", "third child is ul");
+
+		// Phase 28: 4th child is the empty state message <p>
+		assert(
+			(children[3] as Element).tagName,
+			"P",
+			"fourth child is p (empty msg)",
+		);
+		assert(
+			(children[3] as Element).textContent,
+			"No items yet -- add one above!",
+			"empty message text correct",
+		);
 
 		assert(children[1].textContent, "Add", 'button text is "Add"');
 
@@ -1212,5 +1233,126 @@ export function testTodo(fns: Fns): void {
 		assert(count, 0, "no item added for Shift key");
 
 		fns.todo_destroy(appPtr);
+	}
+
+	// ═════════════════════════════════════════════════════════════════════
+	// Section 30: Phase 28 — Empty state message (ConditionalSlot)
+	// ═════════════════════════════════════════════════════════════════════
+
+	suite("Todo — empty state message visible on initial mount");
+	{
+		const { document, root } = createDOM();
+		const app = createTodoApp(fns, root, document);
+
+		assert(app.isEmptyMsgMounted(), true, "empty msg is mounted initially");
+		assert(app.itemCount(), 0, "0 items initially");
+
+		const div = root.firstChild as Element;
+		// 4th child should be the message <p>
+		const msgEl = div.childNodes[3] as Element;
+		assert(msgEl.tagName, "P", "message element is a <p>");
+		assert(
+			msgEl.textContent,
+			"No items yet -- add one above!",
+			"message text correct",
+		);
+
+		app.destroy();
+	}
+
+	suite("Todo — empty message hidden after adding item");
+	{
+		const { document, root } = createDOM();
+		const app = createTodoApp(fns, root, document);
+
+		assert(app.isEmptyMsgMounted(), true, "msg mounted before add");
+
+		app.addItem("First task");
+
+		assert(app.isEmptyMsgMounted(), false, "msg hidden after add");
+		assert(app.itemCount(), 1, "1 item after add");
+
+		// The message element should be gone (replaced by placeholder)
+		const div = root.firstChild as Element;
+		const fourthChild = div.childNodes[3];
+		const isNotP = !fourthChild || (fourthChild as Element).tagName !== "P";
+		assert(isNotP, true, "4th child is no longer a <p>");
+
+		app.destroy();
+	}
+
+	suite("Todo — empty message returns after removing all items");
+	{
+		const { document, root } = createDOM();
+		const app = createTodoApp(fns, root, document);
+
+		// Add two items — message should hide
+		app.addItem("A");
+		app.addItem("B");
+		assert(app.isEmptyMsgMounted(), false, "msg hidden with 2 items");
+
+		// Remove both items — message should return
+		const id1 = app.itemIdAt(0);
+		const id2 = app.itemIdAt(1);
+		app.removeItem(id1);
+		app.removeItem(id2);
+
+		assert(app.itemCount(), 0, "0 items after removing all");
+		assert(app.isEmptyMsgMounted(), true, "msg re-mounted after removing all");
+
+		const div = root.firstChild as Element;
+		const msgEl = div.childNodes[3] as Element;
+		assert(msgEl.tagName, "P", "message <p> is back");
+		assert(
+			msgEl.textContent,
+			"No items yet -- add one above!",
+			"message text correct after re-mount",
+		);
+
+		app.destroy();
+	}
+
+	suite("Todo — add → remove all → add again: message hides again");
+	{
+		const { document, root } = createDOM();
+		const app = createTodoApp(fns, root, document);
+
+		// Add item — msg hides
+		app.addItem("X");
+		assert(app.isEmptyMsgMounted(), false, "msg hidden after first add");
+
+		// Remove it — msg shows
+		const xId = app.itemIdAt(0);
+		app.removeItem(xId);
+		assert(app.isEmptyMsgMounted(), true, "msg shown after remove");
+
+		// Add another — msg hides again
+		app.addItem("Y");
+		assert(app.isEmptyMsgMounted(), false, "msg hidden after second add");
+		assert(app.itemCount(), 1, "1 item after re-add");
+
+		app.destroy();
+	}
+
+	suite("Todo — empty message does not affect item rendering");
+	{
+		const { document, root } = createDOM();
+		const app = createTodoApp(fns, root, document);
+
+		app.addItem("Buy groceries");
+		app.addItem("Walk the dog");
+
+		assert(app.isEmptyMsgMounted(), false, "msg hidden with items");
+
+		const lis = root.querySelectorAll("li");
+		assert(lis.length, 2, "2 li elements rendered");
+
+		const span1 = lis[0].querySelector("span");
+		assert(span1?.textContent, "Buy groceries", "first item text correct");
+
+		const span2 = lis[1].querySelector("span");
+		assert(span2?.textContent, "Walk the dog", "second item text correct");
+
+		app.destroy();
 	}
 }

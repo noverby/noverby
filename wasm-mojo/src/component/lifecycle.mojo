@@ -13,6 +13,13 @@
 #   populated → populated — diff old fragment vs new fragment (keyed)
 #   populated → empty   — create new anchor, InsertBefore first item, remove all
 #
+# ConditionalSlot + flush_conditional() manage a single conditional VNode
+# in a dynamic node slot:
+#
+#   empty → branch       — create VNode, ReplaceWith anchor placeholder
+#   branch → branch      — diff old VNode vs new VNode
+#   branch → empty       — create new anchor, InsertBefore old root, remove old
+#
 # They operate on raw pointers so they can be called from any app struct
 # without requiring trait conformance.  The app is responsible for:
 #
@@ -42,6 +49,21 @@
 #     var new_frag = self.build_items_fragment()
 #     flush_fragment(writer, eid, rt, store, self.slot, new_frag)
 #     writer[0].finalize()
+#
+# Example (conditional rendering using ConditionalSlot):
+#
+#     # In app struct:
+#     var cond: ConditionalSlot
+#
+#     # Initial setup (after mount):
+#     self.cond = ConditionalSlot(anchor_eid)
+#
+#     # Flush — show a branch:
+#     var detail_idx = self.build_detail_vnode()
+#     self.cond = flush_conditional(writer, eid, rt, store, self.cond, detail_idx)
+#
+#     # Flush — hide (back to placeholder):
+#     self.cond = flush_conditional_empty(writer, eid, rt, store, self.cond)
 
 from memory import UnsafePointer
 from bridge import MutationWriter
@@ -102,6 +124,198 @@ struct FragmentSlot(Copyable, Equatable, Writable):
         self.anchor_id = other.anchor_id
         self.current_frag = other.current_frag
         self.mounted = other.mounted
+
+
+# ── ConditionalSlot — State tracker for a single conditional VNode ────────────
+
+
+struct ConditionalSlot(Copyable, Equatable, Writable):
+    """Tracks the state of a conditional rendering slot in the DOM.
+
+    A ConditionalSlot manages the lifecycle of a single conditional VNode
+    in a dynamic node position (created via `dyn_node(idx)` in a
+    template).  When no branch is active, a placeholder comment node
+    occupies the slot.  When a branch is active, its VNode tree replaces
+    the placeholder.
+
+    This is the single-VNode counterpart to FragmentSlot (which manages
+    a list of keyed VNodes).  The diff engine handles all transitions
+    automatically — ConditionalSlot just tracks the state so the
+    component knows what's currently in the DOM.
+
+    Transitions handled by flush_conditional / flush_conditional_empty:
+
+      - **empty → branch**: CreateEngine on new VNode, ReplaceWith
+        anchor placeholder.
+      - **branch → branch (same or different template)**: DiffEngine
+        on old vs new VNode (handles same template → incremental diff,
+        different template → full replacement internally).
+      - **branch → empty**: Create a new anchor placeholder,
+        InsertBefore old VNode's first root, then remove old VNode roots.
+
+    Fields:
+        anchor_id: ElementId of the placeholder comment node.  Non-zero
+            when no branch is active.  Zero when a branch is mounted.
+        current_vnode: VNode index of the currently mounted branch
+            (-1 when empty / placeholder is shown).
+        mounted: True when a branch VNode is in the DOM (placeholder
+            has been replaced).
+    """
+
+    var anchor_id: UInt32
+    var current_vnode: Int
+    var mounted: Bool
+
+    fn __init__(out self):
+        """Create an uninitialized slot."""
+        self.anchor_id = 0
+        self.current_vnode = -1
+        self.mounted = False
+
+    fn __init__(out self, anchor_id: UInt32):
+        """Create a slot with a known anchor (placeholder is in the DOM).
+
+        Args:
+            anchor_id: ElementId of the placeholder comment node that
+                occupies the dynamic node slot after initial mount.
+        """
+        self.anchor_id = anchor_id
+        self.current_vnode = -1
+        self.mounted = False
+
+    fn __copyinit__(out self, other: Self):
+        self.anchor_id = other.anchor_id
+        self.current_vnode = other.current_vnode
+        self.mounted = other.mounted
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.anchor_id = other.anchor_id
+        self.current_vnode = other.current_vnode
+        self.mounted = other.mounted
+
+
+# ── Conditional flush helper ──────────────────────────────────────────────────
+
+
+fn flush_conditional(
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    eid_ptr: UnsafePointer[ElementIdAllocator, MutExternalOrigin],
+    rt_ptr: UnsafePointer[Runtime, MutExternalOrigin],
+    store_ptr: UnsafePointer[VNodeStore, MutExternalOrigin],
+    slot: ConditionalSlot,
+    new_vnode_idx: UInt32,
+) -> ConditionalSlot:
+    """Flush a conditional slot: show or update a branch VNode.
+
+    Handles two transitions:
+      1. **empty → branch**: Create the new VNode via CreateEngine,
+         emit ReplaceWith to replace the anchor placeholder.
+      2. **branch → branch**: Diff the old VNode vs new VNode via
+         DiffEngine (handles same template → incremental diff,
+         different template → full replacement internally).
+
+    To transition from branch → empty (hide the content), use
+    `flush_conditional_empty()` instead.
+
+    Does NOT call `writer_ptr[0].finalize()` — the caller must finalize
+    the mutation buffer after this returns.  This allows batching
+    multiple flush operations into a single mutation buffer.
+
+    Args:
+        writer_ptr: Pointer to the MutationWriter for output.
+        eid_ptr: Pointer to the ElementIdAllocator.
+        rt_ptr: Pointer to the reactive Runtime.
+        store_ptr: Pointer to the VNodeStore.
+        slot: The ConditionalSlot tracking the current state.
+        new_vnode_idx: Index of the new branch VNode in the store.
+
+    Returns:
+        Updated ConditionalSlot with new state.
+    """
+    var result = slot.copy()
+
+    if not slot.mounted:
+        # ── Transition: empty → branch ────────────────────────────────
+        # Create the new VNode's DOM and ReplaceWith the anchor.
+        var create_eng = CreateEngine(writer_ptr, eid_ptr, rt_ptr, store_ptr)
+        var num_roots = create_eng.create_node(new_vnode_idx)
+
+        if slot.anchor_id != 0 and num_roots > 0:
+            writer_ptr[0].replace_with(slot.anchor_id, num_roots)
+        result.mounted = True
+
+    else:
+        # ── Transition: branch → branch ───────────────────────────────
+        # Diff old vs new — DiffEngine handles same/different templates.
+        var diff_eng = DiffEngine(writer_ptr, eid_ptr, rt_ptr, store_ptr)
+        diff_eng.diff_node(UInt32(slot.current_vnode), new_vnode_idx)
+
+    result.current_vnode = Int(new_vnode_idx)
+    return result.copy()
+
+
+fn flush_conditional_empty(
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+    eid_ptr: UnsafePointer[ElementIdAllocator, MutExternalOrigin],
+    rt_ptr: UnsafePointer[Runtime, MutExternalOrigin],
+    store_ptr: UnsafePointer[VNodeStore, MutExternalOrigin],
+    slot: ConditionalSlot,
+) -> ConditionalSlot:
+    """Flush a conditional slot: hide the current branch (back to placeholder).
+
+    Handles the transition:
+      - **branch → empty**: Find the old VNode's first root ElementId,
+        create a new anchor placeholder, InsertBefore the first old root,
+        then remove all old VNode roots.
+
+    If the slot is already empty, this is a no-op.
+
+    Does NOT call `writer_ptr[0].finalize()` — the caller must finalize
+    the mutation buffer after this returns.
+
+    Args:
+        writer_ptr: Pointer to the MutationWriter for output.
+        eid_ptr: Pointer to the ElementIdAllocator.
+        rt_ptr: Pointer to the reactive Runtime.
+        store_ptr: Pointer to the VNodeStore.
+        slot: The ConditionalSlot tracking the current state.
+
+    Returns:
+        Updated ConditionalSlot with empty state and new anchor ID.
+    """
+    var result = slot.copy()
+
+    if not slot.mounted:
+        # Already empty — no-op
+        return result.copy()
+
+    # ── Transition: branch → empty ────────────────────────────────────
+    var old_vnode_idx = UInt32(slot.current_vnode)
+    var old_ptr = store_ptr[0].get_ptr(old_vnode_idx)
+
+    # Find the first root ElementId of the old VNode
+    var first_old_root_id: UInt32 = 0
+    if old_ptr[0].root_id_count() > 0:
+        first_old_root_id = old_ptr[0].get_root_id(0)
+    elif old_ptr[0].element_id != 0:
+        first_old_root_id = old_ptr[0].element_id
+
+    # Create a new anchor placeholder
+    var new_anchor = eid_ptr[0].alloc()
+    writer_ptr[0].create_placeholder(new_anchor.as_u32())
+
+    # Insert the placeholder before the first old root
+    if first_old_root_id != 0:
+        writer_ptr[0].insert_before(first_old_root_id, 1)
+
+    # Remove all old VNode roots
+    var diff_eng = DiffEngine(writer_ptr, eid_ptr, rt_ptr, store_ptr)
+    diff_eng._remove_node(old_vnode_idx)
+
+    result.anchor_id = new_anchor.as_u32()
+    result.current_vnode = -1
+    result.mounted = False
+    return result.copy()
 
 
 # ── Fragment flush helper ─────────────────────────────────────────────────────

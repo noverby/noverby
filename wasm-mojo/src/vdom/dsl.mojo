@@ -667,7 +667,7 @@ from events.registry import (
     ACTION_KEY_ENTER_CUSTOM,
     ACTION_CUSTOM,
 )
-from signals.handle import SignalI32, SignalString
+from signals.handle import SignalI32, SignalBool, SignalString
 
 
 fn onclick_add(signal: SignalI32, delta: Int32) -> Node:
@@ -716,6 +716,19 @@ fn onclick_toggle(signal: SignalI32) -> Node:
 
     Usage:
         el_button([text("Toggle"), onclick_toggle(flag)])
+    """
+    return Node.event_node(String("click"), ACTION_SIGNAL_TOGGLE, signal.key, 0)
+
+
+fn onclick_toggle(signal: SignalBool) -> Node:
+    """Create an inline click handler that toggles a boolean signal (0 ↔ 1).
+
+    Overload accepting SignalBool directly (stored as Int32 internally).
+
+    Equivalent to Dioxus: `onclick: move |_| signal.toggle()`
+
+    Usage:
+        el_button([text("Toggle"), onclick_toggle(show_detail)])
     """
     return Node.event_node(String("click"), ACTION_SIGNAL_TOGGLE, signal.key, 0)
 

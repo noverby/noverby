@@ -1,4 +1,8 @@
-# TodoApp — Self-contained todo list application.
+# TodoApp — Self-contained todo list application with empty state message.
+#
+# Phase 28: Extended with a ConditionalSlot that shows "No items yet —
+# add one above!" when the todo list is empty, and hides it when items
+# are present.
 #
 # Migrated to Phase 22 — fully WASM-driven input binding + Enter key:
 #   - `bind_value(input_text)` — two-way value binding (M20.4)
@@ -119,7 +123,7 @@ from memory import UnsafePointer, alloc
 from bridge import MutationWriter
 from mutations import CreateEngine
 from events import HandlerEntry
-from component import ComponentContext, KeyedList
+from component import ComponentContext, KeyedList, ConditionalSlot
 from signals import SignalI32, SignalString
 from vdom import (
     VNode,
@@ -131,6 +135,7 @@ from vdom import (
     el_input,
     el_ul,
     el_li,
+    el_p,
     text,
     dyn_text,
     dyn_node,
@@ -196,6 +201,10 @@ struct TodoApp(Movable):
     On initial mount, a placeholder comment node occupies the <ul>.
     KeyedList tracks the placeholder/anchor, current fragment,
     and mounted state for the item list transitions.
+
+    Phase 28: A ConditionalSlot manages an empty-state message shown
+    when the list has no items.  The message occupies dyn_node[1] in
+    the app template (after the <ul> which has dyn_node[0]).
     """
 
     var ctx: ComponentContext
@@ -207,6 +216,9 @@ struct TodoApp(Movable):
     # Handler IDs for the app-level actions (auto-registered by register_view)
     var add_handler: UInt32
     var enter_handler: UInt32  # Phase 22: Enter key on input → same as Add
+    # Phase 28: Empty state message
+    var empty_msg_tmpl: UInt32
+    var empty_msg_slot: ConditionalSlot
 
     fn __init__(out self):
         """Initialize the todo app with all reactive state, templates, and handlers.
@@ -222,11 +234,15 @@ struct TodoApp(Movable):
         Template "todo-app" (via register_view with auto dyn_attr):
             div > [ input(bind_value + oninput_set_string + onkeydown_enter),
                     button("Add", onclick_custom),
-                    ul > dyn_node[0] ]
+                    ul > dyn_node[0],
+                    dyn_node[1] ]          ← empty state message slot (Phase 28)
             auto dyn_attr[0] = bind_value (value attr from signal)
             auto dyn_attr[1] = oninput_set_string handler
             auto dyn_attr[2] = onkeydown_enter_custom handler (Enter key)
             auto dyn_attr[3] = onclick_custom handler (Add button)
+
+        Template "todo-empty" (via register_extra_template):
+            p > "No items yet — add one above!"
 
         Template "todo-item" (via register_extra_template):
             li + dyn_attr[2] > [ span > dyn_text[0],
@@ -262,6 +278,7 @@ struct TodoApp(Movable):
                 ),
                 el_button(text(String("Add")), onclick_custom()),
                 el_ul(dyn_node(0)),
+                dyn_node(1),
             ),
             String("todo-app"),
         )
@@ -285,7 +302,14 @@ struct TodoApp(Movable):
             )
         )
 
-        # 6. Initialize remaining state
+        # 6. Register the "todo-empty" message template (Phase 28)
+        self.empty_msg_tmpl = self.ctx.register_extra_template(
+            el_p(text(String("No items yet -- add one above!"))),
+            String("todo-empty"),
+        )
+        self.empty_msg_slot = ConditionalSlot()
+
+        # 7. Initialize remaining state
         self.data = List[TodoItem]()
         self.next_id = 1
 
@@ -300,6 +324,8 @@ struct TodoApp(Movable):
         )  # SignalString is Copyable (not ImplicitlyCopyable)
         self.add_handler = other.add_handler
         self.enter_handler = other.enter_handler
+        self.empty_msg_tmpl = other.empty_msg_tmpl
+        self.empty_msg_slot = other.empty_msg_slot.copy()
 
     fn add_item(mut self, text: String):
         """Add a new item and bump the list version signal."""
@@ -425,13 +451,25 @@ struct TodoApp(Movable):
           auto dyn_attr[1] = oninput_set_string event listener
           auto dyn_attr[2] = onclick_custom event listener (Add button)
           dyn_node[0]      = placeholder (item list managed by KeyedList)
+          dyn_node[1]      = placeholder (empty message managed by ConditionalSlot)
         """
         var vb = self.ctx.render_builder()
 
         # Dynamic node 0: placeholder in the <ul>
         vb.add_dyn_placeholder()
 
+        # Dynamic node 1: placeholder for empty state message (Phase 28)
+        vb.add_dyn_placeholder()
+
         return vb.build()
+
+    fn build_empty_message(mut self) -> UInt32:
+        """Build the empty state message VNode (Phase 28).
+
+        Returns the VNode index in the store.
+        """
+        var vb = VNodeBuilder(self.empty_msg_tmpl, self.ctx.store_ptr())
+        return vb.index()
 
 
 fn todo_app_init() -> UnsafePointer[TodoApp, MutExternalOrigin]:
@@ -495,8 +533,20 @@ fn todo_app_rebuild(
         anchor_id = app_vnode_ptr[0].get_dyn_node_id(0)
     app[0].items.init_slot(anchor_id, frag_idx)
 
+    # Phase 28: Extract the anchor for the empty message slot (dyn_node[1])
+    var msg_anchor_id: UInt32 = 0
+    if app_vnode_ptr[0].dyn_node_id_count() > 1:
+        msg_anchor_id = app_vnode_ptr[0].get_dyn_node_id(1)
+    app[0].empty_msg_slot = ConditionalSlot(msg_anchor_id)
+
     # Append the app shell to root element (id 0)
     writer_ptr[0].append_children(0, num_roots)
+
+    # Phase 28: Show empty message on initial mount (list starts empty)
+    var msg_idx = app[0].build_empty_message()
+    app[0].empty_msg_slot = app[0].ctx.flush_conditional_slot(
+        writer_ptr, app[0].empty_msg_slot, msg_idx
+    )
 
     writer_ptr[0].finalize()
     return Int32(writer_ptr[0].offset)
@@ -534,6 +584,21 @@ fn todo_app_flush(
 
     # Flush via KeyedList (handles all three transitions)
     app[0].items.flush(app[0].ctx, writer_ptr, new_frag_idx)
+
+    # Phase 28: Show or hide the empty state message
+    if len(app[0].data) == 0:
+        # List is empty → show the message
+        if not app[0].empty_msg_slot.mounted:
+            var msg_idx = app[0].build_empty_message()
+            app[0].empty_msg_slot = app[0].ctx.flush_conditional_slot(
+                writer_ptr, app[0].empty_msg_slot, msg_idx
+            )
+    else:
+        # List has items → hide the message
+        if app[0].empty_msg_slot.mounted:
+            app[0].empty_msg_slot = app[0].ctx.flush_conditional_slot_empty(
+                writer_ptr, app[0].empty_msg_slot
+            )
 
     writer_ptr[0].finalize()
     return Int32(writer_ptr[0].offset)
