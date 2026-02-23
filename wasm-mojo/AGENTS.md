@@ -157,10 +157,20 @@ if ptr != UnsafePointer[T]():       # not: if ptr:
   - `child_ctx.has_error() -> Bool` — check if this child boundary has captured an error.
   - `child_ctx.error_message() -> String` — get the captured error message.
   - `child_ctx.clear_error()` — clear error state on child boundary.
+- **Suspense methods** on `ComponentContext`:
+  - `ctx.use_suspense_boundary()` — mark root scope as a suspense boundary (call during setup).
+  - `ctx.set_pending(pending: Bool)` — set or clear pending state; marks scope dirty.
+  - `ctx.has_pending() -> Bool` — check if any descendant scope is pending.
+  - `ctx.is_pending() -> Bool` — check if this scope itself is pending.
+- **Suspense methods** on `ChildComponentContext`:
+  - `child_ctx.use_suspense_boundary()` — mark child scope as a suspense boundary.
+  - `child_ctx.set_pending(pending: Bool)` — set or clear pending state on child scope; marks dirty.
+  - `child_ctx.has_pending() -> Bool` — check if any descendant of child scope is pending.
+  - `child_ctx.is_pending() -> Bool` — check if the child scope itself is pending.
 
 ## App Architectures (`examples/` and `src/main.mojo`)
 
-All three example apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state — TodoApp's `input_text` field was migrated from plain `String` to `SignalString` via `create_signal_string()` (M19.7). Phase 20 adds string event dispatch infrastructure (`ACTION_SIGNAL_SET_STRING`, `dispatch_event_with_string`) enabling JS → WASM string value flow for input events. Phase 20.5 migrates the TodoApp to fully WASM-driven input binding using `bind_value()`, `oninput_set_string()`, and `onclick_custom()` — JS has no special-casing for any handler. Phase 21 introduces `launch()` (`examples/lib/app.js`) — a convention-based app launcher that eliminates per-app boot boilerplate. Phase 22 adds WASM-driven Enter key handling; counter and todo now use identical zero-config launch() calls. Phase 23 converges bench to launch() with `onBoot` for toolbar wiring and event delegation — all three apps now use the shared boot infrastructure. Phase 32 adds error boundary demo apps (SafeCounterApp, ErrorNestApp) in `src/main.mojo` — these are test-only apps exercising `use_error_boundary()`, `report_error()`, `has_error()`, `clear_error()` with fallback UI switching.
+All three example apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state — TodoApp's `input_text` field was migrated from plain `String` to `SignalString` via `create_signal_string()` (M19.7). Phase 20 adds string event dispatch infrastructure (`ACTION_SIGNAL_SET_STRING`, `dispatch_event_with_string`) enabling JS → WASM string value flow for input events. Phase 20.5 migrates the TodoApp to fully WASM-driven input binding using `bind_value()`, `oninput_set_string()`, and `onclick_custom()` — JS has no special-casing for any handler. Phase 21 introduces `launch()` (`examples/lib/app.js`) — a convention-based app launcher that eliminates per-app boot boilerplate. Phase 22 adds WASM-driven Enter key handling; counter and todo now use identical zero-config launch() calls. Phase 23 converges bench to launch() with `onBoot` for toolbar wiring and event delegation — all three apps now use the shared boot infrastructure. Phase 32 adds error boundary demo apps (SafeCounterApp, ErrorNestApp) in `src/main.mojo` — these are test-only apps exercising `use_error_boundary()`, `report_error()`, `has_error()`, `clear_error()` with fallback UI switching. Phase 33 adds suspense demo apps (DataLoaderApp, SuspenseNestApp) in `src/main.mojo` — these are test-only apps exercising `use_suspense_boundary()`, `set_pending()`, `is_pending()` with content/skeleton switching and JS-triggered resolve.
 
 ### CounterApp (`counter.mojo`) — simplest example
 
@@ -356,6 +366,51 @@ struct ErrorNestApp:
 
 Lifecycle: `en_init` → `en_rebuild` → `en_handle_event` → `en_flush`. Inner crash caught by inner boundary (only inner slot swaps). Outer crash caught by outer boundary (entire inner tree replaced by outer fallback). Recovery at each level is independent.
 
+### DataLoaderApp (`src/main.mojo`) — suspense with load/resolve lifecycle
+
+```txt
+struct DataLoaderApp:
+    var ctx: ComponentContext           # suspense boundary (root scope)
+    var content: DLContentChild        # content child: p > dyn_text("Data: ...")
+    var skeleton: DLSkeletonChild      # skeleton child: p > dyn_text("Loading...")
+    var data_text: String
+    var load_handler: UInt32
+    fn __init__: ctx.create() → use_suspense_boundary() → setup_view(h1 + button + dyn_node[0] + dyn_node[1])
+                 → content child + skeleton child
+    fn flush: if ctx.is_pending() → content.flush_empty + skeleton.flush
+              else → skeleton.flush_empty + content.flush(data)
+    fn handle_event: load_handler → ctx.set_pending(True)
+    fn resolve(data): data_text = data, ctx.set_pending(False)
+```
+
+Lifecycle: `dl_init` → `dl_rebuild` → `dl_handle_event` (load) → `dl_flush` (skeleton shown) → `dl_resolve` (JS-triggered) → `dl_flush` (content shown with data). Load button sets pending, skeleton replaces content. JS calls `dl_resolve(data)` to clear pending and store data. Next flush restores content with loaded data.
+
+### SuspenseNestApp (`src/main.mojo`) — nested suspense boundaries
+
+```txt
+struct SuspenseNestApp:
+    var ctx: ComponentContext              # outer suspense boundary (root scope)
+    var outer_content: SNOuterContentChild # outer content (inner suspense boundary)
+    var outer_skeleton: SNOuterSkeletonChild # outer skeleton: p > "Outer loading..."
+    var outer_data: String
+    var inner_data: String
+    var outer_load_handler: UInt32
+    var inner_load_handler: UInt32
+    fn __init__: ctx.create() → use_suspense_boundary() → setup_view(h1 + button + dyn_node)
+                 → outer_content child (use_suspense_boundary on child scope)
+                   └── inner_content child + inner_skeleton child
+                 → outer_skeleton child
+    fn flush: if ctx.is_pending() → hide inner children + outer_content.flush_empty + outer_skeleton.flush
+              elif not outer_content.mounted → restore outer_content + inner tree (check inner pending)
+              else → handle inner pending/resolved (inner slot swaps only)
+    fn handle_event: outer_load → ctx.set_pending(True)
+                     inner_load → outer_content.child_ctx.set_pending(True)
+    fn outer_resolve(data): outer_data = data, ctx.set_pending(False)
+    fn inner_resolve(data): inner_data = data, outer_content.child_ctx.set_pending(False)
+```
+
+Lifecycle: `sn_init` → `sn_rebuild` → `sn_handle_event` → `sn_flush`. Inner load shows inner skeleton (outer content unaffected). Outer load shows outer skeleton (hides entire inner tree). Outer resolve reveals inner boundary (may still be pending). Inner resolve shows inner content. Both boundaries operate independently.
+
 ## WASM Export Pattern (`src/main.mojo`)
 
 All exports follow this pattern — thin wrappers forwarding to app modules:
@@ -536,7 +591,7 @@ el_button(text("Add"), onclick_custom()),
 
 | File | Lines | Role |
 |------|-------|------|
-| `src/main.mojo` | ~7,050 | All @export wrappers (incl. SafeCounterApp, ErrorNestApp, context/child test apps) |
+| `src/main.mojo` | ~8,090 | All @export wrappers (incl. SafeCounterApp, ErrorNestApp, DataLoaderApp, SuspenseNestApp, context/child test apps) |
 | `src/signals/handle.mojo` | ~680 | SignalI32 + SignalBool + SignalString + MemoI32 + EffectHandle |
 | `src/signals/runtime.mojo` | ~1,365 | Reactive runtime + SignalStore + StringStore |
 | `src/component/context.mojo` | ~2,140 | ComponentContext + RenderBuilder + tree processing + error boundary + view_event_handler_id |
@@ -552,7 +607,7 @@ el_button(text("Add"), onclick_custom()),
 | `src/mutations/diff.mojo` | ~970 | DiffEngine (keyed reconciliation) |
 | `runtime/memory.ts` | ~290 | Free-list allocator + scratch arena (Phase 25) |
 | `runtime/events.ts` | ~375 | EventBridge + DispatchWithStringFn (M20.2) |
-| `runtime/app.ts` | ~1,580 | createApp + app handles (Counter, Todo, Bench, SafeCounter, ErrorNest, etc.) |
+| `runtime/app.ts` | ~1,900 | createApp + app handles (Counter, Todo, Bench, SafeCounter, ErrorNest, DataLoader, SuspenseNest, etc.) |
 | `runtime/types.ts` | ~690 | WasmExports interface (Phase 20 string dispatch exports) |
 | `examples/lib/env.js` | ~250 | Browser free-list allocator + WASM imports (Phase 25) |
 | `test-js/allocator.test.ts` | ~980 | Allocator unit tests + WASM-integrated reuse tests (Phase 25) |
@@ -566,10 +621,25 @@ el_button(text("Add"), onclick_custom()),
 | `test-js/theme_counter.test.ts` | ~690 | ThemeCounterApp shared context + upward communication tests (Phase 31.4) |
 | `test-js/safe_counter.test.ts` | ~600 | SafeCounterApp error boundary tests (crash/retry lifecycle, DOM) |
 | `test-js/error_nest.test.ts` | ~645 | ErrorNestApp nested boundary tests (inner/outer crash/retry, DOM) |
+| `test-js/data_loader.test.ts` | ~500 | DataLoaderApp suspense tests (load/resolve lifecycle, DOM) |
+| `test-js/suspense_nest.test.ts` | ~690 | SuspenseNestApp nested suspense tests (inner/outer load/resolve, DOM) |
 | `test/wasm_harness.mojo` | ~1,400 | Mojo WASM test harness (includes free-list allocator, Phase 25) |
 | `CHANGELOG.md` | ~420 | Development history (Phases 0–32) |
 
 ## Common Patterns
+
+**Suspense flush pattern (Phase 33):** Check `ctx.is_pending()` in flush to switch between content and skeleton children. Uses the same `flush` / `flush_empty` alternation as error boundaries:
+
+```text
+if ctx.is_pending():
+    content_child.flush_empty(writer)      # hide content
+    skeleton_child.flush(writer, skel_vnode) # show skeleton
+else:
+    skeleton_child.flush_empty(writer)     # hide skeleton
+    content_child.flush(writer, content_vnode) # show content with data
+```
+
+JS triggers resolution via a WASM export that calls `ctx.set_pending(False)` and stores the loaded data. The next flush cycle restores the content child with the resolved data.
 
 **Error boundary flush pattern (Phase 32):** Check `ctx.has_error()` in flush to switch between normal and fallback children. Uses the same `flush` / `flush_empty` alternation as `ConditionalSlot`:
 
@@ -628,5 +698,5 @@ Error propagation: `ctx.report_error(msg)` walks the scope parent chain via `Sco
 - **Generic `Signal[T]`** → blocked on Conditional conformance (Phase 1, 🚧). Currently `SignalI32` / `SignalBool` / `SignalString` / `MemoI32` (Phase 18 added `SignalBool`, Phase 19 added `SignalString`). **0.26.1 progress:** Experimental `conforms_to()` + `trait_downcast()` enable static dispatch on trait conformance; expanded reflection (`struct_field_count`, `struct_field_names`, `struct_field_types`) enables field introspection. Still blocked on full conditional conformance for parametric stores.
 - **Dynamic component dispatch** → blocked on Existentials / dynamic traits (Phase 2, ⏰). **0.26.1 progress:** `AnyType` no longer requires `__del__()` (explicitly-destroyed types help), but doesn't solve dispatch.
 - **Pattern matching on actions** → blocked on ADTs & pattern matching (Phase 2, ⏰). Currently `if/elif` chains. **0.26.1 progress:** None.
-- **Async data loading / suspense** → blocked on First-class async (Phase 2, ⏰). **0.26.1 progress:** None.
+- ~~**Async data loading / suspense**~~ → **Suspense (simulated) implemented in Phase 33.** True async/await still blocked on First-class async (Phase 2, ⏰), but synchronous suspense with JS-triggered resolve is now available. `use_suspense_boundary()` marks a scope as a suspense boundary; `set_pending(True/False)` toggles pending state; `is_pending()` drives flush-time content/skeleton switching. JS resolves by calling a WASM export that stores data and clears pending. Demonstrated with DataLoaderApp (single boundary) and SuspenseNestApp (nested boundaries).
 - ~~**Error boundaries**~~ → **Implemented in Phase 32.** Scope-level error boundary infrastructure (Phase 8.4) is now surfaced on `ComponentContext` and `ChildComponentContext` with `use_error_boundary()`, `report_error()`, `has_error()`, `error_message()`, `clear_error()`. Demonstrated with SafeCounterApp (single boundary) and ErrorNestApp (nested boundaries).

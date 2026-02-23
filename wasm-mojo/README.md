@@ -13,7 +13,8 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **Automatic template wiring** — templates defined once in Mojo, auto-registered in JS via `RegisterTemplate` mutations
 - **Automatic event wiring** — handler IDs flow through the mutation protocol; `EventBridge` dispatches events without manual mapping
 - **Event system** — DOM events delegated through WASM with action-based handlers
-- **Scoped components** — hierarchical scopes with hooks, context, error boundaries, and suspense
+- **Scoped components** — hierarchical scopes with hooks, context, error boundaries, and suspense boundaries
+- **Suspense** — pending state with skeleton fallback and JS-triggered resolve; nested boundaries with independent inner/outer lifecycle
 - **Ergonomic DSL** — `el_div`, `el_button`, `dyn_text` tag helpers with `to_template()` conversion
 - **AppShell abstraction** — single struct bundling runtime, store, allocator, and scheduler
 - **ComponentContext** — ergonomic Dioxus-style API with `use_signal()`, `setup_view()`, inline events, auto-numbered `dyn_text()`
@@ -22,7 +23,7 @@ Built from the ground up — signals, virtual DOM, diffing, event handling, and 
 - **String event dispatch** — `ACTION_SIGNAL_SET_STRING` handlers pipe string values from DOM events directly into `SignalString` signals; JS EventBridge extracts `event.target.value` → `writeStringStruct()` → WASM `dispatch_event_with_string` with automatic fallback to numeric/default dispatch
 - **Two-way input binding** — Dioxus-style `oninput_set_string(signal)` + `bind_value(signal)` DSL helpers for inline string event handlers and auto-populated `value` attributes; `RenderBuilder.build()` reads `SignalString` at render time
 - **Error boundaries** — scope-level error catching with fallback UI and recovery; `use_error_boundary()` marks a scope as a boundary, `report_error()` propagates errors up the parent chain, `has_error()` / `clear_error()` drive flush-time content switching between normal and fallback children
-- **3,310 tests** — 1,080 Mojo (38 modules via wasmtime) + 2,230 JS (21 suites via Deno), all passing
+- **3,640 tests** — 1,122 Mojo (40 modules via wasmtime) + 2,518 JS (24 suites via Deno), all passing
 
 ## How it works
 
@@ -347,7 +348,7 @@ Adding a new test:
 
 ## Test results
 
-3,310 tests across 38 Mojo modules and 21 JS test suites:
+3,640 tests across 40 Mojo modules and 24 JS test suites:
 
 - **Signals & reactivity** — create, read, write, subscribe, dirty tracking, context
 - **Scopes** — lifecycle, hooks, context propagation, error boundaries, suspense
@@ -365,6 +366,8 @@ Adding a new test:
 - **Context apps** — ComponentContext provide/consume surface, ChildComponentContext test harness, self-rendering child with props, shared context + cross-component communication (ThemeCounterApp)
 - **Safe counter app** — error boundary with crash/retry lifecycle, normal↔fallback child switching, count signal preservation across crash/recovery cycles, DOM verification of fallback UI
 - **Error nest app** — nested error boundaries with independent crash/retry, inner crash caught by inner boundary (only inner slot swaps), outer crash replaces entire inner tree, mixed crash/retry sequences, full recovery validation
+- **Data loader app** — suspense with load/resolve lifecycle, load button sets pending → skeleton shown, JS-triggered resolve → content shown with data, reload cycles, multiple load/resolve cycles, DOM verification
+- **Suspense nest app** — nested suspense boundaries with independent inner/outer load/resolve, inner load shows inner skeleton (outer unaffected), outer load shows outer skeleton (hides inner tree), outer resolve reveals persisted inner pending state, mixed load/resolve sequences, full recovery validation
 - **Memory** — allocation cycles, bounded growth, rapid write stability, free-list reuse, double-free protection, WASM-integrated reuse (text/attr/fragment/template diffs with reuse enabled)
 - **Arithmetic/strings** — original PoC interop regression suite
 
@@ -626,6 +629,60 @@ struct SafeCounterApp:
         return self.ctx.dispatch_event(handler_id, event_type)
 ```
 
+Phase 33 adds suspense — pending state with skeleton fallback and JS-triggered
+resolve. `use_suspense_boundary()` marks a scope as a suspense boundary;
+`set_pending(True)` enters pending state; JS calls a resolve export to store
+data and clear pending; flush switches between content and skeleton children:
+
+```mojo
+# Mojo equivalent — suspense pattern (Phase 33):
+struct DataLoaderApp:
+    var ctx: ComponentContext
+    var content: DLContentChild          # content child: p > "Data: ..."
+    var skeleton: DLSkeletonChild        # skeleton child: p > "Loading..."
+    var data_text: String
+    var load_handler: UInt32
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.ctx.use_suspense_boundary()   # mark root as suspense boundary
+        self.data_text = String("(none)")
+        self.ctx.setup_view(
+            el_div(
+                el_h1(dsl_text(String("Data Loader"))),
+                el_button(dsl_text(String("Load")), onclick_custom()),
+                dyn_node(0),               # content slot
+                dyn_node(1),               # skeleton slot
+            ),
+            String("data-loader"),
+        )
+        # ... create content + skeleton child contexts ...
+
+    fn flush(mut self, writer: ...) -> Int32:
+        if self.ctx.is_pending():
+            # Pending: hide content, show skeleton
+            self.content.child_ctx.flush_empty(writer)
+            var skel_idx = self.skeleton.render()
+            self.skeleton.child_ctx.flush(writer, skel_idx)
+        else:
+            # Resolved: show content with data, hide skeleton
+            self.skeleton.child_ctx.flush_empty(writer)
+            var content_idx = self.content.render(self.data_text)
+            self.content.child_ctx.flush(writer, content_idx)
+        return self.ctx.finalize(writer)
+
+    fn handle_event(mut self, handler_id: UInt32, ...) -> Bool:
+        if handler_id == self.load_handler:
+            self.ctx.set_pending(True)     # next flush shows skeleton
+            return True
+        return self.ctx.dispatch_event(handler_id, event_type)
+
+# JS calls dl_resolve(data) to clear pending:
+# fn resolve(data: String):
+#     self.data_text = data
+#     self.ctx.set_pending(False)          # next flush restores content
+```
+
 ## Deferred abstractions
 
 Some Dioxus features cannot be idiomatically expressed in Mojo today due to
@@ -640,7 +697,7 @@ They are documented here so they can be revisited as Mojo evolves:
 | **Generic `Signal[T]`** (`use_signal(\|\| vec![])`) | Runtime stores fixed `Int32` signals; parametric stores need conditional conformance. Phase 18 added `SignalBool`, Phase 19 added `SignalString` as manual workarounds. **0.26.1 adds `conforms_to()` + `trait_downcast()` (experimental) enabling static dispatch on trait conformance, plus expanded reflection (`struct_field_count`, `struct_field_names`, `struct_field_types`, `offset_of`) — stepping stones toward a generic signal store** | Conditional conformance (Phase 1) | 🚧 Partially unblocked |
 | **Dynamic component dispatch** (trait objects for components) | No existentials/dynamic traits. 0.26.1: `AnyType` no longer requires `__del__()` (explicitly-destroyed types) helps but doesn't solve dispatch | Existentials / dynamic traits (Phase 2) | ⏰ Not started |
 | **Pattern matching on actions** | `if/elif` chains instead of `match` | Algebraic data types & pattern matching (Phase 2) | ⏰ Not started |
-| **Async data loading / suspense** | No `async`/`await` | First-class async support (Phase 2) | ⏰ Not started |
+| ~~**Async data loading / suspense**~~ | **Suspense (simulated) implemented in Phase 33.** True async still blocked on first-class async. Synchronous suspense with JS-triggered resolve available now | First-class async support (Phase 2) | ✅ Simulated |
 | **Untyped Python-style code** | Explicit types required everywhere | Phase 3: Dynamic OOP | ⏰ Not started |
 
 When these Mojo features land, the corresponding Dioxus patterns can be
