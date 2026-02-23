@@ -1327,6 +1327,19 @@ struct ComponentContext(Movable):
         """
         return self.shell.consume_dirty()
 
+    fn settle_scopes(mut self):
+        """Remove dirty scopes with no actual signal changes.
+
+        After memo recomputation, some scopes may have been eagerly
+        marked dirty (Phase 36) but none of their subscribed signals
+        actually changed value.  This method checks each dirty scope
+        and removes those where no subscribed signal changed.
+
+        Call after run_memos() (and run_effects() if applicable) and
+        before render() to skip unnecessary re-renders.
+        """
+        self.shell.runtime[0].settle_scopes()
+
     fn diff(
         mut self,
         writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],

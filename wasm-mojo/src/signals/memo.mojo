@@ -56,6 +56,7 @@ struct MemoEntry(Copyable, Equatable, Writable):
     var scope_id: UInt32  # owning scope (for cleanup)
     var dirty: Bool  # needs recomputation
     var computing: Bool  # currently inside begin/end compute bracket
+    var value_changed: Bool  # True if last end_compute wrote a different value
 
     # ── Construction ─────────────────────────────────────────────────
 
@@ -67,6 +68,7 @@ struct MemoEntry(Copyable, Equatable, Writable):
         self.scope_id = 0
         self.dirty = False
         self.computing = False
+        self.value_changed = True
 
     fn __init__(
         out self,
@@ -89,6 +91,7 @@ struct MemoEntry(Copyable, Equatable, Writable):
         self.scope_id = scope_id
         self.dirty = True
         self.computing = False
+        self.value_changed = True
 
     fn __init__(
         out self,
@@ -114,6 +117,7 @@ struct MemoEntry(Copyable, Equatable, Writable):
         self.scope_id = scope_id
         self.dirty = True
         self.computing = False
+        self.value_changed = True
 
     fn __copyinit__(out self, other: Self):
         self.context_id = other.context_id
@@ -122,6 +126,7 @@ struct MemoEntry(Copyable, Equatable, Writable):
         self.scope_id = other.scope_id
         self.dirty = other.dirty
         self.computing = other.computing
+        self.value_changed = other.value_changed
 
     fn __moveinit__(out self, deinit other: Self):
         self.context_id = other.context_id
@@ -130,6 +135,7 @@ struct MemoEntry(Copyable, Equatable, Writable):
         self.scope_id = other.scope_id
         self.dirty = other.dirty
         self.computing = other.computing
+        self.value_changed = other.value_changed
 
 
 # ── Slot state for the memo store ────────────────────────────────────────────
@@ -412,6 +418,37 @@ struct MemoStore(Movable):
                 if self._entries[i].scope_id == scope_id:
                     result.append(UInt32(i))
         return result^
+
+    # ── Value-changed tracking ───────────────────────────────────────
+
+    fn set_value_changed(mut self, id: UInt32, changed: Bool):
+        """Set the value_changed flag after end_compute.
+
+        Called by the runtime after comparing old vs new value in
+        memo_end_compute_*.  True means the memo's output value
+        actually changed; False means it was value-stable.
+        """
+        var idx = Int(id)
+        if idx < 0 or idx >= len(self._entries):
+            return
+        if not self._states[idx].occupied:
+            return
+        self._entries[idx].value_changed = changed
+
+    fn did_value_change(self, id: UInt32) -> Bool:
+        """Check whether the last end_compute changed the memo's value.
+
+        Returns True if the memo's output changed on its most recent
+        recomputation, False if it was value-stable (new == old).
+
+        Precondition: `contains(id)` is True.
+        """
+        var idx = Int(id)
+        if idx < 0 or idx >= len(self._states):
+            return True  # conservative default
+        if not self._states[idx].occupied:
+            return True  # conservative default
+        return self._entries[idx].value_changed
 
     fn clear(mut self):
         """Remove all memos."""

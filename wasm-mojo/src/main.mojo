@@ -2147,6 +2147,49 @@ fn memo_string_is_dirty(rt_ptr: Int64, memo_id: Int32) -> Int32:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Phase 37 — Equality-Gated Memo Propagation Exports
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@export
+fn memo_did_value_change(rt_ptr: Int64, memo_id: Int32) -> Int32:
+    """Check whether the last end_compute changed the memo's value.
+
+    Returns 1 if the value changed, 0 if it was value-stable (new == old).
+    """
+    return _b2i(_get[Runtime](rt_ptr)[0].memo_did_value_change(UInt32(memo_id)))
+
+
+@export
+fn runtime_settle_scopes(rt_ptr: Int64):
+    """Remove dirty scopes whose subscribed signals didn't actually change.
+
+    Call after run_memos() and before render() to skip unnecessary
+    re-renders when memo equality gates cancel downstream dirtiness.
+    """
+    _get[Runtime](rt_ptr)[0].settle_scopes()
+
+
+@export
+fn runtime_clear_changed_signals(rt_ptr: Int64):
+    """Reset the changed-signals tracking set.
+
+    Normally called automatically by settle_scopes().  Exposed for
+    testing scenarios that need to reset between operations.
+    """
+    _get[Runtime](rt_ptr)[0].clear_changed_signals()
+
+
+@export
+fn runtime_signal_changed(rt_ptr: Int64, key: Int32) -> Int32:
+    """Check whether a signal was written with a changed value this cycle.
+
+    Returns 1 if the signal key appears in _changed_signals, 0 otherwise.
+    """
+    return _b2i(_get[Runtime](rt_ptr)[0].signal_changed_this_cycle(UInt32(key)))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Phase 14 — Effect (Reactive Side Effect) Exports
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -8594,15 +8637,21 @@ fn _em_flush(
 ) -> Int32:
     """Flush pending updates with memo + effect drain-and-run pattern.
 
-    1. consume_dirty() — collect dirty scopes
+    1. has_dirty() gate — bail early if nothing to do
     2. run_memos_and_effects() — recompute memos, then run effects
-    3. render() — build VNode with all state settled
-    4. diff + finalize — emit mutations
+    3. settle_scopes() — remove scopes with no actual signal changes
+    4. consume_dirty() — drain remaining dirty scopes via scheduler
+    5. render() + diff + finalize — emit mutations
     """
-    if not app[0].ctx.consume_dirty():
+    if not app[0].ctx.has_dirty():
         return 0
-    # Recompute memos + run pending effects
+    # Recompute memos + run pending effects (while scopes still in dirty_scopes)
     app[0].run_memos_and_effects()
+    # Phase 37: filter dirty_scopes before consuming
+    app[0].ctx.settle_scopes()
+    if not app[0].ctx.has_dirty():
+        return 0
+    _ = app[0].ctx.consume_dirty()
     # Render with settled state
     var new_idx = app[0].render()
     app[0].ctx.diff(writer_ptr, new_idx)
@@ -8866,15 +8915,21 @@ fn _mf_flush(
 ) -> Int32:
     """Flush pending updates with memo recomputation.
 
-    1. consume_dirty() — collect dirty scopes
+    1. has_dirty() gate — bail early if nothing to do
     2. run_memos() — recompute is_valid and status
-    3. render() — build VNode with all state settled
-    4. diff + finalize — emit mutations
+    3. settle_scopes() — remove scopes with no actual signal changes
+    4. consume_dirty() — drain remaining dirty scopes via scheduler
+    5. render() + diff + finalize — emit mutations
     """
-    if not app[0].ctx.consume_dirty():
+    if not app[0].ctx.has_dirty():
         return 0
-    # Recompute memos
+    # Recompute memos (while scopes are still in dirty_scopes)
     app[0].run_memos()
+    # Phase 37: filter dirty_scopes before consuming
+    app[0].ctx.settle_scopes()
+    if not app[0].ctx.has_dirty():
+        return 0
+    _ = app[0].ctx.consume_dirty()
     # Render with settled state
     var new_idx = app[0].render()
     app[0].ctx.diff(writer_ptr, new_idx)
@@ -9170,15 +9225,21 @@ fn _mc_flush(
 ) -> Int32:
     """Flush pending updates with memo chain recomputation.
 
-    1. consume_dirty() — collect dirty scopes
+    1. has_dirty() gate — bail early if nothing to do
     2. run_memos() — recompute doubled → is_big → label
-    3. render() — build VNode with all state settled
-    4. diff + finalize — emit mutations
+    3. settle_scopes() — remove scopes with no actual signal changes
+    4. consume_dirty() — drain remaining dirty scopes via scheduler
+    5. render() + diff + finalize — emit mutations
     """
-    if not app[0].ctx.consume_dirty():
+    if not app[0].ctx.has_dirty():
         return 0
-    # Recompute memo chain
+    # Recompute memo chain (while scopes are still in dirty_scopes)
     app[0].run_memos()
+    # Phase 37: filter dirty_scopes before consuming
+    app[0].ctx.settle_scopes()
+    if not app[0].ctx.has_dirty():
+        return 0
+    _ = app[0].ctx.consume_dirty()
     # Render with settled state
     var new_idx = app[0].render()
     app[0].ctx.diff(writer_ptr, new_idx)
@@ -9296,4 +9357,329 @@ fn mc_memo_count(app_ptr: Int64) -> Int32:
     """Return the number of live memos."""
     return Int32(
         _get[MemoChainApp](app_ptr)[0].ctx.shell.runtime[0].memos.count()
+    )
+
+
+# Phase 37.3 — EqualityDemoApp (equality-gated memo chain)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Demonstrates the equality gate in action.  Uses a chain where an
+# intermediate memo frequently stabilizes, showing that downstream
+# memos and scopes skip unnecessary work.
+#
+# Structure:
+#   EqualityDemoApp (single root scope, no child components)
+#   ├── h1 "Equality Gate"
+#   ├── button "+ 1" (onclick_add input)
+#   ├── button "- 1" (onclick_sub input)
+#   ├── p > dyn_text("Input: N")
+#   ├── p > dyn_text("Clamped: N")           ← MemoI32 clamp(input, 0, 10)
+#   └── p > dyn_text("Label: high/low")      ← MemoString (clamped > 5 ? "high" : "low")
+#
+# Interesting behaviour:
+#   - Input 0→1:  clamped 0→1 (changed), label "low"→"low" (stable!)
+#   - Input 5→6:  clamped 5→6 (changed), label "low"→"high" (changed)
+#   - Input 10→11: clamped 10→10 (stable!), label "high"→"high" (stable!)
+#   - Input 11→12: clamped 10→10 (stable!), label "high"→"high" (stable!)
+
+
+struct EqualityDemoApp(Movable):
+    """Equality-gated memo chain demo app.
+
+    Demonstrates that when an intermediate memo recomputes to the same
+    value, downstream memos and scopes skip unnecessary work thanks to
+    the Phase 37 equality gate in `end_compute`.
+
+    The input signal is created with `create_signal` (no auto-subscribe)
+    so the scope only subscribes to the memo outputs (clamped, label).
+    When the memo chain is value-stable (e.g. input above the clamp
+    max), `settle_scopes()` removes the scope and flush emits zero
+    mutations.
+    """
+
+    var ctx: ComponentContext
+    var input: _SignalI32
+    var clamped: MemoI32
+    var label: MemoString
+    var incr_handler: UInt32
+    var decr_handler: UInt32
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.input = self.ctx.create_signal(0)
+        self.clamped = self.ctx.use_memo(0)
+        self.label = self.ctx.use_memo_string(String("low"))
+        var children = List[Node]()
+        children.append(el_h1(dsl_text(String("Equality Gate"))))
+        children.append(
+            el_button(
+                dsl_text(String("+ 1")),
+                dsl_onclick_add(self.input, 1),
+            )
+        )
+        children.append(
+            el_button(
+                dsl_text(String("- 1")),
+                dsl_onclick_sub(self.input, 1),
+            )
+        )
+        children.append(el_p(dsl_dyn_text()))
+        children.append(el_p(dsl_dyn_text()))
+        self.ctx.setup_view(
+            el_div(children^),
+            String("equality-demo"),
+        )
+        self.incr_handler = self.ctx.view_event_handler_id(0)
+        self.decr_handler = self.ctx.view_event_handler_id(1)
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.ctx = other.ctx^
+        self.input = other.input.copy()
+        self.clamped = other.clamped.copy()
+        self.label = other.label.copy()
+        self.incr_handler = other.incr_handler
+        self.decr_handler = other.decr_handler
+
+    fn run_memos(mut self):
+        """Recompute all memos in dependency order.
+
+        Chain: input → clamped (clamp(input, 0, 10))
+                      → label ("high" if clamped > 5 else "low")
+
+        Thanks to Phase 37 equality gating, if clamped recomputes to
+        the same value (e.g. input goes from 10 to 11, clamped stays 10),
+        the label memo will also be value-stable and the scope can be
+        settled (no re-render needed).
+        """
+        if self.clamped.is_dirty():
+            self.clamped.begin_compute()
+            var i = self.input.read()
+            var c = i
+            if c < 0:
+                c = 0
+            if c > 10:
+                c = 10
+            self.clamped.end_compute(c)
+
+        if self.label.is_dirty():
+            self.label.begin_compute()
+            var c = self.clamped.read()
+            if c > 5:
+                self.label.end_compute(String("high"))
+            else:
+                self.label.end_compute(String("low"))
+
+    fn render(mut self) -> UInt32:
+        """Build a fresh VNode with 2 dyn_text slots (clamped + label).
+
+        The input signal is NOT displayed here because the scope does
+        not subscribe to it (created with `create_signal`).  Displaying
+        it via peek() would show stale values when the scope is settled.
+        Use `eq_input_value` to read the raw input in tests.
+        """
+        var vb = self.ctx.render_builder()
+        vb.add_dyn_text(String("Clamped: ") + String(self.clamped.peek()))
+        vb.add_dyn_text(String("Label: ") + self.label.peek())
+        return vb.build()
+
+
+# ── EqualityDemoApp lifecycle functions ───────────────────────────────────────
+
+
+fn _eq_init() -> UnsafePointer[EqualityDemoApp, MutExternalOrigin]:
+    var app_ptr = alloc[EqualityDemoApp](1)
+    app_ptr.init_pointee_move(EqualityDemoApp())
+    return app_ptr
+
+
+fn _eq_destroy(
+    app_ptr: UnsafePointer[EqualityDemoApp, MutExternalOrigin],
+):
+    app_ptr[0].ctx.destroy()
+    app_ptr.destroy_pointee()
+    app_ptr.free()
+
+
+fn _eq_rebuild(
+    app: UnsafePointer[EqualityDemoApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Initial render (mount) of the equality-demo app."""
+    # Run initial memo recomputation
+    app[0].run_memos()
+    # Render with settled state
+    var vnode_idx = app[0].render()
+    var result = app[0].ctx.mount(writer_ptr, vnode_idx)
+    # Consume dirty scopes left over from memo signal writes
+    _ = app[0].ctx.consume_dirty()
+    return result
+
+
+fn _eq_handle_event(
+    app: UnsafePointer[EqualityDemoApp, MutExternalOrigin],
+    handler_id: UInt32,
+    event_type: UInt8,
+) -> Bool:
+    return app[0].ctx.dispatch_event(handler_id, event_type)
+
+
+fn _eq_flush(
+    app: UnsafePointer[EqualityDemoApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Flush pending updates with equality-gated memo chain.
+
+    1. has_dirty() gate — bail early if nothing to do
+    2. run_memos() — recompute clamped → label (sets _changed_signals)
+    3. settle_scopes() — remove scopes whose subscribed signals are
+       all value-stable (operates on dirty_scopes BEFORE consume)
+    4. consume_dirty() — drain remaining dirty scopes via scheduler
+    5. render() + diff + finalize — emit mutations
+
+    The key insight: settle_scopes() must run BEFORE consume_dirty()
+    because consume_dirty() drains dirty_scopes.  If settle removes
+    all scopes, has_dirty() returns False and we skip render entirely.
+    """
+    if not app[0].ctx.has_dirty():
+        return 0
+    # Recompute memo chain (while scopes are still in dirty_scopes)
+    app[0].run_memos()
+    # Phase 37: filter dirty_scopes — remove scopes with no actual changes
+    app[0].ctx.settle_scopes()
+    # If all scopes were settled, skip render entirely
+    if not app[0].ctx.has_dirty():
+        return 0
+    # Consume remaining dirty scopes via scheduler
+    _ = app[0].ctx.consume_dirty()
+    # Render with settled state
+    var new_idx = app[0].render()
+    app[0].ctx.diff(writer_ptr, new_idx)
+    return app[0].ctx.finalize(writer_ptr)
+
+
+# ── EqualityDemoApp WASM exports ──────────────────────────────────────────────
+
+
+@export
+fn eq_init() -> Int64:
+    """Initialize the equality-demo app.  Returns app pointer."""
+    return _to_i64(_eq_init())
+
+
+@export
+fn eq_destroy(app_ptr: Int64):
+    """Destroy the equality-demo app."""
+    _eq_destroy(_get[EqualityDemoApp](app_ptr))
+
+
+@export
+fn eq_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    """Initial render of the equality-demo app."""
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _eq_rebuild(_get[EqualityDemoApp](app_ptr), writer_ptr)
+    return result
+
+
+@export
+fn eq_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32:
+    """Dispatch an event to the equality-demo app."""
+    if _eq_handle_event(
+        _get[EqualityDemoApp](app_ptr), UInt32(hid), UInt8(evt)
+    ):
+        return 1
+    return 0
+
+
+@export
+fn eq_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32:
+    """Flush pending updates for the equality-demo app."""
+    var writer_ptr = _alloc_writer(buf_ptr, cap)
+    var result = _eq_flush(_get[EqualityDemoApp](app_ptr), writer_ptr)
+    return result
+
+
+@export
+fn eq_input_value(app_ptr: Int64) -> Int32:
+    """Return the current input signal value."""
+    return _get[EqualityDemoApp](app_ptr)[0].input.peek()
+
+
+@export
+fn eq_clamped_value(app_ptr: Int64) -> Int32:
+    """Return the current clamped memo value."""
+    return _get[EqualityDemoApp](app_ptr)[0].clamped.peek()
+
+
+@export
+fn eq_label_text(app_ptr: Int64) -> String:
+    """Return the current label memo text."""
+    return _get[EqualityDemoApp](app_ptr)[0].label.peek()
+
+
+@export
+fn eq_clamped_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if the clamped memo needs recomputation."""
+    return _b2i(_get[EqualityDemoApp](app_ptr)[0].clamped.is_dirty())
+
+
+@export
+fn eq_label_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if the label memo needs recomputation."""
+    return _b2i(_get[EqualityDemoApp](app_ptr)[0].label.is_dirty())
+
+
+@export
+fn eq_clamped_changed(app_ptr: Int64) -> Int32:
+    """Return 1 if the clamped memo's last recomputation changed its value."""
+    return _b2i(
+        _get[EqualityDemoApp](app_ptr)[0]
+        .ctx.shell.runtime[0]
+        .memo_did_value_change(_get[EqualityDemoApp](app_ptr)[0].clamped.id)
+    )
+
+
+@export
+fn eq_label_changed(app_ptr: Int64) -> Int32:
+    """Return 1 if the label memo's last recomputation changed its value."""
+    return _b2i(
+        _get[EqualityDemoApp](app_ptr)[0]
+        .ctx.shell.runtime[0]
+        .memo_did_value_change(_get[EqualityDemoApp](app_ptr)[0].label.id)
+    )
+
+
+@export
+fn eq_incr_handler(app_ptr: Int64) -> Int32:
+    """Return the increment button handler ID."""
+    return Int32(_get[EqualityDemoApp](app_ptr)[0].incr_handler)
+
+
+@export
+fn eq_decr_handler(app_ptr: Int64) -> Int32:
+    """Return the decrement button handler ID."""
+    return Int32(_get[EqualityDemoApp](app_ptr)[0].decr_handler)
+
+
+@export
+fn eq_has_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if any scope is dirty."""
+    var app = _get[EqualityDemoApp](app_ptr)
+    if len(app[0].ctx.shell.runtime[0].dirty_scopes) > 0:
+        return 1
+    return 0
+
+
+@export
+fn eq_scope_count(app_ptr: Int64) -> Int32:
+    """Return the number of live scopes."""
+    return Int32(
+        _get[EqualityDemoApp](app_ptr)[0].ctx.shell.runtime[0].scope_count()
+    )
+
+
+@export
+fn eq_memo_count(app_ptr: Int64) -> Int32:
+    """Return the number of live memos."""
+    return Int32(
+        _get[EqualityDemoApp](app_ptr)[0].ctx.shell.runtime[0].memos.count()
     )

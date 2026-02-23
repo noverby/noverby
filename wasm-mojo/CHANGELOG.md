@@ -2,6 +2,24 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 37 — Equality-Gated Memo Propagation
+
+Added equality checks to all memo types so that downstream updates only occur when memo values actually change. When a memo recomputes to the same value, its output signal is NOT written, downstream memos remain value-stable, and `settle_scopes()` removes eagerly-dirtied scopes — skipping unnecessary re-renders and DOM diffs entirely.
+
+- **P37.1** — MemoEntry `value_changed` flag and equality checking. Extended `MemoEntry` in `src/signals/memo.mojo` with a `value_changed` flag, `set_value_changed()`, and `did_value_change()` accessors. Refactored all three `memo_end_compute_*` methods in `src/signals/runtime.mojo` (I32, Bool, String) to compare old vs new value before writing: if the value is unchanged, the output signal is NOT written and `_changed_signals` is not updated, so downstream memos that read it see the same value and can themselves be value-stable. Added `_changed_signals: List[UInt32]` accumulator to the runtime (populated by `write_signal` for source signals and by `end_compute` only when values actually change), with `signal_changed_this_cycle()` query and `clear_changed_signals()` reset. WASM exports: `runtime_memo_did_value_change`, `runtime_signal_changed_this_cycle`, `runtime_clear_changed_signals`. 22 new Mojo tests in `test/test_memo_equality.mojo` covering I32/Bool/String equality gates, value-stable vs value-changed detection, changed_signals tracking, chain cascades, diamond dependencies, and regression cases.
+
+- **P37.2** — Scope settle pass. Implemented `settle_scopes()` in `src/signals/runtime.mojo` which removes dirty scopes whose subscribed signals are all value-stable (not in `_changed_signals`). Algorithm: scan `_changed_signals`, check each changed signal's subscribers for tagged scope IDs, collect scopes that subscribe to at least one changed signal — replace `dirty_scopes` with only those. O(C × avg_subscribers × D) where C = changed signals, avg_subscribers ≈ 1–3, D = dirty scopes. Clears `_changed_signals` at the end. Added `settle_scopes()` wrappers to `ComponentContext` and `AppShell`. WASM export: `runtime_settle_scopes`.
+
+- **P37.3** — EqualityDemoApp. New demo app with a clamped + threshold memo chain: `SignalI32(input)` → `MemoI32(clamped = clamp(input, 0, 10))` → `MemoString(label = clamped > 5 ? "high" : "low")`. The input signal uses `create_signal` (no scope auto-subscribe) so the scope only subscribes to memo outputs; when the chain is value-stable (e.g. input above max), `settle_scopes()` removes the scope and flush emits zero mutations. WASM exports with `eq_` prefix. 20 new Mojo tests in `test/test_equality_demo.mojo` covering within-range changes, threshold crossings, clamped stabilization, label stabilization, scope settling, zero-byte flushes, consecutive stable flushes, full cycle round-trips, and destroy safety.
+
+- **P37.4** — Updated existing apps to use `settle_scopes()`. Restructured flush functions in `MemoChainApp`, `EffectMemoApp`, and `MemoFormApp` to call `settle_scopes()` after memo recomputation (and effect execution where applicable) but before `consume_dirty()`, ensuring scopes are filtered before the scheduler drains them.
+
+- **P37.5** — Documentation update. CHANGELOG.md, README.md, and AGENTS.md updated with Phase 37 summary, new app architecture, equality-gated memo propagation pattern, and test counts.
+
+**Test count after P37.5:** 1,266 Mojo (49 modules) + 2,969 JS (27 suites) = 4,235 tests.
+
+---
+
 ## Phase 36 — Recursive Memo Propagation
 
 Fixed the runtime so that `write_signal` recursively propagates dirtiness through memo → memo chains to arbitrary depth, eliminating the need for manual all-or-nothing recomputation in apps with memo chains. Also fixed a namespace collision between scope IDs and signal keys that caused false subscriber classification.

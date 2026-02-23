@@ -493,10 +493,30 @@ struct MemoChainApp:
                   if is_big.is_dirty() → begin_compute → read doubled → end_compute(doubled >= 10)
                   if label.is_dirty() → begin_compute → read is_big → end_compute("BIG" or "small")
     fn render: 4 dyn_text slots (Input/Doubled/Is Big/Label)
-    fn flush: consume_dirty → run_memos → render → diff → finalize
+    fn flush: has_dirty → run_memos → settle_scopes → consume_dirty → render → diff → finalize
 ```
 
-Lifecycle: `mc_init` → `mc_rebuild` (run_memos + mount) → `mc_handle_event` (onclick_add input) → `mc_flush` (memo chain recomputed, DOM diffed). Chain: `SignalI32` → `MemoI32` → `MemoBool` → `MemoString`. The runtime automatically propagates dirtiness through memo → memo chains (Phase 36 worklist-based propagation), so each memo checks `is_dirty()` independently. Recomputation order (doubled → is_big → label) is still maintained by code order to ensure upstream values are fresh. WASM exports: `mc_init`, `mc_destroy`, `mc_rebuild`, `mc_handle_event`, `mc_flush`, `mc_input_value`, `mc_doubled_value`, `mc_is_big`, `mc_label_text`, `mc_doubled_dirty`, `mc_is_big_dirty`, `mc_label_dirty`, `mc_incr_handler`, `mc_has_dirty`, `mc_scope_count`, `mc_memo_count`.
+Lifecycle: `mc_init` → `mc_rebuild` (run_memos + mount) → `mc_handle_event` (onclick_add input) → `mc_flush` (memo chain recomputed, settle_scopes filters stable scopes, DOM diffed). Chain: `SignalI32` → `MemoI32` → `MemoBool` → `MemoString`. The runtime automatically propagates dirtiness through memo → memo chains (Phase 36 worklist-based propagation), so each memo checks `is_dirty()` independently. Recomputation order (doubled → is_big → label) is still maintained by code order to ensure upstream values are fresh. Phase 37 equality gating: if a memo recomputes to the same value, its output signal is NOT written and `settle_scopes()` removes scopes that only subscribed to stable signals. WASM exports: `mc_init`, `mc_destroy`, `mc_rebuild`, `mc_handle_event`, `mc_flush`, `mc_input_value`, `mc_doubled_value`, `mc_is_big`, `mc_label_text`, `mc_doubled_dirty`, `mc_is_big_dirty`, `mc_label_dirty`, `mc_incr_handler`, `mc_has_dirty`, `mc_scope_count`, `mc_memo_count`.
+
+### EqualityDemoApp (`src/main.mojo`) — equality-gated memo chain
+
+```txt
+struct EqualityDemoApp:
+    var ctx: ComponentContext           # single root scope
+    var input: SignalI32               # input signal (create_signal — no scope auto-subscribe)
+    var clamped: MemoI32               # memo: clamp(input, 0, 10)
+    var label: MemoString              # memo: "high" if clamped > 5 else "low"
+    var incr_handler: UInt32
+    var decr_handler: UInt32
+    fn __init__: ctx.create() → create_signal(0) + use_memo(0) + use_memo_string("low")
+                 → setup_view(h1 + 2 × button + 2 × p > dyn_text)
+    fn run_memos: if clamped.is_dirty() → begin_compute → read input → clamp(0,10) → end_compute
+                  if label.is_dirty() → begin_compute → read clamped → "high"/"low" → end_compute
+    fn render: 2 dyn_text slots (Clamped/Label)
+    fn flush: has_dirty → run_memos → settle_scopes → consume_dirty → render → diff → finalize
+```
+
+Lifecycle: `eq_init` → `eq_rebuild` (run_memos + mount) → `eq_handle_event` (onclick_add/sub input) → `eq_flush` (memo chain recomputed with equality gating, settle_scopes filters stable scopes, DOM diffed only if needed). Chain: `SignalI32(input)` → `MemoI32(clamped)` → `MemoString(label)`. The input signal uses `create_signal` (not `use_signal`) so the scope does NOT auto-subscribe to it — the scope only subscribes to memo outputs (clamped, label) via `use_memo` / `use_memo_string`. When the memo chain is value-stable (e.g. input exceeds the clamp max of 10), `settle_scopes()` removes the scope and flush returns 0 bytes (no mutations, no DOM work). WASM exports: `eq_init`, `eq_destroy`, `eq_rebuild`, `eq_handle_event`, `eq_flush`, `eq_input_value`, `eq_clamped_value`, `eq_label_text`, `eq_clamped_dirty`, `eq_label_dirty`, `eq_clamped_changed`, `eq_label_changed`, `eq_incr_handler`, `eq_decr_handler`, `eq_has_dirty`, `eq_scope_count`, `eq_memo_count`.
 
 ## WASM Export Pattern (`src/main.mojo`)
 
@@ -678,12 +698,13 @@ el_button(text("Add"), onclick_custom()),
 
 | File | Lines | Role |
 |------|-------|------|
-| `src/main.mojo` | ~9,300 | All @export wrappers (incl. SafeCounterApp, ErrorNestApp, DataLoaderApp, SuspenseNestApp, EffectDemoApp, EffectMemoApp, MemoFormApp, MemoChainApp, context/child test apps) |
+| `src/main.mojo` | ~9,685 | All @export wrappers (incl. SafeCounterApp, ErrorNestApp, DataLoaderApp, SuspenseNestApp, EffectDemoApp, EffectMemoApp, MemoFormApp, MemoChainApp, EqualityDemoApp, context/child test apps) |
 | `src/signals/handle.mojo` | ~980 | SignalI32 + SignalBool + SignalString + MemoI32 + MemoBool + MemoString + EffectHandle |
-| `src/signals/runtime.mojo` | ~1,620 | Reactive runtime + SignalStore + StringStore + memo bool/string methods + worklist propagation (Phase 36) |
-| `src/component/context.mojo` | ~2,270 | ComponentContext + RenderBuilder + tree processing + error boundary + view_event_handler_id + memo bool/string hooks |
+| `src/signals/memo.mojo` | ~458 | MemoEntry + MemoStore (value_changed flag, Phase 37) |
+| `src/signals/runtime.mojo` | ~1,747 | Reactive runtime + SignalStore + StringStore + memo bool/string methods + worklist propagation (Phase 36) + equality-gated end_compute + settle_scopes + _changed_signals (Phase 37) |
+| `src/component/context.mojo` | ~2,281 | ComponentContext + RenderBuilder + tree processing + error boundary + view_event_handler_id + memo bool/string hooks + settle_scopes wrapper |
 | `src/component/child_context.mojo` | ~570 | ChildComponentContext (child scope API + error boundary methods + memo bool/string hooks) |
-| `src/component/app_shell.mojo` | ~503 | AppShell (low-level + memo bool/string wrappers) |
+| `src/component/app_shell.mojo` | ~516 | AppShell (low-level + memo bool/string wrappers + settle_scopes wrapper) |
 | `examples/counter/counter.mojo` | ~115 | Counter app |
 | `examples/todo/todo.mojo` | ~520 | Todo app (M20.5: WASM-driven Add, bind_value, oninput_set_string, onclick_custom) |
 | `examples/bench/bench.mojo` | ~985 | Benchmark app (uses KeyedList + ItemBuilder + performance_now timing + 3 dyn_text status bar) |
@@ -718,10 +739,12 @@ el_button(text("Add"), onclick_custom()),
 | `test/test_memo_form.mojo` | ~514 | MemoFormApp Mojo tests (18 tests: lifecycle, derived state, dirty tracking, form validation) |
 | `test/test_memo_propagation.mojo` | ~1,341 | Recursive memo propagation Mojo tests (20 tests: chain depth, diamond, mixed types, scope/effect at end) |
 | `test/test_memo_chain.mojo` | ~703 | MemoChainApp Mojo tests (22 tests: memo chain, threshold, propagation, Phase 36 independent dirty) |
+| `test/test_memo_equality.mojo` | ~1,506 | Equality-gated memo propagation Mojo tests (22 tests: I32/Bool/String equality gates, value_changed flag, _changed_signals, chain cascades, diamond) |
+| `test/test_equality_demo.mojo` | ~886 | EqualityDemoApp Mojo tests (20 tests: clamp stabilization, threshold crossing, zero-byte flush, scope settling, round-trip) |
 | `test-js/memo_form.test.ts` | ~495 | MemoFormApp JS tests (20 suites: DOM, input binding, memo dirty/clean, form validation) |
 | `test-js/memo_chain.test.ts` | ~582 | MemoChainApp JS tests (24 suites: DOM, chain propagation, threshold, heapStats, Phase 36 independent dirty) |
 | `test/wasm_harness.mojo` | ~1,400 | Mojo WASM test harness (includes free-list allocator, Phase 25) |
-| `CHANGELOG.md` | ~430+ | Development history (Phases 0–36) |
+| `CHANGELOG.md` | ~461 | Development history (Phases 0–37) |
 
 ## Common Patterns
 
@@ -743,7 +766,7 @@ fn run_effects():
         effect.end_run()
 ```
 
-**Effect + memo chain pattern (Phase 34):** When effects depend on memos, recompute memos FIRST, then run effects. Memo recomputation may change the output signal, which marks dependent effects pending:
+**Effect + memo chain pattern (Phase 34):** When effects depend on memos, recompute memos FIRST, then run effects. Memo recomputation may change the output signal, which marks dependent effects pending. After both memos and effects have run, call `settle_scopes()` (Phase 37) to remove scopes whose subscribed signals are all value-stable before consuming dirty scopes:
 
 ```text
 fn run_memos_and_effects():
@@ -758,6 +781,14 @@ fn run_memos_and_effects():
         var t = memo.read()              # re-subscribe effect to memo
         label.set("small" if t < 10 else "big")
         effect.end_run()
+
+fn flush():
+    if not ctx.has_dirty(): return 0
+    run_memos_and_effects()
+    ctx.settle_scopes()     # Phase 37: filter stable scopes
+    if not ctx.has_dirty(): return 0
+    _ = ctx.consume_dirty()
+    ...
 ```
 
 **Suspense flush pattern (Phase 33):** Check `ctx.is_pending()` in flush to switch between content and skeleton children. Uses the same `flush` / `flush_empty` alternation as error boundaries:
@@ -831,6 +862,22 @@ fn run_memos():
 ```
 
 **Worklist-based memo propagation (Phase 36):** `write_signal` uses a two-phase approach to propagate dirtiness through memo → memo chains to arbitrary depth. Phase 1 scans the written signal's direct subscribers — memos are marked dirty and added to a worklist; effects are marked pending; scopes are added to `dirty_scopes`. Phase 2 drains the worklist: for each memo, its output signal's subscribers are scanned with the same memo/effect/scope classification. The `is_dirty()` check serves as a cycle guard — a memo already dirty is not re-added to the worklist, guaranteeing termination (each memo processed at most once). Diamond dependencies (signal → A, signal → B, A+B → C) are handled correctly: C is marked dirty once when the first parent is processed, then skipped when the second parent is processed. Scope reactive contexts are tagged with `SCOPE_CONTEXT_TAG` (bit 31) to prevent false matches against memo/effect context IDs which are bare signal keys.
+
+**Equality-gated memo propagation (Phase 37):** All three `memo_end_compute_*` methods (I32, Bool, String) compare old vs new value before writing. If the value is unchanged (value-stable), the output signal is NOT written — so downstream memos that read it see the same value and can themselves be value-stable. The `MemoEntry.value_changed` flag records whether the last `end_compute` produced a new value. The runtime's `_changed_signals: List[UInt32]` accumulates signal keys whose values actually changed during a flush cycle — populated by `write_signal` (source signals always change) and `end_compute` (only when new != old). `settle_scopes()` uses this set to remove eagerly-dirtied scopes whose subscribed signals are all value-stable:
+
+```text
+fn flush():
+    if not ctx.has_dirty(): return 0
+    run_memos()              # recompute memo chain (sets _changed_signals)
+    ctx.settle_scopes()     # remove scopes with no actual signal changes
+    if not ctx.has_dirty(): return 0   # all scopes settled → skip render
+    _ = ctx.consume_dirty() # drain remaining dirty scopes via scheduler
+    var idx = render()
+    ctx.diff(writer, idx)
+    return ctx.finalize(writer)
+```
+
+Key design points: (1) `settle_scopes()` must run BEFORE `consume_dirty()` because `consume_dirty()` drains `dirty_scopes`; (2) `_changed_signals` is cleared at the end of `settle_scopes()` to prepare for the next flush cycle; (3) the algorithm is O(C × avg_subscribers × D) where C = changed signals, avg_subscribers ≈ 1–3, D = dirty scopes — efficient for typical apps; (4) scopes that subscribe directly to source signals (via `use_signal`) will always be kept dirty when those signals change — use `create_signal` (no auto-subscribe) for signals that feed into memo chains where the scope should only react to memo output changes.
 
 **MemoString lifecycle:** `MemoString` uses the same dual-key pattern as `SignalString`: a `string_key` in `StringStore` for heap-safe string storage, and a `version_key` in `MemoStore` for dirty/version tracking. `end_compute(String)` writes to both: the string value to `StringStore` and the version to the memo entry. `read()` subscribes via the version memo. Cleanup requires `destroy_memo_string()` to free the StringStore slot.
 
