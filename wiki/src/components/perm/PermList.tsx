@@ -103,7 +103,7 @@ function MimeListElement({ mime, index }: { mime: mimes; index: number }) {
         </ListItemSecondaryAction>
       </ListItem>
       <Divider />
-      {mime.permisssions().map((perm, index) => (
+      {mime.permissions().map((perm, index) => (
         <PermListElement key={perm.id ?? 0} perm={perm} index={index} />
       ))}
     </>

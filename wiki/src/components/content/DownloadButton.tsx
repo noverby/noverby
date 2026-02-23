@@ -72,7 +72,7 @@ const DownloadButton = ({ node }: { node: Node }) => {
 				};
 		});
 
-		const formatedMembers = members?.length
+		const formattedMembers = members?.length
 			? `<i>${t("folder.proposedBy")}: ${members}</i>`
 			: "";
 
@@ -84,7 +84,7 @@ const DownloadButton = ({ node }: { node: Node }) => {
 					: "";
 		return `<h${level}>${prefix}${
 			node?.name
-		}</h${level}>${formatedMembers}${toHtml(node?.data?.content ?? [])}${
+		}</h${level}>${formattedMembers}${toHtml(node?.data?.content ?? [])}${
 			children
 				? "<br>" +
 					(

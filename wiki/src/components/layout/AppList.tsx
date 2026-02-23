@@ -3,7 +3,7 @@ import { alpha } from "@mui/system";
 import { useApps } from "hooks";
 import { IconId } from "mime";
 
-const RailNagivation = ({
+const RailNavigation = ({
 	value,
 	children,
 }: {
@@ -80,7 +80,7 @@ const RailAction = ({
 const AppList = () => {
 	const apps = useApps();
 	return (
-		<RailNagivation value={apps.find((app) => app.active)?.mimeId}>
+		<RailNavigation value={apps.find((app) => app.active)?.mimeId}>
 			{apps.map((app) => (
 				<RailAction
 					key={app.mimeId}
@@ -94,7 +94,7 @@ const AppList = () => {
 					}
 				/>
 			))}
-		</RailNagivation>
+		</RailNavigation>
 	);
 };
 

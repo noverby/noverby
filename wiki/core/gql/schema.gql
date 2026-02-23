@@ -616,7 +616,7 @@ type authRefreshTokens {
 	expiresAt: timestamptz!
 
 	"""
-	DEPRECATED: auto-generated refresh token id. Will be replaced by a genereric id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
+	DEPRECATED: auto-generated refresh token id. Will be replaced by a generic id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
 	"""
 	refreshToken: uuid!
 	refreshTokenHash: String
@@ -710,7 +710,7 @@ input authRefreshTokens_insert_input {
 	expiresAt: timestamptz
 
 	"""
-	DEPRECATED: auto-generated refresh token id. Will be replaced by a genereric id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
+	DEPRECATED: auto-generated refresh token id. Will be replaced by a generic id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
 	"""
 	refreshToken: uuid
 	user: users_obj_rel_insert_input
@@ -725,7 +725,7 @@ type authRefreshTokens_max_fields {
 	expiresAt: timestamptz
 
 	"""
-	DEPRECATED: auto-generated refresh token id. Will be replaced by a genereric id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
+	DEPRECATED: auto-generated refresh token id. Will be replaced by a generic id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
 	"""
 	refreshToken: uuid
 	refreshTokenHash: String
@@ -740,7 +740,7 @@ input authRefreshTokens_max_order_by {
 	expiresAt: order_by
 
 	"""
-	DEPRECATED: auto-generated refresh token id. Will be replaced by a genereric id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
+	DEPRECATED: auto-generated refresh token id. Will be replaced by a generic id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
 	"""
 	refreshToken: order_by
 	refreshTokenHash: order_by
@@ -755,7 +755,7 @@ type authRefreshTokens_min_fields {
 	expiresAt: timestamptz
 
 	"""
-	DEPRECATED: auto-generated refresh token id. Will be replaced by a genereric id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
+	DEPRECATED: auto-generated refresh token id. Will be replaced by a generic id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
 	"""
 	refreshToken: uuid
 	refreshTokenHash: String
@@ -770,7 +770,7 @@ input authRefreshTokens_min_order_by {
 	expiresAt: order_by
 
 	"""
-	DEPRECATED: auto-generated refresh token id. Will be replaced by a genereric id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
+	DEPRECATED: auto-generated refresh token id. Will be replaced by a generic id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
 	"""
 	refreshToken: order_by
 	refreshTokenHash: order_by
@@ -818,7 +818,7 @@ primary key columns input for table: auth.refresh_tokens
 """
 input authRefreshTokens_pk_columns_input {
 	"""
-	DEPRECATED: auto-generated refresh token id. Will be replaced by a genereric id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
+	DEPRECATED: auto-generated refresh token id. Will be replaced by a generic id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
 	"""
 	refreshToken: uuid!
 }
@@ -861,7 +861,7 @@ input authRefreshTokens_set_input {
 	expiresAt: timestamptz
 
 	"""
-	DEPRECATED: auto-generated refresh token id. Will be replaced by a genereric id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
+	DEPRECATED: auto-generated refresh token id. Will be replaced by a generic id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
 	"""
 	refreshToken: uuid
 	userId: uuid
@@ -890,7 +890,7 @@ input authRefreshTokens_stream_cursor_value_input {
 	expiresAt: timestamptz
 
 	"""
-	DEPRECATED: auto-generated refresh token id. Will be replaced by a genereric id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
+	DEPRECATED: auto-generated refresh token id. Will be replaced by a generic id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
 	"""
 	refreshToken: uuid
 	refreshTokenHash: String
@@ -4831,7 +4831,7 @@ type mutation_root {
 	"""
 	deleteAuthRefreshToken(
 		"""
-		DEPRECATED: auto-generated refresh token id. Will be replaced by a genereric id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
+		DEPRECATED: auto-generated refresh token id. Will be replaced by a generic id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
 		"""
 		refreshToken: uuid!
 	): authRefreshTokens
@@ -8284,7 +8284,7 @@ type query_root {
 	"""
 	authRefreshToken(
 		"""
-		DEPRECATED: auto-generated refresh token id. Will be replaced by a genereric id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
+		DEPRECATED: auto-generated refresh token id. Will be replaced by a generic id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
 		"""
 		refreshToken: uuid!
 	): authRefreshTokens
@@ -9662,7 +9662,7 @@ type subscription_root {
 	"""
 	authRefreshToken(
 		"""
-		DEPRECATED: auto-generated refresh token id. Will be replaced by a genereric id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
+		DEPRECATED: auto-generated refresh token id. Will be replaced by a generic id column that will be used as a primary key, not the refresh token itself. Use refresh_token_hash instead.
 		"""
 		refreshToken: uuid!
 	): authRefreshTokens

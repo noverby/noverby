@@ -27,7 +27,7 @@ const AddChangeButton = ({ node }: { node: Node }) => {
 				onClick={handleSubmit}
 			/>
 			<AddContentDialog
-				initTitel={name}
+				initTitle={name}
 				node={node}
 				mimes={["vote/change"]}
 				open={open}

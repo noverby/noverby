@@ -83,7 +83,7 @@
 //   //     _and: [
 //   //       { name: { _eq: "vote/vote" } },
 //   //       {
-//   //         permisssions: {
+//   //         permissions: {
 //   //           _and: [
 //   //             { insert: { _eq: true } },
 //   //             { node: { members: { active: { _eq: true } } } },

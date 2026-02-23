@@ -152,7 +152,7 @@ const AddContentDialog = ({
 	open,
 	setOpen,
 	mimes,
-	initTitel,
+	initTitle,
 	redirect,
 	app,
 	mutable = true,
@@ -161,7 +161,7 @@ const AddContentDialog = ({
 	open: boolean;
 	setOpen: (open: boolean) => void;
 	mimes: string[];
-	initTitel?: string;
+	initTitle?: string;
 	redirect?: boolean;
 	app?: string;
 	mutable?: boolean;
@@ -169,7 +169,7 @@ const AddContentDialog = ({
 	const { t } = useTranslation();
 	const link = useLink();
 	const [error, setError] = useState("");
-	const [titel, setTitel] = useState<string>(initTitel ?? "");
+	const [title, setTitle] = useState<string>(initTitle ?? "");
 	const [text, setText] = useState<string>("");
 	const [mimeId, setMimeId] = useState(mimes?.[0] ?? "");
 	const [fileId, setFileId] = useState<string | undefined>();
@@ -184,7 +184,7 @@ const AddContentDialog = ({
 		startTransition(async () => {
 			try {
 				const { id, key } = await insert({
-					name: titel,
+					name: title,
 					key: ["vote/question", "vote/comment"].includes(mimeId)
 						? uuid()
 						: undefined,
@@ -232,7 +232,7 @@ const AddContentDialog = ({
 
 				// Reset fields
 				setOpen(false);
-				setTitel(initTitel ?? "");
+				setTitle(initTitle ?? "");
 				setText("");
 				setFileId(undefined);
 				setFileName(undefined);
@@ -252,12 +252,12 @@ const AddContentDialog = ({
 					?.children()
 					.map((child) => child.key),
 			);
-			if (keys?.includes(getKey(titel) ?? "")) {
+			if (keys?.includes(getKey(title) ?? "")) {
 				setError(t("content.contentNameExists"));
 			}
 		};
 		checkKeys();
-	}, [titel]);
+	}, [title]);
 
 	return (
 		<Dialog maxWidth="xs" fullWidth open={open} onClose={() => setOpen(false)}>
@@ -276,9 +276,9 @@ const AddContentDialog = ({
 							required
 							label={t("common.title")}
 							fullWidth
-							value={titel}
+							value={title}
 							onChange={(e) => {
-								setTitel(e.target.value);
+								setTitle(e.target.value);
 								setError("");
 							}}
 							inputProps={{ maxLength: 100 }}
@@ -338,7 +338,7 @@ const AddContentDialog = ({
 									setFileId(fileId);
 									setType(file.type);
 									setFileName(file.name);
-									setTitel(file.name.split(".").slice(0, -1).join("."));
+									setTitle(file.name.split(".").slice(0, -1).join("."));
 								}}
 							/>
 							{fileName && (
@@ -360,7 +360,7 @@ const AddContentDialog = ({
 				</Button>
 				<Button
 					disabled={
-						(!["vote/question", "vote/comment"].includes(mimeId) && !titel) ||
+						(!["vote/question", "vote/comment"].includes(mimeId) && !title) ||
 						(mimes.length !== 1 && !mimeId) ||
 						(mimeId === "wiki/file" && !fileId) ||
 						(["vote/question", "vote/comment"].includes(mimeId) && !text) ||
