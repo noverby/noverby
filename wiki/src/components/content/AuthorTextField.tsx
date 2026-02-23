@@ -3,6 +3,7 @@ import { Autocomplete, Box, Chip, TextField } from "@mui/material";
 import { order_by, resolve } from "gql";
 import { IconId } from "mime";
 import { startTransition, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const capitalize = (sentence: string) =>
 	sentence.replace(/(^\w{1})|(\s+\w{1})/g, (letter) => letter.toUpperCase());
@@ -20,6 +21,7 @@ const AuthorTextField = ({
 	authorError?: string;
 	setAuthorError: (error?: string) => void;
 }) => {
+	const { t } = useTranslation();
 	const [options, setOptions] = useState<Option[]>([]);
 	const [inputValue, setInputValue] = useState("");
 
@@ -72,7 +74,7 @@ const AuthorTextField = ({
 		<Autocomplete
 			multiple
 			color="primary"
-			noOptionsText="Ingen match"
+			noOptionsText={t("common.noMatch")}
 			options={options}
 			getOptionLabel={(option) => option?.name ?? ""}
 			//defaultValue={options}
@@ -117,8 +119,8 @@ const AuthorTextField = ({
 					{...params}
 					color="primary"
 					variant="outlined"
-					label="Forfattere"
-					placeholder="Tilføj Forfatter"
+					label={t("content.authors")}
+					placeholder={t("content.addAuthor")}
 					error={!!authorError}
 					helperText={authorError}
 				/>

@@ -3,9 +3,11 @@ import { Avatar, CardContent, Container, Typography } from "@mui/material";
 import { useAuthenticationStatus } from "@nhost/react";
 import { HeaderCard } from "comps";
 import { startTransition, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 const Unverified = () => {
+	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const { isAuthenticated } = useAuthenticationStatus();
 
@@ -20,7 +22,7 @@ const Unverified = () => {
 	return (
 		<Container>
 			<HeaderCard
-				title="Verificer din email"
+				title={t("auth.verifyEmail")}
 				avatar={
 					<Avatar
 						sx={{
@@ -32,11 +34,9 @@ const Unverified = () => {
 				}
 			>
 				<CardContent>
-					<Typography>
-						Du skulle gerne have modtaget en verifications email.
-					</Typography>
-					<Typography>Brug den til at aktivere din bruger.</Typography>
-					<Typography>Tjek eventuelt om emailen er endt i spam.</Typography>
+					<Typography>{t("auth.verificationEmailSent")}</Typography>
+					<Typography>{t("auth.useToActivate")}</Typography>
+					<Typography>{t("auth.checkSpam")}</Typography>
 				</CardContent>
 			</HeaderCard>
 		</Container>

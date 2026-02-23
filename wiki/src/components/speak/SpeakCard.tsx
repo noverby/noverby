@@ -16,9 +16,10 @@ import {
 	Typography,
 } from "@mui/material";
 import { useUserId } from "@nhost/react";
-import { avatars } from "comps";
+import { avatars, getAvatarName } from "comps";
 import { order_by } from "gql";
 import { type Node, useScreen } from "hooks";
+import { useTranslation } from "react-i18next";
 import { TransitionGroup } from "react-transition-group";
 
 const timeString = (time: number) => {
@@ -31,6 +32,7 @@ const timeString = (time: number) => {
 };
 
 const SpeakCard = ({ node, time }: { node: Node; time: number }) => {
+	const { t } = useTranslation();
 	const screen = useScreen();
 	const userId = useUserId();
 	const get = node.useSubsGet();
@@ -48,7 +50,7 @@ const SpeakCard = ({ node, time }: { node: Node; time: number }) => {
 	return (
 		<Card sx={{ m: 0 }}>
 			<CardHeader
-				title={<Typography variant="h5">Talerliste</Typography>}
+				title={<Typography variant="h5">{t("speak.speakerList")}</Typography>}
 				avatar={
 					<Avatar
 						sx={{
@@ -91,7 +93,7 @@ const SpeakCard = ({ node, time }: { node: Node; time: number }) => {
 							<Collapse key={id}>
 								<ListItem>
 									{avatarData && (
-										<Tooltip title={avatars[avatarData]?.name}>
+										<Tooltip title={getAvatarName(avatarData)}>
 											<ListItemAvatar>
 												{avatars[avatarData]?.avatar}
 											</ListItemAvatar>
@@ -109,7 +111,7 @@ const SpeakCard = ({ node, time }: { node: Node; time: number }) => {
 													onClick={handleRemoveSpeak(id)}
 													color="primary"
 													edge="end"
-													aria-label="Fjern fra talerliste"
+													aria-label={t("speak.removeFromList")}
 													size="large"
 												>
 													<Cancel />
@@ -133,7 +135,7 @@ const SpeakCard = ({ node, time }: { node: Node; time: number }) => {
 										<DoNotTouch />
 									</Avatar>
 								</ListItemAvatar>
-								<ListItemText primary="Talerlisten er tom" />
+								<ListItemText primary={t("speak.emptyList")} />
 							</ListItemButton>
 						</Collapse>
 					)}

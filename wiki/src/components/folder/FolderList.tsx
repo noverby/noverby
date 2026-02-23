@@ -17,9 +17,11 @@ import { MimeAvatar } from "comps";
 import { order_by } from "gql";
 import { type Node, useLink, useSession } from "hooks";
 import type { MouseEventHandler } from "react";
+import { useTranslation } from "react-i18next";
 import { TransitionGroup } from "react-transition-group";
 
 const FolderList = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const [session, setSession] = useSession();
 	const isOwner = node.useQuery()?.isContextOwner;
 	const userId = useUserId();
@@ -117,7 +119,7 @@ const FolderList = ({ node }: { node: Node }) => {
 								<DoNotDisturb />
 							</Avatar>
 						</ListItemAvatar>
-						<ListItemText primary="Intet indhold" />
+						<ListItemText primary={t("common.noContent")} />
 					</ListItemButton>
 				</Collapse>
 			)}

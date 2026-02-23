@@ -29,6 +29,7 @@ import {
 	useState,
 	useTransition,
 } from "react";
+import { useTranslation } from "react-i18next";
 
 const StyledInputRef = (
 	props: InputBaseProps,
@@ -74,6 +75,7 @@ const SearchField = ({
 }: {
 	setOpenDrawer: (val: boolean) => void;
 }) => {
+	const { t } = useTranslation();
 	const link = useLink();
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const [searchMode, setSearchMode] = useState(false);
@@ -210,8 +212,8 @@ const SearchField = ({
 					scroll?.scrollIntoView();
 				})
 			}
-			noOptionsText="Intet resultat"
-			loadingText="Loader..."
+			noOptionsText={t("common.noResult")}
+			loadingText={t("common.loading")}
 			isOptionEqualToValue={(option, value) => option.id === value.id}
 			getOptionLabel={(option) => option.name ?? ""}
 			options={options}
@@ -260,7 +262,7 @@ const SearchField = ({
 								inputRef.current = input;
 							}}
 							autoFocus
-							placeholder="Søg"
+							placeholder={t("common.search")}
 							fullWidth
 							inputProps={{
 								...params.inputProps,
@@ -270,7 +272,7 @@ const SearchField = ({
 							}}
 						/>
 						<IconButton
-							aria-label="Afslut Søgefelt"
+							aria-label={t("layout.exitSearch")}
 							onClick={() => startTransition(() => setSearchMode(false))}
 						>
 							<Avatar sx={{ bgcolor: "primary.main" }}>
@@ -292,7 +294,7 @@ const SearchField = ({
 				{!largeScreen && <MenuAvatar setOpenDrawer={setOpenDrawer} />}
 				<Breadcrumbs />
 				<IconButton
-					aria-label="Søg"
+					aria-label={t("common.search")}
 					onClick={() => startTransition(() => setSearchMode(true))}
 				>
 					<Avatar sx={{ bgcolor: "primary.main" }}>

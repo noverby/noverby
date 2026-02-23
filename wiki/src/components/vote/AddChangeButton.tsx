@@ -3,8 +3,10 @@ import { useUserDisplayName } from "@nhost/react";
 import { AddContentDialog, AutoButton } from "comps";
 import type { Node } from "hooks";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const AddChangeButton = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const displayName = useUserDisplayName();
 	const [open, setOpen] = useState(false);
 	const query = node.useQuery();
@@ -20,7 +22,7 @@ const AddChangeButton = ({ node }: { node: Node }) => {
 	return (
 		<>
 			<AutoButton
-				text="Nyt Ændringsforslag"
+				text={t("vote.newAmendment")}
 				icon={<PlusOne />}
 				onClick={handleSubmit}
 			/>

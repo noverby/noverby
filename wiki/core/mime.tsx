@@ -28,6 +28,7 @@ import {
 import { Avatar as MuiAvatar, Skeleton, Typography } from "@mui/material";
 import { Box } from "@mui/system";
 import type { Maybe } from "gql";
+import i18n from "i18n";
 import FilePdfBoxIcon from "./svg/file-pdf-box.svg?react";
 import MicrosoftExcelIcon from "./svg/microsoft-excel.svg?react";
 import MicrosoftPowerpointIcon from "./svg/microsoft-powerpoint.svg?react";
@@ -214,48 +215,48 @@ const IconId = ({
 const getName = (mimeId?: string): string => {
 	switch (mimeId) {
 		case "wiki/group":
-			return "Gruppe";
+			return i18n.t("mime.group");
 		case "wiki/event":
-			return "Begivenhed";
+			return i18n.t("mime.event");
 		case "wiki/folder":
-			return "Mappe";
+			return i18n.t("mime.folder");
 		case "wiki/document":
-			return "Dokument";
+			return i18n.t("mime.document");
 		case "wiki/file":
-			return "Fil";
+			return i18n.t("mime.file");
 		case "wiki/user":
-			return "Person";
+			return i18n.t("mime.person");
 		case "text/plain":
-			return "Dokument";
+			return i18n.t("mime.document");
 		case "vote/policy":
-			return "Politik";
+			return i18n.t("mime.policy");
 		case "vote/position":
-			return "Post";
+			return i18n.t("mime.position");
 		case "vote/change":
-			return "Ændringsforslag";
+			return i18n.t("mime.amendment");
 		case "vote/candidate":
-			return "Kandidatur";
+			return i18n.t("mime.candidate");
 		case "vote/question":
-			return "Spørgsmål";
+			return i18n.t("mime.questionType");
 		case "vote/comment":
-			return "Kommentar";
+			return i18n.t("mime.comment");
 		case "speak/list":
-			return "Talerliste";
+			return i18n.t("mime.speakerList");
 		case "app/editor":
-			return "Rediger";
+			return i18n.t("mime.editor");
 		case "app/sort":
-			return "Sorter";
+			return i18n.t("mime.sort");
 		case "app/speak":
-			return "Tal";
+			return i18n.t("mime.speak");
 		case "app/vote":
-			return "Stem";
+			return i18n.t("mime.vote");
 		case "app/member":
-			return "Medlemmer";
+			return i18n.t("mime.members");
 		case "app/map":
 		case "map/map":
-			return "Kort";
+			return i18n.t("mime.map");
 		default:
-			return "Ukendt";
+			return i18n.t("mime.unknown");
 	}
 };
 

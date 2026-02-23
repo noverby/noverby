@@ -13,6 +13,7 @@ import {
 } from "@mui/material";
 import { type Node, useLink, useSession } from "hooks";
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const PollDialog = ({
 	node,
@@ -23,6 +24,7 @@ const PollDialog = ({
 	open: boolean;
 	setOpen: (open: boolean) => void;
 }) => {
+	const { t } = useTranslation();
 	const link = useLink();
 	const [session] = useSession();
 	const [loading, setLoading] = useState(false);
@@ -82,13 +84,13 @@ const PollDialog = ({
 
 	return (
 		<Dialog open={open} onClose={() => setOpen(false)}>
-			<DialogTitle>Ny Afstemning</DialogTitle>
+			<DialogTitle>{t("poll.newPoll")}</DialogTitle>
 			<DialogContent>
 				<Stack spacing={2}>
 					{!["vote/policy", "vote/change"].includes(query?.mimeId ?? "") &&
 						optionsCount > 2 && (
 							<>
-								<Typography>Stemmeinterval</Typography>
+								<Typography>{t("poll.voteRange")}</Typography>
 								<Slider
 									value={voteCount}
 									onChange={handleChange}
@@ -107,7 +109,7 @@ const PollDialog = ({
 								color="primary"
 							/>
 						}
-						label="Skjul resultatet"
+						label={t("poll.hideResult")}
 					/>
 				</Stack>
 			</DialogContent>

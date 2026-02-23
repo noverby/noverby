@@ -2,8 +2,10 @@ import { PlusOne } from "@mui/icons-material";
 import { AddContentDialog, AutoButton } from "comps";
 import type { Node } from "hooks";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const AddQuestionButton = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const [open, setOpen] = useState(false);
 	const query = node.useQuery();
 
@@ -17,7 +19,7 @@ const AddQuestionButton = ({ node }: { node: Node }) => {
 	return (
 		<>
 			<AutoButton
-				text="Ny Kommentar"
+				text={t("vote.newComment")}
 				icon={<PlusOne />}
 				onClick={handleSubmit}
 			/>

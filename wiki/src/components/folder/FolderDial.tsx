@@ -13,6 +13,7 @@ import { type Node, useLink, useScreen, useSession } from "hooks";
 import HTMLtoDOCX from "html-to-docx";
 import { getLetter } from "mime";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const checkIfSuperParent = async (
 	id?: string,
@@ -32,6 +33,7 @@ const checkIfSuperParent = async (
 };
 
 const FolderDial = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const screen = useScreen();
 	const [session, setSession] = useSession();
 	const [open, setOpen] = useState(false);
@@ -112,7 +114,7 @@ const FolderDial = ({ node }: { node: Node }) => {
 					: "";
 
 		const formatedMembers = members?.length
-			? `<i>Stillet af: ${members}</i>`
+			? `<i>${t("folder.proposedBy")}: ${members}</i>`
 			: "";
 
 		return `<h${level}>${prefix}${
@@ -242,7 +244,7 @@ const FolderDial = ({ node }: { node: Node }) => {
 	return (
 		<Zoom in>
 			<SpeedDial
-				ariaLabel="Administrer mappe"
+				ariaLabel={t("folder.manageFolder")}
 				sx={{
 					position: "fixed",
 					bottom: (t) => t.spacing(24),
@@ -257,7 +259,7 @@ const FolderDial = ({ node }: { node: Node }) => {
 					icon={
 						<Avatar sx={{ bgcolor: "primary.main" }}>{<ContentPaste />}</Avatar>
 					}
-					tooltipTitle="Indsæt"
+					tooltipTitle={t("common.paste")}
 					tooltipOpen
 					onClick={handlePaste}
 				/>
@@ -267,7 +269,9 @@ const FolderDial = ({ node }: { node: Node }) => {
 							{query?.attachable ? <Lock /> : <LockOpen />}
 						</Avatar>
 					}
-					tooltipTitle={`${query?.attachable ? "Lås" : "Lås op"} indsend`}
+					tooltipTitle={t("folder.lockSubmit", {
+						action: t(query?.attachable ? "folder.lock" : "folder.unlock"),
+					})}
 					tooltipOpen
 					onClick={handleLockChildren}
 				/>
@@ -277,7 +281,9 @@ const FolderDial = ({ node }: { node: Node }) => {
 							{query?.mutable ? <Lock /> : <LockOpen />}
 						</Avatar>
 					}
-					tooltipTitle={`${query?.mutable ? "Lås" : "Lås op"} indhold`}
+					tooltipTitle={t("folder.lockContent", {
+						action: t(query?.mutable ? "folder.lock" : "folder.unlock"),
+					})}
 					tooltipOpen
 					onClick={handleLockContent}
 				/>
@@ -287,7 +293,7 @@ const FolderDial = ({ node }: { node: Node }) => {
 							<LowPriority />
 						</Avatar>
 					}
-					tooltipTitle="Sorter"
+					tooltipTitle={t("mime.sort")}
 					tooltipOpen
 					onClick={() => link.push([], "sort")}
 				/>
@@ -297,7 +303,7 @@ const FolderDial = ({ node }: { node: Node }) => {
 							<GetApp />
 						</Avatar>
 					}
-					tooltipTitle="Eksporter"
+					tooltipTitle={t("folder.export")}
 					tooltipOpen
 					onClick={handleExport}
 				/>

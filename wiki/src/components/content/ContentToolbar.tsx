@@ -8,6 +8,7 @@ import {
 	PublishButton,
 } from "comps";
 import { type Node, useLink } from "hooks";
+import { useTranslation } from "react-i18next";
 
 const ContentToolbar = ({
 	node,
@@ -18,6 +19,7 @@ const ContentToolbar = ({
 	child?: boolean;
 	add?: boolean;
 }) => {
+	const { t } = useTranslation();
 	const query = node.useQuery();
 	const link = useLink();
 
@@ -28,7 +30,7 @@ const ContentToolbar = ({
 				query?.isContextOwner && (
 					<AutoButton
 						key="member"
-						text="Medlemmer"
+						text={t("common.members")}
 						icon={<People />}
 						onClick={() => link.push([], "member")}
 					/>
@@ -39,7 +41,7 @@ const ContentToolbar = ({
 					<ButtonGroup>
 						<DeleteButton node={node} />
 						<AutoButton
-							text="Rediger"
+							text={t("common.edit")}
 							icon={<Edit />}
 							onClick={() => link.push([], "editor")}
 						/>

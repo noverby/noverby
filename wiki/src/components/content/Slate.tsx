@@ -46,6 +46,7 @@ import {
 } from "core/types/slate";
 import isHotkey from "is-hotkey";
 import React, { type ChangeEventHandler, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
 	createEditor,
 	type Descendant,
@@ -70,16 +71,16 @@ const HOTKEYS = {
 	"mod+u": "underline",
 	"mod+`": "code",
 };
-const STYLE_NAMES: Record<StyleType, string> = {
-	paragraph: "Normal Tekst",
-	"heading-one": "Overskrift 1",
-	"heading-two": "Overskrift 2",
-	"heading-three": "Overskrift 3",
-	"heading-four": "Overskrift 4",
-	"heading-five": "Overskrift 5",
-	"heading-six": "Overskrift 6",
-	"block-quote": "Blok",
-	"block-pre": "Uformateret",
+const STYLE_NAME_KEYS: Record<StyleType, string> = {
+	paragraph: "editor.paragraph",
+	"heading-one": "editor.headingOne",
+	"heading-two": "editor.headingTwo",
+	"heading-three": "editor.headingThree",
+	"heading-four": "editor.headingFour",
+	"heading-five": "editor.headingFive",
+	"heading-six": "editor.headingSix",
+	"block-quote": "editor.blockQuote",
+	"block-pre": "editor.blockPre",
 };
 
 const ELEMENT_TAGS: Record<
@@ -436,11 +437,12 @@ const Leaf = ({ attributes, children, leaf }: RenderLeafProps) => {
 
 const BlockSelect = () => {
 	const editor = useSlate();
+	const { t } = useTranslation();
 	return (
-		<FormControl title="Stil" sx={{ minWidth: "140px" }}>
-			<InputLabel>Stil</InputLabel>
+		<FormControl title={t("editor.style")} sx={{ minWidth: "140px" }}>
+			<InputLabel>{t("editor.style")}</InputLabel>
 			<Select
-				label="Stil"
+				label={t("editor.style")}
 				sx={{ width: 145 }}
 				value={currentBlocks(editor, STYLE_TYPES) ?? "paragraph"}
 				onChange={(e) =>
@@ -451,7 +453,7 @@ const BlockSelect = () => {
 			>
 				{STYLE_TYPES.map((style) => (
 					<MenuItem key={style} value={style}>
-						{STYLE_NAMES[style]}
+						{t(STYLE_NAME_KEYS[style])}
 					</MenuItem>
 				))}
 			</Select>

@@ -2,8 +2,10 @@ import { GroupAdd } from "@mui/icons-material";
 import { Fab } from "@mui/material";
 import { SheetReader } from "comps";
 import type { Node } from "hooks";
+import { useTranslation } from "react-i18next";
 
 const InvitesFab = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const parentId = node.id;
 	const nodeMembers = node.useMembers();
 	const handleFile = async (
@@ -30,7 +32,7 @@ const InvitesFab = ({ node }: { node: Node }) => {
 				}}
 				variant="extended"
 				color="primary"
-				aria-label="Tilføj adgang"
+				aria-label={t("invite.addAccess")}
 				component="span"
 			>
 				<GroupAdd />

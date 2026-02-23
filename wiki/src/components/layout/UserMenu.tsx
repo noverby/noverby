@@ -2,6 +2,7 @@ import {
 	Brightness4,
 	Brightness7,
 	HowToReg,
+	Language,
 	LockReset,
 	Login,
 	Logout,
@@ -22,9 +23,11 @@ import { ThemeModeContext } from "core/theme/ThemeModeContext";
 import { client } from "gql";
 import { nhost } from "nhost";
 import { type MouseEventHandler, useContext, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 const UserMenu = ({ avatar }: { avatar?: boolean }) => {
+	const { t, i18n } = useTranslation();
 	const navigate = useNavigate();
 	const [anchorEl, setAnchorEl] = useState<
 		HTMLButtonElement | HTMLDivElement | null
@@ -99,26 +102,26 @@ const UserMenu = ({ avatar }: { avatar?: boolean }) => {
 						<ListItemIcon>
 							<LockReset />
 						</ListItemIcon>
-						<ListItemText>Sæt Kodeord</ListItemText>
+						<ListItemText>{t("auth.setPassword")}</ListItemText>
 					</MenuItem>,
 					<MenuItem key="logout" onClick={handleLogout}>
 						<ListItemIcon>
 							<Logout />
 						</ListItemIcon>
-						<ListItemText>Log ud</ListItemText>
+						<ListItemText>{t("auth.logout")}</ListItemText>
 					</MenuItem>,
 				]) || [
 					<MenuItem key="login" onClick={handleUser("login")}>
 						<ListItemIcon>
 							<Login />
 						</ListItemIcon>
-						<ListItemText>Log ind</ListItemText>
+						<ListItemText>{t("common.logIn")}</ListItemText>
 					</MenuItem>,
 					<MenuItem key="register" onClick={handleUser("register")}>
 						<ListItemIcon>
 							<HowToReg />
 						</ListItemIcon>
-						<ListItemText>Registrer</ListItemText>
+						<ListItemText>{t("auth.register")}</ListItemText>
 					</MenuItem>,
 				]}
 				<MenuItem key="theme" onClick={toggleThemeMode}>
@@ -126,7 +129,20 @@ const UserMenu = ({ avatar }: { avatar?: boolean }) => {
 						{palette.mode === "light" ? <Brightness4 /> : <Brightness7 />}
 					</ListItemIcon>
 					<ListItemText>
-						{palette.mode === "light" ? "Mørk" : "Lys"}
+						{palette.mode === "light" ? t("layout.dark") : t("layout.light")}
+					</ListItemText>
+				</MenuItem>
+				<MenuItem
+					key="language"
+					onClick={() =>
+						i18n.changeLanguage(i18n.language === "da" ? "en" : "da")
+					}
+				>
+					<ListItemIcon>
+						<Language />
+					</ListItemIcon>
+					<ListItemText>
+						{i18n.language === "da" ? "English" : "Dansk"}
 					</ListItemText>
 				</MenuItem>
 			</Menu>

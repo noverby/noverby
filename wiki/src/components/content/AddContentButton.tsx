@@ -2,8 +2,10 @@ import { Add } from "@mui/icons-material";
 import { AddContentDialog, AutoButton } from "comps";
 import { type Node, useScreen } from "hooks";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const AddContentButton = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const screen = useScreen();
 	const [open, setOpen] = useState(false);
 	const query = node.useQuery();
@@ -23,7 +25,7 @@ const AddContentButton = ({ node }: { node: Node }) => {
 		<>
 			<AutoButton
 				key="add"
-				text="Tilføj"
+				text={t("common.add")}
 				icon={<Add />}
 				onClick={() => setOpen(true)}
 			/>

@@ -9,22 +9,24 @@ import {
 import { order_by } from "gql";
 import type { Node } from "hooks";
 import { startTransition } from "react";
+import { useTranslation } from "react-i18next";
 
 const MembersDataGrid = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const query = node.useQuery();
 	const member = node.useMember();
 
 	const columns: GridColDef[] = [
 		{
 			field: "name",
-			headerName: "Navn",
+			headerName: t("member.name"),
 
 			editable: true,
 			width: 200,
 		},
 		{
 			field: "email",
-			headerName: "EMail",
+			headerName: t("member.email"),
 
 			editable: true,
 			width: 200,
@@ -32,14 +34,14 @@ const MembersDataGrid = ({ node }: { node: Node }) => {
 		{
 			field: "hidden",
 			type: "boolean",
-			headerName: "Skjul",
+			headerName: t("member.hidden"),
 			editable: true,
 			width: 150,
 		},
 		{
 			field: "owner",
 			type: "boolean",
-			headerName: "Ejer",
+			headerName: t("member.owner"),
 			editable: true,
 			width: 150,
 		},
@@ -47,12 +49,12 @@ const MembersDataGrid = ({ node }: { node: Node }) => {
 			field: "active",
 			type: "boolean",
 			editable: true,
-			headerName: "Aktiv",
+			headerName: t("member.active"),
 			width: 150,
 		},
 		{
 			field: "actions",
-			headerName: "Actions",
+			headerName: t("member.actions"),
 			width: 100,
 			sortable: false,
 			disableColumnMenu: true,
@@ -64,7 +66,7 @@ const MembersDataGrid = ({ node }: { node: Node }) => {
 						})
 					}
 					size="small"
-					aria-label="delete"
+					aria-label={t("common.delete").toLowerCase()}
 				>
 					<Delete />
 				</IconButton>

@@ -3,9 +3,11 @@ import { Image, Slate } from "comps";
 import useFile from "core/hooks/useFile";
 import type { Node } from "hooks";
 import { startTransition, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Descendant } from "slate";
 
 const Content = ({ node, fontSize }: { node: Node; fontSize: string }) => {
+	const { t } = useTranslation();
 	const query = node.useQuery();
 	const data = query?.data();
 	const image = useFile({ fileId: data?.image, image: true });
@@ -30,7 +32,7 @@ const Content = ({ node, fontSize }: { node: Node; fontSize: string }) => {
 			</Grid>
 			{image && (
 				<Grid size={{ xs: 12, lg: 3 }}>
-					<Image alt="Billede for indhold" layout="fill" src={image} />
+					<Image alt={t("content.imageAlt")} layout="fill" src={image} />
 				</Grid>
 			)}
 		</Grid>

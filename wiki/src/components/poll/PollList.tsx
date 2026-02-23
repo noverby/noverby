@@ -14,8 +14,10 @@ import { HeaderCard } from "comps";
 import { type Node, useLink, useScreen } from "hooks";
 import { IconId } from "mime";
 import { Fragment, Suspense } from "react";
+import { useTranslation } from "react-i18next";
 
 const PollListSuspense = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const link = useLink();
 	const query = node.useQuery();
 	const $delete = node.useDelete();
@@ -40,13 +42,13 @@ const PollListSuspense = ({ node }: { node: Node }) => {
 					<IconId mimeId="vote/poll" />
 				</Avatar>
 			}
-			title="Afstemninger"
+			title={t("poll.polls")}
 		>
 			<List>
 				{polls?.map(({ id, key, children_aggregate, createdAt }) => (
 					<Fragment key={id ?? 0}>
 						<ListItemButton onClick={() => link.push([key!])}>
-							<Tooltip title="Antal stemmer">
+							<Tooltip title={t("vote.voteCount")}>
 								<ListItemAvatar>
 									<Badge
 										color="primary"

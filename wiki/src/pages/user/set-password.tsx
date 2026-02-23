@@ -3,14 +3,16 @@ import { Avatar, CardContent, Typography } from "@mui/material";
 import { Container, Stack } from "@mui/system";
 import { useAuthenticationStatus } from "@nhost/react";
 import { AuthForm, HeaderCard } from "comps";
+import { useTranslation } from "react-i18next";
 
 const Reset = () => {
+	const { t } = useTranslation();
 	const { isAuthenticated } = useAuthenticationStatus();
 	if (!isAuthenticated) {
 		return (
 			<Container>
 				<HeaderCard
-					title="Tjek din email"
+					title={t("auth.checkEmail")}
 					avatar={
 						<Avatar
 							sx={{
@@ -23,9 +25,9 @@ const Reset = () => {
 				>
 					<CardContent>
 						<Stack spacing={1.5}>
-							<Typography>Du skulle gerne have modtaget en email.</Typography>
-							<Typography>Brug den til at nulstille dit kodeord.</Typography>
-							<Typography>Tjek eventuelt om emailen er endt i spam.</Typography>
+							<Typography>{t("auth.passwordResetSent")}</Typography>
+							<Typography>{t("auth.useToResetPassword")}</Typography>
+							<Typography>{t("auth.checkSpam")}</Typography>
 						</Stack>
 					</CardContent>
 				</HeaderCard>

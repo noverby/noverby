@@ -3,8 +3,10 @@ import { Button, Dialog, DialogActions, DialogTitle } from "@mui/material";
 import { AutoButton } from "comps";
 import { type Node, useLink } from "hooks";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const DeleteButton = ({ node }: { node: Node }) => {
+	const { t } = useTranslation();
 	const [open, setOpen] = useState(false);
 	const link = useLink();
 	const $delete = node.useDelete();
@@ -20,12 +22,12 @@ const DeleteButton = ({ node }: { node: Node }) => {
 		<>
 			<AutoButton
 				key="delete"
-				text="Slet"
+				text={t("common.delete")}
 				icon={<Delete />}
 				onClick={() => setOpen(true)}
 			/>
 			<Dialog open={open} onClose={() => setOpen(false)}>
-				<DialogTitle>Bekræft Sletning</DialogTitle>
+				<DialogTitle>{t("content.confirmDelete")}</DialogTitle>
 				<DialogActions>
 					<Button
 						endIcon={<Delete />}
@@ -33,7 +35,7 @@ const DeleteButton = ({ node }: { node: Node }) => {
 						color="primary"
 						onClick={handleDelete}
 					>
-						Slet
+						{t("common.delete")}
 					</Button>
 				</DialogActions>
 			</Dialog>
