@@ -34,7 +34,14 @@
 
 from memory import UnsafePointer
 from signals import Runtime
-from signals.handle import SignalI32, SignalBool, SignalString, MemoI32
+from signals.handle import (
+    SignalI32,
+    SignalBool,
+    SignalString,
+    MemoI32,
+    MemoBool,
+    MemoString,
+)
 from signals.runtime import StringStore
 from bridge import MutationWriter
 from arena import ElementIdAllocator
@@ -173,6 +180,38 @@ struct ChildComponentContext(Movable):
         """
         var memo_id = self.runtime[0].create_memo_i32(self.scope_id, initial)
         return MemoI32(memo_id, self.runtime)
+
+    fn use_memo_bool(mut self, initial: Bool) -> MemoBool:
+        """Create a Bool memo under the child scope.
+
+        The memo's reactive context is separate from the child scope.
+        When memo inputs change, the memo is marked dirty and its
+        output signal notifies the child scope.
+
+        Args:
+            initial: The initial cached Bool value.
+
+        Returns:
+            A MemoBool handle.
+        """
+        var memo_id = self.runtime[0].create_memo_bool(self.scope_id, initial)
+        return MemoBool(memo_id, self.runtime)
+
+    fn use_memo_string(mut self, initial: String) -> MemoString:
+        """Create a String memo under the child scope.
+
+        The memo's reactive context is separate from the child scope.
+        When memo inputs change, the memo is marked dirty and its
+        output signal notifies the child scope.
+
+        Args:
+            initial: The initial cached String value.
+
+        Returns:
+            A MemoString handle.
+        """
+        var memo_id = self.runtime[0].create_memo_string(self.scope_id, initial)
+        return MemoString(memo_id, self.runtime)
 
     # ── Context consumption ──────────────────────────────────────────
 

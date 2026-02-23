@@ -1,5 +1,10 @@
 # MemoStore — Slab-allocated storage for memo (computed/derived signal) entries.
 #
+# MEMO_NO_STRING is a sentinel value indicating that a memo does NOT store
+# a string in the StringStore.  We use 0xFFFFFFFF (max UInt32) because
+# StringStore keys are sequential integers starting from 0, so a real key
+# will never reach this value in practice.
+#
 # A memo is a cached derived value with its own reactive context that
 # auto-tracks input signal dependencies and notifies downstream subscribers
 # when dirty.
@@ -29,6 +34,9 @@
 
 from memory import UnsafePointer
 
+comptime MEMO_NO_STRING: UInt32 = UInt32(0xFFFFFFFF)
+"""Sentinel: this memo has no StringStore entry."""
+
 
 # ── MemoEntry ────────────────────────────────────────────────────────────────
 
@@ -44,6 +52,7 @@ struct MemoEntry(Copyable, Equatable, Writable):
 
     var context_id: UInt32  # reactive context for dependency tracking
     var output_key: UInt32  # signal key that stores the cached result
+    var string_key: UInt32  # StringStore key (0 for non-string memos)
     var scope_id: UInt32  # owning scope (for cleanup)
     var dirty: Bool  # needs recomputation
     var computing: Bool  # currently inside begin/end compute bracket
@@ -54,6 +63,7 @@ struct MemoEntry(Copyable, Equatable, Writable):
         """Create an empty (default) memo entry."""
         self.context_id = 0
         self.output_key = 0
+        self.string_key = MEMO_NO_STRING
         self.scope_id = 0
         self.dirty = False
         self.computing = False
@@ -75,6 +85,32 @@ struct MemoEntry(Copyable, Equatable, Writable):
         """
         self.context_id = context_id
         self.output_key = output_key
+        self.string_key = MEMO_NO_STRING
+        self.scope_id = scope_id
+        self.dirty = True
+        self.computing = False
+
+    fn __init__(
+        out self,
+        context_id: UInt32,
+        output_key: UInt32,
+        string_key: UInt32,
+        scope_id: UInt32,
+    ):
+        """Create a memo entry with string storage support.
+
+        The memo starts dirty (needs first computation) and not computing.
+        For non-string memos, pass string_key=0.
+
+        Args:
+            context_id: The reactive context ID for dependency tracking.
+            output_key: The signal key for the cached result (or version signal for strings).
+            string_key: The StringStore key (0 for non-string memos).
+            scope_id: The owning scope ID.
+        """
+        self.context_id = context_id
+        self.output_key = output_key
+        self.string_key = string_key
         self.scope_id = scope_id
         self.dirty = True
         self.computing = False
@@ -82,6 +118,7 @@ struct MemoEntry(Copyable, Equatable, Writable):
     fn __copyinit__(out self, other: Self):
         self.context_id = other.context_id
         self.output_key = other.output_key
+        self.string_key = other.string_key
         self.scope_id = other.scope_id
         self.dirty = other.dirty
         self.computing = other.computing
@@ -89,6 +126,7 @@ struct MemoEntry(Copyable, Equatable, Writable):
     fn __moveinit__(out self, deinit other: Self):
         self.context_id = other.context_id
         self.output_key = other.output_key
+        self.string_key = other.string_key
         self.scope_id = other.scope_id
         self.dirty = other.dirty
         self.computing = other.computing
@@ -163,6 +201,44 @@ struct MemoStore(Movable):
             The UInt32 memo ID.
         """
         var entry = MemoEntry(context_id, output_key, scope_id)
+
+        if self._free_head != -1:
+            var idx = self._free_head
+            self._free_head = self._states[idx].next_free
+            self._entries[idx] = entry^
+            self._states[idx] = MemoSlotState(occupied=True, next_free=-1)
+            self._count += 1
+            return UInt32(idx)
+        else:
+            var idx = len(self._entries)
+            self._entries.append(entry^)
+            self._states.append(MemoSlotState(occupied=True, next_free=-1))
+            self._count += 1
+            return UInt32(idx)
+
+    fn create(
+        mut self,
+        context_id: UInt32,
+        output_key: UInt32,
+        string_key: UInt32,
+        scope_id: UInt32,
+    ) -> UInt32:
+        """Create a new memo entry with string storage.  Returns its stable ID.
+
+        The memo starts dirty (needs first computation).
+        For string memos, string_key is the StringStore key; output_key
+        is the version signal for subscriber tracking.
+
+        Args:
+            context_id: The reactive context ID for dependency tracking.
+            output_key: The version signal key (for string change tracking).
+            string_key: The StringStore key for the cached string.
+            scope_id: The owning scope ID.
+
+        Returns:
+            The UInt32 memo ID.
+        """
+        var entry = MemoEntry(context_id, output_key, string_key, scope_id)
 
         if self._free_head != -1:
             var idx = self._free_head
@@ -289,6 +365,13 @@ struct MemoStore(Movable):
         Precondition: `contains(id)` is True.
         """
         return self._entries[Int(id)].scope_id
+
+    fn string_key(self, id: UInt32) -> UInt32:
+        """Return the StringStore key of the memo (0 for non-string memos).
+
+        Precondition: `contains(id)` is True.
+        """
+        return self._entries[Int(id)].string_key
 
     # ── Queries ──────────────────────────────────────────────────────
 

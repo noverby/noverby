@@ -2052,6 +2052,94 @@ fn memo_context_id(rt_ptr: Int64, memo_id: Int32) -> Int32:
     return Int32(_get[Runtime](rt_ptr)[0].memo_context_id(UInt32(memo_id)))
 
 
+@export
+fn memo_string_key(rt_ptr: Int64, memo_id: Int32) -> Int32:
+    """Return the StringStore key of a string memo (for testing)."""
+    return Int32(_get[Runtime](rt_ptr)[0].memo_string_key(UInt32(memo_id)))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 35.1 — MemoBool Exports
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@export
+fn memo_bool_create(rt_ptr: Int64, scope_id: Int32, initial: Int32) -> Int32:
+    """Create a Bool memo.  initial is 0 or 1.  Returns memo ID."""
+    return Int32(
+        _get[Runtime](rt_ptr)[0].create_memo_bool(
+            UInt32(scope_id), initial != 0
+        )
+    )
+
+
+@export
+fn memo_bool_begin_compute(rt_ptr: Int64, memo_id: Int32):
+    """Begin Bool memo computation — sets memo's context as current."""
+    _get[Runtime](rt_ptr)[0].memo_begin_compute(UInt32(memo_id))
+
+
+@export
+fn memo_bool_end_compute(rt_ptr: Int64, memo_id: Int32, value: Int32):
+    """End Bool memo computation and cache the result (0 or 1)."""
+    _get[Runtime](rt_ptr)[0].memo_end_compute_bool(UInt32(memo_id), value != 0)
+
+
+@export
+fn memo_bool_read(rt_ptr: Int64, memo_id: Int32) -> Int32:
+    """Read the Bool memo's cached value.  Returns 1 or 0."""
+    return _b2i(_get[Runtime](rt_ptr)[0].memo_read_bool(UInt32(memo_id)))
+
+
+@export
+fn memo_bool_is_dirty(rt_ptr: Int64, memo_id: Int32) -> Int32:
+    """Check whether the Bool memo needs recomputation.  Returns 1 or 0."""
+    return _b2i(_get[Runtime](rt_ptr)[0].memo_is_dirty(UInt32(memo_id)))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 35.1 — MemoString Exports
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@export
+fn memo_string_create(rt_ptr: Int64, scope_id: Int32, initial: String) -> Int32:
+    """Create a String memo with an initial value.  Returns memo ID."""
+    return Int32(
+        _get[Runtime](rt_ptr)[0].create_memo_string(UInt32(scope_id), initial)
+    )
+
+
+@export
+fn memo_string_begin_compute(rt_ptr: Int64, memo_id: Int32):
+    """Begin String memo computation — sets memo's context as current."""
+    _get[Runtime](rt_ptr)[0].memo_begin_compute(UInt32(memo_id))
+
+
+@export
+fn memo_string_end_compute(rt_ptr: Int64, memo_id: Int32, value: String):
+    """End String memo computation and cache the result."""
+    _get[Runtime](rt_ptr)[0].memo_end_compute_string(UInt32(memo_id), value)
+
+
+@export
+fn memo_string_read(rt_ptr: Int64, memo_id: Int32) -> String:
+    """Read the String memo's cached value (with context tracking)."""
+    return _get[Runtime](rt_ptr)[0].memo_read_string(UInt32(memo_id))
+
+
+@export
+fn memo_string_peek(rt_ptr: Int64, memo_id: Int32) -> String:
+    """Read the String memo's cached value without subscribing."""
+    return _get[Runtime](rt_ptr)[0].memo_peek_string(UInt32(memo_id))
+
+
+@export
+fn memo_string_is_dirty(rt_ptr: Int64, memo_id: Int32) -> Int32:
+    """Check whether the String memo needs recomputation.  Returns 1 or 0."""
+    return _b2i(_get[Runtime](rt_ptr)[0].memo_is_dirty(UInt32(memo_id)))
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 14 — Effect (Reactive Side Effect) Exports
 # ══════════════════════════════════════════════════════════════════════════════

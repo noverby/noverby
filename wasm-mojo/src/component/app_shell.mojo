@@ -195,6 +195,48 @@ struct AppShell(Movable):
         """Hook: create or retrieve an Int32 memo for the current scope."""
         return self.runtime[0].use_memo_i32(initial)
 
+    # ── MemoBool helpers ─────────────────────────────────────────────
+
+    fn create_memo_bool(mut self, scope_id: UInt32, initial: Bool) -> UInt32:
+        """Create a Bool memo.  Returns its ID."""
+        return self.runtime[0].create_memo_bool(scope_id, initial)
+
+    fn memo_end_compute_bool(mut self, memo_id: UInt32, value: Bool):
+        """End Bool memo computation and cache the result."""
+        self.runtime[0].memo_end_compute_bool(memo_id, value)
+
+    fn memo_read_bool(mut self, memo_id: UInt32) -> Bool:
+        """Read a Bool memo's cached value (with context tracking)."""
+        return self.runtime[0].memo_read_bool(memo_id)
+
+    fn use_memo_bool(mut self, initial: Bool) -> UInt32:
+        """Hook: create or retrieve a Bool memo for the current scope."""
+        return self.runtime[0].use_memo_bool(initial)
+
+    # ── MemoString helpers ───────────────────────────────────────────
+
+    fn create_memo_string(
+        mut self, scope_id: UInt32, initial: String
+    ) -> UInt32:
+        """Create a String memo.  Returns its ID."""
+        return self.runtime[0].create_memo_string(scope_id, initial)
+
+    fn memo_end_compute_string(mut self, memo_id: UInt32, value: String):
+        """End String memo computation and cache the result."""
+        self.runtime[0].memo_end_compute_string(memo_id, value)
+
+    fn memo_read_string(mut self, memo_id: UInt32) -> String:
+        """Read a String memo's cached value (with context tracking)."""
+        return self.runtime[0].memo_read_string(memo_id)
+
+    fn memo_peek_string(self, memo_id: UInt32) -> String:
+        """Read a String memo's cached value without subscribing."""
+        return self.runtime[0].memo_peek_string(memo_id)
+
+    fn use_memo_string(mut self, initial: String) -> UInt32:
+        """Hook: create or retrieve a String memo for the current scope."""
+        return self.runtime[0].use_memo_string(initial)
+
     # ── Effect helpers ───────────────────────────────────────────────
 
     fn create_effect(mut self, scope_id: UInt32) -> UInt32:

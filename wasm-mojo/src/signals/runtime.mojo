@@ -32,7 +32,7 @@ from sys import size_of
 from memory import UnsafePointer, memcpy, alloc
 from scope import ScopeArena, ScopeState, HOOK_SIGNAL, HOOK_MEMO, HOOK_EFFECT
 from vdom import TemplateRegistry, VNodeStore
-from .memo import MemoStore, MemoEntry
+from .memo import MemoStore, MemoEntry, MEMO_NO_STRING
 from .effect import EffectStore, EffectEntry
 from events import (
     HandlerRegistry,
@@ -924,6 +924,44 @@ struct Runtime(Movable):
             # Re-render — return existing memo ID
             return self.scopes.next_hook(scope_id)
 
+    fn use_memo_bool(mut self, initial: Bool) -> UInt32:
+        """Hook: create or retrieve a Bool memo for the current scope.
+
+        On first render: creates a new memo, stores its ID in the scope's
+        hook array (with HOOK_MEMO tag), and returns the memo ID.
+
+        On re-render: retrieves the existing memo ID from the hook array
+        and returns it (initial value is ignored).
+
+        Precondition: has_scope() is True.
+        """
+        var scope_id = self.get_scope()
+        if self.scopes.is_first_render(scope_id):
+            var memo_id = self.create_memo_bool(scope_id, initial)
+            self.scopes.push_hook(scope_id, HOOK_MEMO, memo_id)
+            return memo_id
+        else:
+            return self.scopes.next_hook(scope_id)
+
+    fn use_memo_string(mut self, initial: String) -> UInt32:
+        """Hook: create or retrieve a String memo for the current scope.
+
+        On first render: creates a new memo, stores its ID in the scope's
+        hook array (with HOOK_MEMO tag), and returns the memo ID.
+
+        On re-render: retrieves the existing memo ID from the hook array
+        and returns it (initial value is ignored).
+
+        Precondition: has_scope() is True.
+        """
+        var scope_id = self.get_scope()
+        if self.scopes.is_first_render(scope_id):
+            var memo_id = self.create_memo_string(scope_id, initial)
+            self.scopes.push_hook(scope_id, HOOK_MEMO, memo_id)
+            return memo_id
+        else:
+            return self.scopes.next_hook(scope_id)
+
     # ── Event handler management ─────────────────────────────────────
 
     fn register_handler(mut self, entry: HandlerEntry) -> UInt32:
@@ -1191,7 +1229,8 @@ struct Runtime(Movable):
         """Destroy a memo, cleaning up its context and output signal.
 
         Removes the context→memo mapping, destroys the context signal
-        and output signal, and frees the memo slot.
+        and output signal, and frees the memo slot.  For string memos,
+        also destroys the StringStore entry.
         """
         if not self.memos.contains(memo_id):
             return
@@ -1210,6 +1249,9 @@ struct Runtime(Movable):
         # Destroy the context signal and output signal
         self.signals.destroy(entry.context_id)
         self.signals.destroy(entry.output_key)
+        # For string memos, also destroy the StringStore entry
+        if entry.string_key != MEMO_NO_STRING:
+            self.strings.destroy(entry.string_key)
         # Destroy the memo entry
         self.memos.destroy(memo_id)
 
@@ -1224,6 +1266,144 @@ struct Runtime(Movable):
     fn memo_context_id(self, memo_id: UInt32) -> UInt32:
         """Return the reactive context ID of the memo (for testing)."""
         return self.memos.context_id(memo_id)
+
+    fn memo_string_key(self, memo_id: UInt32) -> UInt32:
+        """Return the StringStore key of the memo (for testing)."""
+        return self.memos.string_key(memo_id)
+
+    # ── MemoBool operations ──────────────────────────────────────────
+
+    fn create_memo_bool(mut self, scope_id: UInt32, initial: Bool) -> UInt32:
+        """Create a Bool memo with an initial cached value.
+
+        Allocates a reactive context and an output signal (stored as
+        Int32 0/1, same pattern as SignalBool).  The memo starts dirty
+        so the first read triggers a computation.
+
+        Returns the memo ID.
+        """
+        var context_id = self.signals.create[Int32](Int32(0))
+        var initial_i32: Int32
+        if initial:
+            initial_i32 = Int32(1)
+        else:
+            initial_i32 = Int32(0)
+        var output_key = self.signals.create[Int32](initial_i32)
+        var memo_id = self.memos.create(context_id, output_key, scope_id)
+        self._memo_ctx_ids.append(context_id)
+        self._memo_ids.append(memo_id)
+        return memo_id
+
+    fn memo_end_compute_bool(mut self, memo_id: UInt32, value: Bool):
+        """End Bool memo computation and store the result.
+
+        Writes the computed Bool value (as Int32 0/1) to the memo's
+        output signal and clears the dirty flag.  Restores the previous
+        reactive context.
+        """
+        if not self.memos.contains(memo_id):
+            return
+        var entry = self.memos.get(memo_id)
+        var val_i32: Int32
+        if value:
+            val_i32 = Int32(1)
+        else:
+            val_i32 = Int32(0)
+        self.signals.write[Int32](entry.output_key, val_i32)
+        self.memos.clear_dirty(memo_id)
+        self.memos.set_computing(memo_id, False)
+        var prev = Int(self.signals.read[Int32](entry.context_id))
+        self.current_context = prev
+
+    fn memo_read_bool(mut self, memo_id: UInt32) -> Bool:
+        """Read the Bool memo's cached value.
+
+        Subscribes the current reactive context (if any) to the memo's
+        output signal, so the reader is notified when the memo recomputes.
+
+        Returns the cached Bool value.
+        """
+        if not self.memos.contains(memo_id):
+            return False
+        var entry = self.memos.get(memo_id)
+        if self.has_context():
+            self.signals._entries[Int(entry.output_key)].subscribe(
+                self.get_context()
+            )
+        return self.signals.read[Int32](entry.output_key) != 0
+
+    # ── MemoString operations ────────────────────────────────────────
+
+    fn create_memo_string(
+        mut self, scope_id: UInt32, initial: String
+    ) -> UInt32:
+        """Create a String memo with an initial cached value.
+
+        Allocates a reactive context, a StringStore entry for the cached
+        string, and a version signal for subscriber tracking (same
+        pattern as SignalString).  The memo starts dirty.
+
+        Returns the memo ID.
+        """
+        var context_id = self.signals.create[Int32](Int32(0))
+        var string_key = self.strings.create(initial)
+        var version_key = self.signals.create[Int32](Int32(0))
+        var memo_id = self.memos.create(
+            context_id, version_key, string_key, scope_id
+        )
+        self._memo_ctx_ids.append(context_id)
+        self._memo_ids.append(memo_id)
+        return memo_id
+
+    fn memo_end_compute_string(mut self, memo_id: UInt32, value: String):
+        """End String memo computation and store the result.
+
+        Writes the computed string to the StringStore, bumps the version
+        signal, clears the dirty flag, and restores the previous
+        reactive context.
+        """
+        if not self.memos.contains(memo_id):
+            return
+        var entry = self.memos.get(memo_id)
+        # Write the string to the StringStore
+        self.strings.write(entry.string_key, value)
+        # Bump the version signal (output_key) to notify subscribers
+        var ver = self.peek_signal[Int32](entry.output_key)
+        self.signals.write[Int32](entry.output_key, ver + 1)
+        self.memos.clear_dirty(memo_id)
+        self.memos.set_computing(memo_id, False)
+        var prev = Int(self.signals.read[Int32](entry.context_id))
+        self.current_context = prev
+
+    fn memo_read_string(mut self, memo_id: UInt32) -> String:
+        """Read the String memo's cached value (with context tracking).
+
+        Subscribes the current reactive context (if any) to the memo's
+        version signal, so the reader is notified when the memo
+        recomputes to a new value.
+
+        Returns a copy of the cached String value.
+        """
+        if not self.memos.contains(memo_id):
+            return String("")
+        var entry = self.memos.get(memo_id)
+        # Subscribe via the version signal (output_key)
+        if self.has_context():
+            self.signals._entries[Int(entry.output_key)].subscribe(
+                self.get_context()
+            )
+        _ = self.signals.read[Int32](entry.output_key)
+        return self.strings.read(entry.string_key)
+
+    fn memo_peek_string(self, memo_id: UInt32) -> String:
+        """Read the String memo's cached value WITHOUT subscribing.
+
+        Returns a copy of the cached String value.
+        """
+        if not self.memos.contains(memo_id):
+            return String("")
+        var entry = self.memos.get(memo_id)
+        return self.strings.read(entry.string_key)
 
     # ── Effect operations ────────────────────────────────────────────
 
