@@ -4954,3 +4954,565 @@ files).
 
 **Test count after all:** 1,322 Mojo (52 modules) + 3,011 JS
 (29 suites) = 4,333 tests.
+
+## Phase 39 — Mojo 0.26.1 Deferred Feature Adoption
+
+### P39 Problem
+
+The Mojo 0.26.1 migration (tracked in `MIGRATION_PLAN.md`) was
+completed during Phase 30. All 8 breaking changes (B1–B8) were
+resolved. Three new features were adopted:
+
+- **F3** — Default trait impls (`Equatable`, `Writable` auto-derived)
+- **F4** — `Copyable` refines `Movable` (redundant declarations removed)
+- **F7** — `-Werror` enabled in build
+
+Seven new features were explicitly deferred because they had no
+natural application points at the time:
+
+| ID | Feature | Deferral reason (Phase 30) |
+|----|---------|---------------------------|
+| F1 | Typed errors (`raises CustomError`) | No `raises` functions in `src/` |
+| F2 | String UTF-8 safety constructors | No raw-bytes string construction |
+| F5 | `comptime(x)` expression | All constants are named declarations |
+| F6 | `-Xlinker` flag | Not applicable (custom llc + wasm-ld pipeline) |
+| F8 | `conforms_to()` / `trait_downcast()` | No generic store paths |
+| F9 | Expanded reflection module | Protocol is hand-written |
+| F10 | `Never` type | No abort/unreachable code paths |
+
+Since Phase 30, 8 more phases of development have landed (Phases
+31–38). The codebase has grown from ~5,500 to ~10,000 lines in
+`main.mojo`, from 28 to 52 Mojo test modules, and from 18 to 29
+JS test suites. It is time to re-evaluate each deferred feature
+for new application points.
+
+### P39 Current state
+
+After Phase 38:
+
+- `src/main.mojo` is ~10,035 lines with 792 `@export` functions.
+- `src/signals/runtime.mojo` is ~1,850 lines with `write_signal`,
+  `end_compute`, `settle_scopes`, batch infrastructure.
+- `test/wasm_harness.mojo` is ~1,400 lines with raw byte-level
+  string struct construction (`write_string_struct`,
+  `read_string_struct`).
+- Build compiles with `-Werror` (zero warnings).
+- No `raises` functions in `src/` — all error handling uses return
+  values (`Bool`, `Int32`).
+- No raw-bytes `String` construction in `src/` — all strings are
+  from literals or concatenation.
+- No `abort()` / unreachable code paths in `src/`.
+- The `conforms_to()` / `trait_downcast()` APIs are experimental
+  and require a generic `Signal[T]` design to have a target — this
+  remains blocked on conditional conformance (Mojo Phase 1 roadmap).
+
+### P39 Re-evaluation
+
+| ID | Feature | Re-evaluation (Phase 39) | Action |
+|----|---------|--------------------------|--------|
+| F1 | Typed errors | Still no `raises` in `src/`. The runtime uses `Bool`/`Int32` returns for WASM ABI compatibility. The *test harness* uses `raises` extensively via wasmtime FFI, but typed errors there add complexity without benefit (the only error is "WASM call failed"). | **Skip** — revisit when introducing `raises`-based runtime APIs |
+| F2 | UTF-8 safety | `test/wasm_harness.mojo` constructs strings from raw bytes read from WASM memory (`read_string_struct`). This is the one place where `String(unsafe_from_utf8=span)` would document the safety invariant. However, the harness is test-only infrastructure — not production code. | **Skip** — revisit when `src/` has raw-bytes string construction |
+| F5 | `comptime(x)` | Still no inline use case. All `comptime` declarations are named module-level constants. | **Skip** — no application point |
+| F6 | `-Xlinker` | Still not applicable. | **Skip** — permanent |
+| F8 | `conforms_to()` / `trait_downcast()` | Still experimental. Would need a generic `Signal[T]` or `Memo[T]` to target. The 6-type expansion (Phase 18–19 signals + Phase 35 memos) reduced urgency. A spike would be valuable but belongs in a dedicated "Generic Signal" phase, not here. | **Skip** — blocked on generic store design |
+| F9 | Reflection | `struct_field_count`, `struct_field_names`, `struct_field_types` could auto-generate `__moveinit__` or debug formatters, but the existing code works and the reflection API is experimental. | **Skip** — revisit when reflection is stable |
+| F10 | `Never` type | No `abort()` or unreachable branches in `src/`. The `if/elif` handler chains always have a fallback return. | **Skip** — no application point |
+
+### P39 Conclusion
+
+**All seven deferred features remain correctly deferred.** None
+have gained natural application points in Phases 31–38. The
+codebase's architecture (WASM ABI with `Int32`/`Bool` returns, no
+`raises`, no raw-bytes strings in `src/`, no unreachable paths)
+does not create the prerequisites these features need.
+
+The features will become actionable when:
+
+- **F1** lands with a move to `raises`-based runtime methods
+  (requires WASM ABI design for alternate return values).
+- **F2** lands when `src/` code parses external bytes (e.g. a
+  binary protocol decoder reading strings from JS).
+- **F8** lands with a `Generic Signal[T]` refactor (requires
+  conditional conformance or a vtable-based store design).
+- **F10** lands when pattern matching on ADTs introduces exhaustive
+  match arms with unreachable fallbacks.
+
+### P39 Steps
+
+#### P39.1 — Audit and document
+
+No code changes. Update `MIGRATION_PLAN.md` with a "Phase 39
+Re-evaluation" section documenting that all deferred features were
+re-examined and remain deferred with updated rationale.
+
+##### Changes
+
+**MIGRATION_PLAN.md:**
+
+- Add "Phase 39 Re-evaluation (post-Phase 38)" section after
+  "✅ Migration Complete".
+- For each deferred feature (F1, F2, F5, F6, F8, F9, F10), add
+  a one-line status update noting no new application points.
+- Update test counts to reflect current state (1,323 Mojo tests
+  in 52 modules + 3,090 JS tests in 29 suites).
+
+**CHANGELOG.md:**
+
+- Add Phase 39 entry: "Re-evaluated all 7 deferred Mojo 0.26.1
+  features (F1, F2, F5, F6, F8, F9, F10). All remain correctly
+  deferred — no new application points in Phases 31–38."
+
+**AGENTS.md:**
+
+- Update "Mojo 0.26.1 Migration" section with a note that the
+  deferred features were re-evaluated at Phase 39.
+- Update "Deferred (no natural application point)" list with
+  post-Phase 38 rationale.
+
+### P39 Dependency graph
+
+```text
+P39.1 (Audit and document — no code changes)
+```
+
+Standalone step. No code dependencies.
+
+### P39 Estimated size
+
+| Step | ~Changed Mojo Lines | ~New Mojo Lines | ~New TS Lines | Tests |
+|------|--------------------|-----------------| --------------|-------|
+| P39.1 (Audit + docs) | 0 | 0 | 0 | 0 |
+| **Total** | **0** | **0** | **0** | **0 tests** |
+
+**Test count after Phase 39:** unchanged — 1,323 Mojo (52 modules)
+
++ 3,090 JS (29 suites) = 4,413 tests.
+
+---
+
+## Phase 40 — Modularize `src/main.mojo`
+
+### P40 Problem
+
+`src/main.mojo` has grown to ~10,035 lines containing:
+
+1. **Shared utilities** (~145 lines) — pointer helpers (`_as_ptr`,
+   `_to_i64`, `_get`, `_b2i`, `_alloc_writer`), heap alloc/free.
+
+2. **Low-level WASM exports** (~2,500 lines) — ElementId allocator
+   tests, signal/scope/runtime/scheduler/mutation/template/VNode
+   exports, DSL test exports. These are the core framework's test
+   and runtime surface.
+
+3. **Already-extracted app re-exports** (~900 lines) — thin
+   `@export` wrappers for Counter, Todo, Benchmark, and MultiView
+   apps whose structs live in `examples/counter/counter.mojo`,
+   `examples/todo/todo.mojo`, `examples/bench/bench.mojo`, and
+   `examples/app/app.mojo`.
+
+4. **Inline demo/test apps** (~6,500 lines) — 15 app structs with
+   their lifecycle functions, helper child structs, and `@export`
+   wrappers, all defined directly in `main.mojo`:
+
+   | App | Phase | ~Lines | Structs |
+   |-----|-------|--------|---------|
+   | ChildCounterApp | 29 | 298 | 1 |
+   | ContextTestApp | 31.1 | 183 | 1 |
+   | ChildContextTestApp | 31.2 | 318 | 1 |
+   | PropsCounterApp | 31.3 | 328 | 2 (CounterDisplay + PropsCounterApp) |
+   | ThemeCounterApp | 31.4 | 393 | 3 (TCCounterChild + TCSummaryChild + ThemeCounterApp) |
+   | SafeCounterApp | 32.2 | 361 | 3 (SCNormalChild + SCFallbackChild + SafeCounterApp) |
+   | ErrorNestApp | 32.3 | 535 | 5 (EN*Child × 4 + ErrorNestApp) |
+   | DataLoaderApp | 33.2 | 291 | 3 (DLContentChild + DLSkeletonChild + DataLoaderApp) |
+   | SuspenseNestApp | 33.3 | 536 | 5 (SN*Child × 4 + SuspenseNestApp) |
+   | EffectDemoApp | 34.1 | 223 | 1 |
+   | EffectMemoApp | 34.2 | 243 | 1 |
+   | MemoFormApp | 35.2 | 280 | 1 |
+   | MemoChainApp | 35.3 | 279 | 1 |
+   | EqualityDemoApp | 37.3 | 302 | 1 |
+   | BatchDemoApp | 38.2 | 328 | 1 |
+   | **Total** | | **~4,900** | **30 structs** |
+
+   The remaining ~1,600 lines are the `@export` wrappers for
+   these inline apps (query exports like `*_has_dirty`,
+   `*_scope_count`, `*_memo_count`, etc.).
+
+This monolithic structure creates several problems:
+
+- **Navigation** — finding a specific app requires scrolling
+  through 10K lines or searching by prefix.
+- **Merge conflicts** — any two parallel app additions conflict at
+  the end of the file.
+- **Compilation** — the entire file is recompiled when any app
+  changes (Mojo compiles per-module).
+- **Cognitive load** — shared utilities, framework exports, and
+  app-specific code are interleaved.
+- **Inconsistency** — Counter/Todo/Bench/MultiView are in separate
+  modules under `examples/`, but the 15 demo apps are inline.
+
+### P40 Target pattern
+
+Each inline app is extracted into its own module file under
+`src/apps/`, following the pattern established by the existing
+`examples/` apps:
+
+```text
+src/
+  apps/
+    __init__.mojo           # re-exports all app modules
+    child_counter.mojo      # ChildCounterApp struct + lifecycle fns
+    context_test.mojo       # ContextTestApp struct + lifecycle fns
+    child_context.mojo      # ChildContextTestApp struct + lifecycle fns
+    props_counter.mojo      # CounterDisplay + PropsCounterApp + lifecycle
+    theme_counter.mojo      # TC*Child structs + ThemeCounterApp + lifecycle
+    safe_counter.mojo       # SC*Child structs + SafeCounterApp + lifecycle
+    error_nest.mojo         # EN*Child structs + ErrorNestApp + lifecycle
+    data_loader.mojo        # DL*Child structs + DataLoaderApp + lifecycle
+    suspense_nest.mojo      # SN*Child structs + SuspenseNestApp + lifecycle
+    effect_demo.mojo        # EffectDemoApp struct + lifecycle fns
+    effect_memo.mojo        # EffectMemoApp struct + lifecycle fns
+    memo_form.mojo          # MemoFormApp struct + lifecycle fns
+    memo_chain.mojo         # MemoChainApp struct + lifecycle fns
+    equality_demo.mojo      # EqualityDemoApp struct + lifecycle fns
+    batch_demo.mojo         # BatchDemoApp struct + lifecycle fns
+  main.mojo                 # Shared utilities + @export wrappers only
+```
+
+After extraction, `main.mojo` contains:
+
+1. **Imports** — framework modules + `from apps import ...`
+2. **Shared utilities** (~145 lines) — pointer helpers, writer alloc
+3. **Low-level framework exports** (~2,500 lines) — unchanged
+4. **App @export wrappers** (~2,400 lines) — thin wrappers calling
+   into imported lifecycle functions (same as Counter/Todo pattern)
+
+Target size: `main.mojo` ≈ 5,100 lines (down from 10,035).
+
+Each extracted module contains:
+
+- The app struct(s) + `__init__` + `__moveinit__` + methods
+- Helper child structs (if any)
+- Lifecycle functions (`_xx_init`, `_xx_destroy`, `_xx_rebuild`,
+  `_xx_handle_event`, `_xx_flush`)
+- Any app-specific helpers (e.g. `_xx_set_names` for BatchDemoApp)
+
+The `@export` wrappers stay in `main.mojo` because Mojo's
+`@export` attribute only works at the top-level of the compilation
+unit (the file passed to `mojo build`).
+
+### P40 Design
+
+#### Module layout
+
+Each app module follows this pattern:
+
+```mojo
+# src/apps/effect_demo.mojo
+
+from memory import UnsafePointer, alloc
+from bridge import MutationWriter
+from component import ComponentContext
+from signals.handle import SignalI32 as _SignalI32, EffectHandle
+from vdom import (
+    Node, el_div, el_h1, el_p, el_button,
+    text as dsl_text, dyn_text as dsl_dyn_text,
+    onclick_add as dsl_onclick_add,
+)
+
+
+struct EffectDemoApp(Movable):
+    ...
+
+fn effect_demo_init() -> UnsafePointer[EffectDemoApp, MutExternalOrigin]:
+    ...
+fn effect_demo_destroy(...):
+    ...
+fn effect_demo_rebuild(...) -> Int32:
+    ...
+fn effect_demo_handle_event(...) -> Bool:
+    ...
+fn effect_demo_flush(...) -> Int32:
+    ...
+```
+
+And `main.mojo` imports + re-exports:
+
+```mojo
+from apps.effect_demo import (
+    EffectDemoApp,
+    effect_demo_init,
+    effect_demo_destroy,
+    effect_demo_rebuild,
+    effect_demo_handle_event,
+    effect_demo_flush,
+)
+
+# ... later in the @export section:
+@export
+fn ed_init() -> Int64:
+    return _to_i64(effect_demo_init())
+
+@export
+fn ed_destroy(app_ptr: Int64):
+    effect_demo_destroy(_get[EffectDemoApp](app_ptr))
+
+# ... query exports stay in main.mojo:
+@export
+fn ed_count_value(app_ptr: Int64) -> Int32:
+    return _get[EffectDemoApp](app_ptr)[0].count.peek()
+```
+
+#### Import resolution
+
+Extracted modules need access to framework types. The import paths
+are resolved via the `-I src` flag already present in the build:
+
+- `from component import ComponentContext`
+- `from signals.handle import SignalI32, MemoI32, ...`
+- `from vdom import el_div, text, dyn_text, ...`
+- `from bridge import MutationWriter`
+
+DSL helpers (`dsl_onclick_custom`, `dsl_onclick_add`, etc.) are
+imported directly from `vdom`:
+
+- `from vdom import onclick_custom as dsl_onclick_custom`
+- `from vdom import onclick_add as dsl_onclick_add`
+
+The shared pointer helpers (`_to_i64`, `_get`, `_b2i`,
+`_alloc_writer`, `_free_writer`) stay in `main.mojo` and are NOT
+imported by app modules. App modules return typed pointers and
+`Int32`/`Bool` from lifecycle functions; the `@export` wrappers in
+`main.mojo` handle the WASM ABI conversion.
+
+#### Query exports
+
+Query exports (e.g. `ed_count_value`, `bd_full_name_text`,
+`eq_clamped_value`) access struct fields directly. Since
+`@export` must be in `main.mojo` and the struct is imported,
+`main.mojo` uses `_get[AppType](app_ptr)[0].field` as today.
+This works because the struct type is imported and its fields
+are public.
+
+#### Build system
+
+No changes needed. The `mojo build -I examples -o build/out.ll
+src/main.mojo` command already uses `-I` for the `examples/`
+path. Adding `src/apps/` works automatically since `main.mojo`
+is in `src/` and Mojo resolves relative imports from the file's
+directory. The `-I src` flag (implicit — the compilation unit
+is `src/main.mojo`) means `from apps.effect_demo import ...`
+resolves to `src/apps/effect_demo.mojo`.
+
+#### Test harness
+
+No changes to test files. Tests call WASM exports by name
+(`ed_init`, `bd_set_names`, etc.) and don't import from
+`src/apps/` directly. The WASM binary contains the same exports
+regardless of how the source is organized.
+
+### P40 Steps
+
+#### P40.1 — Create `src/apps/` scaffold and extract simple apps
+
+Extract the 6 simplest apps (single struct, no child components):
+
+| Module | App | ~Lines |
+|--------|-----|--------|
+| `src/apps/child_counter.mojo` | ChildCounterApp | ~160 |
+| `src/apps/context_test.mojo` | ContextTestApp | ~120 |
+| `src/apps/effect_demo.mojo` | EffectDemoApp | ~150 |
+| `src/apps/effect_memo.mojo` | EffectMemoApp | ~160 |
+| `src/apps/memo_form.mojo` | MemoFormApp | ~180 |
+| `src/apps/memo_chain.mojo` | MemoChainApp | ~180 |
+
+##### Mojo changes
+
+For each app:
+
+1. Create `src/apps/<name>.mojo` with the struct, `__init__`,
+   `__moveinit__`, methods (`run_memos`, `render`, etc.), and
+   lifecycle functions (`_xx_init`, `_xx_destroy`, `_xx_rebuild`,
+   `_xx_handle_event`, `_xx_flush`, plus any app-specific helpers).
+
+2. In `main.mojo`:
+   - Add `from apps.<name> import (AppType, lifecycle_fns...)`
+   - Remove the inline struct + lifecycle function definitions
+   - Keep all `@export` wrappers, updating them to call the
+     imported lifecycle functions.
+
+3. Create `src/apps/__init__.mojo` with empty body (or re-exports).
+
+##### Verification
+
+```bash
+just build          # compiles without error
+just test           # all 52 Mojo modules pass
+just test-js        # all 29 JS suites pass
+```
+
+No test changes needed — WASM exports are unchanged.
+
+#### P40.2 — Extract multi-struct apps (child components)
+
+Extract the 5 apps that have helper child structs:
+
+| Module | App | Child structs | ~Lines |
+|--------|-----|---------------|--------|
+| `src/apps/child_context.mojo` | ChildContextTestApp | — (single struct but complex) | ~200 |
+| `src/apps/props_counter.mojo` | PropsCounterApp | CounterDisplay | ~220 |
+| `src/apps/theme_counter.mojo` | ThemeCounterApp | TCCounterChild, TCSummaryChild | ~280 |
+| `src/apps/safe_counter.mojo` | SafeCounterApp | SCNormalChild, SCFallbackChild | ~250 |
+| `src/apps/error_nest.mojo` | ErrorNestApp | EN*Child × 4 | ~400 |
+
+These are more complex because child component structs are defined
+alongside the parent app. They move together — the child struct is
+private to the app module.
+
+##### Mojo changes
+
+Same pattern as P40.1:
+
+1. Create `src/apps/<name>.mojo` with all related structs.
+2. Update `main.mojo` imports and remove inline definitions.
+3. Keep `@export` wrappers in `main.mojo`.
+
+##### Verification
+
+Same as P40.1.
+
+#### P40.3 — Extract suspense/boundary apps
+
+Extract the 2 apps with suspense/boundary child structs:
+
+| Module | App | Child structs | ~Lines |
+|--------|-----|---------------|--------|
+| `src/apps/data_loader.mojo` | DataLoaderApp | DLContentChild, DLSkeletonChild | ~200 |
+| `src/apps/suspense_nest.mojo` | SuspenseNestApp | SN*Child × 4 | ~400 |
+
+These apps use `ChildComponent`, `ChildComponentContext`, and
+suspense/error boundary APIs. Their imports are the most complex.
+
+##### Mojo changes
+
+Same pattern as P40.1/P40.2.
+
+##### Verification
+
+Same as P40.1.
+
+#### P40.4 — Extract remaining apps
+
+Extract the final 2 apps:
+
+| Module | App | ~Lines |
+|--------|-----|--------|
+| `src/apps/equality_demo.mojo` | EqualityDemoApp | ~200 |
+| `src/apps/batch_demo.mojo` | BatchDemoApp | ~220 |
+
+##### Mojo changes
+
+Same pattern.
+
+##### Verification
+
+Same as P40.1.
+
+#### P40.5 — Clean up `main.mojo` and documentation
+
+1. Verify `main.mojo` is ≈5,100 lines (shared utilities +
+   framework exports + app @export wrappers).
+2. Add section comments in `main.mojo` separating:
+   - Shared utilities
+   - Framework test/runtime exports
+   - App re-export wrappers (grouped by app)
+3. Update documentation.
+
+##### Changes
+
+**AGENTS.md:**
+
+- Update File Size Reference: `src/main.mojo` line count
+  (~5,100), add `src/apps/` entries.
+- Update "WASM Export Pattern" section to describe the
+  extracted-module + re-export pattern.
+- Update App Architectures section to note module locations.
+
+**CHANGELOG.md:**
+
+- Add Phase 40 entry summarizing the modularization.
+
+**README.md:**
+
+- Update Project Structure section to show `src/apps/`.
+- Update line counts if mentioned.
+
+### P40 Dependency graph
+
+```text
+P40.1 (Scaffold + simple apps — 6 modules)
+    │
+    ├──► P40.2 (Multi-struct apps — 5 modules)
+    │
+    ├──► P40.3 (Suspense/boundary apps — 2 modules)
+    │
+    └──► P40.4 (Remaining apps — 2 modules)
+              │
+              └──► P40.5 (Cleanup + docs)
+```
+
+P40.1 creates the `src/apps/` directory and `__init__.mojo`, and
+establishes the extraction pattern with the simplest apps.
+P40.2–P40.4 can run in any order after P40.1 (they touch different
+app sections of `main.mojo`). P40.5 depends on all extractions
+being complete.
+
+### P40 Estimated size
+
+| Step | ~Changed Mojo Lines | ~New Mojo Lines | ~New TS Lines | Tests |
+|------|--------------------|-----------------| --------------|-------|
+| P40.1 (Simple apps × 6) | ~1,100 removed from main.mojo | ~1,100 (6 new files) | 0 | 0 |
+| P40.2 (Multi-struct × 5) | ~1,500 removed from main.mojo | ~1,500 (5 new files) | 0 | 0 |
+| P40.3 (Suspense × 2) | ~800 removed from main.mojo | ~800 (2 new files) | 0 | 0 |
+| P40.4 (Remaining × 2) | ~600 removed from main.mojo | ~600 (2 new files) | 0 | 0 |
+| P40.5 (Cleanup + docs) | ~50 (comments) | ~20 (**init**.mojo) | 0 | 0 |
+| **Total** | **~4,050 removed** | **~4,020 (15 new files + **init**)** | **0** | **0 tests** |
+
+Net code change: approximately zero (code moves between files).
+`main.mojo` shrinks from ~10,035 to ~5,100 lines.
+
+**Test count after Phase 40:** unchanged — 1,323 Mojo (52 modules)
+
++ 3,090 JS (29 suites) = 4,413 tests.
+
+## Combined dependency graph (Phase 39 + 40)
+
+```text
+P39.1 (Audit deferred features — docs only, no code)
+    │
+    ▼
+P40.1 (Create src/apps/ + extract 6 simple apps)
+    │
+    ├──► P40.2 (Extract 5 multi-struct apps)
+    │
+    ├──► P40.3 (Extract 2 suspense/boundary apps)
+    │
+    └──► P40.4 (Extract 2 remaining apps)
+              │
+              └──► P40.5 (Cleanup + docs)
+```
+
+P39 is independent documentation work. P40 is the code
+modularization. P39 can land first (trivial), then P40 proceeds
+with the mechanical extraction.
+
+## Combined estimated size (Phase 39 + 40)
+
+| Phase | ~Changed Mojo | ~New Mojo | ~New TS | Tests |
+|-------|--------------|-----------|---------|-------|
+| Phase 39 | 0 | 0 | 0 | 0 |
+| Phase 40 | ~4,050 removed | ~4,020 (15 files) | 0 | 0 |
+| **Total** | **~4,050 moved** | **~4,020 (15 new files)** | **0** | **0 tests** |
+
+**Test count after all:** unchanged — 1,323 Mojo (52 modules)
+
++ 3,090 JS (29 suites) = 4,413 tests.
