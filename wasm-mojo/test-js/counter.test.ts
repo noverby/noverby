@@ -349,9 +349,9 @@ export function testCounter(fns: Fns): void {
 		// Root is a div (TAG_DIV = 0)
 		assert(fns.tmpl_node_tag(rtPtr, tmplId, rootIdx), 0, "root tag is div");
 
-		// Root has 3 children: h1, button, button
+		// Root has 5 children: h1, button(up), button(down), button(toggle), dyn_node
 		const childCount = fns.tmpl_node_child_count(rtPtr, tmplId, rootIdx);
-		assert(childCount, 3, "root div has 3 children");
+		assert(childCount, 5, "root div has 5 children");
 
 		// First child is h1 (TAG_H1 = 10) — "High-Five counter: N"
 		const h1Idx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 0);
@@ -373,6 +373,14 @@ export function testCounter(fns: Fns): void {
 			"third child is button",
 		);
 
+		// Fourth child is button (toggle detail)
+		const btn3Idx = fns.tmpl_node_child_at(rtPtr, tmplId, rootIdx, 3);
+		assert(
+			fns.tmpl_node_tag(rtPtr, tmplId, btn3Idx),
+			19,
+			"fourth child is button (toggle)",
+		);
+
 		// Template has dynamic text nodes
 		assert(
 			fns.tmpl_dynamic_text_count(rtPtr, tmplId) >= 1,
@@ -382,9 +390,9 @@ export function testCounter(fns: Fns): void {
 
 		// Template has dynamic attrs
 		assert(
-			fns.tmpl_dynamic_attr_count(rtPtr, tmplId) >= 2,
+			fns.tmpl_dynamic_attr_count(rtPtr, tmplId) >= 3,
 			true,
-			"template has at least 2 dynamic attr slots",
+			"template has at least 3 dynamic attr slots",
 		);
 
 		fns.counter_destroy(app);
@@ -410,8 +418,8 @@ export function testCounter(fns: Fns): void {
 		const divEl = dom.root.childNodes[0] as Element;
 		assert(divEl.nodeName.toLowerCase(), "div", "first child is a div");
 
-		// Div should have 3 children: h1, button, button
-		assert(divEl.childNodes.length, 3, "div has 3 children");
+		// Div should have 5 children: h1, button(up), button(down), button(toggle), placeholder
+		assert(divEl.childNodes.length, 5, "div has 5 children");
 
 		const h1El = divEl.childNodes[0] as Element;
 		assert(h1El.nodeName.toLowerCase(), "h1", "first div child is h1");
@@ -421,6 +429,13 @@ export function testCounter(fns: Fns): void {
 
 		const btn2 = divEl.childNodes[2] as Element;
 		assert(btn2.nodeName.toLowerCase(), "button", "third div child is button");
+
+		const btn3 = divEl.childNodes[3] as Element;
+		assert(
+			btn3.nodeName.toLowerCase(),
+			"button",
+			"fourth div child is button (toggle)",
+		);
 
 		// Button text content
 		assert(btn1.textContent, "Up high!", 'first button text is "Up high!"');
@@ -448,7 +463,6 @@ export function testCounter(fns: Fns): void {
 	{
 		const dom = createDOM();
 		const handle = createCounterApp(fns, dom.root, dom.document);
-
 		const divEl = dom.root.childNodes[0] as Element;
 		const h1El = divEl.childNodes[0] as Element;
 
@@ -589,14 +603,14 @@ export function testCounter(fns: Fns): void {
 		const dom = createDOM();
 		const handle = createCounterApp(fns, dom.root, dom.document);
 
-		// Update 5 times
+		// Click 5 times
 		for (let i = 0; i < 5; i++) {
 			handle.increment();
 		}
 
 		// Structure should be the same objects (no re-creation)
 		const newDiv = dom.root.childNodes[0] as Element;
-		assert(newDiv.childNodes.length, 3, "div still has 3 children");
+		assert(newDiv.childNodes.length, 5, "div still has 5 children");
 
 		// Buttons should still have their text
 		assert(
@@ -745,5 +759,323 @@ export function testCounter(fns: Fns): void {
 		// Destroy should not throw
 		handle.destroy();
 		pass(1);
+	}
+
+	// ═════════════════════════════════════════════════════════════════════
+	// Section 21: Phase 28 — Conditional Rendering (show/hide detail)
+	// ═════════════════════════════════════════════════════════════════════
+
+	suite("Counter — toggle handler ID is valid");
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+		assert(
+			handle.toggleHandler >= 0,
+			true,
+			"toggle handler ID is non-negative",
+		);
+		assert(
+			handle.toggleHandler !== handle.incrHandler,
+			true,
+			"toggle handler differs from incr",
+		);
+		assert(
+			handle.toggleHandler !== handle.decrHandler,
+			true,
+			"toggle handler differs from decr",
+		);
+		handle.destroy();
+	}
+
+	suite("Counter — show_detail starts as false");
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+		assert(handle.getShowDetail(), false, "show_detail is false initially");
+		assert(handle.isDetailMounted(), false, "detail is not mounted initially");
+		handle.destroy();
+	}
+
+	suite("Counter — toggle detail on → detail DOM appears");
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+
+		const divEl = dom.root.childNodes[0] as Element;
+		// Before toggle: 5 children (h1, btn, btn, btn, placeholder)
+		assert(divEl.childNodes.length, 5, "div has 5 children before toggle");
+
+		// Toggle detail ON
+		handle.toggleDetail();
+		assert(handle.getShowDetail(), true, "show_detail is true after toggle");
+		assert(handle.isDetailMounted(), true, "detail is mounted after toggle");
+
+		// The placeholder (5th child) should be replaced by the detail div
+		// Detail div has 2 <p> children
+		const detailDiv = divEl.childNodes[4] as Element;
+		assert(detailDiv.nodeName.toLowerCase(), "div", "detail is a div element");
+		assert(detailDiv.childNodes.length, 2, "detail div has 2 children");
+
+		const p1 = detailDiv.childNodes[0] as Element;
+		assert(p1.nodeName.toLowerCase(), "p", "first detail child is a <p>");
+		assert(
+			p1.textContent,
+			"Count is even",
+			"p1 says 'Count is even' (count=0)",
+		);
+
+		const p2 = detailDiv.childNodes[1] as Element;
+		assert(p2.nodeName.toLowerCase(), "p", "second detail child is a <p>");
+		assert(p2.textContent, "Doubled: 0", "p2 says 'Doubled: 0'");
+
+		handle.destroy();
+	}
+
+	suite("Counter — toggle detail off → detail DOM removed");
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+
+		// Toggle ON then OFF
+		handle.toggleDetail();
+		assert(handle.isDetailMounted(), true, "detail mounted after toggle on");
+
+		handle.toggleDetail();
+		assert(
+			handle.getShowDetail(),
+			false,
+			"show_detail is false after second toggle",
+		);
+		assert(
+			handle.isDetailMounted(),
+			false,
+			"detail not mounted after toggle off",
+		);
+
+		const divEl = dom.root.childNodes[0] as Element;
+		// Should be back to 5 children (placeholder restored)
+		assert(divEl.childNodes.length, 5, "div has 5 children after toggle off");
+
+		// The 5th child should be a comment/placeholder, not a div
+		const lastChild = divEl.childNodes[4];
+		const isNotDiv = lastChild.nodeName.toLowerCase() !== "div";
+		assert(isNotDiv, true, "5th child is not a div (placeholder restored)");
+
+		handle.destroy();
+	}
+
+	suite("Counter — toggle on → off → on restores correct content");
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+
+		// Increment first so count=2
+		handle.increment();
+		handle.increment();
+
+		// Toggle ON
+		handle.toggleDetail();
+		const divEl = dom.root.childNodes[0] as Element;
+		let detailDiv = divEl.childNodes[4] as Element;
+		let p1 = detailDiv.childNodes[0] as Element;
+		let p2 = detailDiv.childNodes[1] as Element;
+		assert(p1.textContent, "Count is even", "count=2 is even");
+		assert(p2.textContent, "Doubled: 4", "doubled of 2 is 4");
+
+		// Toggle OFF
+		handle.toggleDetail();
+		assert(handle.isDetailMounted(), false, "detail removed");
+
+		// Toggle ON again
+		handle.toggleDetail();
+		assert(handle.isDetailMounted(), true, "detail re-mounted");
+
+		detailDiv = divEl.childNodes[4] as Element;
+		p1 = detailDiv.childNodes[0] as Element;
+		p2 = detailDiv.childNodes[1] as Element;
+		assert(p1.textContent, "Count is even", "count still even after re-toggle");
+		assert(p2.textContent, "Doubled: 4", "doubled still 4 after re-toggle");
+
+		handle.destroy();
+	}
+
+	suite("Counter — detail updates when count changes while visible");
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+
+		// Toggle ON (count=0)
+		handle.toggleDetail();
+
+		const divEl = dom.root.childNodes[0] as Element;
+		let detailDiv = divEl.childNodes[4] as Element;
+		assert(
+			(detailDiv.childNodes[0] as Element).textContent,
+			"Count is even",
+			"count=0 → even",
+		);
+
+		// Increment to 1 (odd)
+		handle.increment();
+		detailDiv = divEl.childNodes[4] as Element;
+		assert(
+			(detailDiv.childNodes[0] as Element).textContent,
+			"Count is odd",
+			"count=1 → odd",
+		);
+		assert(
+			(detailDiv.childNodes[1] as Element).textContent,
+			"Doubled: 2",
+			"count=1 → doubled=2",
+		);
+
+		// Increment to 2 (even again)
+		handle.increment();
+		detailDiv = divEl.childNodes[4] as Element;
+		assert(
+			(detailDiv.childNodes[0] as Element).textContent,
+			"Count is even",
+			"count=2 → even",
+		);
+		assert(
+			(detailDiv.childNodes[1] as Element).textContent,
+			"Doubled: 4",
+			"count=2 → doubled=4",
+		);
+
+		handle.destroy();
+	}
+
+	suite(
+		"Counter — detail hidden + count changes → detail shows updated content",
+	);
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+
+		// Increment to 3 while detail is hidden
+		handle.increment();
+		handle.increment();
+		handle.increment();
+		assert(handle.getCount(), 3, "count is 3");
+		assert(handle.isDetailMounted(), false, "detail not mounted");
+
+		// Now toggle detail ON — should show count=3 content
+		handle.toggleDetail();
+		const divEl = dom.root.childNodes[0] as Element;
+		const detailDiv = divEl.childNodes[4] as Element;
+		assert(
+			(detailDiv.childNodes[0] as Element).textContent,
+			"Count is odd",
+			"count=3 → odd on first show",
+		);
+		assert(
+			(detailDiv.childNodes[1] as Element).textContent,
+			"Doubled: 6",
+			"count=3 → doubled=6 on first show",
+		);
+
+		handle.destroy();
+	}
+
+	suite("Counter — detail is preserved across multiple increment clicks");
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+
+		// Toggle detail ON
+		handle.toggleDetail();
+
+		// Rapidly increment 5 times
+		for (let i = 0; i < 5; i++) {
+			handle.increment();
+		}
+
+		const divEl = dom.root.childNodes[0] as Element;
+		const detailDiv = divEl.childNodes[4] as Element;
+		assert(detailDiv.nodeName.toLowerCase(), "div", "detail div still exists");
+		assert(
+			(detailDiv.childNodes[0] as Element).textContent,
+			"Count is odd",
+			"count=5 → odd after 5 increments",
+		);
+		assert(
+			(detailDiv.childNodes[1] as Element).textContent,
+			"Doubled: 10",
+			"count=5 → doubled=10",
+		);
+
+		handle.destroy();
+	}
+
+	suite("Counter — h1 and buttons unaffected by detail toggle");
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+
+		handle.increment();
+		handle.increment();
+
+		// Toggle detail ON
+		handle.toggleDetail();
+
+		const divEl = dom.root.childNodes[0] as Element;
+		const h1El = divEl.childNodes[0] as Element;
+		assert(
+			h1El.textContent,
+			"High-Five counter: 2",
+			"h1 text correct with detail on",
+		);
+
+		const btn1 = divEl.childNodes[1] as Element;
+		assert(btn1.textContent, "Up high!", "button 1 text preserved");
+
+		const btn2 = divEl.childNodes[2] as Element;
+		assert(btn2.textContent, "Down low!", "button 2 text preserved");
+
+		const btn3 = divEl.childNodes[3] as Element;
+		assert(btn3.textContent, "Toggle detail", "button 3 text preserved");
+
+		// Increment while detail is on
+		handle.increment();
+		assert(
+			(divEl.childNodes[0] as Element).textContent,
+			"High-Five counter: 3",
+			"h1 text updates with detail on",
+		);
+
+		// Toggle OFF and verify h1 still correct
+		handle.toggleDetail();
+		assert(
+			(divEl.childNodes[0] as Element).textContent,
+			"High-Five counter: 3",
+			"h1 text correct with detail off",
+		);
+
+		handle.destroy();
+	}
+
+	suite("Counter — decrement with detail visible shows negative doubled");
+	{
+		const dom = createDOM();
+		const handle = createCounterApp(fns, dom.root, dom.document);
+
+		handle.toggleDetail();
+		handle.decrement(); // count = -1
+
+		const divEl = dom.root.childNodes[0] as Element;
+		const detailDiv = divEl.childNodes[4] as Element;
+		assert(
+			(detailDiv.childNodes[0] as Element).textContent,
+			"Count is odd",
+			"count=-1 → odd",
+		);
+		assert(
+			(detailDiv.childNodes[1] as Element).textContent,
+			"Doubled: -2",
+			"count=-1 → doubled=-2",
+		);
+
+		handle.destroy();
 	}
 }

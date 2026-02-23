@@ -4,6 +4,9 @@ from .app_shell import AppShell, app_shell_create
 from .lifecycle import (
     FragmentSlot,
     flush_fragment,
+    ConditionalSlot,
+    flush_conditional,
+    flush_conditional_empty,
     mount_vnode,
     mount_vnode_to,
     diff_and_finalize,

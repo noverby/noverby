@@ -2194,6 +2194,35 @@ fn counter_doubled_memo(app_ptr: Int64) -> Int32:
     return -1
 
 
+@export
+fn counter_toggle_handler(app_ptr: Int64) -> Int32:
+    """Return the toggle detail handler ID (from view_events[2])."""
+    var events = _get[CounterApp](app_ptr)[0].ctx.view_events()
+    if len(events) > 2:
+        return Int32(events[2].handler_id)
+    return -1
+
+
+@export
+fn counter_show_detail(app_ptr: Int64) -> Int32:
+    """Peek the show_detail signal value (0 = hidden, 1 = shown)."""
+    return _get[CounterApp](app_ptr)[0].show_detail.peek_i32()
+
+
+@export
+fn counter_detail_tmpl_id(app_ptr: Int64) -> Int32:
+    """Return the detail template ID."""
+    return Int32(_get[CounterApp](app_ptr)[0].detail_tmpl)
+
+
+@export
+fn counter_cond_mounted(app_ptr: Int64) -> Int32:
+    """Return 1 if the conditional detail slot is mounted, 0 otherwise."""
+    if _get[CounterApp](app_ptr)[0].cond_slot.mounted:
+        return 1
+    return 0
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 8 — Todo App
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2363,6 +2392,15 @@ fn todo_has_dirty(app_ptr: Int64) -> Int32:
 fn todo_list_version(app_ptr: Int64) -> Int32:
     """Return the current list version signal value."""
     return _get[TodoApp](app_ptr)[0].list_version.peek()
+
+
+@export
+fn todo_empty_msg_mounted(app_ptr: Int64) -> Int32:
+    """Return 1 if the empty state message is mounted, 0 otherwise (Phase 28).
+    """
+    if _get[TodoApp](app_ptr)[0].empty_msg_slot.mounted:
+        return 1
+    return 0
 
 
 @export

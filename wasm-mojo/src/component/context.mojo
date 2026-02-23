@@ -64,7 +64,12 @@ from signals.runtime import StringStore
 from events import HandlerEntry
 from bridge import MutationWriter
 from .app_shell import AppShell, app_shell_create
-from .lifecycle import FragmentSlot
+from .lifecycle import (
+    FragmentSlot,
+    ConditionalSlot,
+    flush_conditional,
+    flush_conditional_empty,
+)
 from vdom import (
     Node,
     NODE_EVENT,
@@ -1297,6 +1302,101 @@ struct ComponentContext(Movable):
             Updated FragmentSlot with new state.
         """
         return self.shell.flush_fragment(writer_ptr, slot, new_frag_idx)
+
+    # ── Conditional slot helpers ─────────────────────────────────────
+
+    fn conditional_slot(self) -> ConditionalSlot:
+        """Create an uninitialized ConditionalSlot.
+
+        The slot must be initialized with an anchor ElementId after
+        initial mount — extract it from the VNode's dyn_node_ids at
+        the slot's dynamic node index.
+
+        Example:
+            # In app struct:
+            var cond: ConditionalSlot
+
+            # After mount — extract anchor from dyn_node_ids:
+            var vnode_ptr = ctx.store_ptr()[0].get_ptr(app_vnode_idx)
+            var anchor = vnode_ptr[0].get_dyn_node_id(slot_index)
+            self.cond = ConditionalSlot(anchor)
+
+            # During flush — show a branch:
+            self.cond = ctx.flush_conditional_slot(writer, self.cond, detail_idx)
+
+            # During flush — hide (back to placeholder):
+            self.cond = ctx.flush_conditional_slot_empty(writer, self.cond)
+
+        Returns:
+            An uninitialized ConditionalSlot.
+        """
+        return ConditionalSlot()
+
+    fn flush_conditional_slot(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+        slot: ConditionalSlot,
+        new_vnode_idx: UInt32,
+    ) -> ConditionalSlot:
+        """Flush a conditional slot: show or update a branch VNode.
+
+        Handles two transitions:
+          1. **empty → branch**: Create new VNode, ReplaceWith anchor.
+          2. **branch → branch**: Diff old vs new VNode.
+
+        To hide the branch (back to placeholder), use
+        `flush_conditional_slot_empty()` instead.
+
+        Does NOT call `finalize()` — the caller must finalize the
+        mutation buffer after this returns.
+
+        Args:
+            writer_ptr: Pointer to the MutationWriter for output.
+            slot: The ConditionalSlot tracking the current state.
+            new_vnode_idx: Index of the new branch VNode in the store.
+
+        Returns:
+            Updated ConditionalSlot with new state.
+        """
+        return flush_conditional(
+            writer_ptr,
+            self.shell.eid_alloc,
+            self.shell.runtime,
+            self.shell.store,
+            slot,
+            new_vnode_idx,
+        )
+
+    fn flush_conditional_slot_empty(
+        mut self,
+        writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+        slot: ConditionalSlot,
+    ) -> ConditionalSlot:
+        """Flush a conditional slot: hide the current branch (back to placeholder).
+
+        Handles the transition:
+          - **branch → empty**: Create new anchor placeholder,
+            InsertBefore old root, remove old VNode.
+
+        If the slot is already empty, this is a no-op.
+
+        Does NOT call `finalize()` — the caller must finalize the
+        mutation buffer after this returns.
+
+        Args:
+            writer_ptr: Pointer to the MutationWriter for output.
+            slot: The ConditionalSlot tracking the current state.
+
+        Returns:
+            Updated ConditionalSlot with empty state and new anchor ID.
+        """
+        return flush_conditional_empty(
+            writer_ptr,
+            self.shell.eid_alloc,
+            self.shell.runtime,
+            self.shell.store,
+            slot,
+        )
 
     fn build_empty_fragment(self) -> UInt32:
         """Create an empty Fragment VNode in the store.
