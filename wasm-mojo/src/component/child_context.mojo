@@ -488,6 +488,37 @@ struct ChildComponentContext(Movable):
             self.runtime[0].mark_scope_dirty(UInt32(boundary_id))
         return boundary_id
 
+    # ── Suspense ─────────────────────────────────────────────────────
+
+    fn use_suspense_boundary(mut self):
+        """Mark this child scope as a suspense boundary."""
+        self.runtime[0].scopes.set_suspense_boundary(self.scope_id, True)
+
+    fn set_pending(self, pending: Bool):
+        """Set the pending (loading) state on this child scope.
+
+        Marks the nearest suspense boundary ancestor dirty.
+
+        Args:
+            pending: True to enter pending state, False to resolve.
+        """
+        self.runtime[0].scopes.set_pending(self.scope_id, pending)
+        var boundary_id = self.runtime[0].scopes.find_suspense_boundary(
+            self.scope_id
+        )
+        if boundary_id != -1:
+            self.runtime[0].mark_scope_dirty(UInt32(boundary_id))
+        elif self.runtime[0].scopes.is_suspense_boundary(self.scope_id):
+            self.runtime[0].mark_scope_dirty(self.scope_id)
+
+    fn has_pending(self) -> Bool:
+        """Check whether any descendant of this child scope is pending."""
+        return self.runtime[0].scopes.has_pending_descendant(self.scope_id)
+
+    fn is_pending(self) -> Bool:
+        """Check whether this child scope itself is pending."""
+        return self.runtime[0].scopes.is_pending(self.scope_id)
+
     # ── Destroy ──────────────────────────────────────────────────────
 
     fn destroy(self):
