@@ -1367,3 +1367,781 @@ effect system in real component lifecycles.
 | Phase 33 (Suspense) | ~880 Mojo, ~310 TS | 57 Mojo + 47 JS = 104 |
 | Phase 34 (Effects) | ~530 Mojo, ~250 TS | 34 Mojo + 38 JS = 72 |
 | **Total** | **~1,410 Mojo, ~560 TS** | **91 Mojo + 85 JS = 176 tests** |
+
+---
+
+## Phase 35 — Memo Type Expansion (MemoBool + MemoString)
+
+### P35 Problem
+
+Phase 13 added `MemoI32` — a cached derived value with automatic
+dependency tracking via reactive contexts. Phase 18 and 19 expanded
+the signal system with `SignalBool` and `SignalString`, giving all
+three value types first-class reactive signals. However:
+
+1. **Only `MemoI32` exists.** The memo system only caches `Int32`
+   derived values. There is no way to create a cached derived `Bool`
+   or `String` without the effect-signal workaround.
+
+2. **Effect-signal workaround is suboptimal.** Phase 34's
+   EffectDemoApp derives `parity: SignalString` via an effect that
+   reads `count` and writes `"even"/"odd"`. This works but is
+   heavier than a memo — effects always mark dependents dirty even if
+   the output value didn't change, while a proper memo can skip
+   notification when the recomputed value equals the cached one.
+
+3. **Type coverage gap.** Signals have three types (I32, Bool,
+   String), but memos have only one (I32). This asymmetry forces
+   developers to use effects for derived booleans and strings, mixing
+   concerns (effects are for side effects, memos are for derived
+   values).
+
+4. **No mixed-type memo chains.** A chain like
+   `SignalI32 → MemoI32 → MemoBool → MemoString` (numeric input →
+   computed value → threshold check → label) would validate that
+   memos of different output types propagate dirtiness correctly
+   through the reactive graph.
+
+5. **`ChildComponentContext` has the same gap.** It exposes
+   `use_memo(initial: Int32) -> MemoI32` but nothing for Bool or
+   String derived values.
+
+### P35 Current state
+
+Memo infrastructure exists for Int32 only:
+
+```mojo
+# Runtime — create/read/write
+fn create_memo_i32(mut self, scope_id: UInt32, initial: Int32) -> UInt32
+fn memo_begin_compute(mut self, memo_id: UInt32)       # type-agnostic
+fn memo_end_compute_i32(mut self, memo_id: UInt32, value: Int32)
+fn memo_read_i32(mut self, memo_id: UInt32) -> Int32
+fn use_memo_i32(mut self, initial: Int32) -> UInt32
+
+# MemoEntry — stores context_id + output_key (generic UInt32 keys)
+# MemoStore — slab allocator, dirty tracking, scope cleanup
+
+# ComponentContext
+fn use_memo(mut self, initial: Int32) -> MemoI32
+fn create_memo(mut self, initial: Int32) -> MemoI32
+
+# ChildComponentContext
+fn use_memo(mut self, initial: Int32) -> MemoI32
+
+# Handle
+struct MemoI32 — read(), peek(), is_dirty(), begin_compute(), end_compute(Int32)
+```
+
+String signals use a separate `StringStore` + version signal pattern:
+
+```mojo
+# Runtime — string signal
+fn create_signal_string(mut self, initial: String) -> Tuple[UInt32, UInt32]
+#   returns (string_key, version_key)
+fn read_signal_string(mut self, string_key: UInt32, version_key: UInt32) -> String
+fn write_signal_string(mut self, string_key: UInt32, version_key: UInt32, value: String)
+fn peek_signal_string(self, string_key: UInt32) -> String
+```
+
+### P35 Target pattern
+
+```mojo
+# ── MemoBool ──────────────────────────────────────────────────────
+
+struct MemoFormApp:
+    var ctx: ComponentContext
+    var input: SignalString
+    var is_valid: MemoBool          # derived: len(input) > 0
+    var status: MemoString          # derived: "✓ Valid: {input}" / "✗ Empty"
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.input = self.ctx.use_signal_string(String(""))
+        self.is_valid = self.ctx.use_memo_bool(False)
+        self.status = self.ctx.use_memo_string(String("✗ Empty"))
+        self.ctx.setup_view(
+            el_div(
+                el_h1(dsl_text(String("Form Validation"))),
+                el_input(
+                    attr("type", "text"),
+                    bind_value(self.input),
+                    oninput_set_string(self.input),
+                ),
+                el_p(dyn_text()),   # "Valid: true/false"
+                el_p(dyn_text()),   # "Status: ..."
+            ),
+            String("memo-form"),
+        )
+
+    fn run_memos(mut self):
+        """Recompute dirty memos in dependency order."""
+        # Step 1: MemoBool (depends on input signal only)
+        if self.is_valid.is_dirty():
+            self.is_valid.begin_compute()
+            var txt = self.input.read()       # re-subscribe
+            self.is_valid.end_compute(len(txt) > 0)
+        # Step 2: MemoString (depends on input + is_valid)
+        if self.status.is_dirty():
+            self.status.begin_compute()
+            var txt = self.input.read()       # re-subscribe
+            var valid = self.is_valid.read()  # re-subscribe
+            if valid:
+                self.status.end_compute(String("✓ Valid: ") + txt)
+            else:
+                self.status.end_compute(String("✗ Empty"))
+
+    fn render(mut self) -> UInt32:
+        var vb = self.ctx.render_builder()
+        vb.add_dyn_text(
+            String("Valid: ") + String(self.is_valid.peek())
+        )
+        vb.add_dyn_text(
+            String("Status: ") + String(self.status.peek())
+        )
+        return vb.build()
+
+    fn flush(mut self, writer: ...) -> Int32:
+        if not self.ctx.consume_dirty():
+            return 0
+        self.run_memos()
+        var idx = self.render()
+        return self.ctx.flush(writer, idx)
+```
+
+---
+
+### P35 Design
+
+#### MemoEntry reuse
+
+`MemoEntry` already stores `context_id: UInt32` and
+`output_key: UInt32` — these are opaque signal keys. For `MemoBool`,
+the output_key points to a `Bool` signal (`signals.create[Bool]`).
+No changes to `MemoEntry` or `MemoStore` are needed for `MemoBool`.
+
+For `MemoString`, the output is stored in `StringStore` (same pattern
+as `SignalString`), which requires two keys: `string_key` (into
+`StringStore`) and `version_key` (an `Int32` signal for change
+tracking / subscriptions). The existing `output_key` field stores
+the `version_key`, and a new `string_key` field is added to
+`MemoEntry` (default 0 for non-string memos).
+
+```mojo
+struct MemoEntry:
+    var context_id: UInt32
+    var output_key: UInt32      # Int32/Bool signal, or version signal for String
+    var string_key: UInt32      # StringStore key (0 for non-string memos)
+    var scope_id: UInt32
+    var dirty: Bool
+    var computing: Bool
+```
+
+#### Runtime surface
+
+New methods mirror the existing Int32 pattern:
+
+```mojo
+# ── MemoBool ─────────────────────────────────────────────────────
+fn create_memo_bool(mut self, scope_id: UInt32, initial: Bool) -> UInt32
+fn memo_end_compute_bool(mut self, memo_id: UInt32, value: Bool)
+fn memo_read_bool(mut self, memo_id: UInt32) -> Bool
+fn use_memo_bool(mut self, initial: Bool) -> UInt32
+
+# ── MemoString ───────────────────────────────────────────────────
+fn create_memo_string(mut self, scope_id: UInt32, initial: String) -> UInt32
+fn memo_end_compute_string(mut self, memo_id: UInt32, value: String)
+fn memo_read_string(mut self, memo_id: UInt32) -> String
+fn memo_peek_string(self, memo_id: UInt32) -> String
+fn use_memo_string(mut self, initial: String) -> UInt32
+fn destroy_memo_string(mut self, memo_id: UInt32)
+```
+
+`memo_begin_compute()` is type-agnostic — it sets the reactive
+context and clears old subscriptions regardless of the output type.
+No change needed.
+
+#### Handle types
+
+```mojo
+struct MemoBool(Copyable, Stringable):
+    var id: UInt32
+    var runtime: UnsafePointer[Runtime, MutExternalOrigin]
+
+    fn read(self) -> Bool          # with context tracking
+    fn peek(self) -> Bool          # without subscribing
+    fn is_dirty(self) -> Bool
+    fn begin_compute(self)
+    fn end_compute(self, value: Bool)
+    fn recompute_from(self, value: Bool)
+
+struct MemoString(Copyable, Stringable):
+    var id: UInt32
+    var runtime: UnsafePointer[Runtime, MutExternalOrigin]
+
+    fn read(self) -> String        # with context tracking (via version signal)
+    fn peek(self) -> String        # without subscribing
+    fn get(self) -> String         # alias for read (matches SignalString)
+    fn is_dirty(self) -> Bool
+    fn begin_compute(self)
+    fn end_compute(self, value: String)
+    fn recompute_from(self, value: String)
+    fn is_empty(self) -> Bool      # convenience: peek().is_empty()
+```
+
+#### ComponentContext surface
+
+```mojo
+# ComponentContext
+fn use_memo_bool(mut self, initial: Bool) -> MemoBool
+fn create_memo_bool(mut self, initial: Bool) -> MemoBool
+fn use_memo_string(mut self, initial: String) -> MemoString
+fn create_memo_string(mut self, initial: String) -> MemoString
+
+# ChildComponentContext
+fn use_memo_bool(mut self, initial: Bool) -> MemoBool
+fn use_memo_string(mut self, initial: String) -> MemoString
+```
+
+#### AppShell surface
+
+```mojo
+fn create_memo_bool(mut self, scope_id: UInt32, initial: Bool) -> UInt32
+fn memo_end_compute_bool(mut self, memo_id: UInt32, value: Bool)
+fn memo_read_bool(mut self, memo_id: UInt32) -> Bool
+fn use_memo_bool(mut self, initial: Bool) -> UInt32
+
+fn create_memo_string(mut self, scope_id: UInt32, initial: String) -> UInt32
+fn memo_end_compute_string(mut self, memo_id: UInt32, value: String)
+fn memo_read_string(mut self, memo_id: UInt32) -> String
+fn memo_peek_string(self, memo_id: UInt32) -> String
+fn use_memo_string(mut self, initial: String) -> UInt32
+```
+
+#### Memo recomputation order
+
+Multiple memos must be recomputed in dependency order. The standard
+pattern (already established in Phase 34's EffectMemoApp) is:
+
+```text
+fn run_memos():
+    # Recompute in dependency order (earlier memos first)
+    if memo_a.is_dirty():
+        memo_a.begin_compute()
+        ... read inputs ...
+        memo_a.end_compute(result_a)
+    if memo_b.is_dirty():
+        memo_b.begin_compute()
+        ... read inputs + memo_a.read() ...
+        memo_b.end_compute(result_b)
+```
+
+Since Mojo WASM cannot store closures, the recomputation logic lives
+in the component — the memo handle provides only lifecycle
+management. The developer is responsible for ordering recomputations
+correctly. This is the same pattern as `MemoI32`.
+
+#### MemoString lifecycle & cleanup
+
+When a memo string is destroyed (scope cleanup), the Runtime must
+destroy both the version signal (output_key) AND the StringStore
+entry (string_key). The existing `destroy_memo` path destroys
+`context_id` and `output_key` signals — the new `string_key` field
+adds one additional `strings.destroy(string_key)` call for string
+memos (only when `string_key != 0`).
+
+#### JS runtime
+
+No new JS runtime infrastructure. MemoBool and MemoString are
+entirely WASM-side — derived values flow through the normal mutation
+protocol (`SetText`, `SetAttribute`) during render/diff.
+
+---
+
+### P35 Steps
+
+#### P35.1 — MemoBool + MemoString infrastructure
+
+**Goal:** Add `MemoBool` and `MemoString` handle types, Runtime
+methods, AppShell wrappers, and ComponentContext / ChildComponentContext
+hooks. Add unit-level Mojo tests for the new types.
+
+##### Mojo changes
+
+###### `src/signals/memo.mojo` — MemoEntry extension
+
+Add `string_key: UInt32` field to `MemoEntry` (default 0). Update
+constructors, `__copyinit__`, `__moveinit__`. Add a string-aware
+constructor:
+
+```mojo
+fn __init__(
+    out self,
+    context_id: UInt32,
+    output_key: UInt32,
+    string_key: UInt32,
+    scope_id: UInt32,
+):
+    self.context_id = context_id
+    self.output_key = output_key
+    self.string_key = string_key
+    self.scope_id = scope_id
+    self.dirty = True
+    self.computing = False
+```
+
+Add `string_key()` accessor to `MemoStore`.
+
+###### `src/signals/handle.mojo` — MemoBool + MemoString structs
+
+Add `MemoBool` and `MemoString` handle structs following the same
+pattern as `MemoI32`. Both hold `id: UInt32` + non-owning
+`runtime: UnsafePointer[Runtime, MutExternalOrigin]`.
+
+`MemoBool` methods: `read() -> Bool`, `peek() -> Bool`,
+`is_dirty() -> Bool`, `begin_compute()`, `end_compute(Bool)`,
+`recompute_from(Bool)`, `__str__() -> String`.
+
+`MemoString` methods: `read() -> String`, `peek() -> String`,
+`get() -> String`, `is_dirty() -> Bool`, `begin_compute()`,
+`end_compute(String)`, `recompute_from(String)`,
+`is_empty() -> Bool`, `__str__() -> String`.
+
+###### `src/signals/runtime.mojo` — Runtime methods
+
+Add:
+
+- `create_memo_bool(scope_id, initial) -> UInt32` — creates context
+  signal + `Bool` output signal, stores in MemoStore.
+- `memo_end_compute_bool(memo_id, value)` — writes `Bool` to output
+  signal, clears dirty, restores context.
+- `memo_read_bool(memo_id) -> Bool` — reads output signal with
+  context tracking.
+- `use_memo_bool(initial) -> UInt32` — hook version (first render
+  creates, re-render retrieves).
+- `create_memo_string(scope_id, initial) -> UInt32` — creates context
+  signal + StringStore entry + version signal, stores in MemoStore
+  with `string_key`.
+- `memo_end_compute_string(memo_id, value)` — writes to StringStore,
+  bumps version signal, clears dirty, restores context.
+- `memo_read_string(memo_id) -> String` — reads StringStore, subscribes
+  via version signal.
+- `memo_peek_string(memo_id) -> String` — reads StringStore without
+  subscribing.
+- `use_memo_string(initial) -> UInt32` — hook version.
+- Update `destroy_memo()` to also destroy `string_key` when non-zero.
+
+###### `src/component/app_shell.mojo` — AppShell wrappers
+
+Add forwarding methods for all new Runtime methods (same pattern as
+existing `memo_end_compute_i32` / `memo_read_i32` wrappers).
+
+###### `src/component/context.mojo` — ComponentContext hooks
+
+Add `use_memo_bool(Bool) -> MemoBool`,
+`create_memo_bool(Bool) -> MemoBool`,
+`use_memo_string(String) -> MemoString`,
+`create_memo_string(String) -> MemoString`.
+
+###### `src/component/child_context.mojo` — ChildComponentContext hooks
+
+Add `use_memo_bool(Bool) -> MemoBool`,
+`use_memo_string(String) -> MemoString`.
+
+###### `src/signals/__init__.mojo` — Exports
+
+Export `MemoBool`, `MemoString` from the signals package.
+
+##### WASM exports (in `src/main.mojo`)
+
+Test-support exports for direct memo manipulation from JS/wasmtime:
+
+```mojo
+@export fn memo_bool_create(rt_ptr: Int64, scope_id: Int32, initial: Int32) -> Int32
+@export fn memo_bool_begin_compute(rt_ptr: Int64, memo_id: Int32)
+@export fn memo_bool_end_compute(rt_ptr: Int64, memo_id: Int32, value: Int32)
+@export fn memo_bool_read(rt_ptr: Int64, memo_id: Int32) -> Int32
+@export fn memo_bool_is_dirty(rt_ptr: Int64, memo_id: Int32) -> Int32
+
+@export fn memo_string_create(rt_ptr: Int64, scope_id: Int32) -> Int32
+@export fn memo_string_begin_compute(rt_ptr: Int64, memo_id: Int32)
+@export fn memo_string_end_compute(rt_ptr: Int64, memo_id: Int32, buf_ptr: Int64, len: Int32)
+@export fn memo_string_read(rt_ptr: Int64, memo_id: Int32, buf_ptr: Int64, cap: Int32) -> Int32
+@export fn memo_string_peek(rt_ptr: Int64, memo_id: Int32, buf_ptr: Int64, cap: Int32) -> Int32
+@export fn memo_string_is_dirty(rt_ptr: Int64, memo_id: Int32) -> Int32
+```
+
+##### Test: `test/test_memo_bool.mojo` (~14 tests)
+
+1. `mb_create_returns_valid_id` — memo ID is valid
+2. `mb_starts_dirty` — initial dirty flag True
+3. `mb_initial_value` — peek returns initial value
+4. `mb_compute_stores_value` — begin/end compute stores True
+5. `mb_compute_clears_dirty` — dirty cleared after compute
+6. `mb_signal_write_marks_dirty` — writing subscribed signal dirties memo
+7. `mb_read_subscribes_context` — reading in context subscribes
+8. `mb_recompute_from_convenience` — single-call recompute
+9. `mb_peek_does_not_subscribe` — peek has no side effects
+10. `mb_destroy_cleans_up` — memo count decremented
+11. `mb_scope_cleanup_destroys_memo` — scope destroy removes memo
+12. `mb_multiple_memos_independent` — two memos don't interfere
+13. `mb_dirty_propagates_through_chain` — signal → memo_bool chain
+14. `mb_str_conversion` — **str** returns "True"/"False"
+
+##### Test: `test/test_memo_string.mojo` (~16 tests)
+
+1. `ms_create_returns_valid_id` — memo ID is valid
+2. `ms_starts_dirty` — initial dirty flag True
+3. `ms_initial_value` — peek returns initial string
+4. `ms_compute_stores_value` — begin/end compute stores string
+5. `ms_compute_clears_dirty` — dirty cleared after compute
+6. `ms_signal_write_marks_dirty` — writing subscribed signal dirties memo
+7. `ms_read_subscribes_context` — reading in context subscribes via version
+8. `ms_recompute_from_convenience` — single-call recompute
+9. `ms_peek_does_not_subscribe` — peek has no side effects
+10. `ms_is_empty_when_empty` — is_empty returns True for ""
+11. `ms_is_empty_when_not_empty` — is_empty returns False for "hello"
+12. `ms_destroy_cleans_up` — memo count decremented, string freed
+13. `ms_scope_cleanup_destroys_memo` — scope destroy removes memo + string
+14. `ms_multiple_memos_independent` — two string memos don't interfere
+15. `ms_dirty_propagates_through_chain` — signal → memo_string chain
+16. `ms_str_conversion` — **str** returns the cached string
+
+---
+
+#### P35.2 — MemoFormApp (MemoBool + MemoString in a form)
+
+**Goal:** A working app with a string input, a `MemoBool` derived
+value (validation), and a `MemoString` derived value (status label) —
+demonstrating memo type expansion in a practical form-validation
+scenario.
+
+##### App structure: MemoForm
+
+```text
+MemoFormApp (root scope)
+├── h1 "Form Validation"
+├── input  (type="text", bind_value + oninput_set_string → input signal)
+├── p > dyn_text("Valid: true/false")         ← MemoBool output
+├── p > dyn_text("Status: ✓ Valid: .../✗ Empty")  ← MemoString output
+```
+
+**Lifecycle:**
+
+1. **Init:** Create `input` (SignalString, ""), `is_valid` (MemoBool,
+   False), `status` (MemoString, "✗ Empty"). Both memos start dirty.
+2. **Rebuild:** `run_memos()` → is_valid recomputes (reads input →
+   len("") == 0 → False), status recomputes (reads input + is_valid →
+   "✗ Empty") → render → mount.
+3. **Type "hi":** input signal = "hi" → scope dirty + both memos
+   dirty. Flush → is_valid recomputes (True), status recomputes
+   ("✓ Valid: hi") → render → diff → SetText.
+4. **Clear input:** input = "" → is_valid = False, status = "✗ Empty".
+
+**WASM exports (~17):**
+
+```mojo
+@export fn mf_init() -> Int64
+@export fn mf_destroy(app_ptr: Int64)
+@export fn mf_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32
+@export fn mf_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32
+@export fn mf_handle_event_string(app_ptr: Int64, hid: Int32, evt: Int32, buf_ptr: Int64, len: Int32) -> Int32
+@export fn mf_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32
+@export fn mf_input_text(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32
+@export fn mf_is_valid(app_ptr: Int64) -> Int32
+@export fn mf_status_text(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32
+@export fn mf_is_valid_dirty(app_ptr: Int64) -> Int32
+@export fn mf_status_dirty(app_ptr: Int64) -> Int32
+@export fn mf_set_input(app_ptr: Int64, buf_ptr: Int64, len: Int32)
+@export fn mf_input_handler(app_ptr: Int64) -> Int32
+@export fn mf_has_dirty(app_ptr: Int64) -> Int32
+@export fn mf_scope_count(app_ptr: Int64) -> Int32
+@export fn mf_memo_count(app_ptr: Int64) -> Int32
+```
+
+`mf_set_input` is a test helper that writes a string directly to the
+input signal (simulates user typing without going through the event
+system).
+
+##### TypeScript handle
+
+```typescript
+interface MemoFormAppHandle extends AppHandle {
+  getInput(): string;
+  isValid(): boolean;
+  getStatus(): string;
+  isValidDirty(): boolean;
+  isStatusDirty(): boolean;
+  setInput(value: string): void;
+  hasDirty(): boolean;
+  getMemoCount(): number;
+}
+```
+
+##### Test: `test/test_memo_form.mojo` (~18 tests)
+
+1. `mf_init_creates_app` — pointer valid
+2. `mf_input_starts_empty` — initial input ""
+3. `mf_is_valid_starts_false` — initial validation False
+4. `mf_status_starts_empty_marker` — initial status "✗ Empty"
+5. `mf_memos_start_dirty` — both memos dirty before first flush
+6. `mf_rebuild_settles_memos` — after rebuild, both clean
+7. `mf_rebuild_is_valid_false` — is_valid = False after rebuild
+8. `mf_rebuild_status_empty` — status = "✗ Empty" after rebuild
+9. `mf_set_input_marks_dirty` — setting input dirties both memos
+10. `mf_flush_after_set_input_valid` — is_valid = True for "hello"
+11. `mf_flush_after_set_input_status` — status = "✓ Valid: hello"
+12. `mf_clear_input_reverts` — setting "" → is_valid=False, status="✗ Empty"
+13. `mf_memo_recomputation_order` — is_valid recomputed before status
+14. `mf_multiple_inputs_correct` — "a" → "ab" → "abc" all correct
+15. `mf_flush_returns_0_when_clean` — no mutations when clean
+16. `mf_memo_count_is_2` — two live memos
+17. `mf_destroy_does_not_crash` — clean shutdown
+18. `mf_scope_count_is_1` — single root scope
+
+##### Test: `test-js/memo_form.test.ts` (~20 suites)
+
+1. `mf_init state validation` — input="", valid=false, status="✗ Empty"
+2. `mf_rebuild produces mutations` — templates, text nodes
+3. `mf_DOM structure initial` — h1 + input + 2 paragraphs
+4. `mf_DOM text initial` — "Valid: false", "Status: ✗ Empty"
+5. `mf_setInput and flush` — "hi" → "Valid: true", "Status: ✓ Valid: hi"
+6. `mf_clear input reverts DOM` — "" → "Valid: false", "Status: ✗ Empty"
+7. `mf_multiple inputs` — "a" → "ab" → "abc", all DOM texts correct
+8. `mf_memos dirty after setInput` — dirty before flush
+9. `mf_memos clean after flush` — clean after flush
+10. `mf_flush returns 0 when clean` — no mutations
+11. `mf_derived state consistent` — valid iff input non-empty
+12. `mf_status matches validation` — "✓" when valid, "✗" when invalid
+13. `mf_destroy does not crash` — clean shutdown
+14. `mf_double destroy safe` — no crash
+15. `mf_multiple independent instances` — isolated
+16. `mf_rapid 20 inputs` — all correct
+17. `mf_heapStats bounded across inputs` — memory stable
+18. `mf_DOM updates minimal` — only changed text nodes get SetText
+19. `mf_input element has value attribute` — bind_value works
+20. `mf_memo count is 2` — two live memos
+
+Register in `test-js/run.ts`.
+
+---
+
+#### P35.3 — MemoChainApp (mixed-type memo chain)
+
+**Goal:** Demonstrate a multi-level mixed-type memo chain:
+`SignalI32 → MemoI32 → MemoBool → MemoString`, validating that
+dirtiness propagates correctly across memo types and that
+recomputation order is deterministic.
+
+##### App structure: MemoChain
+
+```text
+MemoChainApp (root scope)
+├── h1 "Memo Chain"
+├── button "+ 1"  (onclick_add input)
+├── p > dyn_text("Input: N")
+├── p > dyn_text("Doubled: N")          ← MemoI32 (input * 2)
+├── p > dyn_text("Is Big: true/false")  ← MemoBool (doubled >= 10)
+├── p > dyn_text("Label: small/BIG")    ← MemoString (is_big ? "BIG" : "small")
+```
+
+**Lifecycle:**
+
+1. **Init:** `input` signal (0), `doubled` MemoI32 (0), `is_big`
+   MemoBool (False), `label` MemoString ("small"). All memos start
+   dirty.
+2. **Rebuild:** Recompute chain: doubled=0 → is_big=False →
+   label="small" → render → mount.
+3. **Increment to 5:** input=5 → doubled=10 → is_big=True →
+   label="BIG" → diff → SetText for all four texts.
+4. **Increment to 6:** input=6 → doubled=12 → is_big=True (no
+   change) → label="BIG" (no change) → diff → SetText only for
+   Input and Doubled texts.
+
+Step 4 validates that MemoBool can detect "no change" when the
+recomputed value equals the cached value. Whether the framework
+currently optimizes this is documented — even without the
+optimization, the chain must produce correct final values.
+
+**WASM exports (~18):**
+
+```mojo
+@export fn mc_init() -> Int64
+@export fn mc_destroy(app_ptr: Int64)
+@export fn mc_rebuild(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32
+@export fn mc_handle_event(app_ptr: Int64, hid: Int32, evt: Int32) -> Int32
+@export fn mc_flush(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32
+@export fn mc_input_value(app_ptr: Int64) -> Int32
+@export fn mc_doubled_value(app_ptr: Int64) -> Int32
+@export fn mc_is_big(app_ptr: Int64) -> Int32
+@export fn mc_label_text(app_ptr: Int64, buf_ptr: Int64, cap: Int32) -> Int32
+@export fn mc_doubled_dirty(app_ptr: Int64) -> Int32
+@export fn mc_is_big_dirty(app_ptr: Int64) -> Int32
+@export fn mc_label_dirty(app_ptr: Int64) -> Int32
+@export fn mc_incr_handler(app_ptr: Int64) -> Int32
+@export fn mc_has_dirty(app_ptr: Int64) -> Int32
+@export fn mc_scope_count(app_ptr: Int64) -> Int32
+@export fn mc_memo_count(app_ptr: Int64) -> Int32
+```
+
+##### TypeScript handle
+
+```typescript
+interface MemoChainAppHandle extends AppHandle {
+  getInput(): number;
+  getDoubled(): number;
+  isBig(): boolean;
+  getLabel(): string;
+  isDoubledDirty(): boolean;
+  isBigDirty(): boolean;
+  isLabelDirty(): boolean;
+  increment(): void;
+  hasDirty(): boolean;
+  getMemoCount(): number;
+}
+```
+
+##### Test: `test/test_memo_chain.mojo` (~20 tests)
+
+1. `mc_init_creates_app` — pointer valid
+2. `mc_input_starts_at_0` — initial input
+3. `mc_doubled_starts_at_0` — initial doubled
+4. `mc_is_big_starts_false` — initial is_big
+5. `mc_label_starts_small` — initial label "small"
+6. `mc_all_memos_start_dirty` — all three dirty
+7. `mc_rebuild_settles_all` — all three clean after rebuild
+8. `mc_rebuild_values_correct` — doubled=0, is_big=false, label="small"
+9. `mc_increment_to_1` — doubled=2, is_big=false, label="small"
+10. `mc_increment_to_4` — doubled=8, is_big=false, label="small"
+11. `mc_increment_to_5_crosses_threshold` — doubled=10, is_big=true, label="BIG"
+12. `mc_increment_to_6_stays_big` — doubled=12, is_big=true, label="BIG"
+13. `mc_chain_propagation_order` — doubled recomputed before is_big before label
+14. `mc_10_increments_all_correct` — cumulative validation
+15. `mc_flush_returns_0_when_clean` — no mutations when clean
+16. `mc_memo_count_is_3` — three live memos
+17. `mc_scope_count_is_1` — single root scope
+18. `mc_destroy_does_not_crash` — clean shutdown
+19. `mc_rapid_20_increments` — 20 increments, all correct
+20. `mc_threshold_boundary_exact` — input=5 (doubled=10) is the exact boundary
+
+##### Test: `test-js/memo_chain.test.ts` (~22 suites)
+
+1. `mc_init state validation` — input=0, doubled=0, is_big=false, label="small"
+2. `mc_rebuild produces mutations` — templates, text nodes
+3. `mc_DOM structure initial` — h1 + button + 4 paragraphs
+4. `mc_DOM text initial` — all four texts correct
+5. `mc_increment and flush` — input=1, doubled=2, is_big=false, label="small"
+6. `mc_5 increments crosses threshold` — all four texts updated
+7. `mc_6 increments stays big` — doubled=12, is_big=true, label="BIG"
+8. `mc_10 increments` — all correct
+9. `mc_all memos dirty after increment` — dirty before flush
+10. `mc_all memos clean after flush` — clean after flush
+11. `mc_flush returns 0 when clean` — no mutations
+12. `mc_chain produces correct derived state` — for each increment
+13. `mc_threshold boundary exact` — input=5 → is_big flips to true
+14. `mc_threshold stable above` — input 6,7,8 all is_big=true
+15. `mc_destroy does not crash` — clean shutdown
+16. `mc_double destroy safe` — no crash
+17. `mc_multiple independent instances` — isolated
+18. `mc_rapid 20 increments` — all correct
+19. `mc_heapStats bounded across increments` — memory stable
+20. `mc_DOM updates minimal` — SetText only for changed values
+21. `mc_memo count is 3` — three live memos
+22. `mc_rebuild + immediate flush` — all memos settle on first flush
+
+Register in `test-js/run.ts`.
+
+---
+
+#### P35.4 — Documentation & AGENTS.md update
+
+##### Changes
+
+**AGENTS.md:**
+
+- **Key Abstractions → Signals & Reactivity:** Add `MemoBool` and
+  `MemoString` to the memo handle list.
+- **App Architectures:** Add `MemoFormApp` and `MemoChainApp` entries
+  with structure diagrams, field lists, lifecycle summaries, and
+  WASM export lists.
+- **Common Patterns:** Add "Memo type expansion pattern" documenting
+  the recomputation order for mixed-type memo chains, and the
+  `MemoString` lifecycle (StringStore + version signal).
+- **Deferred Abstractions:** Note that `MemoBool` and `MemoString`
+  partially address the "Generic `Signal[T]`" gap — three memo types
+  now match three signal types, reducing the urgency for
+  parametric `Memo[T]`.
+- **File Size Reference:** Update file sizes for changed files.
+
+**CHANGELOG.md:**
+
+- Add Phase 35 entry summarizing P35.1 (infra), P35.2 (MemoFormApp),
+  P35.3 (MemoChainApp), P35.4 (docs). Include test count delta.
+
+**README.md:**
+
+- Update features list to mention MemoBool + MemoString.
+- Update test count.
+- Add memo chain code example in the Ergonomic API section.
+
+---
+
+### P35 Dependency graph
+
+```text
+P35.1 (MemoBool + MemoString infra)
+    │
+    ├──────────┐
+    ▼          ▼
+P35.2       P35.3
+(MemoForm)  (MemoChain)
+    │          │
+    └────┬─────┘
+         ▼
+    P35.4 (Docs)
+```
+
+P35.1 is the foundation — both apps depend on it. P35.2 and P35.3
+are independent and can be built in parallel. P35.4 depends on both
+apps being complete.
+
+### P35 Estimated size
+
+| Step | ~New Mojo Lines | ~New TS Lines | Tests |
+|------|----------------|---------------|-------|
+| P35.1 (infra + unit tests) | ~450 | ~60 | 30 Mojo |
+| P35.2 (MemoFormApp) | ~280 | ~180 | 18 Mojo + 20 JS = 38 |
+| P35.3 (MemoChainApp) | ~300 | ~200 | 20 Mojo + 22 JS = 42 |
+| P35.4 (docs) | ~80 | ~0 | 0 |
+| **Total** | **~1,110** | **~440** | **68 Mojo + 42 JS = 110 tests** |
+
+---
+
+## Combined dependency graph (Phase 33 + 34 + 35)
+
+```text
+P33.1 (Suspense surface)     P34.1 (EffectDemo)     P35.1 (Memo infra)
+    │                             │                       │
+    ├──────────┐                  ▼                  ├──────────┐
+    ▼          ▼             P34.2 (EffectMemo)      ▼          ▼
+P33.2       P33.3                 │              P35.2       P35.3
+(DataLoader) (SuspenseNest)       ▼              (MemoForm)  (MemoChain)
+    │          │             P34.3 (Effect docs)     │          │
+    └────┬─────┘                                     └────┬─────┘
+         ▼                                                ▼
+    P33.4 (Suspense docs)                           P35.4 (Memo docs)
+```
+
+Phase 35 is independent of Phases 33 and 34 — it extends the memo
+system, not the effect or suspense systems. However, Phase 35
+subsumes Phase 34's workaround pattern: apps that previously used
+effects to derive Bool/String values can now use MemoBool/MemoString
+instead.
+
+## Combined estimated size (Phase 33 + 34 + 35)
+
+| Phase | ~New Lines | Tests |
+|-------|-----------|-------|
+| Phase 33 (Suspense) | ~880 Mojo, ~310 TS | 57 Mojo + 47 JS = 104 |
+| Phase 34 (Effects) | ~530 Mojo, ~250 TS | 34 Mojo + 38 JS = 72 |
+| Phase 35 (Memo Expansion) | ~1,110 Mojo, ~440 TS | 68 Mojo + 42 JS = 110 |
+| **Total** | **~2,520 Mojo, ~1,000 TS** | **159 Mojo + 127 JS = 286 tests** |
