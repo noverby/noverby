@@ -2,6 +2,22 @@
 
 All notable changes to wasm-mojo are documented here, organized by development phase.
 
+## Phase 33 — Suspense
+
+Wired the existing scope-level suspense infrastructure (Phase 8.4) into the component layer — `ComponentContext` and `ChildComponentContext` now have ergonomic suspense methods. Demonstrated with two apps: DataLoaderApp (single boundary with load/resolve lifecycle) and SuspenseNestApp (nested boundaries with independent inner/outer pending states).
+
+- **P33.1** — ComponentContext suspense surface. Added `use_suspense_boundary()`, `set_pending()`, `has_pending()`, `is_pending()` to `ComponentContext`. Added `use_suspense_boundary()`, `set_pending()`, `has_pending()`, `is_pending()` to `ChildComponentContext`. Pending state marks the boundary scope dirty for the next flush cycle; flush checks `is_pending()` to switch between content and skeleton children.
+
+- **P33.2** — DataLoaderApp demo. Suspense boundary with "Load" button, content child (`DLContentChild`: displays "Data: ..."), and skeleton child (`DLSkeletonChild`: displays "Loading..."). Load button sets pending → next flush hides content, shows skeleton. JS calls `dl_resolve(data)` → stores data, clears pending → next flush shows content with loaded data. WASM exports: `dl_init`, `dl_destroy`, `dl_rebuild`, `dl_handle_event`, `dl_flush`, `dl_resolve`, `dl_is_pending`, `dl_data_text`, `dl_load_handler`, plus child mount/scope query helpers. 20 Mojo tests + 22 JS test suites.
+
+- **P33.3** — SuspenseNestApp demo. Nested suspense boundaries: outer boundary on root, inner boundary on a content child component. Inner load shows inner skeleton (outer content unaffected). Outer load shows outer skeleton (hides entire inner tree including inner boundary). Outer resolve reveals inner boundary (may still be pending from earlier inner load). Inner resolve shows inner content. Both boundaries operate independently. Mixed load/resolve sequences validated — outer resolve reveals persisted inner pending state. WASM exports: `sn_init`, `sn_destroy`, `sn_rebuild`, `sn_handle_event`, `sn_flush`, `sn_outer_resolve`, `sn_inner_resolve`, `sn_is_outer_pending`, `sn_is_inner_pending`, `sn_outer_data`, `sn_inner_data`, `sn_outer_load_handler`, `sn_inner_load_handler`, plus child mount/scope query helpers (~25 total). 22 Mojo tests + 25 JS test suites.
+
+- **P33.4** — Documentation update. AGENTS.md updated with suspense API methods on ComponentContext and ChildComponentContext, DataLoaderApp and SuspenseNestApp app architectures, suspense flush pattern in Common Patterns, and updated file sizes. Deferred Abstractions updated to note that suspense (simulated) is now implemented. CHANGELOG.md and README.md updated with Phase 33 summary, test counts, and suspense code example.
+
+**Test count after P33.4:** 1,122 Mojo (40 modules) + 2,518 JS (24 suites) = 3,640 tests.
+
+---
+
 ## Phase 32 — Error Boundaries
 
 Wired the existing scope-level error boundary infrastructure (Phase 8.4) into the component layer — `ComponentContext` and `ChildComponentContext` now have ergonomic error boundary methods. Demonstrated with two apps: SafeCounterApp (single boundary with crash/retry) and ErrorNestApp (nested boundaries with independent error/recovery).
