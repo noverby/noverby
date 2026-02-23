@@ -154,30 +154,30 @@ fn _eq_destroy(
 
 
 fn _eq_rebuild(
-    app: UnsafePointer[EqualityDemoApp, MutExternalOrigin],
+    mut app: EqualityDemoApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the equality-demo app."""
     # Run initial memo recomputation
-    app[0].run_memos()
+    app.run_memos()
     # Render with settled state
-    var vnode_idx = app[0].render()
-    var result = app[0].ctx.mount(writer_ptr, vnode_idx)
+    var vnode_idx = app.render()
+    var result = app.ctx.mount(writer_ptr, vnode_idx)
     # Consume dirty scopes left over from memo signal writes
-    _ = app[0].ctx.consume_dirty()
+    _ = app.ctx.consume_dirty()
     return result
 
 
 fn _eq_handle_event(
-    app: UnsafePointer[EqualityDemoApp, MutExternalOrigin],
+    mut app: EqualityDemoApp,
     handler_id: UInt32,
     event_type: UInt8,
 ) -> Bool:
-    return app[0].ctx.dispatch_event(handler_id, event_type)
+    return app.ctx.dispatch_event(handler_id, event_type)
 
 
 fn _eq_flush(
-    app: UnsafePointer[EqualityDemoApp, MutExternalOrigin],
+    mut app: EqualityDemoApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates with equality-gated memo chain.
@@ -193,18 +193,18 @@ fn _eq_flush(
     because consume_dirty() drains dirty_scopes.  If settle removes
     all scopes, has_dirty() returns False and we skip render entirely.
     """
-    if not app[0].ctx.has_dirty():
+    if not app.ctx.has_dirty():
         return 0
     # Recompute memo chain (while scopes are still in dirty_scopes)
-    app[0].run_memos()
+    app.run_memos()
     # Phase 37: filter dirty_scopes — remove scopes with no actual changes
-    app[0].ctx.settle_scopes()
+    app.ctx.settle_scopes()
     # If all scopes were settled, skip render entirely
-    if not app[0].ctx.has_dirty():
+    if not app.ctx.has_dirty():
         return 0
     # Consume remaining dirty scopes via scheduler
-    _ = app[0].ctx.consume_dirty()
+    _ = app.ctx.consume_dirty()
     # Render with settled state
-    var new_idx = app[0].render()
-    app[0].ctx.diff(writer_ptr, new_idx)
-    return app[0].ctx.finalize(writer_ptr)
+    var new_idx = app.render()
+    app.ctx.diff(writer_ptr, new_idx)
+    return app.ctx.finalize(writer_ptr)

@@ -136,7 +136,7 @@ fn _mf_destroy(
 
 
 fn _mf_rebuild(
-    app: UnsafePointer[MemoFormApp, MutExternalOrigin],
+    mut app: MemoFormApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the memo-form app.
@@ -144,34 +144,34 @@ fn _mf_rebuild(
     Recomputes memos to settle derived state, then renders and mounts.
     """
     # Run initial memo recomputation
-    app[0].run_memos()
+    app.run_memos()
     # Render with settled state
-    var vnode_idx = app[0].render()
-    var result = app[0].ctx.mount(writer_ptr, vnode_idx)
+    var vnode_idx = app.render()
+    var result = app.ctx.mount(writer_ptr, vnode_idx)
     # Consume dirty scopes left over from memo signal writes
-    _ = app[0].ctx.consume_dirty()
+    _ = app.ctx.consume_dirty()
     return result
 
 
 fn _mf_handle_event(
-    app: UnsafePointer[MemoFormApp, MutExternalOrigin],
+    mut app: MemoFormApp,
     handler_id: UInt32,
     event_type: UInt8,
 ) -> Bool:
-    return app[0].ctx.dispatch_event(handler_id, event_type)
+    return app.ctx.dispatch_event(handler_id, event_type)
 
 
 fn _mf_handle_event_string(
-    app: UnsafePointer[MemoFormApp, MutExternalOrigin],
+    mut app: MemoFormApp,
     handler_id: UInt32,
     event_type: UInt8,
     value: String,
 ) -> Bool:
-    return app[0].ctx.dispatch_event_with_string(handler_id, event_type, value)
+    return app.ctx.dispatch_event_with_string(handler_id, event_type, value)
 
 
 fn _mf_flush(
-    app: UnsafePointer[MemoFormApp, MutExternalOrigin],
+    mut app: MemoFormApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates with memo recomputation.
@@ -182,16 +182,16 @@ fn _mf_flush(
     4. consume_dirty() — drain remaining dirty scopes via scheduler
     5. render() + diff + finalize — emit mutations
     """
-    if not app[0].ctx.has_dirty():
+    if not app.ctx.has_dirty():
         return 0
     # Recompute memos (while scopes are still in dirty_scopes)
-    app[0].run_memos()
+    app.run_memos()
     # Phase 37: filter dirty_scopes before consuming
-    app[0].ctx.settle_scopes()
-    if not app[0].ctx.has_dirty():
+    app.ctx.settle_scopes()
+    if not app.ctx.has_dirty():
         return 0
-    _ = app[0].ctx.consume_dirty()
+    _ = app.ctx.consume_dirty()
     # Render with settled state
-    var new_idx = app[0].render()
-    app[0].ctx.diff(writer_ptr, new_idx)
-    return app[0].ctx.finalize(writer_ptr)
+    var new_idx = app.render()
+    app.ctx.diff(writer_ptr, new_idx)
+    return app.ctx.finalize(writer_ptr)

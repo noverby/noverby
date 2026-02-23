@@ -565,17 +565,27 @@ All app logic lives in dedicated modules (`src/apps/*.mojo` or `examples/*/*.moj
 ```txt
 # In src/apps/batch_demo.mojo:
 fn _bd_init() -> UnsafePointer[BatchDemoApp, MutExternalOrigin]: ...
+fn _bd_flush(mut app: BatchDemoApp, writer_ptr: ...) -> Int32: ...
 
 # In src/main.mojo:
 from apps.batch_demo import BatchDemoApp, _bd_init, ...
 
 @export fn bd_init() -> Int64:  return _to_i64(_bd_init())
-@export fn bd_flush(...) -> Int32:  ...alloc writer...forward...free writer
+@export fn bd_flush(...) -> Int32:  ...alloc writer..._bd_flush(_get[...](ptr)[0], writer)...free writer
 @export fn bd_full_name_text(app_ptr: Int64) -> String:
     return _get[BatchDemoApp](app_ptr)[0].full_name.peek()
 ```
 
 Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int32`, `_alloc_writer()`, `_free_writer()`.
+
+**Safe reference pattern (Phase 41):** `UnsafePointer` is confined to two places:
+
+1. **`_init` / `_destroy`** — heap allocation/deallocation (inherently pointer-based).
+2. **`main.mojo` @export wrappers** — the `Int64` → pointer → reference conversion at the WASM ABI boundary.
+
+All lifecycle functions (`_xx_rebuild`, `_xx_flush`, `_xx_handle_event`, `_xx_resolve`) take `mut app: App` (safe mutable reference) instead of `UnsafePointer[App]`. The `_get[App](ptr)[0]` dereference at the call site in `main.mojo` converts the pointer to a mutable reference. Inside the lifecycle function, the borrow checker tracks `app` as a normal mutable reference — no `app[0].` dereferences needed.
+
+**Note:** `MutationWriter` stays as `UnsafePointer` because `ComponentContext.mount()`, `.diff()`, `.finalize()` and the `CreateEngine`/`DiffEngine` structs store `UnsafePointer[MutationWriter]` as struct fields. Changing this requires lifetime-parameterized structs, which Mojo does not yet support.
 
 `main.mojo` is organized into three sections:
 
@@ -962,6 +972,7 @@ fn set_names(mut self, first: String, last: String):
 
 ## Deferred Abstractions (Blocked on Mojo Roadmap)
 
+- **`UnsafePointer[MutationWriter]` in component infrastructure** → blocked on Lifetime-parameterized structs. `ComponentContext.mount()`, `.diff()`, `.finalize()` and the `CreateEngine`/`DiffEngine` structs all store `UnsafePointer[MutationWriter]` as struct fields because Mojo does not yet support borrowing a reference into a struct field with a lifetime parameter. Once Mojo gains `struct Foo[lt: Lifetime] { ref [lt] writer: MutationWriter }`, this can be refactored to pass `MutationWriter` by safe reference throughout the component infrastructure.
 - **Closure event handlers** → blocked on Lambda syntax + Closure refinement (Phase 1, 🚧). Would eliminate `ItemBuilder.add_custom_event()` + `get_action()`. Phase 20 string dispatch + inline DSL helpers (`oninput_set_string`, `bind_value`) address this for input events. **0.26.1 progress:** Function type conversions improved (non-raising → raising, ref → value), but true closures/function pointers in WASM still missing.
 - **`rsx!` macro** → blocked on Hygienic importable macros (Phase 2, ⏰). Would enable compile-time DSL like Dioxus. **0.26.1 progress:** None.
 - **`for` loops in views** → blocked on macros (Phase 2, ⏰). Currently iteration happens in build functions. **0.26.1 progress:** None.

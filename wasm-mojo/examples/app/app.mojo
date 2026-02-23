@@ -344,7 +344,7 @@ fn multi_view_app_destroy(
 
 
 fn multi_view_app_rebuild(
-    app: UnsafePointer[MultiViewApp, MutExternalOrigin],
+    mut app: MultiViewApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the multi-view app.
@@ -362,18 +362,18 @@ fn multi_view_app_rebuild(
     Returns the byte offset (length) of the mutation data written.
     """
     # 1. Render the app shell VNode
-    var vnode_idx = app[0].render()
-    app[0].ctx.current_vnode = Int(vnode_idx)
+    var vnode_idx = app.render()
+    app.ctx.current_vnode = Int(vnode_idx)
 
     # 2. Emit templates (without finalize)
-    app[0].ctx.shell.emit_templates(writer_ptr)
+    app.ctx.shell.emit_templates(writer_ptr)
 
     # 3. Create the app shell VNode in the DOM (without finalize)
     var engine = CreateEngine(
         writer_ptr,
-        app[0].ctx.shell.eid_alloc,
-        app[0].ctx.shell.runtime,
-        app[0].ctx.shell.store,
+        app.ctx.shell.eid_alloc,
+        app.ctx.shell.runtime,
+        app.ctx.shell.store,
     )
     var num_roots = engine.create_node(vnode_idx)
     writer_ptr[0].append_children(0, num_roots)
@@ -381,18 +381,18 @@ fn multi_view_app_rebuild(
     # 4. Extract the anchor ElementId for the router's ConditionalSlot
     #    dyn_node[0] is the routed content placeholder
     var anchor_id: UInt32 = 0
-    var app_vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(vnode_idx)
+    var app_vnode_ptr = app.ctx.store_ptr()[0].get_ptr(vnode_idx)
     if app_vnode_ptr[0].dyn_node_id_count() > 0:
         anchor_id = app_vnode_ptr[0].get_dyn_node_id(0)
-    app[0].router.init_slot(anchor_id)
+    app.router.init_slot(anchor_id)
 
     # 5. Build and flush the initial route's view (still before finalize)
-    var view_idx = app[0].build_view_for_branch()
-    app[0].router.slot = app[0].ctx.flush_conditional_slot(
-        writer_ptr, app[0].router.slot, view_idx
+    var view_idx = app.build_view_for_branch()
+    app.router.slot = app.ctx.flush_conditional_slot(
+        writer_ptr, app.router.slot, view_idx
     )
     # Consume the dirty flag from initial navigate
-    _ = app[0].router.consume_dirty()
+    _ = app.router.consume_dirty()
 
     # 6. Finalize — one End sentinel for the entire mount + initial view
     writer_ptr[0].finalize()
@@ -400,7 +400,7 @@ fn multi_view_app_rebuild(
 
 
 fn multi_view_app_handle_event(
-    app: UnsafePointer[MultiViewApp, MutExternalOrigin],
+    mut app: MultiViewApp,
     handler_id: UInt32,
     event_type: UInt8,
 ) -> Bool:
@@ -413,14 +413,14 @@ fn multi_view_app_handle_event(
     Returns True if an action was executed.
     """
     # Try app-level routing first (nav clicks, todo add)
-    if app[0].handle_event(handler_id):
+    if app.handle_event(handler_id):
         return True
     # Fall back to signal-based handlers (counter +1/-1)
-    return app[0].ctx.dispatch_event(handler_id, event_type)
+    return app.ctx.dispatch_event(handler_id, event_type)
 
 
 fn multi_view_app_flush(
-    app: UnsafePointer[MultiViewApp, MutExternalOrigin],
+    mut app: MultiViewApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates after event dispatch.
@@ -432,36 +432,36 @@ fn multi_view_app_flush(
     Returns the byte offset (length) of the mutation data written,
     or 0 if there was nothing to update.
     """
-    var route_changed = app[0].router.consume_dirty()
-    var scope_dirty = app[0].ctx.consume_dirty()
+    var route_changed = app.router.consume_dirty()
+    var scope_dirty = app.ctx.consume_dirty()
 
     if not route_changed and not scope_dirty:
         return 0
 
     # 1. Re-render and diff the app shell (updates dyn_node placeholder)
-    var new_idx = app[0].render()
-    app[0].ctx.diff(writer_ptr, new_idx)
+    var new_idx = app.render()
+    app.ctx.diff(writer_ptr, new_idx)
 
     # 2. Handle routed content
     if route_changed:
         # Route changed — build new view for the target branch
-        var view_idx = app[0].build_view_for_branch()
-        app[0].router.slot = app[0].ctx.flush_conditional_slot(
-            writer_ptr, app[0].router.slot, view_idx
+        var view_idx = app.build_view_for_branch()
+        app.router.slot = app.ctx.flush_conditional_slot(
+            writer_ptr, app.router.slot, view_idx
         )
     elif scope_dirty:
         # Same route but data changed — rebuild current view and diff
-        var view_idx = app[0].build_view_for_branch()
-        app[0].router.slot = app[0].ctx.flush_conditional_slot(
-            writer_ptr, app[0].router.slot, view_idx
+        var view_idx = app.build_view_for_branch()
+        app.router.slot = app.ctx.flush_conditional_slot(
+            writer_ptr, app.router.slot, view_idx
         )
 
     # 3. Finalize mutation buffer
-    return app[0].ctx.finalize(writer_ptr)
+    return app.ctx.finalize(writer_ptr)
 
 
 fn multi_view_app_navigate(
-    app: UnsafePointer[MultiViewApp, MutExternalOrigin],
+    mut app: MultiViewApp,
     path: String,
 ) -> Bool:
     """Navigate to a URL path (called from JS via WASM export).
@@ -476,4 +476,4 @@ fn multi_view_app_navigate(
     Returns:
         True if the path matched a registered route.
     """
-    return app[0].navigate(path)
+    return app.navigate(path)

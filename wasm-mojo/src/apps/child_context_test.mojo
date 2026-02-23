@@ -102,23 +102,23 @@ fn _cct_destroy(
 
 
 fn _cct_rebuild(
-    app: UnsafePointer[ChildContextTestApp, MutExternalOrigin],
+    mut app: ChildContextTestApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the child-context test app."""
     # 1. Render parent with placeholder
-    var parent_idx = app[0].render_parent()
-    app[0].ctx.current_vnode = Int(parent_idx)
+    var parent_idx = app.render_parent()
+    app.ctx.current_vnode = Int(parent_idx)
 
     # 2. Emit all templates
-    app[0].ctx.shell.emit_templates(writer_ptr)
+    app.ctx.shell.emit_templates(writer_ptr)
 
     # 3. Create parent VNode tree
     var engine = _CreateEngine(
         writer_ptr,
-        app[0].ctx.shell.eid_alloc,
-        app[0].ctx.runtime_ptr(),
-        app[0].ctx.store_ptr(),
+        app.ctx.shell.eid_alloc,
+        app.ctx.runtime_ptr(),
+        app.ctx.store_ptr(),
     )
     var num_roots = engine.create_node(parent_idx)
 
@@ -127,14 +127,14 @@ fn _cct_rebuild(
 
     # 5. Extract anchor for child slot
     var anchor_id: UInt32 = 0
-    var vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(parent_idx)
+    var vnode_ptr = app.ctx.store_ptr()[0].get_ptr(parent_idx)
     if vnode_ptr[0].dyn_node_id_count() > 0:
         anchor_id = vnode_ptr[0].get_dyn_node_id(0)
-    app[0].child_ctx.init_slot(anchor_id)
+    app.child_ctx.init_slot(anchor_id)
 
     # 6. Build and flush child
-    var child_idx = app[0].render_child()
-    app[0].child_ctx.flush(writer_ptr, child_idx)
+    var child_idx = app.render_child()
+    app.child_ctx.flush(writer_ptr, child_idx)
 
     # 7. Finalize
     writer_ptr[0].finalize()
@@ -142,30 +142,30 @@ fn _cct_rebuild(
 
 
 fn _cct_handle_event(
-    app: UnsafePointer[ChildContextTestApp, MutExternalOrigin],
+    mut app: ChildContextTestApp,
     handler_id: UInt32,
     event_type: UInt8,
 ) -> Bool:
-    return app[0].ctx.dispatch_event(handler_id, event_type)
+    return app.ctx.dispatch_event(handler_id, event_type)
 
 
 fn _cct_flush(
-    app: UnsafePointer[ChildContextTestApp, MutExternalOrigin],
+    mut app: ChildContextTestApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates."""
-    var parent_dirty = app[0].ctx.consume_dirty()
-    var child_dirty = app[0].child_ctx.is_dirty()
+    var parent_dirty = app.ctx.consume_dirty()
+    var child_dirty = app.child_ctx.is_dirty()
 
     if not parent_dirty and not child_dirty:
         return 0
 
     # Diff parent shell
-    var new_parent_idx = app[0].render_parent()
-    app[0].ctx.diff(writer_ptr, new_parent_idx)
+    var new_parent_idx = app.render_parent()
+    app.ctx.diff(writer_ptr, new_parent_idx)
 
     # Build and flush child
-    var child_idx = app[0].render_child()
-    app[0].child_ctx.flush(writer_ptr, child_idx)
+    var child_idx = app.render_child()
+    app.child_ctx.flush(writer_ptr, child_idx)
 
-    return app[0].ctx.finalize(writer_ptr)
+    return app.ctx.finalize(writer_ptr)

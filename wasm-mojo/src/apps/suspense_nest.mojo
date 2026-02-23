@@ -268,23 +268,23 @@ fn _sn_destroy(
 
 
 fn _sn_rebuild(
-    app: UnsafePointer[SuspenseNestApp, MutExternalOrigin],
+    mut app: SuspenseNestApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the suspense-nest app."""
     # 1. Render parent with placeholders
-    var parent_idx = app[0].render_parent()
-    app[0].ctx.current_vnode = Int(parent_idx)
+    var parent_idx = app.render_parent()
+    app.ctx.current_vnode = Int(parent_idx)
 
     # 2. Emit all templates
-    app[0].ctx.shell.emit_templates(writer_ptr)
+    app.ctx.shell.emit_templates(writer_ptr)
 
     # 3. Create parent VNode tree
     var engine = _CreateEngine(
         writer_ptr,
-        app[0].ctx.shell.eid_alloc,
-        app[0].ctx.runtime_ptr(),
-        app[0].ctx.store_ptr(),
+        app.ctx.shell.eid_alloc,
+        app.ctx.runtime_ptr(),
+        app.ctx.store_ptr(),
     )
     var num_roots = engine.create_node(parent_idx)
 
@@ -292,23 +292,23 @@ fn _sn_rebuild(
     writer_ptr[0].append_children(0, num_roots)
 
     # 5. Extract anchors for outer content + outer skeleton slots
-    var vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(parent_idx)
+    var vnode_ptr = app.ctx.store_ptr()[0].get_ptr(parent_idx)
     var outer_content_anchor: UInt32 = 0
     var outer_skeleton_anchor: UInt32 = 0
     if vnode_ptr[0].dyn_node_id_count() > 0:
         outer_content_anchor = vnode_ptr[0].get_dyn_node_id(0)
     if vnode_ptr[0].dyn_node_id_count() > 1:
         outer_skeleton_anchor = vnode_ptr[0].get_dyn_node_id(1)
-    app[0].outer_content.child_ctx.init_slot(outer_content_anchor)
-    app[0].outer_skeleton.child_ctx.init_slot(outer_skeleton_anchor)
+    app.outer_content.child_ctx.init_slot(outer_content_anchor)
+    app.outer_skeleton.child_ctx.init_slot(outer_skeleton_anchor)
 
     # 6. Flush outer content child (initial render — no pending)
-    var outer_content_idx = app[0].outer_content.render(app[0].outer_data)
-    app[0].outer_content.child_ctx.flush(writer_ptr, outer_content_idx)
+    var outer_content_idx = app.outer_content.render(app.outer_data)
+    app.outer_content.child_ctx.flush(writer_ptr, outer_content_idx)
 
     # 7. Extract anchors for inner content + inner skeleton slots
-    var oc_vnode_ptr = (
-        app[0].outer_content.child_ctx.store[0].get_ptr(outer_content_idx)
+    var oc_vnode_ptr = app.outer_content.child_ctx.store[0].get_ptr(
+        outer_content_idx
     )
     # dyn_node_ids[0] = text node (dyn_text[0] = "Outer: ready")
     # dyn_node_ids[1] = placeholder (dyn_node[1] = inner content slot)
@@ -319,16 +319,14 @@ fn _sn_rebuild(
         inner_content_anchor = oc_vnode_ptr[0].get_dyn_node_id(1)
     if oc_vnode_ptr[0].dyn_node_id_count() > 2:
         inner_skeleton_anchor = oc_vnode_ptr[0].get_dyn_node_id(2)
-    app[0].outer_content.inner_content.child_ctx.init_slot(inner_content_anchor)
-    app[0].outer_content.inner_skeleton.child_ctx.init_slot(
-        inner_skeleton_anchor
-    )
+    app.outer_content.inner_content.child_ctx.init_slot(inner_content_anchor)
+    app.outer_content.inner_skeleton.child_ctx.init_slot(inner_skeleton_anchor)
 
     # 8. Flush inner content child (initial render — no inner pending)
-    var inner_content_idx = app[0].outer_content.inner_content.render(
-        app[0].inner_data
+    var inner_content_idx = app.outer_content.inner_content.render(
+        app.inner_data
     )
-    app[0].outer_content.inner_content.child_ctx.flush(
+    app.outer_content.inner_content.child_ctx.flush(
         writer_ptr, inner_content_idx
     )
     # Inner skeleton starts hidden — do NOT flush it
@@ -340,40 +338,40 @@ fn _sn_rebuild(
 
 
 fn _sn_handle_event(
-    app: UnsafePointer[SuspenseNestApp, MutExternalOrigin],
+    mut app: SuspenseNestApp,
     handler_id: UInt32,
     event_type: UInt8,
 ) -> Bool:
-    if handler_id == app[0].outer_load_handler:
-        app[0].ctx.set_pending(True)
+    if handler_id == app.outer_load_handler:
+        app.ctx.set_pending(True)
         return True
-    elif handler_id == app[0].inner_load_handler:
-        app[0].outer_content.child_ctx.set_pending(True)
+    elif handler_id == app.inner_load_handler:
+        app.outer_content.child_ctx.set_pending(True)
         return True
     else:
-        return app[0].ctx.dispatch_event(handler_id, event_type)
+        return app.ctx.dispatch_event(handler_id, event_type)
 
 
 fn _sn_outer_resolve(
-    app: UnsafePointer[SuspenseNestApp, MutExternalOrigin],
+    mut app: SuspenseNestApp,
     data: String,
 ):
     """Store resolved outer data and clear outer pending state."""
-    app[0].outer_data = data
-    app[0].ctx.set_pending(False)
+    app.outer_data = data
+    app.ctx.set_pending(False)
 
 
 fn _sn_inner_resolve(
-    app: UnsafePointer[SuspenseNestApp, MutExternalOrigin],
+    mut app: SuspenseNestApp,
     data: String,
 ):
     """Store resolved inner data and clear inner pending state."""
-    app[0].inner_data = data
-    app[0].outer_content.child_ctx.set_pending(False)
+    app.inner_data = data
+    app.outer_content.child_ctx.set_pending(False)
 
 
 fn _sn_flush(
-    app: UnsafePointer[SuspenseNestApp, MutExternalOrigin],
+    mut app: SuspenseNestApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates with nested suspense boundary logic.
@@ -390,11 +388,11 @@ fn _sn_flush(
       3. Outer content already mounted → leave outer_content alone,
          handle inner state changes only.
     """
-    var parent_dirty = app[0].ctx.consume_dirty()
-    var oc_dirty = app[0].outer_content.child_ctx.is_dirty()
-    var os_dirty = app[0].outer_skeleton.child_ctx.is_dirty()
-    var ic_dirty = app[0].outer_content.inner_content.child_ctx.is_dirty()
-    var is_dirty = app[0].outer_content.inner_skeleton.child_ctx.is_dirty()
+    var parent_dirty = app.ctx.consume_dirty()
+    var oc_dirty = app.outer_content.child_ctx.is_dirty()
+    var os_dirty = app.outer_skeleton.child_ctx.is_dirty()
+    var ic_dirty = app.outer_content.inner_content.child_ctx.is_dirty()
+    var is_dirty = app.outer_content.inner_skeleton.child_ctx.is_dirty()
 
     if (
         not parent_dirty
@@ -406,32 +404,30 @@ fn _sn_flush(
         return 0
 
     # Diff parent shell (placeholders → placeholders = no mutations usually)
-    var new_parent_idx = app[0].render_parent()
-    app[0].ctx.diff(writer_ptr, new_parent_idx)
+    var new_parent_idx = app.render_parent()
+    app.ctx.diff(writer_ptr, new_parent_idx)
 
-    if app[0].ctx.is_pending():
+    if app.ctx.is_pending():
         # ── Case 1: Outer pending ────────────────────────────────────
         # Hide inner children first (while outer_content still mounted)
-        app[0].outer_content.inner_content.child_ctx.flush_empty(writer_ptr)
-        app[0].outer_content.inner_skeleton.child_ctx.flush_empty(writer_ptr)
+        app.outer_content.inner_content.child_ctx.flush_empty(writer_ptr)
+        app.outer_content.inner_skeleton.child_ctx.flush_empty(writer_ptr)
         # Hide outer content
-        app[0].outer_content.child_ctx.flush_empty(writer_ptr)
+        app.outer_content.child_ctx.flush_empty(writer_ptr)
         # Show outer skeleton
-        var os_idx = app[0].outer_skeleton.render()
-        app[0].outer_skeleton.child_ctx.flush(writer_ptr, os_idx)
-    elif not app[0].outer_content.child_ctx.is_mounted():
+        var os_idx = app.outer_skeleton.render()
+        app.outer_skeleton.child_ctx.flush(writer_ptr, os_idx)
+    elif not app.outer_content.child_ctx.is_mounted():
         # ── Case 2: Recovering from outer pending ────────────────────
         # Hide outer skeleton
-        app[0].outer_skeleton.child_ctx.flush_empty(writer_ptr)
+        app.outer_skeleton.child_ctx.flush_empty(writer_ptr)
 
         # Restore outer content
-        var oc_idx = app[0].outer_content.render(app[0].outer_data)
-        app[0].outer_content.child_ctx.flush(writer_ptr, oc_idx)
+        var oc_idx = app.outer_content.render(app.outer_data)
+        app.outer_content.child_ctx.flush(writer_ptr, oc_idx)
 
         # Re-extract inner anchors (outer_content was recreated)
-        var oc_vnode_ptr = (
-            app[0].outer_content.child_ctx.store[0].get_ptr(oc_idx)
-        )
+        var oc_vnode_ptr = app.outer_content.child_ctx.store[0].get_ptr(oc_idx)
         # dyn_node_ids[0] = text node, [1] = inner content, [2] = inner skeleton
         var inner_content_anchor: UInt32 = 0
         var inner_skeleton_anchor: UInt32 = 0
@@ -439,49 +435,35 @@ fn _sn_flush(
             inner_content_anchor = oc_vnode_ptr[0].get_dyn_node_id(1)
         if oc_vnode_ptr[0].dyn_node_id_count() > 2:
             inner_skeleton_anchor = oc_vnode_ptr[0].get_dyn_node_id(2)
-        app[0].outer_content.inner_content.child_ctx.init_slot(
+        app.outer_content.inner_content.child_ctx.init_slot(
             inner_content_anchor
         )
-        app[0].outer_content.inner_skeleton.child_ctx.init_slot(
+        app.outer_content.inner_skeleton.child_ctx.init_slot(
             inner_skeleton_anchor
         )
 
         # Render inner state
-        if app[0].outer_content.child_ctx.is_pending():
+        if app.outer_content.child_ctx.is_pending():
             # Inner pending persisted while outer was pending
-            var is_idx = app[0].outer_content.inner_skeleton.render()
-            app[0].outer_content.inner_skeleton.child_ctx.flush(
-                writer_ptr, is_idx
-            )
+            var is_idx = app.outer_content.inner_skeleton.render()
+            app.outer_content.inner_skeleton.child_ctx.flush(writer_ptr, is_idx)
             # inner content slot stays as placeholder — don't flush it
         else:
             # No inner pending — show inner content
-            var ic_idx = app[0].outer_content.inner_content.render(
-                app[0].inner_data
-            )
-            app[0].outer_content.inner_content.child_ctx.flush(
-                writer_ptr, ic_idx
-            )
+            var ic_idx = app.outer_content.inner_content.render(app.inner_data)
+            app.outer_content.inner_content.child_ctx.flush(writer_ptr, ic_idx)
             # inner skeleton slot stays as placeholder — don't flush it
     else:
         # ── Case 3: Outer content mounted — inner changes only ───────
-        if app[0].outer_content.child_ctx.is_pending():
+        if app.outer_content.child_ctx.is_pending():
             # Inner pending: hide inner content, show inner skeleton
-            app[0].outer_content.inner_content.child_ctx.flush_empty(writer_ptr)
-            var is_idx = app[0].outer_content.inner_skeleton.render()
-            app[0].outer_content.inner_skeleton.child_ctx.flush(
-                writer_ptr, is_idx
-            )
+            app.outer_content.inner_content.child_ctx.flush_empty(writer_ptr)
+            var is_idx = app.outer_content.inner_skeleton.render()
+            app.outer_content.inner_skeleton.child_ctx.flush(writer_ptr, is_idx)
         else:
             # No inner pending: hide inner skeleton, show inner content
-            app[0].outer_content.inner_skeleton.child_ctx.flush_empty(
-                writer_ptr
-            )
-            var ic_idx = app[0].outer_content.inner_content.render(
-                app[0].inner_data
-            )
-            app[0].outer_content.inner_content.child_ctx.flush(
-                writer_ptr, ic_idx
-            )
+            app.outer_content.inner_skeleton.child_ctx.flush_empty(writer_ptr)
+            var ic_idx = app.outer_content.inner_content.render(app.inner_data)
+            app.outer_content.inner_content.child_ctx.flush(writer_ptr, ic_idx)
 
-    return app[0].ctx.finalize(writer_ptr)
+    return app.ctx.finalize(writer_ptr)

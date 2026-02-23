@@ -218,23 +218,23 @@ fn _tc_destroy(
 
 
 fn _tc_rebuild(
-    app: UnsafePointer[ThemeCounterApp, MutExternalOrigin],
+    mut app: ThemeCounterApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the theme-counter app."""
     # 1. Render parent with placeholders
-    var parent_idx = app[0].render_parent()
-    app[0].ctx.current_vnode = Int(parent_idx)
+    var parent_idx = app.render_parent()
+    app.ctx.current_vnode = Int(parent_idx)
 
     # 2. Emit all templates (parent + both children)
-    app[0].ctx.shell.emit_templates(writer_ptr)
+    app.ctx.shell.emit_templates(writer_ptr)
 
     # 3. Create parent VNode tree
     var engine = _CreateEngine(
         writer_ptr,
-        app[0].ctx.shell.eid_alloc,
-        app[0].ctx.runtime_ptr(),
-        app[0].ctx.store_ptr(),
+        app.ctx.shell.eid_alloc,
+        app.ctx.runtime_ptr(),
+        app.ctx.store_ptr(),
     )
     var num_roots = engine.create_node(parent_idx)
 
@@ -242,23 +242,23 @@ fn _tc_rebuild(
     writer_ptr[0].append_children(0, num_roots)
 
     # 5. Extract anchors for child slots (dyn_node[0] and dyn_node[1])
-    var vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(parent_idx)
+    var vnode_ptr = app.ctx.store_ptr()[0].get_ptr(parent_idx)
     var counter_anchor: UInt32 = 0
     var summary_anchor: UInt32 = 0
     if vnode_ptr[0].dyn_node_id_count() > 0:
         counter_anchor = vnode_ptr[0].get_dyn_node_id(0)
     if vnode_ptr[0].dyn_node_id_count() > 1:
         summary_anchor = vnode_ptr[0].get_dyn_node_id(1)
-    app[0].counter_child.child_ctx.init_slot(counter_anchor)
-    app[0].summary_child.child_ctx.init_slot(summary_anchor)
+    app.counter_child.child_ctx.init_slot(counter_anchor)
+    app.summary_child.child_ctx.init_slot(summary_anchor)
 
     # 6. Build and flush counter child (initial render)
-    var counter_idx = app[0].counter_child.render()
-    app[0].counter_child.child_ctx.flush(writer_ptr, counter_idx)
+    var counter_idx = app.counter_child.render()
+    app.counter_child.child_ctx.flush(writer_ptr, counter_idx)
 
     # 7. Build and flush summary child (initial render)
-    var summary_idx = app[0].summary_child.render()
-    app[0].summary_child.child_ctx.flush(writer_ptr, summary_idx)
+    var summary_idx = app.summary_child.render()
+    app.summary_child.child_ctx.flush(writer_ptr, summary_idx)
 
     # 8. Finalize
     writer_ptr[0].finalize()
@@ -266,40 +266,40 @@ fn _tc_rebuild(
 
 
 fn _tc_handle_event(
-    app: UnsafePointer[ThemeCounterApp, MutExternalOrigin],
+    mut app: ThemeCounterApp,
     handler_id: UInt32,
     event_type: UInt8,
 ) -> Bool:
-    return app[0].ctx.dispatch_event(handler_id, event_type)
+    return app.ctx.dispatch_event(handler_id, event_type)
 
 
 fn _tc_flush(
-    app: UnsafePointer[ThemeCounterApp, MutExternalOrigin],
+    mut app: ThemeCounterApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates, handling reset callback."""
     # Check for reset callback from counter child
-    if app[0].on_reset.peek() != 0:
-        app[0].count.set(0)
-        app[0].on_reset.set(0)
+    if app.on_reset.peek() != 0:
+        app.count.set(0)
+        app.on_reset.set(0)
 
-    var parent_dirty = app[0].ctx.consume_dirty()
-    var counter_dirty = app[0].counter_child.child_ctx.is_dirty()
-    var summary_dirty = app[0].summary_child.child_ctx.is_dirty()
+    var parent_dirty = app.ctx.consume_dirty()
+    var counter_dirty = app.counter_child.child_ctx.is_dirty()
+    var summary_dirty = app.summary_child.child_ctx.is_dirty()
 
     if not parent_dirty and not counter_dirty and not summary_dirty:
         return 0
 
     # Diff parent shell
-    var new_parent_idx = app[0].render_parent()
-    app[0].ctx.diff(writer_ptr, new_parent_idx)
+    var new_parent_idx = app.render_parent()
+    app.ctx.diff(writer_ptr, new_parent_idx)
 
     # Build and flush counter child
-    var counter_idx = app[0].counter_child.render()
-    app[0].counter_child.child_ctx.flush(writer_ptr, counter_idx)
+    var counter_idx = app.counter_child.render()
+    app.counter_child.child_ctx.flush(writer_ptr, counter_idx)
 
     # Build and flush summary child
-    var summary_idx = app[0].summary_child.render()
-    app[0].summary_child.child_ctx.flush(writer_ptr, summary_idx)
+    var summary_idx = app.summary_child.render()
+    app.summary_child.child_ctx.flush(writer_ptr, summary_idx)
 
-    return app[0].ctx.finalize(writer_ptr)
+    return app.ctx.finalize(writer_ptr)

@@ -491,7 +491,7 @@ fn todo_app_destroy(app_ptr: UnsafePointer[TodoApp, MutExternalOrigin]):
 
 
 fn todo_app_rebuild(
-    app: UnsafePointer[TodoApp, MutExternalOrigin],
+    mut app: TodoApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Initial render (mount) of the todo app.
@@ -505,47 +505,47 @@ fn todo_app_rebuild(
     Returns the byte offset (length) of the mutation data written.
     """
     # Emit all registered templates so JS can build DOM from mutations
-    app[0].ctx.shell.emit_templates(writer_ptr)
+    app.ctx.shell.emit_templates(writer_ptr)
 
     # Build the app shell VNode (no items yet — just the template)
-    var app_vnode_idx = app[0].render()
-    app[0].ctx.current_vnode = Int(app_vnode_idx)
+    var app_vnode_idx = app.render()
+    app.ctx.current_vnode = Int(app_vnode_idx)
 
     # Build an empty items fragment and store it
-    var frag_idx = app[0].build_items_fragment()
+    var frag_idx = app.build_items_fragment()
 
     # Create the app template via CreateEngine.
     # This emits LoadTemplate, AssignId, NewEventListener, and
     # CreatePlaceholder + ReplacePlaceholder for dynamic[0].
     var engine = CreateEngine(
         writer_ptr,
-        app[0].ctx.shell.eid_alloc,
-        app[0].ctx.shell.runtime,
-        app[0].ctx.shell.store,
+        app.ctx.shell.eid_alloc,
+        app.ctx.shell.runtime,
+        app.ctx.shell.store,
     )
     var num_roots = engine.create_node(app_vnode_idx)
 
     # After CreateEngine, dynamic[0]'s placeholder has an ElementId.
     # Initialize the KeyedList's slot with the anchor and empty fragment.
     var anchor_id: UInt32 = 0
-    var app_vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(app_vnode_idx)
+    var app_vnode_ptr = app.ctx.store_ptr()[0].get_ptr(app_vnode_idx)
     if app_vnode_ptr[0].dyn_node_id_count() > 0:
         anchor_id = app_vnode_ptr[0].get_dyn_node_id(0)
-    app[0].items.init_slot(anchor_id, frag_idx)
+    app.items.init_slot(anchor_id, frag_idx)
 
     # Phase 28: Extract the anchor for the empty message slot (dyn_node[1])
     var msg_anchor_id: UInt32 = 0
     if app_vnode_ptr[0].dyn_node_id_count() > 1:
         msg_anchor_id = app_vnode_ptr[0].get_dyn_node_id(1)
-    app[0].empty_msg_slot = ConditionalSlot(msg_anchor_id)
+    app.empty_msg_slot = ConditionalSlot(msg_anchor_id)
 
     # Append the app shell to root element (id 0)
     writer_ptr[0].append_children(0, num_roots)
 
     # Phase 28: Show empty message on initial mount (list starts empty)
-    var msg_idx = app[0].build_empty_message()
-    app[0].empty_msg_slot = app[0].ctx.flush_conditional_slot(
-        writer_ptr, app[0].empty_msg_slot, msg_idx
+    var msg_idx = app.build_empty_message()
+    app.empty_msg_slot = app.ctx.flush_conditional_slot(
+        writer_ptr, app.empty_msg_slot, msg_idx
     )
 
     writer_ptr[0].finalize()
@@ -553,7 +553,7 @@ fn todo_app_rebuild(
 
 
 fn todo_app_flush(
-    app: UnsafePointer[TodoApp, MutExternalOrigin],
+    mut app: TodoApp,
     writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
 ) -> Int32:
     """Flush pending updates after a list mutation or input clear.
@@ -568,7 +568,7 @@ fn todo_app_flush(
     Returns the byte offset (length) of mutation data, or 0 if nothing dirty.
     """
     # Collect and consume dirty scopes via the scheduler
-    if not app[0].ctx.consume_dirty():
+    if not app.ctx.consume_dirty():
         return 0
 
     # Phase 20.5: Re-render app shell to pick up bind_value changes
@@ -576,28 +576,28 @@ fn todo_app_flush(
     # dynamic attrs (value binding) and emits SetAttribute mutations.
     # dyn_node(0) stays as placeholder — diff sees placeholder vs
     # placeholder and does nothing (KeyedList manages it separately).
-    var new_app_idx = app[0].render()
-    app[0].ctx.diff(writer_ptr, new_app_idx)
+    var new_app_idx = app.render()
+    app.ctx.diff(writer_ptr, new_app_idx)
 
     # Build a new items fragment from the current item list
-    var new_frag_idx = app[0].build_items_fragment()
+    var new_frag_idx = app.build_items_fragment()
 
     # Flush via KeyedList (handles all three transitions)
-    app[0].items.flush(app[0].ctx, writer_ptr, new_frag_idx)
+    app.items.flush(app.ctx, writer_ptr, new_frag_idx)
 
     # Phase 28: Show or hide the empty state message
-    if len(app[0].data) == 0:
+    if len(app.data) == 0:
         # List is empty → show the message
-        if not app[0].empty_msg_slot.mounted:
-            var msg_idx = app[0].build_empty_message()
-            app[0].empty_msg_slot = app[0].ctx.flush_conditional_slot(
-                writer_ptr, app[0].empty_msg_slot, msg_idx
+        if not app.empty_msg_slot.mounted:
+            var msg_idx = app.build_empty_message()
+            app.empty_msg_slot = app.ctx.flush_conditional_slot(
+                writer_ptr, app.empty_msg_slot, msg_idx
             )
     else:
         # List has items → hide the message
-        if app[0].empty_msg_slot.mounted:
-            app[0].empty_msg_slot = app[0].ctx.flush_conditional_slot_empty(
-                writer_ptr, app[0].empty_msg_slot
+        if app.empty_msg_slot.mounted:
+            app.empty_msg_slot = app.ctx.flush_conditional_slot_empty(
+                writer_ptr, app.empty_msg_slot
             )
 
     writer_ptr[0].finalize()
