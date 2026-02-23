@@ -86,9 +86,11 @@ from vdom import (
     text as dsl_text,
     dyn_text as dsl_dyn_text,
     dyn_node as dsl_dyn_node,
+    dyn_attr as dsl_dyn_attr,
     onclick_add as dsl_onclick_add,
     onclick_sub as dsl_onclick_sub,
     onclick_toggle as dsl_onclick_toggle,
+    onclick_set as dsl_onclick_set,
 )
 from signals.handle import SignalI32 as _SignalI32, SignalBool, SignalString
 
@@ -5461,4 +5463,490 @@ fn pc_scope_count(app_ptr: Int64) -> Int32:
     """Return the number of live scopes."""
     return Int32(
         _get[PropsCounterApp](app_ptr)[0].ctx.shell.runtime[0].scope_count()
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 31.4 — ThemeCounterApp (shared context + cross-component tests)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# A parent app with a theme toggle (dark/light) and two child components
+# that both consume the theme context:
+#   - CounterChild: displays count with theme-dependent label
+#   - SummaryChild: displays summary text with theme-dependent class
+#   - Parent receives upward communication: CounterChild has a "Reset"
+#     button that writes to a callback signal consumed by the parent.
+
+
+comptime _TC_CTX_THEME: UInt32 = 10  # 0 = light, 1 = dark
+comptime _TC_CTX_COUNT: UInt32 = 11  # count signal key
+comptime _TC_CTX_ON_RESET: UInt32 = 12  # callback signal key
+
+
+struct TCCounterChild(Movable):
+    """Child component: displays count with theme-dependent label.
+
+    Consumes CTX_COUNT, CTX_THEME from parent context.
+    Has a Reset button that writes to CTX_ON_RESET callback signal.
+    Template: div > p(dyn_text) + button("Reset")
+    """
+
+    var child_ctx: ChildComponentContext
+    var count: _SignalI32  # consumed from parent
+    var theme: SignalBool  # consumed from parent
+
+    fn __init__(
+        out self,
+        var child_ctx: ChildComponentContext,
+        var count: _SignalI32,
+        var theme: SignalBool,
+    ):
+        self.child_ctx = child_ctx^
+        self.count = count^
+        self.theme = theme^
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.child_ctx = other.child_ctx^
+        self.count = other.count^
+        self.theme = other.theme^
+
+    fn render(mut self) -> UInt32:
+        """Build the child's VNode with count + optional theme label."""
+        var vb = self.child_ctx.render_builder()
+        var val = self.count.peek()
+        if self.theme.get():
+            vb.add_dyn_text(String("Theme: dark, Count: ") + String(val))
+        else:
+            vb.add_dyn_text(String("Count: ") + String(val))
+        return vb.build()
+
+
+struct TCSummaryChild(Movable):
+    """Child component: displays summary text with theme-dependent class.
+
+    Consumes CTX_COUNT, CTX_THEME from parent context.
+    Template: p(dyn_text, dyn_attr[0])
+    """
+
+    var child_ctx: ChildComponentContext
+    var count: _SignalI32  # consumed from parent
+    var theme: SignalBool  # consumed from parent
+
+    fn __init__(
+        out self,
+        var child_ctx: ChildComponentContext,
+        var count: _SignalI32,
+        var theme: SignalBool,
+    ):
+        self.child_ctx = child_ctx^
+        self.count = count^
+        self.theme = theme^
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.child_ctx = other.child_ctx^
+        self.count = other.count^
+        self.theme = other.theme^
+
+    fn render(mut self) -> UInt32:
+        """Build the child's VNode with summary text + class attr."""
+        var vb = self.child_ctx.render_builder()
+        var val = self.count.peek()
+        vb.add_dyn_text(String(val) + String(" clicks so far"))
+        if self.theme.get():
+            vb.add_dyn_text_attr(String("class"), String("dark"))
+        else:
+            vb.add_dyn_text_attr(String("class"), String("light"))
+        return vb.build()
+
+
+struct ThemeCounterApp(Movable):
+    """Counter app with theme toggle and two child components sharing context.
+
+    Parent: div > button("Toggle theme") + button("Increment") + dyn_node[0] + dyn_node[1]
+    CounterChild: div > p(dyn_text) + button("Reset")
+    SummaryChild: p(dyn_text, dyn_attr[0])
+
+    Demonstrates:
+    - Multiple children consuming the same parent context signals
+    - Upward communication via callback signal (reset)
+    - Theme-dependent rendering in children
+    """
+
+    var ctx: ComponentContext
+    var count: _SignalI32
+    var theme: SignalBool
+    var on_reset: _SignalI32  # callback: child writes 1 to request reset
+    var counter_child: TCCounterChild
+    var summary_child: TCSummaryChild
+
+    fn __init__(out self):
+        self.ctx = ComponentContext.create()
+        self.count = self.ctx.use_signal(0)
+        self.theme = self.ctx.use_signal_bool(False)
+        self.on_reset = self.ctx.use_signal(0)
+
+        # Provide signals to descendants via context
+        self.ctx.provide_signal_i32(_TC_CTX_COUNT, self.count)
+        self.ctx.provide_signal_bool(_TC_CTX_THEME, self.theme)
+        self.ctx.provide_signal_i32(_TC_CTX_ON_RESET, self.on_reset)
+
+        self.ctx.setup_view(
+            el_div(
+                el_button(
+                    dsl_text(String("Toggle theme")),
+                    dsl_onclick_toggle(self.theme),
+                ),
+                el_button(
+                    dsl_text(String("Increment")),
+                    dsl_onclick_add(self.count, 1),
+                ),
+                dsl_dyn_node(0),  # counter child slot
+                dsl_dyn_node(1),  # summary child slot
+            ),
+            String("theme-counter"),
+        )
+
+        # Create counter child: div > p(dyn_text) + button("Reset")
+        var counter_ctx = self.ctx.create_child_context(
+            el_div(
+                el_p(dsl_dyn_text()),
+                el_button(
+                    dsl_text(String("Reset")),
+                    dsl_onclick_set(self.on_reset, 1),
+                ),
+            ),
+            String("counter-display"),
+        )
+        var cc_count = counter_ctx.consume_signal_i32(_TC_CTX_COUNT)
+        var cc_theme = counter_ctx.consume_signal_bool(_TC_CTX_THEME)
+        self.counter_child = TCCounterChild(counter_ctx^, cc_count^, cc_theme^)
+
+        # Create summary child: p(dyn_text, dyn_attr[0])
+        var summary_ctx = self.ctx.create_child_context(
+            el_p(dsl_dyn_text(), dsl_dyn_attr(0)),
+            String("summary-display"),
+        )
+        var sc_count = summary_ctx.consume_signal_i32(_TC_CTX_COUNT)
+        var sc_theme = summary_ctx.consume_signal_bool(_TC_CTX_THEME)
+        self.summary_child = TCSummaryChild(summary_ctx^, sc_count^, sc_theme^)
+
+    fn __moveinit__(out self, deinit other: Self):
+        self.ctx = other.ctx^
+        self.count = other.count^
+        self.theme = other.theme^
+        self.on_reset = other.on_reset^
+        self.counter_child = other.counter_child^
+        self.summary_child = other.summary_child^
+
+    fn render_parent(mut self) -> UInt32:
+        """Build the parent VNode with placeholders for child slots."""
+        var pvb = self.ctx.render_builder()
+        pvb.add_dyn_placeholder()  # dyn_node[0] — counter child
+        pvb.add_dyn_placeholder()  # dyn_node[1] — summary child
+        return pvb.build()
+
+
+fn _tc_init() -> UnsafePointer[ThemeCounterApp, MutExternalOrigin]:
+    var app_ptr = alloc[ThemeCounterApp](1)
+    app_ptr.init_pointee_move(ThemeCounterApp())
+    return app_ptr
+
+
+fn _tc_destroy(
+    app_ptr: UnsafePointer[ThemeCounterApp, MutExternalOrigin],
+):
+    app_ptr[0].ctx.destroy_child_context(app_ptr[0].counter_child.child_ctx)
+    app_ptr[0].ctx.destroy_child_context(app_ptr[0].summary_child.child_ctx)
+    app_ptr[0].ctx.destroy()
+    app_ptr.destroy_pointee()
+    app_ptr.free()
+
+
+fn _tc_rebuild(
+    app: UnsafePointer[ThemeCounterApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Initial render (mount) of the theme-counter app."""
+    # 1. Render parent with placeholders
+    var parent_idx = app[0].render_parent()
+    app[0].ctx.current_vnode = Int(parent_idx)
+
+    # 2. Emit all templates (parent + both children)
+    app[0].ctx.shell.emit_templates(writer_ptr)
+
+    # 3. Create parent VNode tree
+    var engine = _CreateEngine(
+        writer_ptr,
+        app[0].ctx.shell.eid_alloc,
+        app[0].ctx.runtime_ptr(),
+        app[0].ctx.store_ptr(),
+    )
+    var num_roots = engine.create_node(parent_idx)
+
+    # 4. Append to root element
+    writer_ptr[0].append_children(0, num_roots)
+
+    # 5. Extract anchors for child slots (dyn_node[0] and dyn_node[1])
+    var vnode_ptr = app[0].ctx.store_ptr()[0].get_ptr(parent_idx)
+    var counter_anchor: UInt32 = 0
+    var summary_anchor: UInt32 = 0
+    if vnode_ptr[0].dyn_node_id_count() > 0:
+        counter_anchor = vnode_ptr[0].get_dyn_node_id(0)
+    if vnode_ptr[0].dyn_node_id_count() > 1:
+        summary_anchor = vnode_ptr[0].get_dyn_node_id(1)
+    app[0].counter_child.child_ctx.init_slot(counter_anchor)
+    app[0].summary_child.child_ctx.init_slot(summary_anchor)
+
+    # 6. Build and flush counter child (initial render)
+    var counter_idx = app[0].counter_child.render()
+    app[0].counter_child.child_ctx.flush(writer_ptr, counter_idx)
+
+    # 7. Build and flush summary child (initial render)
+    var summary_idx = app[0].summary_child.render()
+    app[0].summary_child.child_ctx.flush(writer_ptr, summary_idx)
+
+    # 8. Finalize
+    writer_ptr[0].finalize()
+    return Int32(writer_ptr[0].offset)
+
+
+fn _tc_handle_event(
+    app: UnsafePointer[ThemeCounterApp, MutExternalOrigin],
+    handler_id: UInt32,
+    event_type: UInt8,
+) -> Bool:
+    return app[0].ctx.dispatch_event(handler_id, event_type)
+
+
+fn _tc_flush(
+    app: UnsafePointer[ThemeCounterApp, MutExternalOrigin],
+    writer_ptr: UnsafePointer[MutationWriter, MutExternalOrigin],
+) -> Int32:
+    """Flush pending updates, handling reset callback."""
+    # Check for reset callback from counter child
+    if app[0].on_reset.peek() != 0:
+        app[0].count.set(0)
+        app[0].on_reset.set(0)
+
+    var parent_dirty = app[0].ctx.consume_dirty()
+    var counter_dirty = app[0].counter_child.child_ctx.is_dirty()
+    var summary_dirty = app[0].summary_child.child_ctx.is_dirty()
+
+    if not parent_dirty and not counter_dirty and not summary_dirty:
+        return 0
+
+    # Diff parent shell
+    var new_parent_idx = app[0].render_parent()
+    app[0].ctx.diff(writer_ptr, new_parent_idx)
+
+    # Build and flush counter child
+    var counter_idx = app[0].counter_child.render()
+    app[0].counter_child.child_ctx.flush(writer_ptr, counter_idx)
+
+    # Build and flush summary child
+    var summary_idx = app[0].summary_child.render()
+    app[0].summary_child.child_ctx.flush(writer_ptr, summary_idx)
+
+    return app[0].ctx.finalize(writer_ptr)
+
+
+# ── ThemeCounterApp WASM exports ─────────────────────────────────────────────
+
+
+@export
+fn tc_init() -> Int64:
+    """Initialize the theme-counter app.  Returns app pointer."""
+    return _to_i64(_tc_init())
+
+
+@export
+fn tc_destroy(app_ptr: Int64):
+    """Destroy the theme-counter app."""
+    _tc_destroy(_get[ThemeCounterApp](app_ptr))
+
+
+@export
+fn tc_rebuild(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
+    """Initial render (mount).  Returns mutation byte length."""
+    var writer_ptr = _alloc_writer(buf_ptr, capacity)
+    var offset = _tc_rebuild(_get[ThemeCounterApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return offset
+
+
+@export
+fn tc_handle_event(
+    app_ptr: Int64,
+    handler_id: Int32,
+    event_type: Int32,
+) -> Int32:
+    """Dispatch an event.  Returns 1 if action executed."""
+    return _b2i(
+        _tc_handle_event(
+            _get[ThemeCounterApp](app_ptr),
+            UInt32(handler_id),
+            UInt8(event_type),
+        )
+    )
+
+
+@export
+fn tc_flush(app_ptr: Int64, buf_ptr: Int64, capacity: Int32) -> Int32:
+    """Flush pending updates.  Returns mutation byte length, or 0."""
+    var writer_ptr = _alloc_writer(buf_ptr, capacity)
+    var offset = _tc_flush(_get[ThemeCounterApp](app_ptr), writer_ptr)
+    _free_writer(writer_ptr)
+    return offset
+
+
+@export
+fn tc_count_value(app_ptr: Int64) -> Int32:
+    """Peek the current count signal value."""
+    return _get[ThemeCounterApp](app_ptr)[0].count.peek()
+
+
+@export
+fn tc_theme_is_dark(app_ptr: Int64) -> Int32:
+    """Return 1 if theme is dark, 0 if light."""
+    return _b2i(_get[ThemeCounterApp](app_ptr)[0].theme.get())
+
+
+@export
+fn tc_on_reset_value(app_ptr: Int64) -> Int32:
+    """Return the on_reset callback signal value."""
+    return _get[ThemeCounterApp](app_ptr)[0].on_reset.peek()
+
+
+@export
+fn tc_counter_scope_id(app_ptr: Int64) -> Int32:
+    """Return the counter child scope ID."""
+    return Int32(
+        _get[ThemeCounterApp](app_ptr)[0].counter_child.child_ctx.scope_id
+    )
+
+
+@export
+fn tc_summary_scope_id(app_ptr: Int64) -> Int32:
+    """Return the summary child scope ID."""
+    return Int32(
+        _get[ThemeCounterApp](app_ptr)[0].summary_child.child_ctx.scope_id
+    )
+
+
+@export
+fn tc_parent_scope_id(app_ptr: Int64) -> Int32:
+    """Return the parent scope ID."""
+    return Int32(_get[ThemeCounterApp](app_ptr)[0].ctx.scope_id)
+
+
+@export
+fn tc_counter_is_mounted(app_ptr: Int64) -> Int32:
+    """Return 1 if counter child is mounted, 0 otherwise."""
+    return _b2i(
+        _get[ThemeCounterApp](app_ptr)[0].counter_child.child_ctx.is_mounted()
+    )
+
+
+@export
+fn tc_summary_is_mounted(app_ptr: Int64) -> Int32:
+    """Return 1 if summary child is mounted, 0 otherwise."""
+    return _b2i(
+        _get[ThemeCounterApp](app_ptr)[0].summary_child.child_ctx.is_mounted()
+    )
+
+
+@export
+fn tc_counter_is_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if counter child scope is dirty, 0 otherwise."""
+    return _b2i(
+        _get[ThemeCounterApp](app_ptr)[0].counter_child.child_ctx.is_dirty()
+    )
+
+
+@export
+fn tc_summary_is_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if summary child scope is dirty, 0 otherwise."""
+    return _b2i(
+        _get[ThemeCounterApp](app_ptr)[0].summary_child.child_ctx.is_dirty()
+    )
+
+
+@export
+fn tc_parent_is_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if parent scope is in the dirty queue, 0 otherwise."""
+    var app = _get[ThemeCounterApp](app_ptr)
+    var scope_id = app[0].ctx.scope_id
+    for i in range(len(app[0].ctx.shell.runtime[0].dirty_scopes)):
+        if app[0].ctx.shell.runtime[0].dirty_scopes[i] == scope_id:
+            return 1
+    return 0
+
+
+@export
+fn tc_has_dirty(app_ptr: Int64) -> Int32:
+    """Return 1 if any scope is dirty, 0 otherwise."""
+    var app = _get[ThemeCounterApp](app_ptr)
+    if app[0].ctx.has_dirty():
+        return 1
+    if app[0].counter_child.child_ctx.is_dirty():
+        return 1
+    if app[0].summary_child.child_ctx.is_dirty():
+        return 1
+    return 0
+
+
+@export
+fn tc_handler_count(app_ptr: Int64) -> Int32:
+    """Return the total number of registered handlers."""
+    return Int32(_get[ThemeCounterApp](app_ptr)[0].ctx.handler_count())
+
+
+@export
+fn tc_toggle_theme_handler(app_ptr: Int64) -> Int32:
+    """Return the toggle-theme handler ID (parent view_events[0])."""
+    var events = _get[ThemeCounterApp](app_ptr)[0].ctx.view_events()
+    if len(events) > 0:
+        return Int32(events[0].handler_id)
+    return -1
+
+
+@export
+fn tc_increment_handler(app_ptr: Int64) -> Int32:
+    """Return the increment handler ID (parent view_events[1])."""
+    var events = _get[ThemeCounterApp](app_ptr)[0].ctx.view_events()
+    if len(events) > 1:
+        return Int32(events[1].handler_id)
+    return -1
+
+
+@export
+fn tc_reset_handler(app_ptr: Int64) -> Int32:
+    """Return the reset handler ID (counter child event_bindings[0])."""
+    var app = _get[ThemeCounterApp](app_ptr)
+    if app[0].counter_child.child_ctx.event_count() > 0:
+        return Int32(app[0].counter_child.child_ctx.event_handler_id(0))
+    return -1
+
+
+@export
+fn tc_scope_count(app_ptr: Int64) -> Int32:
+    """Return the number of live scopes."""
+    return Int32(
+        _get[ThemeCounterApp](app_ptr)[0].ctx.shell.runtime[0].scope_count()
+    )
+
+
+@export
+fn tc_counter_has_rendered(app_ptr: Int64) -> Int32:
+    """Return 1 if counter child has rendered, 0 otherwise."""
+    return _b2i(
+        _get[ThemeCounterApp](app_ptr)[0].counter_child.child_ctx.has_rendered()
+    )
+
+
+@export
+fn tc_summary_has_rendered(app_ptr: Int64) -> Int32:
+    """Return 1 if summary child has rendered, 0 otherwise."""
+    return _b2i(
+        _get[ThemeCounterApp](app_ptr)[0].summary_child.child_ctx.has_rendered()
     )

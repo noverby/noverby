@@ -993,3 +993,225 @@ export function createPropsCounterApp(
 
 	return pcHandle;
 }
+
+// ── ThemeCounterApp handle (Phase 31.4) ─────────────────────────────────────
+
+/**
+ * A fully wired theme-counter app instance demonstrating shared context
+ * across multiple child components with upward communication.
+ *
+ * Parent: div > button("Toggle theme") + button("Increment") + dyn_node[0] + dyn_node[1]
+ * CounterChild: div > p(dyn_text) + button("Reset")
+ * SummaryChild: p(dyn_text, dyn_attr[0])
+ *
+ * Both children consume theme and count from parent context.
+ * CounterChild has a Reset button that writes to a callback signal
+ * consumed by the parent to reset the count.
+ */
+export interface ThemeCounterAppHandle extends AppHandle {
+	/** Toggle-theme handler ID (parent view_events[0]). */
+	toggleThemeHandler: number;
+
+	/** Increment handler ID (parent view_events[1]). */
+	incrementHandler: number;
+
+	/** Reset handler ID (counter child event_bindings[0]). */
+	resetHandler: number;
+
+	/** Read the current count value from WASM. */
+	getCountValue(): number;
+
+	/** Read whether the theme is dark (true) or light (false). */
+	isDarkTheme(): boolean;
+
+	/** Read the on_reset callback signal value. */
+	getOnResetValue(): number;
+
+	/** Simulate a theme toggle click (dispatch + flush + apply). */
+	toggleTheme(): void;
+
+	/** Simulate an increment click (dispatch + flush + apply). */
+	increment(): void;
+
+	/** Simulate a reset click from the counter child (dispatch + flush + apply). */
+	resetViaChild(): void;
+
+	/** Return the parent scope ID. */
+	parentScopeId: number;
+
+	/** Return the counter child scope ID. */
+	counterScopeId: number;
+
+	/** Return the summary child scope ID. */
+	summaryScopeId: number;
+
+	/** Check whether the counter child is mounted. */
+	isCounterMounted(): boolean;
+
+	/** Check whether the summary child is mounted. */
+	isSummaryMounted(): boolean;
+
+	/** Check whether the counter child scope is dirty. */
+	isCounterDirty(): boolean;
+
+	/** Check whether the summary child scope is dirty. */
+	isSummaryDirty(): boolean;
+
+	/** Check whether any scope is dirty. */
+	hasDirty(): boolean;
+
+	/** Check whether the counter child has rendered. */
+	counterHasRendered(): boolean;
+
+	/** Check whether the summary child has rendered. */
+	summaryHasRendered(): boolean;
+
+	/** Return the total number of registered handlers. */
+	handlerCount(): number;
+
+	/** Return the number of live scopes. */
+	scopeCount(): number;
+}
+
+// ── ThemeCounter App factory ────────────────────────────────────────────────
+
+/**
+ * Create a theme-counter app wired to a DOM root element (Phase 31.4).
+ *
+ * Thin wrapper around `createApp()` that adds theme-counter-specific helpers.
+ * Demonstrates shared context across multiple children and upward communication
+ * via callback signals.
+ *
+ * @param fns     - Instantiated WASM exports.
+ * @param root    - The mount-point DOM element.
+ * @param doc     - The Document to use for DOM operations.
+ * @param install - Whether to install DOM event delegation (default: false).
+ */
+export function createThemeCounterApp(
+	fns: WasmExports,
+	root: Element,
+	doc?: Document,
+	install = false,
+): ThemeCounterAppHandle {
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		install,
+		init: (f) => f.tc_init(),
+		rebuild: (f, app, buf, cap) => f.tc_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.tc_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.tc_handle_event(app, hid, evt),
+		destroy: (f, app) => f.tc_destroy(app),
+	});
+
+	const toggleThemeHandler = fns.tc_toggle_theme_handler(handle.appPtr);
+	const incrementHandler = fns.tc_increment_handler(handle.appPtr);
+	const resetHandler = fns.tc_reset_handler(handle.appPtr);
+
+	const tcHandle: ThemeCounterAppHandle = {
+		...handle,
+		toggleThemeHandler,
+		incrementHandler,
+		resetHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
+
+		get parentScopeId(): number {
+			return fns.tc_parent_scope_id(handle.appPtr);
+		},
+
+		get counterScopeId(): number {
+			return fns.tc_counter_scope_id(handle.appPtr);
+		},
+
+		get summaryScopeId(): number {
+			return fns.tc_summary_scope_id(handle.appPtr);
+		},
+
+		getCountValue(): number {
+			return fns.tc_count_value(handle.appPtr);
+		},
+
+		isDarkTheme(): boolean {
+			return fns.tc_theme_is_dark(handle.appPtr) !== 0;
+		},
+
+		getOnResetValue(): number {
+			return fns.tc_on_reset_value(handle.appPtr);
+		},
+
+		isCounterMounted(): boolean {
+			return fns.tc_counter_is_mounted(handle.appPtr) !== 0;
+		},
+
+		isSummaryMounted(): boolean {
+			return fns.tc_summary_is_mounted(handle.appPtr) !== 0;
+		},
+
+		isCounterDirty(): boolean {
+			return fns.tc_counter_is_dirty(handle.appPtr) !== 0;
+		},
+
+		isSummaryDirty(): boolean {
+			return fns.tc_summary_is_dirty(handle.appPtr) !== 0;
+		},
+
+		hasDirty(): boolean {
+			return fns.tc_has_dirty(handle.appPtr) !== 0;
+		},
+
+		counterHasRendered(): boolean {
+			return fns.tc_counter_has_rendered(handle.appPtr) !== 0;
+		},
+
+		summaryHasRendered(): boolean {
+			return fns.tc_summary_has_rendered(handle.appPtr) !== 0;
+		},
+
+		handlerCount(): number {
+			return fns.tc_handler_count(handle.appPtr);
+		},
+
+		scopeCount(): number {
+			return fns.tc_scope_count(handle.appPtr);
+		},
+
+		toggleTheme(): void {
+			handle.dispatchAndFlush(toggleThemeHandler);
+		},
+
+		increment(): void {
+			handle.dispatchAndFlush(incrementHandler);
+		},
+
+		resetViaChild(): void {
+			handle.dispatchAndFlush(resetHandler);
+		},
+
+		destroy(): void {
+			handle.destroy();
+		},
+	};
+
+	return tcHandle;
+}
