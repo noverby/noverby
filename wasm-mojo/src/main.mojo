@@ -74,36 +74,8 @@ from component import (
     AppShell,
     app_shell_create,
     ComponentContext,
-    ChildComponent,
 )
-from mutations import CreateEngine as _CreateEngine
-from vdom import (
-    el_div,
-    el_h1,
-    el_p,
-    el_button,
-    el_input as dsl_el_input,
-    text as dsl_text,
-    dyn_text as dsl_dyn_text,
-    dyn_node as dsl_dyn_node,
-    dyn_attr as dsl_dyn_attr,
-    attr as dsl_attr,
-    onclick_add as dsl_onclick_add,
-    onclick_sub as dsl_onclick_sub,
-    onclick_toggle as dsl_onclick_toggle,
-    onclick_set as dsl_onclick_set,
-    bind_value as dsl_bind_value,
-    oninput_set_string as dsl_oninput_set_string,
-)
-from signals.handle import (
-    SignalI32 as _SignalI32,
-    SignalBool,
-    SignalString,
-    MemoI32,
-    MemoBool,
-    MemoString,
-    EffectHandle,
-)
+from signals.handle import SignalI32 as _SignalI32
 
 from counter import (
     CounterApp,
@@ -260,6 +232,16 @@ from apps.suspense_nest import (
 from memory import UnsafePointer, memset_zero, alloc
 
 
+# ██████████████████████████████████████████████████████████████████████████████
+#
+#   SECTION 1 — Shared Utilities
+#
+#   Pointer ↔ Int helpers, Bool conversion, MutationWriter allocation.
+#   Used by all @export wrappers below.
+#
+# ██████████████████████████████████████████████████████████████████████████████
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Pointer ↔ Int helpers
 # ══════════════════════════════════════════════════════════════════════════════
@@ -352,6 +334,19 @@ fn _alloc_writer(
 fn _free_writer(ptr: UnsafePointer[MutationWriter, MutExternalOrigin]):
     """Destroy and free a heap-allocated MutationWriter."""
     _heap_del(ptr)
+
+
+# ██████████████████████████████████████████████████████████████████████████████
+#
+#   SECTION 2 — Framework Test & Runtime Exports
+#
+#   Low-level exports for the Mojo and JS test suites exercising
+#   individual framework subsystems: ElementId, Runtime/Signals, Scopes,
+#   Templates, VNode, Create/Diff, Mutations, Events, Context, Error
+#   Boundaries, Suspense, Memo (I32/Bool/String), Equality, Batch,
+#   Effects, Scheduler, AppShell, DSL, and PoC arithmetic/string exports.
+#
+# ██████████████████████████████████████████████████████████████████████████████
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2403,11 +2398,44 @@ fn effect_pending_at(rt_ptr: Int64, index: Int32) -> Int32:
     return Int32(_get[Runtime](rt_ptr)[0].pending_effect_at(Int(index)))
 
 
+# ██████████████████████████████████████████████████████████████████████████████
+#
+#   SECTION 3 — App WASM Export Wrappers
+#
+#   Thin @export wrappers forwarding to app modules.  App struct and
+#   lifecycle code lives in dedicated modules under src/apps/ (or
+#   examples/ for Counter, Todo, Bench).  Only the @export annotations
+#   live here because Mojo requires exports in the main compilation unit.
+#
+#   Apps (in order):
+#     Counter        — examples/counter/counter.mojo
+#     Todo           — examples/todo/todo.mojo
+#     Benchmark      — examples/bench/bench.mojo
+#     MultiView      — src/app.mojo (client-side routing)
+#     ChildCounter   — src/apps/child_counter.mojo
+#     ContextTest    — src/apps/context_test.mojo
+#     ChildContextTest — src/apps/child_context_test.mojo
+#     PropsCounter   — src/apps/props_counter.mojo
+#     ThemeCounter   — src/apps/theme_counter.mojo
+#     SafeCounter    — src/apps/safe_counter.mojo
+#     ErrorNest      — src/apps/error_nest.mojo
+#     DataLoader     — src/apps/data_loader.mojo
+#     SuspenseNest   — src/apps/suspense_nest.mojo
+#     EffectDemo     — src/apps/effect_demo.mojo
+#     EffectMemo     — src/apps/effect_memo.mojo
+#     MemoForm       — src/apps/memo_form.mojo
+#     MemoChain      — src/apps/memo_chain.mojo
+#     EqualityDemo   — src/apps/equality_demo.mojo
+#     BatchDemo      — src/apps/batch_demo.mojo
+#
+# ██████████████████████████████████████████████████████████████████████████████
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 7 — Counter App (End-to-End)
 # ══════════════════════════════════════════════════════════════════════════════
 #
-# Thin @export wrappers calling into apps.counter module.
+# Thin @export wrappers calling into examples/counter/counter.mojo.
 
 
 @export

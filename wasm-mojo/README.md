@@ -85,7 +85,23 @@ At runtime, the TypeScript side (`runtime/`) instantiates the WASM module and pr
 ```txt
 wasm-mojo/
 ├── src/
-│   ├── main.mojo                 # @export wrappers (WASM entry point, 3,476 lines, 419 exports)
+│   ├── main.mojo                 # @export wrappers (WASM entry point, ~6,730 lines)
+│   ├── apps/                     # Demo/test app modules (Phase 40 extraction)
+│   │   ├── batch_demo.mojo       # BatchDemoApp (Phase 38.2)
+│   │   ├── child_context_test.mojo # ChildContextTestApp (Phase 31.2)
+│   │   ├── child_counter.mojo    # ChildCounterApp (Phase 29)
+│   │   ├── context_test.mojo     # ContextTestApp (Phase 31.1)
+│   │   ├── data_loader.mojo      # DataLoaderApp + children (Phase 33.2)
+│   │   ├── effect_demo.mojo      # EffectDemoApp (Phase 34.1)
+│   │   ├── effect_memo.mojo      # EffectMemoApp (Phase 34.2)
+│   │   ├── equality_demo.mojo    # EqualityDemoApp (Phase 37.3)
+│   │   ├── error_nest.mojo       # ErrorNestApp + children (Phase 32.3)
+│   │   ├── memo_chain.mojo       # MemoChainApp (Phase 35.3)
+│   │   ├── memo_form.mojo        # MemoFormApp (Phase 35.2)
+│   │   ├── props_counter.mojo    # PropsCounterApp + CounterDisplay (Phase 31.3)
+│   │   ├── safe_counter.mojo     # SafeCounterApp + children (Phase 32.2)
+│   │   ├── suspense_nest.mojo    # SuspenseNestApp + children (Phase 33.3)
+│   │   └── theme_counter.mojo    # ThemeCounterApp + children (Phase 31.4)
 │   ├── arena/
 │   │   └── element_id.mojo       # ElementId type and allocator
 │   ├── bridge/
@@ -146,7 +162,7 @@ wasm-mojo/
 │       ├── interpreter.js        # DOM Interpreter class
 │       ├── protocol.js           # Op constants + MutationReader
 │       └── strings.js            # Mojo String ABI writeStringStruct()
-├── test/                         # Mojo tests (38 modules, 1,080 tests via wasmtime)
+├── test/                         # Mojo tests (52 modules, 1,323 tests via wasmtime)
 │   ├── wasm_harness.mojo         # WasmInstance harness using wasmtime-mojo FFI
 │   ├── test_signals.mojo         # Reactive signals
 │   ├── test_scopes.mojo          # Scope arena and hooks
@@ -159,7 +175,7 @@ wasm-mojo/
 │   ├── test_memo.mojo            # Memo store, runtime API, hooks, propagation
 │   ├── test_scheduler.mojo       # Scheduler ordering and dedup
 │   └── ...                       # + arithmetic, strings, boundaries, etc.
-├── test-js/                      # JS runtime integration tests (2,230 tests via Deno)
+├── test-js/                      # JS runtime integration tests (3,090 tests via Deno)
 │   ├── harness.ts                # Shared WASM loading and test helpers
 │   ├── counter.test.ts           # Full counter app lifecycle with DOM
 │   ├── todo.test.ts              # Todo app: add, remove, toggle, clear
@@ -178,7 +194,7 @@ wasm-mojo/
 │   └── precompile.mojo           # .wasm → .cwasm via wasmtime AOT
 ├── justfile                      # Build and test commands
 ├── default.nix                   # Nix dev shell
-└── CHANGELOG.md                  # Development history (Phases 0–32)
+└── CHANGELOG.md                  # Development history (Phases 0–40)
 ```
 
 ## Mojo version

@@ -183,9 +183,9 @@ if ptr != UnsafePointer[T]():       # not: if ptr:
   - `child_ctx.has_pending() -> Bool` — check if any descendant of child scope is pending.
   - `child_ctx.is_pending() -> Bool` — check if the child scope itself is pending.
 
-## App Architectures (`examples/` and `src/main.mojo`)
+## App Architectures (`examples/`, `src/apps/`, and `src/main.mojo`)
 
-All three example apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state — TodoApp's `input_text` field was migrated from plain `String` to `SignalString` via `create_signal_string()` (M19.7). Phase 20 adds string event dispatch infrastructure (`ACTION_SIGNAL_SET_STRING`, `dispatch_event_with_string`) enabling JS → WASM string value flow for input events. Phase 20.5 migrates the TodoApp to fully WASM-driven input binding using `bind_value()`, `oninput_set_string()`, and `onclick_custom()` — JS has no special-casing for any handler. Phase 21 introduces `launch()` (`examples/lib/app.js`) — a convention-based app launcher that eliminates per-app boot boilerplate. Phase 22 adds WASM-driven Enter key handling; counter and todo now use identical zero-config launch() calls. Phase 23 converges bench to launch() with `onBoot` for toolbar wiring and event delegation — all three apps now use the shared boot infrastructure. Phase 32 adds error boundary demo apps (SafeCounterApp, ErrorNestApp) in `src/main.mojo` — these are test-only apps exercising `use_error_boundary()`, `report_error()`, `has_error()`, `clear_error()` with fallback UI switching. Phase 33 adds suspense demo apps (DataLoaderApp, SuspenseNestApp) in `src/main.mojo` — these are test-only apps exercising `use_suspense_boundary()`, `set_pending()`, `is_pending()` with content/skeleton switching and JS-triggered resolve.
+All app struct and lifecycle code lives in dedicated modules — example apps in `examples/` (counter, todo, bench) and demo/test apps in `src/apps/`. Only the thin `@export` WASM wrappers remain in `src/main.mojo` (Mojo requires exports in the main compilation unit). All apps use `ComponentContext` with constructor-based setup and multi-arg `el_*` overloads. TodoApp and BenchmarkApp use Phase 17 `ItemBuilder` + `HandlerAction` for ergonomic per-item building and dispatch, with Phase 18 conditional helpers (`add_class_if`, `text_when`) to eliminate if/else boilerplate. Phase 19 adds `SignalString` for reactive string state — TodoApp's `input_text` field was migrated from plain `String` to `SignalString` via `create_signal_string()` (M19.7). Phase 20 adds string event dispatch infrastructure (`ACTION_SIGNAL_SET_STRING`, `dispatch_event_with_string`) enabling JS → WASM string value flow for input events. Phase 20.5 migrates the TodoApp to fully WASM-driven input binding using `bind_value()`, `oninput_set_string()`, and `onclick_custom()` — JS has no special-casing for any handler. Phase 21 introduces `launch()` (`examples/lib/app.js`) — a convention-based app launcher that eliminates per-app boot boilerplate. Phase 22 adds WASM-driven Enter key handling; counter and todo now use identical zero-config launch() calls. Phase 23 converges bench to launch() with `onBoot` for toolbar wiring and event delegation — all three apps now use the shared boot infrastructure. Phase 32 adds error boundary demo apps (SafeCounterApp, ErrorNestApp) — these are test-only apps exercising `use_error_boundary()`, `report_error()`, `has_error()`, `clear_error()` with fallback UI switching. Phase 33 adds suspense demo apps (DataLoaderApp, SuspenseNestApp) — these are test-only apps exercising `use_suspense_boundary()`, `set_pending()`, `is_pending()` with content/skeleton switching and JS-triggered resolve.
 
 ### CounterApp (`counter.mojo`) — simplest example
 
@@ -275,7 +275,7 @@ Phase 24.2: Uses `setup_view()` for the app shell template ("bench-app") with in
 - **P24.3** ✅ — `performance.now()` WASM import for timing. `performance_now() -> Float64` via `external_call` — Mojo compiler emits unresolved symbol, `wasm-ld --allow-undefined` turns it into WASM import from `env` module, JS host provides `performance_now: () => performance.now()`. `format_timing_ms(ms) -> String` formats elapsed time to 1 decimal place with em-dash separator. `handle_event()` wraps each toolbar op with before/after `performance_now()`, stores formatted result in `timing_text`. `render()` emits `timing_text` as `dyn_text[1]` — diff detects change on flush, emits `SetText`. Added to `env.js` (browser), `env.ts` (Deno runtime), and `wasm_harness.mojo` (func[16]: deterministic mock clock, increments by 1.0 per call). WASM import count: 16 → 17. Exports: `bench_status_text(app_ptr) -> String`, `bench_handler_id_at(app_ptr, index) -> i32`.
 - **P24.4** ✅ — Fine-grained status bar with 3 `dyn_text` nodes. Split single `status_text` into `op_name` (dyn_text[0]), `timing_text` (dyn_text[1]), `row_count_text` (dyn_text[2]). Row list placeholder moved from `dyn_node(1)` to `dyn_node(3)`. Added `format_timing_ms(ms) -> String` (timing only with separator), `format_row_count(count) -> String` (comma-formatted with separator), `_format_number(n) -> String` (comma thousands). New exports: `bench_op_name`, `bench_timing_text`, `bench_row_count_text`. `bench_status_text` returns concatenation for backward compat. `bench/main.js` structurally identical to counter/todo (only `bufferCapacity` override remains).
 
-### ContextTestApp (`src/main.mojo`) — context (DI) surface test
+### ContextTestApp (`src/apps/context_test.mojo`) — context (DI) surface test
 
 ```txt
 struct ContextTestApp:
@@ -287,7 +287,7 @@ struct ContextTestApp:
 
 Minimal test app exercising `provide_context()`, `consume_context()`, `has_context()`, and typed signal-sharing helpers (`provide_signal_i32`, `consume_signal_i32`). Root scope + one child scope for parent-chain walk-up verification. WASM exports: `cta_init`, `cta_destroy`, `cta_provide_context`, `cta_consume_context`, `cta_has_context`, `cta_provide_signal_i32`, `cta_consume_signal_i32_from_child`, `cta_write_signal_via_child`, etc.
 
-### ChildContextTestApp (`src/main.mojo`) — self-rendering child test
+### ChildContextTestApp (`src/apps/child_context_test.mojo`) — self-rendering child test
 
 ```txt
 struct ChildContextTestApp:
@@ -303,7 +303,7 @@ struct ChildContextTestApp:
 
 Lifecycle: `cct_init` → `cct_rebuild` → `cct_handle_event` → `cct_flush`. Parent provides count signal via context; child consumes it and owns a local `show_hex` toggle. Child self-renders via `child_ctx.render_builder()`. DOM shows parent h1 + buttons + child p with count text.
 
-### PropsCounterApp (`src/main.mojo`) — self-rendering child with props
+### PropsCounterApp (`src/apps/props_counter.mojo`) — self-rendering child with props
 
 ```txt
 struct PropsCounterApp:
@@ -317,7 +317,7 @@ struct PropsCounterApp:
 
 Lifecycle: `pc_init` → `pc_rebuild` → `pc_handle_event` → `pc_flush`. Parent has increment/decrement buttons; child (`CounterDisplay`) displays "Count: N" or "Count: 0xN" with a local `show_hex` toggle button. Count signal shared from parent to child via context props.
 
-### ThemeCounterApp (`src/main.mojo`) — shared context + cross-component
+### ThemeCounterApp (`src/apps/theme_counter.mojo`) — shared context + cross-component
 
 ```txt
 struct ThemeCounterApp:
@@ -334,7 +334,7 @@ struct ThemeCounterApp:
 
 Lifecycle: `tc_init` → `tc_rebuild` → `tc_handle_event` → `tc_flush`. Parent with theme toggle and two child components both consuming theme + count context. `TCCounterChild` has a Reset button that writes to a callback signal consumed by the parent — demonstrating upward communication via shared context.
 
-### SafeCounterApp (`src/main.mojo`) — error boundary with crash/retry
+### SafeCounterApp (`src/apps/safe_counter.mojo`) — error boundary with crash/retry
 
 ```txt
 struct SafeCounterApp:
@@ -356,7 +356,7 @@ struct SafeCounterApp:
 
 Lifecycle: `sc_init` → `sc_rebuild` → `sc_handle_event` → `sc_flush`. Error boundary alternates between normal child (count display) and fallback child (error message + retry button). Count signal persists across crash/recovery cycles.
 
-### ErrorNestApp (`src/main.mojo`) — nested error boundaries
+### ErrorNestApp (`src/apps/error_nest.mojo`) — nested error boundaries
 
 ```txt
 struct ErrorNestApp:
@@ -381,7 +381,7 @@ struct ErrorNestApp:
 
 Lifecycle: `en_init` → `en_rebuild` → `en_handle_event` → `en_flush`. Inner crash caught by inner boundary (only inner slot swaps). Outer crash caught by outer boundary (entire inner tree replaced by outer fallback). Recovery at each level is independent.
 
-### DataLoaderApp (`src/main.mojo`) — suspense with load/resolve lifecycle
+### DataLoaderApp (`src/apps/data_loader.mojo`) — suspense with load/resolve lifecycle
 
 ```txt
 struct DataLoaderApp:
@@ -400,7 +400,7 @@ struct DataLoaderApp:
 
 Lifecycle: `dl_init` → `dl_rebuild` → `dl_handle_event` (load) → `dl_flush` (skeleton shown) → `dl_resolve` (JS-triggered) → `dl_flush` (content shown with data). Load button sets pending, skeleton replaces content. JS calls `dl_resolve(data)` to clear pending and store data. Next flush restores content with loaded data.
 
-### SuspenseNestApp (`src/main.mojo`) — nested suspense boundaries
+### SuspenseNestApp (`src/apps/suspense_nest.mojo`) — nested suspense boundaries
 
 ```txt
 struct SuspenseNestApp:
@@ -426,7 +426,7 @@ struct SuspenseNestApp:
 
 Lifecycle: `sn_init` → `sn_rebuild` → `sn_handle_event` → `sn_flush`. Inner load shows inner skeleton (outer content unaffected). Outer load shows outer skeleton (hides entire inner tree). Outer resolve reveals inner boundary (may still be pending). Inner resolve shows inner content. Both boundaries operate independently.
 
-### EffectDemoApp (`src/main.mojo`) — effect-in-flush pattern
+### EffectDemoApp (`src/apps/effect_demo.mojo`) — effect-in-flush pattern
 
 ```txt
 struct EffectDemoApp:
@@ -446,7 +446,7 @@ struct EffectDemoApp:
 
 Lifecycle: `ed_init` → `ed_rebuild` (run_effects + mount) → `ed_handle_event` (onclick_add count) → `ed_flush` (effect runs, derived state updated, DOM diffed). Effect drain-and-run pattern: effects execute between `consume_dirty()` and `render()` so all derived state is settled before rendering.
 
-### EffectMemoApp (`src/main.mojo`) — signal → memo → effect → signal chain
+### EffectMemoApp (`src/apps/effect_memo.mojo`) — signal → memo → effect → signal chain
 
 ```txt
 struct EffectMemoApp:
@@ -468,7 +468,7 @@ struct EffectMemoApp:
 
 Lifecycle: `em_init` → `em_rebuild` (recompute memo + run effect + mount) → `em_handle_event` (onclick_add input) → `em_flush` (memo recomputed, effect runs, label updated, DOM diffed). Chain: input write → memo dirty → recompute memo → output signal write → effect pending → run effect → label signal write → render. Memos MUST be recomputed before effects that read their output.
 
-### MemoFormApp (`src/main.mojo`) — MemoBool + MemoString form validation
+### MemoFormApp (`src/apps/memo_form.mojo`) — MemoBool + MemoString form validation
 
 ```txt
 struct MemoFormApp:
@@ -490,7 +490,7 @@ struct MemoFormApp:
 
 Lifecycle: `mf_init` → `mf_rebuild` (run_memos + mount) → `mf_handle_event_string` (oninput_set_string writes input) → `mf_flush` (memos recomputed, DOM diffed). Memo recomputation order: is_valid FIRST (depends on input), then status (depends on input + is_valid). Uses two-way input binding (`bind_value` + `oninput_set_string`). WASM exports: `mf_init`, `mf_destroy`, `mf_rebuild`, `mf_handle_event`, `mf_handle_event_string`, `mf_flush`, `mf_input_text`, `mf_is_valid`, `mf_status_text`, `mf_is_valid_dirty`, `mf_status_dirty`, `mf_set_input`, `mf_input_handler`, `mf_has_dirty`, `mf_scope_count`, `mf_memo_count`.
 
-### MemoChainApp (`src/main.mojo`) — mixed-type memo chain
+### MemoChainApp (`src/apps/memo_chain.mojo`) — mixed-type memo chain
 
 ```txt
 struct MemoChainApp:
@@ -511,7 +511,7 @@ struct MemoChainApp:
 
 Lifecycle: `mc_init` → `mc_rebuild` (run_memos + mount) → `mc_handle_event` (onclick_add input) → `mc_flush` (memo chain recomputed, settle_scopes filters stable scopes, DOM diffed). Chain: `SignalI32` → `MemoI32` → `MemoBool` → `MemoString`. The runtime automatically propagates dirtiness through memo → memo chains (Phase 36 worklist-based propagation), so each memo checks `is_dirty()` independently. Recomputation order (doubled → is_big → label) is still maintained by code order to ensure upstream values are fresh. Phase 37 equality gating: if a memo recomputes to the same value, its output signal is NOT written and `settle_scopes()` removes scopes that only subscribed to stable signals. WASM exports: `mc_init`, `mc_destroy`, `mc_rebuild`, `mc_handle_event`, `mc_flush`, `mc_input_value`, `mc_doubled_value`, `mc_is_big`, `mc_label_text`, `mc_doubled_dirty`, `mc_is_big_dirty`, `mc_label_dirty`, `mc_incr_handler`, `mc_has_dirty`, `mc_scope_count`, `mc_memo_count`.
 
-### EqualityDemoApp (`src/main.mojo`) — equality-gated memo chain
+### EqualityDemoApp (`src/apps/equality_demo.mojo`) — equality-gated memo chain
 
 ```txt
 struct EqualityDemoApp:
@@ -531,7 +531,7 @@ struct EqualityDemoApp:
 
 Lifecycle: `eq_init` → `eq_rebuild` (run_memos + mount) → `eq_handle_event` (onclick_add/sub input) → `eq_flush` (memo chain recomputed with equality gating, settle_scopes filters stable scopes, DOM diffed only if needed). Chain: `SignalI32(input)` → `MemoI32(clamped)` → `MemoString(label)`. The input signal uses `create_signal` (not `use_signal`) so the scope does NOT auto-subscribe to it — the scope only subscribes to memo outputs (clamped, label) via `use_memo` / `use_memo_string`. When the memo chain is value-stable (e.g. input exceeds the clamp max of 10), `settle_scopes()` removes the scope and flush returns 0 bytes (no mutations, no DOM work). WASM exports: `eq_init`, `eq_destroy`, `eq_rebuild`, `eq_handle_event`, `eq_flush`, `eq_input_value`, `eq_clamped_value`, `eq_label_text`, `eq_clamped_dirty`, `eq_label_dirty`, `eq_clamped_changed`, `eq_label_changed`, `eq_incr_handler`, `eq_decr_handler`, `eq_has_dirty`, `eq_scope_count`, `eq_memo_count`.
 
-### BatchDemoApp (`src/main.mojo`) — batch signal writes
+### BatchDemoApp (`src/apps/batch_demo.mojo`) — batch signal writes
 
 ```txt
 struct BatchDemoApp:
@@ -555,16 +555,33 @@ Lifecycle: `bd_init` → `bd_rebuild` (run_memos + mount) → `bd_set_names(firs
 
 ## WASM Export Pattern (`src/main.mojo`)
 
-All exports follow this pattern — thin wrappers forwarding to app modules:
+All app logic lives in dedicated modules (`src/apps/*.mojo` or `examples/*/*.mojo`). Each module defines:
+
+- The app **struct** (e.g. `BatchDemoApp`)
+- Private **lifecycle functions** (e.g. `_bd_init`, `_bd_rebuild`, `_bd_flush`)
+
+`src/main.mojo` imports these and re-exports them as thin `@export` wrappers:
 
 ```txt
-@export fn counter_init() -> Int64:     return _to_i64(counter_app_init())
-@export fn counter_flush(...) -> Int32: ...alloc writer...forward...free writer
-@export fn counter_count_value(app_ptr: Int64) -> Int32:
-    return _get[CounterApp](app_ptr)[0].count.peek()
+# In src/apps/batch_demo.mojo:
+fn _bd_init() -> UnsafePointer[BatchDemoApp, MutExternalOrigin]: ...
+
+# In src/main.mojo:
+from apps.batch_demo import BatchDemoApp, _bd_init, ...
+
+@export fn bd_init() -> Int64:  return _to_i64(_bd_init())
+@export fn bd_flush(...) -> Int32:  ...alloc writer...forward...free writer
+@export fn bd_full_name_text(app_ptr: Int64) -> String:
+    return _get[BatchDemoApp](app_ptr)[0].full_name.peek()
 ```
 
 Helpers: `_to_i64(ptr)`, `_get[T](i64) -> UnsafePointer[T]`, `_b2i(Bool) -> Int32`, `_alloc_writer()`, `_free_writer()`.
+
+`main.mojo` is organized into three sections:
+
+1. **Shared Utilities** — pointer/writer helpers used by all exports
+2. **Framework Test & Runtime Exports** — low-level subsystem test exports
+3. **App WASM Export Wrappers** — per-app re-export wrappers (grouped by app)
 
 **Naming convention for `launch()`**: The JS `launch({ app: "NAME" })` function discovers WASM exports by prefix — `{NAME}_init`, `{NAME}_rebuild`, `{NAME}_flush` (required), `{NAME}_handle_event` (optional — enables EventBridge dispatch; when missing, EventBridge is a no-op), and `{NAME}_dispatch_string` (optional, enables auto string dispatch for input/change/keydown events). New apps MUST follow this naming convention to be compatible with `launch()`.
 
@@ -733,7 +750,8 @@ el_button(text("Add"), onclick_custom()),
 
 | File | Lines | Role |
 |------|-------|------|
-| `src/main.mojo` | ~10,035 | All @export wrappers (incl. SafeCounterApp, ErrorNestApp, DataLoaderApp, SuspenseNestApp, EffectDemoApp, EffectMemoApp, MemoFormApp, MemoChainApp, EqualityDemoApp, BatchDemoApp, context/child test apps) |
+| `src/main.mojo` | ~6,730 | Shared utilities + framework test exports + thin @export wrappers for all apps |
+| `src/apps/` (15 modules) | ~3,660 | Demo/test app structs + lifecycle functions (Phase 40 extraction) |
 | `src/signals/handle.mojo` | ~980 | SignalI32 + SignalBool + SignalString + MemoI32 + MemoBool + MemoString + EffectHandle |
 | `src/signals/memo.mojo` | ~458 | MemoEntry + MemoStore (value_changed flag, Phase 37) |
 | `src/signals/runtime.mojo` | ~1,850 | Reactive runtime + SignalStore + StringStore + memo bool/string methods + worklist propagation (Phase 36) + equality-gated end_compute + settle_scopes + _changed_signals (Phase 37) + batch signal writes (Phase 38) |
@@ -784,7 +802,7 @@ el_button(text("Add"), onclick_custom()),
 | `test/test_batch_demo.mojo` | ~718 | BatchDemoApp Mojo tests (19 tests: lifecycle, set_names, reset, memo dirty/stable, write_count, rapid sets, dirty flag) |
 | `test-js/batch_demo.test.ts` | ~452 | BatchDemoApp JS tests (20 suites: DOM, set/reset cycle, multiple sets, write count, memo stable, batching flag, independent instances, rapid sets) |
 | `test/wasm_harness.mojo` | ~1,400 | Mojo WASM test harness (includes free-list allocator, Phase 25) |
-| `CHANGELOG.md` | ~500 | Development history (Phases 0–38) |
+| `CHANGELOG.md` | ~530 | Development history (Phases 0–40) |
 
 ## Common Patterns
 
