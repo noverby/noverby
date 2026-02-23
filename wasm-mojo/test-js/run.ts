@@ -13,6 +13,7 @@ import { testMemo } from "./memo.test.ts";
 import { testMutations } from "./mutations.test.ts";
 import { testPhase8 } from "./phase8.test.ts";
 import { testProtocol } from "./protocol.test.ts";
+import { testRouting } from "./routing.test.ts";
 import { testTodo } from "./todo.test.ts";
 
 async function run(): Promise<void> {
@@ -36,6 +37,7 @@ async function run(): Promise<void> {
 	testAllocatorReuse(fns);
 	testLifecycle(fns);
 	testChildComponent(fns);
+	testRouting(fns);
 
 	summary();
 }

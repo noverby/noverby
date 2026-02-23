@@ -125,6 +125,10 @@ export const env: WebAssembly.ModuleImports = {
 	// high-resolution timer (P24.3)
 	performance_now: (): number => performance.now(),
 
+	// client-side routing (P30.2) — no-ops in test environment
+	push_state: (_pathPtr: bigint): void => {},
+	replace_state: (_pathPtr: bigint): void => {},
+
 	// math builtins
 	fmaf: (x: number, y: number, z: number): number =>
 		Math.fround(Math.fround(x * y) + z),

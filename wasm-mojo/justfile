@@ -66,4 +66,5 @@ serve: build
     @echo "Open http://localhost:4507/examples/counter/"
     @echo "Open http://localhost:4507/examples/todo/"
     @echo "Open http://localhost:4507/examples/bench/"
+    @echo "Open http://localhost:4507/examples/app/"
     deno run --allow-net --allow-read jsr:@std/http/file-server

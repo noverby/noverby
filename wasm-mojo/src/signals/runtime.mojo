@@ -773,6 +773,27 @@ struct Runtime(Movable):
         """Number of scopes in the dirty queue."""
         return len(self.dirty_scopes)
 
+    fn mark_scope_dirty(mut self, scope_id: UInt32):
+        """Manually add a scope to the dirty queue.
+
+        Used by non-signal state changes (e.g. router navigation triggered
+        by an external JS call) that need to trigger a re-render without
+        going through the reactive signal system.
+
+        Deduplicates — if the scope is already in the dirty queue, this
+        is a no-op.
+
+        Args:
+            scope_id: The scope to mark as needing re-render.
+        """
+        var found = False
+        for i in range(len(self.dirty_scopes)):
+            if self.dirty_scopes[i] == scope_id:
+                found = True
+                break
+        if not found:
+            self.dirty_scopes.append(scope_id)
+
     # ── Scope management ─────────────────────────────────────────────
 
     fn create_scope(mut self, height: UInt32, parent_id: Int) -> UInt32:

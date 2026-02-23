@@ -139,6 +139,7 @@ export async function launch(options) {
 		const destroyFn = fns[`${appName}_destroy`]; // optional but expected
 		const handleEventFn = fns[`${appName}_handle_event`]; // optional
 		const dispatchStringFn = fns[`${appName}_dispatch_string`]; // optional
+		const navigateFn = fns[`${appName}_navigate`]; // optional — enables routing
 
 		if (!initFn) {
 			throw new Error(`WASM export "${appName}_init" not found`);
@@ -258,7 +259,88 @@ export async function launch(options) {
 			},
 		};
 
-		// 8. App-specific post-boot wiring
+		// 8. Client-side routing (Phase 30)
+		//    Auto-detected when `{app}_navigate` export exists.
+		//    - popstate listener → calls navigate + flush on browser back/forward
+		//    - <a> click interception → prevents default, pushState, navigate + flush
+		let popstateHandler = null;
+		let linkClickHandler = null;
+
+		if (navigateFn) {
+			// Navigate helper: call WASM navigate + flush + pushState
+			function routerNavigate(path, pushHistory = true) {
+				if (handle.destroyed) return;
+				const result = navigateFn(handle.appPtr, path);
+				if (result) {
+					flush();
+					if (pushHistory) {
+						try {
+							history.pushState(null, "", path);
+						} catch (_) {
+							/* non-browser */
+						}
+					}
+				}
+			}
+
+			// popstate → browser back/forward
+			popstateHandler = () => {
+				const path = location.pathname || "/";
+				routerNavigate(path, false); // don't pushState on popstate
+			};
+			try {
+				window.addEventListener("popstate", popstateHandler);
+			} catch (_) {
+				/* non-browser */
+			}
+
+			// <a> click interception on root element (delegation)
+			linkClickHandler = (e) => {
+				// Walk up from target to find <a> with href
+				let el = e.target;
+				while (el && el !== rootEl) {
+					if (el.tagName === "A" && el.getAttribute("href")) {
+						const href = el.getAttribute("href");
+						// Only intercept same-origin relative paths
+						if (href.startsWith("/")) {
+							e.preventDefault();
+							routerNavigate(href, true);
+							return;
+						}
+					}
+					el = el.parentElement;
+				}
+			};
+			rootEl.addEventListener("click", linkClickHandler);
+
+			// Expose navigate on the handle for programmatic use
+			handle.navigate = routerNavigate;
+
+			// Navigate to the current URL path on initial load
+			const initialPath =
+				(typeof location !== "undefined" && location.pathname) || "/";
+			// The WASM side already navigated to "/" in __init__, so only
+			// navigate if the browser URL differs from the default route.
+			if (initialPath !== "/") {
+				routerNavigate(initialPath, false);
+			}
+		}
+
+		// Augment destroy to clean up routing listeners
+		const originalDestroy = handle.destroy;
+		handle.destroy = () => {
+			if (popstateHandler) {
+				try {
+					window.removeEventListener("popstate", popstateHandler);
+				} catch (_) {}
+			}
+			if (linkClickHandler) {
+				rootEl.removeEventListener("click", linkClickHandler);
+			}
+			originalDestroy.call(handle);
+		};
+
+		// 9. App-specific post-boot wiring
 		if (onBoot) onBoot(handle);
 
 		console.log(`🔥 Mojo ${appName} app running!`);

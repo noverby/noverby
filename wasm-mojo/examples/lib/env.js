@@ -223,6 +223,48 @@ export const env = {
 		view.setBigInt64(Number(resultPtr) + 8, (product >> 64n) & mask, true);
 	},
 	performance_now: () => performance.now(),
+
+	// client-side routing (P30.2) — push/replace browser history
+	push_state: (pathPtr) => {
+		if (!wasmMemory) return;
+		// Read the Mojo String struct: ptr (i64) + len (i64) at pathPtr
+		const view = new DataView(wasmMemory.buffer);
+		const strPtr = view.getBigInt64(Number(pathPtr), true);
+		const strLen = view.getBigInt64(Number(pathPtr) + 8, true);
+		if (strLen > 0n) {
+			const bytes = new Uint8Array(
+				wasmMemory.buffer,
+				Number(strPtr),
+				Number(strLen),
+			);
+			const path = new TextDecoder().decode(bytes);
+			try {
+				history.pushState(null, "", path);
+			} catch (_) {
+				/* no-op in non-browser */
+			}
+		}
+	},
+	replace_state: (pathPtr) => {
+		if (!wasmMemory) return;
+		const view = new DataView(wasmMemory.buffer);
+		const strPtr = view.getBigInt64(Number(pathPtr), true);
+		const strLen = view.getBigInt64(Number(pathPtr) + 8, true);
+		if (strLen > 0n) {
+			const bytes = new Uint8Array(
+				wasmMemory.buffer,
+				Number(strPtr),
+				Number(strLen),
+			);
+			const path = new TextDecoder().decode(bytes);
+			try {
+				history.replaceState(null, "", path);
+			} catch (_) {
+				/* no-op in non-browser */
+			}
+		}
+	},
+
 	fmaf: (x, y, z) => Math.fround(Math.fround(x * y) + z),
 	fminf: (x, y) => (x > y ? y : x),
 	fmaxf: (x, y) => (x > y ? x : y),

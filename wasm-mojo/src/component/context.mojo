@@ -1097,6 +1097,37 @@ struct ComponentContext(Movable):
         """
         return self.shell.runtime[0].register_handler(entry)
 
+    fn register_custom_handler(self, event_name: String) -> UInt32:
+        """Register a custom (app-routed) event handler under the root scope.
+
+        Creates a HandlerEntry with ACTION_CUSTOM.  When dispatched, the
+        runtime marks the scope dirty and returns False — the app's event
+        handler then performs custom routing based on the handler ID.
+
+        Use this for handlers that live outside the main view tree (e.g.
+        in extra templates registered via register_extra_template).
+
+        Args:
+            event_name: The DOM event name (e.g. "click").
+
+        Returns:
+            The handler ID.
+        """
+        return self.shell.runtime[0].register_handler(
+            HandlerEntry.custom(self.scope_id, event_name)
+        )
+
+    fn mark_dirty(mut self):
+        """Manually mark the root scope as dirty.
+
+        Use this when a non-signal state change (e.g. router navigation
+        triggered by an external JS call) needs to trigger a re-render.
+        Signal writes already mark subscribing scopes dirty automatically,
+        so this is only needed for state changes that bypass the reactive
+        system.
+        """
+        self.shell.runtime[0].mark_scope_dirty(self.scope_id)
+
     # ── VNode building ───────────────────────────────────────────────
 
     fn vnode_builder(self) -> VNodeBuilder:

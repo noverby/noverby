@@ -1,5 +1,5 @@
-export type { CounterAppHandle } from "./app.ts";
-export { createCounterApp } from "./app.ts";
+export type { CounterAppHandle, MultiViewAppHandle } from "./app.ts";
+export { createCounterApp, createMultiViewApp } from "./app.ts";
 export { env, setMemory } from "./env.ts";
 export type {
 	DispatchFn,
