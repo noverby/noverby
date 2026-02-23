@@ -1478,6 +1478,105 @@ struct ComponentContext(Movable):
         """
         child_ctx.destroy()
 
+    fn create_child_context_under(
+        mut self,
+        parent_scope_id: UInt32,
+        view: Node,
+        name: String,
+    ) -> ChildComponentContext:
+        """Create a ChildComponentContext under an arbitrary parent scope.
+
+        Like ``create_child_context()`` but the new child scope is
+        parented under *parent_scope_id* instead of the root scope.
+        This is essential for nested error boundaries: inner children
+        must be scoped under the inner boundary so that
+        ``propagate_error()`` finds the correct boundary.
+
+        Args:
+            parent_scope_id: Scope ID to parent the new child under.
+            view: The root Node of the child's template tree.
+            name: The template name (for deduplication).
+
+        Returns:
+            A ChildComponentContext with signal/context/render APIs.
+        """
+        # 1. Create a child scope under the specified parent
+        var child_scope_id = self.shell.create_child_scope(parent_scope_id)
+
+        # 2. Process tree: auto-number dyn_text, replace NODE_EVENT and
+        #    NODE_BIND_VALUE with NODE_DYN_ATTR, collect info.
+        var events = List[_EventInfo]()
+        var value_bindings = List[_ValueBindingInfo]()
+        var attr_idx = UInt32(0)
+        var text_idx = UInt32(0)
+        var processed = _process_view_tree(
+            view, events, value_bindings, attr_idx, text_idx
+        )
+
+        # 3. Build and register template
+        var template = to_template(processed, name)
+        var tmpl_id = UInt32(
+            self.shell.runtime[0].templates.register(template^)
+        )
+
+        # 4. Register handlers under the CHILD scope and store bindings
+        var event_bindings = List[ChildEventBinding]()
+        var auto_bindings = List[ChildAutoBinding]()
+
+        var ev_idx = 0
+        var vb_idx = 0
+        var total_auto = len(events) + len(value_bindings)
+        for _ in range(total_auto):
+            var use_event: Bool
+            if ev_idx < len(events) and vb_idx < len(value_bindings):
+                use_event = (
+                    events[ev_idx].attr_idx <= value_bindings[vb_idx].attr_idx
+                )
+            elif ev_idx < len(events):
+                use_event = True
+            else:
+                use_event = False
+
+            if use_event:
+                var handler_id = self.shell.runtime[0].register_handler(
+                    HandlerEntry(
+                        child_scope_id,
+                        events[ev_idx].action,
+                        events[ev_idx].signal_key,
+                        events[ev_idx].operand,
+                        events[ev_idx].event_name,
+                    )
+                )
+                event_bindings.append(
+                    ChildEventBinding(events[ev_idx].event_name, handler_id)
+                )
+                auto_bindings.append(
+                    ChildAutoBinding.event(
+                        events[ev_idx].event_name, handler_id
+                    )
+                )
+                ev_idx += 1
+            else:
+                auto_bindings.append(
+                    ChildAutoBinding.value(
+                        value_bindings[vb_idx].attr_name,
+                        value_bindings[vb_idx].string_key,
+                        value_bindings[vb_idx].version_key,
+                    )
+                )
+                vb_idx += 1
+
+        var child = ChildComponent(
+            child_scope_id, tmpl_id, event_bindings^, auto_bindings^
+        )
+        return ChildComponentContext(
+            child^,
+            child_scope_id,
+            self.shell.runtime,
+            self.shell.store,
+            self.shell.eid_alloc,
+        )
+
     # ── Context (Dependency Injection) ───────────────────────────────
 
     fn provide_context(mut self, key: UInt32, value: Int32):

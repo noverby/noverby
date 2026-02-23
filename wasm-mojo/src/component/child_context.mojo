@@ -416,14 +416,58 @@ struct ChildComponentContext(Movable):
         """Return the number of auto-bindings on this child."""
         return self.child.auto_binding_count()
 
+    # ── Error boundary ───────────────────────────────────────────────
+
+    fn use_error_boundary(mut self):
+        """Mark this child scope as an error boundary.
+
+        When a descendant scope reports an error via ``report_error()``,
+        this scope captures it.  Check ``has_error()`` during flush to
+        switch between normal content and fallback UI.
+
+        Example::
+
+            var child_ctx = parent_ctx.create_child_context(view, name)
+            child_ctx.use_error_boundary()
+        """
+        self.runtime[0].scopes.set_error_boundary(self.scope_id, True)
+
+    fn has_error(self) -> Bool:
+        """Check whether this child scope (as a boundary) has captured an error.
+
+        Returns:
+            True if an error has been propagated to this boundary.
+        """
+        return self.runtime[0].scopes.has_error(self.scope_id)
+
+    fn error_message(self) -> String:
+        """Get the error message captured by this boundary.
+
+        Returns:
+            The error message string, or empty if no error.
+        """
+        return self.runtime[0].scopes.get_error_message(self.scope_id)
+
+    fn clear_error(mut self):
+        """Clear the error state on this boundary scope.
+
+        After clearing, the next flush should render normal children
+        instead of fallback UI.  Marks the scope dirty so the flush
+        cycle processes the state change.
+        """
+        self.runtime[0].scopes.clear_error(self.scope_id)
+        self.runtime[0].mark_scope_dirty(self.scope_id)
+
     # ── Error reporting ──────────────────────────────────────────────
 
     fn report_error(self, message: String) -> Int:
         """Propagate an error from this child scope to the nearest boundary.
 
-        Walks up the parent chain from the child scope.  If a boundary
-        is found, sets the error on it and marks it dirty so the next
-        flush picks up the state change.
+        First checks whether this child scope itself is a boundary —
+        if so, the error is set directly on it.  Otherwise walks up
+        the parent chain via ``propagate_error()``.  In both cases
+        the boundary scope is marked dirty so the next flush picks
+        up the state change.
 
         Args:
             message: Description of the error.
@@ -431,6 +475,12 @@ struct ChildComponentContext(Movable):
         Returns:
             The boundary scope ID as Int, or -1 if no boundary found.
         """
+        # If this scope is itself a boundary, set the error directly
+        # (propagate_error only checks ancestors, not self).
+        if self.runtime[0].scopes.is_error_boundary(self.scope_id):
+            self.runtime[0].scopes.set_error(self.scope_id, message)
+            self.runtime[0].mark_scope_dirty(self.scope_id)
+            return Int(self.scope_id)
         var boundary_id = self.runtime[0].scopes.propagate_error(
             self.scope_id, message
         )

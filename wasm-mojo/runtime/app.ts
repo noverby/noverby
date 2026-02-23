@@ -1387,3 +1387,195 @@ export function createSafeCounterApp(
 
 	return scHandle;
 }
+
+// ── ErrorNestApp (nested error boundaries) ──────────────────────────────────
+
+export interface ErrorNestAppHandle extends AppHandle {
+	/** Whether the outer boundary has captured an error. */
+	hasOuterError(): boolean;
+
+	/** Whether the inner boundary has captured an error. */
+	hasInnerError(): boolean;
+
+	/** The outer boundary's error message. */
+	getOuterErrorMessage(): string;
+
+	/** The inner boundary's error message. */
+	getInnerErrorMessage(): string;
+
+	/** Whether the outer normal child is mounted. */
+	outerNormalMounted(): boolean;
+
+	/** Whether the outer fallback child is mounted. */
+	outerFallbackMounted(): boolean;
+
+	/** Whether the inner normal child is mounted. */
+	innerNormalMounted(): boolean;
+
+	/** Whether the inner fallback child is mounted. */
+	innerFallbackMounted(): boolean;
+
+	/** Whether any scope is dirty. */
+	hasDirty(): boolean;
+
+	/** Total number of registered handlers. */
+	handlerCount(): number;
+
+	/** Number of live scopes. */
+	scopeCount(): number;
+
+	/** Scope IDs. */
+	readonly outerScopeId: number;
+	readonly innerBoundaryScopeId: number;
+	readonly innerNormalScopeId: number;
+	readonly innerFallbackScopeId: number;
+	readonly outerFallbackScopeId: number;
+
+	/** Handler IDs. */
+	outerCrashHandler: number;
+	innerCrashHandler: number;
+	outerRetryHandler: number;
+	innerRetryHandler: number;
+
+	/** Dispatch outer crash + flush. */
+	outerCrash(): void;
+
+	/** Dispatch inner crash + flush. */
+	innerCrash(): void;
+
+	/** Dispatch outer retry + flush. */
+	outerRetry(): void;
+
+	/** Dispatch inner retry + flush. */
+	innerRetry(): void;
+}
+
+/**
+ * Create an ErrorNestApp wired to a DOM root element.
+ */
+export function createErrorNestApp(
+	fns: WasmExports & Record<string, CallableFunction>,
+	root: Element,
+	doc?: Document,
+): ErrorNestAppHandle {
+	const handle = createApp({
+		fns,
+		root,
+		doc,
+		init: (f) => f.en_init(),
+		rebuild: (f, app, buf, cap) => f.en_rebuild(app, buf, cap),
+		flush: (f, app, buf, cap) => f.en_flush(app, buf, cap),
+		handleEvent: (f, app, hid, evt) => f.en_handle_event(app, hid, evt),
+		destroy: (f, app) => f.en_destroy(app),
+	});
+
+	const outerCrashHandler = fns.en_outer_crash_handler(handle.appPtr) as number;
+	const innerCrashHandler = fns.en_inner_crash_handler(handle.appPtr) as number;
+	const outerRetryHandler = fns.en_outer_retry_handler(handle.appPtr) as number;
+	const innerRetryHandler = fns.en_inner_retry_handler(handle.appPtr) as number;
+
+	const enHandle: ErrorNestAppHandle = {
+		...handle,
+
+		outerCrashHandler,
+		innerCrashHandler,
+		outerRetryHandler,
+		innerRetryHandler,
+
+		get destroyed(): boolean {
+			return handle.destroyed;
+		},
+		set destroyed(v: boolean) {
+			handle.destroyed = v;
+		},
+
+		get appPtr(): bigint {
+			return handle.appPtr;
+		},
+		set appPtr(v: bigint) {
+			handle.appPtr = v;
+		},
+
+		get bufPtr(): bigint {
+			return handle.bufPtr;
+		},
+		set bufPtr(v: bigint) {
+			handle.bufPtr = v;
+		},
+
+		get outerScopeId(): number {
+			return fns.en_outer_scope_id(handle.appPtr) as number;
+		},
+		get innerBoundaryScopeId(): number {
+			return fns.en_inner_boundary_scope_id(handle.appPtr) as number;
+		},
+		get innerNormalScopeId(): number {
+			return fns.en_inner_normal_scope_id(handle.appPtr) as number;
+		},
+		get innerFallbackScopeId(): number {
+			return fns.en_inner_fallback_scope_id(handle.appPtr) as number;
+		},
+		get outerFallbackScopeId(): number {
+			return fns.en_outer_fallback_scope_id(handle.appPtr) as number;
+		},
+
+		hasOuterError(): boolean {
+			return (fns.en_has_outer_error(handle.appPtr) as number) !== 0;
+		},
+		hasInnerError(): boolean {
+			return (fns.en_has_inner_error(handle.appPtr) as number) !== 0;
+		},
+		getOuterErrorMessage(): string {
+			const outPtr = allocStringStruct();
+			fns.en_outer_error_message(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+		getInnerErrorMessage(): string {
+			const outPtr = allocStringStruct();
+			fns.en_inner_error_message(handle.appPtr, outPtr);
+			return readStringStruct(outPtr);
+		},
+
+		outerNormalMounted(): boolean {
+			return (fns.en_outer_normal_mounted(handle.appPtr) as number) !== 0;
+		},
+		outerFallbackMounted(): boolean {
+			return (fns.en_outer_fallback_mounted(handle.appPtr) as number) !== 0;
+		},
+		innerNormalMounted(): boolean {
+			return (fns.en_inner_normal_mounted(handle.appPtr) as number) !== 0;
+		},
+		innerFallbackMounted(): boolean {
+			return (fns.en_inner_fallback_mounted(handle.appPtr) as number) !== 0;
+		},
+
+		hasDirty(): boolean {
+			return (fns.en_has_dirty(handle.appPtr) as number) !== 0;
+		},
+		handlerCount(): number {
+			return fns.en_handler_count(handle.appPtr) as number;
+		},
+		scopeCount(): number {
+			return fns.en_scope_count(handle.appPtr) as number;
+		},
+
+		outerCrash(): void {
+			handle.dispatchAndFlush(outerCrashHandler);
+		},
+		innerCrash(): void {
+			handle.dispatchAndFlush(innerCrashHandler);
+		},
+		outerRetry(): void {
+			handle.dispatchAndFlush(outerRetryHandler);
+		},
+		innerRetry(): void {
+			handle.dispatchAndFlush(innerRetryHandler);
+		},
+
+		destroy(): void {
+			handle.destroy();
+		},
+	};
+
+	return enHandle;
+}
