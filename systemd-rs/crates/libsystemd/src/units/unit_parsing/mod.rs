@@ -1,4 +1,5 @@
 mod mount_unit;
+mod path_unit;
 mod service_unit;
 mod slice_unit;
 mod socket_unit;
@@ -7,6 +8,7 @@ mod timer_unit;
 mod unit_parser;
 
 pub use mount_unit::*;
+pub use path_unit::*;
 pub use service_unit::*;
 pub use slice_unit::*;
 pub use socket_unit::*;
@@ -42,6 +44,29 @@ pub struct ParsedSliceConfig {
 pub struct ParsedTimerConfig {
     pub common: ParsedCommonConfig,
     pub timer: ParsedTimerSection,
+}
+
+pub struct ParsedPathConfig {
+    pub common: ParsedCommonConfig,
+    pub path: ParsedPathSection,
+}
+
+/// Parsed [Path] section from a `.path` unit file.
+#[derive(Clone, Debug, Default)]
+pub struct ParsedPathSection {
+    /// Path watch conditions as (kind, path) pairs.
+    /// Kind is one of: "PathExists", "PathExistsGlob", "PathChanged", "PathModified", "DirectoryNotEmpty".
+    pub path_exists: Vec<(String, String)>,
+    /// MakeDirectory= — create the watched directory before watching (default false).
+    pub make_directory: bool,
+    /// DirectoryMode= — permission mode for MakeDirectory (default 0o755).
+    pub directory_mode: u32,
+    /// TriggerLimitIntervalSec= — rate limit interval for path triggers.
+    pub trigger_limit_interval_sec: Option<String>,
+    /// TriggerLimitBurst= — rate limit burst for path triggers.
+    pub trigger_limit_burst: Option<u32>,
+    /// Unit= — the unit to activate when the path condition is met (defaults to same-name .service).
+    pub unit: Option<String>,
 }
 
 /// Parsed [Timer] section from a `.timer` unit file.

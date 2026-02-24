@@ -2,12 +2,13 @@ use crate::services::Service;
 use crate::sockets::Socket;
 use crate::units::{
     Common, CommonState, Dependencies, ExecConfig, MountConfig, MountSpecific, MountState,
-    ParsedExecSection, ParsedInstallSection, ParsedMountConfig, ParsedServiceConfig,
-    ParsedSingleSocketConfig, ParsedSliceConfig, ParsedSocketConfig, ParsedTargetConfig,
-    ParsedTimerConfig, ParsedUnitSection, PlatformSpecificServiceFields, ServiceConfig,
-    ServiceSpecific, ServiceState, SingleSocketConfig, SliceSpecific, SliceState, SocketConfig,
-    SocketSpecific, SocketState, Specific, TargetSpecific, TargetState, TimerConfig, TimerSpecific,
-    TimerState, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus,
+    ParsedExecSection, ParsedInstallSection, ParsedMountConfig, ParsedPathConfig,
+    ParsedServiceConfig, ParsedSingleSocketConfig, ParsedSliceConfig, ParsedSocketConfig,
+    ParsedTargetConfig, ParsedTimerConfig, ParsedUnitSection, PathCondition, PathConfig,
+    PathSpecific, PathState, PlatformSpecificServiceFields, ServiceConfig, ServiceSpecific,
+    ServiceState, SingleSocketConfig, SliceSpecific, SliceState, SocketConfig, SocketSpecific,
+    SocketState, Specific, TargetSpecific, TargetState, TimerConfig, TimerSpecific, TimerState,
+    Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus,
 };
 
 use log::trace;
@@ -109,9 +110,13 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 common: CommonState::default(),
                 srvc: Service {
                     pid: None,
+                    main_pid: None,
                     status_msgs: Vec::new(),
                     process_group: None,
                     signaled_ready: false,
+                    reloading: false,
+                    stopping: false,
+                    watchdog_last_ping: None,
                     notifications: None,
                     notifications_path: None,
                     stdout: None,
@@ -294,6 +299,64 @@ pub fn unit_from_parsed_timer(conf: ParsedTimerConfig) -> Result<Unit, String> {
         specific: Specific::Timer(TimerSpecific {
             conf: timer_conf,
             state: RwLock::new(TimerState {
+                common: CommonState::default(),
+            }),
+        }),
+    })
+}
+
+pub fn unit_from_parsed_path(conf: ParsedPathConfig) -> Result<Unit, String> {
+    let fragment_path = conf.common.fragment_path.clone();
+    let path_name = &conf.common.name;
+
+    // Determine the unit to activate: explicit Unit= or same-name .service
+    let target_unit = conf.path.unit.clone().unwrap_or_else(|| {
+        path_name
+            .strip_suffix(".path")
+            .map(|base| format!("{base}.service"))
+            .unwrap_or_else(|| format!("{path_name}.service"))
+    });
+
+    // Convert parsed path conditions to PathCondition enums
+    let mut conditions = Vec::new();
+    for (kind, value) in &conf.path.path_exists {
+        match kind.as_str() {
+            "PathExists" => conditions.push(PathCondition::PathExists(value.clone())),
+            "PathExistsGlob" => conditions.push(PathCondition::PathExistsGlob(value.clone())),
+            "PathChanged" => conditions.push(PathCondition::PathChanged(value.clone())),
+            "PathModified" => conditions.push(PathCondition::PathModified(value.clone())),
+            "DirectoryNotEmpty" => {
+                conditions.push(PathCondition::DirectoryNotEmpty(value.clone()));
+            }
+            _ => {
+                trace!("Unknown path condition kind: {kind}={value}");
+            }
+        }
+    }
+
+    let path_conf = PathConfig {
+        conditions,
+        make_directory: conf.path.make_directory,
+        directory_mode: conf.path.directory_mode,
+        trigger_limit_interval_sec: conf
+            .path
+            .trigger_limit_interval_sec
+            .as_deref()
+            .and_then(parse_timespan)
+            .unwrap_or(std::time::Duration::from_secs(2)),
+        trigger_limit_burst: conf.path.trigger_limit_burst.unwrap_or(200),
+        unit: target_unit,
+    };
+
+    Ok(Unit {
+        id: UnitId {
+            kind: UnitIdKind::Path,
+            name: conf.common.name,
+        },
+        common: make_common_from_parsed(conf.common.unit, conf.common.install, fragment_path)?,
+        specific: Specific::Path(PathSpecific {
+            conf: path_conf,
+            state: RwLock::new(PathState {
                 common: CommonState::default(),
             }),
         }),
@@ -596,6 +659,11 @@ impl std::convert::TryInto<UnitId> for &str {
                 name: self.to_owned(),
                 kind: UnitIdKind::Timer,
             })
+        } else if self.ends_with(".path") {
+            Ok(UnitId {
+                name: self.to_owned(),
+                kind: UnitIdKind::Path,
+            })
         } else {
             Err(format!(
                 "{self} is not a valid unit name. The suffix is not supported."
@@ -638,5 +706,11 @@ impl std::convert::TryFrom<ParsedTimerConfig> for Unit {
     type Error = String;
     fn try_from(conf: ParsedTimerConfig) -> Result<Self, String> {
         unit_from_parsed_timer(conf)
+    }
+}
+impl std::convert::TryFrom<ParsedPathConfig> for Unit {
+    type Error = String;
+    fn try_from(conf: ParsedPathConfig) -> Result<Self, String> {
+        unit_from_parsed_path(conf)
     }
 }

@@ -48,11 +48,22 @@ impl StdIo {
 #[derive(Debug)]
 pub struct Service {
     pub pid: Option<nix::unistd::Pid>,
+    /// MAINPID= from sd_notify — the actual daemon PID after a forking service
+    /// double-forks. When set, this overrides `pid` for watchdog and signal delivery.
+    pub main_pid: Option<nix::unistd::Pid>,
     pub status_msgs: Vec<String>,
 
     pub process_group: Option<nix::unistd::Pid>,
 
     pub signaled_ready: bool,
+    /// Set to true when the service sends RELOADING=1 via sd_notify.
+    /// Cleared when the service sends READY=1 again after reload completes.
+    pub reloading: bool,
+    /// Set to true when the service sends STOPPING=1 via sd_notify.
+    pub stopping: bool,
+    /// Timestamp of the last WATCHDOG=1 ping from the service.
+    /// Used with WatchdogSec= to detect unresponsive services.
+    pub watchdog_last_ping: Option<std::time::Instant>,
 
     pub notifications: Option<UnixDatagram>,
     pub notifications_path: Option<std::path::PathBuf>,

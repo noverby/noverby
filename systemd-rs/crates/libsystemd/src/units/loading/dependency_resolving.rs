@@ -87,8 +87,11 @@ pub fn prune_units(
                     .cloned()
                     .collect();
             }
-            Specific::Target(_) | Specific::Slice(_) | Specific::Mount(_) | Specific::Timer(_) => { /**/
-            }
+            Specific::Target(_)
+            | Specific::Slice(_)
+            | Specific::Mount(_)
+            | Specific::Timer(_)
+            | Specific::Path(_) => { /**/ }
         }
 
         unit.common.dependencies.before = unit
@@ -398,8 +401,9 @@ fn add_default_dependency_relations(units: &mut UnitTable) {
             | UnitIdKind::Slice
             | UnitIdKind::Mount
             | UnitIdKind::Device
-            | UnitIdKind::Timer => {
-                // Targets, slices, mounts, devices, and timers only get the
+            | UnitIdKind::Timer
+            | UnitIdKind::Path => {
+                // Targets, slices, mounts, devices, timers, and paths only get the
                 // shutdown.target conflict/before (already added above).
             }
         }
@@ -523,8 +527,12 @@ fn apply_sockets_to_services(unit_table: &mut UnitTable) -> Result<(), String> {
             UnitIdKind::Socket => {
                 socket_ids.push(id.clone());
             }
-            UnitIdKind::Target | UnitIdKind::Slice | UnitIdKind::Mount | UnitIdKind::Device => {
-                // ignore targets, slices, mounts, and devices here
+            UnitIdKind::Target
+            | UnitIdKind::Slice
+            | UnitIdKind::Mount
+            | UnitIdKind::Device
+            | UnitIdKind::Path => {
+                // ignore targets, slices, mounts, devices, and paths here
             }
         }
     }
