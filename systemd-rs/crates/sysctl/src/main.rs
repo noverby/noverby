@@ -537,7 +537,7 @@ mod tests {
         let mut f = fs::File::create(&path).unwrap();
         writeln!(f, "# This is a comment").unwrap();
         writeln!(f, "; Another comment").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         writeln!(f, "net.ipv4.ip_forward = 1").unwrap();
         writeln!(f, "kernel.shmmax=68719476736").unwrap();
         writeln!(f, "  vm.swappiness = 10  ").unwrap();
@@ -586,7 +586,7 @@ mod tests {
         let path = dir.join("empty.conf");
         let mut f = fs::File::create(&path).unwrap();
         writeln!(f, "# Only comments").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         writeln!(f, "; semicolon comment").unwrap();
         drop(f);
 
@@ -726,7 +726,7 @@ mod tests {
         let path = dir.join("lineno.conf");
         let mut f = fs::File::create(&path).unwrap();
         writeln!(f, "# comment on line 1").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         writeln!(f, "key1 = val1").unwrap();
         writeln!(f, "# another comment").unwrap();
         writeln!(f, "key2 = val2").unwrap();

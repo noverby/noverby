@@ -1928,7 +1928,7 @@ mod tests {
         let mut f = fs::File::create(&path).unwrap();
         writeln!(f, "# Example tmpfiles.d configuration").unwrap();
         writeln!(f, "d /tmp 1777 root root 10d -").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         writeln!(f, "f /etc/hostname 0644 root root - myhostname").unwrap();
         writeln!(f, "L /etc/localtime - - - - /usr/share/zoneinfo/UTC").unwrap();
         drop(f);

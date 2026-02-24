@@ -991,15 +991,19 @@ mod tests {
         assert_eq!(servers[0].addr, IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)));
 
         // With explicit DNS → use those
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![DnsServer::new(IpAddr::V4(Ipv4Addr::new(9, 9, 9, 9)))];
+        let config = ResolvedConfig {
+            dns: vec![DnsServer::new(IpAddr::V4(Ipv4Addr::new(9, 9, 9, 9)))],
+            ..Default::default()
+        };
         let servers = config.effective_dns_servers();
         assert_eq!(servers.len(), 1);
         assert_eq!(servers[0].addr, IpAddr::V4(Ipv4Addr::new(9, 9, 9, 9)));
 
         // With per-link DNS → use those
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![DnsServer::new(IpAddr::V4(Ipv4Addr::new(9, 9, 9, 9)))];
+        let mut config = ResolvedConfig {
+            dns: vec![DnsServer::new(IpAddr::V4(Ipv4Addr::new(9, 9, 9, 9)))],
+            ..Default::default()
+        };
         let mut link = LinkDns::new(2, "eth0".to_string());
         link.dns_servers = vec![DnsServer::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)))];
         config.link_dns.push(link);
@@ -1010,8 +1014,10 @@ mod tests {
 
     #[test]
     fn test_effective_search_domains() {
-        let mut config = ResolvedConfig::default();
-        config.domains = vec!["global.example.com".to_string()];
+        let mut config = ResolvedConfig {
+            domains: vec!["global.example.com".to_string()],
+            ..Default::default()
+        };
 
         let mut link = LinkDns::new(2, "eth0".to_string());
         link.domains = vec!["link.example.com".to_string()];
@@ -1023,8 +1029,10 @@ mod tests {
 
     #[test]
     fn test_effective_search_domains_no_duplicates() {
-        let mut config = ResolvedConfig::default();
-        config.domains = vec!["example.com".to_string()];
+        let mut config = ResolvedConfig {
+            domains: vec!["example.com".to_string()],
+            ..Default::default()
+        };
 
         let mut link = LinkDns::new(2, "eth0".to_string());
         link.domains = vec!["example.com".to_string()];
@@ -1044,19 +1052,23 @@ mod tests {
 
     #[test]
     fn test_stub_resolv_conf_with_domains() {
-        let mut config = ResolvedConfig::default();
-        config.domains = vec!["example.com".to_string(), "local".to_string()];
+        let config = ResolvedConfig {
+            domains: vec!["example.com".to_string(), "local".to_string()],
+            ..Default::default()
+        };
         let content = config.stub_resolv_conf_content();
         assert!(content.contains("search example.com local"));
     }
 
     #[test]
     fn test_upstream_resolv_conf_content() {
-        let mut config = ResolvedConfig::default();
-        config.dns = vec![
-            DnsServer::new(IpAddr::V4(Ipv4Addr::new(9, 9, 9, 9))),
-            DnsServer::new(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))),
-        ];
+        let config = ResolvedConfig {
+            dns: vec![
+                DnsServer::new(IpAddr::V4(Ipv4Addr::new(9, 9, 9, 9))),
+                DnsServer::new(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))),
+            ],
+            ..Default::default()
+        };
         let content = config.upstream_resolv_conf_content();
         assert!(content.contains("nameserver 9.9.9.9"));
         assert!(content.contains("nameserver 1.1.1.1"));

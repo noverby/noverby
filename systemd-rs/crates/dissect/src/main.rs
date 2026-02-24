@@ -2512,7 +2512,7 @@ mod tests {
     fn test_analyze_tiny_image() {
         let tmp = temp_dir();
         let path = tmp.path().join("tiny.raw");
-        fs::write(&path, &[0u8; 64]).unwrap();
+        fs::write(&path, [0u8; 64]).unwrap();
         let info = analyze_image(&path).unwrap();
         assert_eq!(info.table_type, PartitionTableType::None);
         assert_eq!(info.size, 64);

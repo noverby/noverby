@@ -1522,15 +1522,19 @@ mod tests {
 
     #[test]
     fn test_effective_icon_name_explicit() {
-        let mut state = HostnameState::default();
-        state.icon_name = "my-icon".to_string();
+        let state = HostnameState {
+            icon_name: "my-icon".to_string(),
+            ..Default::default()
+        };
         assert_eq!(state.effective_icon_name(), "my-icon");
     }
 
     #[test]
     fn test_effective_icon_name_from_chassis() {
-        let mut state = HostnameState::default();
-        state.chassis = "laptop".to_string();
+        let mut state = HostnameState {
+            chassis: "laptop".to_string(),
+            ..Default::default()
+        };
         assert_eq!(state.effective_icon_name(), "computer-laptop");
 
         state.chassis = "server".to_string();
@@ -1638,12 +1642,14 @@ mod tests {
 
     #[test]
     fn test_format_status() {
-        let mut state = HostnameState::default();
-        state.static_hostname = "testhost".to_string();
-        state.chassis = "laptop".to_string();
-        state.os_pretty_name = "NixOS 25.11".to_string();
-        state.kernel_name = "Linux".to_string();
-        state.kernel_release = "6.12.0".to_string();
+        let state = HostnameState {
+            static_hostname: "testhost".to_string(),
+            chassis: "laptop".to_string(),
+            os_pretty_name: "NixOS 25.11".to_string(),
+            kernel_name: "Linux".to_string(),
+            kernel_release: "6.12.0".to_string(),
+            ..Default::default()
+        };
 
         let output = state.format_status();
         assert!(output.contains("testhost"));
@@ -1661,9 +1667,11 @@ mod tests {
 
     #[test]
     fn test_format_show() {
-        let mut state = HostnameState::default();
-        state.static_hostname = "testhost".to_string();
-        state.chassis = "server".to_string();
+        let state = HostnameState {
+            static_hostname: "testhost".to_string(),
+            chassis: "server".to_string(),
+            ..Default::default()
+        };
 
         let output = state.format_show();
         assert!(output.contains("Hostname="));

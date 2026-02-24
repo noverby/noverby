@@ -3128,7 +3128,7 @@ mod tests {
         let path = dir.path().join("50-test.rules");
         let mut f = fs::File::create(&path).unwrap();
         writeln!(f, "# Test rules file").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         writeln!(f, r#"KERNEL=="sda", SYMLINK+="mydisk""#).unwrap();
         writeln!(
             f,
@@ -3166,7 +3166,7 @@ mod tests {
         let mut f = fs::File::create(&path).unwrap();
         writeln!(f, "# Only comments").unwrap();
         writeln!(f, "# and blank lines").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         drop(f);
 
         let rules = parse_rules_file(&path).unwrap();

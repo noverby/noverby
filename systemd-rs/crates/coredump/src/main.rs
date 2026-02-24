@@ -916,8 +916,10 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let conf = dir.path().join("coredump.conf");
         fs::write(&conf, "[Coredump]\nCompress=yes\n").unwrap();
-        let mut config = Config::default();
-        config.compress = false;
+        let mut config = Config {
+            compress: false,
+            ..Default::default()
+        };
         parse_config_file(&conf, &mut config);
         assert!(config.compress);
     }
@@ -1594,7 +1596,7 @@ mod tests {
                 uid: 1000,
                 gid: 1000,
                 signal: 11,
-                timestamp: 1700000000 + i as u64,
+                timestamp: 1700000000 + i,
                 rlimit: 0,
                 hostname: "myhost".into(),
                 comm: format!("app{i}"),

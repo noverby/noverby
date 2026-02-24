@@ -1189,7 +1189,7 @@ mod tests {
 
     #[test]
     fn test_format_timestamp_known() {
-        let ts = format_timestamp(1700000000_000000);
+        let ts = format_timestamp(1_700_000_000_000_000);
         assert!(ts.contains("2023"));
         assert!(ts.contains("Nov"));
     }

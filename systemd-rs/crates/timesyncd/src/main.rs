@@ -1967,8 +1967,10 @@ NTP=a.example.com b.example.com c.example.com
 
     #[test]
     fn test_config_parse_empty_ntp() {
-        let mut config = TimesyncdConfig::default();
-        config.ntp_servers = vec!["old.example.com".to_string()];
+        let mut config = TimesyncdConfig {
+            ntp_servers: vec!["old.example.com".to_string()],
+            ..Default::default()
+        };
         config.parse_config(
             r#"
 [Time]
@@ -2099,20 +2101,22 @@ NTP=
             let mut s = shared.lock().unwrap();
             s.root_distance_max_usec = 10_000_000;
             s.poll_interval_min_usec = 64_000_000;
-            s.poll_interval_max_usec = 4096_000_000;
+            s.poll_interval_max_usec = 4_096_000_000;
         }
         let s = shared.lock().unwrap();
         assert_eq!(s.root_distance_max_usec, 10_000_000);
         assert_eq!(s.poll_interval_min_usec, 64_000_000);
-        assert_eq!(s.poll_interval_max_usec, 4096_000_000);
+        assert_eq!(s.poll_interval_max_usec, 4_096_000_000);
     }
 
     #[test]
     fn test_daemon_new_populates_shared_state() {
-        let mut config = TimesyncdConfig::default();
-        config.root_distance_max_sec = 10.0;
-        config.poll_interval_min_sec = 64;
-        config.poll_interval_max_sec = 4096;
+        let config = TimesyncdConfig {
+            root_distance_max_sec: 10.0,
+            poll_interval_min_sec: 64,
+            poll_interval_max_sec: 4096,
+            ..Default::default()
+        };
         let shared: SharedState = Arc::new(Mutex::new(TimesyncState::default()));
         let _daemon = TimesyncDaemon::new(config, shared.clone());
         let s = shared.lock().unwrap();

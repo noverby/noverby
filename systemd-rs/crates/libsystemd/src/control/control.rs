@@ -3044,10 +3044,10 @@ mod tests {
         // Simulate reset-failed: clear the error
         {
             let mut status = unit.common.status.write().unwrap();
-            if let UnitStatus::Stopped(_, ref errors) = *status {
-                if !errors.is_empty() {
-                    *status = UnitStatus::NeverStarted;
-                }
+            if let UnitStatus::Stopped(_, ref errors) = *status
+                && !errors.is_empty()
+            {
+                *status = UnitStatus::NeverStarted;
             }
         }
 
@@ -3066,10 +3066,10 @@ mod tests {
         // Simulate reset-failed
         {
             let mut status = unit.common.status.write().unwrap();
-            if let UnitStatus::Stopped(_, ref errors) = *status {
-                if !errors.is_empty() {
-                    *status = UnitStatus::NeverStarted;
-                }
+            if let UnitStatus::Stopped(_, ref errors) = *status
+                && !errors.is_empty()
+            {
+                *status = UnitStatus::NeverStarted;
             }
         }
 
@@ -3086,10 +3086,10 @@ mod tests {
         // Simulate reset-failed — should not touch active units
         {
             let mut status = unit.common.status.write().unwrap();
-            if let UnitStatus::Stopped(_, ref errors) = *status {
-                if !errors.is_empty() {
-                    *status = UnitStatus::NeverStarted;
-                }
+            if let UnitStatus::Stopped(_, ref errors) = *status
+                && !errors.is_empty()
+            {
+                *status = UnitStatus::NeverStarted;
             }
         }
 

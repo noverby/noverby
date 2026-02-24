@@ -470,7 +470,7 @@ mod tests {
         let path = dir.join("vconsole.conf");
         let mut f = fs::File::create(&path).unwrap();
         writeln!(f, "# This is a comment").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         writeln!(f, "KEYMAP=uk").unwrap();
         writeln!(f, "# FONT=should-be-ignored").unwrap();
         writeln!(f, "FONT=ter-v16n").unwrap();
@@ -513,7 +513,7 @@ mod tests {
         let path = dir.join("vconsole.conf");
         let mut f = fs::File::create(&path).unwrap();
         writeln!(f, "# Only comments here").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         drop(f);
 
         let config = VconsoleConfig::load_from(&path);

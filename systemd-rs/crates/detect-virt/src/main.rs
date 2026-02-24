@@ -522,16 +522,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_known_vms_not_empty() {
-        assert!(!KNOWN_VMS.is_empty());
-    }
-
-    #[test]
-    fn test_known_containers_not_empty() {
-        assert!(!KNOWN_CONTAINERS.is_empty());
-    }
-
-    #[test]
     fn test_detect_vm_does_not_panic() {
         // Should return Some or None without panicking
         let _ = detect_vm();
