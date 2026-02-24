@@ -475,7 +475,7 @@ mod tests {
         let path = dir.join("test.conf");
         let mut f = fs::File::create(&path).unwrap();
         writeln!(f, "# This is a comment").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         writeln!(f, ":myformat:E::py::/usr/bin/python3:").unwrap();
         writeln!(f, "; Another comment").unwrap();
         writeln!(f, ":another:M::magic:mask:/usr/bin/handler:OC").unwrap();
@@ -496,7 +496,7 @@ mod tests {
         let path = dir.join("empty.conf");
         let mut f = fs::File::create(&path).unwrap();
         writeln!(f, "# Only comments here").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         drop(f);
 
         let entries = parse_config_file(&path).unwrap();

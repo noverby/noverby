@@ -336,7 +336,7 @@ mod tests {
         let mut f = fs::File::create(&path).unwrap();
         writeln!(f, "# This is a comment").unwrap();
         writeln!(f, "; This is also a comment").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         writeln!(f, "loop").unwrap();
         writeln!(f, "  brd  ").unwrap();
         writeln!(f, "vfat").unwrap();
@@ -358,7 +358,7 @@ mod tests {
         let path = dir.join("empty.conf");
         let mut f = fs::File::create(&path).unwrap();
         writeln!(f, "# Only comments").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         writeln!(f, "; another comment").unwrap();
         drop(f);
 
@@ -378,7 +378,7 @@ mod tests {
         writeln!(f, "module1").unwrap();
         writeln!(f, "   # indented comment").unwrap();
         writeln!(f, "   module2   ").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         writeln!(f, "module3").unwrap();
         drop(f);
 

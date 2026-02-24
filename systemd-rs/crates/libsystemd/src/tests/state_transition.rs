@@ -66,7 +66,7 @@ fn test_service_state_transitions_inner() {
         socket_activation_eventfd: crate::platform::make_event_fd().unwrap(),
     }));
 
-    let signals = signal_hook::iterator::Signals::new(&[signal_hook::consts::SIGCHLD]).unwrap();
+    let signals = signal_hook::iterator::Signals::new([signal_hook::consts::SIGCHLD]).unwrap();
 
     let run_info_clone = run_info.clone();
     let pid_table = run_info.read().unwrap().pid_table.clone();
@@ -126,7 +126,7 @@ fn successful(run_info: ArcMutRuntimeInfo) {
     let unit = run_info_locked.unit_table.get(&unit_id).unwrap();
 
     unit.activate(
-        &*run_info.read().unwrap(),
+        &run_info.read().unwrap(),
         crate::units::ActivationSource::Regular,
     )
     .unwrap();
@@ -192,7 +192,7 @@ fn failing_startexec(run_info: ArcMutRuntimeInfo) {
 
     assert!(
         unit.activate(
-            &*run_info.read().unwrap(),
+            &run_info.read().unwrap(),
             crate::units::ActivationSource::Regular
         )
         .is_err()

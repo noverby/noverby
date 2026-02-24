@@ -368,8 +368,10 @@ mod tests {
         let conf = dir.path().join("pstore.conf");
         fs::write(&conf, "[PStore]\nUnlink=yes\n").unwrap();
 
-        let mut config = Config::default();
-        config.unlink = false;
+        let mut config = Config {
+            unlink: false,
+            ..Default::default()
+        };
         parse_config_file(&conf, &mut config);
         assert!(config.unlink);
     }
@@ -680,8 +682,10 @@ mod tests {
             let conf = dir.path().join(format!("pstore-{}.conf", value));
             fs::write(&conf, format!("[PStore]\nUnlink={}\n", value)).unwrap();
 
-            let mut config = Config::default();
-            config.unlink = !expected; // Set to opposite to verify it changes.
+            let mut config = Config {
+                unlink: !expected, // Set to opposite to verify it changes.
+                ..Default::default()
+            };
             parse_config_file(&conf, &mut config);
             assert_eq!(config.unlink, *expected, "Failed for Unlink={}", value);
         }

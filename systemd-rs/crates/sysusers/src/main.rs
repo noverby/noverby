@@ -1217,7 +1217,7 @@ mod tests {
             "u myapp-user - \"MyApp Service\" /var/lib/myapp /usr/sbin/nologin"
         )
         .unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         writeln!(f, "# Reserved range").unwrap();
         writeln!(f, "r - 900-999").unwrap();
         drop(f);
@@ -1285,7 +1285,7 @@ mod tests {
         let uid = find_available_uid(&reserved);
         // Should find something in the system range
         if let Some(uid) = uid {
-            assert!(uid >= SYSTEM_UID_MIN && uid <= SYSTEM_UID_MAX);
+            assert!((SYSTEM_UID_MIN..=SYSTEM_UID_MAX).contains(&uid));
         }
         // It's OK if all UIDs are taken (unlikely in tests)
     }
@@ -1295,7 +1295,7 @@ mod tests {
         let reserved = BTreeSet::new();
         let gid = find_available_gid(&reserved);
         if let Some(gid) = gid {
-            assert!(gid >= SYSTEM_UID_MIN && gid <= SYSTEM_UID_MAX);
+            assert!((SYSTEM_UID_MIN..=SYSTEM_UID_MAX).contains(&gid));
         }
     }
 
@@ -1436,7 +1436,7 @@ mod tests {
     fn test_entry_ordering() {
         // Verify entries are processed in correct order:
         // ranges -> groups -> users -> memberships
-        let entries = vec![
+        let entries = [
             parse_line("m user:group", Path::new("test.conf"), 4).unwrap(),
             parse_line("u myuser -", Path::new("test.conf"), 3).unwrap(),
             parse_line("r - 900-999", Path::new("test.conf"), 1).unwrap(),

@@ -1458,7 +1458,7 @@ mod tests {
             leader: 12345,
             root_directory: "/".to_string(),
             netif: vec![3, 7],
-            timestamp: 1700000000_000000,
+            timestamp: 1_700_000_000_000_000,
             state: MachineState::Running,
         }
     }
@@ -1476,7 +1476,7 @@ mod tests {
         assert_eq!(parsed.leader, 12345);
         assert_eq!(parsed.root_directory, "/");
         assert_eq!(parsed.state, MachineState::Running);
-        assert_eq!(parsed.timestamp, 1700000000_000000);
+        assert_eq!(parsed.timestamp, 1_700_000_000_000_000);
         assert_eq!(parsed.netif, vec![3, 7]);
     }
 
@@ -1899,7 +1899,7 @@ mod tests {
     #[test]
     fn test_format_timestamp_known_date() {
         // 2023-11-14 22:13:20 UTC = 1700000000 seconds since epoch
-        let ts = format_timestamp(1700000000_000000);
+        let ts = format_timestamp(1_700_000_000_000_000);
         assert!(ts.contains("2023"));
         assert!(ts.contains("Nov"));
         assert!(ts.contains("14"));

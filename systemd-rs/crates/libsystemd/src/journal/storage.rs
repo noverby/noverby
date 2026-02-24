@@ -886,11 +886,8 @@ mod tests {
 
         let mut reader = io::Cursor::new(&buf);
         let mut deserialized = Vec::new();
-        loop {
-            match deserialize_entry(&mut reader) {
-                Ok(entry) => deserialized.push(entry),
-                Err(_) => break,
-            }
+        while let Ok(entry) = deserialize_entry(&mut reader) {
+            deserialized.push(entry);
         }
 
         assert_eq!(deserialized.len(), 5);

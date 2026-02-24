@@ -909,15 +909,19 @@ mod tests {
 
     #[test]
     fn test_effective_icon_name_explicit() {
-        let mut state = HostnameState::default();
-        state.icon_name = "my-icon".to_string();
+        let state = HostnameState {
+            icon_name: "my-icon".to_string(),
+            ..Default::default()
+        };
         assert_eq!(state.effective_icon_name(), "my-icon");
     }
 
     #[test]
     fn test_effective_icon_name_from_chassis() {
-        let mut state = HostnameState::default();
-        state.chassis = "laptop".to_string();
+        let mut state = HostnameState {
+            chassis: "laptop".to_string(),
+            ..Default::default()
+        };
         assert_eq!(state.effective_icon_name(), "computer-laptop");
 
         state.chassis = "server".to_string();

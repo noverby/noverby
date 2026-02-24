@@ -5444,7 +5444,7 @@ fn test_restart_unknown_value_errors() {
 
 #[test]
 fn test_restart_all_variants_are_distinct() {
-    let variants = vec![
+    let variants = [
         ("no", crate::units::ServiceRestart::No),
         ("always", crate::units::ServiceRestart::Always),
         ("on-success", crate::units::ServiceRestart::OnSuccess),
@@ -16038,8 +16038,8 @@ fn test_allow_isolate_defaults_to_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.common.unit.allow_isolate, false,
+    assert!(
+        !service.common.unit.allow_isolate,
         "AllowIsolate should default to false"
     );
 }
@@ -16060,8 +16060,8 @@ fn test_allow_isolate_set_yes() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.common.unit.allow_isolate, true,
+    assert!(
+        service.common.unit.allow_isolate,
         "AllowIsolate=yes should be true"
     );
 }
@@ -16082,8 +16082,8 @@ fn test_allow_isolate_set_true() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.common.unit.allow_isolate, true,
+    assert!(
+        service.common.unit.allow_isolate,
         "AllowIsolate=true should be true"
     );
 }
@@ -16104,8 +16104,8 @@ fn test_allow_isolate_set_no() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.common.unit.allow_isolate, false,
+    assert!(
+        !service.common.unit.allow_isolate,
         "AllowIsolate=no should be false"
     );
 }
@@ -16126,8 +16126,8 @@ fn test_allow_isolate_set_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.common.unit.allow_isolate, false,
+    assert!(
+        !service.common.unit.allow_isolate,
         "AllowIsolate=false should be false"
     );
 }
@@ -16148,8 +16148,8 @@ fn test_allow_isolate_set_1() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.common.unit.allow_isolate, true,
+    assert!(
+        service.common.unit.allow_isolate,
         "AllowIsolate=1 should be true"
     );
 }
@@ -16170,8 +16170,8 @@ fn test_allow_isolate_set_0() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.common.unit.allow_isolate, false,
+    assert!(
+        !service.common.unit.allow_isolate,
         "AllowIsolate=0 should be false"
     );
 }
@@ -16192,8 +16192,8 @@ fn test_allow_isolate_case_insensitive() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.common.unit.allow_isolate, true,
+    assert!(
+        service.common.unit.allow_isolate,
         "AllowIsolate=YES should be true (case-insensitive)"
     );
 }
@@ -16217,9 +16217,9 @@ fn test_allow_isolate_with_other_unit_settings() {
     )
     .unwrap();
 
-    assert_eq!(service.common.unit.allow_isolate, true);
-    assert_eq!(service.common.unit.ignore_on_isolate, true);
-    assert_eq!(service.common.unit.stop_when_unneeded, false);
+    assert!(service.common.unit.allow_isolate);
+    assert!(service.common.unit.ignore_on_isolate);
+    assert!(!service.common.unit.stop_when_unneeded);
 }
 
 #[test]
@@ -16258,8 +16258,8 @@ fn test_allow_isolate_target_unit() {
     )
     .unwrap();
 
-    assert_eq!(
-        target.common.unit.allow_isolate, true,
+    assert!(
+        target.common.unit.allow_isolate,
         "AllowIsolate=yes should work on target units"
     );
 }
@@ -16281,8 +16281,8 @@ fn test_allow_isolate_socket_unit() {
     )
     .unwrap();
 
-    assert_eq!(
-        socket.common.unit.allow_isolate, true,
+    assert!(
+        socket.common.unit.allow_isolate,
         "AllowIsolate=yes should work on socket units"
     );
 }
@@ -16306,8 +16306,8 @@ fn test_allow_isolate_preserved_after_unit_conversion() {
     .unwrap();
 
     let unit: crate::units::Unit = service.try_into().unwrap();
-    assert_eq!(
-        unit.common.unit.allow_isolate, true,
+    assert!(
+        unit.common.unit.allow_isolate,
         "AllowIsolate=yes should survive unit conversion"
     );
 }
@@ -16329,8 +16329,8 @@ fn test_allow_isolate_false_preserved_after_unit_conversion() {
     .unwrap();
 
     let unit: crate::units::Unit = service.try_into().unwrap();
-    assert_eq!(
-        unit.common.unit.allow_isolate, false,
+    assert!(
+        !unit.common.unit.allow_isolate,
         "Default AllowIsolate (false) should survive unit conversion"
     );
 }
@@ -17219,8 +17219,8 @@ fn test_dynamic_user_defaults_to_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.dynamic_user, false,
+    assert!(
+        !service.srvc.exec_section.dynamic_user,
         "DynamicUser should default to false"
     );
 }
@@ -17240,8 +17240,8 @@ fn test_dynamic_user_set_yes() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.dynamic_user, true,
+    assert!(
+        service.srvc.exec_section.dynamic_user,
         "DynamicUser=yes should be true"
     );
 }
@@ -17261,8 +17261,8 @@ fn test_dynamic_user_set_true() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.dynamic_user, true,
+    assert!(
+        service.srvc.exec_section.dynamic_user,
         "DynamicUser=true should be true"
     );
 }
@@ -17282,8 +17282,8 @@ fn test_dynamic_user_set_no() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.dynamic_user, false,
+    assert!(
+        !service.srvc.exec_section.dynamic_user,
         "DynamicUser=no should be false"
     );
 }
@@ -17303,8 +17303,8 @@ fn test_dynamic_user_set_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.dynamic_user, false,
+    assert!(
+        !service.srvc.exec_section.dynamic_user,
         "DynamicUser=false should be false"
     );
 }
@@ -17324,8 +17324,8 @@ fn test_dynamic_user_set_1() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.dynamic_user, true,
+    assert!(
+        service.srvc.exec_section.dynamic_user,
         "DynamicUser=1 should be true"
     );
 }
@@ -17345,8 +17345,8 @@ fn test_dynamic_user_set_0() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.dynamic_user, false,
+    assert!(
+        !service.srvc.exec_section.dynamic_user,
         "DynamicUser=0 should be false"
     );
 }
@@ -17366,8 +17366,8 @@ fn test_dynamic_user_case_insensitive() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.dynamic_user, true,
+    assert!(
+        service.srvc.exec_section.dynamic_user,
         "DynamicUser=YES should be true (case-insensitive)"
     );
 }
@@ -17409,7 +17409,7 @@ fn test_dynamic_user_with_other_settings() {
     )
     .unwrap();
 
-    assert_eq!(service.srvc.exec_section.dynamic_user, true);
+    assert!(service.srvc.exec_section.dynamic_user);
     assert_eq!(service.srvc.exec_section.state_directory, vec!["myservice"]);
     assert_eq!(
         service.srvc.exec_section.runtime_directory,
@@ -17436,8 +17436,8 @@ fn test_dynamic_user_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.dynamic_user, true,
+        assert!(
+            srvc.conf.exec_config.dynamic_user,
             "DynamicUser=yes should survive unit conversion"
         );
     } else {
@@ -17463,8 +17463,8 @@ fn test_dynamic_user_false_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.dynamic_user, false,
+        assert!(
+            !srvc.conf.exec_config.dynamic_user,
             "Default DynamicUser (false) should survive unit conversion"
         );
     } else {
@@ -17489,8 +17489,8 @@ fn test_dynamic_user_socket_unit() {
     )
     .unwrap();
 
-    assert_eq!(
-        socket.sock.exec_section.dynamic_user, true,
+    assert!(
+        socket.sock.exec_section.dynamic_user,
         "DynamicUser=yes should work on socket units"
     );
 }
@@ -17848,7 +17848,7 @@ fn test_system_call_filter_with_other_settings() {
 
     assert_eq!(service.srvc.exec_section.system_call_filter.len(), 1);
     assert_eq!(service.srvc.exec_section.system_call_filter[0], "@basic-io");
-    assert_eq!(service.srvc.exec_section.dynamic_user, true);
+    assert!(service.srvc.exec_section.dynamic_user);
 }
 
 #[test]
@@ -18282,7 +18282,7 @@ fn test_protect_system_with_other_settings() {
         service.srvc.exec_section.protect_system,
         crate::units::ProtectSystem::Strict,
     );
-    assert_eq!(service.srvc.exec_section.dynamic_user, true);
+    assert!(service.srvc.exec_section.dynamic_user);
     assert_eq!(service.srvc.exec_section.system_call_filter.len(), 1);
 }
 
@@ -18856,8 +18856,8 @@ fn test_restrict_realtime_defaults_to_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_realtime, false,
+    assert!(
+        !service.srvc.exec_section.restrict_realtime,
         "RestrictRealtime should default to false"
     );
 }
@@ -18877,8 +18877,8 @@ fn test_restrict_realtime_set_yes() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_realtime, true,
+    assert!(
+        service.srvc.exec_section.restrict_realtime,
         "RestrictRealtime=yes should be true"
     );
 }
@@ -18898,8 +18898,8 @@ fn test_restrict_realtime_set_true() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_realtime, true,
+    assert!(
+        service.srvc.exec_section.restrict_realtime,
         "RestrictRealtime=true should be true"
     );
 }
@@ -18919,8 +18919,8 @@ fn test_restrict_realtime_set_1() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_realtime, true,
+    assert!(
+        service.srvc.exec_section.restrict_realtime,
         "RestrictRealtime=1 should be true"
     );
 }
@@ -18940,8 +18940,8 @@ fn test_restrict_realtime_set_no() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_realtime, false,
+    assert!(
+        !service.srvc.exec_section.restrict_realtime,
         "RestrictRealtime=no should be false"
     );
 }
@@ -18961,8 +18961,8 @@ fn test_restrict_realtime_set_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_realtime, false,
+    assert!(
+        !service.srvc.exec_section.restrict_realtime,
         "RestrictRealtime=false should be false"
     );
 }
@@ -18982,8 +18982,8 @@ fn test_restrict_realtime_set_0() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_realtime, false,
+    assert!(
+        !service.srvc.exec_section.restrict_realtime,
         "RestrictRealtime=0 should be false"
     );
 }
@@ -19003,8 +19003,8 @@ fn test_restrict_realtime_case_insensitive() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_realtime, true,
+    assert!(
+        service.srvc.exec_section.restrict_realtime,
         "RestrictRealtime=YES should be true (case-insensitive)"
     );
 }
@@ -19048,8 +19048,8 @@ fn test_restrict_realtime_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.restrict_realtime, true,
+        assert!(
+            srvc.conf.exec_config.restrict_realtime,
             "RestrictRealtime=yes should survive unit conversion"
         );
     } else {
@@ -19075,8 +19075,8 @@ fn test_restrict_realtime_false_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.restrict_realtime, false,
+        assert!(
+            !srvc.conf.exec_config.restrict_realtime,
             "Default RestrictRealtime (false) should survive unit conversion"
         );
     } else {
@@ -19101,8 +19101,8 @@ fn test_restrict_realtime_socket_unit() {
     )
     .unwrap();
 
-    assert_eq!(
-        socket.sock.exec_section.restrict_realtime, true,
+    assert!(
+        socket.sock.exec_section.restrict_realtime,
         "RestrictRealtime=yes should work on socket units"
     );
 }
@@ -19124,7 +19124,7 @@ fn test_restrict_realtime_with_other_settings() {
     )
     .unwrap();
 
-    assert_eq!(service.srvc.exec_section.restrict_realtime, true);
+    assert!(service.srvc.exec_section.restrict_realtime);
     assert_eq!(
         service.srvc.exec_section.restrict_namespaces,
         crate::units::RestrictNamespaces::Yes,
@@ -19497,7 +19497,7 @@ fn test_restrict_address_families_with_other_settings() {
     .unwrap();
 
     assert_eq!(service.srvc.exec_section.restrict_address_families.len(), 3);
-    assert_eq!(service.srvc.exec_section.restrict_realtime, true);
+    assert!(service.srvc.exec_section.restrict_realtime);
     assert_eq!(service.srvc.exec_section.system_call_filter.len(), 1);
 }
 
@@ -19812,7 +19812,7 @@ fn test_system_call_error_number_with_other_settings() {
         service.srvc.exec_section.system_call_error_number,
         Some("EPERM".to_owned()),
     );
-    assert_eq!(service.srvc.exec_section.restrict_realtime, true);
+    assert!(service.srvc.exec_section.restrict_realtime);
     assert_eq!(
         service.srvc.exec_section.protect_system,
         crate::units::ProtectSystem::Strict,
@@ -19838,8 +19838,8 @@ fn test_no_new_privileges_defaults_to_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.no_new_privileges, false,
+    assert!(
+        !service.srvc.exec_section.no_new_privileges,
         "NoNewPrivileges should default to false"
     );
 }
@@ -19859,8 +19859,8 @@ fn test_no_new_privileges_set_yes() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.no_new_privileges, true,
+    assert!(
+        service.srvc.exec_section.no_new_privileges,
         "NoNewPrivileges=yes should be true"
     );
 }
@@ -19880,8 +19880,8 @@ fn test_no_new_privileges_set_true() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.no_new_privileges, true,
+    assert!(
+        service.srvc.exec_section.no_new_privileges,
         "NoNewPrivileges=true should be true"
     );
 }
@@ -19901,8 +19901,8 @@ fn test_no_new_privileges_set_no() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.no_new_privileges, false,
+    assert!(
+        !service.srvc.exec_section.no_new_privileges,
         "NoNewPrivileges=no should be false"
     );
 }
@@ -19922,8 +19922,8 @@ fn test_no_new_privileges_set_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.no_new_privileges, false,
+    assert!(
+        !service.srvc.exec_section.no_new_privileges,
         "NoNewPrivileges=false should be false"
     );
 }
@@ -19943,8 +19943,8 @@ fn test_no_new_privileges_set_1() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.no_new_privileges, true,
+    assert!(
+        service.srvc.exec_section.no_new_privileges,
         "NoNewPrivileges=1 should be true"
     );
 }
@@ -19964,8 +19964,8 @@ fn test_no_new_privileges_set_0() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.no_new_privileges, false,
+    assert!(
+        !service.srvc.exec_section.no_new_privileges,
         "NoNewPrivileges=0 should be false"
     );
 }
@@ -19985,8 +19985,8 @@ fn test_no_new_privileges_case_insensitive() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.no_new_privileges, true,
+    assert!(
+        service.srvc.exec_section.no_new_privileges,
         "NoNewPrivileges=YES should be true (case insensitive)"
     );
 }
@@ -20027,8 +20027,8 @@ fn test_no_new_privileges_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.no_new_privileges, true,
+        assert!(
+            srvc.conf.exec_config.no_new_privileges,
             "NoNewPrivileges=yes should survive unit conversion"
         );
     } else {
@@ -20054,8 +20054,8 @@ fn test_no_new_privileges_false_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.no_new_privileges, false,
+        assert!(
+            !srvc.conf.exec_config.no_new_privileges,
             "Default NoNewPrivileges (false) should survive unit conversion"
         );
     } else {
@@ -20080,8 +20080,8 @@ fn test_no_new_privileges_socket_unit() {
     )
     .unwrap();
 
-    assert_eq!(
-        socket.sock.exec_section.no_new_privileges, true,
+    assert!(
+        socket.sock.exec_section.no_new_privileges,
         "NoNewPrivileges=yes should work on socket units"
     );
 }
@@ -20104,8 +20104,8 @@ fn test_protect_control_groups_defaults_to_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_control_groups, false,
+    assert!(
+        !service.srvc.exec_section.protect_control_groups,
         "ProtectControlGroups should default to false"
     );
 }
@@ -20125,8 +20125,8 @@ fn test_protect_control_groups_set_yes() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_control_groups, true,
+    assert!(
+        service.srvc.exec_section.protect_control_groups,
         "ProtectControlGroups=yes should be true"
     );
 }
@@ -20146,8 +20146,8 @@ fn test_protect_control_groups_set_true() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_control_groups, true,
+    assert!(
+        service.srvc.exec_section.protect_control_groups,
         "ProtectControlGroups=true should be true"
     );
 }
@@ -20167,8 +20167,8 @@ fn test_protect_control_groups_set_no() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_control_groups, false,
+    assert!(
+        !service.srvc.exec_section.protect_control_groups,
         "ProtectControlGroups=no should be false"
     );
 }
@@ -20188,8 +20188,8 @@ fn test_protect_control_groups_set_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_control_groups, false,
+    assert!(
+        !service.srvc.exec_section.protect_control_groups,
         "ProtectControlGroups=false should be false"
     );
 }
@@ -20209,8 +20209,8 @@ fn test_protect_control_groups_set_1() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_control_groups, true,
+    assert!(
+        service.srvc.exec_section.protect_control_groups,
         "ProtectControlGroups=1 should be true"
     );
 }
@@ -20230,8 +20230,8 @@ fn test_protect_control_groups_set_0() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_control_groups, false,
+    assert!(
+        !service.srvc.exec_section.protect_control_groups,
         "ProtectControlGroups=0 should be false"
     );
 }
@@ -20251,8 +20251,8 @@ fn test_protect_control_groups_case_insensitive() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_control_groups, true,
+    assert!(
+        service.srvc.exec_section.protect_control_groups,
         "ProtectControlGroups=YES should be true (case insensitive)"
     );
 }
@@ -20296,8 +20296,8 @@ fn test_protect_control_groups_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.protect_control_groups, true,
+        assert!(
+            srvc.conf.exec_config.protect_control_groups,
             "ProtectControlGroups=yes should survive unit conversion"
         );
     } else {
@@ -20323,8 +20323,8 @@ fn test_protect_control_groups_false_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.protect_control_groups, false,
+        assert!(
+            !srvc.conf.exec_config.protect_control_groups,
             "Default ProtectControlGroups (false) should survive unit conversion"
         );
     } else {
@@ -20349,8 +20349,8 @@ fn test_protect_control_groups_socket_unit() {
     )
     .unwrap();
 
-    assert_eq!(
-        socket.sock.exec_section.protect_control_groups, true,
+    assert!(
+        socket.sock.exec_section.protect_control_groups,
         "ProtectControlGroups=yes should work on socket units"
     );
 }
@@ -20373,8 +20373,8 @@ fn test_protect_kernel_modules_defaults_to_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_modules, false,
+    assert!(
+        !service.srvc.exec_section.protect_kernel_modules,
         "ProtectKernelModules should default to false"
     );
 }
@@ -20394,8 +20394,8 @@ fn test_protect_kernel_modules_set_yes() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_modules, true,
+    assert!(
+        service.srvc.exec_section.protect_kernel_modules,
         "ProtectKernelModules=yes should be true"
     );
 }
@@ -20415,8 +20415,8 @@ fn test_protect_kernel_modules_set_true() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_modules, true,
+    assert!(
+        service.srvc.exec_section.protect_kernel_modules,
         "ProtectKernelModules=true should be true"
     );
 }
@@ -20436,8 +20436,8 @@ fn test_protect_kernel_modules_set_no() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_modules, false,
+    assert!(
+        !service.srvc.exec_section.protect_kernel_modules,
         "ProtectKernelModules=no should be false"
     );
 }
@@ -20457,8 +20457,8 @@ fn test_protect_kernel_modules_set_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_modules, false,
+    assert!(
+        !service.srvc.exec_section.protect_kernel_modules,
         "ProtectKernelModules=false should be false"
     );
 }
@@ -20478,8 +20478,8 @@ fn test_protect_kernel_modules_set_1() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_modules, true,
+    assert!(
+        service.srvc.exec_section.protect_kernel_modules,
         "ProtectKernelModules=1 should be true"
     );
 }
@@ -20499,8 +20499,8 @@ fn test_protect_kernel_modules_set_0() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_modules, false,
+    assert!(
+        !service.srvc.exec_section.protect_kernel_modules,
         "ProtectKernelModules=0 should be false"
     );
 }
@@ -20520,8 +20520,8 @@ fn test_protect_kernel_modules_case_insensitive() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_modules, true,
+    assert!(
+        service.srvc.exec_section.protect_kernel_modules,
         "ProtectKernelModules=YES should be true (case insensitive)"
     );
 }
@@ -20565,8 +20565,8 @@ fn test_protect_kernel_modules_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.protect_kernel_modules, true,
+        assert!(
+            srvc.conf.exec_config.protect_kernel_modules,
             "ProtectKernelModules=yes should survive unit conversion"
         );
     } else {
@@ -20592,8 +20592,8 @@ fn test_protect_kernel_modules_false_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.protect_kernel_modules, false,
+        assert!(
+            !srvc.conf.exec_config.protect_kernel_modules,
             "Default ProtectKernelModules (false) should survive unit conversion"
         );
     } else {
@@ -20618,8 +20618,8 @@ fn test_protect_kernel_modules_socket_unit() {
     )
     .unwrap();
 
-    assert_eq!(
-        socket.sock.exec_section.protect_kernel_modules, true,
+    assert!(
+        socket.sock.exec_section.protect_kernel_modules,
         "ProtectKernelModules=yes should work on socket units"
     );
 }
@@ -20642,8 +20642,8 @@ fn test_restrict_suid_sgid_defaults_to_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_suid_sgid, false,
+    assert!(
+        !service.srvc.exec_section.restrict_suid_sgid,
         "RestrictSUIDSGID should default to false"
     );
 }
@@ -20663,8 +20663,8 @@ fn test_restrict_suid_sgid_set_yes() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_suid_sgid, true,
+    assert!(
+        service.srvc.exec_section.restrict_suid_sgid,
         "RestrictSUIDSGID=yes should be true"
     );
 }
@@ -20684,8 +20684,8 @@ fn test_restrict_suid_sgid_set_true() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_suid_sgid, true,
+    assert!(
+        service.srvc.exec_section.restrict_suid_sgid,
         "RestrictSUIDSGID=true should be true"
     );
 }
@@ -20705,8 +20705,8 @@ fn test_restrict_suid_sgid_set_no() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_suid_sgid, false,
+    assert!(
+        !service.srvc.exec_section.restrict_suid_sgid,
         "RestrictSUIDSGID=no should be false"
     );
 }
@@ -20726,8 +20726,8 @@ fn test_restrict_suid_sgid_set_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_suid_sgid, false,
+    assert!(
+        !service.srvc.exec_section.restrict_suid_sgid,
         "RestrictSUIDSGID=false should be false"
     );
 }
@@ -20747,8 +20747,8 @@ fn test_restrict_suid_sgid_set_1() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_suid_sgid, true,
+    assert!(
+        service.srvc.exec_section.restrict_suid_sgid,
         "RestrictSUIDSGID=1 should be true"
     );
 }
@@ -20768,8 +20768,8 @@ fn test_restrict_suid_sgid_set_0() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_suid_sgid, false,
+    assert!(
+        !service.srvc.exec_section.restrict_suid_sgid,
         "RestrictSUIDSGID=0 should be false"
     );
 }
@@ -20789,8 +20789,8 @@ fn test_restrict_suid_sgid_case_insensitive() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.restrict_suid_sgid, true,
+    assert!(
+        service.srvc.exec_section.restrict_suid_sgid,
         "RestrictSUIDSGID=YES should be true (case insensitive)"
     );
 }
@@ -20831,8 +20831,8 @@ fn test_restrict_suid_sgid_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.restrict_suid_sgid, true,
+        assert!(
+            srvc.conf.exec_config.restrict_suid_sgid,
             "RestrictSUIDSGID=yes should survive unit conversion"
         );
     } else {
@@ -20858,8 +20858,8 @@ fn test_restrict_suid_sgid_false_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.restrict_suid_sgid, false,
+        assert!(
+            !srvc.conf.exec_config.restrict_suid_sgid,
             "Default RestrictSUIDSGID (false) should survive unit conversion"
         );
     } else {
@@ -20884,8 +20884,8 @@ fn test_restrict_suid_sgid_socket_unit() {
     )
     .unwrap();
 
-    assert_eq!(
-        socket.sock.exec_section.restrict_suid_sgid, true,
+    assert!(
+        socket.sock.exec_section.restrict_suid_sgid,
         "RestrictSUIDSGID=yes should work on socket units"
     );
 }
@@ -20908,8 +20908,8 @@ fn test_protect_kernel_logs_defaults_to_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_logs, false,
+    assert!(
+        !service.srvc.exec_section.protect_kernel_logs,
         "ProtectKernelLogs should default to false"
     );
 }
@@ -20929,8 +20929,8 @@ fn test_protect_kernel_logs_set_yes() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_logs, true,
+    assert!(
+        service.srvc.exec_section.protect_kernel_logs,
         "ProtectKernelLogs=yes should be true"
     );
 }
@@ -20950,8 +20950,8 @@ fn test_protect_kernel_logs_set_true() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_logs, true,
+    assert!(
+        service.srvc.exec_section.protect_kernel_logs,
         "ProtectKernelLogs=true should be true"
     );
 }
@@ -20971,8 +20971,8 @@ fn test_protect_kernel_logs_set_no() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_logs, false,
+    assert!(
+        !service.srvc.exec_section.protect_kernel_logs,
         "ProtectKernelLogs=no should be false"
     );
 }
@@ -20992,8 +20992,8 @@ fn test_protect_kernel_logs_set_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_logs, false,
+    assert!(
+        !service.srvc.exec_section.protect_kernel_logs,
         "ProtectKernelLogs=false should be false"
     );
 }
@@ -21013,8 +21013,8 @@ fn test_protect_kernel_logs_set_1() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_logs, true,
+    assert!(
+        service.srvc.exec_section.protect_kernel_logs,
         "ProtectKernelLogs=1 should be true"
     );
 }
@@ -21034,8 +21034,8 @@ fn test_protect_kernel_logs_set_0() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_logs, false,
+    assert!(
+        !service.srvc.exec_section.protect_kernel_logs,
         "ProtectKernelLogs=0 should be false"
     );
 }
@@ -21055,8 +21055,8 @@ fn test_protect_kernel_logs_case_insensitive() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_kernel_logs, true,
+    assert!(
+        service.srvc.exec_section.protect_kernel_logs,
         "ProtectKernelLogs=YES should be true (case insensitive)"
     );
 }
@@ -21097,8 +21097,8 @@ fn test_protect_kernel_logs_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.protect_kernel_logs, true,
+        assert!(
+            srvc.conf.exec_config.protect_kernel_logs,
             "ProtectKernelLogs=yes should survive unit conversion"
         );
     } else {
@@ -21124,8 +21124,8 @@ fn test_protect_kernel_logs_false_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.protect_kernel_logs, false,
+        assert!(
+            !srvc.conf.exec_config.protect_kernel_logs,
             "Default ProtectKernelLogs (false) should survive unit conversion"
         );
     } else {
@@ -21150,8 +21150,8 @@ fn test_protect_kernel_logs_socket_unit() {
     )
     .unwrap();
 
-    assert_eq!(
-        socket.sock.exec_section.protect_kernel_logs, true,
+    assert!(
+        socket.sock.exec_section.protect_kernel_logs,
         "ProtectKernelLogs=yes should work on socket units"
     );
 }
@@ -22057,8 +22057,8 @@ fn test_protect_clock_defaults_to_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_clock, false,
+    assert!(
+        !service.srvc.exec_section.protect_clock,
         "ProtectClock should default to false"
     );
 }
@@ -22078,8 +22078,8 @@ fn test_protect_clock_set_yes() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_clock, true,
+    assert!(
+        service.srvc.exec_section.protect_clock,
         "ProtectClock=yes should be true"
     );
 }
@@ -22099,8 +22099,8 @@ fn test_protect_clock_set_true() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_clock, true,
+    assert!(
+        service.srvc.exec_section.protect_clock,
         "ProtectClock=true should be true"
     );
 }
@@ -22120,8 +22120,8 @@ fn test_protect_clock_set_no() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_clock, false,
+    assert!(
+        !service.srvc.exec_section.protect_clock,
         "ProtectClock=no should be false"
     );
 }
@@ -22141,8 +22141,8 @@ fn test_protect_clock_set_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_clock, false,
+    assert!(
+        !service.srvc.exec_section.protect_clock,
         "ProtectClock=false should be false"
     );
 }
@@ -22162,8 +22162,8 @@ fn test_protect_clock_set_1() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_clock, true,
+    assert!(
+        service.srvc.exec_section.protect_clock,
         "ProtectClock=1 should be true"
     );
 }
@@ -22183,8 +22183,8 @@ fn test_protect_clock_set_0() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_clock, false,
+    assert!(
+        !service.srvc.exec_section.protect_clock,
         "ProtectClock=0 should be false"
     );
 }
@@ -22204,8 +22204,8 @@ fn test_protect_clock_case_insensitive() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_clock, true,
+    assert!(
+        service.srvc.exec_section.protect_clock,
         "ProtectClock=YES should be true (case insensitive)"
     );
 }
@@ -22246,8 +22246,8 @@ fn test_protect_clock_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.protect_clock, true,
+        assert!(
+            srvc.conf.exec_config.protect_clock,
             "ProtectClock=yes should survive unit conversion"
         );
     } else {
@@ -22273,8 +22273,8 @@ fn test_protect_clock_false_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.protect_clock, false,
+        assert!(
+            !srvc.conf.exec_config.protect_clock,
             "Default ProtectClock (false) should survive unit conversion"
         );
     } else {
@@ -22299,8 +22299,8 @@ fn test_protect_clock_socket_unit() {
     )
     .unwrap();
 
-    assert_eq!(
-        socket.sock.exec_section.protect_clock, true,
+    assert!(
+        socket.sock.exec_section.protect_clock,
         "ProtectClock=yes should work on socket units"
     );
 }
@@ -23525,8 +23525,8 @@ fn test_protect_hostname_defaults_to_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_hostname, false,
+    assert!(
+        !service.srvc.exec_section.protect_hostname,
         "ProtectHostname should default to false when not specified"
     );
 }
@@ -23546,8 +23546,8 @@ fn test_protect_hostname_yes() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_hostname, true,
+    assert!(
+        service.srvc.exec_section.protect_hostname,
         "ProtectHostname=yes should parse to true"
     );
 }
@@ -23567,8 +23567,8 @@ fn test_protect_hostname_true() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_hostname, true,
+    assert!(
+        service.srvc.exec_section.protect_hostname,
         "ProtectHostname=true should parse to true"
     );
 }
@@ -23588,8 +23588,8 @@ fn test_protect_hostname_no() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_hostname, false,
+    assert!(
+        !service.srvc.exec_section.protect_hostname,
         "ProtectHostname=no should parse to false"
     );
 }
@@ -23609,8 +23609,8 @@ fn test_protect_hostname_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_hostname, false,
+    assert!(
+        !service.srvc.exec_section.protect_hostname,
         "ProtectHostname=false should parse to false"
     );
 }
@@ -23630,8 +23630,8 @@ fn test_protect_hostname_numeric_1() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_hostname, true,
+    assert!(
+        service.srvc.exec_section.protect_hostname,
         "ProtectHostname=1 should parse to true"
     );
 }
@@ -23651,8 +23651,8 @@ fn test_protect_hostname_numeric_0() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_hostname, false,
+    assert!(
+        !service.srvc.exec_section.protect_hostname,
         "ProtectHostname=0 should parse to false"
     );
 }
@@ -23672,8 +23672,8 @@ fn test_protect_hostname_case_insensitive_upper() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_hostname, true,
+    assert!(
+        service.srvc.exec_section.protect_hostname,
         "ProtectHostname should be case-insensitive (YES)"
     );
 }
@@ -23693,8 +23693,8 @@ fn test_protect_hostname_case_insensitive_mixed() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.exec_section.protect_hostname, true,
+    assert!(
+        service.srvc.exec_section.protect_hostname,
         "ProtectHostname should be case-insensitive (True)"
     );
 }
@@ -23738,8 +23738,8 @@ fn test_protect_hostname_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.protect_hostname, true,
+        assert!(
+            srvc.conf.exec_config.protect_hostname,
             "ProtectHostname=yes should survive unit conversion"
         );
     } else {
@@ -23765,8 +23765,8 @@ fn test_protect_hostname_default_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.exec_config.protect_hostname, false,
+        assert!(
+            !srvc.conf.exec_config.protect_hostname,
             "Default ProtectHostname=false should survive unit conversion"
         );
     } else {
@@ -23789,8 +23789,8 @@ fn test_protect_hostname_socket_unit() {
     )
     .unwrap();
 
-    assert_eq!(
-        socket.sock.exec_section.protect_hostname, true,
+    assert!(
+        socket.sock.exec_section.protect_hostname,
         "ProtectHostname=yes should work in socket units"
     );
 }
@@ -24750,8 +24750,8 @@ fn test_coredump_receive_defaults_to_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.coredump_receive, false,
+    assert!(
+        !service.srvc.coredump_receive,
         "CoredumpReceive should default to false"
     );
 }
@@ -24771,8 +24771,8 @@ fn test_coredump_receive_true() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.coredump_receive, true,
+    assert!(
+        service.srvc.coredump_receive,
         "CoredumpReceive=true should parse as true"
     );
 }
@@ -24792,8 +24792,8 @@ fn test_coredump_receive_yes() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.coredump_receive, true,
+    assert!(
+        service.srvc.coredump_receive,
         "CoredumpReceive=yes should parse as true"
     );
 }
@@ -24813,8 +24813,8 @@ fn test_coredump_receive_1() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.coredump_receive, true,
+    assert!(
+        service.srvc.coredump_receive,
         "CoredumpReceive=1 should parse as true"
     );
 }
@@ -24834,8 +24834,8 @@ fn test_coredump_receive_false() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.coredump_receive, false,
+    assert!(
+        !service.srvc.coredump_receive,
         "CoredumpReceive=false should parse as false"
     );
 }
@@ -24855,8 +24855,8 @@ fn test_coredump_receive_no() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.coredump_receive, false,
+    assert!(
+        !service.srvc.coredump_receive,
         "CoredumpReceive=no should parse as false"
     );
 }
@@ -24876,8 +24876,8 @@ fn test_coredump_receive_0() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.coredump_receive, false,
+    assert!(
+        !service.srvc.coredump_receive,
         "CoredumpReceive=0 should parse as false"
     );
 }
@@ -24955,8 +24955,8 @@ fn test_coredump_receive_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.coredump_receive, true,
+        assert!(
+            srvc.conf.coredump_receive,
             "CoredumpReceive=yes should survive unit conversion"
         );
     } else {
@@ -24982,8 +24982,8 @@ fn test_coredump_receive_false_preserved_after_unit_conversion() {
 
     let unit: crate::units::Unit = service.try_into().unwrap();
     if let crate::units::Specific::Service(srvc) = &unit.specific {
-        assert_eq!(
-            srvc.conf.coredump_receive, false,
+        assert!(
+            !srvc.conf.coredump_receive,
             "Default CoredumpReceive (false) should survive unit conversion"
         );
     } else {
@@ -25008,8 +25008,8 @@ fn test_coredump_receive_with_other_settings() {
     )
     .unwrap();
 
-    assert_eq!(
-        service.srvc.coredump_receive, true,
+    assert!(
+        service.srvc.coredump_receive,
         "CoredumpReceive=yes should parse correctly alongside other settings"
     );
     assert_eq!(
