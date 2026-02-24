@@ -17,13 +17,17 @@
 //! - Attachment state tracking via marker files in `/run/systemd/portabled/`
 //! - Runtime vs persistent attachment modes
 //! - Control socket at `/run/systemd/portabled-control` for `portablectl` CLI
+//! - D-Bus interface (`org.freedesktop.portable1`) with Manager object
+//!   (ListImages, GetImage, GetImageState, AttachImage, DetachImage,
+//!   ReattachImage, RemoveImage, GetImageOSRelease, GetImageMetadata;
+//!   properties: PoolPath, PoolUsage, PoolLimit); deferred registration
+//!   to avoid blocking early boot before dbus-daemon is ready
 //! - sd_notify protocol (READY/WATCHDOG/STATUS/STOPPING)
 //! - Signal handling (SIGTERM/SIGINT for shutdown, SIGHUP for reload)
 //! - Periodic state consistency checks
 //!
 //! ## Missing
 //!
-//! - D-Bus interface (`org.freedesktop.portable1`)
 //! - Raw disk image support (loopback mount, GPT dissection)
 //! - Extension images (`--extension`)
 //! - Image size limit management (`set-limit`)
@@ -41,8 +45,12 @@ use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use dbus::blocking::Connection;
+use dbus_crossroads::{Crossroads, IfaceBuilder, MethodErr};
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -50,6 +58,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const CONTROL_SOCKET_PATH: &str = "/run/systemd/portabled-control";
 const STATE_DIR: &str = "/run/systemd/portabled";
+
+const DBUS_NAME: &str = "org.freedesktop.portable1";
+const DBUS_PATH: &str = "/org/freedesktop/portable1";
+const DBUS_IFACE: &str = "org.freedesktop.portable1.Manager";
 
 /// Directories where portable service images are searched for, in priority
 /// order (highest first).
@@ -957,6 +969,301 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
     (y, m, d)
 }
 
+// ---------------------------------------------------------------------------
+// D-Bus shared state
+// ---------------------------------------------------------------------------
+
+type SharedRegistry = Arc<Mutex<ImageRegistry>>;
+
+// ---------------------------------------------------------------------------
+// D-Bus interface: org.freedesktop.portable1.Manager
+// ---------------------------------------------------------------------------
+
+/// Register the org.freedesktop.portable1.Manager interface on a Crossroads instance.
+///
+/// Methods:
+///   ListImages() → a(sssbtt) — array of (name, type, path, read_only, crtime, mtime)
+///   GetImage(s name) → o — object path for an image
+///   GetImageState(s name) → s — attachment state
+///   AttachImage(s image, as matches, s profile, b runtime, s copy_mode) → a(sss)
+///   DetachImage(s image, b runtime) → a(sss)
+///   ReattachImage(s image, as matches, s profile, b runtime, s copy_mode) → a(sss) a(sss)
+///   RemoveImage(s name)
+///   GetImageOSRelease(s image) → a{ss}
+///   GetImageMetadata(s image, as matches) → sa{say}
+///
+/// Properties:
+///   PoolPath (s) — path to the portable image pool
+///   PoolUsage (t) — current pool usage in bytes
+///   PoolLimit (t) — pool size limit in bytes
+fn register_portable1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedRegistry> {
+    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedRegistry>| {
+        // --- Properties ---
+
+        b.property("PoolPath")
+            .get(|_, _reg: &mut SharedRegistry| Ok("/var/lib/portables".to_string()));
+
+        b.property("PoolUsage")
+            .get(|_, _reg: &mut SharedRegistry| Ok(0u64));
+
+        b.property("PoolLimit")
+            .get(|_, _reg: &mut SharedRegistry| Ok(0u64));
+
+        // --- Methods ---
+
+        // ListImages() → a(sssbtt)
+        b.method(
+            "ListImages",
+            (),
+            ("images",),
+            move |_, reg: &mut SharedRegistry, ()| {
+                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                let images: Vec<(String, String, String, bool, u64, u64)> = registry
+                    .images
+                    .values()
+                    .map(|img| {
+                        (
+                            img.name.clone(),
+                            img.image_type.as_str().to_string(),
+                            img.path.to_string_lossy().to_string(),
+                            false, // read_only
+                            img.crtime_usec,
+                            img.mtime_usec,
+                        )
+                    })
+                    .collect();
+                Ok((images,))
+            },
+        );
+
+        // GetImage(s name) → o
+        b.method(
+            "GetImage",
+            ("name",),
+            ("image",),
+            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
+                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                if registry.get_image(&name).is_some() {
+                    Ok((dbus::Path::from(image_object_path(&name)),))
+                } else {
+                    Err(MethodErr::failed(&format!("No image '{}' known", name)))
+                }
+            },
+        );
+
+        // GetImageState(s name) → s
+        b.method(
+            "GetImageState",
+            ("name",),
+            ("state",),
+            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
+                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                let state = registry.get_attach_state(&name);
+                Ok((state.as_str().to_string(),))
+            },
+        );
+
+        // AttachImage(s image, as matches, s profile, b runtime, s copy_mode) → a(sss)
+        b.method(
+            "AttachImage",
+            ("image", "matches", "profile", "runtime", "copy_mode"),
+            ("changes",),
+            move |_,
+                  reg: &mut SharedRegistry,
+                  (image, _matches, profile, runtime, _copy_mode): (
+                String,
+                Vec<String>,
+                String,
+                bool,
+                String,
+            )| {
+                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                let prof = if profile.is_empty() {
+                    None
+                } else {
+                    Some(profile.as_str())
+                };
+                match registry.attach_image(&image, prof, runtime) {
+                    Ok(units) => {
+                        registry.save_attachment(&image);
+                        let changes: Vec<(String, String, String)> = units
+                            .iter()
+                            .map(|u| ("symlink".to_string(), u.clone(), String::new()))
+                            .collect();
+                        Ok((changes,))
+                    }
+                    Err(e) => Err(MethodErr::failed(&e)),
+                }
+            },
+        );
+
+        // DetachImage(s image, b runtime) → a(sss)
+        b.method(
+            "DetachImage",
+            ("image", "runtime"),
+            ("changes",),
+            move |_, reg: &mut SharedRegistry, (image, _runtime): (String, bool)| {
+                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                match registry.detach_image(&image) {
+                    Ok(units) => {
+                        registry.remove_attachment_file(&image);
+                        let changes: Vec<(String, String, String)> = units
+                            .iter()
+                            .map(|u| ("unlink".to_string(), u.clone(), String::new()))
+                            .collect();
+                        Ok((changes,))
+                    }
+                    Err(e) => Err(MethodErr::failed(&e)),
+                }
+            },
+        );
+
+        // ReattachImage(s image, as matches, s profile, b runtime, s copy_mode) → a(sss) a(sss)
+        b.method(
+            "ReattachImage",
+            ("image", "matches", "profile", "runtime", "copy_mode"),
+            ("changes_removed", "changes_added"),
+            move |_,
+                  reg: &mut SharedRegistry,
+                  (image, _matches, profile, runtime, _copy_mode): (
+                String,
+                Vec<String>,
+                String,
+                bool,
+                String,
+            )| {
+                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                // Detach first
+                let removed: Vec<(String, String, String)> = match registry.detach_image(&image) {
+                    Ok(units) => {
+                        registry.remove_attachment_file(&image);
+                        units
+                            .iter()
+                            .map(|u| ("unlink".to_string(), u.clone(), String::new()))
+                            .collect()
+                    }
+                    Err(_) => Vec::new(),
+                };
+
+                let prof = if profile.is_empty() {
+                    None
+                } else {
+                    Some(profile.as_str())
+                };
+
+                match registry.attach_image(&image, prof, runtime) {
+                    Ok(units) => {
+                        registry.save_attachment(&image);
+                        let added: Vec<(String, String, String)> = units
+                            .iter()
+                            .map(|u| ("symlink".to_string(), u.clone(), String::new()))
+                            .collect();
+                        Ok((removed, added))
+                    }
+                    Err(e) => Err(MethodErr::failed(&e)),
+                }
+            },
+        );
+
+        // RemoveImage(s name)
+        b.method(
+            "RemoveImage",
+            ("name",),
+            (),
+            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
+                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                // Detach if attached
+                let _ = registry.detach_image(&name);
+                registry.remove_attachment_file(&name);
+                // We don't actually delete the image files — just detach
+                Ok(())
+            },
+        );
+
+        // GetImageOSRelease(s image) → a{ss}
+        b.method(
+            "GetImageOSRelease",
+            ("image",),
+            ("os_release",),
+            move |_, reg: &mut SharedRegistry, (image,): (String,)| {
+                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                match registry.get_image(&image) {
+                    Some(img) => {
+                        let fields: Vec<(String, String)> =
+                            PortableImage::read_os_release(&img.path)
+                                .into_iter()
+                                .collect();
+                        Ok((fields,))
+                    }
+                    None => Err(MethodErr::failed(&format!("No image '{}' known", image))),
+                }
+            },
+        );
+
+        // GetImageMetadata(s image, as matches) → sa{say}
+        // Returns the os-release as string and unit file contents as map
+        b.method(
+            "GetImageMetadata",
+            ("image", "matches"),
+            ("os_release", "units"),
+            move |_, reg: &mut SharedRegistry, (image, _matches): (String, Vec<String>)| {
+                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                match registry.get_image(&image) {
+                    Some(img) => {
+                        // os-release as string
+                        let os_release_fields = PortableImage::read_os_release(&img.path);
+                        let mut os_release = String::new();
+                        for (k, v) in &os_release_fields {
+                            os_release.push_str(&format!("{}={}\n", k, v));
+                        }
+
+                        // Unit file contents
+                        let units_discovered = PortableImage::discover_units(&img.path);
+                        let mut unit_map: Vec<(String, Vec<u8>)> = Vec::new();
+                        for unit_name in &units_discovered {
+                            if let Some(path) = PortableImage::find_unit_path(&img.path, unit_name)
+                                && let Ok(content) = fs::read(&path)
+                            {
+                                unit_map.push((unit_name.clone(), content));
+                            }
+                        }
+
+                        Ok((os_release, unit_map))
+                    }
+                    None => Err(MethodErr::failed(&format!("No image '{}' known", image))),
+                }
+            },
+        );
+    })
+}
+
+/// Convert an image name to a D-Bus object path.
+fn image_object_path(name: &str) -> String {
+    let mut path = String::from("/org/freedesktop/portable1/image/");
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            path.push(ch);
+        } else {
+            path.push('_');
+            path.push_str(&format!("{:02x}", ch as u32));
+        }
+    }
+    path
+}
+
+/// Set up the D-Bus connection and register the portable1 interface.
+fn setup_dbus(shared: SharedRegistry) -> Result<(Connection, Crossroads), String> {
+    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    conn.request_name(DBUS_NAME, false, true, false)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
+
+    let mut cr = Crossroads::new();
+    let iface_token = register_portable1_iface(&mut cr);
+    cr.insert(DBUS_PATH, &[iface_token], shared);
+
+    Ok((conn, cr))
+}
+
 fn format_bytes(bytes: u64) -> String {
     if bytes >= 1_073_741_824 {
         format!("{:.1}G", bytes as f64 / 1_073_741_824.0)
@@ -1237,7 +1544,7 @@ fn main() {
 
     log::info!("systemd-portabled starting");
 
-    // Discover images and load attachment state
+    // Discover images and load attachment state into shared registry
     let mut registry = ImageRegistry::new();
     let _ = fs::create_dir_all(STATE_DIR);
     registry.discover_images();
@@ -1254,12 +1561,22 @@ fn main() {
         log::info!("Removed {} stale attachments on startup", removed.len());
     }
 
+    let initial_images = registry.image_count();
+    let initial_attached = registry.attached_count();
+    let shared_registry: SharedRegistry = Arc::new(Mutex::new(registry));
+
     // Watchdog support
     let wd_interval = watchdog_interval();
     if let Some(ref iv) = wd_interval {
         log::info!("Watchdog enabled, interval {:?}", iv);
     }
     let mut last_watchdog = Instant::now();
+
+    // D-Bus connection is deferred to after READY=1 so we don't block early
+    // boot waiting for dbus-daemon. These are populated in the main loop.
+    let mut dbus_conn: Option<Connection> = None;
+    let mut dbus_cr: Option<Crossroads> = None;
+    let mut dbus_attempted = false;
 
     // Ensure parent directory exists
     let _ = fs::create_dir_all(Path::new(CONTROL_SOCKET_PATH).parent().unwrap());
@@ -1271,7 +1588,7 @@ fn main() {
     let listener = match UnixListener::bind(CONTROL_SOCKET_PATH) {
         Ok(l) => {
             log::info!("Listening on {}", CONTROL_SOCKET_PATH);
-            l
+            Some(l)
         }
         Err(e) => {
             log::error!(
@@ -1279,32 +1596,18 @@ fn main() {
                 CONTROL_SOCKET_PATH,
                 e
             );
-            sd_notify("READY=1\nSTATUS=Running (no control socket)");
-            loop {
-                if SHUTDOWN.load(Ordering::SeqCst) {
-                    break;
-                }
-                if let Some(ref iv) = wd_interval
-                    && last_watchdog.elapsed() >= *iv
-                {
-                    sd_notify("WATCHDOG=1");
-                    last_watchdog = Instant::now();
-                }
-                thread::sleep(Duration::from_secs(1));
-            }
-            sd_notify("STOPPING=1");
-            process::exit(0);
+            None
         }
     };
 
-    listener
-        .set_nonblocking(true)
-        .expect("Failed to set non-blocking");
+    // Set socket to non-blocking so we can check SHUTDOWN flag periodically
+    if let Some(ref l) = listener {
+        l.set_nonblocking(true).expect("Failed to set non-blocking");
+    }
 
     sd_notify(&format!(
         "READY=1\nSTATUS=Managing {} images ({} attached)",
-        registry.image_count(),
-        registry.attached_count()
+        initial_images, initial_attached
     ));
 
     log::info!("systemd-portabled ready");
@@ -1322,23 +1625,63 @@ fn main() {
 
         if RELOAD.load(Ordering::SeqCst) {
             RELOAD.store(false, Ordering::SeqCst);
-            registry.discover_images();
-            registry.load_attachments();
-            log::info!(
-                "Reloaded, {} images, {} attached",
-                registry.image_count(),
-                registry.attached_count()
-            );
+            let mut reg = shared_registry.lock().unwrap_or_else(|e| e.into_inner());
+            reg.discover_images();
+            reg.load_attachments();
+            let img_count = reg.image_count();
+            let att_count = reg.attached_count();
+            log::info!("Reloaded, {} images, {} attached", img_count, att_count);
             sd_notify(&format!(
                 "STATUS=Managing {} images ({} attached)",
-                registry.image_count(),
-                registry.attached_count()
+                img_count, att_count
             ));
+        }
+
+        // Send watchdog keepalive
+        if let Some(ref iv) = wd_interval
+            && last_watchdog.elapsed() >= *iv
+        {
+            sd_notify("WATCHDOG=1");
+            last_watchdog = Instant::now();
+        }
+
+        // Attempt D-Bus registration once (deferred from startup so we don't
+        // block early boot before dbus-daemon is running).
+        if !dbus_attempted {
+            dbus_attempted = true;
+            match setup_dbus(shared_registry.clone()) {
+                Ok((conn, cr)) => {
+                    log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
+                    dbus_conn = Some(conn);
+                    dbus_cr = Some(cr);
+                    let reg = shared_registry.lock().unwrap_or_else(|e| e.into_inner());
+                    sd_notify(&format!(
+                        "STATUS=Managing {} images ({} attached, D-Bus active)",
+                        reg.image_count(),
+                        reg.attached_count()
+                    ));
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to register D-Bus interface ({}); control socket only",
+                        e
+                    );
+                }
+            }
+        }
+
+        // Process D-Bus messages (non-blocking, short timeout)
+        if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
+            let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
+            while let Some(msg) = conn.channel().pop_message() {
+                let _ = cr.handle_message(msg, conn);
+            }
         }
 
         // Periodic GC of stale attachments
         if last_gc.elapsed() >= gc_interval {
-            let removed = registry.gc();
+            let mut reg = shared_registry.lock().unwrap_or_else(|e| e.into_inner());
+            let removed = reg.gc();
             if !removed.is_empty() {
                 log::info!(
                     "GC removed {} stale attachments: {}",
@@ -1347,35 +1690,33 @@ fn main() {
                 );
                 sd_notify(&format!(
                     "STATUS=Managing {} images ({} attached)",
-                    registry.image_count(),
-                    registry.attached_count()
+                    reg.image_count(),
+                    reg.attached_count()
                 ));
             }
             last_gc = Instant::now();
         }
 
-        // Watchdog keepalive
-        if let Some(ref iv) = wd_interval
-            && last_watchdog.elapsed() >= *iv
-        {
-            sd_notify("WATCHDOG=1");
-            last_watchdog = Instant::now();
+        // Accept control socket connections
+        if let Some(ref listener) = listener {
+            match listener.accept() {
+                Ok((mut stream, _addr)) => {
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+                    let mut reg = shared_registry.lock().unwrap_or_else(|e| e.into_inner());
+                    handle_client(&mut reg, &mut stream);
+                    let _ = stream.shutdown(Shutdown::Both);
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    // No connection waiting
+                }
+                Err(e) => {
+                    log::warn!("Accept error: {}", e);
+                }
+            }
         }
 
-        match listener.accept() {
-            Ok((mut stream, _addr)) => {
-                let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-                handle_client(&mut registry, &mut stream);
-                let _ = stream.shutdown(Shutdown::Both);
-            }
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                thread::sleep(Duration::from_millis(200));
-            }
-            Err(e) => {
-                log::warn!("Accept error: {}", e);
-                thread::sleep(Duration::from_millis(100));
-            }
-        }
+        // Brief sleep to avoid busy-looping when there's no work
+        thread::sleep(Duration::from_millis(50));
     }
 
     // Cleanup
@@ -1393,6 +1734,40 @@ mod tests {
     use super::*;
     use std::os::unix::fs as unix_fs;
     use tempfile::TempDir;
+
+    // ── D-Bus registration tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_dbus_register_portable1_iface() {
+        let mut cr = Crossroads::new();
+        let _token = register_portable1_iface(&mut cr);
+    }
+
+    #[test]
+    fn test_image_object_path_simple() {
+        assert_eq!(
+            image_object_path("myimage"),
+            "/org/freedesktop/portable1/image/myimage"
+        );
+    }
+
+    #[test]
+    fn test_image_object_path_with_dots() {
+        let path = image_object_path("my.image");
+        assert_eq!(path, "/org/freedesktop/portable1/image/my_2eimage");
+    }
+
+    #[test]
+    fn test_image_object_path_with_hyphen() {
+        let path = image_object_path("my-image");
+        assert_eq!(path, "/org/freedesktop/portable1/image/my_2dimage");
+    }
+
+    #[test]
+    fn test_image_object_path_underscore_preserved() {
+        let path = image_object_path("my_image");
+        assert_eq!(path, "/org/freedesktop/portable1/image/my_image");
+    }
 
     // ── Helpers ────────────────────────────────────────────────────────────
 

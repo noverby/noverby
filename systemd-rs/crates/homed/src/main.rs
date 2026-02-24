@@ -17,9 +17,14 @@
 //! - Signal handling (SIGTERM/SIGINT for shutdown, SIGHUP for reload)
 //! - Periodic GC of stale state
 //!
+//! - D-Bus interface (`org.freedesktop.home1`) with Manager object
+//!   (ListHomes, GetHomeByName, GetHomeByUID, CreateHome, RemoveHome,
+//!   ActivateHome, DeactivateHome, LockHome, UnlockHome, LockAllHomes,
+//!   DeactivateAllHomes, Describe; properties: AutoLogin); deferred
+//!   registration to avoid blocking early boot before dbus-daemon is ready
+//!
 //! ## Missing
 //!
-//! - D-Bus interface (`org.freedesktop.home1`)
 //! - LUKS2 encrypted home areas (open/close/resize)
 //! - CIFS network mount backend
 //! - fscrypt encrypted directory backend
@@ -40,10 +45,14 @@ use std::net::Shutdown;
 use std::os::unix::fs as unix_fs;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::process;
+
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use dbus::blocking::Connection;
+use dbus_crossroads::{Crossroads, IfaceBuilder, MethodErr};
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -52,6 +61,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const IDENTITY_DIR: &str = "/var/lib/systemd/home";
 const RUNTIME_DIR: &str = "/run/systemd/home";
 const CONTROL_SOCKET_PATH: &str = "/run/systemd/homed-control";
+
+const DBUS_NAME: &str = "org.freedesktop.home1";
+const DBUS_PATH: &str = "/org/freedesktop/home1";
+const DBUS_IFACE: &str = "org.freedesktop.home1.Manager";
 
 /// Minimum UID for homed-managed users (from systemd: 60001..60513).
 const UID_MIN: u32 = 60001;
@@ -742,6 +755,314 @@ fn get_json_str_array(fields: &BTreeMap<String, String>, key: &str) -> Vec<Strin
 // ---------------------------------------------------------------------------
 // Utility helpers
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// D-Bus shared state
+// ---------------------------------------------------------------------------
+
+type SharedRegistry = Arc<Mutex<HomeRegistry>>;
+
+/// Return type for ListHomes D-Bus method: (name, uid, state, gid, real_name, home_dir, shell, object_path)
+type HomeEntry = (
+    String,
+    u32,
+    String,
+    u32,
+    String,
+    String,
+    String,
+    dbus::Path<'static>,
+);
+
+// ---------------------------------------------------------------------------
+// D-Bus interface: org.freedesktop.home1.Manager
+// ---------------------------------------------------------------------------
+
+/// Register the org.freedesktop.home1.Manager interface on a Crossroads instance.
+///
+/// Methods:
+///   ListHomes() → a(susussso) — array of (name, uid, state, gid, real_name, home_dir, shell, obj_path)
+///   GetHomeByName(s name) → usussso
+///   GetHomeByUID(u uid) → ssussso
+///   ActivateHome(s name, s secret) — activate a managed home
+///   DeactivateHome(s name) — deactivate a managed home
+///   LockHome(s name) — lock a managed home
+///   UnlockHome(s name, s secret) — unlock a managed home
+///   LockAllHomes() — lock all active homes
+///   DeactivateAllHomes() — deactivate all active homes
+///   CreateHome(s blob) — create a home from JSON user record
+///   RemoveHome(s name) — remove a managed home
+///   Describe() → s — JSON description of manager state
+///
+/// Properties:
+///   AutoLogin (b) — whether auto-login is enabled
+fn register_home1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedRegistry> {
+    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedRegistry>| {
+        // --- Properties ---
+
+        b.property("AutoLogin")
+            .get(|_, _reg: &mut SharedRegistry| Ok(false));
+
+        // --- Methods ---
+
+        // ListHomes() → a(susussso)
+        // Returns array of (name, uid, state, gid, real_name, home_dir, shell, object_path)
+        b.method(
+            "ListHomes",
+            (),
+            ("home_areas",),
+            move |_, reg: &mut SharedRegistry, ()| {
+                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                let homes: Vec<HomeEntry> = registry
+                    .list()
+                    .iter()
+                    .map(|rec| {
+                        (
+                            rec.user_name.clone(),
+                            rec.uid,
+                            rec.state.as_str().to_string(),
+                            rec.gid,
+                            rec.real_name.clone(),
+                            rec.home_directory.clone(),
+                            rec.shell.clone(),
+                            dbus::Path::from(home_object_path(&rec.user_name)),
+                        )
+                    })
+                    .collect();
+                Ok((homes,))
+            },
+        );
+
+        // GetHomeByName(s name) → usussso
+        b.method(
+            "GetHomeByName",
+            ("name",),
+            (
+                "uid",
+                "state",
+                "gid",
+                "real_name",
+                "home_dir",
+                "shell",
+                "object_path",
+            ),
+            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
+                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                match registry.get(&name) {
+                    Some(rec) => Ok((
+                        rec.uid,
+                        rec.state.as_str().to_string(),
+                        rec.gid,
+                        rec.real_name.clone(),
+                        rec.home_directory.clone(),
+                        rec.shell.clone(),
+                        dbus::Path::from(home_object_path(&rec.user_name)),
+                    )),
+                    None => Err(MethodErr::failed(&format!("No home for user '{}'", name))),
+                }
+            },
+        );
+
+        // GetHomeByUID(u uid) → ssussso
+        b.method(
+            "GetHomeByUID",
+            ("uid",),
+            (
+                "name",
+                "state",
+                "gid",
+                "real_name",
+                "home_dir",
+                "shell",
+                "object_path",
+            ),
+            move |_, reg: &mut SharedRegistry, (uid,): (u32,)| {
+                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                let found = registry.list().iter().find(|r| r.uid == uid).cloned();
+                match found {
+                    Some(rec) => Ok((
+                        rec.user_name.clone(),
+                        rec.state.as_str().to_string(),
+                        rec.gid,
+                        rec.real_name.clone(),
+                        rec.home_directory.clone(),
+                        rec.shell.clone(),
+                        dbus::Path::from(home_object_path(&rec.user_name)),
+                    )),
+                    None => Err(MethodErr::failed(&format!("No home for UID {}", uid))),
+                }
+            },
+        );
+
+        // ActivateHome(s name, s secret)
+        b.method(
+            "ActivateHome",
+            ("name", "secret"),
+            (),
+            move |_, reg: &mut SharedRegistry, (name, _secret): (String, String)| {
+                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                match registry.activate(&name) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(MethodErr::failed(&e)),
+                }
+            },
+        );
+
+        // DeactivateHome(s name)
+        b.method(
+            "DeactivateHome",
+            ("name",),
+            (),
+            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
+                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                match registry.deactivate(&name) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(MethodErr::failed(&e)),
+                }
+            },
+        );
+
+        // LockHome(s name)
+        b.method(
+            "LockHome",
+            ("name",),
+            (),
+            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
+                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                match registry.lock(&name) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(MethodErr::failed(&e)),
+                }
+            },
+        );
+
+        // UnlockHome(s name, s secret)
+        b.method(
+            "UnlockHome",
+            ("name", "secret"),
+            (),
+            move |_, reg: &mut SharedRegistry, (name, _secret): (String, String)| {
+                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                match registry.unlock(&name) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(MethodErr::failed(&e)),
+                }
+            },
+        );
+
+        // LockAllHomes()
+        b.method(
+            "LockAllHomes",
+            (),
+            (),
+            move |_, reg: &mut SharedRegistry, ()| {
+                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                registry.lock_all();
+                Ok(())
+            },
+        );
+
+        // DeactivateAllHomes()
+        b.method(
+            "DeactivateAllHomes",
+            (),
+            (),
+            move |_, reg: &mut SharedRegistry, ()| {
+                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                registry.deactivate_all();
+                Ok(())
+            },
+        );
+
+        // RemoveHome(s name)
+        b.method(
+            "RemoveHome",
+            ("name",),
+            (),
+            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
+                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                match registry.remove(&name) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(MethodErr::failed(&e)),
+                }
+            },
+        );
+
+        // Describe() → s (JSON description of the manager state)
+        b.method(
+            "Describe",
+            (),
+            ("json",),
+            move |_, reg: &mut SharedRegistry, ()| {
+                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
+                let homes = registry.list();
+                let mut homes_json = String::from("[");
+                for (i, rec) in homes.iter().enumerate() {
+                    if i > 0 {
+                        homes_json.push(',');
+                    }
+                    homes_json.push_str(&format!(
+                        concat!(
+                            "{{",
+                            "\"UserName\":\"{}\",",
+                            "\"RealName\":\"{}\",",
+                            "\"UID\":{},",
+                            "\"GID\":{},",
+                            "\"HomeDirectory\":\"{}\",",
+                            "\"Shell\":\"{}\",",
+                            "\"Storage\":\"{}\",",
+                            "\"State\":\"{}\"",
+                            "}}"
+                        ),
+                        json_escape(&rec.user_name),
+                        json_escape(&rec.real_name),
+                        rec.uid,
+                        rec.gid,
+                        json_escape(&rec.home_directory),
+                        json_escape(&rec.shell),
+                        json_escape(rec.storage.as_str()),
+                        json_escape(rec.state.as_str()),
+                    ));
+                }
+                homes_json.push(']');
+
+                let json = format!(
+                    concat!("{{", "\"NHomes\":{},", "\"Homes\":{}", "}}"),
+                    homes.len(),
+                    homes_json,
+                );
+                Ok((json,))
+            },
+        );
+    })
+}
+
+/// Convert a user name to a D-Bus object path.
+fn home_object_path(name: &str) -> String {
+    let mut path = String::from("/org/freedesktop/home1/home/");
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            path.push(ch);
+        } else {
+            path.push('_');
+            path.push_str(&format!("{:02x}", ch as u32));
+        }
+    }
+    path
+}
+
+/// Set up the D-Bus connection and register the home1 interface.
+fn setup_dbus(shared: SharedRegistry) -> Result<(Connection, Crossroads), String> {
+    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    conn.request_name(DBUS_NAME, false, true, false)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
+
+    let mut cr = Crossroads::new();
+    let iface_token = register_home1_iface(&mut cr);
+    cr.insert(DBUS_PATH, &[iface_token], shared);
+
+    Ok((conn, cr))
+}
 
 fn now_usec() -> u64 {
     SystemTime::now()
@@ -1789,7 +2110,7 @@ fn handle_client(registry: &mut HomeRegistry, stream: &mut UnixStream) {
 // sd_notify
 // ---------------------------------------------------------------------------
 
-fn sd_notify(msg: &str) {
+fn sd_notify_raw(msg: &str) {
     if let Ok(path) = env::var("NOTIFY_SOCKET") {
         let path = if let Some(stripped) = path.strip_prefix('@') {
             // Abstract socket
@@ -1890,6 +2211,10 @@ fn watchdog_interval() -> Option<Duration> {
 // Main
 // ---------------------------------------------------------------------------
 
+fn sd_notify(msg: &str) {
+    sd_notify_raw(msg);
+}
+
 fn main() {
     init_logging();
     setup_signal_handlers();
@@ -1900,10 +2225,13 @@ fn main() {
     let _ = fs::create_dir_all(IDENTITY_DIR);
     let _ = fs::create_dir_all(RUNTIME_DIR);
 
-    // Load existing records
+    // Load existing records into shared registry for D-Bus and control socket
     let mut registry = HomeRegistry::new();
     registry.load();
     log::info!("Loaded {} managed home(s)", registry.len());
+
+    let initial_count = registry.len();
+    let shared_registry: SharedRegistry = Arc::new(Mutex::new(registry));
 
     // Watchdog support
     let wd_interval = watchdog_interval();
@@ -1911,6 +2239,12 @@ fn main() {
         log::info!("Watchdog enabled, interval {:?}", iv);
     }
     let mut last_watchdog = Instant::now();
+
+    // D-Bus connection is deferred to after READY=1 so we don't block early
+    // boot waiting for dbus-daemon. These are populated in the main loop.
+    let mut dbus_conn: Option<Connection> = None;
+    let mut dbus_cr: Option<Crossroads> = None;
+    let mut dbus_attempted = false;
 
     // Remove stale socket
     let _ = fs::remove_file(CONTROL_SOCKET_PATH);
@@ -1922,7 +2256,7 @@ fn main() {
     let listener = match UnixListener::bind(CONTROL_SOCKET_PATH) {
         Ok(l) => {
             log::info!("Listening on {}", CONTROL_SOCKET_PATH);
-            l
+            Some(l)
         }
         Err(e) => {
             log::error!(
@@ -1930,34 +2264,18 @@ fn main() {
                 CONTROL_SOCKET_PATH,
                 e
             );
-            sd_notify(&format!(
-                "READY=1\nSTATUS=Running (no control socket), {} home(s)",
-                registry.len()
-            ));
-            loop {
-                if SHUTDOWN.load(Ordering::SeqCst) {
-                    break;
-                }
-                if let Some(ref iv) = wd_interval
-                    && last_watchdog.elapsed() >= *iv
-                {
-                    sd_notify("WATCHDOG=1");
-                    last_watchdog = Instant::now();
-                }
-                thread::sleep(Duration::from_secs(1));
-            }
-            sd_notify("STOPPING=1");
-            process::exit(0);
+            None
         }
     };
 
-    listener
-        .set_nonblocking(true)
-        .expect("Failed to set non-blocking");
+    // Set socket to non-blocking so we can check SHUTDOWN flag periodically
+    if let Some(ref l) = listener {
+        l.set_nonblocking(true).expect("Failed to set non-blocking");
+    }
 
     sd_notify(&format!(
         "READY=1\nSTATUS={} home(s) managed",
-        registry.len()
+        initial_count
     ));
 
     log::info!("systemd-homed ready");
@@ -1973,12 +2291,14 @@ fn main() {
 
         if RELOAD.load(Ordering::SeqCst) {
             RELOAD.store(false, Ordering::SeqCst);
-            registry.load();
-            log::info!("Reloaded, {} managed home(s)", registry.len());
-            sd_notify(&format!("STATUS={} home(s) managed", registry.len()));
+            let mut reg = shared_registry.lock().unwrap_or_else(|e| e.into_inner());
+            reg.load();
+            let count = reg.len();
+            log::info!("Reloaded, {} managed home(s)", count);
+            sd_notify(&format!("STATUS={} home(s) managed", count));
         }
 
-        // Watchdog keepalive
+        // Send watchdog keepalive
         if let Some(ref iv) = wd_interval
             && last_watchdog.elapsed() >= *iv
         {
@@ -1986,27 +2306,66 @@ fn main() {
             last_watchdog = Instant::now();
         }
 
-        // Periodic GC (every ~60 iterations ≈ every 12 seconds at 200ms sleep)
+        // Attempt D-Bus registration once (deferred from startup so we don't
+        // block early boot before dbus-daemon is running).
+        if !dbus_attempted {
+            dbus_attempted = true;
+            match setup_dbus(shared_registry.clone()) {
+                Ok((conn, cr)) => {
+                    log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
+                    dbus_conn = Some(conn);
+                    dbus_cr = Some(cr);
+                    let count = shared_registry
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .len();
+                    sd_notify(&format!("STATUS={} home(s) managed (D-Bus active)", count));
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to register D-Bus interface ({}); control socket only",
+                        e
+                    );
+                }
+            }
+        }
+
+        // Process D-Bus messages (non-blocking, short timeout)
+        if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
+            let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
+            while let Some(msg) = conn.channel().pop_message() {
+                let _ = cr.handle_message(msg, conn);
+            }
+        }
+
+        // Periodic GC (every ~60 iterations ≈ every 3 seconds at 50ms sleep)
         gc_counter += 1;
         if gc_counter >= 60 {
             gc_counter = 0;
-            registry.gc();
+            let mut reg = shared_registry.lock().unwrap_or_else(|e| e.into_inner());
+            reg.gc();
         }
 
-        match listener.accept() {
-            Ok((mut stream, _addr)) => {
-                let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-                handle_client(&mut registry, &mut stream);
-                let _ = stream.shutdown(Shutdown::Both);
-            }
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                thread::sleep(Duration::from_millis(200));
-            }
-            Err(e) => {
-                log::warn!("Accept error: {}", e);
-                thread::sleep(Duration::from_millis(100));
+        // Accept control socket connections
+        if let Some(ref listener) = listener {
+            match listener.accept() {
+                Ok((mut stream, _addr)) => {
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+                    let mut reg = shared_registry.lock().unwrap_or_else(|e| e.into_inner());
+                    handle_client(&mut reg, &mut stream);
+                    let _ = stream.shutdown(Shutdown::Both);
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    // No connection waiting
+                }
+                Err(e) => {
+                    log::warn!("Accept error: {}", e);
+                }
             }
         }
+
+        // Brief sleep to avoid busy-looping when there's no work
+        thread::sleep(Duration::from_millis(50));
     }
 
     // Cleanup
@@ -2022,6 +2381,40 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // D-Bus registration tests
+
+    #[test]
+    fn test_dbus_register_home1_iface() {
+        let mut cr = Crossroads::new();
+        let _token = register_home1_iface(&mut cr);
+    }
+
+    #[test]
+    fn test_home_object_path_simple() {
+        assert_eq!(
+            home_object_path("alice"),
+            "/org/freedesktop/home1/home/alice"
+        );
+    }
+
+    #[test]
+    fn test_home_object_path_with_dots() {
+        let path = home_object_path("alice.test");
+        assert_eq!(path, "/org/freedesktop/home1/home/alice_2etest");
+    }
+
+    #[test]
+    fn test_home_object_path_with_hyphen() {
+        let path = home_object_path("alice-test");
+        assert_eq!(path, "/org/freedesktop/home1/home/alice_2dtest");
+    }
+
+    #[test]
+    fn test_home_object_path_underscore_preserved() {
+        let path = home_object_path("alice_test");
+        assert_eq!(path, "/org/freedesktop/home1/home/alice_test");
+    }
     use tempfile::TempDir;
 
     // -- Helpers ------------------------------------------------------------
