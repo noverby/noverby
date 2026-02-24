@@ -4,10 +4,15 @@
 //! periodically and checks all active `.timer` units to see if any of their
 //! trigger conditions have been met.  When a timer elapses, the scheduler
 //! starts (or restarts) the associated service unit via the control interface.
+//!
+//! `OnCalendar=` expressions are evaluated using the [`CalendarSpec`] parser
+//! which supports the full systemd calendar expression syntax including
+//! weekday filters, ranges, lists, and repetitions.
 
 use log::{debug, info, trace, warn};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
+use crate::calendar_spec::CalendarSpec;
 use crate::lock_ext::RwLockExt;
 use crate::runtime_info::ArcMutRuntimeInfo;
 use crate::units::{ActivationSource, Specific, StatusStarted, TimerConfig, UnitId, UnitStatus};
@@ -175,60 +180,72 @@ fn should_fire_timer(
     }
 
     // OnCalendar= — calendar event expressions
-    // For now, we implement a simplified version:
-    // - "hourly" → fire if >1h since last fire (or boot)
-    // - "daily" → fire if >24h since last fire (or boot)
-    // - "weekly" → fire if >7d since last fire (or boot)
-    // - "monthly" → fire if >30d since last fire (or boot)
-    // - Other expressions are logged but not yet parsed.
+    // Parse the expression using CalendarSpec and check if the next elapse
+    // time is at or before the current wall-clock time.
     for expr in &conf.on_calendar {
-        if let Some(interval) = parse_calendar_shorthand(expr) {
-            let reference = last.unwrap_or_else(|| {
-                // If Persistent=true and we haven't fired yet, fire immediately
-                // (simulating "missed" runs from before boot).
-                if conf.persistent {
-                    // Return an instant far enough in the past to trigger
-                    now.checked_sub(interval + Duration::from_secs(1))
-                        .unwrap_or(now)
+        match CalendarSpec::parse(expr) {
+            Ok(spec) => {
+                let now_system = SystemTime::now();
+                let now_dt = CalendarSpec::system_time_to_datetime(now_system);
+
+                // Determine the reference time: if we fired before, the reference
+                // is one second after the last fire time (so we don't re-trigger
+                // for the same calendar tick). If we haven't fired, the reference
+                // is boot time (or epoch if Persistent=true to catch missed runs).
+                let reference_dt = if let Some(last_instant) = last {
+                    // Convert the last-fired Instant to a wall-clock DateTime.
+                    // We do this by computing the offset from `now` Instant to
+                    // `now` SystemTime, then applying that offset.
+                    let elapsed_since_last = now.duration_since(last_instant);
+                    let last_unix = CalendarSpec::datetime_to_unix(&now_dt)
+                        - elapsed_since_last.as_secs() as i64;
+                    // One second after last fire so we skip the same slot
+                    crate::calendar_spec::unix_to_datetime(last_unix + 1)
+                } else if conf.persistent {
+                    // Persistent=true and first check: fire immediately for any
+                    // missed calendar events by using epoch as reference.
+                    crate::calendar_spec::DateTime {
+                        year: 1970,
+                        month: 1,
+                        day: 1,
+                        hour: 0,
+                        minute: 0,
+                        second: 0,
+                    }
                 } else {
-                    now.checked_sub(elapsed_since_boot).unwrap_or(now)
+                    // Not persistent, first check: use boot time as reference.
+                    let boot_unix = CalendarSpec::datetime_to_unix(&now_dt)
+                        - elapsed_since_boot.as_secs() as i64;
+                    crate::calendar_spec::unix_to_datetime(boot_unix)
+                };
+
+                if let Some(next) = spec.next_elapse(reference_dt) {
+                    let next_unix = CalendarSpec::datetime_to_unix(&next);
+                    let now_unix = CalendarSpec::datetime_to_unix(&now_dt);
+                    if next_unix <= now_unix {
+                        trace!(
+                            "Timer {}: OnCalendar={} next elapse {:?} <= now {:?}",
+                            timer_name, expr, next, now_dt
+                        );
+                        return true;
+                    }
                 }
-            });
-            let since_ref = now.duration_since(reference);
-            if since_ref >= interval {
-                trace!(
-                    "Timer {}: OnCalendar={} interval {:?} elapsed ({:?} since reference)",
-                    timer_name, expr, interval, since_ref
-                );
-                return true;
             }
-        } else {
-            // Complex calendar expression — not yet implemented.
-            // We fire these once after a long delay to avoid never running them.
-            debug!(
-                "Timer {}: OnCalendar={} not yet parsed (complex calendar expressions not implemented)",
-                timer_name, expr
-            );
+            Err(e) => {
+                debug!(
+                    "Timer {}: OnCalendar={} parse error: {}",
+                    timer_name, expr, e
+                );
+            }
         }
     }
 
     false
 }
 
-/// Parse common calendar shorthands into a Duration interval.
-fn parse_calendar_shorthand(expr: &str) -> Option<Duration> {
-    match expr.trim().to_lowercase().as_str() {
-        "minutely" => Some(Duration::from_secs(60)),
-        "hourly" => Some(Duration::from_secs(3600)),
-        "daily" => Some(Duration::from_secs(86400)),
-        "weekly" => Some(Duration::from_secs(7 * 86400)),
-        "monthly" => Some(Duration::from_secs(30 * 86400)),
-        "yearly" | "annually" => Some(Duration::from_secs(365 * 86400)),
-        "quarterly" => Some(Duration::from_secs(90 * 86400)),
-        "semiannually" => Some(Duration::from_secs(182 * 86400)),
-        _ => None,
-    }
-}
+/// Re-export `unix_to_datetime` so the scheduler helper above can use it
+/// without a fully-qualified path in tests.
+pub use crate::calendar_spec::unix_to_datetime;
 
 /// Fire a timer's target unit by starting it via the activation system.
 fn fire_timer_target(run_info: &ArcMutRuntimeInfo, target_unit_name: &str) {
@@ -322,77 +339,87 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_calendar_shorthand_hourly() {
-        assert_eq!(
-            parse_calendar_shorthand("hourly"),
-            Some(Duration::from_secs(3600))
-        );
+    fn test_calendar_spec_parse_hourly() {
+        let spec = CalendarSpec::parse("hourly").unwrap();
+        assert_eq!(spec.normalized(), "*-*-* *:00:00");
     }
 
     #[test]
-    fn test_parse_calendar_shorthand_daily() {
-        assert_eq!(
-            parse_calendar_shorthand("daily"),
-            Some(Duration::from_secs(86400))
-        );
+    fn test_calendar_spec_parse_daily() {
+        let spec = CalendarSpec::parse("daily").unwrap();
+        assert_eq!(spec.normalized(), "*-*-* 00:00:00");
     }
 
     #[test]
-    fn test_parse_calendar_shorthand_weekly() {
-        assert_eq!(
-            parse_calendar_shorthand("weekly"),
-            Some(Duration::from_secs(7 * 86400))
-        );
+    fn test_calendar_spec_parse_weekly() {
+        let spec = CalendarSpec::parse("weekly").unwrap();
+        assert_eq!(spec.normalized(), "Mon *-*-* 00:00:00");
     }
 
     #[test]
-    fn test_parse_calendar_shorthand_monthly() {
-        assert_eq!(
-            parse_calendar_shorthand("monthly"),
-            Some(Duration::from_secs(30 * 86400))
-        );
+    fn test_calendar_spec_parse_monthly() {
+        let spec = CalendarSpec::parse("monthly").unwrap();
+        assert_eq!(spec.normalized(), "*-*-01 00:00:00");
     }
 
     #[test]
-    fn test_parse_calendar_shorthand_yearly() {
-        assert_eq!(
-            parse_calendar_shorthand("yearly"),
-            Some(Duration::from_secs(365 * 86400))
-        );
+    fn test_calendar_spec_parse_yearly() {
+        let spec = CalendarSpec::parse("yearly").unwrap();
+        assert_eq!(spec.normalized(), "*-01-01 00:00:00");
     }
 
     #[test]
-    fn test_parse_calendar_shorthand_case_insensitive() {
-        assert_eq!(
-            parse_calendar_shorthand("Hourly"),
-            Some(Duration::from_secs(3600))
-        );
-        assert_eq!(
-            parse_calendar_shorthand("DAILY"),
-            Some(Duration::from_secs(86400))
-        );
+    fn test_calendar_spec_parse_complex_expression() {
+        let spec = CalendarSpec::parse("*-*-* 06:00:00").unwrap();
+        assert_eq!(spec.normalized(), "*-*-* 06:00:00");
     }
 
     #[test]
-    fn test_parse_calendar_shorthand_unknown() {
-        assert_eq!(parse_calendar_shorthand("Mon *-*-* 03:00:00"), None);
-        assert_eq!(parse_calendar_shorthand("*-*-* 12:00:00"), None);
+    fn test_calendar_spec_parse_minutely() {
+        let spec = CalendarSpec::parse("minutely").unwrap();
+        assert_eq!(spec.normalized(), "*-*-* *:*:00");
     }
 
     #[test]
-    fn test_parse_calendar_shorthand_minutely() {
-        assert_eq!(
-            parse_calendar_shorthand("minutely"),
-            Some(Duration::from_secs(60))
-        );
+    fn test_calendar_spec_parse_quarterly() {
+        let spec = CalendarSpec::parse("quarterly").unwrap();
+        assert_eq!(spec.normalized(), "*-01,04,07,10-01 00:00:00");
     }
 
     #[test]
-    fn test_parse_calendar_shorthand_quarterly() {
-        assert_eq!(
-            parse_calendar_shorthand("quarterly"),
-            Some(Duration::from_secs(90 * 86400))
-        );
+    fn test_calendar_spec_next_elapse_daily() {
+        use crate::calendar_spec::DateTime;
+        let spec = CalendarSpec::parse("daily").unwrap();
+        let after = DateTime {
+            year: 2025,
+            month: 6,
+            day: 15,
+            hour: 0,
+            minute: 0,
+            second: 1,
+        };
+        let next = spec.next_elapse(after).unwrap();
+        assert_eq!(next.day, 16);
+        assert_eq!(next.hour, 0);
+    }
+
+    #[test]
+    fn test_calendar_spec_next_elapse_complex() {
+        use crate::calendar_spec::DateTime;
+        let spec = CalendarSpec::parse("Mon..Fri *-*-* 09:00:00").unwrap();
+        // 2025-06-14 is Saturday
+        let after = DateTime {
+            year: 2025,
+            month: 6,
+            day: 14,
+            hour: 10,
+            minute: 0,
+            second: 0,
+        };
+        let next = spec.next_elapse(after).unwrap();
+        // Next Mon..Fri is Monday June 16
+        assert_eq!(next.day, 16);
+        assert_eq!(next.hour, 9);
     }
 
     #[test]
@@ -667,6 +694,22 @@ mod tests {
             &last_fired,
         );
         assert!(result);
+    }
+
+    #[test]
+    fn test_calendar_spec_every_two_hours() {
+        use crate::calendar_spec::DateTime;
+        let spec = CalendarSpec::parse("*-*-* */2:00:00").unwrap();
+        let after = DateTime {
+            year: 2025,
+            month: 1,
+            day: 1,
+            hour: 3,
+            minute: 0,
+            second: 0,
+        };
+        let next = spec.next_elapse(after).unwrap();
+        assert_eq!(next.hour, 4);
     }
 
     #[test]

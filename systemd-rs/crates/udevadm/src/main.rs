@@ -1519,6 +1519,14 @@ fn make_dev_id_from_syspath(syspath: &Path, subsystem: &str) -> String {
 // ---------------------------------------------------------------------------
 
 fn main() -> ExitCode {
+    // Multi-call dispatch: when invoked as `systemd-udevd` (e.g. via symlink
+    // in the NixOS initrd where systemd-udevd -> udevadm), run the daemon
+    // instead of the udevadm CLI.
+    if systemd_udevd::invoked_as_daemon() {
+        systemd_udevd::run_daemon();
+        return ExitCode::SUCCESS;
+    }
+
     init_logging();
 
     let cli = Cli::parse();

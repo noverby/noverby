@@ -5,6 +5,7 @@
 //! parsing calendar/time expressions, and querying the service manager.
 
 use clap::{Parser, Subcommand};
+use libsystemd::calendar_spec::CalendarSpec;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -389,121 +390,7 @@ fn parse_time_unit(s: &str) -> Result<(u64, usize), String> {
     Err(format!("Unknown time unit in: {s}"))
 }
 
-// ── Calendar expression parsing ───────────────────────────────────────────
-
-#[derive(Debug, Clone)]
-struct CalendarSpec {
-    original: String,
-    normalized: String,
-}
-
-impl CalendarSpec {
-    fn parse(input: &str) -> Result<Self, String> {
-        let input = input.trim();
-
-        // Handle well-known shorthands
-        let normalized = match input.to_lowercase().as_str() {
-            "minutely" => "*-*-* *:*:00".to_string(),
-            "hourly" => "*-*-* *:00:00".to_string(),
-            "daily" => "*-*-* 00:00:00".to_string(),
-            "monthly" => "*-*-01 00:00:00".to_string(),
-            "weekly" => "Mon *-*-* 00:00:00".to_string(),
-            "yearly" | "annually" => "*-01-01 00:00:00".to_string(),
-            "quarterly" => "*-01,04,07,10-01 00:00:00".to_string(),
-            "semiannually" | "semi-annually" => "*-01,07-01 00:00:00".to_string(),
-            _ => normalize_calendar_expression(input)?,
-        };
-
-        Ok(CalendarSpec {
-            original: input.to_string(),
-            normalized,
-        })
-    }
-}
-
-fn normalize_calendar_expression(input: &str) -> Result<String, String> {
-    let input = input.trim();
-    if input.is_empty() {
-        return Err("Empty calendar expression".to_string());
-    }
-
-    let parts: Vec<&str> = input.split_whitespace().collect();
-    if parts.is_empty() {
-        return Err("Empty calendar expression".to_string());
-    }
-
-    let has_dow = is_day_of_week(parts[0]);
-
-    let (dow_part, rest) = if has_dow && parts.len() > 1 {
-        (Some(parts[0]), &parts[1..])
-    } else if has_dow {
-        (Some(parts[0]), [].as_slice())
-    } else {
-        (None, &parts[..])
-    };
-
-    let mut date_part = None;
-    let mut time_part = None;
-
-    for &p in rest {
-        if p.contains('-') || (p.contains('*') && !p.contains(':')) {
-            date_part = Some(p);
-        } else if p.contains(':') {
-            time_part = Some(p);
-        } else {
-            date_part = Some(p);
-        }
-    }
-
-    let mut result = String::new();
-
-    if let Some(dow) = dow_part {
-        result.push_str(dow);
-        result.push(' ');
-    }
-
-    if let Some(date) = date_part {
-        result.push_str(date);
-    } else {
-        result.push_str("*-*-*");
-    }
-
-    result.push(' ');
-
-    if let Some(time) = time_part {
-        let colon_count = time.chars().filter(|&c| c == ':').count();
-        result.push_str(time);
-        if colon_count == 1 {
-            result.push_str(":00");
-        }
-    } else {
-        result.push_str("00:00:00");
-    }
-
-    Ok(result)
-}
-
-fn is_day_of_week(s: &str) -> bool {
-    let lower = s.to_lowercase();
-    let lower = lower.trim_end_matches(',');
-    matches!(
-        lower,
-        "mon"
-            | "tue"
-            | "wed"
-            | "thu"
-            | "fri"
-            | "sat"
-            | "sun"
-            | "monday"
-            | "tuesday"
-            | "wednesday"
-            | "thursday"
-            | "friday"
-            | "saturday"
-            | "sunday"
-    )
-}
+// CalendarSpec is provided by libsystemd::calendar_spec::CalendarSpec
 
 // ── Timestamp parsing ─────────────────────────────────────────────────────
 
@@ -1226,9 +1113,66 @@ fn cmd_calendar(expressions: &[String], iterations: u32) {
         match CalendarSpec::parse(expr) {
             Ok(spec) => {
                 println!("  Original form: {}", spec.original);
-                println!("Normalized form: {}", spec.normalized);
+                println!("Normalized form: {}", spec.normalized());
+
                 if iterations > 0 {
-                    println!("    Next elapse: n/a (full calendar arithmetic not yet implemented)");
+                    let now = SystemTime::now();
+                    let mut ref_dt = CalendarSpec::system_time_to_datetime(now);
+                    // Start from one second after now for "next" semantics
+                    ref_dt = ref_dt.add_second();
+
+                    for i in 0..iterations {
+                        if let Some(next) = spec.next_elapse(ref_dt) {
+                            let next_unix = CalendarSpec::datetime_to_unix(&next);
+                            let label = if i == 0 {
+                                "    Next elapse".to_string()
+                            } else {
+                                format!("          Iter. #{}", i + 1)
+                            };
+
+                            // Format as a human-readable UTC timestamp
+                            let weekday_name =
+                                match libsystemd::calendar_spec::weekday_from_datetime(&next) {
+                                    0 => "Mon",
+                                    1 => "Tue",
+                                    2 => "Wed",
+                                    3 => "Thu",
+                                    4 => "Fri",
+                                    5 => "Sat",
+                                    6 => "Sun",
+                                    _ => "???",
+                                };
+                            println!(
+                                "{}: {} {:04}-{:02}-{:02} {:02}:{:02}:{:02} UTC",
+                                label,
+                                weekday_name,
+                                next.year,
+                                next.month,
+                                next.day,
+                                next.hour,
+                                next.minute,
+                                next.second,
+                            );
+
+                            // Compute relative time from now
+                            let now_unix = CalendarSpec::datetime_to_unix(
+                                &CalendarSpec::system_time_to_datetime(now),
+                            );
+                            let diff = next_unix - now_unix;
+                            if diff > 0 && i == 0 {
+                                let d = Duration::from_secs(diff as u64);
+                                println!("       From now: {}", format_relative_duration(d));
+                            }
+
+                            // Next iteration starts one second after this elapse
+                            ref_dt = next.add_second();
+                        } else {
+                            if i == 0 {
+                                println!("    Next elapse: never");
+                            }
+                            break;
+                        }
+                    }
                 }
                 println!();
             }
@@ -1238,6 +1182,31 @@ fn cmd_calendar(expressions: &[String], iterations: u32) {
             }
         }
     }
+}
+
+fn format_relative_duration(d: Duration) -> String {
+    let total_secs = d.as_secs();
+    if total_secs == 0 {
+        return "now".to_string();
+    }
+    let days = total_secs / 86400;
+    let hours = (total_secs % 86400) / 3600;
+    let minutes = (total_secs % 3600) / 60;
+    let seconds = total_secs % 60;
+    let mut parts = Vec::new();
+    if days > 0 {
+        parts.push(format!("{}day", days));
+    }
+    if hours > 0 {
+        parts.push(format!("{}h", hours));
+    }
+    if minutes > 0 {
+        parts.push(format!("{}min", minutes));
+    }
+    if seconds > 0 || parts.is_empty() {
+        parts.push(format!("{}s", seconds));
+    }
+    parts.join(" ") + " left"
 }
 
 fn cmd_timespan(expressions: &[String]) {
@@ -1623,54 +1592,89 @@ mod tests {
     #[test]
     fn test_calendar_parse_daily() {
         let spec = CalendarSpec::parse("daily").unwrap();
-        assert_eq!(spec.normalized, "*-*-* 00:00:00");
+        assert_eq!(spec.normalized(), "*-*-* 00:00:00");
     }
 
     #[test]
     fn test_calendar_parse_weekly() {
         let spec = CalendarSpec::parse("weekly").unwrap();
-        assert_eq!(spec.normalized, "Mon *-*-* 00:00:00");
+        assert_eq!(spec.normalized(), "Mon *-*-* 00:00:00");
     }
 
     #[test]
     fn test_calendar_parse_monthly() {
         let spec = CalendarSpec::parse("monthly").unwrap();
-        assert_eq!(spec.normalized, "*-*-01 00:00:00");
+        assert_eq!(spec.normalized(), "*-*-01 00:00:00");
     }
 
     #[test]
     fn test_calendar_parse_yearly() {
         let spec = CalendarSpec::parse("yearly").unwrap();
-        assert_eq!(spec.normalized, "*-01-01 00:00:00");
+        assert_eq!(spec.normalized(), "*-01-01 00:00:00");
     }
 
     #[test]
     fn test_calendar_parse_hourly() {
         let spec = CalendarSpec::parse("hourly").unwrap();
-        assert_eq!(spec.normalized, "*-*-* *:00:00");
+        assert_eq!(spec.normalized(), "*-*-* *:00:00");
     }
 
     #[test]
     fn test_calendar_parse_minutely() {
         let spec = CalendarSpec::parse("minutely").unwrap();
-        assert_eq!(spec.normalized, "*-*-* *:*:00");
+        assert_eq!(spec.normalized(), "*-*-* *:*:00");
     }
 
     #[test]
     fn test_calendar_parse_quarterly() {
         let spec = CalendarSpec::parse("quarterly").unwrap();
-        assert_eq!(spec.normalized, "*-01,04,07,10-01 00:00:00");
+        assert_eq!(spec.normalized(), "*-01,04,07,10-01 00:00:00");
     }
 
     #[test]
     fn test_calendar_parse_custom() {
-        let spec = CalendarSpec::parse("*-*-* 03:00").unwrap();
-        assert_eq!(spec.normalized, "*-*-* 03:00:00");
+        let spec = CalendarSpec::parse("*-*-* 06:00:00").unwrap();
+        assert_eq!(spec.normalized(), "*-*-* 06:00:00");
     }
 
     #[test]
     fn test_calendar_parse_empty_error() {
         assert!(CalendarSpec::parse("").is_err());
+    }
+
+    #[test]
+    fn test_calendar_next_elapse_daily() {
+        use libsystemd::calendar_spec::DateTime;
+        let spec = CalendarSpec::parse("daily").unwrap();
+        let after = DateTime {
+            year: 2025,
+            month: 1,
+            day: 1,
+            hour: 0,
+            minute: 0,
+            second: 1,
+        };
+        let next = spec.next_elapse(after).unwrap();
+        assert_eq!(next.day, 2);
+        assert_eq!(next.hour, 0);
+    }
+
+    #[test]
+    fn test_calendar_next_elapse_complex() {
+        use libsystemd::calendar_spec::DateTime;
+        let spec = CalendarSpec::parse("Mon..Fri *-*-* 09:00:00").unwrap();
+        // 2025-06-14 is Saturday
+        let after = DateTime {
+            year: 2025,
+            month: 6,
+            day: 14,
+            hour: 10,
+            minute: 0,
+            second: 0,
+        };
+        let next = spec.next_elapse(after).unwrap();
+        assert_eq!(next.day, 16); // Monday
+        assert_eq!(next.hour, 9);
     }
 
     // Timestamp parsing tests
@@ -1798,16 +1802,16 @@ mod tests {
         assert_eq!(ts.to_string(), "2min 30s");
     }
 
-    // is_day_of_week tests
+    // Weekday parsing tests (via CalendarSpec)
 
     #[test]
-    fn test_is_day_of_week() {
-        assert!(is_day_of_week("Mon"));
-        assert!(is_day_of_week("monday"));
-        assert!(is_day_of_week("Fri"));
-        assert!(is_day_of_week("SUNDAY"));
-        assert!(!is_day_of_week("Foo"));
-        assert!(!is_day_of_week("2023"));
+    fn test_weekday_parsing() {
+        assert!(CalendarSpec::parse("Mon *-*-* 00:00:00").is_ok());
+        assert!(CalendarSpec::parse("Fri *-*-* 00:00:00").is_ok());
+        assert!(CalendarSpec::parse("Sun *-*-* 00:00:00").is_ok());
+        // "Foo" is not a weekday, so it should be treated as a date/time part
+        // and fail to parse as a valid date
+        assert!(CalendarSpec::parse("Foo *-*-* 00:00:00").is_err());
     }
 
     // Unit paths tests
@@ -1977,24 +1981,27 @@ mod tests {
         assert!(parse_time_unit("foobar").is_err());
     }
 
-    // Normalize calendar expression
+    // Normalize calendar expression (via CalendarSpec::normalized)
 
     #[test]
     fn test_normalize_calendar_date_only() {
-        let norm = normalize_calendar_expression("2023-12-25").unwrap();
+        let spec = CalendarSpec::parse("2023-12-25").unwrap();
+        let norm = spec.normalized();
         assert!(norm.contains("2023-12-25"));
         assert!(norm.contains("00:00:00"));
     }
 
     #[test]
     fn test_normalize_calendar_time_only() {
-        let norm = normalize_calendar_expression("12:30").unwrap();
+        let spec = CalendarSpec::parse("12:30").unwrap();
+        let norm = spec.normalized();
         assert!(norm.contains("12:30:00"));
     }
 
     #[test]
     fn test_normalize_calendar_with_dow() {
-        let norm = normalize_calendar_expression("Mon *-*-* 09:00").unwrap();
+        let spec = CalendarSpec::parse("Mon *-*-* 09:00").unwrap();
+        let norm = spec.normalized();
         assert!(norm.starts_with("Mon"));
         assert!(norm.contains("09:00:00"));
     }
