@@ -1262,16 +1262,99 @@ pub struct ParsedServiceSection {
     /// MemoryMin= — minimum memory guarantee for the unit's cgroup. The
     /// memory controller will try to protect at least this much memory from
     /// reclaim. Accepts a byte value with optional K/M/G/T/P/E suffix
-    /// (base 1024), a percentage, or "infinity". Parsed and stored; no
-    /// runtime cgroup enforcement yet. See systemd.resource-control(5).
+    /// (base 1024), a percentage, or "infinity". Parsed and stored; applied
+    /// to cgroup memory.min at runtime. See systemd.resource-control(5).
     pub memory_min: Option<MemoryLimit>,
 
     /// MemoryLow= — low memory boundary for the unit's cgroup. Below this
     /// threshold the kernel memory reclaimer will avoid reclaiming memory
     /// from the unit. Accepts a byte value with optional K/M/G/T/P/E suffix
-    /// (base 1024), a percentage, or "infinity". Parsed and stored; no
-    /// runtime cgroup enforcement yet. See systemd.resource-control(5).
+    /// (base 1024), a percentage, or "infinity". Parsed and stored; applied
+    /// to cgroup memory.low at runtime. See systemd.resource-control(5).
     pub memory_low: Option<MemoryLimit>,
+
+    /// MemoryHigh= — throttling memory boundary for the unit's cgroup. If
+    /// memory usage goes above this threshold, processes are heavily throttled
+    /// and put under pressure. Accepts a byte value with optional K/M/G/T/P/E
+    /// suffix (base 1024), a percentage, or "infinity". Applied to cgroup
+    /// memory.high at runtime. See systemd.resource-control(5).
+    pub memory_high: Option<MemoryLimit>,
+
+    /// MemoryMax= — hard memory limit for the unit's cgroup. If memory usage
+    /// exceeds this limit, the OOM killer is invoked. Accepts a byte value with
+    /// optional K/M/G/T/P/E suffix (base 1024), a percentage, or "infinity".
+    /// Applied to cgroup memory.max at runtime. See systemd.resource-control(5).
+    pub memory_max: Option<MemoryLimit>,
+
+    /// MemorySwapMax= — hard swap limit for the unit's cgroup. Accepts a byte
+    /// value with optional K/M/G/T/P/E suffix (base 1024), a percentage, or
+    /// "infinity". Applied to cgroup memory.swap.max at runtime.
+    /// See systemd.resource-control(5).
+    pub memory_swap_max: Option<MemoryLimit>,
+
+    /// CPUWeight= — CPU weight for the unit's cgroup (1–10000, default 100).
+    /// Applied to cgroup cpu.weight at runtime. See systemd.resource-control(5).
+    pub cpu_weight: Option<CpuWeight>,
+
+    /// StartupCPUWeight= — CPU weight during system startup (1–10000).
+    /// Parsed and stored; no runtime enforcement yet (falls back to CPUWeight=).
+    /// See systemd.resource-control(5).
+    pub startup_cpu_weight: Option<CpuWeight>,
+
+    /// CPUQuota= — CPU time quota as a percentage (e.g. "20%", "200%").
+    /// Applied to cgroup cpu.max at runtime. See systemd.resource-control(5).
+    pub cpu_quota: Option<CpuQuota>,
+
+    /// IOWeight= — I/O weight for the unit's cgroup (1–10000, default 100).
+    /// Applied to cgroup io.weight at runtime. See systemd.resource-control(5).
+    pub io_weight: Option<IoWeight>,
+
+    /// StartupIOWeight= — I/O weight during system startup (1–10000).
+    /// Parsed and stored; no runtime enforcement yet (falls back to IOWeight=).
+    /// See systemd.resource-control(5).
+    pub startup_io_weight: Option<IoWeight>,
+
+    /// IODeviceWeight= — per-device I/O weight (format: "/dev/path WEIGHT").
+    /// Applied to cgroup io.weight at runtime. See systemd.resource-control(5).
+    pub io_device_weight: Vec<IoDeviceLimit>,
+
+    /// IOReadBandwidthMax= — per-device read bandwidth limit (format:
+    /// "/dev/path BYTES"). Applied to cgroup io.max at runtime.
+    /// See systemd.resource-control(5).
+    pub io_read_bandwidth_max: Vec<IoDeviceLimit>,
+
+    /// IOWriteBandwidthMax= — per-device write bandwidth limit (format:
+    /// "/dev/path BYTES"). Applied to cgroup io.max at runtime.
+    /// See systemd.resource-control(5).
+    pub io_write_bandwidth_max: Vec<IoDeviceLimit>,
+
+    /// IOReadIOPSMax= — per-device read IOPS limit (format: "/dev/path IOPS").
+    /// Applied to cgroup io.max at runtime. See systemd.resource-control(5).
+    pub io_read_iops_max: Vec<IoDeviceLimit>,
+
+    /// IOWriteIOPSMax= — per-device write IOPS limit (format: "/dev/path IOPS").
+    /// Applied to cgroup io.max at runtime. See systemd.resource-control(5).
+    pub io_write_iops_max: Vec<IoDeviceLimit>,
+
+    /// CPUAccounting= — enable CPU accounting for the unit's cgroup.
+    /// When true, the cpu controller is enabled. Defaults to the system default.
+    /// See systemd.resource-control(5).
+    pub cpu_accounting: Option<bool>,
+
+    /// MemoryAccounting= — enable memory accounting for the unit's cgroup.
+    /// When true, the memory controller is enabled. Defaults to the system default.
+    /// See systemd.resource-control(5).
+    pub memory_accounting: Option<bool>,
+
+    /// IOAccounting= — enable I/O accounting for the unit's cgroup.
+    /// When true, the io controller is enabled. Defaults to the system default.
+    /// See systemd.resource-control(5).
+    pub io_accounting: Option<bool>,
+
+    /// TasksAccounting= — enable task counting for the unit's cgroup.
+    /// When true, the pids controller is enabled. Defaults to the system default.
+    /// See systemd.resource-control(5).
+    pub tasks_accounting: Option<bool>,
 
     /// RuntimeMaxSec= — configures a maximum time for the service to run.
     /// If the service has been active for longer than the specified time it
@@ -1889,6 +1972,113 @@ pub enum MemoryLimit {
     Percent(u64),
     /// No limit
     Infinity,
+}
+
+/// CPUWeight= / StartupCPUWeight= — CPU weight for the unit's cgroup under
+/// the CPU controller. Range 1–10000, default 100. See systemd.resource-control(5).
+pub type CpuWeight = u64;
+
+/// CPUQuota= — CPU time quota as a percentage. 100% means one full CPU core.
+/// Values above 100% are allowed for multi-core allocation (e.g. 200% = 2 cores).
+/// See systemd.resource-control(5).
+pub type CpuQuota = u64;
+
+/// IOWeight= / StartupIOWeight= — I/O weight for the unit's cgroup under
+/// the IO controller. Range 1–10000, default 100. See systemd.resource-control(5).
+pub type IoWeight = u64;
+
+/// A per-device I/O limit used by IODeviceWeight=, IOReadBandwidthMax=,
+/// IOWriteBandwidthMax=, IOReadIOPSMax=, IOWriteIOPSMax=.
+/// Format: "/dev/path value" where value is a weight (1–10000), byte rate,
+/// or IOPS count. See systemd.resource-control(5).
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct IoDeviceLimit {
+    /// Device node path (e.g. "/dev/sda")
+    pub device: String,
+    /// Limit value — interpretation depends on which directive this is from:
+    /// - IODeviceWeight=: weight 1–10000
+    /// - IOReadBandwidthMax=/IOWriteBandwidthMax=: bytes per second
+    /// - IOReadIOPSMax=/IOWriteIOPSMax=: IOPS count
+    pub value: u64,
+}
+
+/// Parse a CPUWeight= or StartupCPUWeight= value.
+/// Accepts "idle" (mapped to 1), plain integers 1–10000, or empty (None).
+pub fn parse_cpu_weight(val: &str) -> Result<Option<CpuWeight>, String> {
+    let val = val.trim();
+    if val.is_empty() {
+        return Ok(None);
+    }
+    if val.eq_ignore_ascii_case("idle") {
+        return Ok(Some(1));
+    }
+    let weight = val
+        .parse::<u64>()
+        .map_err(|_| format!("CPUWeight is not a valid number: {val}"))?;
+    if !(1..=10000).contains(&weight) {
+        return Err(format!("CPUWeight={val} is out of range (1–10000)"));
+    }
+    Ok(Some(weight))
+}
+
+/// Parse a CPUQuota= value. Accepts a percentage (e.g. "20%", "200%") or empty.
+/// Returns the percentage as a plain integer (20 means 20%, 200 means 200%).
+pub fn parse_cpu_quota(val: &str) -> Result<Option<CpuQuota>, String> {
+    let val = val.trim();
+    if val.is_empty() {
+        return Ok(None);
+    }
+    let pct_str = val
+        .strip_suffix('%')
+        .ok_or_else(|| format!("CPUQuota must end with '%': {val}"))?;
+    let pct = pct_str
+        .trim()
+        .parse::<u64>()
+        .map_err(|_| format!("CPUQuota is not a valid percentage: {val}"))?;
+    if pct == 0 {
+        return Err("CPUQuota=0% is not valid".to_string());
+    }
+    Ok(Some(pct))
+}
+
+/// Parse an IOWeight= or StartupIOWeight= value.
+/// Accepts plain integers 1–10000 or empty (None).
+pub fn parse_io_weight(val: &str) -> Result<Option<IoWeight>, String> {
+    let val = val.trim();
+    if val.is_empty() {
+        return Ok(None);
+    }
+    let weight = val
+        .parse::<u64>()
+        .map_err(|_| format!("IOWeight is not a valid number: {val}"))?;
+    if !(1..=10000).contains(&weight) {
+        return Err(format!("IOWeight={val} is out of range (1–10000)"));
+    }
+    Ok(Some(weight))
+}
+
+/// Parse a per-device I/O limit line: "DEVICE_PATH VALUE" where VALUE is
+/// either a plain number or a byte-size with suffix. Used by IODeviceWeight=,
+/// IOReadBandwidthMax=, IOWriteBandwidthMax=, IOReadIOPSMax=, IOWriteIOPSMax=.
+pub fn parse_io_device_limit(val: &str) -> Result<Option<IoDeviceLimit>, String> {
+    let val = val.trim();
+    if val.is_empty() {
+        return Ok(None);
+    }
+    let (device, value_str) = val
+        .split_once(char::is_whitespace)
+        .ok_or_else(|| format!("IODevice limit must be 'DEVICE VALUE': {val}"))?;
+    let value_str = value_str.trim();
+    // Try byte-size parsing first (handles K/M/G suffixes), fall back to plain u64
+    let value = parse_byte_size(value_str).or_else(|_| {
+        value_str
+            .parse::<u64>()
+            .map_err(|_| format!("IODevice limit value is not valid: {value_str}"))
+    })?;
+    Ok(Some(IoDeviceLimit {
+        device: device.to_owned(),
+        value,
+    }))
 }
 
 /// Parse a systemd byte value with optional K, M, G, T, P, E suffix (base 1024).

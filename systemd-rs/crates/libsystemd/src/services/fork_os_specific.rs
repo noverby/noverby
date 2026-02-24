@@ -7,13 +7,13 @@ use crate::platform::cgroups;
 use crate::units::Delegate;
 #[cfg(feature = "cgroups")]
 use crate::units::TasksMax;
+#[cfg(feature = "cgroups")]
+use log::trace;
 
 /// This is the place to do anything that is not standard unix but specific to one os. Like cgroups
 pub fn pre_fork_os_specific(srvc: &ServiceConfig) -> Result<(), String> {
     #[cfg(feature = "cgroups")]
     {
-        use log::trace;
-
         std::fs::create_dir_all(&srvc.platform_specific.cgroup_path).map_err(|e| {
             format!(
                 "Couldnt create service cgroup ({:?}): {}",
@@ -42,6 +42,55 @@ pub fn pre_fork_os_specific(srvc: &ServiceConfig) -> Result<(), String> {
                     )
                 },
             )?;
+        }
+
+        // Enable required cgroup controllers on the parent before writing limits.
+        // We collect which controllers are needed based on the configured directives
+        // and enable them all at once.
+        {
+            let mut needed_controllers: Vec<&str> = Vec::new();
+            if srvc.tasks_max.is_some() || srvc.tasks_accounting == Some(true) {
+                needed_controllers.push("pids");
+            }
+            if srvc.memory_min.is_some()
+                || srvc.memory_low.is_some()
+                || srvc.memory_high.is_some()
+                || srvc.memory_max.is_some()
+                || srvc.memory_swap_max.is_some()
+                || srvc.memory_accounting == Some(true)
+            {
+                needed_controllers.push("memory");
+            }
+            if srvc.cpu_weight.is_some()
+                || srvc.startup_cpu_weight.is_some()
+                || srvc.cpu_quota.is_some()
+                || srvc.cpu_accounting == Some(true)
+            {
+                needed_controllers.push("cpu");
+            }
+            if srvc.io_weight.is_some()
+                || srvc.startup_io_weight.is_some()
+                || !srvc.io_device_weight.is_empty()
+                || !srvc.io_read_bandwidth_max.is_empty()
+                || !srvc.io_write_bandwidth_max.is_empty()
+                || !srvc.io_read_iops_max.is_empty()
+                || !srvc.io_write_iops_max.is_empty()
+                || srvc.io_accounting == Some(true)
+            {
+                needed_controllers.push("io");
+            }
+            if !needed_controllers.is_empty() {
+                needed_controllers.dedup();
+                if let Err(e) = cgroups::cgroup2::enable_controllers_on_parent(
+                    &srvc.platform_specific.cgroup_path,
+                    &needed_controllers,
+                ) {
+                    trace!(
+                        "Could not enable cgroup controllers {:?} for {:?}: {}",
+                        needed_controllers, &srvc.platform_specific.cgroup_path, e
+                    );
+                }
+            }
         }
 
         // Apply TasksMax limit via the pids cgroup controller
@@ -75,6 +124,164 @@ pub fn pre_fork_os_specific(srvc: &ServiceConfig) -> Result<(), String> {
                     "pids.max not available for cgroup {:?}, skipping TasksMax",
                     &srvc.platform_specific.cgroup_path
                 );
+            }
+        }
+
+        // ── Memory controller limits ───────────────────────────────────────
+        if let Some(ref limit) = srvc.memory_min {
+            trace!(
+                "Setting MemoryMin={:?} for cgroup {:?}",
+                limit, &srvc.platform_specific.cgroup_path
+            );
+            if let Err(e) =
+                cgroups::cgroup2::set_memory_min(&srvc.platform_specific.cgroup_path, limit)
+            {
+                trace!("Could not set memory.min: {}", e);
+            }
+        }
+        if let Some(ref limit) = srvc.memory_low {
+            trace!(
+                "Setting MemoryLow={:?} for cgroup {:?}",
+                limit, &srvc.platform_specific.cgroup_path
+            );
+            if let Err(e) =
+                cgroups::cgroup2::set_memory_low(&srvc.platform_specific.cgroup_path, limit)
+            {
+                trace!("Could not set memory.low: {}", e);
+            }
+        }
+        if let Some(ref limit) = srvc.memory_high {
+            trace!(
+                "Setting MemoryHigh={:?} for cgroup {:?}",
+                limit, &srvc.platform_specific.cgroup_path
+            );
+            if let Err(e) =
+                cgroups::cgroup2::set_memory_high(&srvc.platform_specific.cgroup_path, limit)
+            {
+                trace!("Could not set memory.high: {}", e);
+            }
+        }
+        if let Some(ref limit) = srvc.memory_max {
+            trace!(
+                "Setting MemoryMax={:?} for cgroup {:?}",
+                limit, &srvc.platform_specific.cgroup_path
+            );
+            if let Err(e) =
+                cgroups::cgroup2::set_memory_max(&srvc.platform_specific.cgroup_path, limit)
+            {
+                trace!("Could not set memory.max: {}", e);
+            }
+        }
+        if let Some(ref limit) = srvc.memory_swap_max {
+            trace!(
+                "Setting MemorySwapMax={:?} for cgroup {:?}",
+                limit, &srvc.platform_specific.cgroup_path
+            );
+            if let Err(e) =
+                cgroups::cgroup2::set_memory_swap_max(&srvc.platform_specific.cgroup_path, limit)
+            {
+                trace!("Could not set memory.swap.max: {}", e);
+            }
+        }
+
+        // ── CPU controller limits ──────────────────────────────────────────
+        if let Some(weight) = srvc.cpu_weight {
+            trace!(
+                "Setting CPUWeight={} for cgroup {:?}",
+                weight, &srvc.platform_specific.cgroup_path
+            );
+            if let Err(e) =
+                cgroups::cgroup2::set_cpu_weight(&srvc.platform_specific.cgroup_path, weight)
+            {
+                trace!("Could not set cpu.weight: {}", e);
+            }
+        }
+        if let Some(quota) = srvc.cpu_quota {
+            trace!(
+                "Setting CPUQuota={}% for cgroup {:?}",
+                quota, &srvc.platform_specific.cgroup_path
+            );
+            if let Err(e) =
+                cgroups::cgroup2::set_cpu_quota(&srvc.platform_specific.cgroup_path, quota)
+            {
+                trace!("Could not set cpu.max: {}", e);
+            }
+        }
+
+        // ── IO controller limits ───────────────────────────────────────────
+        if let Some(weight) = srvc.io_weight {
+            trace!(
+                "Setting IOWeight={} for cgroup {:?}",
+                weight, &srvc.platform_specific.cgroup_path
+            );
+            if let Err(e) =
+                cgroups::cgroup2::set_io_weight(&srvc.platform_specific.cgroup_path, weight)
+            {
+                trace!("Could not set io.weight: {}", e);
+            }
+        }
+        for entry in &srvc.io_device_weight {
+            trace!(
+                "Setting IODeviceWeight={} {} for cgroup {:?}",
+                entry.device, entry.value, &srvc.platform_specific.cgroup_path
+            );
+            if let Err(e) = cgroups::cgroup2::set_io_device_weight(
+                &srvc.platform_specific.cgroup_path,
+                &entry.device,
+                entry.value,
+            ) {
+                trace!("Could not set io.weight for {}: {}", entry.device, e);
+            }
+        }
+
+        // Per-device bandwidth and IOPS limits — group by device to write
+        // a single io.max line per device with all applicable limits.
+        {
+            let mut io_max_devices: std::collections::HashMap<
+                String,
+                (Option<u64>, Option<u64>, Option<u64>, Option<u64>),
+            > = std::collections::HashMap::new();
+
+            for entry in &srvc.io_read_bandwidth_max {
+                io_max_devices
+                    .entry(entry.device.clone())
+                    .or_insert((None, None, None, None))
+                    .0 = Some(entry.value);
+            }
+            for entry in &srvc.io_write_bandwidth_max {
+                io_max_devices
+                    .entry(entry.device.clone())
+                    .or_insert((None, None, None, None))
+                    .1 = Some(entry.value);
+            }
+            for entry in &srvc.io_read_iops_max {
+                io_max_devices
+                    .entry(entry.device.clone())
+                    .or_insert((None, None, None, None))
+                    .2 = Some(entry.value);
+            }
+            for entry in &srvc.io_write_iops_max {
+                io_max_devices
+                    .entry(entry.device.clone())
+                    .or_insert((None, None, None, None))
+                    .3 = Some(entry.value);
+            }
+
+            for (device, (rbps, wbps, riops, wiops)) in &io_max_devices {
+                trace!(
+                    "Setting io.max for {} rbps={:?} wbps={:?} riops={:?} wiops={:?} in cgroup {:?}",
+                    device, rbps, wbps, riops, wiops, &srvc.platform_specific.cgroup_path
+                );
+                if let Err(e) = cgroups::cgroup2::set_io_max(
+                    &srvc.platform_specific.cgroup_path,
+                    device,
+                    *rbps,
+                    *wbps,
+                    *riops,
+                    *wiops,
+                ) {
+                    trace!("Could not set io.max for {}: {}", device, e);
+                }
             }
         }
     }

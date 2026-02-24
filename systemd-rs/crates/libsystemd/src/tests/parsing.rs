@@ -44778,3 +44778,1391 @@ fn test_mount_unit_empty_type_and_options() {
     assert_eq!(config.mount.fs_type, None);
     assert_eq!(config.mount.options, None);
 }
+
+// ── Resource-control directive parsing tests ───────────────────────────────
+
+#[test]
+fn test_memory_high_absolute_bytes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemoryHigh = 536870912
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_high,
+        Some(crate::units::MemoryLimit::Bytes(536870912)),
+        "MemoryHigh=536870912 should be Bytes(536870912)"
+    );
+}
+
+#[test]
+fn test_memory_high_with_m_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemoryHigh = 512M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_high,
+        Some(crate::units::MemoryLimit::Bytes(512 * 1024 * 1024)),
+        "MemoryHigh=512M should be Bytes(536870912)"
+    );
+}
+
+#[test]
+fn test_memory_high_percentage() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemoryHigh = 80%
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_high,
+        Some(crate::units::MemoryLimit::Percent(80)),
+        "MemoryHigh=80% should be Percent(80)"
+    );
+}
+
+#[test]
+fn test_memory_high_infinity() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemoryHigh = infinity
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_high,
+        Some(crate::units::MemoryLimit::Infinity),
+        "MemoryHigh=infinity should be Infinity"
+    );
+}
+
+#[test]
+fn test_memory_max_absolute_bytes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemoryMax = 1073741824
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_max,
+        Some(crate::units::MemoryLimit::Bytes(1073741824)),
+        "MemoryMax=1073741824 should be Bytes(1073741824)"
+    );
+}
+
+#[test]
+fn test_memory_max_with_g_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemoryMax = 2G
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_max,
+        Some(crate::units::MemoryLimit::Bytes(2 * 1024 * 1024 * 1024)),
+        "MemoryMax=2G should be Bytes(2147483648)"
+    );
+}
+
+#[test]
+fn test_memory_max_percentage() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemoryMax = 90%
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_max,
+        Some(crate::units::MemoryLimit::Percent(90)),
+        "MemoryMax=90% should be Percent(90)"
+    );
+}
+
+#[test]
+fn test_memory_max_infinity() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemoryMax = INFINITY
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_max,
+        Some(crate::units::MemoryLimit::Infinity),
+        "MemoryMax=INFINITY should be Infinity"
+    );
+}
+
+#[test]
+fn test_memory_swap_max_absolute_bytes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemorySwapMax = 4G
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_swap_max,
+        Some(crate::units::MemoryLimit::Bytes(4 * 1024 * 1024 * 1024)),
+        "MemorySwapMax=4G should be Bytes(4294967296)"
+    );
+}
+
+#[test]
+fn test_memory_swap_max_percentage() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemorySwapMax = 50%
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_swap_max,
+        Some(crate::units::MemoryLimit::Percent(50)),
+        "MemorySwapMax=50% should be Percent(50)"
+    );
+}
+
+#[test]
+fn test_memory_swap_max_infinity() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemorySwapMax = infinity
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_swap_max,
+        Some(crate::units::MemoryLimit::Infinity),
+        "MemorySwapMax=infinity should be Infinity"
+    );
+}
+
+#[test]
+fn test_memory_swap_max_zero() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemorySwapMax = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_swap_max,
+        Some(crate::units::MemoryLimit::Bytes(0)),
+        "MemorySwapMax=0 should be Bytes(0)"
+    );
+}
+
+// ── CPUWeight parsing tests ────────────────────────────────────────────────
+
+#[test]
+fn test_cpu_weight_basic() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    CPUWeight = 500
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.cpu_weight, Some(500));
+}
+
+#[test]
+fn test_cpu_weight_minimum() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    CPUWeight = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.cpu_weight, Some(1));
+}
+
+#[test]
+fn test_cpu_weight_maximum() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    CPUWeight = 10000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.cpu_weight, Some(10000));
+}
+
+#[test]
+fn test_cpu_weight_idle() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    CPUWeight = idle
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.cpu_weight,
+        Some(1),
+        "CPUWeight=idle should map to 1"
+    );
+}
+
+#[test]
+fn test_cpu_weight_default_100() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    CPUWeight = 100
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.cpu_weight, Some(100));
+}
+
+#[test]
+fn test_cpu_weight_out_of_range() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    CPUWeight = 20000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(
+        result.is_err(),
+        "CPUWeight=20000 should fail (out of range)"
+    );
+}
+
+#[test]
+fn test_cpu_weight_zero_out_of_range() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    CPUWeight = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_err(), "CPUWeight=0 should fail (out of range)");
+}
+
+#[test]
+fn test_cpu_weight_not_set() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.cpu_weight, None,
+        "CPUWeight should be None when not set"
+    );
+}
+
+#[test]
+fn test_startup_cpu_weight() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    StartupCPUWeight = 200
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.startup_cpu_weight, Some(200));
+}
+
+#[test]
+fn test_startup_cpu_weight_idle() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    StartupCPUWeight = IDLE
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.startup_cpu_weight,
+        Some(1),
+        "StartupCPUWeight=IDLE should map to 1"
+    );
+}
+
+// ── CPUQuota parsing tests ─────────────────────────────────────────────────
+
+#[test]
+fn test_cpu_quota_basic() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    CPUQuota = 20%
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.cpu_quota,
+        Some(20),
+        "CPUQuota=20% should be 20"
+    );
+}
+
+#[test]
+fn test_cpu_quota_full_core() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    CPUQuota = 100%
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.cpu_quota,
+        Some(100),
+        "CPUQuota=100% should be 100"
+    );
+}
+
+#[test]
+fn test_cpu_quota_multi_core() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    CPUQuota = 200%
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.cpu_quota,
+        Some(200),
+        "CPUQuota=200% should be 200"
+    );
+}
+
+#[test]
+fn test_cpu_quota_no_percent_sign_fails() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    CPUQuota = 50
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_err(), "CPUQuota=50 (no %) should fail");
+}
+
+#[test]
+fn test_cpu_quota_not_set() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.cpu_quota, None,
+        "CPUQuota should be None when not set"
+    );
+}
+
+// ── IOWeight parsing tests ─────────────────────────────────────────────────
+
+#[test]
+fn test_io_weight_basic() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IOWeight = 500
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.io_weight, Some(500));
+}
+
+#[test]
+fn test_io_weight_minimum() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IOWeight = 1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.io_weight, Some(1));
+}
+
+#[test]
+fn test_io_weight_maximum() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IOWeight = 10000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.io_weight, Some(10000));
+}
+
+#[test]
+fn test_io_weight_out_of_range() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IOWeight = 20000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_err(), "IOWeight=20000 should fail (out of range)");
+}
+
+#[test]
+fn test_io_weight_zero_out_of_range() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IOWeight = 0
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let result = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    );
+
+    assert!(result.is_err(), "IOWeight=0 should fail (out of range)");
+}
+
+#[test]
+fn test_io_weight_not_set() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.io_weight, None,
+        "IOWeight should be None when not set"
+    );
+}
+
+#[test]
+fn test_startup_io_weight() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    StartupIOWeight = 300
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.startup_io_weight, Some(300));
+}
+
+// ── IODeviceWeight parsing tests ───────────────────────────────────────────
+
+#[test]
+fn test_io_device_weight_basic() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IODeviceWeight = /dev/sda 500
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.io_device_weight.len(), 1);
+    assert_eq!(service.srvc.io_device_weight[0].device, "/dev/sda");
+    assert_eq!(service.srvc.io_device_weight[0].value, 500);
+}
+
+#[test]
+fn test_io_device_weight_multiple() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IODeviceWeight = /dev/sda 200
+    IODeviceWeight = /dev/sdb 800
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.io_device_weight.len(), 2);
+    assert_eq!(service.srvc.io_device_weight[0].device, "/dev/sda");
+    assert_eq!(service.srvc.io_device_weight[0].value, 200);
+    assert_eq!(service.srvc.io_device_weight[1].device, "/dev/sdb");
+    assert_eq!(service.srvc.io_device_weight[1].value, 800);
+}
+
+#[test]
+fn test_io_device_weight_empty_resets() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IODeviceWeight = /dev/sda 200
+    IODeviceWeight =
+    IODeviceWeight = /dev/sdb 800
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.io_device_weight.len(),
+        1,
+        "empty assignment should reset"
+    );
+    assert_eq!(service.srvc.io_device_weight[0].device, "/dev/sdb");
+}
+
+// ── IOReadBandwidthMax / IOWriteBandwidthMax parsing tests ─────────────────
+
+#[test]
+fn test_io_read_bandwidth_max_basic() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IOReadBandwidthMax = /dev/sda 10M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.io_read_bandwidth_max.len(), 1);
+    assert_eq!(service.srvc.io_read_bandwidth_max[0].device, "/dev/sda");
+    assert_eq!(
+        service.srvc.io_read_bandwidth_max[0].value,
+        10 * 1024 * 1024
+    );
+}
+
+#[test]
+fn test_io_write_bandwidth_max_basic() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IOWriteBandwidthMax = /dev/sda 5M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.io_write_bandwidth_max.len(), 1);
+    assert_eq!(service.srvc.io_write_bandwidth_max[0].device, "/dev/sda");
+    assert_eq!(
+        service.srvc.io_write_bandwidth_max[0].value,
+        5 * 1024 * 1024
+    );
+}
+
+#[test]
+fn test_io_read_bandwidth_max_plain_bytes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IOReadBandwidthMax = /dev/sda 1048576
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.io_read_bandwidth_max.len(), 1);
+    assert_eq!(service.srvc.io_read_bandwidth_max[0].value, 1048576);
+}
+
+#[test]
+fn test_io_write_bandwidth_max_with_g_suffix() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IOWriteBandwidthMax = /dev/nvme0n1 1G
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.io_write_bandwidth_max.len(), 1);
+    assert_eq!(
+        service.srvc.io_write_bandwidth_max[0].device,
+        "/dev/nvme0n1"
+    );
+    assert_eq!(
+        service.srvc.io_write_bandwidth_max[0].value,
+        1024 * 1024 * 1024
+    );
+}
+
+// ── IOReadIOPSMax / IOWriteIOPSMax parsing tests ───────────────────────────
+
+#[test]
+fn test_io_read_iops_max_basic() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IOReadIOPSMax = /dev/sda 1000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.io_read_iops_max.len(), 1);
+    assert_eq!(service.srvc.io_read_iops_max[0].device, "/dev/sda");
+    assert_eq!(service.srvc.io_read_iops_max[0].value, 1000);
+}
+
+#[test]
+fn test_io_write_iops_max_basic() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IOWriteIOPSMax = /dev/sda 2000
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.io_write_iops_max.len(), 1);
+    assert_eq!(service.srvc.io_write_iops_max[0].device, "/dev/sda");
+    assert_eq!(service.srvc.io_write_iops_max[0].value, 2000);
+}
+
+#[test]
+fn test_io_read_iops_max_empty_resets() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IOReadIOPSMax = /dev/sda 1000
+    IOReadIOPSMax =
+    IOReadIOPSMax = /dev/sdb 500
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.io_read_iops_max.len(),
+        1,
+        "empty assignment should reset"
+    );
+    assert_eq!(service.srvc.io_read_iops_max[0].device, "/dev/sdb");
+}
+
+// ── Accounting toggle parsing tests ────────────────────────────────────────
+
+#[test]
+fn test_cpu_accounting_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    CPUAccounting = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.cpu_accounting, Some(true));
+}
+
+#[test]
+fn test_cpu_accounting_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    CPUAccounting = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.cpu_accounting, Some(false));
+}
+
+#[test]
+fn test_cpu_accounting_not_set() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.cpu_accounting, None);
+}
+
+#[test]
+fn test_memory_accounting_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemoryAccounting = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.memory_accounting, Some(true));
+}
+
+#[test]
+fn test_memory_accounting_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemoryAccounting = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.memory_accounting, Some(false));
+}
+
+#[test]
+fn test_io_accounting_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    IOAccounting = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.io_accounting, Some(true));
+}
+
+#[test]
+fn test_tasks_accounting_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    TasksAccounting = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.tasks_accounting, Some(true));
+}
+
+#[test]
+fn test_tasks_accounting_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    TasksAccounting = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(service.srvc.tasks_accounting, Some(false));
+}
+
+// ── Combined resource-control directives test ──────────────────────────────
+
+#[test]
+fn test_all_resource_control_directives_combined() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/test
+    MemoryMin = 64M
+    MemoryLow = 128M
+    MemoryHigh = 1G
+    MemoryMax = 2G
+    MemorySwapMax = 512M
+    CPUWeight = 200
+    StartupCPUWeight = 50
+    CPUQuota = 150%
+    IOWeight = 300
+    StartupIOWeight = 100
+    IODeviceWeight = /dev/sda 500
+    IOReadBandwidthMax = /dev/sda 10M
+    IOWriteBandwidthMax = /dev/sda 5M
+    IOReadIOPSMax = /dev/sda 1000
+    IOWriteIOPSMax = /dev/sda 500
+    CPUAccounting = yes
+    MemoryAccounting = yes
+    IOAccounting = yes
+    TasksAccounting = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.memory_min,
+        Some(crate::units::MemoryLimit::Bytes(64 * 1024 * 1024))
+    );
+    assert_eq!(
+        service.srvc.memory_low,
+        Some(crate::units::MemoryLimit::Bytes(128 * 1024 * 1024))
+    );
+    assert_eq!(
+        service.srvc.memory_high,
+        Some(crate::units::MemoryLimit::Bytes(1024 * 1024 * 1024))
+    );
+    assert_eq!(
+        service.srvc.memory_max,
+        Some(crate::units::MemoryLimit::Bytes(2 * 1024 * 1024 * 1024))
+    );
+    assert_eq!(
+        service.srvc.memory_swap_max,
+        Some(crate::units::MemoryLimit::Bytes(512 * 1024 * 1024))
+    );
+    assert_eq!(service.srvc.cpu_weight, Some(200));
+    assert_eq!(service.srvc.startup_cpu_weight, Some(50));
+    assert_eq!(service.srvc.cpu_quota, Some(150));
+    assert_eq!(service.srvc.io_weight, Some(300));
+    assert_eq!(service.srvc.startup_io_weight, Some(100));
+    assert_eq!(service.srvc.io_device_weight.len(), 1);
+    assert_eq!(service.srvc.io_device_weight[0].device, "/dev/sda");
+    assert_eq!(service.srvc.io_device_weight[0].value, 500);
+    assert_eq!(service.srvc.io_read_bandwidth_max.len(), 1);
+    assert_eq!(
+        service.srvc.io_read_bandwidth_max[0].value,
+        10 * 1024 * 1024
+    );
+    assert_eq!(service.srvc.io_write_bandwidth_max.len(), 1);
+    assert_eq!(
+        service.srvc.io_write_bandwidth_max[0].value,
+        5 * 1024 * 1024
+    );
+    assert_eq!(service.srvc.io_read_iops_max.len(), 1);
+    assert_eq!(service.srvc.io_read_iops_max[0].value, 1000);
+    assert_eq!(service.srvc.io_write_iops_max.len(), 1);
+    assert_eq!(service.srvc.io_write_iops_max[0].value, 500);
+    assert_eq!(service.srvc.cpu_accounting, Some(true));
+    assert_eq!(service.srvc.memory_accounting, Some(true));
+    assert_eq!(service.srvc.io_accounting, Some(true));
+    assert_eq!(service.srvc.tasks_accounting, Some(true));
+}
+
+// ── parse_cpu_weight unit tests ────────────────────────────────────────────
+
+#[test]
+fn test_parse_cpu_weight_empty() {
+    assert_eq!(crate::units::parse_cpu_weight("").unwrap(), None);
+}
+
+#[test]
+fn test_parse_cpu_weight_valid() {
+    assert_eq!(crate::units::parse_cpu_weight("100").unwrap(), Some(100));
+}
+
+#[test]
+fn test_parse_cpu_weight_idle_lowercase() {
+    assert_eq!(crate::units::parse_cpu_weight("idle").unwrap(), Some(1));
+}
+
+#[test]
+fn test_parse_cpu_weight_idle_uppercase() {
+    assert_eq!(crate::units::parse_cpu_weight("IDLE").unwrap(), Some(1));
+}
+
+#[test]
+fn test_parse_cpu_weight_min() {
+    assert_eq!(crate::units::parse_cpu_weight("1").unwrap(), Some(1));
+}
+
+#[test]
+fn test_parse_cpu_weight_max() {
+    assert_eq!(
+        crate::units::parse_cpu_weight("10000").unwrap(),
+        Some(10000)
+    );
+}
+
+#[test]
+fn test_parse_cpu_weight_zero_fails() {
+    assert!(crate::units::parse_cpu_weight("0").is_err());
+}
+
+#[test]
+fn test_parse_cpu_weight_too_high_fails() {
+    assert!(crate::units::parse_cpu_weight("10001").is_err());
+}
+
+#[test]
+fn test_parse_cpu_weight_non_numeric_fails() {
+    assert!(crate::units::parse_cpu_weight("abc").is_err());
+}
+
+#[test]
+fn test_parse_cpu_weight_whitespace_trimmed() {
+    assert_eq!(
+        crate::units::parse_cpu_weight("  500  ").unwrap(),
+        Some(500)
+    );
+}
+
+// ── parse_cpu_quota unit tests ─────────────────────────────────────────────
+
+#[test]
+fn test_parse_cpu_quota_empty() {
+    assert_eq!(crate::units::parse_cpu_quota("").unwrap(), None);
+}
+
+#[test]
+fn test_parse_cpu_quota_twenty_percent() {
+    assert_eq!(crate::units::parse_cpu_quota("20%").unwrap(), Some(20));
+}
+
+#[test]
+fn test_parse_cpu_quota_two_hundred_percent() {
+    assert_eq!(crate::units::parse_cpu_quota("200%").unwrap(), Some(200));
+}
+
+#[test]
+fn test_parse_cpu_quota_no_percent_fails() {
+    assert!(crate::units::parse_cpu_quota("50").is_err());
+}
+
+#[test]
+fn test_parse_cpu_quota_zero_percent_fails() {
+    assert!(crate::units::parse_cpu_quota("0%").is_err());
+}
+
+#[test]
+fn test_parse_cpu_quota_whitespace_trimmed() {
+    assert_eq!(crate::units::parse_cpu_quota("  75%  ").unwrap(), Some(75));
+}
+
+// ── parse_io_weight unit tests ─────────────────────────────────────────────
+
+#[test]
+fn test_parse_io_weight_empty() {
+    assert_eq!(crate::units::parse_io_weight("").unwrap(), None);
+}
+
+#[test]
+fn test_parse_io_weight_valid() {
+    assert_eq!(crate::units::parse_io_weight("100").unwrap(), Some(100));
+}
+
+#[test]
+fn test_parse_io_weight_min() {
+    assert_eq!(crate::units::parse_io_weight("1").unwrap(), Some(1));
+}
+
+#[test]
+fn test_parse_io_weight_max() {
+    assert_eq!(crate::units::parse_io_weight("10000").unwrap(), Some(10000));
+}
+
+#[test]
+fn test_parse_io_weight_zero_fails() {
+    assert!(crate::units::parse_io_weight("0").is_err());
+}
+
+#[test]
+fn test_parse_io_weight_too_high_fails() {
+    assert!(crate::units::parse_io_weight("10001").is_err());
+}
+
+#[test]
+fn test_parse_io_weight_non_numeric_fails() {
+    assert!(crate::units::parse_io_weight("fast").is_err());
+}
+
+// ── parse_io_device_limit unit tests ───────────────────────────────────────
+
+#[test]
+fn test_parse_io_device_limit_empty() {
+    assert_eq!(crate::units::parse_io_device_limit("").unwrap(), None);
+}
+
+#[test]
+fn test_parse_io_device_limit_basic() {
+    let result = crate::units::parse_io_device_limit("/dev/sda 500")
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.device, "/dev/sda");
+    assert_eq!(result.value, 500);
+}
+
+#[test]
+fn test_parse_io_device_limit_with_suffix() {
+    let result = crate::units::parse_io_device_limit("/dev/sda 10M")
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.device, "/dev/sda");
+    assert_eq!(result.value, 10 * 1024 * 1024);
+}
+
+#[test]
+fn test_parse_io_device_limit_with_g_suffix() {
+    let result = crate::units::parse_io_device_limit("/dev/nvme0n1 1G")
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.device, "/dev/nvme0n1");
+    assert_eq!(result.value, 1024 * 1024 * 1024);
+}
+
+#[test]
+fn test_parse_io_device_limit_no_value_fails() {
+    assert!(crate::units::parse_io_device_limit("/dev/sda").is_err());
+}
+
+#[test]
+fn test_parse_io_device_limit_whitespace_trimmed() {
+    let result = crate::units::parse_io_device_limit("  /dev/sda  200  ")
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.device, "/dev/sda");
+    assert_eq!(result.value, 200);
+}
+
+// ── Resource-control directives preserved after unit conversion ─────────────
+
+#[test]
+fn test_resource_control_preserved_after_unit_conversion() {
+    let test_service_str = r#"
+    [Unit]
+    Description = Resource control test
+
+    [Service]
+    ExecStart = /bin/test
+    MemoryMax = 512M
+    CPUWeight = 200
+    CPUQuota = 50%
+    IOWeight = 300
+    MemoryHigh = 256M
+    MemorySwapMax = 128M
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed.try_into().unwrap();
+    match &unit.specific {
+        crate::units::Specific::Service(s) => {
+            assert_eq!(
+                s.conf.memory_max,
+                Some(crate::units::MemoryLimit::Bytes(512 * 1024 * 1024)),
+                "MemoryMax should be preserved after unit conversion"
+            );
+            assert_eq!(
+                s.conf.cpu_weight,
+                Some(200),
+                "CPUWeight should be preserved after unit conversion"
+            );
+            assert_eq!(
+                s.conf.cpu_quota,
+                Some(50),
+                "CPUQuota should be preserved after unit conversion"
+            );
+            assert_eq!(
+                s.conf.io_weight,
+                Some(300),
+                "IOWeight should be preserved after unit conversion"
+            );
+            assert_eq!(
+                s.conf.memory_high,
+                Some(crate::units::MemoryLimit::Bytes(256 * 1024 * 1024)),
+                "MemoryHigh should be preserved after unit conversion"
+            );
+            assert_eq!(
+                s.conf.memory_swap_max,
+                Some(crate::units::MemoryLimit::Bytes(128 * 1024 * 1024)),
+                "MemorySwapMax should be preserved after unit conversion"
+            );
+        }
+        _ => panic!("Expected service unit"),
+    }
+}
