@@ -180,6 +180,68 @@ just test-keep
 
 See [PLAN.md — Integration Testing](PLAN.md#integration-testing-with-nixos-rs) for details on what the boot test validates and the development workflow.
 
+### Debugging Early Boot Failures
+
+When a service crashes during early boot (e.g. SIGABRT before `READY=1`), stderr and journal are usually unavailable because the mount namespace has already hidden `/dev/console` and the journal socket. The exec helper uses a dedicated `KmsgLogger` (`libsystemd::kmsg_log`) that writes structured messages to `/dev/kmsg` (the kernel ring buffer), which survives mount namespace changes and is visible on the serial console via `dmesg`.
+
+**Enable tracing for a specific unit** by adding `SYSTEMD_LOG_LEVEL` to its environment:
+
+```ini
+# In the unit's [Service] section (or via a drop-in override)
+[Service]
+Environment=SYSTEMD_LOG_LEVEL=trace
+```
+
+This produces detailed output at every exec-helper stage (mount namespace setup, privilege drop, credential loading, execv) on the serial console. You can also use `debug`, `info`, `warn`, or `error`.
+
+When booting via nixos-rs, watch the serial output:
+
+```sh
+# From nixos-rs/
+just run          # interactive — scroll through serial output
+just test-log /tmp/boot.log   # save full boot log for post-mortem
+```
+
+Then grep the log for the failing unit:
+
+```sh
+grep 'systemd-rs\[systemd-timesyncd\]' /tmp/boot.log
+```
+
+**How the log level flows** (mirrors real systemd's `--log-level` to `sd-executor`):
+
+```text
+service_manager (PID 1)
+  │
+  │  ExecHelperConfig { log_level: "info", ... }   ← manager's own level
+  │  serialized as JSON over shmem fd
+  ▼
+exec_helper (forked child)
+  │
+  │  KmsgLogger::init(unit_name, manager_level)
+  │    1. SYSTEMD_LOG_LEVEL env var  (highest priority)
+  │    2. log_level from config      (from manager)
+  │    3. built-in default: warn     (lowest priority)
+  │
+  │  log::trace!("mount_ns: PrivateDevices=true...")  → /dev/kmsg
+  │  log::trace!("mount_ns: ProtectKernelLogs=true...") → /dev/kmsg
+  │  ...
+  ▼
+execv(service_binary)
+```
+
+After `ProtectKernelLogs=` hides `/dev/kmsg`, the logger silently degrades — writes to kmsg fail and only stderr (warnings and above) remains. This is by design: the trace messages up to that point are the ones that matter for diagnosing sandbox setup crashes.
+
+**Quick reference:**
+
+| What you want | How |
+|---------------|-----|
+| Trace a single unit | `Environment=SYSTEMD_LOG_LEVEL=trace` in the unit |
+| Trace all units | Set `SYSTEMD_LOG_LEVEL=trace` in the manager's environment |
+| See only warnings | Default behavior (no config needed) |
+| Filter serial output | `grep 'systemd-rs\[<unit>\]' <logfile>` |
+| Numeric syslog levels | `0`–`7` are accepted (`7` = debug, `4` = warn) |
+
 ## Contributing
 
 This is an ambitious project and contributions are very welcome. Good starting points:

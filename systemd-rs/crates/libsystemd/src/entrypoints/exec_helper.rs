@@ -82,6 +82,19 @@ fn resolve_ambient_caps(names: &[String]) -> Vec<u64> {
 pub struct ExecHelperConfig {
     pub name: String,
 
+    /// Log level passed from the service manager, matching real systemd's
+    /// `--log-level` argument to `sd-executor`.  When set, this is used as
+    /// the default log level for the [`crate::kmsg_log::KmsgLogger`] in
+    /// this exec-helper child process.  The `SYSTEMD_LOG_LEVEL` environment
+    /// variable (if present) takes final precedence, just as in real systemd
+    /// where `log_parse_environment()` runs after the CLI arg is applied.
+    ///
+    /// Expected values: `"error"`, `"warn"`, `"info"`, `"debug"`, `"trace"`,
+    /// or syslog numeric strings `"0"`–`"7"`.  `None` means the manager did
+    /// not specify a level (defaults to `Warn`).
+    #[serde(default)]
+    pub log_level: Option<String>,
+
     pub cmd: PathBuf,
     pub args: Vec<String>,
     /// When true, args[0] is used as argv[0] instead of the filename of cmd.
@@ -771,37 +784,6 @@ fn setup_stdin(config: &ExecHelperConfig) {
     }
 }
 
-/// Write a diagnostic message to `/dev/kmsg` (kernel log ring buffer).
-///
-/// Only produces output when the `SYSTEMD_RS_EXEC_DEBUG` environment variable
-/// is set to `1`.  Output appears on the serial console via dmesg, bypassing
-/// the stderr pipe (which has a race condition for fast-exiting services) and
-/// surviving mount namespace changes that hide `/dev/ttyS0` or `/dev/console`.
-///
-/// This is the primary tool for debugging early-boot service crashes.  To
-/// enable it, add `Environment=SYSTEMD_RS_EXEC_DEBUG=1` to the `[Service]`
-/// section of the unit you want to diagnose, then watch the serial console.
-fn exec_debug(name: &str, msg: &str) {
-    // Cache the check in a thread-local to avoid repeated env lookups.
-    // This runs in a single-threaded forked child, so thread-local is fine.
-    thread_local! {
-        static ENABLED: bool = std::env::var("SYSTEMD_RS_EXEC_DEBUG")
-            .map(|v| v == "1")
-            .unwrap_or(false);
-    }
-    if !ENABLED.with(|e| *e) {
-        return;
-    }
-    unsafe {
-        let fd = libc::open(c"/dev/kmsg".as_ptr(), libc::O_WRONLY | libc::O_NOCTTY);
-        if fd >= 0 {
-            let buf = format!("<6>systemd-rs: [EXEC_HELPER {name}] {msg}\n");
-            libc::write(fd, buf.as_ptr().cast(), buf.len() as _);
-            libc::close(fd);
-        }
-    }
-}
-
 /// Set up the execution environment for a service and exec into its binary.
 ///
 /// # Ordering invariant — DO NOT reorder stages without careful review
@@ -830,10 +812,12 @@ fn exec_debug(name: &str, msg: &str) {
 ///  11. **NoNewPrivileges** — must be last before exec (one-way flag)
 ///  12. **execv** into the service binary
 ///
-/// If you need to debug early boot crashes, set `SYSTEMD_RS_EXEC_DEBUG=1`
-/// in the service environment. This enables diagnostic writes to `/dev/kmsg`
-/// (kernel log ring buffer → serial console) at each stage, which survives
-/// mount namespace changes unlike stderr.
+/// If you need to debug early boot crashes, set
+/// `Environment=SYSTEMD_LOG_LEVEL=trace` (or `debug`) in the unit's
+/// `[Service]` section.  This enables diagnostic writes to `/dev/kmsg`
+/// (kernel log ring buffer → serial console) at each stage via the
+/// [`crate::kmsg_log::KmsgLogger`], which survives mount namespace
+/// changes unlike stderr.
 pub fn run_exec_helper() {
     let config: ExecHelperConfig = match serde_json::from_reader(std::io::stdin()) {
         Ok(c) => c,
@@ -843,7 +827,19 @@ pub fn run_exec_helper() {
         }
     };
 
-    exec_debug(&config.name, "config parsed OK");
+    // Initialise the kmsg logger for this exec-helper child process.
+    // The priority order matches real systemd's sd-executor:
+    //   1. SYSTEMD_LOG_LEVEL env var   (highest — set in unit's Environment=)
+    //   2. log_level from config       (passed by the manager, like --log-level)
+    //   3. built-in default: Warn      (lowest)
+    let manager_level = config
+        .log_level
+        .as_deref()
+        .and_then(crate::kmsg_log::parse_log_level_filter)
+        .unwrap_or(log::LevelFilter::Warn);
+    crate::kmsg_log::KmsgLogger::init(&config.name, manager_level);
+
+    log::trace!("config parsed OK");
 
     nix::unistd::close(libc::STDIN_FILENO).expect("I want to be able to close this fd!");
 
@@ -952,10 +948,7 @@ pub fn run_exec_helper() {
         }
     }
 
-    exec_debug(
-        &config.name,
-        "resource limits done, creating directories...",
-    );
+    log::trace!("resource limits done, creating directories...");
 
     // ── Create state/logs/runtime directories BEFORE mount namespace ───
     // These must be created while the filesystem is still writable, because
@@ -1075,15 +1068,18 @@ pub fn run_exec_helper() {
         || matches!(config.protect_home.as_str(), "yes" | "read-only" | "tmpfs");
 
     if needs_mount_ns {
-        exec_debug(
-            &config.name,
-            &format!(
-                "entering mount namespace (protect_system={}, private_dev={}, private_tmp={})",
-                config.protect_system, config.private_devices, config.private_tmp
-            ),
+        log::trace!(
+            "entering mount namespace (protect_system={}, private_dev={}, private_tmp={}, protect_kernel_tunables={}, protect_kernel_logs={})",
+            config.protect_system,
+            config.private_devices,
+            config.private_tmp,
+            config.protect_kernel_tunables,
+            config.protect_kernel_logs
         );
         setup_mount_namespace(&config);
-        exec_debug(&config.name, "mount namespace setup complete");
+        log::trace!("mount namespace setup complete");
+    } else {
+        log::trace!("no mount namespace needed");
     }
 
     // ── ProtectHostname= — UTS namespace ──────────────────────────────
@@ -1119,6 +1115,8 @@ pub fn run_exec_helper() {
         apply_capability_bounding_set(&config);
     }
 
+    log::trace!("namespaces done, setting up credentials...");
+
     // Import credentials from the system credential store into a per-service
     // credential directory. This must happen BEFORE dropping privileges,
     // because /run/credentials/ is typically only writable by root.
@@ -1129,7 +1127,7 @@ pub fn run_exec_helper() {
     // The order matches systemd: SetCredential first (lowest priority,
     // can be overridden), then LoadCredential/LoadCredentialEncrypted,
     // then ImportCredential (highest priority, won't overwrite).
-    exec_debug(&config.name, "credentials setup");
+    log::trace!("credentials setup");
     let has_credentials = !config.import_credentials.is_empty()
         || !config.load_credentials.is_empty()
         || !config.load_credentials_encrypted.is_empty()
@@ -1159,20 +1157,19 @@ pub fn run_exec_helper() {
         }
     }
 
-    exec_debug(
-        &config.name,
-        &format!(
-            "pre-privilege-drop (uid={}, gid={}, target_uid={}, target_gid={})",
-            nix::unistd::getuid(),
-            nix::unistd::getgid(),
-            config.user,
-            config.group
-        ),
+    log::trace!(
+        "pre-privilege-drop (uid={}, gid={}, target_uid={}, target_gid={})",
+        nix::unistd::getuid(),
+        nix::unistd::getgid(),
+        config.user,
+        config.group
     );
 
     // Resolve ambient capabilities BEFORE dropping privileges so we can
     // set PR_SET_KEEPCAPS and retain them across the UID change.
     let ambient_caps = resolve_ambient_caps(&config.ambient_capabilities);
+
+    log::trace!("about to drop privileges...");
 
     if nix::unistd::getuid().is_root() {
         // If ambient capabilities are requested, tell the kernel to keep
@@ -1201,13 +1198,10 @@ pub fn run_exec_helper() {
             nix::unistd::Uid::from_raw(config.user),
         ) {
             Ok(()) => {
-                exec_debug(
-                    &config.name,
-                    &format!(
-                        "privilege drop complete (now uid={}, gid={})",
-                        nix::unistd::getuid(),
-                        nix::unistd::getgid()
-                    ),
+                log::trace!(
+                    "privilege drop complete (now uid={}, gid={})",
+                    nix::unistd::getuid(),
+                    nix::unistd::getgid()
                 );
             }
             Err(e) => {
@@ -1306,6 +1300,8 @@ pub fn run_exec_helper() {
         }
     }
 
+    log::trace!("privilege drop + caps complete, preparing exec args...");
+
     let (cmd, args) = prepare_exec_args(&config.cmd, &config.args, config.use_first_arg_as_argv0);
 
     // change working directory if configured
@@ -1403,14 +1399,27 @@ pub fn run_exec_helper() {
         }
     }
 
-    exec_debug(
-        &config.name,
-        &format!(
-            "about to execv {} (uid={}, gid={})",
-            cmd.to_string_lossy(),
-            nix::unistd::getuid(),
-            nix::unistd::getgid()
-        ),
+    log::trace!(
+        "about to execv {} (uid={}, gid={}, env_count={})",
+        cmd.to_string_lossy(),
+        nix::unistd::getuid(),
+        nix::unistd::getgid(),
+        std::env::vars().count()
+    );
+
+    // Verify the binary exists and is readable before exec
+    log::trace!(
+        "cmd exists={}, is_file={}",
+        config.cmd.exists(),
+        config.cmd.is_file()
+    );
+
+    // Check that essential paths are accessible
+    log::trace!(
+        "/dev/null exists={}, /dev/urandom exists={}, /proc exists={}",
+        Path::new("/dev/null").exists(),
+        Path::new("/dev/urandom").exists(),
+        Path::new("/proc").exists()
     );
 
     match nix::unistd::execv(&cmd, &args) {
@@ -1430,6 +1439,7 @@ pub fn run_exec_helper() {
 /// Set up a mount namespace with the requested isolation directives.
 /// Called before privilege drop. Requires root or CAP_SYS_ADMIN.
 fn setup_mount_namespace(config: &ExecHelperConfig) {
+    log::trace!("mount_ns: unshare(CLONE_NEWNS)...");
     // Create a new mount namespace
     let ret = unsafe { libc::unshare(libc::CLONE_NEWNS) };
     if ret != 0 {
@@ -1441,6 +1451,7 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
         return; // Non-fatal: continue without mount isolation
     }
 
+    log::trace!("mount_ns: making / rslave...");
     // Make all mounts in the new namespace slave so that mount changes from
     // the host propagate in, but our changes don't propagate out.
     let ret = unsafe {
@@ -1461,6 +1472,7 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
         return;
     }
 
+    log::trace!("mount_ns: ProtectSystem={}...", config.protect_system);
     // ── ProtectSystem= ────────────────────────────────────────────────
     match config.protect_system.as_str() {
         "yes" => {
@@ -1499,6 +1511,7 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
         _ => {} // "no" or unrecognized
     }
 
+    log::trace!("mount_ns: ProtectSystem done, implicit RW paths...");
     // ── Implicit ReadWritePaths from RuntimeDirectory=/StateDirectory=/LogsDirectory=
     // When ProtectSystem=strict is active, the service's runtime, state, and
     // logs directories must be explicitly writable. systemd handles this
@@ -1524,6 +1537,7 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
         }
     }
 
+    log::trace!("mount_ns: implicit RW paths done, ReadWritePaths...");
     // ── ReadWritePaths= — re-mount paths read-write ───────────────────
     // Applied after ProtectSystem= so they can override read-only mounts.
     for path in &config.read_write_paths {
@@ -1532,6 +1546,10 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
         }
     }
 
+    log::trace!(
+        "mount_ns: ReadWritePaths done, ProtectHome={}...",
+        config.protect_home
+    );
     // ── ProtectHome= ──────────────────────────────────────────────────
     match config.protect_home.as_str() {
         "yes" => {
@@ -1553,12 +1571,20 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
         _ => {} // "no" or unrecognized
     }
 
+    log::trace!(
+        "mount_ns: ProtectHome done, PrivateTmp={}...",
+        config.private_tmp
+    );
     // ── PrivateTmp= ───────────────────────────────────────────────────
     if config.private_tmp {
         mount_tmpfs("/tmp", config);
         mount_tmpfs("/var/tmp", config);
     }
 
+    log::trace!(
+        "mount_ns: PrivateTmp done, PrivateDevices={}...",
+        config.private_devices
+    );
     // ── PrivateDevices= ───────────────────────────────────────────────
     if config.private_devices {
         // Capture device major/minor numbers BEFORE mounting tmpfs,
@@ -1588,12 +1614,20 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
         }
         // Re-create essential pseudo-device nodes using mknod
         create_private_dev_nodes(config, &dev_info);
+        log::trace!("mount_ns: PrivateDevices tmpfs + mknod done");
     }
 
+    log::trace!(
+        "mount_ns: ProtectKernelTunables={}...",
+        config.protect_kernel_tunables
+    );
     // ── ProtectKernelTunables= ────────────────────────────────────────
     if config.protect_kernel_tunables {
+        log::trace!("mount_ns: remount_read_only /proc/sys...");
         remount_read_only("/proc/sys", config);
+        log::trace!("mount_ns: remount_read_only /sys...");
         remount_read_only("/sys", config);
+        log::trace!("mount_ns: /sys done, making tunable paths inaccessible...");
         // Additional tunable paths
         make_inaccessible_if_exists("/proc/sysrq-trigger", config);
         make_inaccessible_if_exists("/proc/latency_stats", config);
@@ -1601,25 +1635,50 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
         make_inaccessible_if_exists("/proc/timer_stats", config);
         make_inaccessible_if_exists("/proc/fs", config);
         make_inaccessible_if_exists("/proc/irq", config);
+        log::trace!("mount_ns: ProtectKernelTunables done");
     }
 
+    log::trace!(
+        "mount_ns: ProtectKernelModules={}...",
+        config.protect_kernel_modules
+    );
     // ── ProtectKernelModules= ─────────────────────────────────────────
     if config.protect_kernel_modules {
         make_inaccessible_if_exists("/usr/lib/modules", config);
         make_inaccessible_if_exists("/lib/modules", config);
     }
 
+    log::trace!(
+        "mount_ns: ProtectKernelLogs={}...",
+        config.protect_kernel_logs
+    );
     // ── ProtectKernelLogs= ────────────────────────────────────────────
     if config.protect_kernel_logs {
+        log::trace!(
+            "mount_ns: ProtectKernelLogs: /dev/kmsg exists={}, /proc/kmsg exists={}, /dev/null exists={}",
+            Path::new("/dev/kmsg").exists(),
+            Path::new("/proc/kmsg").exists(),
+            Path::new("/dev/null").exists(),
+        );
+        log::trace!("mount_ns: ProtectKernelLogs: about to make /dev/kmsg inaccessible...");
         make_inaccessible_if_exists("/dev/kmsg", config);
+        log::trace!(
+            "mount_ns: ProtectKernelLogs: /dev/kmsg done, about to make /proc/kmsg inaccessible..."
+        );
         make_inaccessible_if_exists("/proc/kmsg", config);
+        log::trace!("mount_ns: ProtectKernelLogs: /proc/kmsg done, ProtectKernelLogs complete");
     }
 
+    log::trace!(
+        "mount_ns: ProtectControlGroups={}...",
+        config.protect_control_groups
+    );
     // ── ProtectControlGroups= ─────────────────────────────────────────
     if config.protect_control_groups {
         remount_read_only("/sys/fs/cgroup", config);
     }
 
+    log::trace!("mount_ns: ProtectClock={}...", config.protect_clock);
     // ── ProtectClock= ─────────────────────────────────────────────────
     if config.protect_clock {
         // Make clock-related device nodes inaccessible
@@ -1635,6 +1694,7 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
             }
         }
     }
+    log::trace!("mount_ns: ALL STEPS COMPLETE");
 }
 
 /// Bind-mount a path on top of itself with MS_RDONLY.
@@ -1769,9 +1829,12 @@ fn mount_tmpfs(path: &str, config: &ExecHelperConfig) {
 /// For files (or other non-directory entries like /proc/sysrq-trigger, /dev/kmsg),
 /// bind-mount /dev/null over them. This matches real systemd's behavior which
 /// uses different inaccessible sources depending on the file type.
-fn make_inaccessible(path: &str, config: &ExecHelperConfig) {
+fn make_inaccessible(path: &str, _config: &ExecHelperConfig) {
+    log::trace!("make_inaccessible: enter path={path}");
+
     let p = Path::new(path);
     if !p.exists() {
+        log::trace!("make_inaccessible: path={path} does not exist, returning");
         return;
     }
     let c_path = match std::ffi::CString::new(path) {
@@ -1779,8 +1842,11 @@ fn make_inaccessible(path: &str, config: &ExecHelperConfig) {
         Err(_) => return,
     };
 
+    log::trace!("make_inaccessible: path={path} is_dir={}", p.is_dir());
+
     if p.is_dir() {
         // Mount an empty, unreadable tmpfs over the directory
+        log::trace!("make_inaccessible: path={path} mounting empty tmpfs...");
         let ret = unsafe {
             libc::mount(
                 c"tmpfs".as_ptr(),
@@ -1791,15 +1857,16 @@ fn make_inaccessible(path: &str, config: &ExecHelperConfig) {
             )
         };
         if ret != 0 {
-            eprintln!(
-                "[EXEC_HELPER {}] Failed to make {} inaccessible (tmpfs): {}",
-                config.name,
+            log::warn!(
+                "Failed to make {} inaccessible (tmpfs): {}",
                 path,
                 std::io::Error::last_os_error()
             );
         }
+        log::trace!("make_inaccessible: path={path} tmpfs mount ret={ret}");
     } else {
         // For files, bind-mount /dev/null over them to make them inaccessible
+        log::trace!("make_inaccessible: path={path} bind-mounting /dev/null...");
         let ret = unsafe {
             libc::mount(
                 c"/dev/null".as_ptr(),
@@ -1809,15 +1876,16 @@ fn make_inaccessible(path: &str, config: &ExecHelperConfig) {
                 std::ptr::null(),
             )
         };
+        log::trace!("make_inaccessible: path={path} bind-mount ret={ret}");
         if ret != 0 {
-            eprintln!(
-                "[EXEC_HELPER {}] Failed to make {} inaccessible (bind /dev/null): {}",
-                config.name,
+            log::warn!(
+                "Failed to make {} inaccessible (bind /dev/null): {}",
                 path,
                 std::io::Error::last_os_error()
             );
         }
     }
+    log::trace!("make_inaccessible: path={path} done");
 }
 
 /// Make a path inaccessible only if it exists.

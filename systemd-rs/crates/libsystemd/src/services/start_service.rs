@@ -155,6 +155,21 @@ fn start_service_with_filedescriptors(
     // We transfer the config via a anonymous shared memory file
     let exec_helper_conf = crate::entrypoints::ExecHelperConfig {
         name: name.to_owned(),
+        // Pass the manager's current log level to the exec helper, mirroring
+        // real systemd's `--log-level` argument to sd-executor.  The exec
+        // helper uses this as the default for its KmsgLogger; the unit's
+        // SYSTEMD_LOG_LEVEL env var (if set) takes final precedence.
+        log_level: Some(
+            match log::max_level() {
+                log::LevelFilter::Off => "error",
+                log::LevelFilter::Error => "error",
+                log::LevelFilter::Warn => "warn",
+                log::LevelFilter::Info => "info",
+                log::LevelFilter::Debug => "debug",
+                log::LevelFilter::Trace => "trace",
+            }
+            .to_owned(),
+        ),
         cmd,
         args: exec.args.clone(),
         use_first_arg_as_argv0: exec.prefixes.contains(&CommandlinePrefix::AtSign),
