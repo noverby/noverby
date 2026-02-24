@@ -4,7 +4,8 @@ use crate::units::{
     Commandline, CommandlinePrefix, Delegate, KeyringMode, KillMode, MemoryPressureWatch,
     NotifyKind, ParsedCommonConfig, ParsedFile, ParsedSection, ParsedServiceConfig,
     ParsedServiceSection, ParsingErrorReason, RLimitValue, ResourceLimit, ServiceRestart,
-    ServiceType, SuccessExitStatus, TasksMax, Timeout, map_tuples_to_second, parse_install_section,
+    ServiceType, SuccessExitStatus, TasksMax, Timeout, map_tuples_to_second, parse_cpu_quota,
+    parse_cpu_weight, parse_install_section, parse_io_device_limit, parse_io_weight,
     parse_memory_limit, parse_unit_section, string_to_bool,
 };
 use std::collections::HashMap;
@@ -433,6 +434,23 @@ fn parse_service_section(
     let kill_signal = section.remove("KILLSIGNAL");
     let memory_min = section.remove("MEMORYMIN");
     let memory_low = section.remove("MEMORYLOW");
+    let memory_high = section.remove("MEMORYHIGH");
+    let memory_max = section.remove("MEMORYMAX");
+    let memory_swap_max = section.remove("MEMORYSWAPMAX");
+    let cpu_weight = section.remove("CPUWEIGHT");
+    let startup_cpu_weight = section.remove("STARTUPCPUWEIGHT");
+    let cpu_quota = section.remove("CPUQUOTA");
+    let io_weight = section.remove("IOWEIGHT");
+    let startup_io_weight = section.remove("STARTUPIOWEIGHT");
+    let io_device_weight = section.remove("IODEVICEWEIGHT");
+    let io_read_bandwidth_max = section.remove("IOREADBANDWIDTHMAX");
+    let io_write_bandwidth_max = section.remove("IOWRITEBANDWIDTHMAX");
+    let io_read_iops_max = section.remove("IOREADIOPSMAX");
+    let io_write_iops_max = section.remove("IOWRITEIOPSMAX");
+    let cpu_accounting = section.remove("CPUACCOUNTING");
+    let memory_accounting = section.remove("MEMORYACCOUNTING");
+    let io_accounting = section.remove("IOACCOUNTING");
+    let tasks_accounting = section.remove("TASKSACCOUNTING");
     let runtime_max_sec = section.remove("RUNTIMEMAXSEC");
     let coredump_receive = section.remove("COREDUMPRECEIVE");
 
@@ -1173,6 +1191,266 @@ fn parse_service_section(
                 } else {
                     return Err(ParsingErrorReason::SettingTooManyValues(
                         "MemoryLow".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        memory_high: match memory_high {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    parse_memory_limit(&vec[0].1)
+                        .map_err(|e| ParsingErrorReason::Generic(format!("MemoryHigh: {e}")))?
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "MemoryHigh".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        memory_max: match memory_max {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    parse_memory_limit(&vec[0].1)
+                        .map_err(|e| ParsingErrorReason::Generic(format!("MemoryMax: {e}")))?
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "MemoryMax".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        memory_swap_max: match memory_swap_max {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    parse_memory_limit(&vec[0].1)
+                        .map_err(|e| ParsingErrorReason::Generic(format!("MemorySwapMax: {e}")))?
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "MemorySwapMax".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        cpu_weight: match cpu_weight {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    parse_cpu_weight(&vec[0].1)
+                        .map_err(|e| ParsingErrorReason::Generic(format!("CPUWeight: {e}")))?
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "CPUWeight".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        startup_cpu_weight: match startup_cpu_weight {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    parse_cpu_weight(&vec[0].1).map_err(|e| {
+                        ParsingErrorReason::Generic(format!("StartupCPUWeight: {e}"))
+                    })?
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "StartupCPUWeight".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        cpu_quota: match cpu_quota {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    parse_cpu_quota(&vec[0].1)
+                        .map_err(|e| ParsingErrorReason::Generic(format!("CPUQuota: {e}")))?
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "CPUQuota".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        io_weight: match io_weight {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    parse_io_weight(&vec[0].1)
+                        .map_err(|e| ParsingErrorReason::Generic(format!("IOWeight: {e}")))?
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "IOWeight".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        startup_io_weight: match startup_io_weight {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    parse_io_weight(&vec[0].1)
+                        .map_err(|e| ParsingErrorReason::Generic(format!("StartupIOWeight: {e}")))?
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "StartupIOWeight".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        io_device_weight: match io_device_weight {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    if let Some(limit) = parse_io_device_limit(trimmed)
+                        .map_err(|e| ParsingErrorReason::Generic(format!("IODeviceWeight: {e}")))?
+                    {
+                        entries.push(limit);
+                    }
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        io_read_bandwidth_max: match io_read_bandwidth_max {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    if let Some(limit) = parse_io_device_limit(trimmed).map_err(|e| {
+                        ParsingErrorReason::Generic(format!("IOReadBandwidthMax: {e}"))
+                    })? {
+                        entries.push(limit);
+                    }
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        io_write_bandwidth_max: match io_write_bandwidth_max {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    if let Some(limit) = parse_io_device_limit(trimmed).map_err(|e| {
+                        ParsingErrorReason::Generic(format!("IOWriteBandwidthMax: {e}"))
+                    })? {
+                        entries.push(limit);
+                    }
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        io_read_iops_max: match io_read_iops_max {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    if let Some(limit) = parse_io_device_limit(trimmed)
+                        .map_err(|e| ParsingErrorReason::Generic(format!("IOReadIOPSMax: {e}")))?
+                    {
+                        entries.push(limit);
+                    }
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        io_write_iops_max: match io_write_iops_max {
+            Some(vec) => {
+                let mut entries = Vec::new();
+                for (_idx, line) in &vec {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        entries.clear();
+                        continue;
+                    }
+                    if let Some(limit) = parse_io_device_limit(trimmed)
+                        .map_err(|e| ParsingErrorReason::Generic(format!("IOWriteIOPSMax: {e}")))?
+                    {
+                        entries.push(limit);
+                    }
+                }
+                entries
+            }
+            None => Vec::new(),
+        },
+        cpu_accounting: match cpu_accounting {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    Some(string_to_bool(&vec[0].1))
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "CPUAccounting".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        memory_accounting: match memory_accounting {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    Some(string_to_bool(&vec[0].1))
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "MemoryAccounting".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        io_accounting: match io_accounting {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    Some(string_to_bool(&vec[0].1))
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "IOAccounting".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        tasks_accounting: match tasks_accounting {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    Some(string_to_bool(&vec[0].1))
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "TasksAccounting".to_owned(),
                         super::map_tuples_to_second(vec),
                     ));
                 }

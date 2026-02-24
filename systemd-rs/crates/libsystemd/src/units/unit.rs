@@ -5,13 +5,13 @@ use crate::runtime_info::RuntimeInfo;
 use crate::services::Service;
 use crate::sockets::{Socket, SocketKind, SpecializedSocketConfig};
 use crate::units::{
-    ActivationSource, Commandline, DeferTrigger, Delegate, DevicePolicy, EnvVars,
-    FileDescriptorStorePreserve, IOSchedulingClass, KeyringMode, KillMode, MemoryLimit,
-    MemoryPressureWatch, NotifyKind, OnFailureJobMode, ParsedMountSection, ProcSubset, ProtectHome,
-    ProtectProc, ProtectSystem, ResourceLimit, RestrictNamespaces, RuntimeDirectoryPreserve,
-    ServiceRestart, ServiceType, StandardInput, StatusStarted, StatusStopped, StdIoOption,
-    TasksMax, Timeout, Timestamping, UnitAction, UnitCondition, UnitId, UnitIdKind,
-    UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode, acquire_locks,
+    ActivationSource, Commandline, CpuQuota, CpuWeight, DeferTrigger, Delegate, DevicePolicy,
+    EnvVars, FileDescriptorStorePreserve, IOSchedulingClass, IoDeviceLimit, IoWeight, KeyringMode,
+    KillMode, MemoryLimit, MemoryPressureWatch, NotifyKind, OnFailureJobMode, ParsedMountSection,
+    ProcSubset, ProtectHome, ProtectProc, ProtectSystem, ResourceLimit, RestrictNamespaces,
+    RuntimeDirectoryPreserve, ServiceRestart, ServiceType, StandardInput, StatusStarted,
+    StatusStopped, StdIoOption, TasksMax, Timeout, Timestamping, UnitAction, UnitCondition, UnitId,
+    UnitIdKind, UnitOperationError, UnitOperationErrorReason, UnitStatus, UtmpMode, acquire_locks,
 };
 
 use std::path::PathBuf;
@@ -2076,16 +2076,99 @@ pub struct ServiceConfig {
     /// MemoryMin= — minimum memory guarantee for the unit's cgroup. The
     /// memory controller will try to protect at least this much memory from
     /// reclaim. Accepts a byte value with optional K/M/G/T/P/E suffix
-    /// (base 1024), a percentage, or "infinity". Parsed and stored; no
-    /// runtime cgroup enforcement yet. See systemd.resource-control(5).
+    /// (base 1024), a percentage, or "infinity". Parsed and stored; applied
+    /// to cgroup memory.min at runtime. See systemd.resource-control(5).
     pub memory_min: Option<MemoryLimit>,
 
     /// MemoryLow= — low memory boundary for the unit's cgroup. Below this
     /// threshold the kernel memory reclaimer will avoid reclaiming memory
     /// from the unit. Accepts a byte value with optional K/M/G/T/P/E suffix
-    /// (base 1024), a percentage, or "infinity". Parsed and stored; no
-    /// runtime cgroup enforcement yet. See systemd.resource-control(5).
+    /// (base 1024), a percentage, or "infinity". Parsed and stored; applied
+    /// to cgroup memory.low at runtime. See systemd.resource-control(5).
     pub memory_low: Option<MemoryLimit>,
+
+    /// MemoryHigh= — throttling memory boundary for the unit's cgroup. If
+    /// memory usage goes above this threshold, processes are heavily throttled
+    /// and put under pressure. Accepts a byte value with optional K/M/G/T/P/E
+    /// suffix (base 1024), a percentage, or "infinity". Applied to cgroup
+    /// memory.high at runtime. See systemd.resource-control(5).
+    pub memory_high: Option<MemoryLimit>,
+
+    /// MemoryMax= — hard memory limit for the unit's cgroup. If memory usage
+    /// exceeds this limit, the OOM killer is invoked. Accepts a byte value with
+    /// optional K/M/G/T/P/E suffix (base 1024), a percentage, or "infinity".
+    /// Applied to cgroup memory.max at runtime. See systemd.resource-control(5).
+    pub memory_max: Option<MemoryLimit>,
+
+    /// MemorySwapMax= — hard swap limit for the unit's cgroup. Accepts a byte
+    /// value with optional K/M/G/T/P/E suffix (base 1024), a percentage, or
+    /// "infinity". Applied to cgroup memory.swap.max at runtime.
+    /// See systemd.resource-control(5).
+    pub memory_swap_max: Option<MemoryLimit>,
+
+    /// CPUWeight= — CPU weight for the unit's cgroup (1–10000, default 100).
+    /// Applied to cgroup cpu.weight at runtime. See systemd.resource-control(5).
+    pub cpu_weight: Option<CpuWeight>,
+
+    /// StartupCPUWeight= — CPU weight during system startup (1–10000).
+    /// Parsed and stored; no runtime enforcement yet (falls back to CPUWeight=).
+    /// See systemd.resource-control(5).
+    pub startup_cpu_weight: Option<CpuWeight>,
+
+    /// CPUQuota= — CPU time quota as a percentage (e.g. "20%", "200%").
+    /// Applied to cgroup cpu.max at runtime. See systemd.resource-control(5).
+    pub cpu_quota: Option<CpuQuota>,
+
+    /// IOWeight= — I/O weight for the unit's cgroup (1–10000, default 100).
+    /// Applied to cgroup io.weight at runtime. See systemd.resource-control(5).
+    pub io_weight: Option<IoWeight>,
+
+    /// StartupIOWeight= — I/O weight during system startup (1–10000).
+    /// Parsed and stored; no runtime enforcement yet (falls back to IOWeight=).
+    /// See systemd.resource-control(5).
+    pub startup_io_weight: Option<IoWeight>,
+
+    /// IODeviceWeight= — per-device I/O weight (format: "/dev/path WEIGHT").
+    /// Applied to cgroup io.weight at runtime. See systemd.resource-control(5).
+    pub io_device_weight: Vec<IoDeviceLimit>,
+
+    /// IOReadBandwidthMax= — per-device read bandwidth limit (format:
+    /// "/dev/path BYTES"). Applied to cgroup io.max at runtime.
+    /// See systemd.resource-control(5).
+    pub io_read_bandwidth_max: Vec<IoDeviceLimit>,
+
+    /// IOWriteBandwidthMax= — per-device write bandwidth limit (format:
+    /// "/dev/path BYTES"). Applied to cgroup io.max at runtime.
+    /// See systemd.resource-control(5).
+    pub io_write_bandwidth_max: Vec<IoDeviceLimit>,
+
+    /// IOReadIOPSMax= — per-device read IOPS limit (format: "/dev/path IOPS").
+    /// Applied to cgroup io.max at runtime. See systemd.resource-control(5).
+    pub io_read_iops_max: Vec<IoDeviceLimit>,
+
+    /// IOWriteIOPSMax= — per-device write IOPS limit (format: "/dev/path IOPS").
+    /// Applied to cgroup io.max at runtime. See systemd.resource-control(5).
+    pub io_write_iops_max: Vec<IoDeviceLimit>,
+
+    /// CPUAccounting= — enable CPU accounting for the unit's cgroup.
+    /// When true, the cpu controller is enabled. Defaults to the system default.
+    /// See systemd.resource-control(5).
+    pub cpu_accounting: Option<bool>,
+
+    /// MemoryAccounting= — enable memory accounting for the unit's cgroup.
+    /// When true, the memory controller is enabled. Defaults to the system default.
+    /// See systemd.resource-control(5).
+    pub memory_accounting: Option<bool>,
+
+    /// IOAccounting= — enable I/O accounting for the unit's cgroup.
+    /// When true, the io controller is enabled. Defaults to the system default.
+    /// See systemd.resource-control(5).
+    pub io_accounting: Option<bool>,
+
+    /// TasksAccounting= — enable task counting for the unit's cgroup.
+    /// When true, the pids controller is enabled. Defaults to the system default.
+    /// See systemd.resource-control(5).
+    pub tasks_accounting: Option<bool>,
 
     /// RuntimeMaxSec= — configures a maximum time for the service to run.
     /// If the service has been active for longer than the specified time it
