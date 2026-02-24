@@ -9,6 +9,8 @@ name = "systemd-logind"
 path = "src/main.rs"
 
 [dependencies]
+dbus = "0.9"
+dbus-crossroads = "0.5"
 libc = "0.2"
 log = "0.4"
 nix = { version = "0.31", features = [
