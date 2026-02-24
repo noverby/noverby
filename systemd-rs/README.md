@@ -41,6 +41,34 @@ This is a **full drop-in replacement**, not a reimagining — the same way
 4. **Safe by default** — leverage Rust's type system and ownership model to eliminate the classes of memory safety bugs that have historically affected systemd (CVE-2018-15688, CVE-2019-3842, CVE-2021-33910, etc.).
 5. **Incremental adoption** — individual components can be swapped in one at a time. Run the Rust `journald` with the C `systemd` PID 1, or vice versa.
 
+## Current Status
+
+**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~8 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **4,310 unit tests passing** across 64 crates.
+
+| Phase | Status | Highlights |
+|-------|--------|------------|
+| Phase 0 — Foundation | ✅ Complete | Cargo workspace, `libsystemd` core library, unit parser, dependency graph |
+| Phase 1 — Core System | ✅ Complete | PID 1, `systemctl`, `journald`, `journalctl`, `shutdown`, `sleep`, and 10 utility binaries |
+| Phase 2 — Essential Services | 🔶 In progress | `tmpfiles`, `sysusers`, `logind`, `user-sessions`, `random-seed`, `pstore`, `machine-id-setup`, and more |
+| Phase 3 — Network Stack | 🔶 Partial | `networkd` (DHCPv4), `resolved` (stub DNS), `timesyncd`, `timedated`, `hostnamed`, `localed` |
+| Phase 4 — Extended Services | 🔶 Partial | `machined`, `portabled`, `homed`, `oomd`, `coredump`, `sysext`, `dissect`, `firstboot`, `creds` |
+| Phase 5 — Utilities & Polish | 🔶 Partial | `analyze`, `cgls`, `cgtop`, `mount`, `socket-activate`, generator framework |
+
+### Unit File Directive Coverage
+
+189 of 425 upstream systemd directives supported (44%):
+
+| Section | Supported | Total | Coverage |
+|---------|-----------|-------|----------|
+| systemd.service | 25 | 34 | 74% |
+| systemd.unit | 45 | 88 | 51% |
+| systemd.exec | 74 | 147 | 50% |
+| systemd.socket | 27 | 60 | 45% |
+| systemd.kill | 3 | 7 | 43% |
+| systemd.resource-control | 11 | 48 | 23% |
+
+See [PLAN.md](PLAN.md) for the full phased roadmap and per-component details. See [CHANGELOG.md](CHANGELOG.md) for recent changes.
+
 ## Project Structure
 
 The project is organized as a Cargo workspace:
@@ -68,34 +96,7 @@ crates/
 └── ac-power/       # AC power detection (systemd-ac-power)
 ```
 
-See [PLAN.md](PLAN.md) for the full phased plan to add all remaining systemd components (`udevd`, `logind`, `networkd`, `resolved`, etc.).
-
-## Current Status
-
-**Phase 0 (Foundation)** is complete — the project is structured as a Cargo workspace with a shared `libsystemd` core library.
-
-**Phase 1 (Core System)** is complete. The system successfully boots a NixOS VM as PID 1. All Phase 1 components are implemented:
-
-- **PID 1 service manager** (`systemd`) — unit file parsing, dependency-ordered parallel startup, socket activation, `sd_notify` protocol, service types (`simple`, `notify`, `dbus`, `oneshot`), target/slice units, cgroup tracking, PID 1-specific setup (remounting root, mounting tmpfs/cgroup2, machine-id generation)
-- **`systemctl`** — CLI control tool (JSON-RPC based) with `list-units`, `status`, `start`, `stop`, `restart`, `shutdown`
-- **`systemd-journald`** — journal logging daemon with native journal protocol socket (`/run/systemd/journal/socket`), BSD syslog socket (`/dev/log`), stdout stream socket (`/run/systemd/journal/stdout`), kernel `kmsg` reader, structured field storage, rate limiting, journal file rotation, disk usage limits, sd_notify `READY=1`, SIGUSR1 flush, SIGUSR2 rotate, wall message forwarding, configurable via `/etc/systemd/journald.conf`
-- **`journalctl`** — journal query tool with time-based filtering (`--since`, `--until`), unit filtering (`-u`), boot filtering (`-b`, `--list-boots`), priority filtering (`-p`), identifier filtering (`-t`), grep filtering (`-g`), output formats (`short`, `short-iso`, `short-precise`, `short-monotonic`, `verbose`, `json`, `json-pretty`, `cat`, `export`), cursor support, follow mode (`-f`), reverse output (`-r`), line limiting (`-n`), field listing (`-F`, `-N`), disk usage query (`--disk-usage`), flush/rotate commands, PID/UID/GID filtering, free-form `FIELD=VALUE` match expressions
-- **`systemd-shutdown`** — clean shutdown/reboot binary with SIGTERM/SIGKILL all processes, filesystem unmount (reverse mount order with retry and lazy unmount fallback), loop device detach, device-mapper deactivation, MD RAID stop, root remount read-only, final `reboot(2)` syscall for poweroff/reboot/halt/kexec
-- **`systemd-sleep`** — suspend/hibernate/hybrid-sleep/suspend-then-hibernate via `/sys/power/state` and `/sys/power/disk`, configuration from `/etc/systemd/sleep.conf` and drop-ins, pre/post sleep hooks (`/usr/lib/systemd/system-sleep/`, `/etc/systemd/system-sleep/`), RTC wake alarm for suspend-then-hibernate, system capability checks
-- **`systemd-id128`** — generate/query 128-bit IDs (`new`, `machine-id`, `boot-id`, `invocation-id`, `--uuid`, `--app-specific`)
-- **`systemd-escape`** — unit name escaping/unescaping (`--unescape`, `--mangle`, `--path`, `--suffix`, `--template`, `--instance`)
-- **`systemd-notify`** — send sd_notify messages (`--ready`, `--reloading`, `--stopping`, `--status`, `--booted`, `--pid`)
-- **`systemd-path`** — query well-known system and user runtime paths (all XDG paths, systemd search paths)
-- **`systemd-cat`** — connect stdout/stderr to the journal via native protocol (`--identifier`, `--priority`, `--stderr-priority`, `--level-prefix`)
-- **`systemd-detect-virt`** — detect VMs and containers via DMI/SMBIOS, CPUID, device-tree, cgroups, container markers (`--vm`, `--container`, `--chroot`, `--private-users`, `--list`)
-- **`systemd-delta`** — show overridden, extended, masked, and redirected unit files across search paths (`--type`, `--diff`)
-- **`systemd-run`** — run commands as transient units with user/group switching, environment setup, working directory (`--scope`, `--unit`, `--uid`, `--gid`, `--wait`, `--shell`, `--setenv`, `--on-calendar`)
-- **`systemd-ac-power`** — detect AC power status via `/sys/class/power_supply/` (`--verbose`, `--check-capacity`, `--low`)
-- **`libsystemd` core library** — unit name escaping/unescaping, template instantiation, path escaping, unit name mangling, journal entry data model (structured fields, timestamps, trusted metadata, serialisation to export/JSON formats), journal on-disk storage engine (append-only binary format with file headers, entry frames, multi-file rotation, vacuuming, crash-safe writes)
-
-**Next**: Phase 2 (Essential System Services) — `udevd`, `tmpfiles`, `sysusers`, `logind`, `modules-load`, `sysctl`, `binfmt`, `vconsole-setup`, `backlight`, `rfkill`, `ask-password`.
-
-See [feature-comparison.md](feature-comparison.md) for a detailed feature-by-feature comparison with upstream systemd.
+See [PLAN.md](PLAN.md) for the full 64-crate workspace layout including all Phase 2–5 components (`udevd`, `logind`, `networkd`, `resolved`, `machined`, `portabled`, `homed`, etc.).
 
 ## Building
 
@@ -184,7 +185,7 @@ See [PLAN.md — Integration Testing](PLAN.md#integration-testing-with-nixos-rs)
 This is an ambitious project and contributions are very welcome. Good starting points:
 
 1. **Phase 2 services** — implement `udevd`, `tmpfiles`, `sysusers`, `logind`, and other essential system services
-2. **Unit file parsing** — add support for missing directives (see `feature-comparison.md`)
+2. **Unit file parsing** — add support for missing directives (see the [directive coverage table](#unit-file-directive-coverage) above)
 3. **New unit types** — implement timer, mount, automount, swap, path, scope units
 4. **systemctl** — build out the full CLI with all systemctl subcommands
 5. **Test coverage** — port systemd's integration test suite
