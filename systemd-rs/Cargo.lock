@@ -1368,6 +1368,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-udevd"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+ "nix",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "systemd-update-done"
 version = "0.1.0"
 dependencies = [
@@ -1416,6 +1428,19 @@ name = "typenum"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
+
+[[package]]
+name = "udevadm"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "libc",
+ "log",
+ "nix",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
 
 [[package]]
 name = "unicode-ident"

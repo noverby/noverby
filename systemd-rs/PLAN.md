@@ -4,13 +4,13 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ## Current Status
 
-**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~8 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **4,310 unit tests passing** across 64 crates.
+**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~8 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **4,424 unit tests passing** across 66 crates.
 
 | Phase | Status |
 |-------|--------|
 | Phase 0 — Foundation | ✅ Complete |
 | Phase 1 — Core System | ✅ Complete |
-| Phase 2 — Essential System Services | 🔶 In progress (next: `udevd`) |
+| Phase 2 — Essential System Services | 🔶 In progress (udevd partial, next: logind D-Bus) |
 | Phase 3 — Network Stack | 🔶 Partial (networkd, resolved, timesyncd, timedated, hostnamed, localed) |
 | Phase 4 — Extended Services | 🔶 Partial (machined, portabled, homed, oomd, coredump, sysext, dissect, firstboot, creds) |
 | Phase 5 — Utilities, Boot & Polish | 🔶 Partial (analyze, cgls, cgtop, mount, socket-activate, ac-power, detect-virt, generator framework) |
@@ -37,7 +37,7 @@ Legend: ✅ = complete, 🔶 = partial, ❌ = not started
 
 ## Project Structure
 
-The project is organized as a Cargo workspace with a shared core library and individual crates for each systemd component (61 crates):
+The project is organized as a Cargo workspace with a shared core library and individual crates for each systemd component (66 crates):
 
 ```text
 crates/
@@ -47,8 +47,8 @@ crates/
 ├── systemctl/           # CLI control tool for the service manager
 ├── journald/            # Journal logging daemon (systemd-journald)
 ├── journalctl/          # Journal query tool
-├── udevd/               # Device manager (systemd-udevd)
-├── udevadm/             # udev administration tool
+├── udevd/               # Device manager (systemd-udevd) 🔶
+├── udevadm/             # udev administration tool 🔶
 ├── logind/              # Login and session manager (systemd-logind) 🔶
 ├── loginctl/            # Login manager control tool 🔶
 ├── networkd/            # Network configuration manager (systemd-networkd) 🔶
@@ -159,7 +159,7 @@ The minimum viable system to boot a real Linux machine:
 
 Services required for a fully functional desktop or server:
 
-- ❌ **`udevd`** — device manager with `.rules` file parser, `udev` database, netlink event monitor, property matching, `RUN` execution, device node permissions, `udevadm` CLI (`info`, `trigger`, `settle`, `monitor`, `test`, `control`)
+- 🔶 **`udevd`** — device manager daemon with netlink uevent monitoring (AF_NETLINK / NETLINK_KOBJECT_UEVENT), `.rules` file parser (full syntax: match/assign operators `==`/`!=`/`=`/`+=`/`-=`/`:=`, line continuation, escape sequences, `GOTO`/`LABEL` control flow), property matching (`KERNEL`, `SUBSYSTEM`, `ACTION`, `DRIVER`, `DEVTYPE`, `ATTR{file}`, `ENV{key}`, `RESULT`, `TEST`), parent device traversal (`KERNELS`, `SUBSYSTEMS`, `DRIVERS`, `ATTRS{file}`), assignment actions (`NAME`, `SYMLINK`, `OWNER`, `GROUP`, `MODE`, `ENV{key}`, `TAG`, `RUN{program}`, `RUN{builtin}`, `ATTR{file}`, `SYSCTL{key}`, `OPTIONS`), `IMPORT{program|file|cmdline|builtin|db|parent}`, `PROGRAM` execution with result capture, udev-style substitution expansion (`$kernel`/`%k`, `$number`/`%n`, `$devpath`/`%p`, `$id`/`%b`, `$driver`, `$attr{file}`/`%s{file}`, `$env{key}`/`%E{key}`, `$major`/`%M`, `$minor`/`%m`, `$result`/`%c` with index, `$name`/`%D`, `$links`, `$root`, `$sys`, `$devnode`/`%N`), glob matching (`*`, `?`, `[...]`, `|` alternatives), device database persistence (`/run/udev/data/`), device tag management (`/run/udev/tags/`), symlink creation/removal in `/dev/`, device node permission setting (OWNER/GROUP/MODE with name resolution), sysfs attribute writing, RUN program execution with environment passing, builtin handlers (path_id, input_id, usb_id, net_id, blkid, kmod), event queue with settle support, control socket, sd_notify protocol (READY/WATCHDOG/STATUS/STOPPING), signal handling (SIGTERM/SIGINT/SIGHUP/SIGCHLD); `udevadm` CLI with `info` (query by name/path, property export, attribute walk, database export, cleanup), `trigger` (action/subsystem/attribute/property/tag/sysname filters, prioritized subsystems, dry-run, verbose), `settle` (timeout, exit-if-exists, queue file + control socket polling), `monitor` (kernel uevent listening with subsystem filter, property display), `test` (device property display with rules file enumeration), `control` (reload/ping/stop/start exec queue, exit, log level, children max), `test-builtin`, `version`; 114 unit tests (86 udevd + 28 udevadm); missing: `.link` file parsing, `udev` database locking, event worker thread pool (currently inline), PROGRAM result capture propagation, full builtin implementations (hwdb, keyboard, net_setup_link), inotify-based rules reload, device renaming (NAME= for network interfaces), watch mode for settle, D-Bus interface
 - ✅ **`tmpfiles`** — create/delete/clean temporary files and directories per `tmpfiles.d` configuration
 - ✅ **`sysusers`** — create system users and groups per `sysusers.d` configuration
 - 🔶 **`logind`** — login/seat/session tracking with session create/release/activate/lock/unlock, seat management (seat0 + dynamic), user tracking, inhibitor locks (block/delay modes, stale cleanup), input device monitoring for power/sleep buttons, sd_notify/watchdog, control socket, `loginctl` CLI with list/show/activate/lock/terminate commands; missing: D-Bus interface (`org.freedesktop.login1`), PAM module integration (`pam_systemd`), automatic session creation on login, multi-seat device assignment, idle detection, VT switching, ACL management
