@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["Niclas Overby <niclas@overby.me>"]
 edition = "2024"
 
+[lib]
+name = "systemd_udevd"
+path = "src/lib.rs"
+
 [[bin]]
 name = "systemd-udevd"
 path = "src/main.rs"
