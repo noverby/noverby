@@ -9,6 +9,7 @@ pub enum UnitIdKind {
     Mount,
     Device,
     Timer,
+    Path,
 }
 
 #[derive(Clone, Eq, PartialEq, Hash)]

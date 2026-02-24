@@ -87,6 +87,7 @@ pub fn run_service_manager() {
     socket_activation::start_socketactivation_thread(run_info.clone());
 
     crate::timer_scheduler::start_timer_scheduler_thread(run_info.clone());
+    crate::path_watcher::start_path_watcher_thread(run_info.clone());
 
     trace!("Started all helper threads. Start activating units");
 

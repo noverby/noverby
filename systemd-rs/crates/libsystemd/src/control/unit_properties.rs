@@ -110,6 +110,24 @@ pub fn collect_properties(unit: &Unit) -> BTreeMap<String, String> {
                 if tmr.conf.wake_system { "yes" } else { "no" },
             );
         }
+        Specific::Path(path) => {
+            // Path-specific properties
+            insert(&mut props, "Unit", &path.conf.unit);
+            insert(
+                &mut props,
+                "MakeDirectory",
+                if path.conf.make_directory {
+                    "yes"
+                } else {
+                    "no"
+                },
+            );
+            insert(
+                &mut props,
+                "DirectoryMode",
+                &format!("{:04o}", path.conf.directory_mode),
+            );
+        }
     }
 
     // ── LoadState / UnitFileState (synthetic) ─────────────────────────

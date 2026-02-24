@@ -40,6 +40,7 @@ pub enum Specific {
     Slice(SliceSpecific),
     Mount(MountSpecific),
     Timer(TimerSpecific),
+    Path(PathSpecific),
 }
 
 pub struct ServiceSpecific {
@@ -355,6 +356,11 @@ pub struct TimerSpecific {
     pub state: RwLock<TimerState>,
 }
 
+pub struct PathSpecific {
+    pub conf: PathConfig,
+    pub state: RwLock<PathState>,
+}
+
 #[derive(Default)]
 /// All units have some common mutable state
 pub struct CommonState {
@@ -385,6 +391,10 @@ pub struct TimerState {
     pub common: CommonState,
 }
 
+pub struct PathState {
+    pub common: CommonState,
+}
+
 /// Configuration for a `.timer` unit, derived from the parsed `[Timer]` section.
 #[derive(Debug, Clone)]
 pub struct TimerConfig {
@@ -411,6 +421,51 @@ pub struct TimerConfig {
     /// RemainAfterElapse= — if true, timer stays loaded after elapsing (default true).
     pub remain_after_elapse: bool,
     /// Unit= — the unit to activate when the timer elapses (defaults to same-name .service).
+    pub unit: String,
+}
+
+/// A single path watch condition from a `.path` unit file.
+#[derive(Debug, Clone)]
+pub enum PathCondition {
+    /// PathExists= — trigger when the path exists.
+    PathExists(String),
+    /// PathExistsGlob= — trigger when any path matching the glob exists.
+    PathExistsGlob(String),
+    /// PathChanged= — trigger when the path changes (inotify: create, delete, move, attrib).
+    PathChanged(String),
+    /// PathModified= — trigger when the path is modified (inotify: create, delete, move, attrib, close_write).
+    PathModified(String),
+    /// DirectoryNotEmpty= — trigger when the directory is not empty.
+    DirectoryNotEmpty(String),
+}
+
+impl PathCondition {
+    /// Returns the filesystem path being watched.
+    pub fn path(&self) -> &str {
+        match self {
+            PathCondition::PathExists(p)
+            | PathCondition::PathExistsGlob(p)
+            | PathCondition::PathChanged(p)
+            | PathCondition::PathModified(p)
+            | PathCondition::DirectoryNotEmpty(p) => p,
+        }
+    }
+}
+
+/// Configuration for a `.path` unit, derived from the parsed `[Path]` section.
+#[derive(Debug, Clone)]
+pub struct PathConfig {
+    /// The path conditions to watch for.
+    pub conditions: Vec<PathCondition>,
+    /// MakeDirectory= — create the watched directory before watching (default false).
+    pub make_directory: bool,
+    /// DirectoryMode= — permission mode for MakeDirectory (default 0o755).
+    pub directory_mode: u32,
+    /// TriggerLimitIntervalSec= — rate limit interval for path triggers.
+    pub trigger_limit_interval_sec: std::time::Duration,
+    /// TriggerLimitBurst= — rate limit burst for path triggers.
+    pub trigger_limit_burst: u32,
+    /// Unit= — the unit to activate when the path condition is met (defaults to same-name .service).
     pub unit: String,
 }
 
@@ -471,6 +526,7 @@ enum LockedState<'a> {
     Slice(std::sync::RwLockWriteGuard<'a, SliceState>),
     Mount(std::sync::RwLockWriteGuard<'a, MountState>, &'a MountConfig),
     Timer(std::sync::RwLockWriteGuard<'a, TimerState>, &'a TimerConfig),
+    Path(std::sync::RwLockWriteGuard<'a, PathState>, &'a PathConfig),
 }
 
 impl Unit {
@@ -491,6 +547,9 @@ impl Unit {
     }
     pub const fn is_device(&self) -> bool {
         matches!(self.id.kind, UnitIdKind::Device)
+    }
+    pub const fn is_path(&self) -> bool {
+        matches!(self.id.kind, UnitIdKind::Path)
     }
 
     pub fn name_without_suffix(&self) -> String {
@@ -651,6 +710,9 @@ impl Unit {
             Specific::Timer(specific) => {
                 LockedState::Timer(specific.state.write_poisoned(), &specific.conf)
             }
+            Specific::Path(specific) => {
+                LockedState::Path(specific.state.write_poisoned(), &specific.conf)
+            }
         };
 
         {
@@ -733,6 +795,39 @@ impl Unit {
                 trace!("Started timer {}", self.id.name);
                 Ok(UnitStatus::Started(StatusStarted::Running))
             }
+            LockedState::Path(_, conf) => {
+                // Path units are "started" by marking them as running.
+                // The actual path monitoring is handled by the path watcher thread.
+                // If MakeDirectory= is set, create the directory before watching.
+                if conf.make_directory {
+                    for cond in &conf.conditions {
+                        let p = cond.path();
+                        if let Err(e) = std::fs::create_dir_all(p) {
+                            trace!(
+                                "Path unit {}: MakeDirectory failed for {}: {}",
+                                self.id.name, p, e
+                            );
+                        } else {
+                            // Apply DirectoryMode=
+                            #[cfg(unix)]
+                            {
+                                use std::os::unix::fs::PermissionsExt;
+                                let _ = std::fs::set_permissions(
+                                    p,
+                                    std::fs::Permissions::from_mode(conf.directory_mode),
+                                );
+                            }
+                        }
+                    }
+                }
+                let mut status = self.common.status.write_poisoned();
+                if status.is_started() {
+                    return Ok(status.clone());
+                }
+                *status = UnitStatus::Started(StatusStarted::Running);
+                trace!("Started path unit {}", self.id.name);
+                Ok(UnitStatus::Started(StatusStarted::Running))
+            }
         }
     }
 
@@ -753,6 +848,9 @@ impl Unit {
             }
             Specific::Timer(specific) => {
                 LockedState::Timer(specific.state.write_poisoned(), &specific.conf)
+            }
+            Specific::Path(specific) => {
+                LockedState::Path(specific.state.write_poisoned(), &specific.conf)
             }
         };
 
@@ -793,7 +891,7 @@ impl Unit {
                 state.deactivate(&self.id, conf, &self.common.status, run_info)
             }
             LockedState::Mount(_, conf) => deactivate_mount(&self.id, conf, &self.common.status),
-            LockedState::Timer(_, _) => {
+            LockedState::Timer(_, _) | LockedState::Path(_, _) => {
                 let mut status = self.common.status.write_poisoned();
                 *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
                 Ok(())
@@ -826,6 +924,9 @@ impl Unit {
             }
             Specific::Timer(specific) => {
                 LockedState::Timer(specific.state.write_poisoned(), &specific.conf)
+            }
+            Specific::Path(specific) => {
+                LockedState::Path(specific.state.write_poisoned(), &specific.conf)
             }
         };
 
@@ -861,7 +962,7 @@ impl Unit {
                     deactivate_mount(&self.id, conf, &self.common.status).ok();
                     activate_mount(&self.id, conf, &self.common.status).map(|_| ())
                 }
-                LockedState::Timer(_, _) => {
+                LockedState::Timer(_, _) | LockedState::Path(_, _) => {
                     let mut status = self.common.status.write_poisoned();
                     *status = UnitStatus::Started(StatusStarted::Running);
                     Ok(())
@@ -889,7 +990,7 @@ impl Unit {
                 LockedState::Mount(_, conf) => {
                     activate_mount(&self.id, conf, &self.common.status).map(|_| ())
                 }
-                LockedState::Timer(_, _) => {
+                LockedState::Timer(_, _) | LockedState::Path(_, _) => {
                     let mut status = self.common.status.write_poisoned();
                     *status = UnitStatus::Started(StatusStarted::Running);
                     Ok(())

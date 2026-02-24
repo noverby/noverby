@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 use crate::units::{
     Common, CommonState, Dependencies, MountConfig, MountSpecific, MountState, ParsedFile,
     ParsingErrorReason, Specific, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus, parse_file,
-    parse_mount, parse_service, parse_slice, parse_socket, parse_target, path_to_mount_unit_name,
+    parse_mount, parse_path, parse_service, parse_slice, parse_socket, parse_target,
+    path_to_mount_unit_name,
 };
 use std::sync::RwLock;
 
@@ -51,6 +52,8 @@ pub fn is_unit_file(filename: &str) -> bool {
         || filename.ends_with(".target")
         || filename.ends_with(".slice")
         || filename.ends_with(".mount")
+        || filename.ends_with(".timer")
+        || filename.ends_with(".path")
 }
 
 /// Check if a unit name is a template (e.g., "getty@.service", "modprobe@.service").
@@ -619,6 +622,24 @@ pub fn insert_parsed_unit(
     use crate::units::parse_timer;
 
     let path_str = path.to_str().unwrap_or("");
+
+    // Handle .path files
+    if path_str.ends_with(".path") {
+        trace!("Path unit found: {:?}", path);
+        match parse_path(parsed_file, path).and_then(|parsed| {
+            TryInto::<Unit>::try_into(parsed).map_err(ParsingErrorReason::Generic)
+        }) {
+            Ok(unit) => {
+                // Path units are stored in the targets table (which serves as
+                // the catch-all for simple unit types like target/slice/timer/path)
+                targets.insert(unit.id.clone(), unit);
+            }
+            Err(e) => {
+                warn!("Skipping path unit {:?}: {:?}", path, e);
+            }
+        }
+        return;
+    }
 
     if path_str.ends_with(".service") {
         trace!("Service found: {:?}", path);

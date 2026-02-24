@@ -1367,7 +1367,8 @@ pub fn execute_command(
                             Specific::Target(_)
                             | Specific::Slice(_)
                             | Specific::Mount(_)
-                            | Specific::Timer(_) => format_target(unit, status),
+                            | Specific::Timer(_)
+                            | Specific::Path(_) => format_target(unit, status),
                         }
                     })
                     .collect();
