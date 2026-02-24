@@ -9,6 +9,7 @@
   packages.systemd-rs = {
     lib,
     rustPlatform,
+    pkg-config,
     dbus,
   }:
     rustPlatform.buildRustPackage {
@@ -25,6 +26,10 @@
       };
 
       cargoLock.lockFile = ./Cargo.lock;
+
+      nativeBuildInputs = [
+        pkg-config
+      ];
 
       buildInputs = [
         dbus

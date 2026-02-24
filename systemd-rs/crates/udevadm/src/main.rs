@@ -24,21 +24,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime};
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const CONTROL_SOCKET_PATH: &str = "/run/udev/control";
-const DB_DIR: &str = "/run/udev/data";
-const TAGS_DIR: &str = "/run/udev/tags";
-const QUEUE_FILE: &str = "/run/udev/queue";
-
-const RULES_DIRS: &[&str] = &[
-    "/etc/udev/rules.d",
-    "/run/udev/rules.d",
-    "/usr/lib/udev/rules.d",
-    "/lib/udev/rules.d",
-];
+use systemd_udevd::{
+    CONTROL_SOCKET_PATH, DB_DIR, QUEUE_FILE, RULES_DIRS, RuleSet, TAGS_DIR, UEvent, glob_match,
+    open_uevent_socket, process_rules,
+};
 
 // ---------------------------------------------------------------------------
 // Logging
@@ -770,7 +759,7 @@ fn trigger_one_device(
         return false;
     }
 
-    if !sysname_match.is_empty() && !sysname_match.iter().any(|s| glob_match_simple(s, &sysname)) {
+    if !sysname_match.is_empty() && !sysname_match.iter().any(|s| glob_match(s, &sysname)) {
         return false;
     }
 
@@ -804,7 +793,7 @@ fn trigger_one_device(
         for prop_spec in property_match {
             if let Some((key, val)) = prop_spec.split_once('=') {
                 match uevent_props.get(key) {
-                    Some(v) if glob_match_simple(val, v) => {}
+                    Some(v) if glob_match(val, v) => {}
                     _ => return false,
                 }
             }
@@ -1094,43 +1083,79 @@ fn cmd_test(action: &str, devpath: &str) -> i32 {
     }
     println!();
 
-    // Count rules
-    let mut total_rules = 0;
-    let mut total_files = 0;
-    for dir in RULES_DIRS {
-        let dir_path = Path::new(dir);
-        if !dir_path.is_dir() {
-            continue;
+    // Load rules using the shared rules engine
+    let ruleset = RuleSet::load();
+    println!("Loaded {} rules", ruleset.rules.len());
+    println!();
+
+    // Build a UEvent and run it through the rules engine
+    let mut env: HashMap<String, String> = props.clone();
+    env.insert("ACTION".to_string(), action.to_string());
+    let mut event = UEvent {
+        action: action.to_string(),
+        devpath: devpath_str.clone(),
+        subsystem: subsystem.clone(),
+        devtype: devtype.clone(),
+        devname: devname.clone(),
+        driver: driver.clone(),
+        major: major.clone(),
+        minor: minor.clone(),
+        seqnum: 0,
+        env,
+    };
+
+    let result = process_rules(&ruleset, &mut event);
+
+    // Display rule processing results
+    if let Some(ref name) = result.name {
+        println!("NAME='{}'", name);
+    }
+    if !result.symlinks.is_empty() {
+        println!("SYMLINK='{}'", result.symlinks.join(" "));
+    }
+    if let Some(ref owner) = result.owner {
+        println!("OWNER='{}'", owner);
+    }
+    if let Some(ref group) = result.group {
+        println!("GROUP='{}'", group);
+    }
+    if let Some(ref mode) = result.mode {
+        println!("MODE='{}'", mode);
+    }
+    if !result.tags.is_empty() {
+        for tag in &result.tags {
+            println!("TAG='{}'", tag);
         }
-        if let Ok(entries) = fs::read_dir(dir_path) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().map(|e| e == "rules").unwrap_or(false) {
-                    total_files += 1;
-                    if let Ok(content) = fs::read_to_string(&path) {
-                        for line in content.lines() {
-                            let trimmed = line.trim();
-                            if !trimmed.is_empty() && !trimmed.starts_with('#') {
-                                total_rules += 1;
-                            }
-                        }
-                    }
-                }
-            }
+    }
+    if !result.run_programs.is_empty() {
+        for prog in &result.run_programs {
+            println!("RUN='{}'", prog);
+        }
+    }
+    if !result.run_builtins.is_empty() {
+        for builtin in &result.run_builtins {
+            println!("RUN{{builtin}}='{}'", builtin);
+        }
+    }
+    if !result.env_overrides.is_empty() {
+        for (k, v) in &result.env_overrides {
+            println!("ENV{{{}}}='{}'", k, v);
+        }
+    }
+    if !result.sysattr_writes.is_empty() {
+        for (attr, val) in &result.sysattr_writes {
+            println!("ATTR{{{}}}='{}'", attr, val);
+        }
+    }
+    if !result.options.is_empty() {
+        for opt in &result.options {
+            println!("OPTIONS='{}'", opt);
         }
     }
 
-    println!("Loaded {} rules from {} files", total_rules, total_files);
-    println!();
-    println!(
-        "Note: Full rule simulation is handled by systemd-udevd. \
-         This shows the device properties that would be available."
-    );
-
-    // Show all properties that would be set
     println!();
     println!("Device properties:");
-    for (k, v) in &props {
+    for (k, v) in &event.env {
         println!("  {}={}", k, v);
     }
 
@@ -1229,51 +1254,6 @@ fn send_control_command(cmd: &str, timeout: Duration) -> io::Result<String> {
     let mut response = String::new();
     stream.read_to_string(&mut response)?;
     Ok(response)
-}
-
-// ---------------------------------------------------------------------------
-// Netlink socket (for monitor)
-// ---------------------------------------------------------------------------
-
-fn open_uevent_socket() -> io::Result<i32> {
-    unsafe {
-        let fd = libc::socket(
-            libc::AF_NETLINK,
-            libc::SOCK_DGRAM | libc::SOCK_CLOEXEC,
-            15, // NETLINK_KOBJECT_UEVENT
-        );
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        let mut addr: libc::sockaddr_nl = std::mem::zeroed();
-        addr.nl_family = libc::AF_NETLINK as u16;
-        addr.nl_pid = libc::getpid() as u32;
-        addr.nl_groups = 1; // KOBJECT_UEVENT group
-
-        let ret = libc::bind(
-            fd,
-            &addr as *const libc::sockaddr_nl as *const libc::sockaddr,
-            std::mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
-        );
-        if ret < 0 {
-            let err = io::Error::last_os_error();
-            libc::close(fd);
-            return Err(err);
-        }
-
-        // Large receive buffer for burst events
-        let buf_size: libc::c_int = 128 * 1024 * 1024;
-        libc::setsockopt(
-            fd,
-            libc::SOL_SOCKET,
-            libc::SO_RCVBUF,
-            &buf_size as *const libc::c_int as *const libc::c_void,
-            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
-        );
-
-        Ok(fd)
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1534,53 +1514,6 @@ fn make_dev_id_from_syspath(syspath: &Path, subsystem: &str) -> String {
     }
 }
 
-/// Simple glob matching (subset: * and ? only, plus literal).
-fn glob_match_simple(pattern: &str, value: &str) -> bool {
-    let pat_chars: Vec<char> = pattern.chars().collect();
-    let val_chars: Vec<char> = value.chars().collect();
-    glob_match_impl(&pat_chars, 0, &val_chars, 0)
-}
-
-fn glob_match_impl(pat: &[char], pi: usize, val: &[char], vi: usize) -> bool {
-    let mut pi = pi;
-    let mut vi = vi;
-
-    while pi < pat.len() {
-        match pat[pi] {
-            '*' => {
-                while pi < pat.len() && pat[pi] == '*' {
-                    pi += 1;
-                }
-                if pi >= pat.len() {
-                    return true;
-                }
-                for vi_try in vi..=val.len() {
-                    if glob_match_impl(pat, pi, val, vi_try) {
-                        return true;
-                    }
-                }
-                return false;
-            }
-            '?' => {
-                if vi >= val.len() {
-                    return false;
-                }
-                pi += 1;
-                vi += 1;
-            }
-            c => {
-                if vi >= val.len() || val[vi] != c {
-                    return false;
-                }
-                pi += 1;
-                vi += 1;
-            }
-        }
-    }
-
-    vi >= val.len()
-}
-
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -1775,37 +1708,37 @@ mod tests {
 
     #[test]
     fn test_glob_simple_exact() {
-        assert!(glob_match_simple("hello", "hello"));
-        assert!(!glob_match_simple("hello", "world"));
+        assert!(glob_match("hello", "hello"));
+        assert!(!glob_match("hello", "world"));
     }
 
     #[test]
     fn test_glob_simple_star() {
-        assert!(glob_match_simple("sd*", "sda"));
-        assert!(glob_match_simple("sd*", "sda1"));
-        assert!(glob_match_simple("*", "anything"));
-        assert!(!glob_match_simple("sd*", "nvme0"));
+        assert!(glob_match("sd*", "sda"));
+        assert!(glob_match("sd*", "sda1"));
+        assert!(glob_match("*", "anything"));
+        assert!(!glob_match("sd*", "nvme0"));
     }
 
     #[test]
     fn test_glob_simple_question() {
-        assert!(glob_match_simple("sd?", "sda"));
-        assert!(!glob_match_simple("sd?", "sd"));
-        assert!(!glob_match_simple("sd?", "sdaa"));
+        assert!(glob_match("sd?", "sda"));
+        assert!(!glob_match("sd?", "sd"));
+        assert!(!glob_match("sd?", "sdaa"));
     }
 
     #[test]
     fn test_glob_simple_complex() {
-        assert!(glob_match_simple("*a*", "abc"));
-        assert!(glob_match_simple("?b?", "abc"));
-        assert!(!glob_match_simple("?b?", "axc"));
+        assert!(glob_match("*a*", "abc"));
+        assert!(glob_match("?b?", "abc"));
+        assert!(!glob_match("?b?", "axc"));
     }
 
     #[test]
     fn test_glob_simple_empty() {
-        assert!(glob_match_simple("", ""));
-        assert!(!glob_match_simple("", "a"));
-        assert!(glob_match_simple("*", ""));
+        assert!(glob_match("", ""));
+        assert!(!glob_match("", "a"));
+        assert!(glob_match("*", ""));
     }
 
     // -----------------------------------------------------------------------

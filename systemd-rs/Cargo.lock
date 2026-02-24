@@ -1447,10 +1447,7 @@ dependencies = [
  "clap",
  "libc",
  "log",
- "nix",
- "serde",
- "serde_json",
- "tempfile",
+ "systemd-udevd",
 ]
 
 [[package]]
