@@ -7,6 +7,7 @@
 //! - Static IPv4 address and route configuration
 //! - DHCPv4 client with full DORA state machine
 //! - DNS resolver configuration (`/run/systemd/resolve/resolv.conf`)
+//! - D-Bus interface (`org.freedesktop.network1`) with deferred registration
 //! - sd_notify protocol (READY/WATCHDOG/STATUS/STOPPING)
 //! - Signal handling (SIGTERM/SIGINT for shutdown, SIGHUP for reload)
 //! - Runtime state files in `/run/systemd/netif/`
@@ -24,10 +25,20 @@ use std::io;
 use std::net::Ipv4Addr;
 use std::os::unix::net::UnixDatagram;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use dbus::blocking::Connection;
+use dbus_crossroads::{Crossroads, IfaceBuilder, MethodErr};
+
 use manager::NetworkManager;
+
+// ── D-Bus constants ────────────────────────────────────────────────────────
+
+const DBUS_NAME: &str = "org.freedesktop.network1";
+const DBUS_PATH: &str = "/org/freedesktop/network1";
+const DBUS_IFACE: &str = "org.freedesktop.network1.Manager";
 
 /// Send an sd_notify message to the service manager.
 fn sd_notify(msg: &str) {
@@ -220,6 +231,320 @@ fn setup_logging() {
         .ok();
 }
 
+// ── Shared D-Bus state ─────────────────────────────────────────────────────
+
+/// Summary of a single network link for D-Bus exposure.
+#[derive(Debug, Clone, Default)]
+struct LinkSummary {
+    ifindex: u32,
+    name: String,
+    link_type: String,
+    oper_state: String,
+    admin_state: String,
+    address: String,
+    gateway: String,
+}
+
+/// Snapshot of networkd state exposed via D-Bus properties.
+#[derive(Debug, Clone)]
+struct NetworkdState {
+    /// Overall operational state (initializing, configuring, configured, degraded, no-carrier).
+    oper_state: String,
+    /// Per-link summaries.
+    links: Vec<LinkSummary>,
+    /// Global DNS servers.
+    dns_servers: Vec<String>,
+    /// Global search domains.
+    search_domains: Vec<String>,
+}
+
+impl Default for NetworkdState {
+    fn default() -> Self {
+        Self {
+            oper_state: "initializing".to_string(),
+            links: Vec::new(),
+            dns_servers: Vec::new(),
+            search_domains: Vec::new(),
+        }
+    }
+}
+
+type SharedState = Arc<Mutex<NetworkdState>>;
+
+// ── D-Bus interface: org.freedesktop.network1.Manager ──────────────────────
+
+/// Register the org.freedesktop.network1.Manager interface on a Crossroads
+/// instance.
+///
+/// Properties (read-only):
+///   OperationalState (s)  — overall network operational state
+///   CarrierState (s)      — whether any link has carrier
+///   AddressState (s)      — whether any link has an address
+///   OnlineState (s)       — online/partial/offline
+///   NamespaceId (t)       — network namespace ID (always 0 for host)
+///
+/// Methods:
+///   ListLinks() → a(iso)    — array of (ifindex, name, object_path)
+///   GetLinkByName(s) → (io) — ifindex + object path for a link name
+///   GetLinkByIndex(i) → (so)— name + object path for an ifindex
+///   Describe() → s          — JSON description of the manager state
+///   Reload()                — trigger configuration reload
+///   ForceRenew(i ifindex)   — force DHCP renew on a link (stub)
+fn register_network1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedState> {
+    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedState>| {
+        // --- Properties ---
+
+        b.property("OperationalState")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.oper_state.clone())
+            });
+
+        b.property("CarrierState")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                let has_carrier = s
+                    .links
+                    .iter()
+                    .any(|l| l.oper_state != "no-carrier" && l.link_type != "loopback");
+                Ok(if has_carrier {
+                    "carrier".to_string()
+                } else {
+                    "no-carrier".to_string()
+                })
+            });
+
+        b.property("AddressState")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                let has_addr = s.links.iter().any(|l| !l.address.is_empty());
+                Ok(if has_addr {
+                    "routable".to_string()
+                } else {
+                    "off".to_string()
+                })
+            });
+
+        b.property("OnlineState").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            let online = match s.oper_state.as_str() {
+                "configured" => "online",
+                "degraded" => "partial",
+                _ => "offline",
+            };
+            Ok(online.to_string())
+        });
+
+        b.property("NamespaceId")
+            .get(|_, _state: &mut SharedState| Ok(0u64));
+
+        // --- Methods ---
+
+        // ListLinks() → a(iso)
+        b.method(
+            "ListLinks",
+            (),
+            ("links",),
+            move |_, state: &mut SharedState, ()| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                let links: Vec<(i32, String, dbus::Path<'static>)> = s
+                    .links
+                    .iter()
+                    .map(|l| {
+                        (
+                            l.ifindex as i32,
+                            l.name.clone(),
+                            dbus::Path::from(link_object_path(l.ifindex)),
+                        )
+                    })
+                    .collect();
+                Ok((links,))
+            },
+        );
+
+        // GetLinkByName(s name) → (io)
+        b.method(
+            "GetLinkByName",
+            ("name",),
+            ("ifindex", "path"),
+            move |_, state: &mut SharedState, (name,): (String,)| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(l) = s.links.iter().find(|l| l.name == name) {
+                    Ok((
+                        l.ifindex as i32,
+                        dbus::Path::from(link_object_path(l.ifindex)),
+                    ))
+                } else {
+                    Err(MethodErr::failed(&format!("No link '{}' known", name)))
+                }
+            },
+        );
+
+        // GetLinkByIndex(i ifindex) → (so)
+        b.method(
+            "GetLinkByIndex",
+            ("ifindex",),
+            ("name", "path"),
+            move |_, state: &mut SharedState, (ifindex,): (i32,)| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(l) = s.links.iter().find(|l| l.ifindex == ifindex as u32) {
+                    Ok((
+                        l.name.clone(),
+                        dbus::Path::from(link_object_path(l.ifindex)),
+                    ))
+                } else {
+                    Err(MethodErr::failed(&format!(
+                        "No link with index {}",
+                        ifindex
+                    )))
+                }
+            },
+        );
+
+        // Describe() → s (JSON description)
+        b.method(
+            "Describe",
+            (),
+            ("json",),
+            move |_, state: &mut SharedState, ()| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                let mut links_json = String::from("[");
+                for (i, l) in s.links.iter().enumerate() {
+                    if i > 0 {
+                        links_json.push(',');
+                    }
+                    links_json.push_str(&format!(
+                        concat!(
+                            "{{",
+                            "\"Index\":{},",
+                            "\"Name\":\"{}\",",
+                            "\"Type\":\"{}\",",
+                            "\"OperationalState\":\"{}\",",
+                            "\"AdministrativeState\":\"{}\",",
+                            "\"Address\":\"{}\",",
+                            "\"Gateway\":\"{}\"",
+                            "}}"
+                        ),
+                        l.ifindex,
+                        json_escape(&l.name),
+                        json_escape(&l.link_type),
+                        json_escape(&l.oper_state),
+                        json_escape(&l.admin_state),
+                        json_escape(&l.address),
+                        json_escape(&l.gateway),
+                    ));
+                }
+                links_json.push(']');
+
+                let dns_json: Vec<String> = s
+                    .dns_servers
+                    .iter()
+                    .map(|d| format!("\"{}\"", json_escape(d)))
+                    .collect();
+
+                let domains_json: Vec<String> = s
+                    .search_domains
+                    .iter()
+                    .map(|d| format!("\"{}\"", json_escape(d)))
+                    .collect();
+
+                let json = format!(
+                    concat!(
+                        "{{",
+                        "\"OperationalState\":\"{}\",",
+                        "\"NLinks\":{},",
+                        "\"Links\":{},",
+                        "\"DNS\":[{}],",
+                        "\"SearchDomains\":[{}]",
+                        "}}"
+                    ),
+                    json_escape(&s.oper_state),
+                    s.links.len(),
+                    links_json,
+                    dns_json.join(","),
+                    domains_json.join(","),
+                );
+                Ok((json,))
+            },
+        );
+
+        // Reload() — stub, signals are handled in the main loop
+        b.method("Reload", (), (), move |_, _state: &mut SharedState, ()| {
+            log::info!("D-Bus Reload() called");
+            Ok(())
+        });
+
+        // ForceRenew(i ifindex) — stub
+        b.method(
+            "ForceRenew",
+            ("ifindex",),
+            (),
+            move |_, _state: &mut SharedState, (_ifindex,): (i32,)| {
+                log::info!("D-Bus ForceRenew() called (stub)");
+                Ok(())
+            },
+        );
+    })
+}
+
+/// Convert a link ifindex to a D-Bus object path.
+fn link_object_path(ifindex: u32) -> String {
+    format!("/org/freedesktop/network1/link/_{}", ifindex)
+}
+
+/// Set up the D-Bus connection and register the network1 interface.
+fn setup_dbus(shared: SharedState) -> Result<(Connection, Crossroads), String> {
+    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    conn.request_name(DBUS_NAME, false, true, false)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
+
+    let mut cr = Crossroads::new();
+    let iface_token = register_network1_iface(&mut cr);
+    cr.insert(DBUS_PATH, &[iface_token], shared);
+
+    Ok((conn, cr))
+}
+
+/// Escape a string for embedding in JSON.
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c < '\x20' => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Update the shared D-Bus state from the current NetworkManager state.
+fn update_shared_state(shared: &SharedState, mgr: &NetworkManager) {
+    let mut s = shared.lock().unwrap_or_else(|e| e.into_inner());
+    s.oper_state = mgr.overall_state().to_string();
+    s.dns_servers = mgr.dns_servers.iter().map(|d| d.to_string()).collect();
+    s.search_domains = mgr.search_domains.clone();
+
+    let mut links = Vec::new();
+    let summary = mgr.status_summary();
+    for ls in &summary {
+        links.push(LinkSummary {
+            ifindex: ls.index,
+            name: ls.name.clone(),
+            link_type: ls.link_type.clone(),
+            oper_state: format!("{}", ls.oper_state),
+            admin_state: format!("{}", ls.admin_state),
+            address: ls.address.clone().unwrap_or_default(),
+            gateway: ls.gateway.clone().unwrap_or_default(),
+        });
+    }
+    s.links = links;
+}
+
 fn main() {
     // Parse arguments.
     let args: Vec<String> = std::env::args().collect();
@@ -250,6 +575,9 @@ fn main() {
     signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&shutdown)).ok();
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&shutdown)).ok();
     signal_hook::flag::register(signal_hook::consts::SIGHUP, Arc::clone(&reload)).ok();
+
+    // Shared D-Bus state.
+    let shared_state: SharedState = Arc::new(Mutex::new(NetworkdState::default()));
 
     // Create the network manager.
     let mut mgr = NetworkManager::new();
@@ -318,6 +646,9 @@ fn main() {
     // Write initial state files.
     mgr.write_state_files();
 
+    // Update shared D-Bus state with initial link info.
+    update_shared_state(&shared_state, &mgr);
+
     // Notify systemd we're ready.
     sd_notify("READY=1\nSTATUS=Configured network interfaces");
     log::info!(
@@ -329,10 +660,35 @@ fn main() {
     let watchdog = watchdog_interval();
     let mut last_watchdog = Instant::now();
 
+    // D-Bus connection is deferred to after READY=1 so we don't block
+    // early boot waiting for dbus-daemon.
+    let mut dbus_conn: Option<Connection> = None;
+    let mut dbus_cr: Option<Crossroads> = None;
+    let mut dbus_attempted = false;
+
     // Main event loop.
     let poll_interval = Duration::from_millis(500);
 
     while !shutdown.load(Ordering::Relaxed) {
+        // Attempt D-Bus registration once (deferred from startup).
+        if !dbus_attempted {
+            dbus_attempted = true;
+            match setup_dbus(shared_state.clone()) {
+                Ok((conn, cr)) => {
+                    log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
+                    dbus_conn = Some(conn);
+                    dbus_cr = Some(cr);
+                    sd_notify(&format!("STATUS={} (D-Bus active)", mgr.overall_state()));
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to register D-Bus interface ({}); continuing without D-Bus",
+                        e
+                    );
+                }
+            }
+        }
+
         // Handle reload signal.
         if reload.swap(false, Ordering::Relaxed) {
             log::info!("Reloading configuration (SIGHUP)");
@@ -343,6 +699,7 @@ fn main() {
             if let Err(e) = mgr.configure_links() {
                 log::warn!("Failed to reconfigure links on reload: {}", e);
             }
+            update_shared_state(&shared_state, &mgr);
             sd_notify(&format!("STATUS={}", mgr.overall_state()));
         }
 
@@ -360,6 +717,7 @@ fn main() {
                             log::warn!("Failed to apply DHCP lease on idx={}: {}", ifindex, e);
                         }
                         mgr.write_state_files();
+                        update_shared_state(&shared_state, &mgr);
                         sd_notify(&format!("STATUS={}", mgr.overall_state()));
                         break;
                     }
@@ -428,6 +786,7 @@ fn main() {
                             log::warn!("{}: failed to remove expired lease: {}", ifname, e);
                         }
                         mgr.write_state_files();
+                        update_shared_state(&shared_state, &mgr);
                     } else if lease.needs_renewal() {
                         // Transition to renewing and send a request.
                         if let Some(pkt) = client.next_packet() {
@@ -436,6 +795,14 @@ fn main() {
                         }
                     }
                 }
+            }
+        }
+
+        // Process D-Bus messages (non-blocking).
+        if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
+            let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
+            while let Some(msg) = conn.channel().pop_message() {
+                let _ = cr.handle_message(msg, conn);
             }
         }
 
@@ -520,5 +887,177 @@ mod tests {
         unsafe { std::env::set_var("WATCHDOG_USEC", "not_a_number") };
         assert!(watchdog_interval().is_none());
         unsafe { std::env::remove_var("WATCHDOG_USEC") };
+    }
+
+    // ── D-Bus interface tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_dbus_register_network1_iface() {
+        let mut cr = Crossroads::new();
+        let token = register_network1_iface(&mut cr);
+        let shared: SharedState = Arc::new(Mutex::new(NetworkdState::default()));
+        cr.insert(DBUS_PATH, &[token], shared);
+        // Registration succeeded without panic
+    }
+
+    #[test]
+    fn test_link_object_path() {
+        assert_eq!(link_object_path(1), "/org/freedesktop/network1/link/_1");
+        assert_eq!(link_object_path(42), "/org/freedesktop/network1/link/_42");
+        assert_eq!(link_object_path(0), "/org/freedesktop/network1/link/_0");
+    }
+
+    #[test]
+    fn test_shared_state_default() {
+        let state = NetworkdState::default();
+        assert_eq!(state.oper_state, "initializing");
+        assert!(state.links.is_empty());
+        assert!(state.dns_servers.is_empty());
+        assert!(state.search_domains.is_empty());
+    }
+
+    #[test]
+    fn test_shared_state_with_links() {
+        let shared: SharedState = Arc::new(Mutex::new(NetworkdState {
+            oper_state: "configured".to_string(),
+            links: vec![
+                LinkSummary {
+                    ifindex: 1,
+                    name: "lo".to_string(),
+                    link_type: "loopback".to_string(),
+                    oper_state: "carrier".to_string(),
+                    admin_state: "Up".to_string(),
+                    address: "127.0.0.1/8".to_string(),
+                    gateway: String::new(),
+                },
+                LinkSummary {
+                    ifindex: 2,
+                    name: "eth0".to_string(),
+                    link_type: "ether".to_string(),
+                    oper_state: "configured".to_string(),
+                    admin_state: "Up".to_string(),
+                    address: "192.168.1.100/24".to_string(),
+                    gateway: "192.168.1.1".to_string(),
+                },
+            ],
+            dns_servers: vec!["8.8.8.8".to_string()],
+            search_domains: vec!["example.com".to_string()],
+        }));
+        let s = shared.lock().unwrap();
+        assert_eq!(s.oper_state, "configured");
+        assert_eq!(s.links.len(), 2);
+        assert_eq!(s.links[0].name, "lo");
+        assert_eq!(s.links[1].name, "eth0");
+        assert_eq!(s.dns_servers, vec!["8.8.8.8"]);
+    }
+
+    #[test]
+    fn test_json_escape_plain() {
+        assert_eq!(json_escape("hello"), "hello");
+    }
+
+    #[test]
+    fn test_json_escape_special_chars() {
+        assert_eq!(json_escape("a\"b"), "a\\\"b");
+        assert_eq!(json_escape("a\\b"), "a\\\\b");
+        assert_eq!(json_escape("a\nb"), "a\\nb");
+        assert_eq!(json_escape("a\tb"), "a\\tb");
+    }
+
+    #[test]
+    fn test_json_escape_empty() {
+        assert_eq!(json_escape(""), "");
+    }
+
+    #[test]
+    fn test_carrier_state_derived() {
+        // With an ether link that has carrier
+        let state = NetworkdState {
+            oper_state: "configured".to_string(),
+            links: vec![LinkSummary {
+                ifindex: 2,
+                name: "eth0".to_string(),
+                link_type: "ether".to_string(),
+                oper_state: "configured".to_string(),
+                admin_state: "Up".to_string(),
+                address: "10.0.0.1/24".to_string(),
+                gateway: "10.0.0.1".to_string(),
+            }],
+            dns_servers: Vec::new(),
+            search_domains: Vec::new(),
+        };
+        let has_carrier = state
+            .links
+            .iter()
+            .any(|l| l.oper_state != "no-carrier" && l.link_type != "loopback");
+        assert!(has_carrier);
+
+        // With only loopback
+        let state2 = NetworkdState {
+            oper_state: "no-carrier".to_string(),
+            links: vec![LinkSummary {
+                ifindex: 1,
+                name: "lo".to_string(),
+                link_type: "loopback".to_string(),
+                oper_state: "carrier".to_string(),
+                admin_state: "Up".to_string(),
+                address: "127.0.0.1/8".to_string(),
+                gateway: String::new(),
+            }],
+            dns_servers: Vec::new(),
+            search_domains: Vec::new(),
+        };
+        let has_carrier2 = state2
+            .links
+            .iter()
+            .any(|l| l.oper_state != "no-carrier" && l.link_type != "loopback");
+        assert!(!has_carrier2);
+    }
+
+    #[test]
+    fn test_online_state_derived() {
+        assert_eq!(
+            match "configured" {
+                "configured" => "online",
+                "degraded" => "partial",
+                _ => "offline",
+            },
+            "online"
+        );
+        assert_eq!(
+            match "degraded" {
+                "configured" => "online",
+                "degraded" => "partial",
+                _ => "offline",
+            },
+            "partial"
+        );
+        assert_eq!(
+            match "no-carrier" {
+                "configured" => "online",
+                "degraded" => "partial",
+                _ => "offline",
+            },
+            "offline"
+        );
+    }
+
+    #[test]
+    fn test_link_summary_fields() {
+        let link = LinkSummary {
+            ifindex: 3,
+            name: "wlan0".to_string(),
+            link_type: "wlan".to_string(),
+            oper_state: "degraded".to_string(),
+            admin_state: "Up".to_string(),
+            address: "192.168.0.50/24".to_string(),
+            gateway: "192.168.0.1".to_string(),
+        };
+        assert_eq!(link.ifindex, 3);
+        assert_eq!(link.name, "wlan0");
+        assert_eq!(link.link_type, "wlan");
+        assert_eq!(link.oper_state, "degraded");
+        assert_eq!(link.address, "192.168.0.50/24");
+        assert_eq!(link.gateway, "192.168.0.1");
     }
 }

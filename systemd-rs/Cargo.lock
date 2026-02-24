@@ -1201,6 +1201,8 @@ name = "systemd-networkd"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dbus",
+ "dbus-crossroads",
  "fern",
  "libc",
  "log",
@@ -1266,6 +1268,8 @@ name = "systemd-resolved"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dbus",
+ "dbus-crossroads",
  "fern",
  "libc",
  "log",
@@ -1368,6 +1372,8 @@ dependencies = [
 name = "systemd-timesyncd"
 version = "0.1.0"
 dependencies = [
+ "dbus",
+ "dbus-crossroads",
  "libc",
  "log",
  "nix",
