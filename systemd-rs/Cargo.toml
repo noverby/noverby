@@ -66,5 +66,6 @@ members = [
   "crates/homectl",
   "crates/udevd",
   "crates/udevadm",
+  "crates/networkd-wait-online",
 ]
 resolver = "2"

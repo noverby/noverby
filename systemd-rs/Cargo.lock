@@ -1212,6 +1212,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-networkd-wait-online"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "tempfile",
+]
+
+[[package]]
 name = "systemd-notify"
 version = "0.1.0"
 dependencies = [
