@@ -87,9 +87,13 @@ pub fn wait_for_service(
                         ));
                     }
                     let duration_till_timeout = duration_timeout - duration_elapsed;
-                    stream
-                        .set_read_timeout(Some(duration_till_timeout))
-                        .unwrap();
+                    // Cap the recv timeout to 1 second so we frequently re-check
+                    // the pid table for early process exits. Without this cap,
+                    // a service that crashes immediately after fork still blocks
+                    // this thread for the full TimeoutStartSec (default 90s),
+                    // which can exhaust the activation thread pool and stall boot.
+                    let recv_timeout = duration_till_timeout.min(std::time::Duration::from_secs(1));
+                    stream.set_read_timeout(Some(recv_timeout)).unwrap();
                 }
                 let bytes = match stream.recv(&mut buf[..]) {
                     Ok(bytes) => {

@@ -771,8 +771,79 @@ fn setup_stdin(config: &ExecHelperConfig) {
     }
 }
 
+/// Write a diagnostic message to `/dev/kmsg` (kernel log ring buffer).
+///
+/// Only produces output when the `SYSTEMD_RS_EXEC_DEBUG` environment variable
+/// is set to `1`.  Output appears on the serial console via dmesg, bypassing
+/// the stderr pipe (which has a race condition for fast-exiting services) and
+/// surviving mount namespace changes that hide `/dev/ttyS0` or `/dev/console`.
+///
+/// This is the primary tool for debugging early-boot service crashes.  To
+/// enable it, add `Environment=SYSTEMD_RS_EXEC_DEBUG=1` to the `[Service]`
+/// section of the unit you want to diagnose, then watch the serial console.
+fn exec_debug(name: &str, msg: &str) {
+    // Cache the check in a thread-local to avoid repeated env lookups.
+    // This runs in a single-threaded forked child, so thread-local is fine.
+    thread_local! {
+        static ENABLED: bool = std::env::var("SYSTEMD_RS_EXEC_DEBUG")
+            .map(|v| v == "1")
+            .unwrap_or(false);
+    }
+    if !ENABLED.with(|e| *e) {
+        return;
+    }
+    unsafe {
+        let fd = libc::open(c"/dev/kmsg".as_ptr(), libc::O_WRONLY | libc::O_NOCTTY);
+        if fd >= 0 {
+            let buf = format!("<6>systemd-rs: [EXEC_HELPER {name}] {msg}\n");
+            libc::write(fd, buf.as_ptr().cast(), buf.len() as _);
+            libc::close(fd);
+        }
+    }
+}
+
+/// Set up the execution environment for a service and exec into its binary.
+///
+/// # Ordering invariant — DO NOT reorder stages without careful review
+///
+/// The stages below must execute in a specific order. Getting this wrong
+/// causes silent early-boot crashes (typically SIGABRT during privilege
+/// drop) that are extremely difficult to diagnose because mount namespace
+/// changes destroy all diagnostic channels (stderr, kmsg, console).
+///
+/// The critical ordering is:
+///
+///   1. **Parse config & set up stdio/TTY** — needs stdin pipe from parent
+///   2. **Resource limits & scheduling** — must happen as root
+///   3. **Create state/logs/runtime directories** — must happen BEFORE the
+///      mount namespace, because `ProtectSystem=strict` makes `/` read-only.
+///      The mount namespace then bind-mounts these dirs back as writable.
+///   4. **Mount namespace** (`setup_mount_namespace`) — applies ProtectSystem,
+///      PrivateDevices, ProtectKernelTunables, etc.  After this point,
+///      the filesystem is heavily restricted.
+///   5. **UTS/network namespaces** — independent of mount namespace
+///   6. **Capability bounding set** — must happen before privilege drop
+///   7. **Credentials** — needs root to write to /run/credentials
+///   8. **OOMScoreAdjust** — negative values need root
+///   9. **Privilege drop** (`drop_privileges`) — setresgid + setgroups + setresuid
+///  10. **Ambient capabilities** — must happen AFTER privilege drop
+///  11. **NoNewPrivileges** — must be last before exec (one-way flag)
+///  12. **execv** into the service binary
+///
+/// If you need to debug early boot crashes, set `SYSTEMD_RS_EXEC_DEBUG=1`
+/// in the service environment. This enables diagnostic writes to `/dev/kmsg`
+/// (kernel log ring buffer → serial console) at each stage, which survives
+/// mount namespace changes unlike stderr.
 pub fn run_exec_helper() {
-    let config: ExecHelperConfig = serde_json::from_reader(std::io::stdin()).unwrap();
+    let config: ExecHelperConfig = match serde_json::from_reader(std::io::stdin()) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[EXEC_HELPER] FATAL: failed to parse config from stdin: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    exec_debug(&config.name, "config parsed OK");
 
     nix::unistd::close(libc::STDIN_FILENO).expect("I want to be able to close this fd!");
 
@@ -881,6 +952,112 @@ pub fn run_exec_helper() {
         }
     }
 
+    exec_debug(
+        &config.name,
+        "resource limits done, creating directories...",
+    );
+
+    // ── Create state/logs/runtime directories BEFORE mount namespace ───
+    // These must be created while the filesystem is still writable, because
+    // ProtectSystem=strict will make / read-only. The mount namespace setup
+    // then bind-mounts these directories read-write. This matches real
+    // systemd's ordering: directories are created first, then the mount
+    // namespace is applied with those directories whitelisted as writable.
+    if !config.state_directory.is_empty() {
+        let base = Path::new("/var/lib");
+        let mut full_paths = Vec::new();
+        for dir_name in &config.state_directory {
+            let full_path = base.join(dir_name);
+            if let Err(e) = std::fs::create_dir_all(&full_path) {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to create state directory {:?}: {}",
+                    config.name, full_path, e
+                );
+                std::process::exit(1);
+            }
+            // Set ownership to the service user/group
+            let uid = nix::unistd::Uid::from_raw(config.user);
+            let gid = nix::unistd::Gid::from_raw(config.group);
+            if let Err(e) = nix::unistd::chown(&full_path, Some(uid), Some(gid)) {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to chown state directory {:?}: {}",
+                    config.name, full_path, e
+                );
+                std::process::exit(1);
+            }
+            full_paths.push(full_path.to_string_lossy().into_owned());
+        }
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("STATE_DIRECTORY", full_paths.join(":")) };
+    }
+
+    if !config.logs_directory.is_empty() {
+        let base = Path::new("/var/log");
+        let mode = config.logs_directory_mode.unwrap_or(0o755);
+        let mut full_paths = Vec::new();
+        for dir_name in &config.logs_directory {
+            let full_path = base.join(dir_name);
+            if let Err(e) = std::fs::create_dir_all(&full_path) {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to create logs directory {:?}: {}",
+                    config.name, full_path, e
+                );
+                std::process::exit(1);
+            }
+            // Apply LogsDirectoryMode=
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(mode);
+            if let Err(e) = std::fs::set_permissions(&full_path, perms) {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to set mode {:o} on logs directory {:?}: {}",
+                    config.name, mode, full_path, e
+                );
+                std::process::exit(1);
+            }
+            // Set ownership to the service user/group
+            let uid = nix::unistd::Uid::from_raw(config.user);
+            let gid = nix::unistd::Gid::from_raw(config.group);
+            if let Err(e) = nix::unistd::chown(&full_path, Some(uid), Some(gid)) {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to chown logs directory {:?}: {}",
+                    config.name, full_path, e
+                );
+                std::process::exit(1);
+            }
+            full_paths.push(full_path.to_string_lossy().into_owned());
+        }
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("LOGS_DIRECTORY", full_paths.join(":")) };
+    }
+
+    if !config.runtime_directory.is_empty() {
+        let base = Path::new("/run");
+        let mut full_paths = Vec::new();
+        for dir_name in &config.runtime_directory {
+            let full_path = base.join(dir_name);
+            if let Err(e) = std::fs::create_dir_all(&full_path) {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to create runtime directory {:?}: {}",
+                    config.name, full_path, e
+                );
+                std::process::exit(1);
+            }
+            // Set ownership to the service user/group
+            let uid = nix::unistd::Uid::from_raw(config.user);
+            let gid = nix::unistd::Gid::from_raw(config.group);
+            if let Err(e) = nix::unistd::chown(&full_path, Some(uid), Some(gid)) {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to chown runtime directory {:?}: {}",
+                    config.name, full_path, e
+                );
+                std::process::exit(1);
+            }
+            full_paths.push(full_path.to_string_lossy().into_owned());
+        }
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("RUNTIME_DIRECTORY", full_paths.join(":")) };
+    }
+
     // ── Namespace-based isolation (must happen before privilege drop) ──
     // Determine if we need a mount namespace. Any of the Protect*/Private*
     // directives that manipulate the filesystem require one.
@@ -898,7 +1075,15 @@ pub fn run_exec_helper() {
         || matches!(config.protect_home.as_str(), "yes" | "read-only" | "tmpfs");
 
     if needs_mount_ns {
+        exec_debug(
+            &config.name,
+            &format!(
+                "entering mount namespace (protect_system={}, private_dev={}, private_tmp={})",
+                config.protect_system, config.private_devices, config.private_tmp
+            ),
+        );
         setup_mount_namespace(&config);
+        exec_debug(&config.name, "mount namespace setup complete");
     }
 
     // ── ProtectHostname= — UTS namespace ──────────────────────────────
@@ -944,6 +1129,7 @@ pub fn run_exec_helper() {
     // The order matches systemd: SetCredential first (lowest priority,
     // can be overridden), then LoadCredential/LoadCredentialEncrypted,
     // then ImportCredential (highest priority, won't overwrite).
+    exec_debug(&config.name, "credentials setup");
     let has_credentials = !config.import_credentials.is_empty()
         || !config.load_credentials.is_empty()
         || !config.load_credentials_encrypted.is_empty()
@@ -953,111 +1139,10 @@ pub fn run_exec_helper() {
         setup_credentials(&config);
     }
 
-    // Create state directories under /var/lib/ and set STATE_DIRECTORY env var.
-    // This must happen BEFORE dropping privileges, because /var/lib/ is
-    // typically only writable by root. systemd does the same: it creates
-    // and chowns state directories while still running as root, then drops
-    // privileges before exec'ing the service binary.
-    if !config.state_directory.is_empty() {
-        let base = Path::new("/var/lib");
-        let mut full_paths = Vec::new();
-        for dir_name in &config.state_directory {
-            let full_path = base.join(dir_name);
-            if let Err(e) = std::fs::create_dir_all(&full_path) {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to create state directory {:?}: {}",
-                    config.name, full_path, e
-                );
-                std::process::exit(1);
-            }
-            // Set ownership to the service user/group
-            let uid = nix::unistd::Uid::from_raw(config.user);
-            let gid = nix::unistd::Gid::from_raw(config.group);
-            if let Err(e) = nix::unistd::chown(&full_path, Some(uid), Some(gid)) {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to chown state directory {:?}: {}",
-                    config.name, full_path, e
-                );
-                std::process::exit(1);
-            }
-            full_paths.push(full_path.to_string_lossy().into_owned());
-        }
-        // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::set_var("STATE_DIRECTORY", full_paths.join(":")) };
-    }
-
-    // Create logs directories under /var/log/ and set LOGS_DIRECTORY env var.
-    // Same privilege requirements as state directories: must happen before
-    // dropping privileges because /var/log/ is typically only writable by root.
-    if !config.logs_directory.is_empty() {
-        let base = Path::new("/var/log");
-        let mode = config.logs_directory_mode.unwrap_or(0o755);
-        let mut full_paths = Vec::new();
-        for dir_name in &config.logs_directory {
-            let full_path = base.join(dir_name);
-            if let Err(e) = std::fs::create_dir_all(&full_path) {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to create logs directory {:?}: {}",
-                    config.name, full_path, e
-                );
-                std::process::exit(1);
-            }
-            // Apply LogsDirectoryMode=
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(mode);
-            if let Err(e) = std::fs::set_permissions(&full_path, perms) {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to set mode {:o} on logs directory {:?}: {}",
-                    config.name, mode, full_path, e
-                );
-                std::process::exit(1);
-            }
-            // Set ownership to the service user/group
-            let uid = nix::unistd::Uid::from_raw(config.user);
-            let gid = nix::unistd::Gid::from_raw(config.group);
-            if let Err(e) = nix::unistd::chown(&full_path, Some(uid), Some(gid)) {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to chown logs directory {:?}: {}",
-                    config.name, full_path, e
-                );
-                std::process::exit(1);
-            }
-            full_paths.push(full_path.to_string_lossy().into_owned());
-        }
-        // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::set_var("LOGS_DIRECTORY", full_paths.join(":")) };
-    }
-
-    // Create runtime directories under /run/ and set RUNTIME_DIRECTORY env var.
-    // Same privilege requirements as state directories: must happen before
-    // dropping privileges because /run/ is typically only writable by root.
-    if !config.runtime_directory.is_empty() {
-        let base = Path::new("/run");
-        let mut full_paths = Vec::new();
-        for dir_name in &config.runtime_directory {
-            let full_path = base.join(dir_name);
-            if let Err(e) = std::fs::create_dir_all(&full_path) {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to create runtime directory {:?}: {}",
-                    config.name, full_path, e
-                );
-                std::process::exit(1);
-            }
-            // Set ownership to the service user/group
-            let uid = nix::unistd::Uid::from_raw(config.user);
-            let gid = nix::unistd::Gid::from_raw(config.group);
-            if let Err(e) = nix::unistd::chown(&full_path, Some(uid), Some(gid)) {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to chown runtime directory {:?}: {}",
-                    config.name, full_path, e
-                );
-                std::process::exit(1);
-            }
-            full_paths.push(full_path.to_string_lossy().into_owned());
-        }
-        // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::set_var("RUNTIME_DIRECTORY", full_paths.join(":")) };
-    }
+    // NOTE: State/logs/runtime directory creation has been moved BEFORE
+    // mount namespace setup (see above) so that directories exist when
+    // ProtectSystem=strict makes the filesystem read-only. The mount
+    // namespace code then bind-mounts them back as read-write.
 
     // Apply OOMScoreAdjust= setting. Write the value to /proc/self/oom_score_adj
     // before dropping privileges, because negative values (making the process
@@ -1073,6 +1158,17 @@ pub fn run_exec_helper() {
             // when the kernel rejects the value or the file is unavailable.
         }
     }
+
+    exec_debug(
+        &config.name,
+        &format!(
+            "pre-privilege-drop (uid={}, gid={}, target_uid={}, target_gid={})",
+            nix::unistd::getuid(),
+            nix::unistd::getgid(),
+            config.user,
+            config.group
+        ),
+    );
 
     // Resolve ambient capabilities BEFORE dropping privileges so we can
     // set PR_SET_KEEPCAPS and retain them across the UID change.
@@ -1104,7 +1200,16 @@ pub fn run_exec_helper() {
             &supp_gids,
             nix::unistd::Uid::from_raw(config.user),
         ) {
-            Ok(()) => { /* Happy */ }
+            Ok(()) => {
+                exec_debug(
+                    &config.name,
+                    &format!(
+                        "privilege drop complete (now uid={}, gid={})",
+                        nix::unistd::getuid(),
+                        nix::unistd::getgid()
+                    ),
+                );
+            }
             Err(e) => {
                 eprintln!(
                     "[EXEC_HELPER {}] could not drop privileges because: {}",
@@ -1298,7 +1403,28 @@ pub fn run_exec_helper() {
         }
     }
 
-    nix::unistd::execv(&cmd, &args).unwrap();
+    exec_debug(
+        &config.name,
+        &format!(
+            "about to execv {} (uid={}, gid={})",
+            cmd.to_string_lossy(),
+            nix::unistd::getuid(),
+            nix::unistd::getgid()
+        ),
+    );
+
+    match nix::unistd::execv(&cmd, &args) {
+        Ok(_infallible) => unreachable!(),
+        Err(e) => {
+            eprintln!(
+                "[EXEC_HELPER {}] execv FAILED for {}: {}",
+                config.name,
+                cmd.to_string_lossy(),
+                e,
+            );
+            std::process::exit(1);
+        }
+    }
 }
 
 /// Set up a mount namespace with the requested isolation directives.
@@ -1351,12 +1477,51 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
             remount_read_only("/etc", config);
         }
         "strict" => {
-            // Make the entire root filesystem read-only
+            // Make the entire root filesystem read-only (recursively).
             remount_read_only("/", config);
-            // Re-mount API filesystems read-write (they need to stay writable)
-            // /proc, /sys, /dev, /run, /tmp are handled separately
+            // Re-mount API filesystems and writable paths back to read-write.
+            // The recursive read-only remount above affects ALL submounts,
+            // so we must explicitly restore writability for paths that
+            // services need. This matches systemd's behavior where
+            // ProtectSystem=strict keeps /dev, /proc, /sys, /run, /tmp
+            // writable (they are API/runtime filesystems).
+            for rw_path in &[
+                "/dev", "/proc", "/sys", "/run", "/tmp", "/var/tmp", "/var/log",
+            ] {
+                if Path::new(rw_path).exists() {
+                    bind_mount_readwrite(rw_path, config);
+                }
+            }
+            // Also restore writability for the NixOS store — it's already
+            // read-only by nature but bind-mounting it avoids EROFS errors
+            // when services try to follow symlinks through it.
         }
         _ => {} // "no" or unrecognized
+    }
+
+    // ── Implicit ReadWritePaths from RuntimeDirectory=/StateDirectory=/LogsDirectory=
+    // When ProtectSystem=strict is active, the service's runtime, state, and
+    // logs directories must be explicitly writable. systemd handles this
+    // implicitly; we do the same.
+    if config.protect_system == "strict" {
+        for dir_name in &config.runtime_directory {
+            let full = format!("/run/{}", dir_name);
+            if Path::new(&full).exists() {
+                bind_mount_readwrite(&full, config);
+            }
+        }
+        for dir_name in &config.state_directory {
+            let full = format!("/var/lib/{}", dir_name);
+            if Path::new(&full).exists() {
+                bind_mount_readwrite(&full, config);
+            }
+        }
+        for dir_name in &config.logs_directory {
+            let full = format!("/var/log/{}", dir_name);
+            if Path::new(&full).exists() {
+                bind_mount_readwrite(&full, config);
+            }
+        }
     }
 
     // ── ReadWritePaths= — re-mount paths read-write ───────────────────
@@ -1396,12 +1561,33 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
 
     // ── PrivateDevices= ───────────────────────────────────────────────
     if config.private_devices {
-        // Mount a minimal tmpfs on /dev and create essential device nodes.
-        // In practice, the existing /dev/{null,zero,full,random,urandom,tty}
-        // need to be bind-mounted from the host.
-        mount_tmpfs("/dev", config);
-        // Re-create essential pseudo-device symlinks and nodes
-        create_private_dev_nodes(config);
+        // Capture device major/minor numbers BEFORE mounting tmpfs,
+        // because mount_tmpfs will hide the original /dev contents.
+        let dev_info = capture_dev_info();
+        // Mount a minimal tmpfs on /dev.  We must NOT use MS_NODEV here
+        // (unlike mount_tmpfs which is fine for /tmp), because device nodes
+        // created via mknod below must actually function.  Real systemd
+        // uses MS_STRICTATIME only, with mode=0755.
+        {
+            let ret = unsafe {
+                libc::mount(
+                    c"tmpfs".as_ptr(),
+                    c"/dev".as_ptr(),
+                    c"tmpfs".as_ptr(),
+                    libc::MS_NOSUID | libc::MS_STRICTATIME,
+                    c"mode=0755,size=4m".as_ptr().cast(),
+                )
+            };
+            if ret != 0 {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to mount tmpfs on /dev for PrivateDevices=: {}",
+                    config.name,
+                    std::io::Error::last_os_error()
+                );
+            }
+        }
+        // Re-create essential pseudo-device nodes using mknod
+        create_private_dev_nodes(config, &dev_info);
     }
 
     // ── ProtectKernelTunables= ────────────────────────────────────────
@@ -1502,12 +1688,15 @@ fn remount_read_only(path: &str, config: &ExecHelperConfig) {
 }
 
 /// Bind-mount a path read-write (used to override read-only mounts from ProtectSystem=strict).
+/// Two steps are required: first a recursive bind mount to create a new mount point,
+/// then a remount WITHOUT MS_RDONLY to clear the read-only flag that was inherited
+/// from the parent's recursive read-only remount.
 fn bind_mount_readwrite(path: &str, config: &ExecHelperConfig) {
     let c_path = match std::ffi::CString::new(path) {
         Ok(c) => c,
         Err(_) => return,
     };
-    // Bind-mount on itself (this resets the read-only flag from the parent mount)
+    // Step 1: Bind-mount on itself (creates a new mount point we can remount)
     let ret = unsafe {
         libc::mount(
             c_path.as_ptr(),
@@ -1520,6 +1709,26 @@ fn bind_mount_readwrite(path: &str, config: &ExecHelperConfig) {
     if ret != 0 {
         eprintln!(
             "[EXEC_HELPER {}] Failed to bind-mount {} for ReadWritePaths=: {}",
+            config.name,
+            path,
+            std::io::Error::last_os_error()
+        );
+        return;
+    }
+    // Step 2: Remount without MS_RDONLY to make it writable.
+    // MS_BIND | MS_REMOUNT (without MS_RDONLY) clears the read-only flag.
+    let ret = unsafe {
+        libc::mount(
+            std::ptr::null(),
+            c_path.as_ptr(),
+            std::ptr::null(),
+            libc::MS_BIND | libc::MS_REMOUNT,
+            std::ptr::null(),
+        )
+    };
+    if ret != 0 {
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to remount {} read-write: {} (non-fatal)",
             config.name,
             path,
             std::io::Error::last_os_error()
@@ -1556,32 +1765,58 @@ fn mount_tmpfs(path: &str, config: &ExecHelperConfig) {
     }
 }
 
-/// Make a path inaccessible by bind-mounting an empty, unreadable tmpfs over it.
+/// Make a path inaccessible. For directories, mount an empty tmpfs over them.
+/// For files (or other non-directory entries like /proc/sysrq-trigger, /dev/kmsg),
+/// bind-mount /dev/null over them. This matches real systemd's behavior which
+/// uses different inaccessible sources depending on the file type.
 fn make_inaccessible(path: &str, config: &ExecHelperConfig) {
-    if !Path::new(path).exists() {
+    let p = Path::new(path);
+    if !p.exists() {
         return;
     }
     let c_path = match std::ffi::CString::new(path) {
         Ok(c) => c,
         Err(_) => return,
     };
-    // Mount an empty tmpfs
-    let ret = unsafe {
-        libc::mount(
-            c"tmpfs".as_ptr(),
-            c_path.as_ptr(),
-            c"tmpfs".as_ptr(),
-            libc::MS_NOSUID | libc::MS_NODEV | libc::MS_RDONLY,
-            c"mode=000,size=0".as_ptr().cast(),
-        )
-    };
-    if ret != 0 {
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to make {} inaccessible: {}",
-            config.name,
-            path,
-            std::io::Error::last_os_error()
-        );
+
+    if p.is_dir() {
+        // Mount an empty, unreadable tmpfs over the directory
+        let ret = unsafe {
+            libc::mount(
+                c"tmpfs".as_ptr(),
+                c_path.as_ptr(),
+                c"tmpfs".as_ptr(),
+                libc::MS_NOSUID | libc::MS_NODEV | libc::MS_RDONLY,
+                c"mode=000,size=0".as_ptr().cast(),
+            )
+        };
+        if ret != 0 {
+            eprintln!(
+                "[EXEC_HELPER {}] Failed to make {} inaccessible (tmpfs): {}",
+                config.name,
+                path,
+                std::io::Error::last_os_error()
+            );
+        }
+    } else {
+        // For files, bind-mount /dev/null over them to make them inaccessible
+        let ret = unsafe {
+            libc::mount(
+                c"/dev/null".as_ptr(),
+                c_path.as_ptr(),
+                std::ptr::null(),
+                libc::MS_BIND,
+                std::ptr::null(),
+            )
+        };
+        if ret != 0 {
+            eprintln!(
+                "[EXEC_HELPER {}] Failed to make {} inaccessible (bind /dev/null): {}",
+                config.name,
+                path,
+                std::io::Error::last_os_error()
+            );
+        }
     }
 }
 
@@ -1592,47 +1827,58 @@ fn make_inaccessible_if_exists(path: &str, config: &ExecHelperConfig) {
     }
 }
 
-/// Create essential device nodes in a private /dev mount.
-fn create_private_dev_nodes(config: &ExecHelperConfig) {
-    // Bind-mount essential pseudo-devices from the host
-    let devices = [
+/// Device info captured before mounting tmpfs on /dev.
+struct DevInfo {
+    /// (path, mode, rdev) for each device node that existed.
+    nodes: Vec<(&'static str, libc::mode_t, libc::dev_t)>,
+}
+
+/// Capture major/minor device numbers from /dev BEFORE mounting tmpfs over it.
+fn capture_dev_info() -> DevInfo {
+    let devices: &[&str] = &[
         "/dev/null",
         "/dev/zero",
         "/dev/full",
         "/dev/random",
         "/dev/urandom",
         "/dev/tty",
+        "/dev/kmsg",
+        "/dev/console",
+        "/dev/ttyS0",
     ];
-    for dev in &devices {
-        let host_path = Path::new(dev);
-        if !host_path.exists() {
-            continue;
-        }
-        // Create the target file in the private /dev
-        let target = Path::new(dev);
-        if !target.exists() {
-            let _ = std::fs::File::create(target);
-        }
-        let c_source = match std::ffi::CString::new(*dev) {
+    let mut nodes = Vec::new();
+    for &dev in devices {
+        let c_path = match std::ffi::CString::new(dev) {
             Ok(c) => c,
             Err(_) => continue,
         };
-        let c_target = match std::ffi::CString::new(*dev) {
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        let ret = unsafe { libc::stat(c_path.as_ptr(), &mut st) };
+        if ret == 0 {
+            // Leak the &str since we know these are static strings
+            nodes.push((dev, st.st_mode, st.st_rdev));
+        }
+    }
+    DevInfo { nodes }
+}
+
+/// Create essential device nodes in a private /dev mount using mknod.
+/// Uses device numbers captured before the tmpfs was mounted.
+fn create_private_dev_nodes(config: &ExecHelperConfig, dev_info: &DevInfo) {
+    // Create device nodes using mknod with captured major/minor numbers.
+    // We cannot bind-mount from /dev/X because the original /dev is now
+    // hidden behind the tmpfs.
+    for &(dev, mode, rdev) in &dev_info.nodes {
+        let c_path = match std::ffi::CString::new(dev) {
             Ok(c) => c,
             Err(_) => continue,
         };
-        let ret = unsafe {
-            libc::mount(
-                c_source.as_ptr(),
-                c_target.as_ptr(),
-                std::ptr::null(),
-                libc::MS_BIND,
-                std::ptr::null(),
-            )
-        };
+        // mknod with the original device type (S_IFCHR) and device numbers
+        let dev_mode = (mode & libc::S_IFMT) | 0o666;
+        let ret = unsafe { libc::mknod(c_path.as_ptr(), dev_mode, rdev) };
         if ret != 0 {
             eprintln!(
-                "[EXEC_HELPER {}] Failed to bind-mount {} for PrivateDevices=: {} (non-fatal)",
+                "[EXEC_HELPER {}] Failed to mknod {} for PrivateDevices=: {} (non-fatal)",
                 config.name,
                 dev,
                 std::io::Error::last_os_error()

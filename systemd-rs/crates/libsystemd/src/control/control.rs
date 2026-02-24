@@ -2549,8 +2549,8 @@ mod tests {
     #[test]
     fn test_dep_tree_status_markers_in_output() {
         let mut target = make_test_unit("test.target");
-        let mut active_svc = make_test_unit("active.service");
-        let mut failed_svc = make_test_unit("failed.service");
+        let active_svc = make_test_unit("active.service");
+        let failed_svc = make_test_unit("failed.service");
         let inactive_svc = make_test_unit("inactive.service");
 
         *active_svc.common.status.write().unwrap() = UnitStatus::Started(StatusStarted::Running);
