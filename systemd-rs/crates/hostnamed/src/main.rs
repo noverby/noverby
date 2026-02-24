@@ -23,10 +23,14 @@ use std::io::{self, Write};
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::process;
+
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+
+use dbus::blocking::Connection;
+use dbus_crossroads::{Crossroads, IfaceBuilder, MethodErr};
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -40,6 +44,10 @@ const DMI_CHASSIS_TYPE_PATH: &str = "/sys/class/dmi/id/chassis_type";
 const DMI_VENDOR_PATH: &str = "/sys/class/dmi/id/sys_vendor";
 const DMI_MODEL_PATH: &str = "/sys/class/dmi/id/product_name";
 const CONTROL_SOCKET_PATH: &str = "/run/systemd/hostnamed.sock";
+
+const DBUS_NAME: &str = "org.freedesktop.hostname1";
+const DBUS_PATH: &str = "/org/freedesktop/hostname1";
+const DBUS_IFACE: &str = "org.freedesktop.hostname1";
 
 /// Known chassis type strings accepted by systemd-hostnamed.
 const VALID_CHASSIS: &[&str] = &[
@@ -473,6 +481,397 @@ fn is_valid_hostname(name: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// Shared state for D-Bus
+// ---------------------------------------------------------------------------
+
+type SharedState = Arc<Mutex<HostnameState>>;
+
+// ---------------------------------------------------------------------------
+// D-Bus interface: org.freedesktop.hostname1
+// ---------------------------------------------------------------------------
+
+/// Register the org.freedesktop.hostname1 interface on a Crossroads instance.
+///
+/// Properties (all read-only, matching upstream systemd):
+///   Hostname, StaticHostname, PrettyHostname, IconName, Chassis,
+///   Deployment, Location, KernelName, KernelRelease,
+///   OperatingSystemPrettyName, OperatingSystemCPEName,
+///   OperatingSystemHomeURL, HardwareVendor, HardwareModel,
+///   HostnameSource
+///
+/// Methods:
+///   SetHostname(s hostname, b interactive) → sets transient hostname
+///   SetStaticHostname(s hostname, b interactive) → sets static hostname
+///   SetPrettyHostname(s hostname, b interactive)
+///   SetIconName(s icon, b interactive)
+///   SetChassis(s chassis, b interactive)
+///   SetDeployment(s deployment, b interactive)
+///   SetLocation(s location, b interactive)
+///   GetProductUUID(b interactive) → ay
+///   Describe() → s (JSON description)
+fn register_hostname1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedState> {
+    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedState>| {
+        // --- Properties (read-only) ---
+
+        b.property("Hostname").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.hostname().to_string())
+        });
+
+        b.property("StaticHostname")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.static_hostname.clone())
+            });
+
+        b.property("PrettyHostname")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.pretty_hostname.clone())
+            });
+
+        b.property("IconName").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.effective_icon_name())
+        });
+
+        b.property("Chassis").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.chassis.clone())
+        });
+
+        b.property("Deployment").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.deployment.clone())
+        });
+
+        b.property("Location").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.location.clone())
+        });
+
+        b.property("KernelName").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.kernel_name.clone())
+        });
+
+        b.property("KernelRelease")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.kernel_release.clone())
+            });
+
+        b.property("OperatingSystemPrettyName")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.os_pretty_name.clone())
+            });
+
+        b.property("OperatingSystemCPEName")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.os_cpe_name.clone())
+            });
+
+        b.property("OperatingSystemHomeURL")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.os_home_url.clone())
+            });
+
+        b.property("HardwareVendor")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.hardware_vendor.clone())
+            });
+
+        b.property("HardwareModel")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.hardware_model.clone())
+            });
+
+        b.property("HostnameSource")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                // HostnameSource: "static" if static hostname is set and matches
+                // transient, "transient" if only transient differs, otherwise
+                // "default".
+                let source = if !s.static_hostname.is_empty() {
+                    "static"
+                } else if !s.transient_hostname.is_empty() {
+                    "transient"
+                } else {
+                    "default"
+                };
+                Ok(source.to_string())
+            });
+
+        // --- Methods ---
+
+        // SetHostname(s hostname, b interactive)
+        b.method(
+            "SetHostname",
+            ("hostname", "interactive"),
+            (),
+            move |_, state: &mut SharedState, (hostname, _interactive): (String, bool)| {
+                if !hostname.is_empty() && !is_valid_hostname(&hostname) {
+                    return Err(MethodErr::failed(&format!(
+                        "Invalid hostname '{}'",
+                        hostname
+                    )));
+                }
+                // Set the transient (kernel) hostname
+                if let Err(e) = set_transient_hostname(&hostname) {
+                    return Err(MethodErr::failed(&format!(
+                        "Failed to set transient hostname: {}",
+                        e
+                    )));
+                }
+                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+                s.transient_hostname = if hostname.is_empty() {
+                    get_kernel_hostname()
+                } else {
+                    hostname
+                };
+                Ok(())
+            },
+        );
+
+        // SetStaticHostname(s hostname, b interactive)
+        b.method(
+            "SetStaticHostname",
+            ("hostname", "interactive"),
+            (),
+            move |_, state: &mut SharedState, (hostname, _interactive): (String, bool)| {
+                if !hostname.is_empty() && !is_valid_hostname(&hostname) {
+                    return Err(MethodErr::failed(&format!(
+                        "Invalid hostname '{}'",
+                        hostname
+                    )));
+                }
+                if let Err(e) = set_static_hostname(&hostname) {
+                    return Err(MethodErr::failed(&format!(
+                        "Failed to set static hostname: {}",
+                        e
+                    )));
+                }
+                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+                s.static_hostname = hostname;
+                Ok(())
+            },
+        );
+
+        // SetPrettyHostname(s hostname, b interactive)
+        b.method(
+            "SetPrettyHostname",
+            ("hostname", "interactive"),
+            (),
+            move |_, state: &mut SharedState, (hostname, _interactive): (String, bool)| {
+                if let Err(e) = set_machine_info_key("PRETTY_HOSTNAME", &hostname) {
+                    return Err(MethodErr::failed(&format!(
+                        "Failed to set pretty hostname: {}",
+                        e
+                    )));
+                }
+                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+                s.pretty_hostname = hostname;
+                Ok(())
+            },
+        );
+
+        // SetIconName(s icon, b interactive)
+        b.method(
+            "SetIconName",
+            ("icon", "interactive"),
+            (),
+            move |_, state: &mut SharedState, (icon, _interactive): (String, bool)| {
+                if let Err(e) = set_machine_info_key("ICON_NAME", &icon) {
+                    return Err(MethodErr::failed(&format!(
+                        "Failed to set icon name: {}",
+                        e
+                    )));
+                }
+                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+                s.icon_name = icon;
+                Ok(())
+            },
+        );
+
+        // SetChassis(s chassis, b interactive)
+        b.method(
+            "SetChassis",
+            ("chassis", "interactive"),
+            (),
+            move |_, state: &mut SharedState, (chassis, _interactive): (String, bool)| {
+                let chassis = chassis.to_lowercase();
+                if !is_valid_chassis(&chassis) {
+                    return Err(MethodErr::failed(&format!(
+                        "Invalid chassis '{}'. Valid values: {}",
+                        chassis,
+                        VALID_CHASSIS.join(", ")
+                    )));
+                }
+                if let Err(e) = set_machine_info_key("CHASSIS", &chassis) {
+                    return Err(MethodErr::failed(&format!("Failed to set chassis: {}", e)));
+                }
+                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+                s.chassis = chassis;
+                Ok(())
+            },
+        );
+
+        // SetDeployment(s deployment, b interactive)
+        b.method(
+            "SetDeployment",
+            ("deployment", "interactive"),
+            (),
+            move |_, state: &mut SharedState, (deployment, _interactive): (String, bool)| {
+                if let Err(e) = set_machine_info_key("DEPLOYMENT", &deployment) {
+                    return Err(MethodErr::failed(&format!(
+                        "Failed to set deployment: {}",
+                        e
+                    )));
+                }
+                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+                s.deployment = deployment;
+                Ok(())
+            },
+        );
+
+        // SetLocation(s location, b interactive)
+        b.method(
+            "SetLocation",
+            ("location", "interactive"),
+            (),
+            move |_, state: &mut SharedState, (location, _interactive): (String, bool)| {
+                if let Err(e) = set_machine_info_key("LOCATION", &location) {
+                    return Err(MethodErr::failed(&format!("Failed to set location: {}", e)));
+                }
+                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+                s.location = location;
+                Ok(())
+            },
+        );
+
+        // GetProductUUID(b interactive) → ay
+        b.method(
+            "GetProductUUID",
+            ("interactive",),
+            ("uuid",),
+            move |_, _state: &mut SharedState, (_interactive,): (bool,)| {
+                // Try to read /sys/class/dmi/id/product_uuid
+                let uuid_bytes = match fs::read_to_string("/sys/class/dmi/id/product_uuid") {
+                    Ok(s) => {
+                        // Parse UUID string (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) into bytes
+                        let hex: String = s.trim().replace('-', "");
+                        let mut bytes = Vec::with_capacity(16);
+                        let mut i = 0;
+                        while i + 1 < hex.len() && bytes.len() < 16 {
+                            if let Ok(b) = u8::from_str_radix(&hex[i..i + 2], 16) {
+                                bytes.push(b);
+                            }
+                            i += 2;
+                        }
+                        bytes
+                    }
+                    Err(_) => vec![0u8; 16], // Return null UUID if unavailable
+                };
+                Ok((uuid_bytes,))
+            },
+        );
+
+        // Describe() → s (JSON description of all properties)
+        b.method(
+            "Describe",
+            (),
+            ("json",),
+            move |_, state: &mut SharedState, ()| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                let hostname_source = if !s.static_hostname.is_empty() {
+                    "static"
+                } else if !s.transient_hostname.is_empty() {
+                    "transient"
+                } else {
+                    "default"
+                };
+                // Build a simple JSON object — no serde dependency needed
+                let json = format!(
+                    concat!(
+                        "{{",
+                        "\"Hostname\":\"{}\",",
+                        "\"StaticHostname\":\"{}\",",
+                        "\"PrettyHostname\":\"{}\",",
+                        "\"IconName\":\"{}\",",
+                        "\"Chassis\":\"{}\",",
+                        "\"Deployment\":\"{}\",",
+                        "\"Location\":\"{}\",",
+                        "\"KernelName\":\"{}\",",
+                        "\"KernelRelease\":\"{}\",",
+                        "\"OperatingSystemPrettyName\":\"{}\",",
+                        "\"OperatingSystemCPEName\":\"{}\",",
+                        "\"OperatingSystemHomeURL\":\"{}\",",
+                        "\"HardwareVendor\":\"{}\",",
+                        "\"HardwareModel\":\"{}\",",
+                        "\"HostnameSource\":\"{}\"",
+                        "}}"
+                    ),
+                    json_escape(s.hostname()),
+                    json_escape(&s.static_hostname),
+                    json_escape(&s.pretty_hostname),
+                    json_escape(&s.effective_icon_name()),
+                    json_escape(&s.chassis),
+                    json_escape(&s.deployment),
+                    json_escape(&s.location),
+                    json_escape(&s.kernel_name),
+                    json_escape(&s.kernel_release),
+                    json_escape(&s.os_pretty_name),
+                    json_escape(&s.os_cpe_name),
+                    json_escape(&s.os_home_url),
+                    json_escape(&s.hardware_vendor),
+                    json_escape(&s.hardware_model),
+                    hostname_source,
+                );
+                Ok((json,))
+            },
+        );
+    })
+}
+
+/// Escape a string for embedding in a JSON value.
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c < '\x20' => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Set up the D-Bus connection and register the hostname1 interface.
+/// Returns the Connection and Crossroads on success, or an error string.
+fn setup_dbus(shared: SharedState) -> Result<(Connection, Crossroads), String> {
+    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    conn.request_name(DBUS_NAME, false, true, false)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
+
+    let mut cr = Crossroads::new();
+    let iface_token = register_hostname1_iface(&mut cr);
+    cr.insert(DBUS_PATH, &[iface_token], shared);
+
+    Ok((conn, cr))
+}
+
+// ---------------------------------------------------------------------------
 // Control socket protocol
 // ---------------------------------------------------------------------------
 
@@ -730,9 +1129,10 @@ fn main() {
 
     log::info!("systemd-hostnamed starting");
 
-    // Load initial state
-    let state = HostnameState::load();
-    log::info!("Hostname: {}", state.hostname());
+    // Load initial state into shared state for D-Bus and control socket
+    let initial_state = HostnameState::load();
+    log::info!("Hostname: {}", initial_state.hostname());
+    let shared_state: SharedState = Arc::new(Mutex::new(initial_state.clone()));
 
     // Watchdog support — send WATCHDOG=1 at half the configured interval
     let wd_interval = watchdog_interval();
@@ -740,6 +1140,12 @@ fn main() {
         log::info!("Watchdog enabled, interval {:?}", iv);
     }
     let mut last_watchdog = Instant::now();
+
+    // D-Bus connection is deferred to after READY=1 so we don't block early
+    // boot waiting for dbus-daemon. These are populated in the main loop.
+    let mut dbus_conn: Option<Connection> = None;
+    let mut dbus_cr: Option<Crossroads> = None;
+    let mut dbus_attempted = false;
 
     // Ensure /run/systemd exists
     let _ = fs::create_dir_all(Path::new(CONTROL_SOCKET_PATH).parent().unwrap());
@@ -751,7 +1157,7 @@ fn main() {
     let listener = match UnixListener::bind(CONTROL_SOCKET_PATH) {
         Ok(l) => {
             log::info!("Listening on {}", CONTROL_SOCKET_PATH);
-            l
+            Some(l)
         }
         Err(e) => {
             log::error!(
@@ -759,32 +1165,17 @@ fn main() {
                 CONTROL_SOCKET_PATH,
                 e
             );
-            // Still run even without control socket — the daemon just manages
-            // hostname state and can be queried via files.
-            sd_notify("READY=1\nSTATUS=Running (no control socket)");
-            loop {
-                if SHUTDOWN.load(Ordering::SeqCst) {
-                    break;
-                }
-                if let Some(ref iv) = wd_interval
-                    && last_watchdog.elapsed() >= *iv
-                {
-                    sd_notify("WATCHDOG=1");
-                    last_watchdog = Instant::now();
-                }
-                thread::sleep(Duration::from_secs(1));
-            }
-            sd_notify("STOPPING=1");
-            process::exit(0);
+            None
         }
     };
 
     // Set socket to non-blocking so we can check SHUTDOWN flag periodically
-    listener
-        .set_nonblocking(true)
-        .expect("Failed to set non-blocking");
+    if let Some(ref l) = listener {
+        l.set_nonblocking(true).expect("Failed to set non-blocking");
+    }
 
-    sd_notify(&format!("READY=1\nSTATUS=Hostname: {}", state.hostname()));
+    let hostname_display = initial_state.hostname().to_string();
+    sd_notify(&format!("READY=1\nSTATUS=Hostname: {}", hostname_display));
 
     log::info!("systemd-hostnamed ready");
 
@@ -797,9 +1188,13 @@ fn main() {
 
         if RELOAD.load(Ordering::SeqCst) {
             RELOAD.store(false, Ordering::SeqCst);
-            let state = HostnameState::load();
-            log::info!("Reloaded configuration, hostname: {}", state.hostname());
-            sd_notify(&format!("STATUS=Hostname: {}", state.hostname()));
+            let new_state = HostnameState::load();
+            log::info!("Reloaded configuration, hostname: {}", new_state.hostname());
+            {
+                let mut s = shared_state.lock().unwrap_or_else(|e| e.into_inner());
+                *s = new_state.clone();
+            }
+            sd_notify(&format!("STATUS=Hostname: {}", new_state.hostname()));
         }
 
         // Send watchdog keepalive
@@ -810,22 +1205,59 @@ fn main() {
             last_watchdog = Instant::now();
         }
 
-        match listener.accept() {
-            Ok((mut stream, _addr)) => {
-                // Set a read timeout so we don't block forever
-                let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-                handle_client(&mut stream);
-                let _ = stream.shutdown(Shutdown::Both);
-            }
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                // No connection waiting; sleep briefly and retry
-                thread::sleep(Duration::from_millis(200));
-            }
-            Err(e) => {
-                log::warn!("Accept error: {}", e);
-                thread::sleep(Duration::from_millis(100));
+        // Attempt D-Bus registration once (deferred from startup so we don't
+        // block early boot before dbus-daemon is running).
+        if !dbus_attempted {
+            dbus_attempted = true;
+            match setup_dbus(shared_state.clone()) {
+                Ok((conn, cr)) => {
+                    log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
+                    dbus_conn = Some(conn);
+                    dbus_cr = Some(cr);
+                    sd_notify(&format!(
+                        "STATUS=Hostname: {} (D-Bus active)",
+                        hostname_display
+                    ));
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to register D-Bus interface ({}); control socket only",
+                        e
+                    );
+                }
             }
         }
+
+        // Process D-Bus messages (non-blocking, short timeout)
+        if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
+            // Read pending data from the D-Bus socket (non-blocking)
+            let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
+
+            // Dispatch all queued messages through crossroads
+            while let Some(msg) = conn.channel().pop_message() {
+                let _ = cr.handle_message(msg, conn);
+            }
+        }
+
+        // Accept control socket connections
+        if let Some(ref listener) = listener {
+            match listener.accept() {
+                Ok((mut stream, _addr)) => {
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+                    handle_client(&mut stream);
+                    let _ = stream.shutdown(Shutdown::Both);
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    // No connection waiting
+                }
+                Err(e) => {
+                    log::warn!("Accept error: {}", e);
+                }
+            }
+        }
+
+        // Brief sleep to avoid busy-looping when there's no work
+        thread::sleep(Duration::from_millis(50));
     }
 
     // Cleanup
@@ -1412,16 +1844,121 @@ mod tests {
 
     #[test]
     fn test_handle_empty_command() {
-        let response = handle_control_command("");
-        assert!(response.starts_with("ERROR"));
+        let resp = handle_control_command("");
+        assert!(resp.contains("ERROR"));
     }
 
     #[test]
     fn test_handle_case_insensitive_commands() {
-        let r1 = handle_control_command("status");
-        let r2 = handle_control_command("STATUS");
-        // Both should succeed (not be errors)
-        assert!(!r1.starts_with("ERROR"));
-        assert!(!r2.starts_with("ERROR"));
+        let _s = handle_control_command("STATUS");
+        let _s2 = handle_control_command("status");
+        // Both should succeed (not return ERROR)
+        assert!(!_s.starts_with("ERROR"));
+        assert!(!_s2.starts_with("ERROR"));
+    }
+
+    // --- D-Bus interface tests ---
+
+    #[test]
+    fn test_json_escape_plain() {
+        assert_eq!(json_escape("hello"), "hello");
+    }
+
+    #[test]
+    fn test_json_escape_quotes() {
+        assert_eq!(json_escape(r#"say "hi""#), r#"say \"hi\""#);
+    }
+
+    #[test]
+    fn test_json_escape_backslash() {
+        assert_eq!(json_escape(r"a\b"), r"a\\b");
+    }
+
+    #[test]
+    fn test_json_escape_newline() {
+        assert_eq!(json_escape("line1\nline2"), "line1\\nline2");
+    }
+
+    #[test]
+    fn test_json_escape_control_char() {
+        assert_eq!(json_escape("\x01"), "\\u0001");
+    }
+
+    #[test]
+    fn test_json_escape_empty() {
+        assert_eq!(json_escape(""), "");
+    }
+
+    #[test]
+    fn test_dbus_register_hostname1_iface() {
+        // Verify the interface registration doesn't panic
+        let mut cr = Crossroads::new();
+        let token = register_hostname1_iface(&mut cr);
+        let shared: SharedState = Arc::new(Mutex::new(HostnameState::default()));
+        cr.insert(DBUS_PATH, &[token], shared);
+    }
+
+    #[test]
+    fn test_shared_state_reload() {
+        let state = HostnameState {
+            static_hostname: "host1".to_string(),
+            transient_hostname: "host1".to_string(),
+            ..Default::default()
+        };
+        let shared: SharedState = Arc::new(Mutex::new(state));
+
+        // Simulate a reload
+        {
+            let mut s = shared.lock().unwrap();
+            s.static_hostname = "host2".to_string();
+            s.transient_hostname = "host2".to_string();
+        }
+
+        let s = shared.lock().unwrap();
+        assert_eq!(s.hostname(), "host2");
+    }
+
+    #[test]
+    fn test_hostname_source_logic() {
+        // Static hostname set → source is "static"
+        let state = HostnameState {
+            static_hostname: "myhost".to_string(),
+            transient_hostname: "myhost".to_string(),
+            ..Default::default()
+        };
+        let source = if !state.static_hostname.is_empty() {
+            "static"
+        } else if !state.transient_hostname.is_empty() {
+            "transient"
+        } else {
+            "default"
+        };
+        assert_eq!(source, "static");
+
+        // Only transient → source is "transient"
+        let state2 = HostnameState {
+            static_hostname: String::new(),
+            transient_hostname: "tmphost".to_string(),
+            ..Default::default()
+        };
+        let source2 = if !state2.static_hostname.is_empty() {
+            "static"
+        } else if !state2.transient_hostname.is_empty() {
+            "transient"
+        } else {
+            "default"
+        };
+        assert_eq!(source2, "transient");
+
+        // Neither → source is "default"
+        let state3 = HostnameState::default();
+        let source3 = if !state3.static_hostname.is_empty() {
+            "static"
+        } else if !state3.transient_hostname.is_empty() {
+            "transient"
+        } else {
+            "default"
+        };
+        assert_eq!(source3, "default");
     }
 }

@@ -1088,6 +1088,8 @@ dependencies = [
 name = "systemd-hostnamed"
 version = "0.1.0"
 dependencies = [
+ "dbus",
+ "dbus-crossroads",
  "libc",
  "log",
  "nix",
@@ -1135,6 +1137,8 @@ dependencies = [
 name = "systemd-localed"
 version = "0.1.0"
 dependencies = [
+ "dbus",
+ "dbus-crossroads",
  "libc",
  "log",
  "nix",
@@ -1346,6 +1350,8 @@ dependencies = [
 name = "systemd-timedated"
 version = "0.1.0"
 dependencies = [
+ "dbus",
+ "dbus-crossroads",
  "libc",
  "log",
  "nix",
