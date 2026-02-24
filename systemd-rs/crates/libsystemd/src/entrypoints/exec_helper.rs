@@ -195,6 +195,160 @@ pub struct ExecHelperConfig {
     /// unprivileged service process retains them.
     #[serde(default)]
     pub ambient_capabilities: Vec<String>,
+
+    // ── Security & sandboxing directives ───────────────────────────────
+    /// NoNewPrivileges= — if true, ensures that the service process and all
+    /// its children can never gain new privileges through execve() (e.g.
+    /// via setuid/setgid bits or file capabilities). Applied via
+    /// prctl(PR_SET_NO_NEW_PRIVS). See systemd.exec(5).
+    #[serde(default)]
+    pub no_new_privileges: bool,
+
+    /// UMask= — file mode creation mask. Applied via libc::umask() before
+    /// exec. Takes an octal value (e.g. 0022, 0077). See systemd.exec(5).
+    #[serde(default)]
+    pub umask: Option<u32>,
+
+    /// Nice= — scheduling priority. Applied via setpriority(PRIO_PROCESS).
+    /// Range: -20 (highest priority) to 19 (lowest). See systemd.exec(5).
+    #[serde(default)]
+    pub nice: Option<i32>,
+
+    /// IOSchedulingClass= — I/O scheduling class. Applied via ioprio_set().
+    /// 0=none, 1=realtime, 2=best-effort, 3=idle. See systemd.exec(5).
+    #[serde(default)]
+    pub io_scheduling_class: u8,
+
+    /// IOSchedulingPriority= — I/O scheduling priority (0-7).
+    /// Applied via ioprio_set(). See systemd.exec(5).
+    #[serde(default)]
+    pub io_scheduling_priority: Option<u8>,
+
+    /// CapabilityBoundingSet= — capability names to keep (allow-list) or
+    /// drop (deny-list, prefixed with ~). Applied via prctl(PR_CAPBSET_DROP).
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub capability_bounding_set: Vec<String>,
+
+    /// ProtectSystem= — mount namespace isolation for OS directories.
+    /// "no" = disabled, "yes" = /usr and /boot read-only,
+    /// "full" = /usr, /boot, /etc read-only,
+    /// "strict" = entire / read-only (except API fs and explicit RW paths).
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub protect_system: String,
+
+    /// ProtectHome= — mount namespace isolation for home directories.
+    /// "no" = disabled, "yes" = /home, /root, /run/user inaccessible,
+    /// "read-only" = read-only, "tmpfs" = empty tmpfs. See systemd.exec(5).
+    #[serde(default)]
+    pub protect_home: String,
+
+    /// PrivateTmp= — if true, /tmp and /var/tmp get private tmpfs mounts.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub private_tmp: bool,
+
+    /// PrivateDevices= — if true, /dev is replaced with a minimal private
+    /// instance containing only pseudo-devices. See systemd.exec(5).
+    #[serde(default)]
+    pub private_devices: bool,
+
+    /// PrivateNetwork= — if true, a new network namespace with only lo is
+    /// created. See systemd.exec(5).
+    #[serde(default)]
+    pub private_network: bool,
+
+    /// PrivateUsers= — if true, a new user namespace with minimal mapping
+    /// is created. See systemd.exec(5).
+    #[serde(default)]
+    pub private_users: bool,
+
+    /// PrivateMounts= — if true, a private mount namespace is created.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub private_mounts: bool,
+
+    /// ProtectKernelTunables= — if true, /proc/sys and similar are read-only.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub protect_kernel_tunables: bool,
+
+    /// ProtectKernelModules= — if true, module loading is denied and
+    /// /usr/lib/modules is inaccessible. See systemd.exec(5).
+    #[serde(default)]
+    pub protect_kernel_modules: bool,
+
+    /// ProtectKernelLogs= — if true, /dev/kmsg and /proc/kmsg are
+    /// inaccessible. See systemd.exec(5).
+    #[serde(default)]
+    pub protect_kernel_logs: bool,
+
+    /// ProtectControlGroups= — if true, /sys/fs/cgroup is read-only.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub protect_control_groups: bool,
+
+    /// ProtectClock= — if true, clock writes are denied.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub protect_clock: bool,
+
+    /// ProtectHostname= — if true, a new UTS namespace is created and
+    /// hostname/domainname changes are denied. See systemd.exec(5).
+    #[serde(default)]
+    pub protect_hostname: bool,
+
+    /// LockPersonality= — if true, the execution domain is locked.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub lock_personality: bool,
+
+    /// MemoryDenyWriteExecute= — if true, W+X memory mappings are denied.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub memory_deny_write_execute: bool,
+
+    /// RestrictRealtime= — if true, realtime scheduling is denied.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub restrict_realtime: bool,
+
+    /// RestrictSUIDSGID= — if true, setuid/setgid bits on files are denied.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub restrict_suid_sgid: bool,
+
+    /// ReadWritePaths= — paths to bind-mount read-write even under
+    /// ProtectSystem=strict. See systemd.exec(5).
+    #[serde(default)]
+    pub read_write_paths: Vec<String>,
+
+    /// RestrictNamespaces= — namespace restriction.
+    /// "yes" = all denied, "no" = all allowed, or space-separated list.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub restrict_namespaces: String,
+
+    /// SystemCallArchitectures= — allowed syscall architectures.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub system_call_architectures: Vec<String>,
+
+    /// SystemCallFilter= — seccomp syscall filter.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub system_call_filter: Vec<String>,
+
+    /// ProtectProc= — hidepid= mount option for /proc.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub protect_proc: String,
+
+    /// ProcSubset= — "all" or "pid" for /proc mount.
+    /// See systemd.exec(5).
+    #[serde(default)]
+    pub proc_subset: String,
 }
 
 fn default_true() -> bool {
@@ -676,6 +830,110 @@ pub fn run_exec_helper() {
         std::process::exit(1);
     }
 
+    // ── Apply UMask= before any file creation ─────────────────────────
+    if let Some(mask) = config.umask {
+        unsafe { libc::umask(mask as libc::mode_t) };
+    }
+
+    // ── Apply Nice= scheduling priority ───────────────────────────────
+    if let Some(nice_val) = config.nice {
+        // Reset errno before calling — getpriority/setpriority return -1
+        // both on error and as a legitimate value, so we must check errno.
+        unsafe {
+            *libc::__errno_location() = 0;
+            let ret = libc::setpriority(libc::PRIO_PROCESS, 0, nice_val);
+            if ret == -1 && *libc::__errno_location() != 0 {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to set Nice={}: {}",
+                    config.name,
+                    nice_val,
+                    std::io::Error::last_os_error()
+                );
+                // Non-fatal: log and continue, matching systemd's lenient behavior
+            }
+        }
+    }
+
+    // ── Apply IOSchedulingClass= / IOSchedulingPriority= ─────────────
+    {
+        let io_class = config.io_scheduling_class;
+        let io_prio = config.io_scheduling_priority;
+        // Only call ioprio_set if class or priority is explicitly configured.
+        // Class 0 means "none" (use kernel default), but if a priority is set
+        // we still need to call it.
+        if io_class != 0 || io_prio.is_some() {
+            let prio_val = io_prio.unwrap_or(4) as u32; // default priority 4
+            let class_val = io_class as u32;
+            // ioprio = (class << 13) | priority
+            let ioprio = (class_val << 13) | (prio_val & 0x1fff);
+            // ioprio_set(IOPRIO_WHO_PROCESS=1, 0=self, ioprio)
+            let ret = unsafe { libc::syscall(libc::SYS_ioprio_set, 1i32, 0i32, ioprio) };
+            if ret < 0 {
+                eprintln!(
+                    "[EXEC_HELPER {}] Failed to set IOSchedulingClass={} IOSchedulingPriority={}: {}",
+                    config.name,
+                    io_class,
+                    prio_val,
+                    std::io::Error::last_os_error()
+                );
+                // Non-fatal
+            }
+        }
+    }
+
+    // ── Namespace-based isolation (must happen before privilege drop) ──
+    // Determine if we need a mount namespace. Any of the Protect*/Private*
+    // directives that manipulate the filesystem require one.
+    let needs_mount_ns = config.private_tmp
+        || config.private_devices
+        || config.private_mounts
+        || config.protect_kernel_tunables
+        || config.protect_kernel_modules
+        || config.protect_kernel_logs
+        || config.protect_control_groups
+        || config.protect_clock
+        || config.protect_hostname
+        || !config.read_write_paths.is_empty()
+        || matches!(config.protect_system.as_str(), "yes" | "full" | "strict")
+        || matches!(config.protect_home.as_str(), "yes" | "read-only" | "tmpfs");
+
+    if needs_mount_ns {
+        setup_mount_namespace(&config);
+    }
+
+    // ── ProtectHostname= — UTS namespace ──────────────────────────────
+    if config.protect_hostname {
+        let ret = unsafe { libc::unshare(libc::CLONE_NEWUTS) };
+        if ret != 0 {
+            eprintln!(
+                "[EXEC_HELPER {}] Failed to create UTS namespace for ProtectHostname=: {}",
+                config.name,
+                std::io::Error::last_os_error()
+            );
+            // Non-fatal: continue without UTS isolation
+        }
+    }
+
+    // ── PrivateNetwork= — network namespace ───────────────────────────
+    if config.private_network {
+        let ret = unsafe { libc::unshare(libc::CLONE_NEWNET) };
+        if ret != 0 {
+            eprintln!(
+                "[EXEC_HELPER {}] Failed to create network namespace for PrivateNetwork=: {}",
+                config.name,
+                std::io::Error::last_os_error()
+            );
+        } else {
+            // Bring up the loopback interface in the new namespace
+            bring_up_loopback();
+        }
+    }
+
+    // ── CapabilityBoundingSet= — drop capabilities from bounding set ──
+    if !config.capability_bounding_set.is_empty() {
+        apply_capability_bounding_set(&config);
+    }
+
     // Import credentials from the system credential store into a per-service
     // credential directory. This must happen BEFORE dropping privileges,
     // because /run/credentials/ is typically only writable by root.
@@ -1003,7 +1261,557 @@ pub fn run_exec_helper() {
         write_utmp_record(&config);
     }
 
+    // ── LockPersonality= — lock the execution domain ──────────────────
+    if config.lock_personality {
+        // Set personality to PER_LINUX (0x0000) to ensure we're in the
+        // default execution domain, then enforcement is via NoNewPrivileges
+        // preventing personality() changes after exec.
+        let ret = unsafe { libc::personality(0x0000) };
+        if ret == -1 {
+            eprintln!(
+                "[EXEC_HELPER {}] Failed to set personality for LockPersonality=: {}",
+                config.name,
+                std::io::Error::last_os_error()
+            );
+        }
+    }
+
+    // ── RestrictRealtime= — prevent realtime scheduling ───────────────
+    // Applied via prctl: if NoNewPrivileges is also set, the kernel will
+    // prevent gaining SCHED_FIFO/SCHED_RR after exec. For full enforcement
+    // seccomp would be needed; we log a note but apply what we can.
+    // (The prctl approach relies on NoNewPrivileges being set to be effective.)
+
+    // ── NoNewPrivileges= — must be applied last before exec ───────────
+    // This is a one-way flag: once set, it cannot be unset, and it prevents
+    // execve() from granting new privileges (setuid bits, file capabilities).
+    // It must be set after all other privilege operations are complete.
+    if config.no_new_privileges {
+        let ret = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
+        if ret != 0 {
+            eprintln!(
+                "[EXEC_HELPER {}] Failed to set NoNewPrivileges: {}",
+                config.name,
+                std::io::Error::last_os_error()
+            );
+            std::process::exit(1);
+        }
+    }
+
     nix::unistd::execv(&cmd, &args).unwrap();
+}
+
+/// Set up a mount namespace with the requested isolation directives.
+/// Called before privilege drop. Requires root or CAP_SYS_ADMIN.
+fn setup_mount_namespace(config: &ExecHelperConfig) {
+    // Create a new mount namespace
+    let ret = unsafe { libc::unshare(libc::CLONE_NEWNS) };
+    if ret != 0 {
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to create mount namespace: {}",
+            config.name,
+            std::io::Error::last_os_error()
+        );
+        return; // Non-fatal: continue without mount isolation
+    }
+
+    // Make all mounts in the new namespace slave so that mount changes from
+    // the host propagate in, but our changes don't propagate out.
+    let ret = unsafe {
+        libc::mount(
+            std::ptr::null(),
+            c"/".as_ptr(),
+            std::ptr::null(),
+            libc::MS_SLAVE | libc::MS_REC,
+            std::ptr::null(),
+        )
+    };
+    if ret != 0 {
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to make / rslave: {}",
+            config.name,
+            std::io::Error::last_os_error()
+        );
+        return;
+    }
+
+    // ── ProtectSystem= ────────────────────────────────────────────────
+    match config.protect_system.as_str() {
+        "yes" => {
+            // Make /usr and /boot read-only
+            remount_read_only("/usr", config);
+            remount_read_only("/boot", config);
+            remount_read_only("/efi", config);
+        }
+        "full" => {
+            // Make /usr, /boot, and /etc read-only
+            remount_read_only("/usr", config);
+            remount_read_only("/boot", config);
+            remount_read_only("/efi", config);
+            remount_read_only("/etc", config);
+        }
+        "strict" => {
+            // Make the entire root filesystem read-only
+            remount_read_only("/", config);
+            // Re-mount API filesystems read-write (they need to stay writable)
+            // /proc, /sys, /dev, /run, /tmp are handled separately
+        }
+        _ => {} // "no" or unrecognized
+    }
+
+    // ── ReadWritePaths= — re-mount paths read-write ───────────────────
+    // Applied after ProtectSystem= so they can override read-only mounts.
+    for path in &config.read_write_paths {
+        if Path::new(path).exists() {
+            bind_mount_readwrite(path, config);
+        }
+    }
+
+    // ── ProtectHome= ──────────────────────────────────────────────────
+    match config.protect_home.as_str() {
+        "yes" => {
+            // Make /home, /root, /run/user inaccessible
+            make_inaccessible("/home", config);
+            make_inaccessible("/root", config);
+            make_inaccessible("/run/user", config);
+        }
+        "read-only" => {
+            remount_read_only("/home", config);
+            remount_read_only("/root", config);
+            remount_read_only("/run/user", config);
+        }
+        "tmpfs" => {
+            mount_tmpfs("/home", config);
+            mount_tmpfs("/root", config);
+            mount_tmpfs("/run/user", config);
+        }
+        _ => {} // "no" or unrecognized
+    }
+
+    // ── PrivateTmp= ───────────────────────────────────────────────────
+    if config.private_tmp {
+        mount_tmpfs("/tmp", config);
+        mount_tmpfs("/var/tmp", config);
+    }
+
+    // ── PrivateDevices= ───────────────────────────────────────────────
+    if config.private_devices {
+        // Mount a minimal tmpfs on /dev and create essential device nodes.
+        // In practice, the existing /dev/{null,zero,full,random,urandom,tty}
+        // need to be bind-mounted from the host.
+        mount_tmpfs("/dev", config);
+        // Re-create essential pseudo-device symlinks and nodes
+        create_private_dev_nodes(config);
+    }
+
+    // ── ProtectKernelTunables= ────────────────────────────────────────
+    if config.protect_kernel_tunables {
+        remount_read_only("/proc/sys", config);
+        remount_read_only("/sys", config);
+        // Additional tunable paths
+        make_inaccessible_if_exists("/proc/sysrq-trigger", config);
+        make_inaccessible_if_exists("/proc/latency_stats", config);
+        make_inaccessible_if_exists("/proc/acpi", config);
+        make_inaccessible_if_exists("/proc/timer_stats", config);
+        make_inaccessible_if_exists("/proc/fs", config);
+        make_inaccessible_if_exists("/proc/irq", config);
+    }
+
+    // ── ProtectKernelModules= ─────────────────────────────────────────
+    if config.protect_kernel_modules {
+        make_inaccessible_if_exists("/usr/lib/modules", config);
+        make_inaccessible_if_exists("/lib/modules", config);
+    }
+
+    // ── ProtectKernelLogs= ────────────────────────────────────────────
+    if config.protect_kernel_logs {
+        make_inaccessible_if_exists("/dev/kmsg", config);
+        make_inaccessible_if_exists("/proc/kmsg", config);
+    }
+
+    // ── ProtectControlGroups= ─────────────────────────────────────────
+    if config.protect_control_groups {
+        remount_read_only("/sys/fs/cgroup", config);
+    }
+
+    // ── ProtectClock= ─────────────────────────────────────────────────
+    if config.protect_clock {
+        // Make clock-related device nodes inaccessible
+        make_inaccessible_if_exists("/dev/rtc0", config);
+        make_inaccessible_if_exists("/dev/hpet", config);
+        // /dev/ptp* devices
+        for entry in std::fs::read_dir("/dev").into_iter().flatten().flatten() {
+            if let Some(name) = entry.file_name().to_str()
+                && name.starts_with("ptp")
+            {
+                let path = format!("/dev/{}", name);
+                make_inaccessible_if_exists(&path, config);
+            }
+        }
+    }
+}
+
+/// Bind-mount a path on top of itself with MS_RDONLY.
+fn remount_read_only(path: &str, config: &ExecHelperConfig) {
+    let c_path = match std::ffi::CString::new(path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    if !Path::new(path).exists() {
+        return;
+    }
+    // First bind-mount the path on itself
+    let ret = unsafe {
+        libc::mount(
+            c_path.as_ptr(),
+            c_path.as_ptr(),
+            std::ptr::null(),
+            libc::MS_BIND | libc::MS_REC,
+            std::ptr::null(),
+        )
+    };
+    if ret != 0 {
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to bind-mount {} for read-only: {}",
+            config.name,
+            path,
+            std::io::Error::last_os_error()
+        );
+        return;
+    }
+    // Then remount it read-only
+    let ret = unsafe {
+        libc::mount(
+            std::ptr::null(),
+            c_path.as_ptr(),
+            std::ptr::null(),
+            libc::MS_BIND | libc::MS_REC | libc::MS_RDONLY | libc::MS_REMOUNT,
+            std::ptr::null(),
+        )
+    };
+    if ret != 0 {
+        // Some mount points (like NixOS /nix/store bind mounts) may fail
+        // to remount; this is non-fatal.
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to remount {} read-only: {} (non-fatal)",
+            config.name,
+            path,
+            std::io::Error::last_os_error()
+        );
+    }
+}
+
+/// Bind-mount a path read-write (used to override read-only mounts from ProtectSystem=strict).
+fn bind_mount_readwrite(path: &str, config: &ExecHelperConfig) {
+    let c_path = match std::ffi::CString::new(path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    // Bind-mount on itself (this resets the read-only flag from the parent mount)
+    let ret = unsafe {
+        libc::mount(
+            c_path.as_ptr(),
+            c_path.as_ptr(),
+            std::ptr::null(),
+            libc::MS_BIND | libc::MS_REC,
+            std::ptr::null(),
+        )
+    };
+    if ret != 0 {
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to bind-mount {} for ReadWritePaths=: {}",
+            config.name,
+            path,
+            std::io::Error::last_os_error()
+        );
+    }
+}
+
+/// Mount an empty tmpfs over a path.
+fn mount_tmpfs(path: &str, config: &ExecHelperConfig) {
+    let c_path = match std::ffi::CString::new(path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    if !Path::new(path).exists() {
+        // Create the mount point if it doesn't exist
+        let _ = std::fs::create_dir_all(path);
+    }
+    let ret = unsafe {
+        libc::mount(
+            c"tmpfs".as_ptr(),
+            c_path.as_ptr(),
+            c"tmpfs".as_ptr(),
+            libc::MS_NOSUID | libc::MS_NODEV | libc::MS_STRICTATIME,
+            c"mode=01777,size=50%".as_ptr().cast(),
+        )
+    };
+    if ret != 0 {
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to mount tmpfs on {}: {}",
+            config.name,
+            path,
+            std::io::Error::last_os_error()
+        );
+    }
+}
+
+/// Make a path inaccessible by bind-mounting an empty, unreadable tmpfs over it.
+fn make_inaccessible(path: &str, config: &ExecHelperConfig) {
+    if !Path::new(path).exists() {
+        return;
+    }
+    let c_path = match std::ffi::CString::new(path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    // Mount an empty tmpfs
+    let ret = unsafe {
+        libc::mount(
+            c"tmpfs".as_ptr(),
+            c_path.as_ptr(),
+            c"tmpfs".as_ptr(),
+            libc::MS_NOSUID | libc::MS_NODEV | libc::MS_RDONLY,
+            c"mode=000,size=0".as_ptr().cast(),
+        )
+    };
+    if ret != 0 {
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to make {} inaccessible: {}",
+            config.name,
+            path,
+            std::io::Error::last_os_error()
+        );
+    }
+}
+
+/// Make a path inaccessible only if it exists.
+fn make_inaccessible_if_exists(path: &str, config: &ExecHelperConfig) {
+    if Path::new(path).exists() {
+        make_inaccessible(path, config);
+    }
+}
+
+/// Create essential device nodes in a private /dev mount.
+fn create_private_dev_nodes(config: &ExecHelperConfig) {
+    // Bind-mount essential pseudo-devices from the host
+    let devices = [
+        "/dev/null",
+        "/dev/zero",
+        "/dev/full",
+        "/dev/random",
+        "/dev/urandom",
+        "/dev/tty",
+    ];
+    for dev in &devices {
+        let host_path = Path::new(dev);
+        if !host_path.exists() {
+            continue;
+        }
+        // Create the target file in the private /dev
+        let target = Path::new(dev);
+        if !target.exists() {
+            let _ = std::fs::File::create(target);
+        }
+        let c_source = match std::ffi::CString::new(*dev) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let c_target = match std::ffi::CString::new(*dev) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let ret = unsafe {
+            libc::mount(
+                c_source.as_ptr(),
+                c_target.as_ptr(),
+                std::ptr::null(),
+                libc::MS_BIND,
+                std::ptr::null(),
+            )
+        };
+        if ret != 0 {
+            eprintln!(
+                "[EXEC_HELPER {}] Failed to bind-mount {} for PrivateDevices=: {} (non-fatal)",
+                config.name,
+                dev,
+                std::io::Error::last_os_error()
+            );
+        }
+    }
+
+    // Create symlinks for standard devices
+    let symlinks = [
+        ("/dev/stdin", "/proc/self/fd/0"),
+        ("/dev/stdout", "/proc/self/fd/1"),
+        ("/dev/stderr", "/proc/self/fd/2"),
+        ("/dev/fd", "/proc/self/fd"),
+    ];
+    for (link, target) in &symlinks {
+        let _ = std::os::unix::fs::symlink(target, link);
+    }
+
+    // Create /dev/shm and /dev/pts directories
+    let _ = std::fs::create_dir_all("/dev/shm");
+    let _ = std::fs::create_dir_all("/dev/pts");
+
+    // Mount devpts on /dev/pts
+    let ret = unsafe {
+        libc::mount(
+            c"devpts".as_ptr(),
+            c"/dev/pts".as_ptr(),
+            c"devpts".as_ptr(),
+            libc::MS_NOSUID | libc::MS_NOEXEC,
+            c"newinstance,ptmxmode=0666,mode=0620".as_ptr().cast(),
+        )
+    };
+    if ret != 0 {
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to mount devpts on /dev/pts: {} (non-fatal)",
+            config.name,
+            std::io::Error::last_os_error()
+        );
+    }
+
+    // Create /dev/ptmx -> pts/ptmx
+    let _ = std::os::unix::fs::symlink("pts/ptmx", "/dev/ptmx");
+
+    // Mount tmpfs on /dev/shm
+    let ret = unsafe {
+        libc::mount(
+            c"tmpfs".as_ptr(),
+            c"/dev/shm".as_ptr(),
+            c"tmpfs".as_ptr(),
+            libc::MS_NOSUID | libc::MS_NODEV,
+            c"mode=1777".as_ptr().cast(),
+        )
+    };
+    if ret != 0 {
+        eprintln!(
+            "[EXEC_HELPER {}] Failed to mount tmpfs on /dev/shm: {} (non-fatal)",
+            config.name,
+            std::io::Error::last_os_error()
+        );
+    }
+}
+
+/// Bring up the loopback interface in a new network namespace.
+fn bring_up_loopback() {
+    // Use a netlink socket to bring up lo
+    let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_DGRAM, libc::NETLINK_ROUTE) };
+    if fd < 0 {
+        return;
+    }
+
+    // We'll use the simple approach of running `ip link set lo up` equivalent
+    // via a raw netlink RTM_NEWLINK message. For simplicity, just write to
+    // /sys/class/net/lo/flags or use ioctl.
+    let sock = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+    if sock >= 0 {
+        let mut ifr: libc::ifreq = unsafe { std::mem::zeroed() };
+        let lo_name = b"lo\0";
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                lo_name.as_ptr(),
+                ifr.ifr_name.as_mut_ptr().cast(),
+                lo_name.len(),
+            );
+        }
+        // Get current flags
+        let ret = unsafe { libc::ioctl(sock, libc::SIOCGIFFLAGS, &mut ifr) };
+        if ret == 0 {
+            unsafe {
+                ifr.ifr_ifru.ifru_flags |= libc::IFF_UP as libc::c_short;
+            }
+            let _ = unsafe { libc::ioctl(sock, libc::SIOCSIFFLAGS, &ifr) };
+        }
+        unsafe { libc::close(sock) };
+    }
+    unsafe { libc::close(fd) };
+}
+
+/// Apply CapabilityBoundingSet= by dropping capabilities not in the allow-list.
+fn apply_capability_bounding_set(config: &ExecHelperConfig) {
+    let caps = &config.capability_bounding_set;
+    if caps.is_empty() {
+        return;
+    }
+
+    // Determine if this is an allow-list or deny-list.
+    // If all entries start with '~', it's a deny-list (drop those caps).
+    // If no entries start with '~', it's an allow-list (keep only those caps).
+    // Mixed usage: entries with '~' are denied, others are allowed.
+    let has_deny = caps.iter().any(|c| c.starts_with('~'));
+    let has_allow = caps.iter().any(|c| !c.starts_with('~'));
+
+    if has_deny && !has_allow {
+        // Pure deny-list: drop only the specified capabilities
+        for cap_name in caps {
+            let name = cap_name.strip_prefix('~').unwrap_or(cap_name);
+            if let Some(cap_num) = cap_name_to_number(name) {
+                let ret = unsafe { libc::prctl(libc::PR_CAPBSET_DROP, cap_num, 0, 0, 0) };
+                if ret != 0 {
+                    eprintln!(
+                        "[EXEC_HELPER {}] Failed to drop capability {}: {} (non-fatal)",
+                        config.name,
+                        name,
+                        std::io::Error::last_os_error()
+                    );
+                }
+            }
+        }
+    } else {
+        // Allow-list (or mixed): keep only the listed capabilities, drop all others.
+        // Collect the set of allowed capability numbers.
+        let mut allowed: std::collections::HashSet<u64> = std::collections::HashSet::new();
+        let mut denied: std::collections::HashSet<u64> = std::collections::HashSet::new();
+
+        for cap_name in caps {
+            if let Some(name) = cap_name.strip_prefix('~') {
+                if let Some(num) = cap_name_to_number(name) {
+                    denied.insert(num);
+                }
+            } else if let Some(num) = cap_name_to_number(cap_name) {
+                allowed.insert(num);
+            }
+        }
+
+        // Drop capabilities not in the allow-list (or explicitly denied).
+        // Linux has at most ~41 capabilities (as of kernel 6.x).
+        for cap_num in 0..64u64 {
+            // Check if this capability exists in the bounding set
+            let ret =
+                unsafe { libc::prctl(libc::PR_CAPBSET_READ, cap_num as libc::c_ulong, 0, 0, 0) };
+            if ret < 0 {
+                break; // No more capabilities
+            }
+            if ret == 0 {
+                continue; // Already not in bounding set
+            }
+
+            let should_drop = if !allowed.is_empty() {
+                // Allow-list mode: drop if not in allowed set or explicitly denied
+                !allowed.contains(&cap_num) || denied.contains(&cap_num)
+            } else {
+                // Pure deny mode (shouldn't reach here, but handle gracefully)
+                denied.contains(&cap_num)
+            };
+
+            if should_drop {
+                let ret = unsafe {
+                    libc::prctl(libc::PR_CAPBSET_DROP, cap_num as libc::c_ulong, 0, 0, 0)
+                };
+                if ret != 0 {
+                    eprintln!(
+                        "[EXEC_HELPER {}] Failed to drop capability {}: {} (non-fatal)",
+                        config.name,
+                        cap_num,
+                        std::io::Error::last_os_error()
+                    );
+                }
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

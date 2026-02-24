@@ -2183,6 +2183,28 @@ pub struct ServiceConfig {
     /// coredumps from systemd-coredump. Parsed and stored; no runtime
     /// enforcement yet. See systemd.service(5).
     pub coredump_receive: bool,
+
+    /// SendSIGKILL= — if true (the default), send SIGKILL to remaining
+    /// processes after the stop timeout if they haven't terminated yet.
+    /// If false, leave processes running after the timeout.
+    /// See systemd.kill(5).
+    pub send_sigkill: bool,
+
+    /// RestartKillSignal= — specifies which signal to use when restarting
+    /// a service (i.e. stop-before-restart). Takes a signal name or number.
+    /// When not set, KillSignal= is used. See systemd.kill(5).
+    pub restart_kill_signal: Option<i32>,
+
+    /// FinalKillSignal= — specifies the signal to send as the very last
+    /// step when terminating a service, after SIGKILL has been sent and the
+    /// processes still haven't terminated. Defaults to SIGKILL.
+    /// Takes a signal name or number. See systemd.kill(5).
+    pub final_kill_signal: Option<i32>,
+
+    /// WatchdogSignal= — specifies the signal to use to kill a service
+    /// when the watchdog timeout expires. Defaults to SIGABRT.
+    /// Takes a signal name or number. See systemd.kill(5).
+    pub watchdog_signal: Option<i32>,
 }
 
 /// The immutable config of a socket unit

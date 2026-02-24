@@ -432,6 +432,10 @@ fn parse_service_section(
     let file_descriptor_store_max = section.remove("FILEDESCRIPTORSTOREMAX");
     let file_descriptor_store_preserve = section.remove("FILEDESCRIPTORSTOREPRESERVE");
     let kill_signal = section.remove("KILLSIGNAL");
+    let send_sigkill = section.remove("SENDSIGKILL");
+    let restart_kill_signal = section.remove("RESTARTKILLSIGNAL");
+    let final_kill_signal = section.remove("FINALKILLSIGNAL");
+    let watchdog_signal = section.remove("WATCHDOGSIGNAL");
     let memory_min = section.remove("MEMORYMIN");
     let memory_low = section.remove("MEMORYLOW");
     let memory_high = section.remove("MEMORYHIGH");
@@ -1486,6 +1490,45 @@ fn parse_service_section(
                 }
             })
             .unwrap_or(false),
+        send_sigkill: send_sigkill
+            .map(|vec| {
+                if vec.len() == 1 {
+                    string_to_bool(&vec[0].1)
+                } else {
+                    true // default
+                }
+            })
+            .unwrap_or(true), // SendSIGKILL= defaults to true
+        restart_kill_signal: match restart_kill_signal {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    parse_signal_to_raw(&vec[0].1)
+                } else {
+                    None
+                }
+            }
+            None => None,
+        },
+        final_kill_signal: match final_kill_signal {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    parse_signal_to_raw(&vec[0].1)
+                } else {
+                    None
+                }
+            }
+            None => None,
+        },
+        watchdog_signal: match watchdog_signal {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    parse_signal_to_raw(&vec[0].1)
+                } else {
+                    None
+                }
+            }
+            None => None,
+        },
         exec_section: exec_config,
     })
 }
