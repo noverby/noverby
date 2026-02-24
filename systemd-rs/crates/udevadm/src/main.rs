@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::net::Shutdown;
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -119,6 +120,10 @@ enum Commands {
         /// Print value of a specific property
         #[arg(long)]
         value: bool,
+
+        /// Print major:minor of the device backing a file
+        #[arg(long)]
+        device_id_of_file: Option<String>,
 
         /// Additional device paths on the command line
         devices: Vec<String>,
@@ -310,8 +315,13 @@ fn cmd_info(
     export_db: bool,
     cleanup_db: bool,
     _value: bool,
+    device_id_of_file: &Option<String>,
     devices: &[String],
 ) -> i32 {
+    if let Some(file_path) = device_id_of_file {
+        return cmd_info_device_id_of_file(file_path);
+    }
+
     if cleanup_db {
         return cmd_info_cleanup_db();
     }
@@ -432,6 +442,29 @@ fn cmd_info(
 }
 
 /// Export the entire udev database.
+/// Print the major:minor device ID of the block device backing a file.
+///
+/// This implements `udevadm info --device-id-of-file=PATH`, which is used by
+/// the NixOS initrd to identify the root device. It calls `stat()` on the
+/// given path and prints the major:minor of the device the file resides on
+/// (i.e. `st_dev`).
+fn cmd_info_device_id_of_file(file_path: &str) -> i32 {
+    let path = Path::new(file_path);
+    match fs::metadata(path) {
+        Ok(meta) => {
+            let dev = meta.dev();
+            let major = libc::major(dev);
+            let minor = libc::minor(dev);
+            println!("{}:{}", major, minor);
+            0
+        }
+        Err(e) => {
+            eprintln!("udevadm info: cannot stat '{}': {}", file_path, e);
+            1
+        }
+    }
+}
+
 fn cmd_info_export_db() -> i32 {
     let db_dir = Path::new(DB_DIR);
     if !db_dir.is_dir() {
@@ -1547,6 +1580,7 @@ fn main() -> ExitCode {
             export_db,
             cleanup_db,
             value,
+            ref device_id_of_file,
             ref devices,
         } => cmd_info(
             name,
@@ -1559,6 +1593,7 @@ fn main() -> ExitCode {
             export_db,
             cleanup_db,
             value,
+            device_id_of_file,
             devices,
         ),
 
@@ -1972,5 +2007,54 @@ mod tests {
         } else {
             panic!("Expected Info command");
         }
+    }
+
+    #[test]
+    fn test_cli_parse_info_device_id_of_file() {
+        let cli =
+            Cli::try_parse_from(["udevadm", "info", "--device-id-of-file=/dev/null"]).unwrap();
+        if let Commands::Info {
+            device_id_of_file, ..
+        } = cli.command
+        {
+            assert_eq!(device_id_of_file, Some("/dev/null".to_string()));
+        } else {
+            panic!("Expected Info command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_info_device_id_of_file_equals() {
+        // Also accept --device-id-of-file=PATH (equals form)
+        let cli =
+            Cli::try_parse_from(["udevadm", "info", "--device-id-of-file=/etc/hostname"]).unwrap();
+        if let Commands::Info {
+            device_id_of_file, ..
+        } = cli.command
+        {
+            assert_eq!(device_id_of_file, Some("/etc/hostname".to_string()));
+        } else {
+            panic!("Expected Info command");
+        }
+    }
+
+    #[test]
+    fn test_device_id_of_file_returns_major_minor() {
+        // /dev/null always exists; stat it and verify we get a valid major:minor
+        let exit = cmd_info_device_id_of_file("/dev/null");
+        assert_eq!(exit, 0);
+    }
+
+    #[test]
+    fn test_device_id_of_file_nonexistent() {
+        let exit = cmd_info_device_id_of_file("/nonexistent/path/that/does/not/exist");
+        assert_eq!(exit, 1);
+    }
+
+    #[test]
+    fn test_device_id_of_file_root() {
+        // "/" always exists; should succeed with a valid device id
+        let exit = cmd_info_device_id_of_file("/");
+        assert_eq!(exit, 0);
     }
 }

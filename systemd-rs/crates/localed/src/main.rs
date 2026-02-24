@@ -16,10 +16,13 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+
+use dbus::blocking::Connection;
+use dbus_crossroads::{Crossroads, IfaceBuilder, MethodErr};
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -30,6 +33,10 @@ const VCONSOLE_CONF_PATH: &str = "/etc/vconsole.conf";
 const X11_KEYBOARD_DIR: &str = "/etc/X11/xorg.conf.d";
 const X11_KEYBOARD_CONF: &str = "/etc/X11/xorg.conf.d/00-keyboard.conf";
 const CONTROL_SOCKET_PATH: &str = "/run/systemd/localed.sock";
+
+const DBUS_NAME: &str = "org.freedesktop.locale1";
+const DBUS_PATH: &str = "/org/freedesktop/locale1";
+const DBUS_IFACE: &str = "org.freedesktop.locale1";
 
 /// Known locale variables that systemd-localed manages.
 const LOCALE_VARIABLES: &[&str] = &[
@@ -516,6 +523,181 @@ fn write_env_file(path: &str, entries: &BTreeMap<String, String>) -> io::Result<
 }
 
 // ---------------------------------------------------------------------------
+// Shared state for D-Bus
+// ---------------------------------------------------------------------------
+
+type SharedState = Arc<Mutex<LocaleState>>;
+
+// ---------------------------------------------------------------------------
+// D-Bus interface: org.freedesktop.locale1
+// ---------------------------------------------------------------------------
+
+/// Register the org.freedesktop.locale1 interface on a Crossroads instance.
+///
+/// Properties (read-only):
+///   Locale (as), X11Layout, X11Model, X11Variant, X11Options,
+///   VConsoleKeymap, VConsoleKeymapToggle
+///
+/// Methods:
+///   SetLocale(as locale, b interactive)
+///   SetVConsoleKeyboard(s keymap, s keymap_toggle, b convert, b interactive)
+///   SetX11Keyboard(s layout, s model, s variant, s options, b convert, b interactive)
+fn register_locale1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedState> {
+    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedState>| {
+        // --- Properties (read-only) ---
+
+        // Locale → array of strings like ["LANG=en_US.UTF-8", "LC_TIME=de_DE.UTF-8"]
+        b.property("Locale").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            let locale_strings: Vec<String> = s
+                .locale
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect();
+            Ok(locale_strings)
+        });
+
+        b.property("X11Layout").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.x11_layout.clone())
+        });
+
+        b.property("X11Model").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.x11_model.clone())
+        });
+
+        b.property("X11Variant").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.x11_variant.clone())
+        });
+
+        b.property("X11Options").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.x11_options.clone())
+        });
+
+        b.property("VConsoleKeymap")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.vconsole_keymap.clone())
+            });
+
+        b.property("VConsoleKeymapToggle")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.vconsole_keymap_toggle.clone())
+            });
+
+        // --- Methods ---
+
+        // SetLocale(as locale, b interactive)
+        b.method(
+            "SetLocale",
+            ("locale", "interactive"),
+            (),
+            move |_, state: &mut SharedState, (locale, _interactive): (Vec<String>, bool)| {
+                let mut entries = BTreeMap::new();
+                for assignment in &locale {
+                    if let Some((key, value)) = assignment.split_once('=') {
+                        if LOCALE_VARIABLES.contains(&key) {
+                            entries.insert(key.to_string(), value.to_string());
+                        } else {
+                            return Err(MethodErr::failed(&format!(
+                                "Unknown locale variable '{}'",
+                                key
+                            )));
+                        }
+                    }
+                }
+                if let Err(e) = set_locale(&entries) {
+                    return Err(MethodErr::failed(&format!("Failed to set locale: {}", e)));
+                }
+                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+                s.locale = entries;
+                Ok(())
+            },
+        );
+
+        // SetVConsoleKeyboard(s keymap, s keymap_toggle, b convert, b interactive)
+        b.method(
+            "SetVConsoleKeyboard",
+            ("keymap", "keymap_toggle", "convert", "interactive"),
+            (),
+            move |_,
+                  state: &mut SharedState,
+                  (keymap, keymap_toggle, _convert, _interactive): (
+                String,
+                String,
+                bool,
+                bool,
+            )| {
+                if let Err(e) = set_vconsole_keymap(&keymap, &keymap_toggle) {
+                    return Err(MethodErr::failed(&format!(
+                        "Failed to set vconsole keymap: {}",
+                        e
+                    )));
+                }
+                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+                s.vconsole_keymap = keymap;
+                s.vconsole_keymap_toggle = keymap_toggle;
+                Ok(())
+            },
+        );
+
+        // SetX11Keyboard(s layout, s model, s variant, s options, b convert, b interactive)
+        b.method(
+            "SetX11Keyboard",
+            (
+                "layout",
+                "model",
+                "variant",
+                "options",
+                "convert",
+                "interactive",
+            ),
+            (),
+            move |_,
+                  state: &mut SharedState,
+                  (layout, model, variant, options, _convert, _interactive): (
+                String,
+                String,
+                String,
+                String,
+                bool,
+                bool,
+            )| {
+                if let Err(e) = set_x11_keymap(&layout, &model, &variant, &options) {
+                    return Err(MethodErr::failed(&format!(
+                        "Failed to set X11 keymap: {}",
+                        e
+                    )));
+                }
+                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+                s.x11_layout = layout;
+                s.x11_model = model;
+                s.x11_variant = variant;
+                s.x11_options = options;
+                Ok(())
+            },
+        );
+    })
+}
+
+/// Set up the D-Bus connection and register the locale1 interface.
+fn setup_dbus(shared: SharedState) -> Result<(Connection, Crossroads), String> {
+    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    conn.request_name(DBUS_NAME, false, true, false)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
+
+    let mut cr = Crossroads::new();
+    let iface_token = register_locale1_iface(&mut cr);
+    cr.insert(DBUS_PATH, &[iface_token], shared);
+
+    Ok((conn, cr))
+}
+
+// ---------------------------------------------------------------------------
 // Control socket protocol
 // ---------------------------------------------------------------------------
 
@@ -747,15 +929,16 @@ fn main() {
 
     log::info!("systemd-localed starting");
 
-    // Load initial state
-    let state = LocaleState::load();
-    log::info!("System locale: LANG={}", state.lang());
-    if !state.vconsole_keymap.is_empty() {
-        log::info!("VC Keymap: {}", state.vconsole_keymap);
+    // Load initial state into shared state for D-Bus and control socket
+    let initial_state = LocaleState::load();
+    log::info!("System locale: LANG={}", initial_state.lang());
+    if !initial_state.vconsole_keymap.is_empty() {
+        log::info!("VC Keymap: {}", initial_state.vconsole_keymap);
     }
-    if !state.x11_layout.is_empty() {
-        log::info!("X11 Layout: {}", state.x11_layout);
+    if !initial_state.x11_layout.is_empty() {
+        log::info!("X11 Layout: {}", initial_state.x11_layout);
     }
+    let shared_state: SharedState = Arc::new(Mutex::new(initial_state.clone()));
 
     // Watchdog support — send WATCHDOG=1 at half the configured interval
     let wd_interval = watchdog_interval();
@@ -763,6 +946,12 @@ fn main() {
         log::info!("Watchdog enabled, interval {:?}", iv);
     }
     let mut last_watchdog = Instant::now();
+
+    // D-Bus connection is deferred to after READY=1 so we don't block early
+    // boot waiting for dbus-daemon. These are populated in the main loop.
+    let mut dbus_conn: Option<Connection> = None;
+    let mut dbus_cr: Option<Crossroads> = None;
+    let mut dbus_attempted = false;
 
     // Ensure /run/systemd exists
     let _ = fs::create_dir_all(Path::new(CONTROL_SOCKET_PATH).parent().unwrap());
@@ -774,7 +963,7 @@ fn main() {
     let listener = match UnixListener::bind(CONTROL_SOCKET_PATH) {
         Ok(l) => {
             log::info!("Listening on {}", CONTROL_SOCKET_PATH);
-            l
+            Some(l)
         }
         Err(e) => {
             log::error!(
@@ -782,34 +971,16 @@ fn main() {
                 CONTROL_SOCKET_PATH,
                 e
             );
-            // Still run even without control socket
-            sd_notify(&format!(
-                "READY=1\nSTATUS=Running (no control socket), LANG={}",
-                state.lang()
-            ));
-            loop {
-                if SHUTDOWN.load(Ordering::SeqCst) {
-                    break;
-                }
-                if let Some(ref iv) = wd_interval
-                    && last_watchdog.elapsed() >= *iv
-                {
-                    sd_notify("WATCHDOG=1");
-                    last_watchdog = Instant::now();
-                }
-                thread::sleep(Duration::from_secs(1));
-            }
-            sd_notify("STOPPING=1");
-            process::exit(0);
+            None
         }
     };
 
     // Set socket to non-blocking so we can check SHUTDOWN flag periodically
-    listener
-        .set_nonblocking(true)
-        .expect("Failed to set non-blocking");
+    if let Some(ref l) = listener {
+        l.set_nonblocking(true).expect("Failed to set non-blocking");
+    }
 
-    sd_notify(&format!("READY=1\nSTATUS=LANG={}", state.lang()));
+    sd_notify(&format!("READY=1\nSTATUS=LANG={}", initial_state.lang()));
 
     log::info!("systemd-localed ready");
 
@@ -822,9 +993,13 @@ fn main() {
 
         if RELOAD.load(Ordering::SeqCst) {
             RELOAD.store(false, Ordering::SeqCst);
-            let state = LocaleState::load();
-            log::info!("Reloaded configuration, LANG={}", state.lang());
-            sd_notify(&format!("STATUS=LANG={}", state.lang()));
+            let new_state = LocaleState::load();
+            log::info!("Reloaded configuration, LANG={}", new_state.lang());
+            {
+                let mut s = shared_state.lock().unwrap_or_else(|e| e.into_inner());
+                *s = new_state.clone();
+            }
+            sd_notify(&format!("STATUS=LANG={}", new_state.lang()));
         }
 
         // Send watchdog keepalive
@@ -835,20 +1010,56 @@ fn main() {
             last_watchdog = Instant::now();
         }
 
-        match listener.accept() {
-            Ok((mut stream, _addr)) => {
-                let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-                handle_client(&mut stream);
-                let _ = stream.shutdown(Shutdown::Both);
-            }
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                thread::sleep(Duration::from_millis(200));
-            }
-            Err(e) => {
-                log::warn!("Accept error: {}", e);
-                thread::sleep(Duration::from_millis(100));
+        // Attempt D-Bus registration once (deferred from startup so we don't
+        // block early boot before dbus-daemon is running).
+        if !dbus_attempted {
+            dbus_attempted = true;
+            match setup_dbus(shared_state.clone()) {
+                Ok((conn, cr)) => {
+                    log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
+                    dbus_conn = Some(conn);
+                    dbus_cr = Some(cr);
+                    sd_notify(&format!(
+                        "STATUS=LANG={} (D-Bus active)",
+                        initial_state.lang()
+                    ));
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to register D-Bus interface ({}); control socket only",
+                        e
+                    );
+                }
             }
         }
+
+        // Process D-Bus messages (non-blocking)
+        if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
+            let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
+            while let Some(msg) = conn.channel().pop_message() {
+                let _ = cr.handle_message(msg, conn);
+            }
+        }
+
+        // Accept control socket connections
+        if let Some(ref listener) = listener {
+            match listener.accept() {
+                Ok((mut stream, _addr)) => {
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+                    handle_client(&mut stream);
+                    let _ = stream.shutdown(Shutdown::Both);
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    // No connection waiting
+                }
+                Err(e) => {
+                    log::warn!("Accept error: {}", e);
+                }
+            }
+        }
+
+        // Brief sleep to avoid busy-looping
+        thread::sleep(Duration::from_millis(50));
     }
 
     // Cleanup
@@ -864,6 +1075,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dbus_crossroads::Crossroads;
     use std::io::Write;
     use std::path::PathBuf;
     use tempfile::TempDir;
@@ -1499,7 +1711,60 @@ mod tests {
 
     #[test]
     fn test_locale_variables_count() {
-        // Standard locale variables: LANG, LANGUAGE, and 13 LC_* categories
         assert_eq!(LOCALE_VARIABLES.len(), 15);
+    }
+
+    // --- D-Bus interface tests ---
+
+    #[test]
+    fn test_dbus_register_locale1_iface() {
+        // Verify the interface registration doesn't panic
+        let mut cr = Crossroads::new();
+        let token = register_locale1_iface(&mut cr);
+        let shared: SharedState = Arc::new(Mutex::new(LocaleState::default()));
+        cr.insert(DBUS_PATH, &[token], shared);
+    }
+
+    #[test]
+    fn test_shared_state_reload() {
+        let mut locale = BTreeMap::new();
+        locale.insert("LANG".to_string(), "C".to_string());
+        let state = LocaleState {
+            locale,
+            ..Default::default()
+        };
+        let shared: SharedState = Arc::new(Mutex::new(state));
+
+        // Simulate a reload
+        {
+            let mut s = shared.lock().unwrap();
+            s.locale
+                .insert("LANG".to_string(), "en_US.UTF-8".to_string());
+            s.vconsole_keymap = "us".to_string();
+        }
+
+        let s = shared.lock().unwrap();
+        assert_eq!(s.locale.get("LANG").unwrap(), "en_US.UTF-8");
+        assert_eq!(s.vconsole_keymap, "us");
+    }
+
+    #[test]
+    fn test_shared_state_x11_update() {
+        let state = LocaleState::default();
+        let shared: SharedState = Arc::new(Mutex::new(state));
+
+        {
+            let mut s = shared.lock().unwrap();
+            s.x11_layout = "de".to_string();
+            s.x11_model = "pc105".to_string();
+            s.x11_variant = "nodeadkeys".to_string();
+            s.x11_options = "ctrl:nocaps".to_string();
+        }
+
+        let s = shared.lock().unwrap();
+        assert_eq!(s.x11_layout, "de");
+        assert_eq!(s.x11_model, "pc105");
+        assert_eq!(s.x11_variant, "nodeadkeys");
+        assert_eq!(s.x11_options, "ctrl:nocaps");
     }
 }

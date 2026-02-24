@@ -18,8 +18,12 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use dbus::blocking::Connection;
+use dbus_crossroads::{Crossroads, IfaceBuilder, MethodErr};
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -30,6 +34,10 @@ const TIMEZONE_PATH: &str = "/etc/timezone";
 const ZONEINFO_DIR: &str = "/usr/share/zoneinfo";
 const ADJTIME_PATH: &str = "/etc/adjtime";
 const CONTROL_SOCKET_PATH: &str = "/run/systemd/timedated.sock";
+
+const DBUS_NAME: &str = "org.freedesktop.timedate1";
+const DBUS_PATH: &str = "/org/freedesktop/timedate1";
+const DBUS_IFACE: &str = "org.freedesktop.timedate1";
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -596,6 +604,223 @@ fn format_tm(tm: &libc::tm) -> String {
 // Control socket command handler
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Shared state for D-Bus
+// ---------------------------------------------------------------------------
+
+type SharedState = Arc<Mutex<TimedateState>>;
+
+// ---------------------------------------------------------------------------
+// D-Bus interface: org.freedesktop.timedate1
+// ---------------------------------------------------------------------------
+
+/// Register the org.freedesktop.timedate1 interface on a Crossroads instance.
+///
+/// Properties (read-only):
+///   Timezone, LocalRTC, CanNTP, NTP, NTPSynchronized, TimeUSec, RTCTimeUSec
+///
+/// Methods:
+///   SetTime(x usec_utc, b relative, b interactive)
+///   SetTimezone(s timezone, b interactive)
+///   SetLocalRTC(b local_rtc, b fix_system, b interactive)
+///   SetNTP(b use_ntp, b interactive)
+///   ListTimezones() → as
+fn register_timedate1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedState> {
+    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedState>| {
+        // --- Properties (read-only) ---
+
+        b.property("Timezone").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.timezone.clone())
+        });
+
+        b.property("LocalRTC").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.local_rtc)
+        });
+
+        b.property("CanNTP").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.can_ntp)
+        });
+
+        b.property("NTP").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.ntp_enabled)
+        });
+
+        b.property("NTPSynchronized")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.ntp_synced)
+            });
+
+        b.property("TimeUSec").get(|_, _state: &mut SharedState| {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default();
+            Ok(now.as_micros() as u64)
+        });
+
+        b.property("RTCTimeUSec")
+            .get(|_, _state: &mut SharedState| {
+                // Try to read RTC time; return 0 if unavailable
+                let usec = read_rtc_time()
+                    .and_then(|s| {
+                        // Parse HH:MM:SS format
+                        let parts: Vec<&str> = s.split(':').collect();
+                        if parts.len() == 3 {
+                            let h: u64 = parts[0].parse().ok()?;
+                            let m: u64 = parts[1].parse().ok()?;
+                            let s: u64 = parts[2].parse().ok()?;
+                            Some((h * 3600 + m * 60 + s) * 1_000_000)
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or(0u64);
+                Ok(usec)
+            });
+
+        // --- Methods ---
+
+        // SetTime(x usec_utc, b relative, b interactive)
+        b.method(
+            "SetTime",
+            ("usec_utc", "relative", "interactive"),
+            (),
+            move |_,
+                  state: &mut SharedState,
+                  (usec_utc, relative, _interactive): (i64, bool, bool)| {
+                // Check NTP — if enabled, manual time setting is not allowed
+                {
+                    let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                    if s.ntp_enabled {
+                        return Err(MethodErr::failed(
+                            "Automatic time synchronization is enabled",
+                        ));
+                    }
+                }
+
+                let new_time = if relative {
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default();
+                    let now_usec = now.as_micros() as i64;
+                    now_usec.saturating_add(usec_utc)
+                } else {
+                    usec_utc
+                };
+
+                if new_time < 0 {
+                    return Err(MethodErr::failed("Time value out of range"));
+                }
+
+                // Set the system clock via clock_settime
+                let secs = new_time / 1_000_000;
+                let nsecs = (new_time % 1_000_000) * 1000;
+                let ts = libc::timespec {
+                    tv_sec: secs,
+                    tv_nsec: nsecs,
+                };
+                let ret = unsafe { libc::clock_settime(libc::CLOCK_REALTIME, &ts) };
+                if ret != 0 {
+                    return Err(MethodErr::failed("Failed to set system clock"));
+                }
+
+                Ok(())
+            },
+        );
+
+        // SetTimezone(s timezone, b interactive)
+        b.method(
+            "SetTimezone",
+            ("timezone", "interactive"),
+            (),
+            move |_, state: &mut SharedState, (timezone, _interactive): (String, bool)| {
+                if timezone.is_empty() {
+                    return Err(MethodErr::failed("Timezone must not be empty"));
+                }
+                if !is_valid_timezone(&timezone) {
+                    return Err(MethodErr::failed(&format!(
+                        "Invalid timezone '{}'",
+                        timezone
+                    )));
+                }
+                if let Err(e) = set_timezone(&timezone) {
+                    return Err(MethodErr::failed(&format!("Failed to set timezone: {}", e)));
+                }
+                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+                s.timezone = timezone;
+                Ok(())
+            },
+        );
+
+        // SetLocalRTC(b local_rtc, b fix_system, b interactive)
+        b.method(
+            "SetLocalRTC",
+            ("local_rtc", "fix_system", "interactive"),
+            (),
+            move |_,
+                  state: &mut SharedState,
+                  (local_rtc, _fix_system, _interactive): (bool, bool, bool)| {
+                if let Err(e) = set_local_rtc(local_rtc) {
+                    return Err(MethodErr::failed(&format!(
+                        "Failed to set local RTC: {}",
+                        e
+                    )));
+                }
+                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+                s.local_rtc = local_rtc;
+                Ok(())
+            },
+        );
+
+        // SetNTP(b use_ntp, b interactive)
+        b.method(
+            "SetNTP",
+            ("use_ntp", "interactive"),
+            (),
+            move |_, state: &mut SharedState, (use_ntp, _interactive): (bool, bool)| {
+                if let Err(e) = set_ntp(use_ntp) {
+                    return Err(MethodErr::failed(&format!("Failed to set NTP: {}", e)));
+                }
+                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+                s.ntp_enabled = use_ntp;
+                Ok(())
+            },
+        );
+
+        // ListTimezones() → as
+        b.method(
+            "ListTimezones",
+            (),
+            ("timezones",),
+            move |_, _state: &mut SharedState, ()| {
+                let tzs = list_timezones();
+                Ok((tzs,))
+            },
+        );
+    })
+}
+
+/// Set up the D-Bus connection and register the timedate1 interface.
+fn setup_dbus(shared: SharedState) -> Result<(Connection, Crossroads), String> {
+    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    conn.request_name(DBUS_NAME, false, true, false)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
+
+    let mut cr = Crossroads::new();
+    let iface_token = register_timedate1_iface(&mut cr);
+    cr.insert(DBUS_PATH, &[iface_token], shared);
+
+    Ok((conn, cr))
+}
+
+// ---------------------------------------------------------------------------
+// Control socket command handler
+// ---------------------------------------------------------------------------
+
 /// Handle a single control command and return the response string.
 pub fn handle_control_command(line: &str) -> String {
     let parts: Vec<&str> = line.trim().splitn(3, ' ').collect();
@@ -807,9 +1032,14 @@ fn main() {
 
     log::info!("systemd-timedated starting");
 
-    // Load initial state
-    let state = TimedateState::load();
-    log::info!("Timezone: {}, NTP: {}", state.timezone, state.ntp_enabled);
+    // Load initial state into shared state for D-Bus and control socket
+    let initial_state = TimedateState::load();
+    log::info!(
+        "Timezone: {}, NTP: {}",
+        initial_state.timezone,
+        initial_state.ntp_enabled
+    );
+    let shared_state: SharedState = Arc::new(Mutex::new(initial_state.clone()));
 
     // Watchdog support
     let wd_interval = watchdog_interval();
@@ -817,6 +1047,12 @@ fn main() {
         log::info!("Watchdog enabled, interval {:?}", iv);
     }
     let mut last_watchdog = Instant::now();
+
+    // D-Bus connection is deferred to after READY=1 so we don't block early
+    // boot waiting for dbus-daemon. These are populated in the main loop.
+    let mut dbus_conn: Option<Connection> = None;
+    let mut dbus_cr: Option<Crossroads> = None;
+    let mut dbus_attempted = false;
 
     // Ensure /run/systemd exists
     let _ = fs::create_dir_all(Path::new(CONTROL_SOCKET_PATH).parent().unwrap());
@@ -828,7 +1064,7 @@ fn main() {
     let listener = match UnixListener::bind(CONTROL_SOCKET_PATH) {
         Ok(l) => {
             log::info!("Listening on {}", CONTROL_SOCKET_PATH);
-            l
+            Some(l)
         }
         Err(e) => {
             log::error!(
@@ -836,34 +1072,16 @@ fn main() {
                 CONTROL_SOCKET_PATH,
                 e
             );
-            // Still run even without control socket
-            sd_notify(&format!(
-                "READY=1\nSTATUS=Running (no control socket), TZ: {}",
-                state.timezone
-            ));
-            loop {
-                if SHUTDOWN.load(Ordering::SeqCst) {
-                    break;
-                }
-                if let Some(ref iv) = wd_interval
-                    && last_watchdog.elapsed() >= *iv
-                {
-                    sd_notify("WATCHDOG=1");
-                    last_watchdog = Instant::now();
-                }
-                thread::sleep(Duration::from_secs(1));
-            }
-            sd_notify("STOPPING=1");
-            process::exit(0);
+            None
         }
     };
 
     // Non-blocking so we can check SHUTDOWN flag periodically
-    listener
-        .set_nonblocking(true)
-        .expect("Failed to set non-blocking");
+    if let Some(ref l) = listener {
+        l.set_nonblocking(true).expect("Failed to set non-blocking");
+    }
 
-    sd_notify(&format!("READY=1\nSTATUS=TZ: {}", state.timezone));
+    sd_notify(&format!("READY=1\nSTATUS=TZ: {}", initial_state.timezone));
 
     log::info!("systemd-timedated ready");
 
@@ -876,13 +1094,17 @@ fn main() {
 
         if RELOAD.load(Ordering::SeqCst) {
             RELOAD.store(false, Ordering::SeqCst);
-            let state = TimedateState::load();
+            let new_state = TimedateState::load();
             log::info!(
                 "Reloaded configuration, timezone: {}, NTP: {}",
-                state.timezone,
-                state.ntp_enabled
+                new_state.timezone,
+                new_state.ntp_enabled
             );
-            sd_notify(&format!("STATUS=TZ: {}", state.timezone));
+            {
+                let mut s = shared_state.lock().unwrap_or_else(|e| e.into_inner());
+                *s = new_state.clone();
+            }
+            sd_notify(&format!("STATUS=TZ: {}", new_state.timezone));
         }
 
         // Send watchdog keepalive
@@ -893,20 +1115,56 @@ fn main() {
             last_watchdog = Instant::now();
         }
 
-        match listener.accept() {
-            Ok((mut stream, _addr)) => {
-                let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-                handle_client(&mut stream);
-                let _ = stream.shutdown(Shutdown::Both);
-            }
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                thread::sleep(Duration::from_millis(200));
-            }
-            Err(e) => {
-                log::warn!("Accept error: {}", e);
-                thread::sleep(Duration::from_millis(100));
+        // Attempt D-Bus registration once (deferred from startup so we don't
+        // block early boot before dbus-daemon is running).
+        if !dbus_attempted {
+            dbus_attempted = true;
+            match setup_dbus(shared_state.clone()) {
+                Ok((conn, cr)) => {
+                    log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
+                    dbus_conn = Some(conn);
+                    dbus_cr = Some(cr);
+                    sd_notify(&format!(
+                        "STATUS=TZ: {} (D-Bus active)",
+                        initial_state.timezone
+                    ));
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to register D-Bus interface ({}); control socket only",
+                        e
+                    );
+                }
             }
         }
+
+        // Process D-Bus messages (non-blocking)
+        if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
+            let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
+            while let Some(msg) = conn.channel().pop_message() {
+                let _ = cr.handle_message(msg, conn);
+            }
+        }
+
+        // Accept control socket connections
+        if let Some(ref listener) = listener {
+            match listener.accept() {
+                Ok((mut stream, _addr)) => {
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+                    handle_client(&mut stream);
+                    let _ = stream.shutdown(Shutdown::Both);
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    // No connection waiting
+                }
+                Err(e) => {
+                    log::warn!("Accept error: {}", e);
+                }
+            }
+        }
+
+        // Brief sleep to avoid busy-looping
+        thread::sleep(Duration::from_millis(50));
     }
 
     // Cleanup
@@ -1487,6 +1745,55 @@ mod tests {
         let response = handle_control_command("SET-LOCAL-RTC maybe");
         assert!(response.starts_with("ERROR:"));
         assert!(response.contains("Invalid"));
+    }
+
+    // --- D-Bus interface tests ---
+
+    #[test]
+    fn test_dbus_register_timedate1_iface() {
+        // Verify the interface registration doesn't panic
+        let mut cr = Crossroads::new();
+        let token = register_timedate1_iface(&mut cr);
+        let shared: SharedState = Arc::new(Mutex::new(TimedateState::default()));
+        cr.insert(DBUS_PATH, &[token], shared);
+    }
+
+    #[test]
+    fn test_shared_state_reload() {
+        let state = TimedateState {
+            timezone: "UTC".to_string(),
+            ..Default::default()
+        };
+        let shared: SharedState = Arc::new(Mutex::new(state));
+
+        // Simulate a reload
+        {
+            let mut s = shared.lock().unwrap();
+            s.timezone = "Europe/Berlin".to_string();
+            s.ntp_enabled = true;
+        }
+
+        let s = shared.lock().unwrap();
+        assert_eq!(s.timezone, "Europe/Berlin");
+        assert!(s.ntp_enabled);
+    }
+
+    #[test]
+    fn test_shared_state_ntp_toggle() {
+        let state = TimedateState {
+            ntp_enabled: false,
+            can_ntp: true,
+            ..Default::default()
+        };
+        let shared: SharedState = Arc::new(Mutex::new(state));
+
+        {
+            let mut s = shared.lock().unwrap();
+            s.ntp_enabled = true;
+        }
+
+        let s = shared.lock().unwrap();
+        assert!(s.ntp_enabled);
     }
 
     #[test]
