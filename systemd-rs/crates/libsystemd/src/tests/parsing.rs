@@ -46166,3 +46166,510 @@ fn test_resource_control_preserved_after_unit_conversion() {
         _ => panic!("Expected service unit"),
     }
 }
+
+// ── SendSIGKILL= ─────────────────────────────────────────────────────
+
+#[test]
+fn test_send_sigkill_defaults_to_true() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        service.srvc.send_sigkill,
+        "SendSIGKILL should default to true when not specified"
+    );
+}
+
+#[test]
+fn test_send_sigkill_explicit_yes() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SendSIGKILL = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(service.srvc.send_sigkill, "SendSIGKILL=yes should be true");
+}
+
+#[test]
+fn test_send_sigkill_explicit_no() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SendSIGKILL = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(!service.srvc.send_sigkill, "SendSIGKILL=no should be false");
+}
+
+#[test]
+fn test_send_sigkill_explicit_false() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SendSIGKILL = false
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert!(
+        !service.srvc.send_sigkill,
+        "SendSIGKILL=false should be false"
+    );
+}
+
+// ── RestartKillSignal= ───────────────────────────────────────────────
+
+#[test]
+fn test_restart_kill_signal_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart_kill_signal, None,
+        "RestartKillSignal should default to None"
+    );
+}
+
+#[test]
+fn test_restart_kill_signal_sigterm() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartKillSignal = SIGTERM
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart_kill_signal,
+        Some(libc::SIGTERM),
+        "RestartKillSignal=SIGTERM should parse to SIGTERM"
+    );
+}
+
+#[test]
+fn test_restart_kill_signal_sigint() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    RestartKillSignal = SIGINT
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.restart_kill_signal,
+        Some(libc::SIGINT),
+        "RestartKillSignal=SIGINT should parse to SIGINT"
+    );
+}
+
+// ── FinalKillSignal= ─────────────────────────────────────────────────
+
+#[test]
+fn test_final_kill_signal_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.final_kill_signal, None,
+        "FinalKillSignal should default to None"
+    );
+}
+
+#[test]
+fn test_final_kill_signal_sigkill() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    FinalKillSignal = SIGKILL
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.final_kill_signal,
+        Some(libc::SIGKILL),
+        "FinalKillSignal=SIGKILL should parse to SIGKILL"
+    );
+}
+
+// ── WatchdogSignal= ──────────────────────────────────────────────────
+
+#[test]
+fn test_watchdog_signal_defaults_to_none() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.watchdog_signal, None,
+        "WatchdogSignal should default to None"
+    );
+}
+
+#[test]
+fn test_watchdog_signal_sigabrt() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    WatchdogSignal = SIGABRT
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.watchdog_signal,
+        Some(libc::SIGABRT),
+        "WatchdogSignal=SIGABRT should parse to SIGABRT"
+    );
+}
+
+#[test]
+fn test_watchdog_signal_sigusr1() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    WatchdogSignal = SIGUSR1
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.watchdog_signal,
+        Some(libc::SIGUSR1),
+        "WatchdogSignal=SIGUSR1 should parse to SIGUSR1"
+    );
+}
+
+// ── Combined kill directives ──────────────────────────────────────────
+
+#[test]
+fn test_all_kill_directives_combined() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    KillMode = mixed
+    KillSignal = SIGTERM
+    SendSIGHUP = yes
+    SendSIGKILL = no
+    RestartKillSignal = SIGINT
+    FinalKillSignal = SIGKILL
+    WatchdogSignal = SIGABRT
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        service.srvc.kill_mode,
+        crate::units::KillMode::Mixed,
+        "KillMode should be mixed"
+    );
+    assert_eq!(
+        service.srvc.kill_signal,
+        Some(libc::SIGTERM),
+        "KillSignal should be SIGTERM"
+    );
+    assert!(service.srvc.send_sighup, "SendSIGHUP should be true");
+    assert!(!service.srvc.send_sigkill, "SendSIGKILL should be false");
+    assert_eq!(
+        service.srvc.restart_kill_signal,
+        Some(libc::SIGINT),
+        "RestartKillSignal should be SIGINT"
+    );
+    assert_eq!(
+        service.srvc.final_kill_signal,
+        Some(libc::SIGKILL),
+        "FinalKillSignal should be SIGKILL"
+    );
+    assert_eq!(
+        service.srvc.watchdog_signal,
+        Some(libc::SIGABRT),
+        "WatchdogSignal should be SIGABRT"
+    );
+}
+
+// ── Combined security hardening (typical NixOS service) ──────────────
+
+#[test]
+fn test_typical_nixos_hardened_service() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /nix/store/xxx-myservice/bin/myservice
+    User = myservice
+    Group = myservice
+    NoNewPrivileges = yes
+    ProtectSystem = strict
+    ProtectHome = yes
+    PrivateTmp = yes
+    PrivateDevices = yes
+    ProtectKernelTunables = yes
+    ProtectKernelModules = yes
+    ProtectKernelLogs = yes
+    ProtectControlGroups = yes
+    ProtectClock = yes
+    ProtectHostname = yes
+    LockPersonality = yes
+    MemoryDenyWriteExecute = yes
+    RestrictRealtime = yes
+    RestrictSUIDSGID = yes
+    CapabilityBoundingSet =
+    ReadWritePaths = /var/lib/myservice
+    UMask = 0077
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/myservice.service"),
+    )
+    .unwrap();
+
+    let exec = &service.srvc.exec_section;
+    assert!(exec.no_new_privileges, "NoNewPrivileges should be true");
+    assert_eq!(
+        exec.protect_system,
+        crate::units::ProtectSystem::Strict,
+        "ProtectSystem should be Strict"
+    );
+    assert_eq!(
+        exec.protect_home,
+        crate::units::ProtectHome::Yes,
+        "ProtectHome should be Yes"
+    );
+    assert!(exec.private_tmp, "PrivateTmp should be true");
+    assert!(exec.private_devices, "PrivateDevices should be true");
+    assert!(
+        exec.protect_kernel_tunables,
+        "ProtectKernelTunables should be true"
+    );
+    assert!(
+        exec.protect_kernel_modules,
+        "ProtectKernelModules should be true"
+    );
+    assert!(exec.protect_kernel_logs, "ProtectKernelLogs should be true");
+    assert!(
+        exec.protect_control_groups,
+        "ProtectControlGroups should be true"
+    );
+    assert!(exec.protect_clock, "ProtectClock should be true");
+    assert!(exec.protect_hostname, "ProtectHostname should be true");
+    assert!(exec.lock_personality, "LockPersonality should be true");
+    assert!(
+        exec.memory_deny_write_execute,
+        "MemoryDenyWriteExecute should be true"
+    );
+    assert!(exec.restrict_realtime, "RestrictRealtime should be true");
+    assert!(exec.restrict_suid_sgid, "RestrictSUIDSGID should be true");
+    // Empty assignment resets capability bounding set to empty (drop all)
+    assert!(
+        exec.capability_bounding_set.is_empty(),
+        "CapabilityBoundingSet should be empty (drop all)"
+    );
+    assert_eq!(
+        exec.read_write_paths,
+        vec!["/var/lib/myservice".to_string()],
+        "ReadWritePaths should contain /var/lib/myservice"
+    );
+    assert_eq!(exec.umask, Some(0o0077), "UMask should be 0077");
+}
+
+// ── Kill directives preserved after unit conversion ──────────────────
+
+#[test]
+fn test_kill_directives_preserved_after_unit_conversion() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    SendSIGKILL = no
+    RestartKillSignal = SIGINT
+    FinalKillSignal = SIGKILL
+    WatchdogSignal = SIGABRT
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+    match &unit.specific {
+        crate::units::Specific::Service(s) => {
+            assert!(
+                !s.conf.send_sigkill,
+                "SendSIGKILL=no should be preserved after conversion"
+            );
+            assert_eq!(
+                s.conf.restart_kill_signal,
+                Some(libc::SIGINT),
+                "RestartKillSignal should be preserved after conversion"
+            );
+            assert_eq!(
+                s.conf.final_kill_signal,
+                Some(libc::SIGKILL),
+                "FinalKillSignal should be preserved after conversion"
+            );
+            assert_eq!(
+                s.conf.watchdog_signal,
+                Some(libc::SIGABRT),
+                "WatchdogSignal should be preserved after conversion"
+            );
+        }
+        _ => panic!("Expected service unit"),
+    }
+}
+
+// ── Exec security directives preserved after unit conversion ─────────
+
+#[test]
+fn test_exec_security_directives_preserved_after_unit_conversion() {
+    let test_service_str = r#"
+    [Service]
+    ExecStart = /bin/true
+    NoNewPrivileges = yes
+    ProtectSystem = strict
+    ProtectHome = read-only
+    PrivateTmp = yes
+    PrivateDevices = yes
+    PrivateNetwork = yes
+    ProtectKernelTunables = yes
+    ProtectKernelModules = yes
+    ProtectKernelLogs = yes
+    ProtectControlGroups = yes
+    ProtectClock = yes
+    ProtectHostname = yes
+    LockPersonality = yes
+    MemoryDenyWriteExecute = yes
+    RestrictRealtime = yes
+    RestrictSUIDSGID = yes
+    UMask = 0077
+    Nice = -5
+    IOSchedulingClass = idle
+    IOSchedulingPriority = 3
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let parsed_service = crate::units::parse_service(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/unitfile.service"),
+    )
+    .unwrap();
+
+    let unit: crate::units::Unit = parsed_service.try_into().unwrap();
+    match &unit.specific {
+        crate::units::Specific::Service(s) => {
+            let exec = &s.conf.exec_config;
+            assert!(exec.no_new_privileges);
+            assert_eq!(exec.protect_system, crate::units::ProtectSystem::Strict);
+            assert_eq!(exec.protect_home, crate::units::ProtectHome::ReadOnly);
+            assert!(exec.private_tmp);
+            assert!(exec.private_devices);
+            assert!(exec.private_network);
+            assert!(exec.protect_kernel_tunables);
+            assert!(exec.protect_kernel_modules);
+            assert!(exec.protect_kernel_logs);
+            assert!(exec.protect_control_groups);
+            assert!(exec.protect_clock);
+            assert!(exec.protect_hostname);
+            assert!(exec.lock_personality);
+            assert!(exec.memory_deny_write_execute);
+            assert!(exec.restrict_realtime);
+            assert!(exec.restrict_suid_sgid);
+            assert_eq!(exec.umask, Some(0o0077));
+            assert_eq!(exec.nice, Some(-5));
+            assert_eq!(
+                exec.io_scheduling_class,
+                crate::units::IOSchedulingClass::Idle
+            );
+            assert_eq!(exec.io_scheduling_priority, Some(3));
+        }
+        _ => panic!("Expected service unit"),
+    }
+}

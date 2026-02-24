@@ -624,10 +624,13 @@ mod tests {
         };
         let now = Instant::now();
         let mut last_fired = std::collections::HashMap::new();
-        // Last fired 10 minutes ago — shouldn't fire yet
+        // Last fired 1 second ago — shouldn't fire yet (using a very short
+        // interval avoids flakiness: with 10 minutes, if we happen to be in
+        // the first 10 minutes of the hour a new hourly boundary has been
+        // crossed since last fire, so should_fire_timer correctly returns true).
         last_fired.insert(
             "test.timer".into(),
-            now.checked_sub(Duration::from_secs(600)).unwrap(),
+            now.checked_sub(Duration::from_secs(1)).unwrap(),
         );
         let result = should_fire_timer(
             &conf,

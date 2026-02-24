@@ -122,6 +122,10 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 tasks_accounting: conf.srvc.tasks_accounting,
                 runtime_max_sec: conf.srvc.runtime_max_sec,
                 coredump_receive: conf.srvc.coredump_receive,
+                send_sigkill: conf.srvc.send_sigkill,
+                restart_kill_signal: conf.srvc.restart_kill_signal,
+                final_kill_signal: conf.srvc.final_kill_signal,
+                watchdog_signal: conf.srvc.watchdog_signal,
             },
             state: RwLock::new(ServiceState {
                 common: CommonState::default(),
