@@ -72,7 +72,7 @@ fn resolve_ambient_caps(names: &[String]) -> Vec<u64> {
         if let Some(cap) = cap_name_to_number(name) {
             caps.push(cap);
         } else {
-            eprintln!("[EXEC_HELPER] Unknown ambient capability: {name}");
+            log::warn!("Unknown ambient capability: {name}");
         }
     }
     caps
@@ -442,9 +442,8 @@ fn tty_reset_destructive(config: &ExecHelperConfig) {
         libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC | libc::O_NONBLOCK,
     );
     if fd < 0 {
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to open TTY {:?} for reset: {}",
-            config.name,
+        log::warn!(
+            "Failed to open TTY {:?} for reset: {}",
             tty_path,
             std::io::Error::last_os_error()
         );
@@ -515,9 +514,8 @@ fn tty_reset_destructive(config: &ExecHelperConfig) {
         unsafe {
             let ret = libc::ioctl(fd, libc::TIOCVHANGUP);
             if ret < 0 {
-                eprintln!(
-                    "[EXEC_HELPER {}] TIOCVHANGUP failed on {:?}: {}",
-                    config.name,
+                log::warn!(
+                    "TIOCVHANGUP failed on {:?}: {}",
                     tty_path,
                     std::io::Error::last_os_error()
                 );
@@ -598,19 +596,15 @@ fn setup_tty_output(config: &ExecHelperConfig) {
     let tty_path_cstr = match std::ffi::CString::new(tty_path.to_string_lossy().as_bytes()) {
         Ok(c) => c,
         Err(_) => {
-            eprintln!(
-                "[EXEC_HELPER {}] Invalid TTYPath for output: {:?}",
-                config.name, tty_path
-            );
+            log::warn!("Invalid TTYPath for output: {:?}", tty_path);
             return;
         }
     };
 
     let tty_fd = open_terminal(&tty_path_cstr, libc::O_WRONLY | libc::O_NOCTTY);
     if tty_fd < 0 {
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to open TTY {:?} for output: {}",
-            config.name,
+        log::warn!(
+            "Failed to open TTY {:?} for output: {}",
             tty_path,
             std::io::Error::last_os_error()
         );
@@ -641,9 +635,8 @@ fn setup_stdin(config: &ExecHelperConfig) {
             let null_fd =
                 unsafe { libc::open(c"/dev/null".as_ptr(), libc::O_RDONLY | libc::O_CLOEXEC) };
             if null_fd < 0 {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to open /dev/null for stdin: {}",
-                    config.name,
+                log::error!(
+                    "Failed to open /dev/null for stdin: {}",
                     std::io::Error::last_os_error()
                 );
                 std::process::exit(1);
@@ -664,10 +657,7 @@ fn setup_stdin(config: &ExecHelperConfig) {
             {
                 Ok(c) => c,
                 Err(_) => {
-                    eprintln!(
-                        "[EXEC_HELPER {}] Invalid TTYPath: {:?}",
-                        config.name, tty_path
-                    );
+                    log::error!("Invalid TTYPath: {:?}", tty_path);
                     std::process::exit(1);
                 }
             };
@@ -687,7 +677,7 @@ fn setup_stdin(config: &ExecHelperConfig) {
                     let err = std::io::Error::last_os_error();
                     // EPERM means we're already a session leader — that's OK.
                     if err.raw_os_error() != Some(libc::EPERM) {
-                        eprintln!("[EXEC_HELPER {}] setsid() failed: {}", config.name, err);
+                        log::warn!("setsid() failed: {}", err);
                     }
                 }
             }
@@ -696,18 +686,12 @@ fn setup_stdin(config: &ExecHelperConfig) {
             let tty_fd = open_terminal(&tty_path_cstr, libc::O_RDWR | libc::O_NOCTTY);
             if tty_fd < 0 {
                 let err = std::io::Error::last_os_error();
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to open TTY {:?} for stdin: {}",
-                    config.name, tty_path, err
-                );
+                log::warn!("Failed to open TTY {:?} for stdin: {}", tty_path, err);
                 if config.stdin_option == StandardInput::TtyFail {
                     std::process::exit(1);
                 }
                 // For tty/tty-force, fall back to /dev/null
-                eprintln!(
-                    "[EXEC_HELPER {}] Falling back to /dev/null for stdin",
-                    config.name
-                );
+                log::warn!("Falling back to /dev/null for stdin");
                 let null_fd = unsafe { libc::open(c"/dev/null".as_ptr(), libc::O_RDONLY) };
                 if null_fd >= 0 && null_fd != libc::STDIN_FILENO {
                     unsafe {
@@ -746,9 +730,10 @@ fn setup_stdin(config: &ExecHelperConfig) {
 
                 if ret < 0 {
                     let err = std::io::Error::last_os_error();
-                    eprintln!(
-                        "[EXEC_HELPER {}] Failed to acquire controlling terminal {:?}: {}",
-                        config.name, tty_path, err
+                    log::warn!(
+                        "Failed to acquire controlling terminal {:?}: {}",
+                        tty_path,
+                        err
                     );
                     if config.stdin_option == StandardInput::TtyFail {
                         libc::close(tty_fd);
@@ -879,9 +864,8 @@ pub fn run_exec_helper() {
         };
         let ret = unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &rlim) };
         if ret != 0 {
-            eprintln!(
-                "[EXEC_HELPER {}] Failed to set RLIMIT_NOFILE (soft={}, hard={}): {}",
-                config.name,
+            log::error!(
+                "Failed to set RLIMIT_NOFILE (soft={}, hard={}): {}",
                 soft,
                 hard,
                 std::io::Error::last_os_error()
@@ -893,7 +877,7 @@ pub fn run_exec_helper() {
     if let Err(e) =
         crate::services::fork_os_specific::post_fork_os_specific(&config.platform_specific)
     {
-        eprintln!("[FORK_CHILD {}] postfork error: {}", config.name, e);
+        log::error!("postfork error: {}", e);
         std::process::exit(1);
     }
 
@@ -910,9 +894,8 @@ pub fn run_exec_helper() {
             *libc::__errno_location() = 0;
             let ret = libc::setpriority(libc::PRIO_PROCESS, 0, nice_val);
             if ret == -1 && *libc::__errno_location() != 0 {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to set Nice={}: {}",
-                    config.name,
+                log::warn!(
+                    "Failed to set Nice={}: {}",
                     nice_val,
                     std::io::Error::last_os_error()
                 );
@@ -936,9 +919,8 @@ pub fn run_exec_helper() {
             // ioprio_set(IOPRIO_WHO_PROCESS=1, 0=self, ioprio)
             let ret = unsafe { libc::syscall(libc::SYS_ioprio_set, 1i32, 0i32, ioprio) };
             if ret < 0 {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to set IOSchedulingClass={} IOSchedulingPriority={}: {}",
-                    config.name,
+                log::warn!(
+                    "Failed to set IOSchedulingClass={} IOSchedulingPriority={}: {}",
                     io_class,
                     prio_val,
                     std::io::Error::last_os_error()
@@ -962,20 +944,14 @@ pub fn run_exec_helper() {
         for dir_name in &config.state_directory {
             let full_path = base.join(dir_name);
             if let Err(e) = std::fs::create_dir_all(&full_path) {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to create state directory {:?}: {}",
-                    config.name, full_path, e
-                );
+                log::error!("Failed to create state directory {:?}: {}", full_path, e);
                 std::process::exit(1);
             }
             // Set ownership to the service user/group
             let uid = nix::unistd::Uid::from_raw(config.user);
             let gid = nix::unistd::Gid::from_raw(config.group);
             if let Err(e) = nix::unistd::chown(&full_path, Some(uid), Some(gid)) {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to chown state directory {:?}: {}",
-                    config.name, full_path, e
-                );
+                log::error!("Failed to chown state directory {:?}: {}", full_path, e);
                 std::process::exit(1);
             }
             full_paths.push(full_path.to_string_lossy().into_owned());
@@ -991,19 +967,18 @@ pub fn run_exec_helper() {
         for dir_name in &config.logs_directory {
             let full_path = base.join(dir_name);
             if let Err(e) = std::fs::create_dir_all(&full_path) {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to create logs directory {:?}: {}",
-                    config.name, full_path, e
-                );
+                log::error!("Failed to create logs directory {:?}: {}", full_path, e);
                 std::process::exit(1);
             }
             // Apply LogsDirectoryMode=
             use std::os::unix::fs::PermissionsExt;
             let perms = std::fs::Permissions::from_mode(mode);
             if let Err(e) = std::fs::set_permissions(&full_path, perms) {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to set mode {:o} on logs directory {:?}: {}",
-                    config.name, mode, full_path, e
+                log::error!(
+                    "Failed to set mode {:o} on logs directory {:?}: {}",
+                    mode,
+                    full_path,
+                    e
                 );
                 std::process::exit(1);
             }
@@ -1011,10 +986,7 @@ pub fn run_exec_helper() {
             let uid = nix::unistd::Uid::from_raw(config.user);
             let gid = nix::unistd::Gid::from_raw(config.group);
             if let Err(e) = nix::unistd::chown(&full_path, Some(uid), Some(gid)) {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to chown logs directory {:?}: {}",
-                    config.name, full_path, e
-                );
+                log::error!("Failed to chown logs directory {:?}: {}", full_path, e);
                 std::process::exit(1);
             }
             full_paths.push(full_path.to_string_lossy().into_owned());
@@ -1029,20 +1001,14 @@ pub fn run_exec_helper() {
         for dir_name in &config.runtime_directory {
             let full_path = base.join(dir_name);
             if let Err(e) = std::fs::create_dir_all(&full_path) {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to create runtime directory {:?}: {}",
-                    config.name, full_path, e
-                );
+                log::error!("Failed to create runtime directory {:?}: {}", full_path, e);
                 std::process::exit(1);
             }
             // Set ownership to the service user/group
             let uid = nix::unistd::Uid::from_raw(config.user);
             let gid = nix::unistd::Gid::from_raw(config.group);
             if let Err(e) = nix::unistd::chown(&full_path, Some(uid), Some(gid)) {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to chown runtime directory {:?}: {}",
-                    config.name, full_path, e
-                );
+                log::error!("Failed to chown runtime directory {:?}: {}", full_path, e);
                 std::process::exit(1);
             }
             full_paths.push(full_path.to_string_lossy().into_owned());
@@ -1086,9 +1052,8 @@ pub fn run_exec_helper() {
     if config.protect_hostname {
         let ret = unsafe { libc::unshare(libc::CLONE_NEWUTS) };
         if ret != 0 {
-            eprintln!(
-                "[EXEC_HELPER {}] Failed to create UTS namespace for ProtectHostname=: {}",
-                config.name,
+            log::warn!(
+                "Failed to create UTS namespace for ProtectHostname=: {}",
                 std::io::Error::last_os_error()
             );
             // Non-fatal: continue without UTS isolation
@@ -1099,9 +1064,8 @@ pub fn run_exec_helper() {
     if config.private_network {
         let ret = unsafe { libc::unshare(libc::CLONE_NEWNET) };
         if ret != 0 {
-            eprintln!(
-                "[EXEC_HELPER {}] Failed to create network namespace for PrivateNetwork=: {}",
-                config.name,
+            log::warn!(
+                "Failed to create network namespace for PrivateNetwork=: {}",
                 std::io::Error::last_os_error()
             );
         } else {
@@ -1148,9 +1112,11 @@ pub fn run_exec_helper() {
     if let Some(adj) = config.oom_score_adjust {
         let path = Path::new("/proc/self/oom_score_adj");
         if let Err(e) = std::fs::write(path, format!("{adj}")) {
-            eprintln!(
-                "[EXEC_HELPER {}] Failed to set OOMScoreAdjust to {} ({:?}): {}",
-                config.name, adj, path, e
+            log::warn!(
+                "Failed to set OOMScoreAdjust to {} ({:?}): {}",
+                adj,
+                path,
+                e
             );
             // Non-fatal: log and continue, matching systemd's lenient behavior
             // when the kernel rejects the value or the file is unavailable.
@@ -1179,9 +1145,8 @@ pub fn run_exec_helper() {
         if !ambient_caps.is_empty() {
             let ret = unsafe { libc::prctl(libc::PR_SET_KEEPCAPS, 1, 0, 0, 0) };
             if ret != 0 {
-                eprintln!(
-                    "[EXEC_HELPER {}] PR_SET_KEEPCAPS failed: {}",
-                    config.name,
+                log::warn!(
+                    "PR_SET_KEEPCAPS failed: {}",
                     std::io::Error::last_os_error()
                 );
             }
@@ -1205,10 +1170,7 @@ pub fn run_exec_helper() {
                 );
             }
             Err(e) => {
-                eprintln!(
-                    "[EXEC_HELPER {}] could not drop privileges because: {}",
-                    config.name, e
-                );
+                log::error!("could not drop privileges because: {}", e);
                 std::process::exit(1);
             }
         }
@@ -1247,11 +1209,7 @@ pub fn run_exec_helper() {
             if unsafe { libc::syscall(libc::SYS_capget, &mut hdr as *mut _, data.as_mut_ptr()) }
                 != 0
             {
-                eprintln!(
-                    "[EXEC_HELPER {}] capget failed: {}",
-                    config.name,
-                    std::io::Error::last_os_error()
-                );
+                log::warn!("capget failed: {}", std::io::Error::last_os_error());
             } else {
                 // Set all requested caps in permitted, effective, AND
                 // inheritable sets (ambient requires inheritable too).
@@ -1269,11 +1227,7 @@ pub fn run_exec_helper() {
                 hdr.pid = 0;
                 if unsafe { libc::syscall(libc::SYS_capset, &hdr as *const _, data.as_ptr()) } != 0
                 {
-                    eprintln!(
-                        "[EXEC_HELPER {}] capset failed: {}",
-                        config.name,
-                        std::io::Error::last_os_error()
-                    );
+                    log::warn!("capset failed: {}", std::io::Error::last_os_error());
                 }
             }
 
@@ -1289,9 +1243,8 @@ pub fn run_exec_helper() {
                     )
                 };
                 if ret != 0 {
-                    eprintln!(
-                        "[EXEC_HELPER {}] PR_CAP_AMBIENT_RAISE failed for cap {}: {}",
-                        config.name,
+                    log::warn!(
+                        "PR_CAP_AMBIENT_RAISE failed for cap {}: {}",
                         cap,
                         std::io::Error::last_os_error()
                     );
@@ -1311,10 +1264,7 @@ pub fn run_exec_helper() {
             match std::env::var("HOME") {
                 Ok(home) => PathBuf::from(home),
                 Err(_) => {
-                    eprintln!(
-                        "[EXEC_HELPER {}] WorkingDirectory=~ but $HOME is not set",
-                        config.name
-                    );
+                    log::error!("WorkingDirectory=~ but $HOME is not set");
                     std::process::exit(1);
                 }
             }
@@ -1322,10 +1272,7 @@ pub fn run_exec_helper() {
             dir.clone()
         };
         if let Err(e) = std::env::set_current_dir(&dir) {
-            eprintln!(
-                "[EXEC_HELPER {}] Failed to set working directory to {:?}: {}",
-                config.name, dir, e
-            );
+            log::error!("Failed to set working directory to {:?}: {}", dir, e);
             std::process::exit(1);
         }
     }
@@ -1369,9 +1316,8 @@ pub fn run_exec_helper() {
         // preventing personality() changes after exec.
         let ret = unsafe { libc::personality(0x0000) };
         if ret == -1 {
-            eprintln!(
-                "[EXEC_HELPER {}] Failed to set personality for LockPersonality=: {}",
-                config.name,
+            log::warn!(
+                "Failed to set personality for LockPersonality=: {}",
                 std::io::Error::last_os_error()
             );
         }
@@ -1390,9 +1336,8 @@ pub fn run_exec_helper() {
     if config.no_new_privileges {
         let ret = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
         if ret != 0 {
-            eprintln!(
-                "[EXEC_HELPER {}] Failed to set NoNewPrivileges: {}",
-                config.name,
+            log::error!(
+                "Failed to set NoNewPrivileges: {}",
                 std::io::Error::last_os_error()
             );
             std::process::exit(1);
@@ -1425,12 +1370,7 @@ pub fn run_exec_helper() {
     match nix::unistd::execv(&cmd, &args) {
         Ok(_infallible) => unreachable!(),
         Err(e) => {
-            eprintln!(
-                "[EXEC_HELPER {}] execv FAILED for {}: {}",
-                config.name,
-                cmd.to_string_lossy(),
-                e,
-            );
+            log::error!("execv FAILED for {}: {}", cmd.to_string_lossy(), e,);
             std::process::exit(1);
         }
     }
@@ -1443,9 +1383,8 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
     // Create a new mount namespace
     let ret = unsafe { libc::unshare(libc::CLONE_NEWNS) };
     if ret != 0 {
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to create mount namespace: {}",
-            config.name,
+        log::warn!(
+            "Failed to create mount namespace: {}",
             std::io::Error::last_os_error()
         );
         return; // Non-fatal: continue without mount isolation
@@ -1464,9 +1403,8 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
         )
     };
     if ret != 0 {
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to make / rslave: {}",
-            config.name,
+        log::warn!(
+            "Failed to make / rslave: {}",
             std::io::Error::last_os_error()
         );
         return;
@@ -1605,9 +1543,8 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
                 )
             };
             if ret != 0 {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to mount tmpfs on /dev for PrivateDevices=: {}",
-                    config.name,
+                log::warn!(
+                    "Failed to mount tmpfs on /dev for PrivateDevices=: {}",
                     std::io::Error::last_os_error()
                 );
             }
@@ -1698,7 +1635,7 @@ fn setup_mount_namespace(config: &ExecHelperConfig) {
 }
 
 /// Bind-mount a path on top of itself with MS_RDONLY.
-fn remount_read_only(path: &str, config: &ExecHelperConfig) {
+fn remount_read_only(path: &str, _config: &ExecHelperConfig) {
     let c_path = match std::ffi::CString::new(path) {
         Ok(c) => c,
         Err(_) => return,
@@ -1717,9 +1654,8 @@ fn remount_read_only(path: &str, config: &ExecHelperConfig) {
         )
     };
     if ret != 0 {
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to bind-mount {} for read-only: {}",
-            config.name,
+        log::warn!(
+            "Failed to bind-mount {} for read-only: {}",
             path,
             std::io::Error::last_os_error()
         );
@@ -1738,9 +1674,8 @@ fn remount_read_only(path: &str, config: &ExecHelperConfig) {
     if ret != 0 {
         // Some mount points (like NixOS /nix/store bind mounts) may fail
         // to remount; this is non-fatal.
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to remount {} read-only: {} (non-fatal)",
-            config.name,
+        log::warn!(
+            "Failed to remount {} read-only: {} (non-fatal)",
             path,
             std::io::Error::last_os_error()
         );
@@ -1751,7 +1686,7 @@ fn remount_read_only(path: &str, config: &ExecHelperConfig) {
 /// Two steps are required: first a recursive bind mount to create a new mount point,
 /// then a remount WITHOUT MS_RDONLY to clear the read-only flag that was inherited
 /// from the parent's recursive read-only remount.
-fn bind_mount_readwrite(path: &str, config: &ExecHelperConfig) {
+fn bind_mount_readwrite(path: &str, _config: &ExecHelperConfig) {
     let c_path = match std::ffi::CString::new(path) {
         Ok(c) => c,
         Err(_) => return,
@@ -1767,9 +1702,8 @@ fn bind_mount_readwrite(path: &str, config: &ExecHelperConfig) {
         )
     };
     if ret != 0 {
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to bind-mount {} for ReadWritePaths=: {}",
-            config.name,
+        log::warn!(
+            "Failed to bind-mount {} for ReadWritePaths=: {}",
             path,
             std::io::Error::last_os_error()
         );
@@ -1787,9 +1721,8 @@ fn bind_mount_readwrite(path: &str, config: &ExecHelperConfig) {
         )
     };
     if ret != 0 {
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to remount {} read-write: {} (non-fatal)",
-            config.name,
+        log::warn!(
+            "Failed to remount {} read-write: {} (non-fatal)",
             path,
             std::io::Error::last_os_error()
         );
@@ -1797,7 +1730,7 @@ fn bind_mount_readwrite(path: &str, config: &ExecHelperConfig) {
 }
 
 /// Mount an empty tmpfs over a path.
-fn mount_tmpfs(path: &str, config: &ExecHelperConfig) {
+fn mount_tmpfs(path: &str, _config: &ExecHelperConfig) {
     let c_path = match std::ffi::CString::new(path) {
         Ok(c) => c,
         Err(_) => return,
@@ -1816,9 +1749,8 @@ fn mount_tmpfs(path: &str, config: &ExecHelperConfig) {
         )
     };
     if ret != 0 {
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to mount tmpfs on {}: {}",
-            config.name,
+        log::warn!(
+            "Failed to mount tmpfs on {}: {}",
             path,
             std::io::Error::last_os_error()
         );
@@ -1932,7 +1864,7 @@ fn capture_dev_info() -> DevInfo {
 
 /// Create essential device nodes in a private /dev mount using mknod.
 /// Uses device numbers captured before the tmpfs was mounted.
-fn create_private_dev_nodes(config: &ExecHelperConfig, dev_info: &DevInfo) {
+fn create_private_dev_nodes(_config: &ExecHelperConfig, dev_info: &DevInfo) {
     // Create device nodes using mknod with captured major/minor numbers.
     // We cannot bind-mount from /dev/X because the original /dev is now
     // hidden behind the tmpfs.
@@ -1945,9 +1877,8 @@ fn create_private_dev_nodes(config: &ExecHelperConfig, dev_info: &DevInfo) {
         let dev_mode = (mode & libc::S_IFMT) | 0o666;
         let ret = unsafe { libc::mknod(c_path.as_ptr(), dev_mode, rdev) };
         if ret != 0 {
-            eprintln!(
-                "[EXEC_HELPER {}] Failed to mknod {} for PrivateDevices=: {} (non-fatal)",
-                config.name,
+            log::warn!(
+                "Failed to mknod {} for PrivateDevices=: {} (non-fatal)",
                 dev,
                 std::io::Error::last_os_error()
             );
@@ -1980,9 +1911,8 @@ fn create_private_dev_nodes(config: &ExecHelperConfig, dev_info: &DevInfo) {
         )
     };
     if ret != 0 {
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to mount devpts on /dev/pts: {} (non-fatal)",
-            config.name,
+        log::warn!(
+            "Failed to mount devpts on /dev/pts: {} (non-fatal)",
             std::io::Error::last_os_error()
         );
     }
@@ -2001,9 +1931,8 @@ fn create_private_dev_nodes(config: &ExecHelperConfig, dev_info: &DevInfo) {
         )
     };
     if ret != 0 {
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to mount tmpfs on /dev/shm: {} (non-fatal)",
-            config.name,
+        log::warn!(
+            "Failed to mount tmpfs on /dev/shm: {} (non-fatal)",
             std::io::Error::last_os_error()
         );
     }
@@ -2065,9 +1994,8 @@ fn apply_capability_bounding_set(config: &ExecHelperConfig) {
             if let Some(cap_num) = cap_name_to_number(name) {
                 let ret = unsafe { libc::prctl(libc::PR_CAPBSET_DROP, cap_num, 0, 0, 0) };
                 if ret != 0 {
-                    eprintln!(
-                        "[EXEC_HELPER {}] Failed to drop capability {}: {} (non-fatal)",
-                        config.name,
+                    log::warn!(
+                        "Failed to drop capability {}: {} (non-fatal)",
                         name,
                         std::io::Error::last_os_error()
                     );
@@ -2116,9 +2044,8 @@ fn apply_capability_bounding_set(config: &ExecHelperConfig) {
                     libc::prctl(libc::PR_CAPBSET_DROP, cap_num as libc::c_ulong, 0, 0, 0)
                 };
                 if ret != 0 {
-                    eprintln!(
-                        "[EXEC_HELPER {}] Failed to drop capability {}: {} (non-fatal)",
-                        config.name,
+                    log::warn!(
+                        "Failed to drop capability {}: {} (non-fatal)",
                         cap_num,
                         std::io::Error::last_os_error()
                     );
@@ -2268,9 +2195,10 @@ fn setup_credentials(config: &ExecHelperConfig) {
 
     // Create the credential directory.
     if let Err(e) = std::fs::create_dir_all(&cred_dir) {
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to create credentials directory {:?}: {}",
-            config.name, cred_dir, e
+        log::warn!(
+            "Failed to create credentials directory {:?}: {}",
+            cred_dir,
+            e
         );
         // Non-fatal — the service may still work without credentials.
         return;
@@ -2286,9 +2214,8 @@ fn setup_credentials(config: &ExecHelperConfig) {
         )
     };
     if ret != 0 {
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to chmod credentials directory {:?}: {}",
-            config.name,
+        log::warn!(
+            "Failed to chmod credentials directory {:?}: {}",
             cred_dir,
             std::io::Error::last_os_error()
         );
@@ -2298,9 +2225,10 @@ fn setup_credentials(config: &ExecHelperConfig) {
     let uid = nix::unistd::Uid::from_raw(config.user);
     let gid = nix::unistd::Gid::from_raw(config.group);
     if let Err(e) = nix::unistd::chown(&cred_dir, Some(uid), Some(gid)) {
-        eprintln!(
-            "[EXEC_HELPER {}] Failed to chown credentials directory {:?}: {}",
-            config.name, cred_dir, e
+        log::warn!(
+            "Failed to chown credentials directory {:?}: {}",
+            cred_dir,
+            e
         );
     }
 
@@ -2315,10 +2243,7 @@ fn setup_credentials(config: &ExecHelperConfig) {
                 _wrote += 1;
             }
             Err(e) => {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to write SetCredential {:?}: {}",
-                    config.name, id, e
-                );
+                log::warn!("Failed to write SetCredential {:?}: {}", id, e);
             }
         }
     }
@@ -2335,9 +2260,10 @@ fn setup_credentials(config: &ExecHelperConfig) {
         let write_data = match try_decrypt_credential(data.as_bytes(), id) {
             Ok(plaintext) => plaintext,
             Err(e) => {
-                eprintln!(
-                    "[EXEC_HELPER {}] SetCredentialEncrypted {:?}: decryption failed ({}), writing as-is",
-                    config.name, id, e
+                log::warn!(
+                    "SetCredentialEncrypted {:?}: decryption failed ({}), writing as-is",
+                    id,
+                    e
                 );
                 data.as_bytes().to_vec()
             }
@@ -2348,10 +2274,7 @@ fn setup_credentials(config: &ExecHelperConfig) {
                 _wrote += 1;
             }
             Err(e) => {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to write SetCredentialEncrypted {:?}: {}",
-                    config.name, id, e
-                );
+                log::warn!("Failed to write SetCredentialEncrypted {:?}: {}", id, e);
             }
         }
     }
@@ -2376,9 +2299,10 @@ fn setup_credentials(config: &ExecHelperConfig) {
             match found {
                 Some(p) => p,
                 None => {
-                    eprintln!(
-                        "[EXEC_HELPER {}] LoadCredential {:?}: path {:?} not found (searched credential stores)",
-                        config.name, id, path_str
+                    log::warn!(
+                        "LoadCredential {:?}: path {:?} not found (searched credential stores)",
+                        id,
+                        path_str
                     );
                     continue;
                 }
@@ -2386,9 +2310,10 @@ fn setup_credentials(config: &ExecHelperConfig) {
         };
 
         if !resolved.exists() {
-            eprintln!(
-                "[EXEC_HELPER {}] LoadCredential {:?}: source {:?} does not exist",
-                config.name, id, resolved
+            log::warn!(
+                "LoadCredential {:?}: source {:?} does not exist",
+                id,
+                resolved
             );
             continue;
         }
@@ -2408,9 +2333,8 @@ fn setup_credentials(config: &ExecHelperConfig) {
                                 _wrote += 1;
                             }
                             Err(e) => {
-                                eprintln!(
-                                    "[EXEC_HELPER {}] Failed to load credential {:?} from dir {:?}: {}",
-                                    config.name,
+                                log::warn!(
+                                    "Failed to load credential {:?} from dir {:?}: {}",
                                     entry.file_name(),
                                     resolved,
                                     e
@@ -2427,9 +2351,11 @@ fn setup_credentials(config: &ExecHelperConfig) {
                     _wrote += 1;
                 }
                 Err(e) => {
-                    eprintln!(
-                        "[EXEC_HELPER {}] Failed to load credential {:?} from {:?}: {}",
-                        config.name, id, resolved, e
+                    log::warn!(
+                        "Failed to load credential {:?} from {:?}: {}",
+                        id,
+                        resolved,
+                        e
                     );
                 }
             }
@@ -2454,9 +2380,10 @@ fn setup_credentials(config: &ExecHelperConfig) {
             match found {
                 Some(p) => p,
                 None => {
-                    eprintln!(
-                        "[EXEC_HELPER {}] LoadCredentialEncrypted {:?}: path {:?} not found",
-                        config.name, id, path_str
+                    log::warn!(
+                        "LoadCredentialEncrypted {:?}: path {:?} not found",
+                        id,
+                        path_str
                     );
                     continue;
                 }
@@ -2464,9 +2391,10 @@ fn setup_credentials(config: &ExecHelperConfig) {
         };
 
         if !resolved.exists() || !resolved.is_file() {
-            eprintln!(
-                "[EXEC_HELPER {}] LoadCredentialEncrypted {:?}: source {:?} not found or not a file",
-                config.name, id, resolved
+            log::warn!(
+                "LoadCredentialEncrypted {:?}: source {:?} not found or not a file",
+                id,
+                resolved
             );
             continue;
         }
@@ -2479,9 +2407,10 @@ fn setup_credentials(config: &ExecHelperConfig) {
                 let write_data = match try_decrypt_credential(&encrypted_data, id) {
                     Ok(plaintext) => plaintext,
                     Err(e) => {
-                        eprintln!(
-                            "[EXEC_HELPER {}] LoadCredentialEncrypted {:?}: decryption failed ({}), writing as-is",
-                            config.name, id, e
+                        log::warn!(
+                            "LoadCredentialEncrypted {:?}: decryption failed ({}), writing as-is",
+                            id,
+                            e
                         );
                         encrypted_data
                     }
@@ -2492,17 +2421,16 @@ fn setup_credentials(config: &ExecHelperConfig) {
                         _wrote += 1;
                     }
                     Err(e) => {
-                        eprintln!(
-                            "[EXEC_HELPER {}] Failed to write decrypted credential {:?}: {}",
-                            config.name, id, e
-                        );
+                        log::warn!("Failed to write decrypted credential {:?}: {}", id, e);
                     }
                 }
             }
             Err(e) => {
-                eprintln!(
-                    "[EXEC_HELPER {}] Failed to read encrypted credential {:?} from {:?}: {}",
-                    config.name, id, resolved, e
+                log::warn!(
+                    "Failed to read encrypted credential {:?} from {:?}: {}",
+                    id,
+                    resolved,
+                    e
                 );
             }
         }
@@ -2548,10 +2476,7 @@ fn setup_credentials(config: &ExecHelperConfig) {
                         _wrote += 1;
                     }
                     Err(e) => {
-                        eprintln!(
-                            "[EXEC_HELPER {}] Failed to import credential {:?} -> {:?}: {}",
-                            config.name, src, dst, e
-                        );
+                        log::warn!("Failed to import credential {:?} -> {:?}: {}", src, dst, e);
                     }
                 }
             }
@@ -2713,9 +2638,8 @@ fn write_utmp_record(config: &ExecHelperConfig) {
         libc::endutxent();
 
         if result.is_null() {
-            eprintln!(
-                "[EXEC_HELPER {}] Failed to write utmp record: {}",
-                config.name,
+            log::warn!(
+                "Failed to write utmp record: {}",
                 std::io::Error::last_os_error()
             );
         }
