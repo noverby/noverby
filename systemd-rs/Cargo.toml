@@ -62,5 +62,7 @@ members = [
   "crates/portabled",
   "crates/portablectl",
   "crates/timedated",
+  "crates/homed",
+  "crates/homectl",
 ]
 resolver = "2"

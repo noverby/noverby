@@ -67,6 +67,7 @@
         withLocaled = true;
         withMachined = true;
         withNetworkd = true;
+        withHomed = true;
         withPortabled = true;
         withSysupdate = false;
         withTimedated = true;
