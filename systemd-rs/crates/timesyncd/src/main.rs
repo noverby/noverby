@@ -9,6 +9,7 @@
 //! - Gradual clock adjustment via `adjtimex()` for small offsets
 //! - Step adjustment via `clock_settime()` for large offsets
 //! - Saves clock state to `/var/lib/systemd/timesync/clock`
+//! - D-Bus interface (`org.freedesktop.timesync1`) with deferred registration
 //! - sd_notify READY=1 / WATCHDOG=1 / STATUS= protocol
 //! - Signal handling: SIGTERM/SIGINT for shutdown, SIGHUP for reload
 //! - Graceful degradation when no network or NTP servers are available
@@ -19,7 +20,11 @@ use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use dbus::blocking::Connection;
+use dbus_crossroads::{Crossroads, IfaceBuilder};
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -51,6 +56,11 @@ const DEFAULT_SAVE_INTERVAL_SEC: u64 = 60;
 
 /// Clock state file
 const CLOCK_STATE_PATH: &str = "/var/lib/systemd/timesync/clock";
+
+// D-Bus constants
+const DBUS_NAME: &str = "org.freedesktop.timesync1";
+const DBUS_PATH: &str = "/org/freedesktop/timesync1";
+const DBUS_IFACE: &str = "org.freedesktop.timesync1.Manager";
 
 /// Config file path
 const CONFIG_PATH: &str = "/etc/systemd/timesyncd.conf";
@@ -883,6 +893,291 @@ fn watchdog_interval() -> Option<Duration> {
         .map(|usec| Duration::from_micros(usec / 2)) // ping at half the interval
 }
 
+// ── Shared D-Bus state ─────────────────────────────────────────────────────
+
+/// Snapshot of timesyncd state exposed via D-Bus properties.
+#[derive(Debug, Clone)]
+struct TimesyncState {
+    /// Whether we have successfully synced at least once.
+    synced: bool,
+    /// Current poll interval in seconds.
+    poll_interval_usec: u64,
+    /// Config: root distance max in microseconds.
+    root_distance_max_usec: u64,
+    /// Config: minimum poll interval in microseconds.
+    poll_interval_min_usec: u64,
+    /// Config: maximum poll interval in microseconds.
+    poll_interval_max_usec: u64,
+    /// Current NTP server name (hostname before resolution).
+    server_name: String,
+    /// Current NTP server address (resolved IP:port).
+    server_address: String,
+    /// Frequency adjustment in PPB (parts per billion) from adjtimex.
+    frequency: i64,
+    /// Last NTP message fields for NTPMessage property.
+    ntp_message: NtpMessageFields,
+}
+
+/// Fields from the last NTP exchange, exposed as the NTPMessage property.
+#[derive(Debug, Clone, Default)]
+struct NtpMessageFields {
+    /// Leap indicator (0-3).
+    leap: u32,
+    /// NTP version.
+    version: u32,
+    /// NTP mode.
+    mode: u32,
+    /// Server stratum.
+    stratum: u32,
+    /// Server precision (log2 seconds).
+    precision: i32,
+    /// Root delay in microseconds.
+    root_delay_usec: u64,
+    /// Root dispersion in microseconds.
+    root_dispersion_usec: u64,
+    /// Reference ID.
+    reference_id: u32,
+    /// Origin timestamp in microseconds since epoch.
+    origin_usec: u64,
+    /// Receive timestamp in microseconds since epoch.
+    receive_usec: u64,
+    /// Transmit timestamp in microseconds since epoch.
+    transmit_usec: u64,
+    /// Destination timestamp in microseconds since epoch.
+    dest_usec: u64,
+    /// Calculated offset in microseconds (signed).
+    offset_usec: i64,
+    /// Calculated delay in microseconds.
+    delay_usec: u64,
+}
+
+impl Default for TimesyncState {
+    fn default() -> Self {
+        Self {
+            synced: false,
+            poll_interval_usec: DEFAULT_POLL_INTERVAL_MIN_SEC * 1_000_000,
+            root_distance_max_usec: (DEFAULT_ROOT_DISTANCE_MAX_SEC * 1_000_000.0) as u64,
+            poll_interval_min_usec: DEFAULT_POLL_INTERVAL_MIN_SEC * 1_000_000,
+            poll_interval_max_usec: DEFAULT_POLL_INTERVAL_MAX_SEC * 1_000_000,
+            server_name: String::new(),
+            server_address: String::new(),
+            frequency: 0,
+            ntp_message: NtpMessageFields::default(),
+        }
+    }
+}
+
+type SharedState = Arc<Mutex<TimesyncState>>;
+
+// ── D-Bus interface: org.freedesktop.timesync1.Manager ─────────────────────
+
+/// Register the org.freedesktop.timesync1.Manager interface on a Crossroads
+/// instance.
+///
+/// Properties (read-only):
+///   NTPSynchronized (b)  — whether we have synced at least once
+///   ServerName (s)       — hostname of the current NTP server
+///   ServerAddress ((iay))— address of current server (family, bytes)
+///   Frequency (x)        — frequency adjustment in PPB
+///   RootDistanceMaxUSec (t)  — configured max root distance
+///   PollIntervalMinUSec (t)  — configured min poll interval
+///   PollIntervalMaxUSec (t)  — configured max poll interval
+///   PollIntervalUSec (t)     — current poll interval
+///   NTPMessage ((uuuuitttttttt)) — last NTP message details
+///
+/// Methods:
+///   Describe() → s (JSON description of the daemon state)
+fn register_timesync1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedState> {
+    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedState>| {
+        // --- Properties ---
+
+        b.property("NTPSynchronized")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.synced)
+            });
+
+        b.property("ServerName").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.server_name.clone())
+        });
+
+        // ServerAddress as (iay) — address family + raw address bytes
+        b.property("ServerAddress")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                let (family, bytes) = if let Ok(addr) = s.server_address.parse::<SocketAddr>() {
+                    match addr.ip() {
+                        std::net::IpAddr::V4(v4) => (2i32, v4.octets().to_vec()), // AF_INET=2
+                        std::net::IpAddr::V6(v6) => (10i32, v6.octets().to_vec()), // AF_INET6=10
+                    }
+                } else {
+                    (0i32, Vec::new()) // unspecified
+                };
+                Ok((family, bytes))
+            });
+
+        b.property("Frequency").get(|_, state: &mut SharedState| {
+            let s = state.lock().unwrap_or_else(|e| e.into_inner());
+            Ok(s.frequency)
+        });
+
+        b.property("RootDistanceMaxUSec")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.root_distance_max_usec)
+            });
+
+        b.property("PollIntervalMinUSec")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.poll_interval_min_usec)
+            });
+
+        b.property("PollIntervalMaxUSec")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.poll_interval_max_usec)
+            });
+
+        b.property("PollIntervalUSec")
+            .get(|_, state: &mut SharedState| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(s.poll_interval_usec)
+            });
+
+        // NTPMessage as a struct of fields — we expose a simplified
+        // (uuuuitttttttt) = (leap, version, mode, stratum, precision,
+        //  root_delay_usec, root_dispersion_usec, reference_id,
+        //  origin_usec, receive_usec, transmit_usec, dest_usec,
+        //  offset_usec, delay_usec)
+        // However dbus-crossroads doesn't easily do custom structs,
+        // so we return a descriptive string with the Describe method.
+
+        // --- Methods ---
+
+        // Describe() → s (JSON description)
+        b.method(
+            "Describe",
+            (),
+            ("json",),
+            move |_, state: &mut SharedState, ()| {
+                let s = state.lock().unwrap_or_else(|e| e.into_inner());
+                let ntp = &s.ntp_message;
+                let json = format!(
+                    concat!(
+                        "{{",
+                        "\"NTPSynchronized\":{},",
+                        "\"ServerName\":\"{}\",",
+                        "\"ServerAddress\":\"{}\",",
+                        "\"Frequency\":{},",
+                        "\"PollIntervalUSec\":{},",
+                        "\"PollIntervalMinUSec\":{},",
+                        "\"PollIntervalMaxUSec\":{},",
+                        "\"RootDistanceMaxUSec\":{},",
+                        "\"NTPMessage\":{{",
+                        "\"Leap\":{},",
+                        "\"Version\":{},",
+                        "\"Mode\":{},",
+                        "\"Stratum\":{},",
+                        "\"Precision\":{},",
+                        "\"RootDelayUSec\":{},",
+                        "\"RootDispersionUSec\":{},",
+                        "\"ReferenceID\":{},",
+                        "\"OriginUSec\":{},",
+                        "\"ReceiveUSec\":{},",
+                        "\"TransmitUSec\":{},",
+                        "\"DestUSec\":{},",
+                        "\"OffsetUSec\":{},",
+                        "\"DelayUSec\":{}",
+                        "}}",
+                        "}}"
+                    ),
+                    s.synced,
+                    json_escape(&s.server_name),
+                    json_escape(&s.server_address),
+                    s.frequency,
+                    s.poll_interval_usec,
+                    s.poll_interval_min_usec,
+                    s.poll_interval_max_usec,
+                    s.root_distance_max_usec,
+                    ntp.leap,
+                    ntp.version,
+                    ntp.mode,
+                    ntp.stratum,
+                    ntp.precision,
+                    ntp.root_delay_usec,
+                    ntp.root_dispersion_usec,
+                    ntp.reference_id,
+                    ntp.origin_usec,
+                    ntp.receive_usec,
+                    ntp.transmit_usec,
+                    ntp.dest_usec,
+                    ntp.offset_usec,
+                    ntp.delay_usec,
+                );
+                Ok((json,))
+            },
+        );
+    })
+}
+
+/// Escape a string for embedding in JSON.
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c < '\x20' => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Set up the D-Bus connection and register the timesync1 interface.
+fn setup_dbus(shared: SharedState) -> Result<(Connection, Crossroads), String> {
+    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    conn.request_name(DBUS_NAME, false, true, false)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
+
+    let mut cr = Crossroads::new();
+    let iface_token = register_timesync1_iface(&mut cr);
+    cr.insert(DBUS_PATH, &[iface_token], shared);
+
+    Ok((conn, cr))
+}
+
+/// Read current frequency adjustment from adjtimex (in PPB).
+fn read_frequency_ppb() -> i64 {
+    unsafe {
+        let mut tx: libc::timex = std::mem::zeroed();
+        tx.modes = 0; // read-only
+        if libc::adjtimex(&mut tx) >= 0 {
+            // tx.freq is in units of 2^-16 ppm = scaled ppm
+            // Convert to PPB: (freq * 1000) >> 16
+            (tx.freq * 1000) >> 16
+        } else {
+            0
+        }
+    }
+}
+
+/// Convert an NTP timestamp to microseconds since Unix epoch.
+#[allow(dead_code)]
+fn ntp_ts_to_usec(ts: &NtpTimestamp) -> u64 {
+    if ts.is_zero() {
+        return 0;
+    }
+    let unix_secs = ts.seconds as u64 - NTP_EPOCH_OFFSET;
+    let frac_usec = ((ts.fraction as u64) * 1_000_000) >> 32;
+    unix_secs * 1_000_000 + frac_usec
+}
+
 // ── Main sync loop ─────────────────────────────────────────────────────────
 
 struct TimesyncDaemon {
@@ -893,10 +1188,19 @@ struct TimesyncDaemon {
     sync_count: u64,
     last_sync: Option<SyncResult>,
     last_save: std::time::Instant,
+    shared_state: SharedState,
 }
 
 impl TimesyncDaemon {
-    fn new(config: TimesyncdConfig) -> Self {
+    fn new(config: TimesyncdConfig, shared_state: SharedState) -> Self {
+        // Initialize shared state from config
+        {
+            let mut s = shared_state.lock().unwrap_or_else(|e| e.into_inner());
+            s.root_distance_max_usec = (config.root_distance_max_sec * 1_000_000.0) as u64;
+            s.poll_interval_min_usec = config.poll_interval_min_sec * 1_000_000;
+            s.poll_interval_max_usec = config.poll_interval_max_sec * 1_000_000;
+            s.poll_interval_usec = config.poll_interval_min_sec * 1_000_000;
+        }
         Self {
             poll_interval: config.poll_interval_min_sec,
             config,
@@ -905,6 +1209,7 @@ impl TimesyncDaemon {
             sync_count: 0,
             last_sync: None,
             last_save: std::time::Instant::now(),
+            shared_state,
         }
     }
 
@@ -946,6 +1251,12 @@ impl TimesyncDaemon {
 
         let wd_interval = watchdog_interval();
 
+        // D-Bus connection is deferred to after READY=1 so we don't block
+        // early boot waiting for dbus-daemon.
+        let mut dbus_conn: Option<Connection> = None;
+        let mut dbus_cr: Option<Crossroads> = None;
+        let mut dbus_attempted = false;
+
         loop {
             if SHUTDOWN.load(Ordering::SeqCst) {
                 break;
@@ -953,6 +1264,24 @@ impl TimesyncDaemon {
 
             if RELOAD.swap(false, Ordering::SeqCst) {
                 self.reload_config();
+            }
+
+            // Attempt D-Bus registration once (deferred from startup)
+            if !dbus_attempted {
+                dbus_attempted = true;
+                match setup_dbus(self.shared_state.clone()) {
+                    Ok((conn, cr)) => {
+                        log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
+                        dbus_conn = Some(conn);
+                        dbus_cr = Some(cr);
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "Failed to register D-Bus interface ({}); continuing without D-Bus",
+                            e
+                        );
+                    }
+                }
             }
 
             // Try to sync
@@ -966,7 +1295,7 @@ impl TimesyncDaemon {
                 self.last_save = std::time::Instant::now();
             }
 
-            // Sleep for the poll interval, but wake up for watchdog/signals
+            // Sleep for the poll interval, but wake up for watchdog/signals/D-Bus
             let sleep_duration = if self.synced {
                 Duration::from_secs(self.poll_interval)
             } else {
@@ -981,6 +1310,14 @@ impl TimesyncDaemon {
                 if RELOAD.swap(false, Ordering::SeqCst) {
                     self.reload_config();
                     break; // retry sync immediately after reload
+                }
+
+                // Process D-Bus messages (non-blocking)
+                if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
+                    let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
+                    while let Some(msg) = conn.channel().pop_message() {
+                        let _ = cr.handle_message(msg, conn);
+                    }
                 }
 
                 // Watchdog ping
@@ -1051,6 +1388,20 @@ impl TimesyncDaemon {
                     self.current_server_idx = idx;
                     self.last_sync = Some(result.clone());
 
+                    // Update shared D-Bus state
+                    {
+                        let mut s = self.shared_state.lock().unwrap_or_else(|e| e.into_inner());
+                        s.synced = true;
+                        s.server_name = server.clone();
+                        s.server_address = result.server.to_string();
+                        s.frequency = read_frequency_ppb();
+                        s.poll_interval_usec = self.poll_interval * 1_000_000;
+                        s.ntp_message.stratum = result.stratum as u32;
+                        s.ntp_message.reference_id = result.reference_id;
+                        s.ntp_message.offset_usec = result.offset_usec;
+                        s.ntp_message.delay_usec = result.delay_usec as u64;
+                    }
+
                     // Increase poll interval on success (exponential backoff up to max)
                     if self.poll_interval < self.config.poll_interval_max_sec {
                         self.poll_interval =
@@ -1091,6 +1442,15 @@ impl TimesyncDaemon {
         self.current_server_idx = 0;
         self.poll_interval = self.config.poll_interval_min_sec;
 
+        // Update shared D-Bus state with new config values
+        {
+            let mut s = self.shared_state.lock().unwrap_or_else(|e| e.into_inner());
+            s.root_distance_max_usec = (self.config.root_distance_max_sec * 1_000_000.0) as u64;
+            s.poll_interval_min_usec = self.config.poll_interval_min_sec * 1_000_000;
+            s.poll_interval_max_usec = self.config.poll_interval_max_sec * 1_000_000;
+            s.poll_interval_usec = self.config.poll_interval_min_sec * 1_000_000;
+        }
+
         let servers = self.config.effective_servers();
         log::info!("Using NTP server(s): {}", servers.to_vec().join(", "));
     }
@@ -1127,7 +1487,8 @@ fn main() {
     }
 
     let config = TimesyncdConfig::load();
-    let mut daemon = TimesyncDaemon::new(config);
+    let shared_state: SharedState = Arc::new(Mutex::new(TimesyncState::default()));
+    let mut daemon = TimesyncDaemon::new(config, shared_state);
     daemon.run();
 }
 
@@ -1530,7 +1891,8 @@ NTP=also-ignored.example.com
     #[test]
     fn test_daemon_new() {
         let config = TimesyncdConfig::default();
-        let daemon = TimesyncDaemon::new(config.clone());
+        let shared = Arc::new(Mutex::new(TimesyncState::default()));
+        let daemon = TimesyncDaemon::new(config.clone(), shared);
         assert_eq!(daemon.poll_interval, config.poll_interval_min_sec);
         assert!(!daemon.synced);
         assert_eq!(daemon.sync_count, 0);
@@ -1672,5 +2034,156 @@ NTP=
         };
         // root_distance will be ~15 which exceeds max of 5.0
         assert!(pkt.validate(&origin, 5.0).is_err());
+    }
+
+    // ── D-Bus interface tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_dbus_register_timesync1_iface() {
+        let mut cr = Crossroads::new();
+        let token = register_timesync1_iface(&mut cr);
+        let shared: SharedState = Arc::new(Mutex::new(TimesyncState::default()));
+        cr.insert(DBUS_PATH, &[token], shared);
+        // Registration succeeded without panic
+    }
+
+    #[test]
+    fn test_shared_state_default() {
+        let state = TimesyncState::default();
+        assert!(!state.synced);
+        assert_eq!(
+            state.poll_interval_min_usec,
+            DEFAULT_POLL_INTERVAL_MIN_SEC * 1_000_000
+        );
+        assert_eq!(
+            state.poll_interval_max_usec,
+            DEFAULT_POLL_INTERVAL_MAX_SEC * 1_000_000
+        );
+        assert_eq!(
+            state.root_distance_max_usec,
+            (DEFAULT_ROOT_DISTANCE_MAX_SEC * 1_000_000.0) as u64
+        );
+        assert!(state.server_name.is_empty());
+        assert!(state.server_address.is_empty());
+    }
+
+    #[test]
+    fn test_shared_state_sync_update() {
+        let shared: SharedState = Arc::new(Mutex::new(TimesyncState::default()));
+        {
+            let mut s = shared.lock().unwrap();
+            s.synced = true;
+            s.server_name = "pool.ntp.org".to_string();
+            s.server_address = "192.0.2.1:123".to_string();
+            s.frequency = 12345;
+            s.poll_interval_usec = 64 * 1_000_000;
+            s.ntp_message.stratum = 2;
+            s.ntp_message.offset_usec = -5000;
+            s.ntp_message.delay_usec = 10000;
+        }
+        let s = shared.lock().unwrap();
+        assert!(s.synced);
+        assert_eq!(s.server_name, "pool.ntp.org");
+        assert_eq!(s.server_address, "192.0.2.1:123");
+        assert_eq!(s.frequency, 12345);
+        assert_eq!(s.poll_interval_usec, 64_000_000);
+        assert_eq!(s.ntp_message.stratum, 2);
+        assert_eq!(s.ntp_message.offset_usec, -5000);
+        assert_eq!(s.ntp_message.delay_usec, 10000);
+    }
+
+    #[test]
+    fn test_shared_state_config_update() {
+        let shared: SharedState = Arc::new(Mutex::new(TimesyncState::default()));
+        {
+            let mut s = shared.lock().unwrap();
+            s.root_distance_max_usec = 10_000_000;
+            s.poll_interval_min_usec = 64_000_000;
+            s.poll_interval_max_usec = 4096_000_000;
+        }
+        let s = shared.lock().unwrap();
+        assert_eq!(s.root_distance_max_usec, 10_000_000);
+        assert_eq!(s.poll_interval_min_usec, 64_000_000);
+        assert_eq!(s.poll_interval_max_usec, 4096_000_000);
+    }
+
+    #[test]
+    fn test_daemon_new_populates_shared_state() {
+        let mut config = TimesyncdConfig::default();
+        config.root_distance_max_sec = 10.0;
+        config.poll_interval_min_sec = 64;
+        config.poll_interval_max_sec = 4096;
+        let shared: SharedState = Arc::new(Mutex::new(TimesyncState::default()));
+        let _daemon = TimesyncDaemon::new(config, shared.clone());
+        let s = shared.lock().unwrap();
+        assert_eq!(s.root_distance_max_usec, 10_000_000);
+        assert_eq!(s.poll_interval_min_usec, 64_000_000);
+        assert_eq!(s.poll_interval_max_usec, 4_096_000_000);
+        assert_eq!(s.poll_interval_usec, 64_000_000);
+    }
+
+    #[test]
+    fn test_json_escape_plain() {
+        assert_eq!(json_escape("hello"), "hello");
+    }
+
+    #[test]
+    fn test_json_escape_special_chars() {
+        assert_eq!(json_escape("a\"b"), "a\\\"b");
+        assert_eq!(json_escape("a\\b"), "a\\\\b");
+        assert_eq!(json_escape("a\nb"), "a\\nb");
+        assert_eq!(json_escape("a\tb"), "a\\tb");
+    }
+
+    #[test]
+    fn test_json_escape_empty() {
+        assert_eq!(json_escape(""), "");
+    }
+
+    #[test]
+    fn test_ntp_ts_to_usec_zero() {
+        let ts = NtpTimestamp::default();
+        assert_eq!(ntp_ts_to_usec(&ts), 0);
+    }
+
+    #[test]
+    fn test_ntp_ts_to_usec_epoch() {
+        // NTP timestamp at Unix epoch
+        let ts = NtpTimestamp {
+            seconds: NTP_EPOCH_OFFSET as u32,
+            fraction: 0,
+        };
+        assert_eq!(ntp_ts_to_usec(&ts), 0);
+    }
+
+    #[test]
+    fn test_ntp_ts_to_usec_with_fraction() {
+        let ts = NtpTimestamp {
+            seconds: NTP_EPOCH_OFFSET as u32 + 1,
+            fraction: 0x80000000, // 0.5 seconds
+        };
+        let usec = ntp_ts_to_usec(&ts);
+        assert_eq!(usec, 1_500_000);
+    }
+
+    #[test]
+    fn test_read_frequency_ppb_runs() {
+        // Just verify it doesn't crash
+        let _ = read_frequency_ppb();
+    }
+
+    #[test]
+    fn test_ntp_message_fields_default() {
+        let fields = NtpMessageFields::default();
+        assert_eq!(fields.leap, 0);
+        assert_eq!(fields.version, 0);
+        assert_eq!(fields.mode, 0);
+        assert_eq!(fields.stratum, 0);
+        assert_eq!(fields.precision, 0);
+        assert_eq!(fields.root_delay_usec, 0);
+        assert_eq!(fields.root_dispersion_usec, 0);
+        assert_eq!(fields.reference_id, 0);
+        assert_eq!(fields.offset_usec, 0);
+        assert_eq!(fields.delay_usec, 0);
     }
 }
