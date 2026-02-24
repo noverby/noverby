@@ -9,11 +9,13 @@
 //! - Query forwarding via UDP with timeout and retry
 //! - TCP fallback for truncated responses
 //! - Basic response validation
+//! - In-memory DNS response cache with TTL-based expiration
 
+use std::collections::HashMap;
 use std::fmt;
 use std::io::{self, Read, Write};
 use std::net::{SocketAddr, TcpStream, UdpSocket};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -862,6 +864,439 @@ impl ResolverStats {
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
+// ── DNS Cache ──────────────────────────────────────────────────────────────
+
+/// Maximum number of entries in the DNS cache.
+const DEFAULT_CACHE_MAX_ENTRIES: usize = 4096;
+
+/// Minimum TTL to cache (1 second) — prevents caching zero-TTL records.
+const CACHE_MIN_TTL_SECS: u32 = 1;
+
+/// Maximum TTL to cache (1 hour) — caps extremely long TTLs.
+const CACHE_MAX_TTL_SECS: u32 = 3600;
+
+/// Key for a DNS cache entry: (lowercased name, record type, record class).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CacheKey {
+    /// Lowercased query name (e.g. "example.com")
+    pub name: String,
+    /// Query type (e.g. A=1, AAAA=28)
+    pub qtype: u16,
+    /// Query class (e.g. IN=1)
+    pub qclass: u16,
+}
+
+impl CacheKey {
+    pub fn new(name: &str, qtype: u16, qclass: u16) -> Self {
+        Self {
+            name: name.to_lowercase(),
+            qtype,
+            qclass,
+        }
+    }
+
+    /// Build a cache key from a raw DNS query packet.
+    /// Extracts the first question's name, type, and class.
+    pub fn from_query(query: &[u8]) -> Option<Self> {
+        if query.len() < HEADER_SIZE {
+            return None;
+        }
+        let qdcount = u16::from_be_bytes([query[4], query[5]]);
+        if qdcount == 0 {
+            return None;
+        }
+        // Parse the first question name.
+        let (name, pos) = match parse_name(query, HEADER_SIZE) {
+            Ok(r) => r,
+            Err(_) => return None,
+        };
+        if pos + 4 > query.len() {
+            return None;
+        }
+        let qtype = u16::from_be_bytes([query[pos], query[pos + 1]]);
+        let qclass = u16::from_be_bytes([query[pos + 2], query[pos + 3]]);
+        Some(Self::new(&name, qtype, qclass))
+    }
+}
+
+impl fmt::Display for CacheKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let rtype = RecordType::from_u16(self.qtype);
+        write!(f, "{} {}", self.name, rtype)
+    }
+}
+
+/// A cached DNS response.
+#[derive(Debug, Clone)]
+pub struct CacheEntry {
+    /// The full DNS response packet (with original transaction ID).
+    pub response: Vec<u8>,
+    /// When this entry was stored.
+    pub inserted_at: Instant,
+    /// Time-to-live extracted from the response (clamped to min/max).
+    pub ttl_secs: u32,
+}
+
+impl CacheEntry {
+    /// Create a new cache entry from a DNS response.
+    pub fn new(response: Vec<u8>, ttl_secs: u32) -> Self {
+        let clamped_ttl = ttl_secs.clamp(CACHE_MIN_TTL_SECS, CACHE_MAX_TTL_SECS);
+        Self {
+            response,
+            inserted_at: Instant::now(),
+            ttl_secs: clamped_ttl,
+        }
+    }
+
+    /// Create a cache entry with a specific insertion time (for testing).
+    pub fn new_at(response: Vec<u8>, ttl_secs: u32, inserted_at: Instant) -> Self {
+        let clamped_ttl = ttl_secs.clamp(CACHE_MIN_TTL_SECS, CACHE_MAX_TTL_SECS);
+        Self {
+            response,
+            inserted_at,
+            ttl_secs: clamped_ttl,
+        }
+    }
+
+    /// Check if this entry has expired.
+    pub fn is_expired(&self) -> bool {
+        self.inserted_at.elapsed() >= Duration::from_secs(self.ttl_secs as u64)
+    }
+
+    /// Remaining TTL in seconds (0 if expired).
+    pub fn remaining_ttl(&self) -> u32 {
+        let elapsed = self.inserted_at.elapsed().as_secs() as u32;
+        self.ttl_secs.saturating_sub(elapsed)
+    }
+
+    /// Return the cached response with the transaction ID rewritten
+    /// to match the incoming query.
+    pub fn response_for_query(&self, query: &[u8]) -> Option<Vec<u8>> {
+        if query.len() < 2 || self.response.len() < 2 {
+            return None;
+        }
+        let mut resp = self.response.clone();
+        // Copy the query's transaction ID into the response.
+        resp[0] = query[0];
+        resp[1] = query[1];
+        Some(resp)
+    }
+}
+
+/// Cache statistics.
+#[derive(Debug, Clone, Default)]
+pub struct CacheStats {
+    /// Total cache lookups.
+    pub lookups: u64,
+    /// Cache hits (served from cache).
+    pub hits: u64,
+    /// Cache misses (forwarded upstream).
+    pub misses: u64,
+    /// Entries inserted.
+    pub inserts: u64,
+    /// Entries evicted (expired or capacity).
+    pub evictions: u64,
+    /// Total flushes.
+    pub flushes: u64,
+}
+
+impl CacheStats {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Cache hit rate as a percentage (0.0–100.0).
+    pub fn hit_rate(&self) -> f64 {
+        if self.lookups == 0 {
+            return 0.0;
+        }
+        (self.hits as f64 / self.lookups as f64) * 100.0
+    }
+
+    pub fn display(&self) -> String {
+        format!(
+            "Cache lookups: {}\n\
+             Cache hits: {}\n\
+             Cache misses: {}\n\
+             Cache hit rate: {:.1}%\n\
+             Cache inserts: {}\n\
+             Cache evictions: {}\n\
+             Cache flushes: {}",
+            self.lookups,
+            self.hits,
+            self.misses,
+            self.hit_rate(),
+            self.inserts,
+            self.evictions,
+            self.flushes,
+        )
+    }
+}
+
+/// Thread-safe DNS response cache.
+///
+/// Caches DNS responses keyed by (name, qtype, qclass) with TTL-based
+/// expiration. Supports a maximum entry count; when full, expired entries
+/// are evicted first, then the oldest entry is evicted.
+pub struct DnsCache {
+    entries: HashMap<CacheKey, CacheEntry>,
+    max_entries: usize,
+    pub stats: CacheStats,
+    /// Whether caching is enabled.
+    pub enabled: bool,
+}
+
+impl DnsCache {
+    /// Create a new DNS cache with the default max entries.
+    pub fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            max_entries: DEFAULT_CACHE_MAX_ENTRIES,
+            stats: CacheStats::new(),
+            enabled: true,
+        }
+    }
+
+    /// Create a cache with a custom capacity.
+    pub fn with_capacity(max_entries: usize) -> Self {
+        Self {
+            entries: HashMap::new(),
+            max_entries,
+            stats: CacheStats::new(),
+            enabled: true,
+        }
+    }
+
+    /// Look up a cached response for a query.
+    ///
+    /// Returns `Some(response)` with the transaction ID rewritten if a
+    /// valid (non-expired) entry exists. Returns `None` on miss or expiry.
+    pub fn lookup(&mut self, query: &[u8]) -> Option<Vec<u8>> {
+        if !self.enabled {
+            return None;
+        }
+
+        let key = CacheKey::from_query(query)?;
+        self.stats.lookups += 1;
+
+        // Check for an existing entry.
+        if let Some(entry) = self.entries.get(&key) {
+            if entry.is_expired() {
+                // Remove the expired entry.
+                self.entries.remove(&key);
+                self.stats.evictions += 1;
+                self.stats.misses += 1;
+                return None;
+            }
+            self.stats.hits += 1;
+            return entry.response_for_query(query);
+        }
+
+        self.stats.misses += 1;
+        None
+    }
+
+    /// Insert a DNS response into the cache.
+    ///
+    /// Only caches successful responses (RCODE=NOERROR or NXDOMAIN) that
+    /// are actual responses (QR=1). The TTL is extracted from the first
+    /// answer record; if no answers exist, a short default is used.
+    pub fn insert(&mut self, query: &[u8], response: &[u8]) {
+        if !self.enabled {
+            return;
+        }
+
+        // Only cache responses (QR=1).
+        if response.len() < HEADER_SIZE {
+            return;
+        }
+        let qr = (response[2] >> 7) & 1;
+        if qr != 1 {
+            return;
+        }
+
+        // Only cache NOERROR (0) and NXDOMAIN (3).
+        let rcode = response[3] & 0x0F;
+        if rcode != 0 && rcode != 3 {
+            return;
+        }
+
+        // Don't cache truncated responses.
+        let tc = (response[2] >> 1) & 1;
+        if tc == 1 {
+            return;
+        }
+
+        let key = match CacheKey::from_query(query) {
+            Some(k) => k,
+            None => return,
+        };
+
+        let ttl = extract_min_ttl(response).unwrap_or(30);
+
+        // Don't cache zero-TTL responses (will be clamped to min anyway,
+        // but explicitly skip if the upstream says 0).
+        if ttl == 0 {
+            return;
+        }
+
+        // Evict expired entries if we're at capacity.
+        if self.entries.len() >= self.max_entries {
+            self.evict_expired();
+        }
+
+        // If still at capacity, evict the oldest entry.
+        if self.entries.len() >= self.max_entries {
+            self.evict_oldest();
+        }
+
+        self.entries
+            .insert(key, CacheEntry::new(response.to_vec(), ttl));
+        self.stats.inserts += 1;
+    }
+
+    /// Flush all cache entries.
+    pub fn flush(&mut self) {
+        let count = self.entries.len();
+        self.entries.clear();
+        self.stats.flushes += 1;
+        if count > 0 {
+            self.stats.evictions += count as u64;
+        }
+    }
+
+    /// Current number of entries in the cache.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Whether the cache is empty.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Remove all expired entries.
+    fn evict_expired(&mut self) {
+        let before = self.entries.len();
+        self.entries.retain(|_, entry| !entry.is_expired());
+        let evicted = before - self.entries.len();
+        self.stats.evictions += evicted as u64;
+    }
+
+    /// Evict the oldest entry (by insertion time).
+    fn evict_oldest(&mut self) {
+        if self.entries.is_empty() {
+            return;
+        }
+        let oldest_key = self
+            .entries
+            .iter()
+            .min_by_key(|(_, entry)| entry.inserted_at)
+            .map(|(key, _)| key.clone());
+        if let Some(key) = oldest_key {
+            self.entries.remove(&key);
+            self.stats.evictions += 1;
+        }
+    }
+}
+
+impl Default for DnsCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Extract the minimum TTL from all answer/authority/additional RRs
+/// in a DNS response. Returns `None` if no records are found.
+pub fn extract_min_ttl(response: &[u8]) -> Option<u32> {
+    if response.len() < HEADER_SIZE {
+        return None;
+    }
+
+    let qdcount = u16::from_be_bytes([response[4], response[5]]) as usize;
+    let ancount = u16::from_be_bytes([response[6], response[7]]) as usize;
+    let nscount = u16::from_be_bytes([response[8], response[9]]) as usize;
+    let arcount = u16::from_be_bytes([response[10], response[11]]) as usize;
+
+    let total_rr = ancount + nscount + arcount;
+    if total_rr == 0 {
+        return None;
+    }
+
+    // Skip questions.
+    let mut pos = HEADER_SIZE;
+    for _ in 0..qdcount {
+        pos = skip_name(response, pos)?;
+        pos += 4; // QTYPE + QCLASS
+        if pos > response.len() {
+            return None;
+        }
+    }
+
+    // Read TTLs from resource records.
+    let mut min_ttl: Option<u32> = None;
+    for _ in 0..total_rr {
+        // Skip RR name.
+        pos = skip_name(response, pos)?;
+        if pos + 10 > response.len() {
+            break;
+        }
+        let rr_type = u16::from_be_bytes([response[pos], response[pos + 1]]);
+        // Skip TYPE (2) + CLASS (2) to get TTL.
+        let ttl = u32::from_be_bytes([
+            response[pos + 4],
+            response[pos + 5],
+            response[pos + 6],
+            response[pos + 7],
+        ]);
+        let rdlength = u16::from_be_bytes([response[pos + 8], response[pos + 9]]) as usize;
+        pos += 10 + rdlength;
+
+        // Skip OPT pseudo-records (type 41) — they don't carry real TTLs.
+        if rr_type == RecordType::OPT.to_u16() {
+            continue;
+        }
+
+        min_ttl = Some(match min_ttl {
+            Some(current) => current.min(ttl),
+            None => ttl,
+        });
+    }
+
+    min_ttl
+}
+
+/// Skip a DNS name at the given position, returning the position after it.
+fn skip_name(data: &[u8], mut pos: usize) -> Option<usize> {
+    let mut hops = 0;
+    let mut end_pos: Option<usize> = None;
+    loop {
+        if pos >= data.len() || hops > MAX_COMPRESSION_HOPS {
+            return None;
+        }
+        let len = data[pos] as usize;
+        if len == 0 {
+            // End of name.
+            return Some(end_pos.unwrap_or(pos + 1));
+        }
+        if (len & 0xC0) == 0xC0 {
+            // Compression pointer.
+            if pos + 1 >= data.len() {
+                return None;
+            }
+            if end_pos.is_none() {
+                end_pos = Some(pos + 2);
+            }
+            let ptr = ((len & 0x3F) << 8) | (data[pos + 1] as usize);
+            pos = ptr;
+            hops += 1;
+            continue;
+        }
+        pos += 1 + len;
+        hops += 1;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1370,5 +1805,618 @@ mod tests {
         let io_err = io::Error::new(io::ErrorKind::ConnectionRefused, "refused");
         let dns_err = DnsError::from(io_err);
         assert!(matches!(dns_err, DnsError::Io(_)));
+    }
+
+    // ── DNS Cache tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_cache_key_from_query() {
+        let query = build_test_query();
+        let key = CacheKey::from_query(&query).unwrap();
+        assert_eq!(key.name, "example.com");
+        assert_eq!(key.qtype, 1); // A
+        assert_eq!(key.qclass, 1); // IN
+    }
+
+    #[test]
+    fn test_cache_key_from_query_lowercased() {
+        // Build a query with uppercase name: EXAMPLE.COM
+        let mut buf = vec![0u8; HEADER_SIZE];
+        buf[0] = 0xAB;
+        buf[1] = 0xCD;
+        buf[5] = 1; // QDCOUNT=1
+        // Encode "EXAMPLE.COM" with uppercase bytes
+        buf.push(7);
+        buf.extend_from_slice(b"EXAMPLE");
+        buf.push(3);
+        buf.extend_from_slice(b"COM");
+        buf.push(0);
+        buf.extend_from_slice(&[0x00, 0x01]); // TYPE=A
+        buf.extend_from_slice(&[0x00, 0x01]); // CLASS=IN
+
+        let key = CacheKey::from_query(&buf).unwrap();
+        assert_eq!(key.name, "example.com");
+    }
+
+    #[test]
+    fn test_cache_key_from_query_too_short() {
+        let buf = vec![0u8; 4];
+        assert!(CacheKey::from_query(&buf).is_none());
+    }
+
+    #[test]
+    fn test_cache_key_from_query_no_questions() {
+        let mut buf = vec![0u8; HEADER_SIZE];
+        buf[4] = 0;
+        buf[5] = 0; // QDCOUNT=0
+        assert!(CacheKey::from_query(&buf).is_none());
+    }
+
+    #[test]
+    fn test_cache_key_display() {
+        let key = CacheKey::new("example.com", 1, 1);
+        let s = format!("{}", key);
+        assert!(s.contains("example.com"));
+        assert!(s.contains("A"));
+    }
+
+    #[test]
+    fn test_cache_key_equality() {
+        let a = CacheKey::new("Example.COM", 1, 1);
+        let b = CacheKey::new("example.com", 1, 1);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_cache_key_different_type() {
+        let a = CacheKey::new("example.com", 1, 1); // A
+        let b = CacheKey::new("example.com", 28, 1); // AAAA
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_cache_entry_new() {
+        let entry = CacheEntry::new(vec![1, 2, 3], 300);
+        assert_eq!(entry.ttl_secs, 300);
+        assert!(!entry.is_expired());
+        assert!(entry.remaining_ttl() > 0);
+    }
+
+    #[test]
+    fn test_cache_entry_ttl_clamped_min() {
+        // TTL of 0 should be clamped to CACHE_MIN_TTL_SECS (1)
+        let entry = CacheEntry::new(vec![1], 0);
+        assert_eq!(entry.ttl_secs, CACHE_MIN_TTL_SECS);
+    }
+
+    #[test]
+    fn test_cache_entry_ttl_clamped_max() {
+        // Extremely long TTL should be clamped to CACHE_MAX_TTL_SECS (3600)
+        let entry = CacheEntry::new(vec![1], 999_999);
+        assert_eq!(entry.ttl_secs, CACHE_MAX_TTL_SECS);
+    }
+
+    #[test]
+    fn test_cache_entry_expired() {
+        let entry = CacheEntry::new_at(vec![1, 2], 1, Instant::now() - Duration::from_secs(5));
+        assert!(entry.is_expired());
+        assert_eq!(entry.remaining_ttl(), 0);
+    }
+
+    #[test]
+    fn test_cache_entry_not_expired() {
+        let entry = CacheEntry::new(vec![1, 2], 3600);
+        assert!(!entry.is_expired());
+        assert!(entry.remaining_ttl() > 3500);
+    }
+
+    #[test]
+    fn test_cache_entry_response_for_query() {
+        let response = vec![0xAA, 0xBB, 0x80, 0x00]; // response with ID 0xAABB
+        let entry = CacheEntry::new(response, 300);
+
+        let query = vec![0x12, 0x34, 0x01, 0x00]; // query with ID 0x1234
+        let rewritten = entry.response_for_query(&query).unwrap();
+        assert_eq!(rewritten[0], 0x12);
+        assert_eq!(rewritten[1], 0x34);
+        assert_eq!(rewritten[2], 0x80); // rest unchanged
+        assert_eq!(rewritten[3], 0x00);
+    }
+
+    #[test]
+    fn test_cache_entry_response_for_query_short() {
+        let entry = CacheEntry::new(vec![0x01], 300);
+        let query = vec![0x12, 0x34];
+        assert!(entry.response_for_query(&query).is_none());
+    }
+
+    #[test]
+    fn test_dns_cache_new() {
+        let cache = DnsCache::new();
+        assert!(cache.is_empty());
+        assert_eq!(cache.len(), 0);
+        assert!(cache.enabled);
+    }
+
+    #[test]
+    fn test_dns_cache_insert_and_lookup() {
+        let mut cache = DnsCache::new();
+        let query = build_test_query();
+        let response = build_test_response(0x1234);
+
+        cache.insert(&query, &response);
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.stats.inserts, 1);
+
+        // Lookup with the same query should hit.
+        let result = cache.lookup(&query);
+        assert!(result.is_some());
+        assert_eq!(cache.stats.hits, 1);
+        assert_eq!(cache.stats.lookups, 1);
+
+        // The returned response should have the query's transaction ID.
+        let cached = result.unwrap();
+        assert_eq!(cached[0], query[0]);
+        assert_eq!(cached[1], query[1]);
+    }
+
+    #[test]
+    fn test_dns_cache_lookup_different_id() {
+        let mut cache = DnsCache::new();
+        let query = build_test_query(); // ID=0x1234
+        let response = build_test_response(0x1234);
+
+        cache.insert(&query, &response);
+
+        // Build a query with a different transaction ID but same question.
+        let mut query2 = query.clone();
+        query2[0] = 0x56;
+        query2[1] = 0x78;
+
+        let result = cache.lookup(&query2);
+        assert!(result.is_some());
+        let cached = result.unwrap();
+        // Should rewrite the ID to match query2.
+        assert_eq!(cached[0], 0x56);
+        assert_eq!(cached[1], 0x78);
+    }
+
+    #[test]
+    fn test_dns_cache_miss() {
+        let mut cache = DnsCache::new();
+        let query = build_test_query();
+
+        let result = cache.lookup(&query);
+        assert!(result.is_none());
+        assert_eq!(cache.stats.misses, 1);
+        assert_eq!(cache.stats.lookups, 1);
+    }
+
+    #[test]
+    fn test_dns_cache_expired_entry_evicted_on_lookup() {
+        let mut cache = DnsCache::new();
+
+        let query = build_test_query();
+        let response = build_test_response(0x1234);
+
+        // Insert an already-expired entry by manipulating it directly.
+        let key = CacheKey::from_query(&query).unwrap();
+        cache.entries.insert(
+            key,
+            CacheEntry::new_at(response, 1, Instant::now() - Duration::from_secs(10)),
+        );
+        assert_eq!(cache.len(), 1);
+
+        // Lookup should miss and evict.
+        let result = cache.lookup(&query);
+        assert!(result.is_none());
+        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.stats.evictions, 1);
+        assert_eq!(cache.stats.misses, 1);
+    }
+
+    #[test]
+    fn test_dns_cache_flush() {
+        let mut cache = DnsCache::new();
+        let query = build_test_query();
+        let response = build_test_response(0x1234);
+
+        cache.insert(&query, &response);
+        assert_eq!(cache.len(), 1);
+
+        cache.flush();
+        assert!(cache.is_empty());
+        assert_eq!(cache.stats.flushes, 1);
+        assert_eq!(cache.stats.evictions, 1); // 1 entry evicted
+    }
+
+    #[test]
+    fn test_dns_cache_flush_empty() {
+        let mut cache = DnsCache::new();
+        cache.flush();
+        assert_eq!(cache.stats.flushes, 1);
+        assert_eq!(cache.stats.evictions, 0); // nothing to evict
+    }
+
+    #[test]
+    fn test_dns_cache_disabled() {
+        let mut cache = DnsCache::new();
+        cache.enabled = false;
+
+        let query = build_test_query();
+        let response = build_test_response(0x1234);
+
+        cache.insert(&query, &response);
+        assert_eq!(cache.len(), 0); // nothing stored
+
+        let result = cache.lookup(&query);
+        assert!(result.is_none());
+        assert_eq!(cache.stats.lookups, 0); // not even counted
+    }
+
+    #[test]
+    fn test_dns_cache_does_not_cache_non_response() {
+        let mut cache = DnsCache::new();
+        let query = build_test_query();
+
+        // Try to cache the query itself (QR=0).
+        cache.insert(&query, &query);
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn test_dns_cache_does_not_cache_servfail() {
+        let mut cache = DnsCache::new();
+        let query = build_test_query();
+
+        let servfail = build_servfail(&query).unwrap();
+        cache.insert(&query, &servfail);
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn test_dns_cache_does_not_cache_truncated() {
+        let mut cache = DnsCache::new();
+        let query = build_test_query();
+
+        let mut response = build_test_response(0x1234);
+        // Set TC bit.
+        response[2] |= 0x02;
+        cache.insert(&query, &response);
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn test_dns_cache_caches_nxdomain() {
+        let mut cache = DnsCache::new();
+        let query = build_test_query();
+
+        // Build an NXDOMAIN response (rcode=3) with an SOA in authority.
+        let mut response = build_test_response(0x1234);
+        // Set RCODE to NXDOMAIN (3), keep QR=1, RA=1, RD=1.
+        response[3] = (response[3] & 0xF0) | 0x03;
+        cache.insert(&query, &response);
+        assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn test_dns_cache_capacity_eviction() {
+        let mut cache = DnsCache::with_capacity(2);
+
+        // Insert 3 entries; the oldest should be evicted.
+        for i in 0u16..3 {
+            let mut query = vec![0u8; HEADER_SIZE];
+            query[0] = (i >> 8) as u8;
+            query[1] = (i & 0xFF) as u8;
+            query[5] = 1; // QDCOUNT=1
+            // Encode a unique name per entry: "aX.com"
+            query.push(2);
+            query.push(b'a');
+            query.push(b'0' + i as u8);
+            query.push(3);
+            query.extend_from_slice(b"com");
+            query.push(0);
+            query.extend_from_slice(&[0x00, 0x01]); // TYPE=A
+            query.extend_from_slice(&[0x00, 0x01]); // CLASS=IN
+
+            let mut response = query.clone();
+            // Make it a response: QR=1, RA=1, RCODE=0
+            response[2] = 0x81;
+            response[3] = 0x80;
+            response[7] = 1; // ANCOUNT=1
+            // Append a minimal A record answer.
+            response.extend_from_slice(&[0xC0, 0x0C]); // name pointer
+            response.extend_from_slice(&[0x00, 0x01]); // TYPE=A
+            response.extend_from_slice(&[0x00, 0x01]); // CLASS=IN
+            response.extend_from_slice(&[0x00, 0x00, 0x00, 0x3C]); // TTL=60
+            response.extend_from_slice(&[0x00, 0x04]); // RDLENGTH=4
+            response.extend_from_slice(&[1, 2, 3, i as u8]);
+
+            cache.insert(&query, &response);
+        }
+
+        // Capacity is 2, so only 2 entries should remain.
+        assert_eq!(cache.len(), 2);
+        assert!(cache.stats.evictions >= 1);
+    }
+
+    #[test]
+    fn test_dns_cache_with_capacity() {
+        let cache = DnsCache::with_capacity(10);
+        assert_eq!(cache.len(), 0);
+        assert!(cache.enabled);
+    }
+
+    // ── extract_min_ttl tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_extract_min_ttl_from_response() {
+        let response = build_test_response(0x1234);
+        let ttl = extract_min_ttl(&response);
+        assert_eq!(ttl, Some(300)); // TTL=300 in build_test_response
+    }
+
+    #[test]
+    fn test_extract_min_ttl_no_answers() {
+        // A response with ANCOUNT=0, NSCOUNT=0, ARCOUNT=0
+        let mut response = vec![0u8; HEADER_SIZE];
+        response[2] = 0x81; // QR=1, RD=1
+        response[3] = 0x80; // RA=1
+        response[5] = 1; // QDCOUNT=1
+        // Question: example.com A IN
+        response.push(7);
+        response.extend_from_slice(b"example");
+        response.push(3);
+        response.extend_from_slice(b"com");
+        response.push(0);
+        response.extend_from_slice(&[0x00, 0x01]); // TYPE=A
+        response.extend_from_slice(&[0x00, 0x01]); // CLASS=IN
+        assert_eq!(extract_min_ttl(&response), None);
+    }
+
+    #[test]
+    fn test_extract_min_ttl_too_short() {
+        assert_eq!(extract_min_ttl(&[0u8; 4]), None);
+    }
+
+    #[test]
+    fn test_extract_min_ttl_picks_minimum() {
+        // Build a response with two A records with different TTLs.
+        let mut buf = vec![0u8; HEADER_SIZE];
+        buf[2] = 0x81; // QR=1, RD=1
+        buf[3] = 0x80; // RA=1
+        buf[5] = 1; // QDCOUNT=1
+        buf[7] = 2; // ANCOUNT=2
+
+        // Question: example.com A IN
+        buf.push(7);
+        buf.extend_from_slice(b"example");
+        buf.push(3);
+        buf.extend_from_slice(b"com");
+        buf.push(0);
+        buf.extend_from_slice(&[0x00, 0x01]); // TYPE=A
+        buf.extend_from_slice(&[0x00, 0x01]); // CLASS=IN
+
+        // Answer 1: TTL=600
+        buf.extend_from_slice(&[0xC0, 0x0C]); // name pointer
+        buf.extend_from_slice(&[0x00, 0x01]); // TYPE=A
+        buf.extend_from_slice(&[0x00, 0x01]); // CLASS=IN
+        buf.extend_from_slice(&[0x00, 0x00, 0x02, 0x58]); // TTL=600
+        buf.extend_from_slice(&[0x00, 0x04]); // RDLENGTH=4
+        buf.extend_from_slice(&[1, 2, 3, 4]);
+
+        // Answer 2: TTL=120
+        buf.extend_from_slice(&[0xC0, 0x0C]); // name pointer
+        buf.extend_from_slice(&[0x00, 0x01]); // TYPE=A
+        buf.extend_from_slice(&[0x00, 0x01]); // CLASS=IN
+        buf.extend_from_slice(&[0x00, 0x00, 0x00, 0x78]); // TTL=120
+        buf.extend_from_slice(&[0x00, 0x04]); // RDLENGTH=4
+        buf.extend_from_slice(&[5, 6, 7, 8]);
+
+        assert_eq!(extract_min_ttl(&buf), Some(120));
+    }
+
+    // ── skip_name tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_skip_name_simple() {
+        // "example.com\0"
+        let mut data = Vec::new();
+        data.push(7);
+        data.extend_from_slice(b"example");
+        data.push(3);
+        data.extend_from_slice(b"com");
+        data.push(0);
+
+        let pos = skip_name(&data, 0);
+        assert_eq!(pos, Some(data.len()));
+    }
+
+    #[test]
+    fn test_skip_name_root() {
+        let data = vec![0u8]; // root "."
+        assert_eq!(skip_name(&data, 0), Some(1));
+    }
+
+    #[test]
+    fn test_skip_name_with_compression() {
+        // First name at offset 0: "example.com\0"
+        let mut data = Vec::new();
+        data.push(7);
+        data.extend_from_slice(b"example");
+        data.push(3);
+        data.extend_from_slice(b"com");
+        data.push(0); // ends at offset 13
+
+        // Second name at offset 13: compression pointer to offset 0
+        data.push(0xC0);
+        data.push(0x00);
+
+        // skip_name at offset 13 should return 15 (after the 2-byte pointer).
+        assert_eq!(skip_name(&data, 13), Some(15));
+    }
+
+    #[test]
+    fn test_skip_name_truncated() {
+        let data = vec![5, b'h', b'e']; // label says 5 bytes but only 2 available
+        assert_eq!(skip_name(&data, 0), None);
+    }
+
+    #[test]
+    fn test_skip_name_empty_data() {
+        let data: Vec<u8> = vec![];
+        assert_eq!(skip_name(&data, 0), None);
+    }
+
+    #[test]
+    fn test_skip_name_compression_loop() {
+        // Pointer that points to itself.
+        let data = vec![0xC0, 0x00];
+        assert_eq!(skip_name(&data, 0), None);
+    }
+
+    // ── CacheStats tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_cache_stats_new() {
+        let stats = CacheStats::new();
+        assert_eq!(stats.lookups, 0);
+        assert_eq!(stats.hits, 0);
+        assert_eq!(stats.misses, 0);
+        assert_eq!(stats.inserts, 0);
+        assert_eq!(stats.evictions, 0);
+        assert_eq!(stats.flushes, 0);
+    }
+
+    #[test]
+    fn test_cache_stats_hit_rate_zero_lookups() {
+        let stats = CacheStats::new();
+        assert_eq!(stats.hit_rate(), 0.0);
+    }
+
+    #[test]
+    fn test_cache_stats_hit_rate_all_hits() {
+        let stats = CacheStats {
+            lookups: 100,
+            hits: 100,
+            misses: 0,
+            ..CacheStats::new()
+        };
+        assert!((stats.hit_rate() - 100.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_cache_stats_hit_rate_half() {
+        let stats = CacheStats {
+            lookups: 200,
+            hits: 100,
+            misses: 100,
+            ..CacheStats::new()
+        };
+        assert!((stats.hit_rate() - 50.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_cache_stats_display() {
+        let stats = CacheStats {
+            lookups: 42,
+            hits: 30,
+            misses: 12,
+            inserts: 15,
+            evictions: 3,
+            flushes: 1,
+        };
+        let s = stats.display();
+        assert!(s.contains("42"));
+        assert!(s.contains("30"));
+        assert!(s.contains("12"));
+        assert!(s.contains("15"));
+        assert!(s.contains("3"));
+        assert!(s.contains("1"));
+        assert!(s.contains("hit rate"));
+    }
+
+    #[test]
+    fn test_dns_cache_default() {
+        let cache = DnsCache::default();
+        assert!(cache.is_empty());
+        assert!(cache.enabled);
+    }
+
+    #[test]
+    fn test_dns_cache_insert_short_response_ignored() {
+        let mut cache = DnsCache::new();
+        let query = build_test_query();
+        cache.insert(&query, &[0u8; 4]); // too short
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn test_dns_cache_insert_short_query_ignored() {
+        let mut cache = DnsCache::new();
+        let response = build_test_response(0x1234);
+        cache.insert(&[0u8; 4], &response); // query too short to extract key
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn test_dns_cache_evict_expired_on_capacity() {
+        let mut cache = DnsCache::with_capacity(1);
+
+        // Insert an entry that is already expired.
+        let query1 = build_test_query();
+        let key1 = CacheKey::from_query(&query1).unwrap();
+        let response1 = build_test_response(0x1234);
+        cache.entries.insert(
+            key1,
+            CacheEntry::new_at(response1, 1, Instant::now() - Duration::from_secs(10)),
+        );
+        cache.stats.inserts += 1;
+        assert_eq!(cache.len(), 1);
+
+        // Build a different query for a second entry.
+        let mut query2 = vec![0u8; HEADER_SIZE];
+        query2[0] = 0x56;
+        query2[1] = 0x78;
+        query2[5] = 1; // QDCOUNT=1
+        query2.push(4);
+        query2.extend_from_slice(b"test");
+        query2.push(3);
+        query2.extend_from_slice(b"org");
+        query2.push(0);
+        query2.extend_from_slice(&[0x00, 0x01]); // TYPE=A
+        query2.extend_from_slice(&[0x00, 0x01]); // CLASS=IN
+
+        let mut resp2 = query2.clone();
+        resp2[2] = 0x81;
+        resp2[3] = 0x80;
+        resp2[7] = 1; // ANCOUNT=1
+        resp2.extend_from_slice(&[0xC0, 0x0C]);
+        resp2.extend_from_slice(&[0x00, 0x01]);
+        resp2.extend_from_slice(&[0x00, 0x01]);
+        resp2.extend_from_slice(&[0x00, 0x00, 0x00, 0x3C]); // TTL=60
+        resp2.extend_from_slice(&[0x00, 0x04]);
+        resp2.extend_from_slice(&[10, 20, 30, 40]);
+
+        // This insert should evict the expired first entry.
+        cache.insert(&query2, &resp2);
+        assert_eq!(cache.len(), 1);
+        assert!(cache.stats.evictions >= 1);
+
+        // The surviving entry should be for test.org, not example.com.
+        let key2 = CacheKey::from_query(&query2).unwrap();
+        assert!(cache.entries.contains_key(&key2));
+    }
+
+    #[test]
+    fn test_cache_key_from_query_truncated_question() {
+        // QDCOUNT=1 but question section is cut off before type/class.
+        let mut buf = vec![0u8; HEADER_SIZE];
+        buf[5] = 1; // QDCOUNT=1
+        buf.push(3);
+        buf.extend_from_slice(b"foo");
+        buf.push(0);
+        // Missing QTYPE and QCLASS (need 4 more bytes).
+        assert!(CacheKey::from_query(&buf).is_none());
     }
 }

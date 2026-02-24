@@ -37,8 +37,8 @@ use config::{
     RESOLV_CONF_PATH, ResolvedConfig, STATE_DIR, STUB_RESOLV_CONF_PATH, StubListenerMode,
 };
 use dns::{
-    DnsMessage, HEADER_SIZE, MAX_EDNS_UDP_SIZE, MAX_TCP_SIZE, ResolverStats, build_formerr,
-    build_servfail, forward_query,
+    DnsCache, DnsMessage, HEADER_SIZE, MAX_EDNS_UDP_SIZE, MAX_TCP_SIZE, ResolverStats,
+    build_formerr, build_servfail, forward_query,
 };
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -216,7 +216,15 @@ fn write_file_atomic(path: &str, content: &str) {
 
 // ── Handle a single DNS query ──────────────────────────────────────────────
 
-fn handle_query(query_data: &[u8], upstreams: &[SocketAddr], stats: &AtomicStats) -> Vec<u8> {
+/// Shared DNS cache type (thread-safe).
+type SharedCache = Arc<Mutex<DnsCache>>;
+
+fn handle_query(
+    query_data: &[u8],
+    upstreams: &[SocketAddr],
+    stats: &AtomicStats,
+    cache: &SharedCache,
+) -> Vec<u8> {
     stats.queries_received.fetch_add(1, Ordering::Relaxed);
 
     // Parse the query to log it
@@ -236,6 +244,15 @@ fn handle_query(query_data: &[u8], upstreams: &[SocketAddr], stats: &AtomicStats
     };
 
     log::debug!("Query: {}", query_info);
+
+    // Check the DNS cache first.
+    if let Ok(mut dns_cache) = cache.lock()
+        && let Some(cached_response) = dns_cache.lookup(query_data)
+    {
+        log::debug!("Cache hit for {}", query_info);
+        stats.responses_ok.fetch_add(1, Ordering::Relaxed);
+        return cached_response;
+    }
 
     if upstreams.is_empty() {
         log::warn!("No upstream DNS servers configured");
@@ -261,6 +278,10 @@ fn handle_query(query_data: &[u8], upstreams: &[SocketAddr], stats: &AtomicStats
                     _ => {}
                 }
             }
+            // Cache the response.
+            if let Ok(mut dns_cache) = cache.lock() {
+                dns_cache.insert(query_data, &response);
+            }
             response
         }
         Err(dns::DnsError::Timeout) => {
@@ -284,6 +305,7 @@ fn handle_tcp_connection(
     mut stream: TcpStream,
     upstreams: Vec<SocketAddr>,
     stats: Arc<AtomicStats>,
+    cache: SharedCache,
 ) {
     let _ = stream.set_read_timeout(Some(TCP_TIMEOUT));
     let _ = stream.set_write_timeout(Some(TCP_TIMEOUT));
@@ -306,7 +328,7 @@ fn handle_tcp_connection(
         return;
     }
 
-    let response = handle_query(&query, &upstreams, &stats);
+    let response = handle_query(&query, &upstreams, &stats, &cache);
 
     // Write response with length prefix
     let resp_len = (response.len() as u16).to_be_bytes();
@@ -322,6 +344,7 @@ fn run_udp_listener(
     upstreams: Arc<std::sync::RwLock<Vec<SocketAddr>>>,
     stats: Arc<AtomicStats>,
     shutdown: Arc<AtomicBool>,
+    cache: SharedCache,
 ) {
     let mut buf = vec![0u8; UDP_RECV_BUF];
 
@@ -346,7 +369,7 @@ fn run_udp_listener(
             Ok((len, src)) => {
                 let query = &buf[..len];
                 let upstream_list = upstreams.read().unwrap_or_else(|e| e.into_inner()).clone();
-                let response = handle_query(query, &upstream_list, &stats);
+                let response = handle_query(query, &upstream_list, &stats, &cache);
 
                 if let Err(e) = socket.send_to(&response, src) {
                     log::debug!("Failed to send UDP response to {}: {}", src, e);
@@ -379,6 +402,7 @@ fn run_tcp_listener(
     upstreams: Arc<std::sync::RwLock<Vec<SocketAddr>>>,
     stats: Arc<AtomicStats>,
     shutdown: Arc<AtomicBool>,
+    cache: SharedCache,
 ) {
     log::info!(
         "TCP stub listener ready on {}",
@@ -397,9 +421,10 @@ fn run_tcp_listener(
             Ok((stream, _peer)) => {
                 let upstream_list = upstreams.read().unwrap_or_else(|e| e.into_inner()).clone();
                 let stats_clone = Arc::clone(&stats);
+                let cache_clone = Arc::clone(&cache);
 
                 thread::spawn(move || {
-                    handle_tcp_connection(stream, upstream_list, stats_clone);
+                    handle_tcp_connection(stream, upstream_list, stats_clone, cache_clone);
                 });
             }
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
@@ -461,6 +486,9 @@ fn bind_tcp_stub(addr: SocketAddr) -> io::Result<TcpListener> {
 // ── Shared D-Bus state ─────────────────────────────────────────────────────
 
 /// Snapshot of resolved state exposed via D-Bus properties.
+///
+/// Shared DNS cache for use across listener threads.
+/// Initialized alongside other shared state and passed to UDP/TCP listeners.
 #[derive(Debug, Clone)]
 struct ResolvedState {
     /// Configured DNS servers as (family, address_bytes) pairs.
@@ -536,7 +564,10 @@ type SharedState = Arc<Mutex<ResolvedState>>;
 ///   SetLinkDNS(i ifindex, a(iay) servers) — set per-link DNS (stub)
 ///   RevertLink(i ifindex)   — revert per-link DNS (stub)
 ///   Describe() → s          — JSON description of the resolver state
-fn register_resolve1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedState> {
+fn register_resolve1_iface(
+    cr: &mut Crossroads,
+    cache: SharedCache,
+) -> dbus_crossroads::IfaceToken<SharedState> {
     cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedState>| {
         // --- Properties ---
 
@@ -601,23 +632,33 @@ fn register_resolve1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<S
                 Ok(s.transaction_stats)
             });
 
-        // CacheStatistics — (ttt)
+        // CacheStatistics — (ttt): (size, hits, misses)
+        let cache_for_stats = Arc::clone(&cache);
         b.property("CacheStatistics")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.cache_stats)
+            .get(move |_, _state: &mut SharedState| {
+                let dns_cache = cache_for_stats.lock().unwrap_or_else(|e| e.into_inner());
+                Ok((
+                    dns_cache.len() as u64,
+                    dns_cache.stats.hits,
+                    dns_cache.stats.misses,
+                ))
             });
 
         // --- Methods ---
 
         // FlushCaches()
+        let cache_for_flush = Arc::clone(&cache);
         b.method(
             "FlushCaches",
             (),
             (),
             move |_, _state: &mut SharedState, ()| {
                 log::info!("D-Bus FlushCaches() called");
-                // No in-memory cache to flush yet, but log the request
+                if let Ok(mut dns_cache) = cache_for_flush.lock() {
+                    let count = dns_cache.len();
+                    dns_cache.flush();
+                    log::info!("Flushed {} cache entries via D-Bus", count);
+                }
                 Ok(())
             },
         );
@@ -773,13 +814,13 @@ fn resolve_link_object_path(ifindex: u32) -> String {
 }
 
 /// Set up the D-Bus connection and register the resolve1 interface.
-fn setup_dbus(shared: SharedState) -> Result<(Connection, Crossroads), String> {
+fn setup_dbus(shared: SharedState, cache: SharedCache) -> Result<(Connection, Crossroads), String> {
     let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
     conn.request_name(DBUS_NAME, false, true, false)
         .map_err(|e| format!("D-Bus name request failed: {}", e))?;
 
     let mut cr = Crossroads::new();
-    let iface_token = register_resolve1_iface(&mut cr);
+    let iface_token = register_resolve1_iface(&mut cr, cache.clone());
     cr.insert(DBUS_PATH, &[iface_token], shared);
 
     Ok((conn, cr))
@@ -886,6 +927,9 @@ fn main() {
     setup_logging();
     log::info!("systemd-resolved starting");
 
+    // Create DNS cache.
+    let dns_cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+
     // Load configuration
     let mut config = ResolvedConfig::load();
     log::info!(
@@ -963,8 +1007,15 @@ fn main() {
                         let upstreams_clone = Arc::clone(&upstreams);
                         let stats_clone = Arc::clone(&stats);
                         let shutdown_clone = Arc::clone(&shutdown);
+                        let cache_clone = Arc::clone(&dns_cache);
                         listener_threads.push(thread::spawn(move || {
-                            run_udp_listener(socket, upstreams_clone, stats_clone, shutdown_clone);
+                            run_udp_listener(
+                                socket,
+                                upstreams_clone,
+                                stats_clone,
+                                shutdown_clone,
+                                cache_clone,
+                            );
                         }));
                     }
                     Err(e) => {
@@ -984,12 +1035,14 @@ fn main() {
                         let upstreams_clone = Arc::clone(&upstreams);
                         let stats_clone = Arc::clone(&stats);
                         let shutdown_clone = Arc::clone(&shutdown);
+                        let cache_clone = Arc::clone(&dns_cache);
                         listener_threads.push(thread::spawn(move || {
                             run_tcp_listener(
                                 listener,
                                 upstreams_clone,
                                 stats_clone,
                                 shutdown_clone,
+                                cache_clone,
                             );
                         }));
                     }
@@ -1013,8 +1066,15 @@ fn main() {
                 let upstreams_clone = Arc::clone(&upstreams);
                 let stats_clone = Arc::clone(&stats);
                 let shutdown_clone = Arc::clone(&shutdown);
+                let cache_clone = Arc::clone(&dns_cache);
                 listener_threads.push(thread::spawn(move || {
-                    run_udp_listener(socket, upstreams_clone, stats_clone, shutdown_clone);
+                    run_udp_listener(
+                        socket,
+                        upstreams_clone,
+                        stats_clone,
+                        shutdown_clone,
+                        cache_clone,
+                    );
                 }));
             }
             Err(e) => {
@@ -1059,7 +1119,7 @@ fn main() {
         // Attempt D-Bus registration once (deferred from startup)
         if !dbus_attempted {
             dbus_attempted = true;
-            match setup_dbus(shared_dbus_state.clone()) {
+            match setup_dbus(shared_dbus_state.clone(), Arc::clone(&dns_cache)) {
                 Ok((conn, cr)) => {
                     log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
                     dbus_conn = Some(conn);
@@ -1108,6 +1168,13 @@ fn main() {
             // Update D-Bus state
             update_shared_state(&shared_dbus_state, &new_config, &stats);
 
+            // Flush DNS cache on reload
+            if let Ok(mut dns_cache_lock) = dns_cache.lock() {
+                let cache_size = dns_cache_lock.len();
+                dns_cache_lock.flush();
+                log::info!("Flushed DNS cache ({} entries)", cache_size);
+            }
+
             sd_notify_status("Processing requests...");
         }
 
@@ -1152,6 +1219,19 @@ fn main() {
 
     // Signal listener threads to stop
     shutdown.store(true, Ordering::Relaxed);
+
+    // Log final cache statistics
+    if let Ok(dns_cache_lock) = dns_cache.lock() {
+        log::info!(
+            "Cache statistics: {} entries, {} lookups, {} hits ({:.1}% hit rate), {} misses, {} evictions",
+            dns_cache_lock.len(),
+            dns_cache_lock.stats.lookups,
+            dns_cache_lock.stats.hits,
+            dns_cache_lock.stats.hit_rate(),
+            dns_cache_lock.stats.misses,
+            dns_cache_lock.stats.evictions,
+        );
+    }
 
     // Log final statistics
     let final_stats = stats.snapshot();
@@ -1216,13 +1296,14 @@ mod tests {
     #[test]
     fn test_handle_query_empty_upstreams() {
         let stats = AtomicStats::new();
+        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
 
         // Build a minimal valid DNS query
         let mut query = vec![0u8; 12]; // minimal header
         query[2] = 0x01; // RD=1
         query[5] = 0; // QDCOUNT=0
 
-        let response = handle_query(&query, &[], &stats);
+        let response = handle_query(&query, &[], &stats, &cache);
 
         // Should get SERVFAIL
         assert!(response.len() >= HEADER_SIZE);
@@ -1236,6 +1317,7 @@ mod tests {
     #[test]
     fn test_handle_query_malformed() {
         let stats = AtomicStats::new();
+        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
 
         // Too short to be a valid DNS message but has a header
         let query = vec![0u8; HEADER_SIZE];
@@ -1243,7 +1325,7 @@ mod tests {
         let mut query = query;
         query[5] = 1; // QDCOUNT=1
 
-        let response = handle_query(&query, &[], &stats);
+        let response = handle_query(&query, &[], &stats, &cache);
         // Should get FORMERR since the message can't be parsed (truncated question)
         assert!(response.len() >= HEADER_SIZE);
         let rcode = response[3] & 0x0F;
@@ -1255,13 +1337,14 @@ mod tests {
     #[test]
     fn test_handle_query_response_not_query() {
         let stats = AtomicStats::new();
+        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
 
         // Send a response (QR=1) as if it were a query
         let mut data = vec![0u8; HEADER_SIZE];
         data[2] = 0x80; // QR=1 (response)
         data[5] = 0; // QDCOUNT=0
 
-        let response = handle_query(&data, &[], &stats);
+        let response = handle_query(&data, &[], &stats, &cache);
         let rcode = response[3] & 0x0F;
         assert_eq!(rcode, 1); // FORMERR
     }
@@ -1322,7 +1405,8 @@ mod tests {
     #[test]
     fn test_dbus_register_resolve1_iface() {
         let mut cr = Crossroads::new();
-        let token = register_resolve1_iface(&mut cr);
+        let cache: SharedCache = Arc::new(Mutex::new(DnsCache::new()));
+        let token = register_resolve1_iface(&mut cr, cache);
         let shared: SharedState = Arc::new(Mutex::new(ResolvedState::default()));
         cr.insert(DBUS_PATH, &[token], shared);
         // Registration succeeded without panic
