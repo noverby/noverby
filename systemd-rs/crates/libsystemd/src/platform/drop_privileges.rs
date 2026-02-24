@@ -4,10 +4,10 @@ use nix::unistd::setresgid;
 use nix::unistd::setresuid;
 use std::io::Read;
 
-/// This sequence should drop all privileges the root process might have had. I think this is how systemd does it too.
-/// They additionally have some checking if setgroups is possible
+/// Drop all privileges from root to the specified uid/gid.
 ///
-/// I dont think this needs to explicitly drop any capabilities on linux. At least thats how I understood the man page
+/// Sequence:  setresgid -> setgroups -> setresuid
+/// This matches systemd's privilege-drop ordering.
 pub fn drop_privileges(gid: Gid, supp_gids: &[Gid], uid: Uid) -> Result<(), String> {
     setresgid(gid, gid, gid).map_err(|e| format!("Error while setting groupid: {e}"))?;
     maybe_set_groups(supp_gids)?;
@@ -21,9 +21,8 @@ fn maybe_set_groups(supp_gids: &[Gid]) -> Result<(), String> {
     if can_drop_groups()? {
         nix::unistd::setgroups(supp_gids).map_err(|e| format!("Error while calling setgroups: {e}"))
     } else {
-        // TODO check if this is sensible.
-        // We just ignore groups if the kernel says we cant drop them. Maybe we should just not start the service then?
-        // systemd seems to do it like this here
+        // We just ignore groups if the kernel says we can't drop them.
+        // systemd seems to do it like this:
         // https://github.com/systemd/systemd/blob/master/src/basic/user-util.c
         Ok(())
     }
@@ -39,14 +38,17 @@ fn can_drop_groups() -> Result<bool, String> {
                 "Error while opening file: {kernel_iface_path:?} to check if we can call setgroups: {e}"
             )
         })?;
-        file.read_exact(&mut buf[..]).unwrap();
-        if buf.eq(&ALLOW_READ) {
-            Ok(true)
-        } else {
-            Ok(false)
+        // Use read() instead of read_exact() to avoid panicking if the
+        // file is shorter than expected.  /proc/self/setgroups typically
+        // contains "allow\n" (6 bytes) or "deny\n" (5 bytes), but we
+        // only need the first 5 bytes to distinguish between them.
+        match file.read(&mut buf[..]) {
+            Ok(n) if n >= 5 && buf[..5].eq(&ALLOW_READ) => Ok(true),
+            Ok(_) => Ok(false),
+            Err(e) => Err(format!("Error while reading {kernel_iface_path:?}: {e}")),
         }
     } else {
-        // assume true since we cant check
+        // assume true since we can't check
         Ok(true)
     }
 }

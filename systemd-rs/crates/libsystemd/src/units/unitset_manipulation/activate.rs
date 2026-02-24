@@ -653,8 +653,10 @@ pub fn activate_needed_units(
         root_names
     );
 
-    // TODO make configurable or at least make guess about amount of threads
-    let tpool = ThreadPool::new(6);
+    // Use a generous thread pool so that slow-starting notify services
+    // (which block a thread while waiting for READY=1) don't starve
+    // oneshot/target activations that could complete immediately.
+    let tpool = ThreadPool::new(32);
     let errors = Arc::new(Mutex::new(Vec::new()));
     activate_units_recursive(
         root_units,
