@@ -15,6 +15,7 @@
 //! - Configuration loading
 //! - Control interface (JSON-RPC 2.0)
 
+pub mod calendar_spec;
 pub mod config;
 pub mod control;
 pub mod dbus_wait;

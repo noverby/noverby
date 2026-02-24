@@ -4,20 +4,20 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ## Current Status
 
-**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~8 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **4,488 unit tests passing** across 66 crates.
+**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~6 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **4,573 unit tests passing** across 66 crates.
 
 | Phase | Status |
 |-------|--------|
 | Phase 0 — Foundation | ✅ Complete |
 | Phase 1 — Core System | ✅ Complete |
-| Phase 2 — Essential System Services | 🔶 In progress (udevd partial, logind D-Bus done, next: remaining D-Bus interfaces) |
+| Phase 2 — Essential System Services | 🔶 In progress (udevd partial, logind D-Bus done, OnCalendar= full parser done, next: remaining D-Bus interfaces) |
 | Phase 3 — Network Stack | 🔶 Partial (networkd, resolved, timesyncd, timedated, hostnamed, localed) |
 | Phase 4 — Extended Services | 🔶 Partial (machined, portabled, homed, oomd, coredump, sysext, dissect, firstboot, creds) |
 | Phase 5 — Utilities, Boot & Polish | 🔶 Partial (analyze, cgls, cgtop, mount, socket-activate, ac-power, detect-virt, generator framework) |
 
 ### Unit File Directive Coverage
 
-189 of 425 upstream systemd directives supported (44%). Per-section breakdown:
+198 of 425 upstream systemd directives supported (47%). Per-section breakdown:
 
 | Section | Supported | Partial | Unsupported | Total | Coverage |
 |---------|-----------|---------|-------------|-------|----------|
@@ -28,7 +28,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 | systemd.resource-control | 11 | 0 | 37 | 48 | 23% |
 | sd_notify | 3 | 0 | 12 | 15 | 20% |
 | systemd.kill | 3 | 0 | 4 | 7 | 43% |
-| systemd.timer | 0 | 1 | 13 | 14 | 0% |
+| systemd.timer | 9 | 1 | 4 | 14 | 64% |
 | systemd.path | 0 | 1 | 7 | 8 | 0% |
 | systemd.slice | 1 | 0 | 2 | 3 | 33% |
 | systemd.device | 0 | 1 | 0 | 1 | 0% |
@@ -122,6 +122,8 @@ crates/
 ```
 
 ## Phase 0 — Foundation (Workspace & Core Library)
+
+> **Note:** The `calendar_spec` module in `libsystemd` provides a full systemd calendar expression parser and evaluator, supporting weekday filters, ranges, lists, repetitions (`*/N`, `start/step`, `start..end/step`), and all standard shorthands. The `CalendarSpec::next_elapse()` function computes the next matching wall-clock time, used by the timer scheduler for `OnCalendar=` directives and by `systemd-analyze calendar` for next-elapse display.
 
 Restructure the existing codebase into a Cargo workspace and extract shared functionality into `libsystemd`:
 
@@ -217,7 +219,7 @@ Remaining components and production readiness:
 - ❌ **`sd-boot`** / **`bootctl`** — UEFI boot manager and control tool (this component is EFI, likely stays as a separate build target or FFI)
 - ❌ **`sd-stub`** — UEFI stub for unified kernel images
 - ✅ **Generator framework** — fstab and getty generators built natively into `libsystemd`; external generator execution framework discovers and runs all standard generators (`systemd-gpt-auto-generator`, `systemd-cryptsetup-generator`, `systemd-debug-generator`, `systemd-run-generator`, etc.) from well-known directories plus package-relative paths; output directories inserted at correct unit search path priorities; built-in generators automatically skipped; per-generator timeout with graceful failure handling
-- 🔶 **Comprehensive test suite** — 4,483 unit tests passing; integration tests via nixos-rs boot test; missing: differential testing against real systemd
+- 🔶 **Comprehensive test suite** — 4,573 unit tests passing; integration tests via nixos-rs boot test; missing: differential testing against real systemd
 - ❌ **Documentation** — man-page-compatible documentation for all binaries and configuration formats
 - 🔶 **NixOS / distro integration** — packaging via `default.nix`, boot testing via `test-boot.sh`, NixOS module via `systemd.nix`; working end-to-end; udev rules override ensures correct `systemctl` path in udev `RUN+=` actions; `Type=idle` deferral eliminates getty/PAM race conditions; on-demand unit loading enables `systemctl restart` for units outside the boot dependency graph (e.g. udev-triggered `systemd-vconsole-setup.service`); symlink-aware unit discovery handles NixOS `/etc/systemd/system/` layouts; poison-recovering lock infrastructure prevents panic cascades from poisoned `Mutex`/`RwLock` guards; external generator framework discovers generators in NixOS store paths via executable-relative search (15 generators execute successfully during boot); networkd integration enabled (`withNetworkd = true`) with `.network` file for DHCP on ethernet interfaces; resolved integration enabled (`services.resolved.enable = true`) with stub DNS on 127.0.0.53 and fallback DNS servers; portabled integration enabled (`withPortabled = true`) for portable service image management; timedated integration enabled (`withTimedated = true`) for time/date management; machined integration enabled (`withMachined = true`) for VM/container registration; homed integration enabled (`withHomed = true`) for home directory management; `networkctl persistent-storage` subcommand added for NixOS `systemd-networkd-persistent-storage.service` compatibility; deadlock-free PID table (`Arc<Mutex<PidTable>>`) allows signal handler to update entries without RuntimeInfo read lock, preventing 3-way RwLock deadlock with activation threads and control handler; cloud-hypervisor VM boots with full networking (TAP device + dnsmasq DHCP) in ~8 seconds
 
