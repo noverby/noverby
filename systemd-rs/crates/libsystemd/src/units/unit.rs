@@ -412,6 +412,44 @@ pub struct SliceConfig {
     pub managed_oom_preference: Option<String>,
     /// MemoryPressureWatch= — PSI memory pressure monitoring. See systemd.resource-control(5).
     pub memory_pressure_watch: MemoryPressureWatch,
+    /// CPUQuotaPeriodSec= — the period for CPU quota enforcement. See systemd.resource-control(5).
+    pub cpu_quota_period_sec: Option<Timeout>,
+    /// AllowedCPUs= — CPU set restriction (cpuset controller). See systemd.resource-control(5).
+    pub allowed_cpus: Option<String>,
+    /// StartupAllowedCPUs= — CPU set restriction during startup. See systemd.resource-control(5).
+    pub startup_allowed_cpus: Option<String>,
+    /// AllowedMemoryNodes= — NUMA node restriction (cpuset controller). See systemd.resource-control(5).
+    pub allowed_memory_nodes: Option<String>,
+    /// StartupAllowedMemoryNodes= — NUMA node restriction during startup. See systemd.resource-control(5).
+    pub startup_allowed_memory_nodes: Option<String>,
+    /// DefaultMemoryMin= — default memory.min for children. See systemd.resource-control(5).
+    pub default_memory_min: Option<MemoryLimit>,
+    /// DefaultMemoryLow= — default memory.low for children. See systemd.resource-control(5).
+    pub default_memory_low: Option<MemoryLimit>,
+    /// MemoryZSwapMax= — hard zswap limit. See systemd.resource-control(5).
+    pub memory_zswap_max: Option<MemoryLimit>,
+    /// IODeviceLatencyTargetSec= — per-device I/O latency target. See systemd.resource-control(5).
+    pub io_device_latency_target_sec: Vec<String>,
+    /// DisableControllers= — controllers to disable. See systemd.resource-control(5).
+    pub disable_controllers: Vec<String>,
+    /// MemoryPressureThresholdSec= — memory pressure threshold duration. See systemd.resource-control(5).
+    pub memory_pressure_threshold_sec: Option<Timeout>,
+    /// IPIngressFilterPath= — BPF ingress filter paths. See systemd.resource-control(5).
+    pub ip_ingress_filter_path: Vec<String>,
+    /// IPEgressFilterPath= — BPF egress filter paths. See systemd.resource-control(5).
+    pub ip_egress_filter_path: Vec<String>,
+    /// BPFProgram= — BPF programs to attach. See systemd.resource-control(5).
+    pub bpf_program: Vec<String>,
+    /// SocketBindAllow= — socket bind allow rules. See systemd.resource-control(5).
+    pub socket_bind_allow: Vec<String>,
+    /// SocketBindDeny= — socket bind deny rules. See systemd.resource-control(5).
+    pub socket_bind_deny: Vec<String>,
+    /// RestrictNetworkInterfaces= — network interface restrictions. See systemd.resource-control(5).
+    pub restrict_network_interfaces: Vec<String>,
+    /// NFTSet= — nftables set attachments. See systemd.resource-control(5).
+    pub nft_set: Vec<String>,
+    /// DelegateSubgroup= — subgroup for delegated cgroup. See systemd.resource-control(5).
+    pub delegate_subgroup: Option<String>,
 }
 
 impl From<ParsedSliceSection> for SliceConfig {
@@ -447,6 +485,25 @@ impl From<ParsedSliceSection> for SliceConfig {
             managed_oom_memory_pressure_limit: s.managed_oom_memory_pressure_limit,
             managed_oom_preference: s.managed_oom_preference,
             memory_pressure_watch: s.memory_pressure_watch,
+            cpu_quota_period_sec: s.cpu_quota_period_sec,
+            allowed_cpus: s.allowed_cpus,
+            startup_allowed_cpus: s.startup_allowed_cpus,
+            allowed_memory_nodes: s.allowed_memory_nodes,
+            startup_allowed_memory_nodes: s.startup_allowed_memory_nodes,
+            default_memory_min: s.default_memory_min,
+            default_memory_low: s.default_memory_low,
+            memory_zswap_max: s.memory_zswap_max,
+            io_device_latency_target_sec: s.io_device_latency_target_sec,
+            disable_controllers: s.disable_controllers,
+            memory_pressure_threshold_sec: s.memory_pressure_threshold_sec,
+            ip_ingress_filter_path: s.ip_ingress_filter_path,
+            ip_egress_filter_path: s.ip_egress_filter_path,
+            bpf_program: s.bpf_program,
+            socket_bind_allow: s.socket_bind_allow,
+            socket_bind_deny: s.socket_bind_deny,
+            restrict_network_interfaces: s.restrict_network_interfaces,
+            nft_set: s.nft_set,
+            delegate_subgroup: s.delegate_subgroup,
         }
     }
 }

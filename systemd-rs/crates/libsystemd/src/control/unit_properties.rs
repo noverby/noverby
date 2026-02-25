@@ -8,7 +8,7 @@
 use crate::lock_ext::RwLockExt;
 use crate::units::{
     Commandline, ExecConfig, KillMode, MountConfig, NotifyKind, ServiceConfig, ServiceRestart,
-    ServiceType, SocketConfig, Specific, Timeout, Unit, UnitConfig, UnitStatus,
+    ServiceType, SliceConfig, SocketConfig, Specific, Timeout, Unit, UnitConfig, UnitStatus,
 };
 
 use std::collections::BTreeMap;
@@ -110,8 +110,8 @@ pub fn collect_properties(unit: &Unit) -> BTreeMap<String, String> {
         Specific::Target(_) => {
             // Targets have no type-specific properties beyond [Unit].
         }
-        Specific::Slice(_) => {
-            // Slices have no type-specific properties beyond [Unit].
+        Specific::Slice(slice) => {
+            insert_slice_config(&mut props, &slice.conf);
         }
         Specific::Mount(mnt) => {
             insert_mount_config(&mut props, &mnt.conf);
@@ -749,6 +749,256 @@ fn format_commandline(cmd: &crate::units::Commandline) -> String {
     s
 }
 
+fn insert_slice_config(props: &mut BTreeMap<String, String>, conf: &SliceConfig) {
+    // Memory limits
+    match &conf.memory_min {
+        Some(crate::units::MemoryLimit::Bytes(n)) => insert(props, "MemoryMin", &n.to_string()),
+        Some(crate::units::MemoryLimit::Percent(p)) => insert(props, "MemoryMin", &format!("{p}%")),
+        Some(crate::units::MemoryLimit::Infinity) => insert(props, "MemoryMin", "infinity"),
+        None => insert(props, "MemoryMin", ""),
+    }
+    match &conf.memory_low {
+        Some(crate::units::MemoryLimit::Bytes(n)) => insert(props, "MemoryLow", &n.to_string()),
+        Some(crate::units::MemoryLimit::Percent(p)) => insert(props, "MemoryLow", &format!("{p}%")),
+        Some(crate::units::MemoryLimit::Infinity) => insert(props, "MemoryLow", "infinity"),
+        None => insert(props, "MemoryLow", ""),
+    }
+    match &conf.memory_high {
+        Some(crate::units::MemoryLimit::Bytes(n)) => insert(props, "MemoryHigh", &n.to_string()),
+        Some(crate::units::MemoryLimit::Percent(p)) => {
+            insert(props, "MemoryHigh", &format!("{p}%"))
+        }
+        Some(crate::units::MemoryLimit::Infinity) => insert(props, "MemoryHigh", "infinity"),
+        None => insert(props, "MemoryHigh", "infinity"),
+    }
+    match &conf.memory_max {
+        Some(crate::units::MemoryLimit::Bytes(n)) => insert(props, "MemoryMax", &n.to_string()),
+        Some(crate::units::MemoryLimit::Percent(p)) => insert(props, "MemoryMax", &format!("{p}%")),
+        Some(crate::units::MemoryLimit::Infinity) => insert(props, "MemoryMax", "infinity"),
+        None => insert(props, "MemoryMax", "infinity"),
+    }
+    match &conf.memory_swap_max {
+        Some(crate::units::MemoryLimit::Bytes(n)) => insert(props, "MemorySwapMax", &n.to_string()),
+        Some(crate::units::MemoryLimit::Percent(p)) => {
+            insert(props, "MemorySwapMax", &format!("{p}%"))
+        }
+        Some(crate::units::MemoryLimit::Infinity) => insert(props, "MemorySwapMax", "infinity"),
+        None => insert(props, "MemorySwapMax", "infinity"),
+    }
+    match &conf.memory_zswap_max {
+        Some(crate::units::MemoryLimit::Bytes(n)) => {
+            insert(props, "MemoryZSwapMax", &n.to_string())
+        }
+        Some(crate::units::MemoryLimit::Percent(p)) => {
+            insert(props, "MemoryZSwapMax", &format!("{p}%"))
+        }
+        Some(crate::units::MemoryLimit::Infinity) => insert(props, "MemoryZSwapMax", "infinity"),
+        None => insert(props, "MemoryZSwapMax", "infinity"),
+    }
+    match &conf.default_memory_min {
+        Some(crate::units::MemoryLimit::Bytes(n)) => {
+            insert(props, "DefaultMemoryMin", &n.to_string())
+        }
+        Some(crate::units::MemoryLimit::Percent(p)) => {
+            insert(props, "DefaultMemoryMin", &format!("{p}%"))
+        }
+        Some(crate::units::MemoryLimit::Infinity) => insert(props, "DefaultMemoryMin", "infinity"),
+        None => insert(props, "DefaultMemoryMin", ""),
+    }
+    match &conf.default_memory_low {
+        Some(crate::units::MemoryLimit::Bytes(n)) => {
+            insert(props, "DefaultMemoryLow", &n.to_string())
+        }
+        Some(crate::units::MemoryLimit::Percent(p)) => {
+            insert(props, "DefaultMemoryLow", &format!("{p}%"))
+        }
+        Some(crate::units::MemoryLimit::Infinity) => insert(props, "DefaultMemoryLow", "infinity"),
+        None => insert(props, "DefaultMemoryLow", ""),
+    }
+
+    // CPU
+    match conf.cpu_weight {
+        Some(n) => insert(props, "CPUWeight", &n.to_string()),
+        None => insert(props, "CPUWeight", ""),
+    }
+    match conf.startup_cpu_weight {
+        Some(n) => insert(props, "StartupCPUWeight", &n.to_string()),
+        None => insert(props, "StartupCPUWeight", ""),
+    }
+    match conf.cpu_quota {
+        Some(p) => insert(props, "CPUQuota", &format!("{p}%")),
+        None => insert(props, "CPUQuota", ""),
+    }
+    insert_timeout(props, "CPUQuotaPeriodUSec", &conf.cpu_quota_period_sec);
+    insert_optional(props, "AllowedCPUs", &conf.allowed_cpus);
+    insert_optional(props, "StartupAllowedCPUs", &conf.startup_allowed_cpus);
+    insert_optional(props, "AllowedMemoryNodes", &conf.allowed_memory_nodes);
+    insert_optional(
+        props,
+        "StartupAllowedMemoryNodes",
+        &conf.startup_allowed_memory_nodes,
+    );
+
+    // IO
+    match conf.io_weight {
+        Some(n) => insert(props, "IOWeight", &n.to_string()),
+        None => insert(props, "IOWeight", ""),
+    }
+    match conf.startup_io_weight {
+        Some(n) => insert(props, "StartupIOWeight", &n.to_string()),
+        None => insert(props, "StartupIOWeight", ""),
+    }
+    // Per-device IO limits are formatted as "DEVICE VALUE" entries
+    if !conf.io_device_weight.is_empty() {
+        let vals: Vec<String> = conf
+            .io_device_weight
+            .iter()
+            .map(|d| format!("{} {}", d.device, d.value))
+            .collect();
+        insert(props, "IODeviceWeight", &vals.join(" "));
+    }
+    if !conf.io_read_bandwidth_max.is_empty() {
+        let vals: Vec<String> = conf
+            .io_read_bandwidth_max
+            .iter()
+            .map(|d| format!("{} {}", d.device, d.value))
+            .collect();
+        insert(props, "IOReadBandwidthMax", &vals.join(" "));
+    }
+    if !conf.io_write_bandwidth_max.is_empty() {
+        let vals: Vec<String> = conf
+            .io_write_bandwidth_max
+            .iter()
+            .map(|d| format!("{} {}", d.device, d.value))
+            .collect();
+        insert(props, "IOWriteBandwidthMax", &vals.join(" "));
+    }
+    if !conf.io_read_iops_max.is_empty() {
+        let vals: Vec<String> = conf
+            .io_read_iops_max
+            .iter()
+            .map(|d| format!("{} {}", d.device, d.value))
+            .collect();
+        insert(props, "IOReadIOPSMax", &vals.join(" "));
+    }
+    if !conf.io_write_iops_max.is_empty() {
+        let vals: Vec<String> = conf
+            .io_write_iops_max
+            .iter()
+            .map(|d| format!("{} {}", d.device, d.value))
+            .collect();
+        insert(props, "IOWriteIOPSMax", &vals.join(" "));
+    }
+    if !conf.io_device_latency_target_sec.is_empty() {
+        insert(
+            props,
+            "IODeviceLatencyTargetSec",
+            &conf.io_device_latency_target_sec.join(" "),
+        );
+    }
+
+    // Tasks
+    match &conf.tasks_max {
+        Some(crate::units::TasksMax::Value(n)) => insert(props, "TasksMax", &n.to_string()),
+        Some(crate::units::TasksMax::Infinity) => insert(props, "TasksMax", "infinity"),
+        Some(crate::units::TasksMax::Percent(p)) => insert(props, "TasksMax", &format!("{p}%")),
+        None => insert(props, "TasksMax", "infinity"),
+    }
+
+    // Accounting toggles
+    match conf.cpu_accounting {
+        Some(v) => insert_bool(props, "CPUAccounting", v),
+        None => insert(props, "CPUAccounting", "no"),
+    }
+    match conf.memory_accounting {
+        Some(v) => insert_bool(props, "MemoryAccounting", v),
+        None => insert(props, "MemoryAccounting", "yes"),
+    }
+    match conf.io_accounting {
+        Some(v) => insert_bool(props, "IOAccounting", v),
+        None => insert(props, "IOAccounting", "no"),
+    }
+    match conf.tasks_accounting {
+        Some(v) => insert_bool(props, "TasksAccounting", v),
+        None => insert(props, "TasksAccounting", "yes"),
+    }
+
+    // Delegate
+    match &conf.delegate {
+        crate::units::Delegate::Yes => insert(props, "Delegate", "yes"),
+        crate::units::Delegate::No => insert(props, "Delegate", "no"),
+        crate::units::Delegate::Controllers(c) => insert(props, "Delegate", &c.join(" ")),
+    }
+    insert_optional(props, "DelegateSubgroup", &conf.delegate_subgroup);
+
+    // Device access control
+    if !conf.device_allow.is_empty() {
+        insert(props, "DeviceAllow", &conf.device_allow.join(" "));
+    }
+    insert(
+        props,
+        "DevicePolicy",
+        match conf.device_policy {
+            crate::units::DevicePolicy::Auto => "auto",
+            crate::units::DevicePolicy::Closed => "closed",
+            crate::units::DevicePolicy::Strict => "strict",
+        },
+    );
+
+    // IP address filtering
+    if !conf.ip_address_allow.is_empty() {
+        insert(props, "IPAddressAllow", &conf.ip_address_allow.join(" "));
+    }
+    if !conf.ip_address_deny.is_empty() {
+        insert(props, "IPAddressDeny", &conf.ip_address_deny.join(" "));
+    }
+
+    // BPF / network filtering
+    insert_string_list(props, "IPIngressFilterPath", &conf.ip_ingress_filter_path);
+    insert_string_list(props, "IPEgressFilterPath", &conf.ip_egress_filter_path);
+    insert_string_list(props, "BPFProgram", &conf.bpf_program);
+    insert_string_list(props, "SocketBindAllow", &conf.socket_bind_allow);
+    insert_string_list(props, "SocketBindDeny", &conf.socket_bind_deny);
+    insert_string_list(
+        props,
+        "RestrictNetworkInterfaces",
+        &conf.restrict_network_interfaces,
+    );
+    insert_string_list(props, "NFTSet", &conf.nft_set);
+    insert_string_list(props, "DisableControllers", &conf.disable_controllers);
+
+    // Managed OOM
+    insert_optional(props, "ManagedOOMSwap", &conf.managed_oom_swap);
+    insert_optional(
+        props,
+        "ManagedOOMMemoryPressure",
+        &conf.managed_oom_memory_pressure,
+    );
+    insert_optional(
+        props,
+        "ManagedOOMMemoryPressureLimit",
+        &conf.managed_oom_memory_pressure_limit,
+    );
+    insert_optional(props, "ManagedOOMPreference", &conf.managed_oom_preference);
+
+    // Memory pressure
+    insert(
+        props,
+        "MemoryPressureWatch",
+        match conf.memory_pressure_watch {
+            crate::units::MemoryPressureWatch::Auto => "auto",
+            crate::units::MemoryPressureWatch::On => "on",
+            crate::units::MemoryPressureWatch::Off => "off",
+            crate::units::MemoryPressureWatch::Skip => "skip",
+        },
+    );
+    insert_timeout(
+        props,
+        "MemoryPressureThresholdUSec",
+        &conf.memory_pressure_threshold_sec,
+    );
+}
+
 fn insert_mount_config(props: &mut BTreeMap<String, String>, conf: &MountConfig) {
     insert(props, "What", &conf.what);
     insert(props, "Where", &conf.where_);
@@ -1029,5 +1279,505 @@ mod tests {
         assert_eq!(lines[0], "Alpha=a");
         assert_eq!(lines[1], "Middle=m");
         assert_eq!(lines[2], "Zebra=z");
+    }
+
+    // ── Slice config property tests ──────────────────────────────────
+
+    fn default_slice_config() -> SliceConfig {
+        SliceConfig {
+            memory_min: None,
+            memory_low: None,
+            memory_high: None,
+            memory_max: None,
+            memory_swap_max: None,
+            cpu_weight: None,
+            startup_cpu_weight: None,
+            cpu_quota: None,
+            io_weight: None,
+            startup_io_weight: None,
+            io_device_weight: Vec::new(),
+            io_read_bandwidth_max: Vec::new(),
+            io_write_bandwidth_max: Vec::new(),
+            io_read_iops_max: Vec::new(),
+            io_write_iops_max: Vec::new(),
+            tasks_max: None,
+            delegate: crate::units::Delegate::No,
+            cpu_accounting: None,
+            memory_accounting: None,
+            io_accounting: None,
+            tasks_accounting: None,
+            device_allow: Vec::new(),
+            device_policy: crate::units::DevicePolicy::Auto,
+            ip_address_allow: Vec::new(),
+            ip_address_deny: Vec::new(),
+            managed_oom_swap: None,
+            managed_oom_memory_pressure: None,
+            managed_oom_memory_pressure_limit: None,
+            managed_oom_preference: None,
+            memory_pressure_watch: crate::units::MemoryPressureWatch::Auto,
+            cpu_quota_period_sec: None,
+            allowed_cpus: None,
+            startup_allowed_cpus: None,
+            allowed_memory_nodes: None,
+            startup_allowed_memory_nodes: None,
+            default_memory_min: None,
+            default_memory_low: None,
+            memory_zswap_max: None,
+            io_device_latency_target_sec: Vec::new(),
+            disable_controllers: Vec::new(),
+            memory_pressure_threshold_sec: None,
+            ip_ingress_filter_path: Vec::new(),
+            ip_egress_filter_path: Vec::new(),
+            bpf_program: Vec::new(),
+            socket_bind_allow: Vec::new(),
+            socket_bind_deny: Vec::new(),
+            restrict_network_interfaces: Vec::new(),
+            nft_set: Vec::new(),
+            delegate_subgroup: None,
+        }
+    }
+
+    #[test]
+    fn test_slice_config_defaults() {
+        let conf = default_slice_config();
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        // Memory defaults
+        assert_eq!(props.get("MemoryMin").unwrap(), "");
+        assert_eq!(props.get("MemoryLow").unwrap(), "");
+        assert_eq!(props.get("MemoryHigh").unwrap(), "infinity");
+        assert_eq!(props.get("MemoryMax").unwrap(), "infinity");
+        assert_eq!(props.get("MemorySwapMax").unwrap(), "infinity");
+        assert_eq!(props.get("MemoryZSwapMax").unwrap(), "infinity");
+        assert_eq!(props.get("DefaultMemoryMin").unwrap(), "");
+        assert_eq!(props.get("DefaultMemoryLow").unwrap(), "");
+
+        // CPU defaults
+        assert_eq!(props.get("CPUWeight").unwrap(), "");
+        assert_eq!(props.get("StartupCPUWeight").unwrap(), "");
+        assert_eq!(props.get("CPUQuota").unwrap(), "");
+        assert_eq!(props.get("CPUQuotaPeriodUSec").unwrap(), "infinity");
+
+        // IO defaults
+        assert_eq!(props.get("IOWeight").unwrap(), "");
+        assert_eq!(props.get("StartupIOWeight").unwrap(), "");
+
+        // Tasks defaults
+        assert_eq!(props.get("TasksMax").unwrap(), "infinity");
+
+        // Accounting defaults
+        assert_eq!(props.get("CPUAccounting").unwrap(), "no");
+        assert_eq!(props.get("MemoryAccounting").unwrap(), "yes");
+        assert_eq!(props.get("IOAccounting").unwrap(), "no");
+        assert_eq!(props.get("TasksAccounting").unwrap(), "yes");
+
+        // Delegate defaults
+        assert_eq!(props.get("Delegate").unwrap(), "no");
+
+        // Device defaults
+        assert_eq!(props.get("DevicePolicy").unwrap(), "auto");
+
+        // Memory pressure defaults
+        assert_eq!(props.get("MemoryPressureWatch").unwrap(), "auto");
+        assert_eq!(
+            props.get("MemoryPressureThresholdUSec").unwrap(),
+            "infinity"
+        );
+    }
+
+    #[test]
+    fn test_slice_config_memory_bytes() {
+        let mut conf = default_slice_config();
+        conf.memory_min = Some(crate::units::MemoryLimit::Bytes(1048576));
+        conf.memory_low = Some(crate::units::MemoryLimit::Bytes(2097152));
+        conf.memory_high = Some(crate::units::MemoryLimit::Bytes(4294967296));
+        conf.memory_max = Some(crate::units::MemoryLimit::Bytes(8589934592));
+        conf.memory_swap_max = Some(crate::units::MemoryLimit::Bytes(1073741824));
+        conf.memory_zswap_max = Some(crate::units::MemoryLimit::Bytes(536870912));
+        conf.default_memory_min = Some(crate::units::MemoryLimit::Bytes(524288));
+        conf.default_memory_low = Some(crate::units::MemoryLimit::Bytes(1048576));
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("MemoryMin").unwrap(), "1048576");
+        assert_eq!(props.get("MemoryLow").unwrap(), "2097152");
+        assert_eq!(props.get("MemoryHigh").unwrap(), "4294967296");
+        assert_eq!(props.get("MemoryMax").unwrap(), "8589934592");
+        assert_eq!(props.get("MemorySwapMax").unwrap(), "1073741824");
+        assert_eq!(props.get("MemoryZSwapMax").unwrap(), "536870912");
+        assert_eq!(props.get("DefaultMemoryMin").unwrap(), "524288");
+        assert_eq!(props.get("DefaultMemoryLow").unwrap(), "1048576");
+    }
+
+    #[test]
+    fn test_slice_config_memory_percent() {
+        let mut conf = default_slice_config();
+        conf.memory_max = Some(crate::units::MemoryLimit::Percent(80));
+        conf.memory_high = Some(crate::units::MemoryLimit::Percent(70));
+        conf.default_memory_low = Some(crate::units::MemoryLimit::Percent(25));
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("MemoryMax").unwrap(), "80%");
+        assert_eq!(props.get("MemoryHigh").unwrap(), "70%");
+        assert_eq!(props.get("DefaultMemoryLow").unwrap(), "25%");
+    }
+
+    #[test]
+    fn test_slice_config_memory_infinity() {
+        let mut conf = default_slice_config();
+        conf.memory_min = Some(crate::units::MemoryLimit::Infinity);
+        conf.default_memory_min = Some(crate::units::MemoryLimit::Infinity);
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("MemoryMin").unwrap(), "infinity");
+        assert_eq!(props.get("DefaultMemoryMin").unwrap(), "infinity");
+    }
+
+    #[test]
+    fn test_slice_config_cpu_weight() {
+        let mut conf = default_slice_config();
+        conf.cpu_weight = Some(500);
+        conf.startup_cpu_weight = Some(100);
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("CPUWeight").unwrap(), "500");
+        assert_eq!(props.get("StartupCPUWeight").unwrap(), "100");
+    }
+
+    #[test]
+    fn test_slice_config_cpu_quota() {
+        let mut conf = default_slice_config();
+        conf.cpu_quota = Some(200);
+        conf.cpu_quota_period_sec = Some(Timeout::Duration(std::time::Duration::from_millis(100)));
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("CPUQuota").unwrap(), "200%");
+        assert_eq!(props.get("CPUQuotaPeriodUSec").unwrap(), "100000us");
+    }
+
+    #[test]
+    fn test_slice_config_io_weight() {
+        let mut conf = default_slice_config();
+        conf.io_weight = Some(500);
+        conf.startup_io_weight = Some(100);
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("IOWeight").unwrap(), "500");
+        assert_eq!(props.get("StartupIOWeight").unwrap(), "100");
+    }
+
+    #[test]
+    fn test_slice_config_io_device_limits() {
+        let mut conf = default_slice_config();
+        conf.io_device_weight = vec![crate::units::IoDeviceLimit {
+            device: "/dev/sda".to_owned(),
+            value: 200,
+        }];
+        conf.io_read_bandwidth_max = vec![crate::units::IoDeviceLimit {
+            device: "/dev/sda".to_owned(),
+            value: 1048576,
+        }];
+        conf.io_write_bandwidth_max = vec![crate::units::IoDeviceLimit {
+            device: "/dev/sdb".to_owned(),
+            value: 524288,
+        }];
+        conf.io_read_iops_max = vec![crate::units::IoDeviceLimit {
+            device: "/dev/sda".to_owned(),
+            value: 1000,
+        }];
+        conf.io_write_iops_max = vec![crate::units::IoDeviceLimit {
+            device: "/dev/sda".to_owned(),
+            value: 500,
+        }];
+        conf.io_device_latency_target_sec =
+            vec!["/dev/sda 25ms".to_owned(), "/dev/sdb 50ms".to_owned()];
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("IODeviceWeight").unwrap(), "/dev/sda 200");
+        assert_eq!(props.get("IOReadBandwidthMax").unwrap(), "/dev/sda 1048576");
+        assert_eq!(props.get("IOWriteBandwidthMax").unwrap(), "/dev/sdb 524288");
+        assert_eq!(props.get("IOReadIOPSMax").unwrap(), "/dev/sda 1000");
+        assert_eq!(props.get("IOWriteIOPSMax").unwrap(), "/dev/sda 500");
+        assert_eq!(
+            props.get("IODeviceLatencyTargetSec").unwrap(),
+            "/dev/sda 25ms /dev/sdb 50ms"
+        );
+    }
+
+    #[test]
+    fn test_slice_config_tasks_max_value() {
+        let mut conf = default_slice_config();
+        conf.tasks_max = Some(crate::units::TasksMax::Value(4096));
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("TasksMax").unwrap(), "4096");
+    }
+
+    #[test]
+    fn test_slice_config_tasks_max_percent() {
+        let mut conf = default_slice_config();
+        conf.tasks_max = Some(crate::units::TasksMax::Percent(50));
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("TasksMax").unwrap(), "50%");
+    }
+
+    #[test]
+    fn test_slice_config_accounting_toggles() {
+        let mut conf = default_slice_config();
+        conf.cpu_accounting = Some(true);
+        conf.memory_accounting = Some(false);
+        conf.io_accounting = Some(true);
+        conf.tasks_accounting = Some(false);
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("CPUAccounting").unwrap(), "yes");
+        assert_eq!(props.get("MemoryAccounting").unwrap(), "no");
+        assert_eq!(props.get("IOAccounting").unwrap(), "yes");
+        assert_eq!(props.get("TasksAccounting").unwrap(), "no");
+    }
+
+    #[test]
+    fn test_slice_config_delegate_yes() {
+        let mut conf = default_slice_config();
+        conf.delegate = crate::units::Delegate::Yes;
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("Delegate").unwrap(), "yes");
+    }
+
+    #[test]
+    fn test_slice_config_delegate_controllers() {
+        let mut conf = default_slice_config();
+        conf.delegate =
+            crate::units::Delegate::Controllers(vec!["cpu".to_owned(), "memory".to_owned()]);
+        conf.delegate_subgroup = Some("supervisor".to_owned());
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("Delegate").unwrap(), "cpu memory");
+        assert_eq!(props.get("DelegateSubgroup").unwrap(), "supervisor");
+    }
+
+    #[test]
+    fn test_slice_config_device_policy() {
+        let mut conf = default_slice_config();
+        conf.device_policy = crate::units::DevicePolicy::Strict;
+        conf.device_allow = vec!["char-tty rw".to_owned(), "/dev/null rw".to_owned()];
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("DevicePolicy").unwrap(), "strict");
+        assert_eq!(
+            props.get("DeviceAllow").unwrap(),
+            "char-tty rw /dev/null rw"
+        );
+    }
+
+    #[test]
+    fn test_slice_config_ip_filters() {
+        let mut conf = default_slice_config();
+        conf.ip_address_allow = vec!["10.0.0.0/8".to_owned(), "192.168.0.0/16".to_owned()];
+        conf.ip_address_deny = vec!["any".to_owned()];
+        conf.ip_ingress_filter_path = vec!["/sys/fs/bpf/ingress".to_owned()];
+        conf.ip_egress_filter_path = vec!["/sys/fs/bpf/egress".to_owned()];
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(
+            props.get("IPAddressAllow").unwrap(),
+            "10.0.0.0/8 192.168.0.0/16"
+        );
+        assert_eq!(props.get("IPAddressDeny").unwrap(), "any");
+        assert_eq!(
+            props.get("IPIngressFilterPath").unwrap(),
+            "/sys/fs/bpf/ingress"
+        );
+        assert_eq!(
+            props.get("IPEgressFilterPath").unwrap(),
+            "/sys/fs/bpf/egress"
+        );
+    }
+
+    #[test]
+    fn test_slice_config_bpf_and_network() {
+        let mut conf = default_slice_config();
+        conf.bpf_program = vec!["egress:/sys/fs/bpf/prog".to_owned()];
+        conf.socket_bind_allow = vec!["tcp:80".to_owned(), "tcp:443".to_owned()];
+        conf.socket_bind_deny = vec!["any".to_owned()];
+        conf.restrict_network_interfaces = vec!["eth0".to_owned(), "lo".to_owned()];
+        conf.nft_set = vec!["inet:filter:allowed_ips".to_owned()];
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("BPFProgram").unwrap(), "egress:/sys/fs/bpf/prog");
+        assert_eq!(props.get("SocketBindAllow").unwrap(), "tcp:80 tcp:443");
+        assert_eq!(props.get("SocketBindDeny").unwrap(), "any");
+        assert_eq!(props.get("RestrictNetworkInterfaces").unwrap(), "eth0 lo");
+        assert_eq!(props.get("NFTSet").unwrap(), "inet:filter:allowed_ips");
+    }
+
+    #[test]
+    fn test_slice_config_cpuset() {
+        let mut conf = default_slice_config();
+        conf.allowed_cpus = Some("0-3".to_owned());
+        conf.startup_allowed_cpus = Some("0-1".to_owned());
+        conf.allowed_memory_nodes = Some("0".to_owned());
+        conf.startup_allowed_memory_nodes = Some("0-1".to_owned());
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("AllowedCPUs").unwrap(), "0-3");
+        assert_eq!(props.get("StartupAllowedCPUs").unwrap(), "0-1");
+        assert_eq!(props.get("AllowedMemoryNodes").unwrap(), "0");
+        assert_eq!(props.get("StartupAllowedMemoryNodes").unwrap(), "0-1");
+    }
+
+    #[test]
+    fn test_slice_config_disable_controllers() {
+        let mut conf = default_slice_config();
+        conf.disable_controllers = vec!["cpu".to_owned(), "io".to_owned()];
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("DisableControllers").unwrap(), "cpu io");
+    }
+
+    #[test]
+    fn test_slice_config_managed_oom() {
+        let mut conf = default_slice_config();
+        conf.managed_oom_swap = Some("kill".to_owned());
+        conf.managed_oom_memory_pressure = Some("kill".to_owned());
+        conf.managed_oom_memory_pressure_limit = Some("50%".to_owned());
+        conf.managed_oom_preference = Some("avoid".to_owned());
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("ManagedOOMSwap").unwrap(), "kill");
+        assert_eq!(props.get("ManagedOOMMemoryPressure").unwrap(), "kill");
+        assert_eq!(props.get("ManagedOOMMemoryPressureLimit").unwrap(), "50%");
+        assert_eq!(props.get("ManagedOOMPreference").unwrap(), "avoid");
+    }
+
+    #[test]
+    fn test_slice_config_memory_pressure_watch() {
+        let mut conf = default_slice_config();
+        conf.memory_pressure_watch = crate::units::MemoryPressureWatch::On;
+        conf.memory_pressure_threshold_sec =
+            Some(Timeout::Duration(std::time::Duration::from_secs(2)));
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("MemoryPressureWatch").unwrap(), "on");
+        assert_eq!(
+            props.get("MemoryPressureThresholdUSec").unwrap(),
+            "2000000us"
+        );
+    }
+
+    #[test]
+    fn test_slice_config_memory_pressure_watch_off() {
+        let mut conf = default_slice_config();
+        conf.memory_pressure_watch = crate::units::MemoryPressureWatch::Off;
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("MemoryPressureWatch").unwrap(), "off");
+    }
+
+    #[test]
+    fn test_slice_config_memory_pressure_watch_skip() {
+        let mut conf = default_slice_config();
+        conf.memory_pressure_watch = crate::units::MemoryPressureWatch::Skip;
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("MemoryPressureWatch").unwrap(), "skip");
+    }
+
+    #[test]
+    fn test_slice_config_device_policy_closed() {
+        let mut conf = default_slice_config();
+        conf.device_policy = crate::units::DevicePolicy::Closed;
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("DevicePolicy").unwrap(), "closed");
+    }
+
+    #[test]
+    fn test_slice_config_combined_all_directives() {
+        let mut conf = default_slice_config();
+        conf.memory_max = Some(crate::units::MemoryLimit::Bytes(4294967296));
+        conf.cpu_weight = Some(500);
+        conf.cpu_quota = Some(150);
+        conf.io_weight = Some(200);
+        conf.tasks_max = Some(crate::units::TasksMax::Value(1024));
+        conf.delegate = crate::units::Delegate::Yes;
+        conf.cpu_accounting = Some(true);
+        conf.memory_accounting = Some(true);
+        conf.io_accounting = Some(true);
+        conf.tasks_accounting = Some(true);
+        conf.device_policy = crate::units::DevicePolicy::Strict;
+        conf.allowed_cpus = Some("0-7".to_owned());
+        conf.delegate_subgroup = Some("app".to_owned());
+        conf.managed_oom_swap = Some("kill".to_owned());
+        conf.memory_pressure_watch = crate::units::MemoryPressureWatch::On;
+        conf.disable_controllers = vec!["hugetlb".to_owned()];
+        conf.socket_bind_allow = vec!["tcp:8080".to_owned()];
+
+        let mut props = BTreeMap::new();
+        insert_slice_config(&mut props, &conf);
+
+        assert_eq!(props.get("MemoryMax").unwrap(), "4294967296");
+        assert_eq!(props.get("CPUWeight").unwrap(), "500");
+        assert_eq!(props.get("CPUQuota").unwrap(), "150%");
+        assert_eq!(props.get("IOWeight").unwrap(), "200");
+        assert_eq!(props.get("TasksMax").unwrap(), "1024");
+        assert_eq!(props.get("Delegate").unwrap(), "yes");
+        assert_eq!(props.get("CPUAccounting").unwrap(), "yes");
+        assert_eq!(props.get("MemoryAccounting").unwrap(), "yes");
+        assert_eq!(props.get("IOAccounting").unwrap(), "yes");
+        assert_eq!(props.get("TasksAccounting").unwrap(), "yes");
+        assert_eq!(props.get("DevicePolicy").unwrap(), "strict");
+        assert_eq!(props.get("AllowedCPUs").unwrap(), "0-7");
+        assert_eq!(props.get("DelegateSubgroup").unwrap(), "app");
+        assert_eq!(props.get("ManagedOOMSwap").unwrap(), "kill");
+        assert_eq!(props.get("MemoryPressureWatch").unwrap(), "on");
+        assert_eq!(props.get("DisableControllers").unwrap(), "hugetlb");
+        assert_eq!(props.get("SocketBindAllow").unwrap(), "tcp:8080");
     }
 }
