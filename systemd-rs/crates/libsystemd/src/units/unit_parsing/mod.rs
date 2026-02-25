@@ -1124,7 +1124,151 @@ pub struct ParsedSocketSection {
     /// Parsed and stored; no runtime enforcement yet. See systemd.socket(5).
     pub writable: bool,
 
+    /// Backlog= — the maximum length of the queue of pending connections
+    /// for stream sockets (the second argument to `listen()`). Takes an
+    /// unsigned integer. Defaults to 128 (SOMAXCONN). See systemd.socket(5).
+    pub backlog: Option<u32>,
+
+    /// BindIPv6Only= — controls the IPV6_V6ONLY socket option. Takes
+    /// "default", "both", or "ipv6-only". "default" leaves it to the
+    /// kernel (usually controlled by sysctl net.ipv6.bindv6only).
+    /// "both" clears IPV6_V6ONLY so the socket accepts both IPv4 and IPv6.
+    /// "ipv6-only" sets IPV6_V6ONLY so only IPv6 is accepted.
+    /// Defaults to "default". See systemd.socket(5).
+    pub bind_ipv6_only: BindIPv6Only,
+
+    /// BindToDevice= — bind the socket to a specific network interface
+    /// (SO_BINDTODEVICE). Takes a network interface name. An empty string
+    /// resets the binding. See systemd.socket(5).
+    pub bind_to_device: Option<String>,
+
+    /// SocketUser= — the UNIX user that owns the socket file node
+    /// (AF_UNIX sockets and FIFOs). Takes a UNIX username or numeric UID.
+    /// Defaults to root. See systemd.socket(5).
+    pub socket_user: Option<String>,
+
+    /// SocketGroup= — the UNIX group that owns the socket file node
+    /// (AF_UNIX sockets and FIFOs). Takes a UNIX group name or numeric GID.
+    /// Defaults to root. See systemd.socket(5).
+    pub socket_group: Option<String>,
+
+    /// FreeBind= — whether to set the IP_FREEBIND/IPV6_FREEBIND socket
+    /// option, which allows binding to addresses not yet assigned to an
+    /// interface. Defaults to false. See systemd.socket(5).
+    pub free_bind: bool,
+
+    /// Transparent= — whether to set the IP_TRANSPARENT socket option,
+    /// which allows binding to non-local addresses and transparent proxying.
+    /// Defaults to false. See systemd.socket(5).
+    pub transparent: bool,
+
+    /// Broadcast= — whether to set the SO_BROADCAST socket option, which
+    /// allows sending to broadcast addresses on datagram sockets.
+    /// Defaults to false. See systemd.socket(5).
+    pub broadcast: bool,
+
+    /// ReusePort= — whether to set the SO_REUSEPORT socket option, which
+    /// allows multiple sockets to bind to the same port. Each accepting
+    /// socket will get connections distributed by the kernel.
+    /// Defaults to false. See systemd.socket(5).
+    pub reuse_port: bool,
+
+    /// KeepAlive= — whether to enable SO_KEEPALIVE on TCP sockets.
+    /// Defaults to false. See systemd.socket(5).
+    pub keep_alive: bool,
+
+    /// KeepAliveTimeSec= — the idle time before TCP starts sending
+    /// keepalive probes (TCP_KEEPIDLE). Takes a timespan value.
+    /// Only meaningful when KeepAlive=yes. See systemd.socket(5).
+    pub keep_alive_time_sec: Option<u64>,
+
+    /// KeepAliveIntervalSec= — the interval between TCP keepalive probes
+    /// (TCP_KEEPINTVL). Takes a timespan value. Only meaningful when
+    /// KeepAlive=yes. See systemd.socket(5).
+    pub keep_alive_interval_sec: Option<u64>,
+
+    /// KeepAliveProbes= — the number of unacknowledged TCP keepalive
+    /// probes before the connection is considered dead (TCP_KEEPCNT).
+    /// Takes an unsigned integer. Only meaningful when KeepAlive=yes.
+    /// See systemd.socket(5).
+    pub keep_alive_probes: Option<u32>,
+
+    /// NoDelay= — whether to enable TCP_NODELAY on TCP sockets, disabling
+    /// Nagle's algorithm. Defaults to false. See systemd.socket(5).
+    pub no_delay: bool,
+
+    /// Priority= — the socket priority (SO_PRIORITY). Takes an integer.
+    /// See systemd.socket(5).
+    pub priority: Option<i32>,
+
+    /// Mark= — the firewall mark (SO_MARK) to set on packets sent through
+    /// this socket. Takes an unsigned integer. See systemd.socket(5).
+    pub mark: Option<u32>,
+
+    /// IPTOS= — the IP Type-Of-Service byte (IP_TOS) for packets sent on
+    /// this socket. Takes an integer or one of "low-delay", "throughput",
+    /// "reliability", "low-cost". See systemd.socket(5).
+    pub ip_tos: Option<i32>,
+
+    /// IPTTL= — the IP Time-To-Live (IP_TTL) for packets sent on this
+    /// socket. Takes an integer 1–255. See systemd.socket(5).
+    pub ip_ttl: Option<u32>,
+
+    /// PipeSize= — the pipe buffer size (F_SETPIPE_SZ) in bytes for
+    /// FIFOs. Takes a byte size value. See systemd.socket(5).
+    pub pipe_size: Option<u64>,
+
+    /// FlushPending= — whether to flush the socket of pending data on
+    /// the first accepted connection. Takes a boolean. Defaults to false.
+    /// See systemd.socket(5).
+    pub flush_pending: bool,
+
+    /// TriggerLimitIntervalSec= — rate-limiting: the time interval within
+    /// which TriggerLimitBurst= activations are permitted before the socket
+    /// unit is put into a failure state. Takes a timespan. Defaults to 2s.
+    /// See systemd.socket(5).
+    pub trigger_limit_interval_sec: Option<u64>,
+
+    /// TriggerLimitBurst= — rate-limiting: the maximum number of socket
+    /// activations permitted within TriggerLimitIntervalSec= before the
+    /// socket unit enters a failure state. Takes an unsigned integer.
+    /// Defaults to 200. See systemd.socket(5).
+    pub trigger_limit_burst: Option<u32>,
+
+    /// SocketProtocol= — the socket protocol (third argument to socket(2)).
+    /// Takes "udplite" or "sctp". Only useful with ListenStream= or
+    /// ListenDatagram= on IP sockets. See systemd.socket(5).
+    pub socket_protocol: Option<String>,
+
+    /// SELinuxContextFromNet= — whether to set the SELinux context of
+    /// accepted connections from the network peer. Takes a boolean.
+    /// Defaults to false. See systemd.socket(5).
+    pub selinux_context_from_net: bool,
+
+    /// SmackLabel= — the SMACK security label for the socket file node.
+    /// See systemd.socket(5).
+    pub smack_label: Option<String>,
+
+    /// SmackLabelIPIn= — the SMACK security label for incoming IP packets.
+    /// See systemd.socket(5).
+    pub smack_label_ipin: Option<String>,
+
+    /// SmackLabelIPOut= — the SMACK security label for outgoing IP packets.
+    /// See systemd.socket(5).
+    pub smack_label_ipout: Option<String>,
+
     pub exec_section: ParsedExecSection,
+}
+
+/// BindIPv6Only= mode for IPv6 sockets. See systemd.socket(5).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BindIPv6Only {
+    /// Leave it to the kernel default (sysctl net.ipv6.bindv6only).
+    Default,
+    /// Clear IPV6_V6ONLY — accept both IPv4-mapped and IPv6 connections.
+    Both,
+    /// Set IPV6_V6ONLY — accept only IPv6 connections.
+    Ipv6Only,
 }
 pub struct ParsedServiceSection {
     pub restart: ServiceRestart,

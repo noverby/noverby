@@ -2,6 +2,8 @@ use std::os::unix::io::{AsRawFd, RawFd};
 
 use log::trace;
 
+use crate::units::SocketConfig;
+
 /// Configuration for a netlink socket (AF_NETLINK).
 ///
 /// Netlink sockets are used for communication between the kernel and
@@ -76,7 +78,7 @@ impl Drop for NetlinkFd {
 }
 
 impl NetlinkSocketConfig {
-    pub fn open(&self) -> Result<Box<dyn AsRawFd + Send + Sync>, String> {
+    pub fn open(&self, _conf: &SocketConfig) -> Result<Box<dyn AsRawFd + Send + Sync>, String> {
         let protocol = resolve_netlink_family(&self.family).ok_or_else(|| {
             format!(
                 "Unknown netlink family '{}'. Use a known name or numeric value.",

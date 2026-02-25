@@ -6,6 +6,8 @@ use std::{
 
 use log::trace;
 
+use crate::units::SocketConfig;
+
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum UnixSocketConfig {
     Stream(String),
@@ -40,6 +42,21 @@ impl UnixSeqPacket {
     }
 }
 
+/// Prepare the directory and remove old socket file if it exists.
+fn prepare_unix_socket_path(path: &std::path::Path) -> Result<(), String> {
+    if path.exists() {
+        std::fs::remove_file(path)
+            .map_err(|e| format!("Error removing old socket file {path:?}: {e}"))?;
+    }
+    if let Some(parent) = path.parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Error creating UnixSocket directory {parent:?}: {e}"))?;
+    }
+    Ok(())
+}
+
 impl UnixSocketConfig {
     pub fn close(&self, rawfd: RawFd) -> Result<(), String> {
         let strpath = match self {
@@ -55,77 +72,90 @@ impl UnixSocketConfig {
         Ok(())
     }
 
-    pub fn open(&self) -> Result<Box<dyn AsRawFd + Send + Sync>, String> {
+    pub fn open(&self, conf: &SocketConfig) -> Result<Box<dyn AsRawFd + Send + Sync>, String> {
         match self {
             Self::Stream(path) => {
-                let spath = std::path::Path::new(&path);
-                // Delete old socket if necessary
-                if spath.exists() {
-                    std::fs::remove_file(spath).unwrap();
-                }
-
-                if let Some(parent) = spath.parent()
-                    && !parent.exists()
-                {
-                    std::fs::create_dir_all(parent).map_err(|e| {
-                        format!("Error creating UnixSocket directory {parent:?} : {e}")
-                    })?;
-                }
+                let spath = std::path::Path::new(path);
+                prepare_unix_socket_path(spath)?;
 
                 trace!("opening streaming unix socket: {path:?}");
-                // Bind to socket
-                let stream = match UnixListener::bind(spath) {
-                    Err(e) => panic!("failed to bind socket: {}", e),
-                    Ok(stream) => stream,
-                };
-                //need to stop the listener to drop which would close the filedescriptor
+                let stream = UnixListener::bind(spath)
+                    .map_err(|e| format!("failed to bind unix stream socket {path}: {e}"))?;
+
+                // Apply PassCredentials via SO_PASSCRED on the raw fd
+                if conf.pass_credentials {
+                    let fd = stream.as_raw_fd();
+                    let val: libc::c_int = 1;
+                    unsafe {
+                        libc::setsockopt(
+                            fd,
+                            libc::SOL_SOCKET,
+                            libc::SO_PASSCRED,
+                            &val as *const _ as *const libc::c_void,
+                            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+                        );
+                    }
+                }
+
+                // Apply SocketUser=/SocketGroup=/SocketMode=
+                super::apply_socket_ownership(spath, conf);
+
                 Ok(Box::new(stream))
             }
             Self::Datagram(path) => {
-                let spath = std::path::Path::new(&path);
-                // Delete old socket if necessary
-                if spath.exists() {
-                    std::fs::remove_file(spath).unwrap();
-                }
-
-                if let Some(parent) = spath.parent()
-                    && !parent.exists()
-                {
-                    std::fs::create_dir_all(parent).map_err(|e| {
-                        format!("Error creating UnixSocket directory {parent:?} : {e}")
-                    })?;
-                }
+                let spath = std::path::Path::new(path);
+                prepare_unix_socket_path(spath)?;
 
                 trace!("opening datagram unix socket: {path:?}");
-                // Bind to socket
-                let stream = match UnixDatagram::bind(spath) {
-                    Err(e) => panic!("failed to bind socket: {}", e),
-                    Ok(stream) => stream,
-                };
-                //need to stop the listener to drop which would close the filedescriptor
-                Ok(Box::new(stream))
+                let dgram = UnixDatagram::bind(spath)
+                    .map_err(|e| format!("failed to bind unix datagram socket {path}: {e}"))?;
+
+                // Apply PassCredentials via SO_PASSCRED on the raw fd
+                if conf.pass_credentials {
+                    let fd = dgram.as_raw_fd();
+                    let val: libc::c_int = 1;
+                    unsafe {
+                        libc::setsockopt(
+                            fd,
+                            libc::SOL_SOCKET,
+                            libc::SO_PASSCRED,
+                            &val as *const _ as *const libc::c_void,
+                            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+                        );
+                    }
+                }
+
+                // Apply SocketUser=/SocketGroup=/SocketMode=
+                super::apply_socket_ownership(spath, conf);
+
+                Ok(Box::new(dgram))
             }
             Self::Sequential(path) => {
-                let spath = std::path::Path::new(&path);
-                // Delete old socket if necessary
-                if spath.exists() {
-                    std::fs::remove_file(spath).unwrap();
-                }
+                let spath = std::path::Path::new(path);
+                prepare_unix_socket_path(spath)?;
 
-                if let Some(parent) = spath.parent()
-                    && !parent.exists()
-                {
-                    std::fs::create_dir_all(parent).map_err(|e| {
-                        format!("Error creating UnixSocket directory {parent:?} : {e}")
-                    })?;
-                }
-
-                let path = std::path::PathBuf::from(&path);
-                trace!("opening datagram unix socket: {path:?}");
+                let path = std::path::PathBuf::from(path);
+                trace!("opening sequential packet unix socket: {path:?}");
                 match crate::platform::make_seqpacket_socket(&path) {
                     Ok(fd) => {
-                        // return our own type until the std supports sequential packet unix sockets
-                        Ok(Box::new(UnixSeqPacket(Some(fd), path.clone())))
+                        // Apply PassCredentials
+                        if conf.pass_credentials {
+                            let val: libc::c_int = 1;
+                            unsafe {
+                                libc::setsockopt(
+                                    fd,
+                                    libc::SOL_SOCKET,
+                                    libc::SO_PASSCRED,
+                                    &val as *const _ as *const libc::c_void,
+                                    std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+                                );
+                            }
+                        }
+
+                        // Apply SocketUser=/SocketGroup=/SocketMode=
+                        super::apply_socket_ownership(&path, conf);
+
+                        Ok(Box::new(UnixSeqPacket(Some(fd), path)))
                     }
                     Err(e) => Err(e),
                 }

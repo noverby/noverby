@@ -137,6 +137,35 @@ fn parse_socket_section(
     let remove_on_stop = section.remove("REMOVEONSTOP");
     let writable = section.remove("WRITABLE");
 
+    // New socket directives
+    let backlog = section.remove("BACKLOG");
+    let bind_ipv6_only = section.remove("BINDIPV6ONLY");
+    let bind_to_device = section.remove("BINDTODEVICE");
+    let socket_user = section.remove("SOCKETUSER");
+    let socket_group = section.remove("SOCKETGROUP");
+    let free_bind = section.remove("FREEBIND");
+    let transparent = section.remove("TRANSPARENT");
+    let broadcast = section.remove("BROADCAST");
+    let reuse_port = section.remove("REUSEPORT");
+    let keep_alive = section.remove("KEEPALIVE");
+    let keep_alive_time_sec = section.remove("KEEPALIVETIMESEC");
+    let keep_alive_interval_sec = section.remove("KEEPALIVEINTERVALSEC");
+    let keep_alive_probes = section.remove("KEEPALIVEPROBES");
+    let no_delay = section.remove("NODELAY");
+    let priority = section.remove("PRIORITY");
+    let mark = section.remove("MARK");
+    let ip_tos = section.remove("IPTOS");
+    let ip_ttl = section.remove("IPTTL");
+    let pipe_size = section.remove("PIPESIZE");
+    let flush_pending = section.remove("FLUSHPENDING");
+    let trigger_limit_interval_sec = section.remove("TRIGGERLIMITINTERVALSEC");
+    let trigger_limit_burst = section.remove("TRIGGERLIMITBURST");
+    let socket_protocol = section.remove("SOCKETPROTOCOL");
+    let selinux_context_from_net = section.remove("SELINUXCONTEXTFROMNET");
+    let smack_label = section.remove("SMACKLABEL");
+    let smack_label_ipin = section.remove("SMACKLABELIPIN");
+    let smack_label_ipout = section.remove("SMACKLABELIPOUT");
+
     let exec_config = super::parse_exec_section(&mut section)?;
 
     for key in section.keys() {
@@ -574,6 +603,550 @@ fn parse_socket_section(
         None => Vec::new(),
     };
 
+    // --- Parse new socket directives ---
+
+    let backlog: Option<u32> = match backlog {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(val.parse::<u32>().map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "Backlog is not a valid unsigned integer: {val}"
+                        ))
+                    })?)
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "Backlog".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let bind_ipv6_only = match bind_ipv6_only {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                match val.to_lowercase().as_str() {
+                    "default" | "" => super::BindIPv6Only::Default,
+                    "both" => super::BindIPv6Only::Both,
+                    "ipv6-only" => super::BindIPv6Only::Ipv6Only,
+                    _ => {
+                        return Err(ParsingErrorReason::Generic(format!(
+                            "BindIPv6Only: invalid value '{val}', expected one of: default, both, ipv6-only"
+                        )));
+                    }
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "BindIPv6Only".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => super::BindIPv6Only::Default,
+    };
+
+    let bind_to_device: Option<String> = match bind_to_device {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(val.to_owned())
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "BindToDevice".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let socket_user: Option<String> = match socket_user {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(val.to_owned())
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "SocketUser".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let socket_group: Option<String> = match socket_group {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(val.to_owned())
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "SocketGroup".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let free_bind = match free_bind {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "FreeBind".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
+    let transparent = match transparent {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "Transparent".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
+    let broadcast = match broadcast {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "Broadcast".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
+    let reuse_port = match reuse_port {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "ReusePort".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
+    let keep_alive = match keep_alive {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "KeepAlive".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
+    let keep_alive_time_sec: Option<u64> = match keep_alive_time_sec {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    let dur = super::service_unit::parse_timeout(val);
+                    match dur {
+                        super::Timeout::Duration(d) => Some(d.as_secs()),
+                        super::Timeout::Infinity => None,
+                    }
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "KeepAliveTimeSec".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let keep_alive_interval_sec: Option<u64> = match keep_alive_interval_sec {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    let dur = super::service_unit::parse_timeout(val);
+                    match dur {
+                        super::Timeout::Duration(d) => Some(d.as_secs()),
+                        super::Timeout::Infinity => None,
+                    }
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "KeepAliveIntervalSec".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let keep_alive_probes: Option<u32> = match keep_alive_probes {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(val.parse::<u32>().map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "KeepAliveProbes is not a valid unsigned integer: {val}"
+                        ))
+                    })?)
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "KeepAliveProbes".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let no_delay = match no_delay {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "NoDelay".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
+    let priority: Option<i32> = match priority {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(val.parse::<i32>().map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "Priority is not a valid integer: {val}"
+                        ))
+                    })?)
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "Priority".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let mark: Option<u32> = match mark {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(val.parse::<u32>().map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "Mark is not a valid unsigned integer: {val}"
+                        ))
+                    })?)
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "Mark".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let ip_tos: Option<i32> = match ip_tos {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    // Accept symbolic names or numeric values
+                    let tos = match val.to_lowercase().as_str() {
+                        "low-delay" => 0x10,       // IPTOS_LOWDELAY
+                        "throughput" => 0x08,       // IPTOS_THROUGHPUT
+                        "reliability" => 0x04,      // IPTOS_RELIABILITY
+                        "low-cost" | "mincost" => 0x02, // IPTOS_MINCOST
+                        _ => val.parse::<i32>().map_err(|_| {
+                            ParsingErrorReason::Generic(format!(
+                                "IPTOS: invalid value '{val}', expected an integer or one of: low-delay, throughput, reliability, low-cost"
+                            ))
+                        })?,
+                    };
+                    Some(tos)
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "IPTOS".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let ip_ttl: Option<u32> = match ip_ttl {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    let ttl = val.parse::<u32>().map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "IPTTL is not a valid unsigned integer: {val}"
+                        ))
+                    })?;
+                    if ttl == 0 || ttl > 255 {
+                        return Err(ParsingErrorReason::Generic(format!(
+                            "IPTTL value out of range (must be 1-255): {ttl}"
+                        )));
+                    }
+                    Some(ttl)
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "IPTTL".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let pipe_size: Option<u64> = match pipe_size {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(
+                        super::parse_byte_size(val)
+                            .map_err(|e| ParsingErrorReason::Generic(format!("PipeSize: {e}")))?,
+                    )
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "PipeSize".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let flush_pending = match flush_pending {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "FlushPending".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
+    let trigger_limit_interval_sec: Option<u64> = match trigger_limit_interval_sec {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    let dur = super::service_unit::parse_timeout(val);
+                    match dur {
+                        super::Timeout::Duration(d) => Some(d.as_secs()),
+                        super::Timeout::Infinity => None,
+                    }
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "TriggerLimitIntervalSec".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let trigger_limit_burst: Option<u32> = match trigger_limit_burst {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(val.parse::<u32>().map_err(|_| {
+                        ParsingErrorReason::Generic(format!(
+                            "TriggerLimitBurst is not a valid unsigned integer: {val}"
+                        ))
+                    })?)
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "TriggerLimitBurst".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let socket_protocol: Option<String> = match socket_protocol {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    match val.to_lowercase().as_str() {
+                        "udplite" | "sctp" => Some(val.to_lowercase()),
+                        _ => {
+                            return Err(ParsingErrorReason::Generic(format!(
+                                "SocketProtocol: invalid value '{val}', expected one of: udplite, sctp"
+                            )));
+                        }
+                    }
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "SocketProtocol".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let selinux_context_from_net = match selinux_context_from_net {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "SELinuxContextFromNet".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
+    let smack_label: Option<String> = match smack_label {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(val.to_owned())
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "SmackLabel".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let smack_label_ipin: Option<String> = match smack_label_ipin {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(val.to_owned())
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "SmackLabelIPIn".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let smack_label_ipout: Option<String> = match smack_label_ipout {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(val.to_owned())
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "SmackLabelIPOut".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
     Ok(ParsedSocketSection {
         filedesc_name: fdname,
         services,
@@ -593,6 +1166,33 @@ fn parse_socket_section(
         timestamping,
         defer_trigger,
         writable,
+        backlog,
+        bind_ipv6_only,
+        bind_to_device,
+        socket_user,
+        socket_group,
+        free_bind,
+        transparent,
+        broadcast,
+        reuse_port,
+        keep_alive,
+        keep_alive_time_sec,
+        keep_alive_interval_sec,
+        keep_alive_probes,
+        no_delay,
+        priority,
+        mark,
+        ip_tos,
+        ip_ttl,
+        pipe_size,
+        flush_pending,
+        trigger_limit_interval_sec,
+        trigger_limit_burst,
+        socket_protocol,
+        selinux_context_from_net,
+        smack_label,
+        smack_label_ipin,
+        smack_label_ipout,
         exec_section: exec_config,
     })
 }

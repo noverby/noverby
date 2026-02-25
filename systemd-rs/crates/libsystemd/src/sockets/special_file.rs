@@ -2,6 +2,8 @@ use std::{
     os::unix::io::AsRawFd, os::unix::io::FromRawFd, os::unix::io::IntoRawFd, os::unix::io::RawFd,
 };
 
+use crate::units::SocketConfig;
+
 /// Configuration for a `ListenSpecial=` socket entry.
 ///
 /// `ListenSpecial=` in systemd listens on special files in `/proc`, `/sys`,
@@ -17,7 +19,7 @@ pub struct SpecialFileConfig {
 }
 
 impl SpecialFileConfig {
-    pub fn open(&self) -> Result<Box<dyn AsRawFd + Send + Sync>, String> {
+    pub fn open(&self, _conf: &SocketConfig) -> Result<Box<dyn AsRawFd + Send + Sync>, String> {
         // Open the special file read-only with O_CLOEXEC and O_NOCTTY.
         // Note: Writable= support (O_RDWR) is handled at a higher level;
         // for now we open O_RDONLY which is the systemd default.
