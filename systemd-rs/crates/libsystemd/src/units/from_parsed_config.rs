@@ -619,6 +619,61 @@ impl std::convert::TryFrom<ParsedExecSection> for ExecConfig {
 
             // Logging directives
             syslog_identifier: parsed.syslog_identifier,
+
+            // Additional logging directives
+            syslog_facility: parsed.syslog_facility,
+            syslog_level: parsed.syslog_level,
+            syslog_level_prefix: parsed.syslog_level_prefix,
+            log_level_max: parsed.log_level_max,
+            log_rate_limit_interval_sec: parsed.log_rate_limit_interval_sec,
+            log_rate_limit_burst: parsed.log_rate_limit_burst,
+            log_filter_patterns: parsed.log_filter_patterns,
+            log_namespace: parsed.log_namespace,
+
+            // CPU scheduling directives
+            cpu_scheduling_policy: parsed.cpu_scheduling_policy,
+            cpu_scheduling_priority: parsed.cpu_scheduling_priority,
+            cpu_scheduling_reset_on_fork: parsed.cpu_scheduling_reset_on_fork,
+            cpu_affinity: parsed.cpu_affinity,
+            numa_policy: parsed.numa_policy,
+            numa_mask: parsed.numa_mask,
+
+            // Root filesystem / image directives
+            root_directory: parsed.root_directory,
+            root_image: parsed.root_image,
+            root_image_options: parsed.root_image_options,
+            root_hash: parsed.root_hash,
+            root_hash_signature: parsed.root_hash_signature,
+            root_verity: parsed.root_verity,
+            root_ephemeral: parsed.root_ephemeral,
+            mount_api_vfs: parsed.mount_api_vfs,
+            extension_directories: parsed.extension_directories,
+            extension_images: parsed.extension_images,
+            mount_images: parsed.mount_images,
+            bind_log_sockets: parsed.bind_log_sockets,
+
+            // Additional namespace directives
+            private_ipc: parsed.private_ipc,
+            private_pids: parsed.private_pids,
+            ipc_namespace_path: parsed.ipc_namespace_path,
+            network_namespace_path: parsed.network_namespace_path,
+
+            // Security directives
+            secure_bits: parsed.secure_bits,
+            personality: parsed.personality,
+            selinux_context: parsed.selinux_context,
+            apparmor_profile: parsed.apparmor_profile,
+            smack_process_label: parsed.smack_process_label,
+            keyring_mode_exec: parsed.keyring_mode,
+            no_exec_paths: parsed.no_exec_paths,
+            exec_paths: parsed.exec_paths,
+            coredump_filter: parsed.coredump_filter,
+
+            // Misc directives
+            timer_slack_nsec: parsed.timer_slack_nsec,
+            standard_input_text: parsed.standard_input_text,
+            standard_input_data: parsed.standard_input_data,
+            set_login_environment: parsed.set_login_environment,
         })
     }
 }

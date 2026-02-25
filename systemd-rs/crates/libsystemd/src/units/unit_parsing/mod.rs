@@ -2781,6 +2781,204 @@ pub struct ParsedExecSection {
     /// messages with. Defaults to the name of the executed process.
     /// See systemd.exec(5).
     pub syslog_identifier: Option<String>,
+
+    // ── Additional logging directives ────────────────────────────────
+    /// SyslogFacility= — sets the syslog facility identifier to use when
+    /// logging to syslog. Takes one of `kern`, `user`, `mail`, `daemon`,
+    /// `auth`, `syslog`, `lpr`, `news`, `uucp`, `cron`, `authpriv`, `ftp`,
+    /// `local0`–`local7`. Defaults to `daemon`. See systemd.exec(5).
+    pub syslog_facility: Option<String>,
+    /// SyslogLevel= — sets the default syslog level to use when logging to
+    /// syslog. Takes one of `emerg`, `alert`, `crit`, `err`, `warning`,
+    /// `notice`, `info`, `debug`. Defaults to `info`. See systemd.exec(5).
+    pub syslog_level: Option<String>,
+    /// SyslogLevelPrefix= — if true (default), syslog-style log level prefix
+    /// strings (`<N>`) at the beginning of log lines are interpreted and
+    /// stripped from the log message. See systemd.exec(5).
+    pub syslog_level_prefix: Option<bool>,
+    /// LogLevelMax= — filters log messages by level: messages with a log
+    /// level higher (i.e. less important) than the specified level are
+    /// dropped. Takes the same values as `SyslogLevel=`. See systemd.exec(5).
+    pub log_level_max: Option<String>,
+    /// LogRateLimitIntervalSec= — configures the rate limiting interval for
+    /// messages logged by this unit. If more than `LogRateLimitBurst=`
+    /// messages are logged within this interval, further messages are dropped
+    /// until the interval is over. Takes a time span value. Defaults to
+    /// `30s`. See systemd.exec(5).
+    pub log_rate_limit_interval_sec: Option<String>,
+    /// LogRateLimitBurst= — configures the burst limit for rate limiting of
+    /// log messages. If more than this number of messages are logged within
+    /// the interval configured with `LogRateLimitIntervalSec=`, further
+    /// messages are dropped. Defaults to `10000`. See systemd.exec(5).
+    pub log_rate_limit_burst: Option<u32>,
+    /// LogFilterPatterns= — defines a list of extended regular expression
+    /// patterns for filtering log messages. Messages matching `~PATTERN`
+    /// entries are discarded; messages matching plain `PATTERN` entries are
+    /// kept. Multiple directives accumulate; an empty assignment resets.
+    /// See systemd.exec(5).
+    pub log_filter_patterns: Vec<String>,
+    /// LogNamespace= — run the service in the specified journal namespace.
+    /// The journal namespace name is used to build a unique journal socket
+    /// path, allowing log isolation. See systemd.exec(5).
+    pub log_namespace: Option<String>,
+
+    // ── CPU scheduling directives ────────────────────────────────────
+    /// CPUSchedulingPolicy= — sets the CPU scheduling policy for executed
+    /// processes. Takes one of `other`, `batch`, `idle`, `fifo`, or `rr`.
+    /// See systemd.exec(5).
+    pub cpu_scheduling_policy: Option<String>,
+    /// CPUSchedulingPriority= — sets the CPU scheduling priority for
+    /// executed processes. The available priority range depends on the
+    /// selected CPU scheduling policy. For `fifo` and `rr`, the range is
+    /// 1 (lowest) to 99 (highest). See systemd.exec(5).
+    pub cpu_scheduling_priority: Option<u32>,
+    /// CPUSchedulingResetOnFork= — if true, elevated CPU scheduling
+    /// priorities and policies are reset when the executed processes fork.
+    /// Defaults to false. See systemd.exec(5).
+    pub cpu_scheduling_reset_on_fork: Option<bool>,
+    /// CPUAffinity= — sets the CPU affinity for executed processes. Takes a
+    /// list of CPU indices or ranges separated by spaces or commas (e.g.
+    /// `0 1 3` or `0-3 8-11`). Special value `numa` uses NUMA node CPUs.
+    /// Multiple directives accumulate; empty resets. See systemd.exec(5).
+    pub cpu_affinity: Vec<String>,
+    /// NUMAPolicy= — sets the NUMA memory allocation policy for the
+    /// executed processes. Takes one of `default`, `preferred`, `bind`,
+    /// `interleave`, or `local`. See systemd.exec(5).
+    pub numa_policy: Option<String>,
+    /// NUMAMask= — sets the NUMA node mask for the policy configured with
+    /// `NUMAPolicy=`. Takes a list of NUMA node indices or ranges.
+    /// See systemd.exec(5).
+    pub numa_mask: Option<String>,
+
+    // ── Root filesystem / image directives ───────────────────────────
+    /// RootDirectory= — sets the root directory for executed processes,
+    /// using `pivot_root(2)` or `chroot(2)`. See systemd.exec(5).
+    pub root_directory: Option<String>,
+    /// RootImage= — sets the root file system image to mount as the root
+    /// directory for executed processes. Takes a path to a disk image file
+    /// or block device. See systemd.exec(5).
+    pub root_image: Option<String>,
+    /// RootImageOptions= — mount options for partitions within the root
+    /// image. Each entry is `PARTITION_NAME:OPTIONS`. Multiple directives
+    /// accumulate; an empty assignment resets. See systemd.exec(5).
+    pub root_image_options: Vec<String>,
+    /// RootHash= — takes a dm-verity data root hash for the root image
+    /// specified with `RootImage=`. See systemd.exec(5).
+    pub root_hash: Option<String>,
+    /// RootHashSignature= — takes a dm-verity root hash signature for the
+    /// root image, as either a path to a DER-encoded PKCS#7 signature file
+    /// or as a `base64:` prefixed inline signature. See systemd.exec(5).
+    pub root_hash_signature: Option<String>,
+    /// RootVerity= — takes a path to a dm-verity data file for the root
+    /// image specified with `RootImage=`. See systemd.exec(5).
+    pub root_verity: Option<String>,
+    /// RootEphemeral= — if true, an ephemeral snapshot of the root image
+    /// is created and used. Changes are lost on service stop.
+    /// See systemd.exec(5).
+    pub root_ephemeral: Option<bool>,
+    /// MountAPIVFS= — if true, /proc/, /sys/, /dev/ and /tmp/ are mounted
+    /// inside the root directory or image before the service starts. Defaults
+    /// to off unless `RootDirectory=` or `RootImage=` is used.
+    /// See systemd.exec(5).
+    pub mount_api_vfs: Option<bool>,
+    /// ExtensionDirectories= — a list of directories containing system
+    /// extension hierarchy trees to overlay on top of the root filesystem.
+    /// Multiple directives accumulate; empty resets. See systemd.exec(5).
+    pub extension_directories: Vec<String>,
+    /// ExtensionImages= — a list of disk image paths containing system
+    /// extension hierarchies to overlay on top of the root filesystem.
+    /// Multiple directives accumulate; empty resets. See systemd.exec(5).
+    pub extension_images: Vec<String>,
+    /// MountImages= — a list of disk image paths to mount at specified
+    /// mount points within the service's file system namespace. Each entry
+    /// is `SOURCE:DEST[:OPTIONS]`. Multiple directives accumulate; empty
+    /// resets. See systemd.exec(5).
+    pub mount_images: Vec<String>,
+    /// BindLogSockets= — if true, the journal logging sockets are bound
+    /// into the service's mount namespace even if it uses `RootImage=` or
+    /// `RootDirectory=`. See systemd.exec(5).
+    pub bind_log_sockets: Option<bool>,
+
+    // ── Additional namespace directives ──────────────────────────────
+    /// PrivateIPC= — if true, sets up a new IPC namespace for the executed
+    /// processes. Defaults to false. See systemd.exec(5).
+    pub private_ipc: Option<bool>,
+    /// PrivatePIDs= — if true, sets up a new PID namespace for the executed
+    /// processes. Defaults to false. Added in systemd 257.
+    /// See systemd.exec(5).
+    pub private_pids: Option<bool>,
+    /// IPCNamespacePath= — run the service in the specified existing IPC
+    /// namespace. Takes a file path to an IPC namespace file (usually
+    /// under /proc/PID/ns/ipc). See systemd.exec(5).
+    pub ipc_namespace_path: Option<String>,
+    /// NetworkNamespacePath= — run the service in the specified existing
+    /// network namespace. Takes a file path to a network namespace file
+    /// (usually under /proc/PID/ns/net or /run/netns/NAME).
+    /// See systemd.exec(5).
+    pub network_namespace_path: Option<String>,
+
+    // ── Security directives ──────────────────────────────────────────
+    /// SecureBits= — controls the secure-bits flags of the executed
+    /// process. Takes a space-separated combination of `keep-caps`,
+    /// `keep-caps-locked`, `no-setuid-fixup`, `no-setuid-fixup-locked`,
+    /// `noroot`, `noroot-locked`. See systemd.exec(5).
+    pub secure_bits: Vec<String>,
+    /// Personality= — controls the process personality / execution domain.
+    /// Takes one of `x86`, `x86-64`, `ppc`, `ppc-le`, `ppc64`, `ppc64-le`,
+    /// `s390`, `s390x`, etc. On x86-64 hosts, setting `x86` enables 32-bit
+    /// compatibility mode. See systemd.exec(5).
+    pub personality: Option<String>,
+    /// SELinuxContext= — sets the SELinux security context for executed
+    /// processes. A `-` prefix makes the setting optional (no error if
+    /// SELinux is not available). See systemd.exec(5).
+    pub selinux_context: Option<String>,
+    /// AppArmorProfile= — sets the AppArmor profile for executed processes.
+    /// A `-` prefix makes the setting optional (no error if AppArmor is not
+    /// available). See systemd.exec(5).
+    pub apparmor_profile: Option<String>,
+    /// SmackProcessLabel= — sets the SMACK security label for executed
+    /// processes. A `-` prefix makes the setting optional. See systemd.exec(5).
+    pub smack_process_label: Option<String>,
+    /// KeyringMode= — controls the kernel keyring set up for the service.
+    /// Takes one of `inherit`, `private` (default for system services),
+    /// or `shared`. See systemd.exec(5).
+    pub keyring_mode: Option<String>,
+    /// NoExecPaths= — a space-separated list of file system paths from
+    /// which execution of programs is forbidden. Overrides ExecPaths=.
+    /// Multiple directives accumulate; empty resets. See systemd.exec(5).
+    pub no_exec_paths: Vec<String>,
+    /// ExecPaths= — a space-separated list of file system paths from which
+    /// execution of programs is permitted. Execution from all other paths
+    /// is denied. Multiple directives accumulate; empty resets.
+    /// See systemd.exec(5).
+    pub exec_paths: Vec<String>,
+    /// CoredumpFilter= — sets the coredump filter bitmask for the executed
+    /// processes (written to /proc/PID/coredump_filter). Takes a
+    /// space-separated combination of names (`private-anonymous`,
+    /// `shared-anonymous`, `private-file-backed`, `shared-file-backed`,
+    /// `elf-headers`, `private-huge`, `shared-huge`, `private-dax`,
+    /// `shared-dax`) or a hexadecimal value. See systemd.exec(5).
+    pub coredump_filter: Option<String>,
+
+    // ── Misc directives ─────────────────────────────────────────────
+    /// TimerSlackNSec= — sets the timer slack for executed processes,
+    /// which controls the accuracy of wake-ups triggered by timers.
+    /// Takes a time value in nanoseconds. See systemd.exec(5).
+    pub timer_slack_nsec: Option<String>,
+    /// StandardInputText= — configures arbitrary text data to pass via
+    /// standard input to the executed process. Multiple directives
+    /// accumulate (concatenated with newlines). C-style escapes are
+    /// resolved. See systemd.exec(5).
+    pub standard_input_text: Vec<String>,
+    /// StandardInputData= — like StandardInputText=, but the data is
+    /// specified in Base64 encoding. Useful for binary data.
+    /// Multiple directives accumulate. See systemd.exec(5).
+    pub standard_input_data: Vec<String>,
+    /// SetLoginEnvironment= — if true, the `$XDG_SESSION_ID`,
+    /// `$XDG_RUNTIME_DIR` and similar PAM login session environment
+    /// variables are set. Defaults to unset (determined by `PAMName=`
+    /// and service type). See systemd.exec(5).
+    pub set_login_environment: Option<bool>,
 }
 
 /// The type of utmp/wtmp record to create for a service.

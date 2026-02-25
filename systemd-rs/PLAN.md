@@ -4,7 +4,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ## Current Status
 
-**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~8 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **5,208 unit tests passing** across 68 crates.
+**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~8 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **5,479 unit tests passing** across 68 crates.
 
 | Phase | Status |
 |-------|--------|
@@ -17,13 +17,13 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ### Unit File Directive Coverage
 
-295 of 425 upstream systemd directives supported (69%). Per-section breakdown:
+338 of 425 upstream systemd directives supported (80%). Per-section breakdown:
 
 | Section | Supported | Partial | Unsupported | Total | Coverage |
 |---------|-----------|---------|-------------|-------|----------|
 | systemd.unit | 87 | 0 | 1 | 88 | 99% |
 | systemd.service | 25 | 0 | 9 | 34 | 74% |
-| systemd.exec | 100 | 2 | 45 | 147 | 68% |
+| systemd.exec | 143 | 2 | 2 | 147 | 97% |
 | systemd.socket | 27 | 0 | 33 | 60 | 45% |
 | systemd.resource-control | 28 | 0 | 20 | 48 | 58% |
 | sd_notify | 7 | 1 | 7 | 15 | 47% |
@@ -136,6 +136,7 @@ Restructure the existing codebase into a Cargo workspace and extract shared func
 - ✅ **Unit name handling** — escaping, unescaping, template instantiation, unit type detection
 - ✅ **Configuration parsing** — `/etc/systemd/system.conf`, `/etc/systemd/user.conf`, and environment generators
 - ✅ **Credential management** — `ImportCredential=` fully implemented (glob-matching from system credential stores), `LoadCredential=` implemented (absolute and relative paths, directory loading), `SetCredential=` implemented (inline data with colon-preserving split), `LoadCredentialEncrypted=` and `SetCredentialEncrypted=` now decrypt at runtime using AES-256-GCM with host key or null key (graceful fallback to writing as-is if decryption fails); credential directory created at `/run/credentials/<unit>/` with correct ownership and 0o700/0o400 permissions; `CREDENTIALS_DIRECTORY` env var set; priority ordering matches systemd (SetCredential < LoadCredential < ImportCredential); `systemd-creds` CLI tool provides encrypt/decrypt with host key (AES-256-GCM), list, cat, setup, and TPM2 detection; missing: TPM2 sealing, host+tpm2 combined mode
+- ✅ **Exec section near-complete** — 143 of 147 `systemd.exec(5)` directives supported (97%); logging (`SyslogFacility=`, `SyslogLevel=`, `SyslogLevelPrefix=`, `LogLevelMax=`, `LogRateLimitIntervalSec=`, `LogRateLimitBurst=`, `LogFilterPatterns=`, `LogNamespace=`), CPU scheduling (`CPUSchedulingPolicy=`, `CPUSchedulingPriority=`, `CPUSchedulingResetOnFork=`, `CPUAffinity=`, `NUMAPolicy=`, `NUMAMask=`), root filesystem (`RootDirectory=`, `RootImage=`, `RootImageOptions=`, `RootHash=`, `RootHashSignature=`, `RootVerity=`, `RootEphemeral=`, `MountAPIVFS=`, `ExtensionDirectories=`, `ExtensionImages=`, `MountImages=`, `BindLogSockets=`), namespace isolation (`PrivateIPC=`, `PrivatePIDs=`, `IPCNamespacePath=`, `NetworkNamespacePath=`), security (`SecureBits=`, `Personality=`, `SELinuxContext=`, `AppArmorProfile=`, `SmackProcessLabel=`, `KeyringMode=`, `NoExecPaths=`, `ExecPaths=`, `CoredumpFilter=`), misc (`TimerSlackNSec=`, `StandardInputText=`, `StandardInputData=`, `SetLoginEnvironment=`) — all parsed and stored; runtime enforcement pending for most
 - ✅ **sd_notify protocol** — `READY=1`, `STATUS=`, `MAINPID=` (updates tracked PID), `WATCHDOG=1` (timestamps recorded for WatchdogSec= enforcement), `WATCHDOG=trigger` (immediate watchdog action), `RELOADING=1` (sets reloading state, clears ready), `STOPPING=1` (sets stopping state), `WATCHDOG_USEC=` (logged, dynamic timeout noted); `READY=1` after `RELOADING=1` clears reload state; missing: `FDSTORE=`/`FDSTOREREMOVE=`/`FDNAME=` (fd store), `ERRNO=`/`BUSERROR=`/`EXIT_STATUS=` (error reporting), `NOTIFYACCESS=`/`MONOTONIC_USEC=`/`INVOCATION_ID=` (metadata)
 
 Legend: ✅ = implemented, 🔶 = partial, ❌ = not started
@@ -221,7 +222,7 @@ Remaining components and production readiness:
 - ❌ **`sd-boot`** / **`bootctl`** — UEFI boot manager and control tool (this component is EFI, likely stays as a separate build target or FFI)
 - ❌ **`sd-stub`** — UEFI stub for unified kernel images
 - ✅ **Generator framework** — fstab and getty generators built natively into `libsystemd`; external generator execution framework discovers and runs all standard generators (`systemd-gpt-auto-generator`, `systemd-cryptsetup-generator`, `systemd-debug-generator`, `systemd-run-generator`, etc.) from well-known directories plus package-relative paths; output directories inserted at correct unit search path priorities; built-in generators automatically skipped; per-generator timeout with graceful failure handling
-- 🔶 **Comprehensive test suite** — 4,966 unit tests passing; integration tests via nixos-rs boot test; missing: differential testing against real systemd
+- 🔶 **Comprehensive test suite** — 5,479 unit tests passing; integration tests via nixos-rs boot test; missing: differential testing against real systemd
 - ❌ **Documentation** — man-page-compatible documentation for all binaries and configuration formats
 - 🔶 **NixOS / distro integration** — packaging via `default.nix`, boot testing via `test-boot.sh`, NixOS module via `systemd.nix`; working end-to-end; udev rules override ensures correct `systemctl` path in udev `RUN+=` actions; `Type=idle` deferral eliminates getty/PAM race conditions; on-demand unit loading enables `systemctl restart` for units outside the boot dependency graph (e.g. udev-triggered `systemd-vconsole-setup.service`); symlink-aware unit discovery handles NixOS `/etc/systemd/system/` layouts; poison-recovering lock infrastructure prevents panic cascades from poisoned `Mutex`/`RwLock` guards; external generator framework discovers generators in NixOS store paths via executable-relative search (15 generators execute successfully during boot); networkd integration enabled (`withNetworkd = true`) with `.network` file for DHCP on ethernet interfaces and D-Bus interface; resolved integration enabled (`services.resolved.enable = true`) with stub DNS on 127.0.0.53, fallback DNS servers, and D-Bus interface; portabled integration enabled (`withPortabled = true`) for portable service image management with D-Bus; timedated integration enabled (`withTimedated = true`) for time/date management with D-Bus; machined integration enabled (`withMachined = true`) for VM/container registration with D-Bus; homed integration enabled (`withHomed = true`) for home directory management with D-Bus; `networkctl persistent-storage` subcommand added for NixOS `systemd-networkd-persistent-storage.service` compatibility; deadlock-free PID table (`Arc<Mutex<PidTable>>`) allows signal handler to update entries without RuntimeInfo read lock, preventing 3-way RwLock deadlock with activation threads and control handler; deferred D-Bus registration pattern for hostnamed/timedated/localed/machined/portabled/homed/networkd/resolved/timesyncd — daemons send READY=1 immediately and connect to D-Bus in the first main-loop iteration, avoiding blocking early boot when dbus-daemon isn't ready yet; path unit watcher thread monitors `.path` units with poll-based change detection, glob matching, rate limiting, and MakeDirectory= support; cloud-hypervisor VM boots with full networking (TAP device + dnsmasq DHCP) in ~7 seconds
 
