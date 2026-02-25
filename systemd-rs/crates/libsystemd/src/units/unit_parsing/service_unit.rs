@@ -458,6 +458,17 @@ fn parse_service_section(
     let runtime_max_sec = section.remove("RUNTIMEMAXSEC");
     let coredump_receive = section.remove("COREDUMPRECEIVE");
 
+    // New service directives
+    let exit_type = section.remove("EXITTYPE");
+    let oom_policy = section.remove("OOMPOLICY");
+    let timeout_abort_sec = section.remove("TIMEOUTABORTSEC");
+    let timeout_clean_sec = section.remove("TIMEOUTCLEANSEC");
+    let restart_prevent_exit_status = section.remove("RESTARTPREVENTEXITSTATUS");
+    let restart_mode = section.remove("RESTARTMODE");
+    let restart_steps = section.remove("RESTARTSTEPS");
+    let restart_max_delay_sec = section.remove("RESTARTMAXDELAYSEC");
+    let exec_condition = section.remove("EXECCONDITION");
+
     let exec_config = super::parse_exec_section(&mut section)?;
 
     for key in section.keys() {
@@ -1529,6 +1540,602 @@ fn parse_service_section(
             }
             None => None,
         },
+        exit_type: match exit_type {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.trim().to_lowercase().as_str() {
+                        "main" | "" => super::ExitType::Main,
+                        "cgroup" => super::ExitType::Cgroup,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "ExitType".to_owned(),
+                                other.to_owned(),
+                            ));
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "ExitType".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => super::ExitType::default(),
+        },
+        oom_policy: match oom_policy {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.trim().to_lowercase().as_str() {
+                        "continue" => super::OOMPolicy::Continue,
+                        "stop" | "" => super::OOMPolicy::Stop,
+                        "kill" => super::OOMPolicy::Kill,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "OOMPolicy".to_owned(),
+                                other.to_owned(),
+                            ));
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "OOMPolicy".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => super::OOMPolicy::default(),
+        },
+        timeout_abort_sec: match timeout_abort_sec {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val = vec[0].1.trim();
+                    if val.is_empty() {
+                        None
+                    } else {
+                        Some(parse_timeout(val))
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "TimeoutAbortSec".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        timeout_clean_sec: match timeout_clean_sec {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val = vec[0].1.trim();
+                    if val.is_empty() {
+                        None
+                    } else {
+                        Some(parse_timeout(val))
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "TimeoutCleanSec".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        restart_prevent_exit_status: restart_prevent_exit_status
+            .map(|vec| {
+                let combined: Vec<String> = vec.into_iter().map(|(_, v)| v).collect();
+                parse_success_exit_status(&combined.join(" "))
+            })
+            .unwrap_or_default(),
+        restart_mode: match restart_mode {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    match vec[0].1.trim().to_lowercase().as_str() {
+                        "direct" | "" => super::RestartMode::Direct,
+                        "normal" => super::RestartMode::Normal,
+                        other => {
+                            return Err(ParsingErrorReason::UnknownSetting(
+                                "RestartMode".to_owned(),
+                                other.to_owned(),
+                            ));
+                        }
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "RestartMode".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => super::RestartMode::default(),
+        },
+        restart_steps: match restart_steps {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let val = vec[0].1.trim();
+                    if val.is_empty() {
+                        0
+                    } else {
+                        val.parse::<u32>().map_err(|_| {
+                            ParsingErrorReason::Generic(format!(
+                                "RestartSteps is not a valid non-negative integer: {val}"
+                            ))
+                        })?
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "RestartSteps".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => 0,
+        },
+        restart_max_delay_sec: match restart_max_delay_sec {
+            Some(vec) => {
+                if vec.len() == 1 {
+                    let t = parse_timeout(&vec[0].1);
+                    match t {
+                        Timeout::Infinity => None,
+                        Timeout::Duration(d) if d.is_zero() => None,
+                        other => Some(other),
+                    }
+                } else {
+                    return Err(ParsingErrorReason::SettingTooManyValues(
+                        "RestartMaxDelaySec".to_owned(),
+                        super::map_tuples_to_second(vec),
+                    ));
+                }
+            }
+            None => None,
+        },
+        exec_condition: match exec_condition {
+            Some(vec) => parse_cmdlines(&vec)?,
+            None => Vec::new(),
+        },
         exec_section: exec_config,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::units::unit_parsing::unit_parser::parse_file;
+
+    fn parse_service_from_str(content: &str) -> Result<ParsedServiceConfig, ParsingErrorReason> {
+        let path = PathBuf::from("/test/test.service");
+        let parsed_file = parse_file(content)?;
+        parse_service(parsed_file, &path)
+    }
+
+    // --- ExitType= ---
+
+    #[test]
+    fn test_exit_type_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.exit_type, super::super::ExitType::Main);
+    }
+
+    #[test]
+    fn test_exit_type_main() {
+        let content = "[Service]\nExecStart=/bin/true\nExitType=main\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.exit_type, super::super::ExitType::Main);
+    }
+
+    #[test]
+    fn test_exit_type_cgroup() {
+        let content = "[Service]\nExecStart=/bin/true\nExitType=cgroup\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.exit_type, super::super::ExitType::Cgroup);
+    }
+
+    #[test]
+    fn test_exit_type_invalid() {
+        let content = "[Service]\nExecStart=/bin/true\nExitType=bogus\n";
+        let result = parse_service_from_str(content);
+        assert!(result.is_err());
+    }
+
+    // --- OOMPolicy= ---
+
+    #[test]
+    fn test_oom_policy_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.oom_policy, super::super::OOMPolicy::Stop);
+    }
+
+    #[test]
+    fn test_oom_policy_continue() {
+        let content = "[Service]\nExecStart=/bin/true\nOOMPolicy=continue\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.oom_policy, super::super::OOMPolicy::Continue);
+    }
+
+    #[test]
+    fn test_oom_policy_stop() {
+        let content = "[Service]\nExecStart=/bin/true\nOOMPolicy=stop\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.oom_policy, super::super::OOMPolicy::Stop);
+    }
+
+    #[test]
+    fn test_oom_policy_kill() {
+        let content = "[Service]\nExecStart=/bin/true\nOOMPolicy=kill\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.oom_policy, super::super::OOMPolicy::Kill);
+    }
+
+    #[test]
+    fn test_oom_policy_invalid() {
+        let content = "[Service]\nExecStart=/bin/true\nOOMPolicy=bogus\n";
+        let result = parse_service_from_str(content);
+        assert!(result.is_err());
+    }
+
+    // --- TimeoutAbortSec= ---
+
+    #[test]
+    fn test_timeout_abort_sec_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.timeout_abort_sec.is_none());
+    }
+
+    #[test]
+    fn test_timeout_abort_sec_value() {
+        let content = "[Service]\nExecStart=/bin/true\nTimeoutAbortSec=30\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.timeout_abort_sec,
+            Some(Timeout::Duration(std::time::Duration::from_secs(30)))
+        );
+    }
+
+    #[test]
+    fn test_timeout_abort_sec_infinity() {
+        let content = "[Service]\nExecStart=/bin/true\nTimeoutAbortSec=infinity\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.timeout_abort_sec, Some(Timeout::Infinity));
+    }
+
+    #[test]
+    fn test_timeout_abort_sec_empty() {
+        let content = "[Service]\nExecStart=/bin/true\nTimeoutAbortSec=\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.timeout_abort_sec.is_none());
+    }
+
+    // --- TimeoutCleanSec= ---
+
+    #[test]
+    fn test_timeout_clean_sec_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.timeout_clean_sec.is_none());
+    }
+
+    #[test]
+    fn test_timeout_clean_sec_value() {
+        let content = "[Service]\nExecStart=/bin/true\nTimeoutCleanSec=60\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.timeout_clean_sec,
+            Some(Timeout::Duration(std::time::Duration::from_secs(60)))
+        );
+    }
+
+    #[test]
+    fn test_timeout_clean_sec_infinity() {
+        let content = "[Service]\nExecStart=/bin/true\nTimeoutCleanSec=infinity\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.timeout_clean_sec, Some(Timeout::Infinity));
+    }
+
+    // --- RestartPreventExitStatus= ---
+
+    #[test]
+    fn test_restart_prevent_exit_status_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(
+            config
+                .srvc
+                .restart_prevent_exit_status
+                .exit_codes
+                .is_empty()
+        );
+        assert!(config.srvc.restart_prevent_exit_status.signals.is_empty());
+    }
+
+    #[test]
+    fn test_restart_prevent_exit_status_codes() {
+        let content = "[Service]\nExecStart=/bin/true\nRestartPreventExitStatus=1 6 SIGTERM\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(
+            config
+                .srvc
+                .restart_prevent_exit_status
+                .exit_codes
+                .contains(&1)
+        );
+        assert!(
+            config
+                .srvc
+                .restart_prevent_exit_status
+                .exit_codes
+                .contains(&6)
+        );
+        assert!(
+            config
+                .srvc
+                .restart_prevent_exit_status
+                .signals
+                .contains(&nix::sys::signal::Signal::SIGTERM)
+        );
+    }
+
+    #[test]
+    fn test_restart_prevent_exit_status_signal_only() {
+        let content = "[Service]\nExecStart=/bin/true\nRestartPreventExitStatus=SIGHUP\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(
+            config
+                .srvc
+                .restart_prevent_exit_status
+                .exit_codes
+                .is_empty()
+        );
+        assert!(
+            config
+                .srvc
+                .restart_prevent_exit_status
+                .signals
+                .contains(&nix::sys::signal::Signal::SIGHUP)
+        );
+    }
+
+    // --- RestartMode= ---
+
+    #[test]
+    fn test_restart_mode_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.restart_mode, super::super::RestartMode::Direct);
+    }
+
+    #[test]
+    fn test_restart_mode_direct() {
+        let content = "[Service]\nExecStart=/bin/true\nRestartMode=direct\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.restart_mode, super::super::RestartMode::Direct);
+    }
+
+    #[test]
+    fn test_restart_mode_normal() {
+        let content = "[Service]\nExecStart=/bin/true\nRestartMode=normal\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.restart_mode, super::super::RestartMode::Normal);
+    }
+
+    #[test]
+    fn test_restart_mode_invalid() {
+        let content = "[Service]\nExecStart=/bin/true\nRestartMode=bogus\n";
+        let result = parse_service_from_str(content);
+        assert!(result.is_err());
+    }
+
+    // --- RestartSteps= ---
+
+    #[test]
+    fn test_restart_steps_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.restart_steps, 0);
+    }
+
+    #[test]
+    fn test_restart_steps_value() {
+        let content = "[Service]\nExecStart=/bin/true\nRestartSteps=5\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.restart_steps, 5);
+    }
+
+    #[test]
+    fn test_restart_steps_zero() {
+        let content = "[Service]\nExecStart=/bin/true\nRestartSteps=0\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.restart_steps, 0);
+    }
+
+    #[test]
+    fn test_restart_steps_empty() {
+        let content = "[Service]\nExecStart=/bin/true\nRestartSteps=\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.restart_steps, 0);
+    }
+
+    #[test]
+    fn test_restart_steps_invalid() {
+        let content = "[Service]\nExecStart=/bin/true\nRestartSteps=abc\n";
+        let result = parse_service_from_str(content);
+        assert!(result.is_err());
+    }
+
+    // --- RestartMaxDelaySec= ---
+
+    #[test]
+    fn test_restart_max_delay_sec_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.restart_max_delay_sec.is_none());
+    }
+
+    #[test]
+    fn test_restart_max_delay_sec_value() {
+        let content = "[Service]\nExecStart=/bin/true\nRestartMaxDelaySec=120\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(
+            config.srvc.restart_max_delay_sec,
+            Some(Timeout::Duration(std::time::Duration::from_secs(120)))
+        );
+    }
+
+    #[test]
+    fn test_restart_max_delay_sec_infinity() {
+        // infinity means no upper bound — stored as None
+        let content = "[Service]\nExecStart=/bin/true\nRestartMaxDelaySec=infinity\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.restart_max_delay_sec.is_none());
+    }
+
+    #[test]
+    fn test_restart_max_delay_sec_zero() {
+        // 0 means no upper bound — stored as None
+        let content = "[Service]\nExecStart=/bin/true\nRestartMaxDelaySec=0\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.restart_max_delay_sec.is_none());
+    }
+
+    // --- ExecCondition= ---
+
+    #[test]
+    fn test_exec_condition_default() {
+        let content = "[Service]\nExecStart=/bin/true\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert!(config.srvc.exec_condition.is_empty());
+    }
+
+    #[test]
+    fn test_exec_condition_single() {
+        let content = "[Service]\nExecStart=/bin/true\nExecCondition=/usr/bin/test -f /tmp/ready\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.exec_condition.len(), 1);
+        assert_eq!(config.srvc.exec_condition[0].cmd, "/usr/bin/test");
+    }
+
+    #[test]
+    fn test_exec_condition_multiple() {
+        let content = "[Service]\nExecStart=/bin/true\nExecCondition=/usr/bin/test -f /tmp/a\nExecCondition=/usr/bin/test -f /tmp/b\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.exec_condition.len(), 2);
+    }
+
+    #[test]
+    fn test_exec_condition_with_dash_prefix() {
+        let content =
+            "[Service]\nExecStart=/bin/true\nExecCondition=-/usr/bin/test -f /tmp/ready\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.exec_condition.len(), 1);
+        assert!(
+            config.srvc.exec_condition[0]
+                .prefixes
+                .contains(&CommandlinePrefix::Minus)
+        );
+    }
+
+    #[test]
+    fn test_exec_condition_empty_is_error() {
+        // An empty ExecCondition= value is treated as an invalid (empty)
+        // command line by parse_cmdlines, not as a list reset.
+        let content = "[Service]\nExecStart=/bin/true\nExecCondition=/usr/bin/test -f /tmp/a\nExecCondition=\n";
+        let result = parse_service_from_str(content);
+        assert!(result.is_err());
+    }
+
+    // --- Combined / integration tests ---
+
+    #[test]
+    fn test_all_new_directives_together() {
+        let content = "\
+[Service]
+ExecStart=/bin/myapp
+ExitType=cgroup
+OOMPolicy=continue
+TimeoutAbortSec=45
+TimeoutCleanSec=30
+RestartPreventExitStatus=42 SIGKILL
+RestartMode=direct
+RestartSteps=10
+RestartMaxDelaySec=300
+ExecCondition=/usr/bin/test -f /etc/ready
+";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.exit_type, super::super::ExitType::Cgroup);
+        assert_eq!(config.srvc.oom_policy, super::super::OOMPolicy::Continue);
+        assert_eq!(
+            config.srvc.timeout_abort_sec,
+            Some(Timeout::Duration(std::time::Duration::from_secs(45)))
+        );
+        assert_eq!(
+            config.srvc.timeout_clean_sec,
+            Some(Timeout::Duration(std::time::Duration::from_secs(30)))
+        );
+        assert!(
+            config
+                .srvc
+                .restart_prevent_exit_status
+                .exit_codes
+                .contains(&42)
+        );
+        assert!(
+            config
+                .srvc
+                .restart_prevent_exit_status
+                .signals
+                .contains(&nix::sys::signal::Signal::SIGKILL)
+        );
+        assert_eq!(config.srvc.restart_mode, super::super::RestartMode::Direct);
+        assert_eq!(config.srvc.restart_steps, 10);
+        assert_eq!(
+            config.srvc.restart_max_delay_sec,
+            Some(Timeout::Duration(std::time::Duration::from_secs(300)))
+        );
+        assert_eq!(config.srvc.exec_condition.len(), 1);
+    }
+
+    #[test]
+    fn test_no_service_section_defaults() {
+        // A .service file with only [Unit] should get default values for all new fields
+        let content = "[Unit]\nDescription=Test\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.exit_type, super::super::ExitType::Main);
+        assert_eq!(config.srvc.oom_policy, super::super::OOMPolicy::Stop);
+        assert!(config.srvc.timeout_abort_sec.is_none());
+        assert!(config.srvc.timeout_clean_sec.is_none());
+        assert!(
+            config
+                .srvc
+                .restart_prevent_exit_status
+                .exit_codes
+                .is_empty()
+        );
+        assert_eq!(config.srvc.restart_mode, super::super::RestartMode::Direct);
+        assert_eq!(config.srvc.restart_steps, 0);
+        assert!(config.srvc.restart_max_delay_sec.is_none());
+        assert!(config.srvc.exec_condition.is_empty());
+    }
+
+    #[test]
+    fn test_exit_type_case_insensitive() {
+        let content = "[Service]\nExecStart=/bin/true\nExitType=CGROUP\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.exit_type, super::super::ExitType::Cgroup);
+    }
+
+    #[test]
+    fn test_oom_policy_case_insensitive() {
+        let content = "[Service]\nExecStart=/bin/true\nOOMPolicy=CONTINUE\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.oom_policy, super::super::OOMPolicy::Continue);
+    }
+
+    #[test]
+    fn test_restart_mode_case_insensitive() {
+        let content = "[Service]\nExecStart=/bin/true\nRestartMode=NORMAL\n";
+        let config = parse_service_from_str(content).unwrap();
+        assert_eq!(config.srvc.restart_mode, super::super::RestartMode::Normal);
+    }
 }

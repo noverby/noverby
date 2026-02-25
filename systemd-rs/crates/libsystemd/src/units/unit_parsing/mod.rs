@@ -39,6 +39,7 @@ pub struct ParsedTargetConfig {
 }
 pub struct ParsedSliceConfig {
     pub common: ParsedCommonConfig,
+    pub slice: ParsedSliceSection,
 }
 
 pub struct ParsedTimerConfig {
@@ -49,6 +50,75 @@ pub struct ParsedTimerConfig {
 pub struct ParsedPathConfig {
     pub common: ParsedCommonConfig,
     pub path: ParsedPathSection,
+}
+
+/// Parsed [Slice] section from a `.slice` unit file.
+///
+/// Slices accept the same resource-control directives as the [Service] section
+/// (MemoryMax=, CPUQuota=, TasksMax=, etc.). These are the slice-specific
+/// directives; everything else comes from the [Unit] / [Install] sections.
+#[derive(Clone, Debug, Default)]
+pub struct ParsedSliceSection {
+    /// MemoryMin= — minimum memory guarantee. See systemd.resource-control(5).
+    pub memory_min: Option<MemoryLimit>,
+    /// MemoryLow= — low memory boundary. See systemd.resource-control(5).
+    pub memory_low: Option<MemoryLimit>,
+    /// MemoryHigh= — throttling memory boundary. See systemd.resource-control(5).
+    pub memory_high: Option<MemoryLimit>,
+    /// MemoryMax= — hard memory limit. See systemd.resource-control(5).
+    pub memory_max: Option<MemoryLimit>,
+    /// MemorySwapMax= — hard swap limit. See systemd.resource-control(5).
+    pub memory_swap_max: Option<MemoryLimit>,
+    /// CPUWeight= — CPU scheduling weight (1–10000). See systemd.resource-control(5).
+    pub cpu_weight: Option<CpuWeight>,
+    /// StartupCPUWeight= — CPU weight during startup. See systemd.resource-control(5).
+    pub startup_cpu_weight: Option<CpuWeight>,
+    /// CPUQuota= — CPU time quota as percentage. See systemd.resource-control(5).
+    pub cpu_quota: Option<CpuQuota>,
+    /// IOWeight= — I/O scheduling weight (1–10000). See systemd.resource-control(5).
+    pub io_weight: Option<IoWeight>,
+    /// StartupIOWeight= — I/O weight during startup. See systemd.resource-control(5).
+    pub startup_io_weight: Option<IoWeight>,
+    /// IODeviceWeight= — per-device I/O weight. See systemd.resource-control(5).
+    pub io_device_weight: Vec<IoDeviceLimit>,
+    /// IOReadBandwidthMax= — per-device read bandwidth limit. See systemd.resource-control(5).
+    pub io_read_bandwidth_max: Vec<IoDeviceLimit>,
+    /// IOWriteBandwidthMax= — per-device write bandwidth limit. See systemd.resource-control(5).
+    pub io_write_bandwidth_max: Vec<IoDeviceLimit>,
+    /// IOReadIOPSMax= — per-device read IOPS limit. See systemd.resource-control(5).
+    pub io_read_iops_max: Vec<IoDeviceLimit>,
+    /// IOWriteIOPSMax= — per-device write IOPS limit. See systemd.resource-control(5).
+    pub io_write_iops_max: Vec<IoDeviceLimit>,
+    /// TasksMax= — maximum number of tasks (processes + threads). See systemd.resource-control(5).
+    pub tasks_max: Option<TasksMax>,
+    /// Delegate= — delegate cgroup subtree to the unit. See systemd.resource-control(5).
+    pub delegate: Delegate,
+    /// CPUAccounting= — enable CPU accounting. See systemd.resource-control(5).
+    pub cpu_accounting: Option<bool>,
+    /// MemoryAccounting= — enable memory accounting. See systemd.resource-control(5).
+    pub memory_accounting: Option<bool>,
+    /// IOAccounting= — enable I/O accounting. See systemd.resource-control(5).
+    pub io_accounting: Option<bool>,
+    /// TasksAccounting= — enable task counting. See systemd.resource-control(5).
+    pub tasks_accounting: Option<bool>,
+    /// DeviceAllow= — per-device access control entries. See systemd.resource-control(5).
+    pub device_allow: Vec<String>,
+    /// DevicePolicy= — device access policy. See systemd.resource-control(5).
+    pub device_policy: DevicePolicy,
+    /// IPAddressAllow= — allowed IP address prefixes. See systemd.resource-control(5).
+    pub ip_address_allow: Vec<String>,
+    /// IPAddressDeny= — denied IP address prefixes. See systemd.resource-control(5).
+    pub ip_address_deny: Vec<String>,
+    /// ManagedOOMSwap= — managed OOM swap policy. See systemd.resource-control(5).
+    pub managed_oom_swap: Option<String>,
+    /// ManagedOOMMemoryPressure= — managed OOM memory pressure policy. See systemd.resource-control(5).
+    pub managed_oom_memory_pressure: Option<String>,
+    /// ManagedOOMMemoryPressureLimit= — managed OOM pressure threshold. See systemd.resource-control(5).
+    pub managed_oom_memory_pressure_limit: Option<String>,
+    /// ManagedOOMPreference= — managed OOM preference. See systemd.resource-control(5).
+    pub managed_oom_preference: Option<String>,
+    /// MemoryPressureWatch= — PSI memory pressure monitoring. See systemd.resource-control(5).
+    pub memory_pressure_watch: MemoryPressureWatch,
 }
 
 /// Parsed [Path] section from a `.path` unit file.
@@ -96,6 +166,13 @@ pub struct ParsedTimerSection {
     pub wake_system: bool,
     /// RemainAfterElapse= — if true, timer stays loaded after elapsing (default true).
     pub remain_after_elapse: bool,
+    /// OnClockChange= — if true, the timer is triggered when the system clock
+    /// jumps relative to the monotonic clock (e.g. DST change, NTP correction).
+    /// See systemd.timer(5).
+    pub on_clock_change: bool,
+    /// OnTimezoneChange= — if true, the timer is triggered when the system
+    /// timezone changes. See systemd.timer(5).
+    pub on_timezone_change: bool,
     /// Unit= — the unit to activate when the timer elapses (defaults to same-name .service).
     pub unit: Option<String>,
 }
@@ -2223,6 +2300,57 @@ pub struct ParsedServiceSection {
     /// Takes a signal name or number. See systemd.kill(5).
     pub watchdog_signal: Option<i32>,
 
+    /// ExitType= — configures when a service is considered exited/dead.
+    /// `main` (default): the service is dead when the main process exits.
+    /// `cgroup`: the service is dead only when the last process in its
+    /// cgroup exits. See systemd.service(5).
+    pub exit_type: ExitType,
+
+    /// OOMPolicy= — configures the Out-Of-Memory killer policy for the
+    /// service. Takes `continue`, `stop` (default), or `kill`.
+    /// See systemd.service(5).
+    pub oom_policy: OOMPolicy,
+
+    /// TimeoutAbortSec= — configures the timeout for aborting the service
+    /// (e.g. when the watchdog triggers). If not set, TimeoutStopSec= is
+    /// used. See systemd.service(5).
+    pub timeout_abort_sec: Option<Timeout>,
+
+    /// TimeoutCleanSec= — configures the timeout for the clean-up phase
+    /// of ExecStopPost= commands when cleaning resources on explicit request.
+    /// If not set, TimeoutStopSec= is used. See systemd.service(5).
+    pub timeout_clean_sec: Option<Timeout>,
+
+    /// RestartPreventExitStatus= — a list of exit status definitions (exit
+    /// codes and/or signal names) that will prevent automatic service restart
+    /// regardless of the configured Restart= setting. The format is the
+    /// same as SuccessExitStatus=. See systemd.service(5).
+    pub restart_prevent_exit_status: crate::units::SuccessExitStatus,
+
+    /// RestartMode= — configures how a service is restarted. Takes `direct`
+    /// (default) or `normal`. See systemd.service(5).
+    pub restart_mode: RestartMode,
+
+    /// RestartSteps= — configures the number of steps in the graduated
+    /// restart delay ramp-up from RestartSec= to RestartMaxDelaySec=.
+    /// A value of 0 (default) disables the graduated delay feature.
+    /// See systemd.service(5).
+    pub restart_steps: u32,
+
+    /// RestartMaxDelaySec= — configures the longest restart delay when
+    /// graduated restart delay is in use (RestartSteps= > 0). If not set
+    /// or set to `infinity`, no upper bound is imposed.
+    /// See systemd.service(5).
+    pub restart_max_delay_sec: Option<Timeout>,
+
+    /// ExecCondition= — commands to execute before ExecStartPre=. If any
+    /// command exits with a non-zero status (and without the `-` prefix),
+    /// the rest of the commands are skipped and the unit is not started,
+    /// but this is not considered a failure. Exit code 254 causes the
+    /// condition to be treated as failed (unit skipped).
+    /// See systemd.service(5).
+    pub exec_condition: Vec<Commandline>,
+
     pub exec_section: ParsedExecSection,
 }
 
@@ -3143,6 +3271,47 @@ pub enum ServiceRestart {
     /// (Currently treated as never restarting since systemd-rs does not yet
     /// implement watchdog support.)
     OnWatchdog,
+}
+
+/// Configures when to consider a service as exited / dead.
+/// See `systemd.service(5)` `ExitType=`.
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, Default)]
+pub enum ExitType {
+    /// The service is considered dead when the main process exits (default).
+    #[default]
+    Main,
+    /// The service is considered dead only when the last process in its
+    /// cgroup exits.
+    Cgroup,
+}
+
+/// Configures the Out-Of-Memory (OOM) killer policy for a service.
+/// See `systemd.service(5)` `OOMPolicy=`.
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, Default)]
+pub enum OOMPolicy {
+    /// The kernel or `systemd-oomd` kills the process, but the service
+    /// manager does not take further action (default for non-root slices).
+    Continue,
+    /// When an OOM kill happens, the service manager terminates the
+    /// remaining processes of the service and puts it into a failed state.
+    #[default]
+    Stop,
+    /// Like `Stop`, but the service is also killed immediately (SIGKILL).
+    Kill,
+}
+
+/// Configures how a service is restarted.
+/// See `systemd.service(5)` `RestartMode=`.
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, Default)]
+pub enum RestartMode {
+    /// The service is stopped, then started again (default). All
+    /// `ExecStop*=` / `ExecStartPre=` etc. run.
+    #[default]
+    Direct,
+    /// (Reserved for future use — not yet implemented by real systemd either
+    /// in all versions.) Behaves the same as `Direct` in this
+    /// implementation.
+    Normal,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]

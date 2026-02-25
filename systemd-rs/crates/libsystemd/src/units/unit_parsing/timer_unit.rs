@@ -63,76 +63,84 @@ fn parse_timer_section(
     entries.sort_by_key(|(line, _, _)| *line);
 
     for (_line, key, value) in entries {
+        // Note: the unit file parser (`parse_section`) converts all keys to
+        // uppercase, so we match against uppercase names here.
         match key {
-            "OnActiveSec" => {
+            "ONACTIVESEC" => {
                 if value.is_empty() {
                     timer.on_active_sec.clear();
                 } else {
                     timer.on_active_sec.push(value.to_owned());
                 }
             }
-            "OnBootSec" => {
+            "ONBOOTSEC" => {
                 if value.is_empty() {
                     timer.on_boot_sec.clear();
                 } else {
                     timer.on_boot_sec.push(value.to_owned());
                 }
             }
-            "OnStartupSec" => {
+            "ONSTARTUPSEC" => {
                 if value.is_empty() {
                     timer.on_startup_sec.clear();
                 } else {
                     timer.on_startup_sec.push(value.to_owned());
                 }
             }
-            "OnUnitActiveSec" => {
+            "ONUNITACTIVESEC" => {
                 if value.is_empty() {
                     timer.on_unit_active_sec.clear();
                 } else {
                     timer.on_unit_active_sec.push(value.to_owned());
                 }
             }
-            "OnUnitInactiveSec" => {
+            "ONUNITINACTIVESEC" => {
                 if value.is_empty() {
                     timer.on_unit_inactive_sec.clear();
                 } else {
                     timer.on_unit_inactive_sec.push(value.to_owned());
                 }
             }
-            "OnCalendar" => {
+            "ONCALENDAR" => {
                 if value.is_empty() {
                     timer.on_calendar.clear();
                 } else {
                     timer.on_calendar.push(value.to_owned());
                 }
             }
-            "AccuracySec" => {
+            "ACCURACYSEC" => {
                 timer.accuracy_sec = if value.is_empty() {
                     None
                 } else {
                     Some(value.to_owned())
                 };
             }
-            "RandomizedDelaySec" => {
+            "RANDOMIZEDDELAYSEC" => {
                 timer.randomized_delay_sec = if value.is_empty() {
                     None
                 } else {
                     Some(value.to_owned())
                 };
             }
-            "FixedRandomDelay" => {
+            "FIXEDRANDOMDELAY" => {
                 timer.fixed_random_delay = parse_bool(value);
             }
-            "Persistent" => {
+            "PERSISTENT" => {
                 timer.persistent = parse_bool(value);
             }
-            "WakeSystem" => {
+            "WAKESYSTEM" => {
                 timer.wake_system = parse_bool(value);
             }
-            "RemainAfterElapse" => {
+            "REMAINAFTERELAPSE" => {
                 timer.remain_after_elapse = parse_bool(value);
             }
-            "Unit" => {
+            "ONCLOCKCHANGE" => {
+                timer.on_clock_change = parse_bool(value);
+            }
+            "ONTIMEZONECHANGE" => {
+                timer.on_timezone_change = parse_bool(value);
+            }
+            "UNIT" => {
                 timer.unit = if value.is_empty() {
                     None
                 } else {
@@ -148,4 +156,149 @@ fn parse_timer_section(
 
 fn parse_bool(value: &str) -> bool {
     matches!(value.to_lowercase().as_str(), "true" | "yes" | "on" | "1")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::units::unit_parsing::unit_parser::parse_file;
+
+    fn parse_timer_from_str(content: &str) -> Result<ParsedTimerConfig, ParsingErrorReason> {
+        let path = PathBuf::from("/test/test.timer");
+        let parsed_file = parse_file(content)?;
+        parse_timer(parsed_file, &path)
+    }
+
+    // --- OnClockChange= ---
+
+    #[test]
+    fn test_on_clock_change_default() {
+        let content = "[Timer]\nOnBootSec=5min\n";
+        let config = parse_timer_from_str(content).unwrap();
+        assert!(!config.timer.on_clock_change);
+    }
+
+    #[test]
+    fn test_on_clock_change_true() {
+        let content = "[Timer]\nOnClockChange=yes\n";
+        let config = parse_timer_from_str(content).unwrap();
+        assert!(config.timer.on_clock_change);
+    }
+
+    #[test]
+    fn test_on_clock_change_false() {
+        let content = "[Timer]\nOnClockChange=no\n";
+        let config = parse_timer_from_str(content).unwrap();
+        assert!(!config.timer.on_clock_change);
+    }
+
+    #[test]
+    fn test_on_clock_change_true_variant() {
+        let content = "[Timer]\nOnClockChange=true\n";
+        let config = parse_timer_from_str(content).unwrap();
+        assert!(config.timer.on_clock_change);
+    }
+
+    #[test]
+    fn test_on_clock_change_one() {
+        let content = "[Timer]\nOnClockChange=1\n";
+        let config = parse_timer_from_str(content).unwrap();
+        assert!(config.timer.on_clock_change);
+    }
+
+    // --- OnTimezoneChange= ---
+
+    #[test]
+    fn test_on_timezone_change_default() {
+        let content = "[Timer]\nOnBootSec=5min\n";
+        let config = parse_timer_from_str(content).unwrap();
+        assert!(!config.timer.on_timezone_change);
+    }
+
+    #[test]
+    fn test_on_timezone_change_true() {
+        let content = "[Timer]\nOnTimezoneChange=yes\n";
+        let config = parse_timer_from_str(content).unwrap();
+        assert!(config.timer.on_timezone_change);
+    }
+
+    #[test]
+    fn test_on_timezone_change_false() {
+        let content = "[Timer]\nOnTimezoneChange=no\n";
+        let config = parse_timer_from_str(content).unwrap();
+        assert!(!config.timer.on_timezone_change);
+    }
+
+    #[test]
+    fn test_on_timezone_change_on() {
+        let content = "[Timer]\nOnTimezoneChange=on\n";
+        let config = parse_timer_from_str(content).unwrap();
+        assert!(config.timer.on_timezone_change);
+    }
+
+    // --- Combined ---
+
+    #[test]
+    fn test_both_clock_and_timezone_change() {
+        let content = "[Timer]\nOnClockChange=yes\nOnTimezoneChange=yes\n";
+        let config = parse_timer_from_str(content).unwrap();
+        assert!(config.timer.on_clock_change);
+        assert!(config.timer.on_timezone_change);
+    }
+
+    #[test]
+    fn test_clock_change_with_calendar() {
+        let content = "[Timer]\nOnCalendar=daily\nOnClockChange=yes\nOnTimezoneChange=no\n";
+        let config = parse_timer_from_str(content).unwrap();
+        assert!(config.timer.on_clock_change);
+        assert!(!config.timer.on_timezone_change);
+        assert_eq!(config.timer.on_calendar, vec!["daily".to_owned()]);
+    }
+
+    // --- Existing fields still work alongside new ones ---
+
+    #[test]
+    fn test_remain_after_elapse_default_with_new_fields() {
+        let content = "[Timer]\nOnBootSec=10min\nOnClockChange=yes\n";
+        let config = parse_timer_from_str(content).unwrap();
+        // RemainAfterElapse defaults to true
+        assert!(config.timer.remain_after_elapse);
+        assert!(config.timer.on_clock_change);
+        assert!(!config.timer.on_timezone_change);
+    }
+
+    #[test]
+    fn test_full_timer_section() {
+        let content = "\
+[Timer]
+OnBootSec=5min
+OnCalendar=hourly
+Persistent=yes
+WakeSystem=no
+RemainAfterElapse=yes
+OnClockChange=true
+OnTimezoneChange=true
+Unit=my-target.service
+";
+        let config = parse_timer_from_str(content).unwrap();
+        assert_eq!(config.timer.on_boot_sec, vec!["5min".to_owned()]);
+        assert_eq!(config.timer.on_calendar, vec!["hourly".to_owned()]);
+        assert!(config.timer.persistent);
+        assert!(!config.timer.wake_system);
+        assert!(config.timer.remain_after_elapse);
+        assert!(config.timer.on_clock_change);
+        assert!(config.timer.on_timezone_change);
+        assert_eq!(config.timer.unit, Some("my-target.service".to_owned()));
+    }
+
+    #[test]
+    fn test_empty_timer_section() {
+        let content = "[Timer]\n";
+        let config = parse_timer_from_str(content).unwrap();
+        assert!(!config.timer.on_clock_change);
+        assert!(!config.timer.on_timezone_change);
+        assert!(config.timer.remain_after_elapse);
+        assert!(config.timer.on_boot_sec.is_empty());
+        assert!(config.timer.on_calendar.is_empty());
+    }
 }

@@ -436,6 +436,8 @@ mod tests {
             persistent: false,
             wake_system: false,
             remain_after_elapse: true,
+            on_clock_change: false,
+            on_timezone_change: false,
             unit: "test.service".into(),
         };
         let last_fired = std::collections::HashMap::new();
@@ -464,6 +466,8 @@ mod tests {
             persistent: false,
             wake_system: false,
             remain_after_elapse: true,
+            on_clock_change: false,
+            on_timezone_change: false,
             unit: "test.service".into(),
         };
         let last_fired = std::collections::HashMap::new();
@@ -492,6 +496,8 @@ mod tests {
             persistent: false,
             wake_system: false,
             remain_after_elapse: true,
+            on_clock_change: false,
+            on_timezone_change: false,
             unit: "test.service".into(),
         };
         let mut last_fired = std::collections::HashMap::new();
@@ -521,6 +527,8 @@ mod tests {
             persistent: false,
             wake_system: false,
             remain_after_elapse: true,
+            on_clock_change: false,
+            on_timezone_change: false,
             unit: "test.service".into(),
         };
         let now = Instant::now();
@@ -554,6 +562,8 @@ mod tests {
             persistent: false,
             wake_system: false,
             remain_after_elapse: true,
+            on_clock_change: false,
+            on_timezone_change: false,
             unit: "test.service".into(),
         };
         let now = Instant::now();
@@ -587,6 +597,8 @@ mod tests {
             persistent: false,
             wake_system: false,
             remain_after_elapse: true,
+            on_clock_change: false,
+            on_timezone_change: false,
             unit: "test.service".into(),
         };
         let now = Instant::now();
@@ -620,6 +632,8 @@ mod tests {
             persistent: false,
             wake_system: false,
             remain_after_elapse: true,
+            on_clock_change: false,
+            on_timezone_change: false,
             unit: "test.service".into(),
         };
         let now = Instant::now();
@@ -656,6 +670,8 @@ mod tests {
             persistent: false,
             wake_system: false,
             remain_after_elapse: true,
+            on_clock_change: false,
+            on_timezone_change: false,
             unit: "test.service".into(),
         };
         let last_fired = std::collections::HashMap::new();
@@ -684,6 +700,8 @@ mod tests {
             persistent: true,
             wake_system: false,
             remain_after_elapse: true,
+            on_clock_change: false,
+            on_timezone_change: false,
             unit: "test.service".into(),
         };
         let last_fired = std::collections::HashMap::new();
