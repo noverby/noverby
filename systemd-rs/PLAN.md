@@ -129,7 +129,7 @@ Restructure the existing codebase into a Cargo workspace and extract shared func
 
 - ✅ **Unit file parser** — complete INI-style parser with all systemd extensions (line continuation, quoting rules, specifier expansion `%i`, `%n`, `%N`, `%p`, `%u`, `%U`, `%h`, `%s`, `%m`, `%b`, `%H`, `%v`, `%t`, etc.)
 - ✅ **Dependency graph engine** — topological sort with cycle detection, transaction model for atomic start/stop operations
-- 🔶 **D-Bus protocol** — uses C `libdbus` via the `dbus` crate; wire format implementation planned but not yet needed for boot
+- ✅ **D-Bus protocol** — pure Rust via the `zbus` crate (migrated from C `libdbus`); all daemon D-Bus interfaces use `#[zbus::interface]` with deferred registration pattern
 - ✅ **sd_notify protocol** — full notify socket implementation with credential passing and fd store
 - 🔶 **Journal binary format** — reader/writer partially implemented; journald starts and collects logs during boot
 - 🔶 **Specifier expansion** — common specifiers (`%i`, `%n`, `%N`, `%p`, `%u`, `%U`, `%h`, `%s`, `%m`, `%b`, `%H`, `%v`, `%t`) implemented; some rare specifiers may be missing

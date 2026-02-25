@@ -1563,6 +1563,126 @@ fn merge_unit_contents(base: &str, overrides: &[(String, String)]) -> String {
 /// Merge two INI-format unit file contents, combining sections with the same name.
 /// If both files have the same section, the settings from the override are appended
 /// to the base section. If an override sets a key to empty value, it clears the key.
+/// Settings that accumulate (list-type) when specified multiple times.
+/// For these keys, drop-in values are appended to existing values.
+/// All other settings are scalar: the drop-in value replaces the base value
+/// (last writer wins), matching real systemd's behavior.
+fn is_list_setting(key: &str) -> bool {
+    matches!(
+        key,
+        // Exec settings that accumulate
+        "ExecStartPre"
+            | "ExecStartPost"
+            | "ExecStart"
+            | "ExecStop"
+            | "ExecStopPost"
+            | "ExecReload"
+            | "ExecCondition"
+            // Environment accumulates (reset with empty value)
+            | "Environment"
+            | "EnvironmentFile"
+            | "PassEnvironment"
+            | "UnsetEnvironment"
+            // Dependency directives accumulate
+            | "Requires"
+            | "Wants"
+            | "After"
+            | "Before"
+            | "BindsTo"
+            | "PartOf"
+            | "Conflicts"
+            | "Upholds"
+            | "RequiredBy"
+            | "WantedBy"
+            | "Also"
+            // Path/resource lists
+            | "ReadWritePaths"
+            | "ReadOnlyPaths"
+            | "InaccessiblePaths"
+            | "BindPaths"
+            | "BindReadOnlyPaths"
+            | "SupplementaryGroups"
+            | "CapabilityBoundingSet"
+            | "AmbientCapabilities"
+            | "SystemCallFilter"
+            | "SystemCallArchitectures"
+            | "RestrictAddressFamilies"
+            | "DeviceAllow"
+            // Socket multi-value settings
+            | "ListenStream"
+            | "ListenDatagram"
+            | "ListenSequentialPacket"
+            | "ListenFIFO"
+            | "ListenSpecial"
+            | "ListenNetlink"
+            | "ListenMessageQueue"
+            | "ListenUSBFunction"
+            // Credential lists
+            | "ImportCredential"
+            | "LoadCredential"
+            | "LoadCredentialEncrypted"
+            | "SetCredential"
+            | "SetCredentialEncrypted"
+            // Condition/Assert lists
+            | "ConditionPathExists"
+            | "ConditionPathExistsGlob"
+            | "ConditionPathIsDirectory"
+            | "ConditionPathIsSymbolicLink"
+            | "ConditionPathIsMountPoint"
+            | "ConditionPathIsReadWrite"
+            | "ConditionDirectoryNotEmpty"
+            | "ConditionFileNotEmpty"
+            | "ConditionFileIsExecutable"
+            | "ConditionNeedsUpdate"
+            | "ConditionFirstBoot"
+            | "ConditionSecurity"
+            | "ConditionCapability"
+            | "ConditionACPower"
+            | "ConditionVirtualization"
+            | "ConditionHost"
+            | "ConditionKernelCommandLine"
+            | "ConditionKernelVersion"
+            | "ConditionEnvironment"
+            | "ConditionUser"
+            | "ConditionGroup"
+            | "ConditionControlGroupController"
+            | "ConditionMemory"
+            | "ConditionCPUs"
+            | "AssertPathExists"
+            | "AssertPathExistsGlob"
+            | "AssertPathIsDirectory"
+            | "AssertPathIsSymbolicLink"
+            | "AssertPathIsMountPoint"
+            | "AssertPathIsReadWrite"
+            | "AssertDirectoryNotEmpty"
+            | "AssertFileNotEmpty"
+            | "AssertFileIsExecutable"
+            | "AssertNeedsUpdate"
+            | "AssertFirstBoot"
+            | "AssertSecurity"
+            | "AssertCapability"
+            | "AssertACPower"
+            | "AssertVirtualization"
+            | "AssertHost"
+            | "AssertKernelCommandLine"
+            | "AssertKernelVersion"
+            | "AssertEnvironment"
+            | "AssertUser"
+            | "AssertGroup"
+            | "AssertControlGroupController"
+            | "AssertMemory"
+            | "AssertCPUs"
+            // Install section lists
+            | "Alias"
+            // State/runtime directory lists
+            | "StateDirectory"
+            | "RuntimeDirectory"
+            | "LogsDirectory"
+            | "ConfigurationDirectory"
+            | "CacheDirectory"
+    )
+}
+
 fn merge_ini_sections(base: &str, overlay: &str) -> String {
     let base_sections = parse_ini_to_sections(base);
     let overlay_sections = parse_ini_to_sections(overlay);
@@ -1583,10 +1703,10 @@ fn merge_ini_sections(base: &str, overlay: &str) -> String {
             for line in lines {
                 let trimmed = line.trim();
                 if let Some(pos) = trimmed.find('=') {
+                    let key = trimmed[..pos].trim();
                     let value = trimmed[pos + 1..].trim();
                     if value.is_empty() {
                         // This is a reset: remove all previous lines with this key
-                        let key = trimmed[..pos].trim();
                         merged_sections[idx].1.retain(|existing| {
                             let existing_trimmed = existing.trim();
                             if let Some(epos) = existing_trimmed.find('=') {
@@ -1597,6 +1717,19 @@ fn merge_ini_sections(base: &str, overlay: &str) -> String {
                         });
                         // Don't add the empty assignment itself
                         continue;
+                    }
+
+                    if !is_list_setting(key) {
+                        // Scalar setting: remove the old value so the overlay
+                        // replaces it (last writer wins, matching real systemd).
+                        merged_sections[idx].1.retain(|existing| {
+                            let existing_trimmed = existing.trim();
+                            if let Some(epos) = existing_trimmed.find('=') {
+                                existing_trimmed[..epos].trim() != key
+                            } else {
+                                true
+                            }
+                        });
                     }
                 }
                 merged_sections[idx].1.push(line.clone());
@@ -1728,6 +1861,43 @@ mod tests {
         assert_eq!(
             result,
             "foo@bar.service foo@bar.service bar bar foo@bar foo@bar %"
+        );
+    }
+
+    #[test]
+    fn test_merge_ini_sections_scalar_override() {
+        let base = "[Service]\nPrivateDevices=yes\nType=notify\n";
+        let overlay = "[Service]\nPrivateDevices=false\n";
+        let merged = merge_ini_sections(base, overlay);
+        // Scalar setting: overlay replaces base (last writer wins)
+        assert!(
+            merged.contains("PrivateDevices=false"),
+            "overlay value should be present: {merged}"
+        );
+        assert!(
+            !merged.contains("PrivateDevices=yes"),
+            "base value should be removed: {merged}"
+        );
+        // Other settings should be preserved
+        assert!(
+            merged.contains("Type=notify"),
+            "unrelated setting should be kept: {merged}"
+        );
+    }
+
+    #[test]
+    fn test_merge_ini_sections_list_accumulates() {
+        let base = "[Service]\nEnvironment=FOO=1\n";
+        let overlay = "[Service]\nEnvironment=BAR=2\n";
+        let merged = merge_ini_sections(base, overlay);
+        // List setting: both values should be present
+        assert!(
+            merged.contains("Environment=FOO=1"),
+            "base list value should be kept: {merged}"
+        );
+        assert!(
+            merged.contains("Environment=BAR=2"),
+            "overlay list value should be added: {merged}"
         );
     }
 
