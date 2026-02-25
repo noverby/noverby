@@ -2,15 +2,12 @@
   devShells.systemd-rs = pkgs: {
     packages = with pkgs; [
       just
-      dbus
     ];
   };
 
   packages.systemd-rs = {
     lib,
     rustPlatform,
-    pkg-config,
-    dbus,
   }:
     rustPlatform.buildRustPackage {
       pname = "systemd-rs";
@@ -26,14 +23,6 @@
       };
 
       cargoLock.lockFile = ./Cargo.lock;
-
-      nativeBuildInputs = [
-        pkg-config
-      ];
-
-      buildInputs = [
-        dbus
-      ];
 
       doCheck = false;
 

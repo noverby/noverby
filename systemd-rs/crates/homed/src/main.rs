@@ -51,8 +51,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use dbus::blocking::Connection;
-use dbus_crossroads::{Crossroads, IfaceBuilder, MethodErr};
+use zbus::blocking::Connection;
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -64,7 +63,6 @@ const CONTROL_SOCKET_PATH: &str = "/run/systemd/homed-control";
 
 const DBUS_NAME: &str = "org.freedesktop.home1";
 const DBUS_PATH: &str = "/org/freedesktop/home1";
-const DBUS_IFACE: &str = "org.freedesktop.home1.Manager";
 
 /// Minimum UID for homed-managed users (from systemd: 60001..60513).
 const UID_MIN: u32 = 60001;
@@ -762,28 +760,16 @@ fn get_json_str_array(fields: &BTreeMap<String, String>, key: &str) -> Vec<Strin
 
 type SharedRegistry = Arc<Mutex<HomeRegistry>>;
 
-/// Return type for ListHomes D-Bus method: (name, uid, state, gid, real_name, home_dir, shell, object_path)
-type HomeEntry = (
-    String,
-    u32,
-    String,
-    u32,
-    String,
-    String,
-    String,
-    dbus::Path<'static>,
-);
-
 // ---------------------------------------------------------------------------
 // D-Bus interface: org.freedesktop.home1.Manager
 // ---------------------------------------------------------------------------
 
-/// Register the org.freedesktop.home1.Manager interface on a Crossroads instance.
+/// D-Bus interface struct for org.freedesktop.home1.Manager.
 ///
 /// Methods:
-///   ListHomes() → a(susussso) — array of (name, uid, state, gid, real_name, home_dir, shell, obj_path)
-///   GetHomeByName(s name) → usussso
-///   GetHomeByUID(u uid) → ssussso
+///   ListHomes() → a(susussss) — array of (name, uid, state, gid, real_name, home_dir, shell, obj_path)
+///   GetHomeByName(s name) → (u, s, u, s, s, s, s)
+///   GetHomeByUID(u uid) → (s, s, u, s, s, s, s)
 ///   ActivateHome(s name, s secret) — activate a managed home
 ///   DeactivateHome(s name) — deactivate a managed home
 ///   LockHome(s name) — lock a managed home
@@ -796,245 +782,184 @@ type HomeEntry = (
 ///
 /// Properties:
 ///   AutoLogin (b) — whether auto-login is enabled
-fn register_home1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedRegistry> {
-    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedRegistry>| {
-        // --- Properties ---
+struct Home1Manager {
+    registry: SharedRegistry,
+}
 
-        b.property("AutoLogin")
-            .get(|_, _reg: &mut SharedRegistry| Ok(false));
+#[zbus::interface(name = "org.freedesktop.home1.Manager")]
+impl Home1Manager {
+    // --- Properties (read-only) ---
 
-        // --- Methods ---
+    #[zbus(property, name = "AutoLogin")]
+    fn auto_login(&self) -> bool {
+        false
+    }
 
-        // ListHomes() → a(susussso)
-        // Returns array of (name, uid, state, gid, real_name, home_dir, shell, object_path)
-        b.method(
-            "ListHomes",
-            (),
-            ("home_areas",),
-            move |_, reg: &mut SharedRegistry, ()| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                let homes: Vec<HomeEntry> = registry
-                    .list()
-                    .iter()
-                    .map(|rec| {
-                        (
-                            rec.user_name.clone(),
-                            rec.uid,
-                            rec.state.as_str().to_string(),
-                            rec.gid,
-                            rec.real_name.clone(),
-                            rec.home_directory.clone(),
-                            rec.shell.clone(),
-                            dbus::Path::from(home_object_path(&rec.user_name)),
-                        )
-                    })
-                    .collect();
-                Ok((homes,))
-            },
-        );
+    // --- Methods ---
 
-        // GetHomeByName(s name) → usussso
-        b.method(
-            "GetHomeByName",
-            ("name",),
-            (
-                "uid",
-                "state",
-                "gid",
-                "real_name",
-                "home_dir",
-                "shell",
-                "object_path",
-            ),
-            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                match registry.get(&name) {
-                    Some(rec) => Ok((
-                        rec.uid,
-                        rec.state.as_str().to_string(),
-                        rec.gid,
-                        rec.real_name.clone(),
-                        rec.home_directory.clone(),
-                        rec.shell.clone(),
-                        dbus::Path::from(home_object_path(&rec.user_name)),
-                    )),
-                    None => Err(MethodErr::failed(&format!("No home for user '{}'", name))),
-                }
-            },
-        );
+    /// ListHomes() → a(susussss)
+    #[allow(clippy::type_complexity)]
+    fn list_homes(&self) -> Vec<(String, u32, String, u32, String, String, String, String)> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        registry
+            .list()
+            .iter()
+            .map(|rec| {
+                (
+                    rec.user_name.clone(),
+                    rec.uid,
+                    rec.state.as_str().to_string(),
+                    rec.gid,
+                    rec.real_name.clone(),
+                    rec.home_directory.clone(),
+                    rec.shell.clone(),
+                    home_object_path(&rec.user_name),
+                )
+            })
+            .collect()
+    }
 
-        // GetHomeByUID(u uid) → ssussso
-        b.method(
-            "GetHomeByUID",
-            ("uid",),
-            (
-                "name",
-                "state",
-                "gid",
-                "real_name",
-                "home_dir",
-                "shell",
-                "object_path",
-            ),
-            move |_, reg: &mut SharedRegistry, (uid,): (u32,)| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                let found = registry.list().iter().find(|r| r.uid == uid).cloned();
-                match found {
-                    Some(rec) => Ok((
-                        rec.user_name.clone(),
-                        rec.state.as_str().to_string(),
-                        rec.gid,
-                        rec.real_name.clone(),
-                        rec.home_directory.clone(),
-                        rec.shell.clone(),
-                        dbus::Path::from(home_object_path(&rec.user_name)),
-                    )),
-                    None => Err(MethodErr::failed(&format!("No home for UID {}", uid))),
-                }
-            },
-        );
+    /// GetHomeByName(s name) → (u, s, u, s, s, s, s)
+    fn get_home_by_name(
+        &self,
+        name: String,
+    ) -> zbus::fdo::Result<(u32, String, u32, String, String, String, String)> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        match registry.get(&name) {
+            Some(rec) => Ok((
+                rec.uid,
+                rec.state.as_str().to_string(),
+                rec.gid,
+                rec.real_name.clone(),
+                rec.home_directory.clone(),
+                rec.shell.clone(),
+                home_object_path(&rec.user_name),
+            )),
+            None => Err(zbus::fdo::Error::Failed(format!(
+                "No home for user '{}'",
+                name
+            ))),
+        }
+    }
 
-        // ActivateHome(s name, s secret)
-        b.method(
-            "ActivateHome",
-            ("name", "secret"),
-            (),
-            move |_, reg: &mut SharedRegistry, (name, _secret): (String, String)| {
-                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                match registry.activate(&name) {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(MethodErr::failed(&e)),
-                }
-            },
-        );
+    /// GetHomeByUID(u uid) → (s, s, u, s, s, s, s)
+    fn get_home_by_uid(
+        &self,
+        uid: u32,
+    ) -> zbus::fdo::Result<(String, String, u32, String, String, String, String)> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        let found = registry.list().iter().find(|r| r.uid == uid).cloned();
+        match found {
+            Some(rec) => Ok((
+                rec.user_name.clone(),
+                rec.state.as_str().to_string(),
+                rec.gid,
+                rec.real_name.clone(),
+                rec.home_directory.clone(),
+                rec.shell.clone(),
+                home_object_path(&rec.user_name),
+            )),
+            None => Err(zbus::fdo::Error::Failed(format!("No home for UID {}", uid))),
+        }
+    }
 
-        // DeactivateHome(s name)
-        b.method(
-            "DeactivateHome",
-            ("name",),
-            (),
-            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
-                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                match registry.deactivate(&name) {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(MethodErr::failed(&e)),
-                }
-            },
-        );
+    /// ActivateHome(s name, s secret)
+    fn activate_home(&self, name: String, _secret: String) -> zbus::fdo::Result<()> {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        match registry.activate(&name) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
 
-        // LockHome(s name)
-        b.method(
-            "LockHome",
-            ("name",),
-            (),
-            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
-                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                match registry.lock(&name) {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(MethodErr::failed(&e)),
-                }
-            },
-        );
+    /// DeactivateHome(s name)
+    fn deactivate_home(&self, name: String) -> zbus::fdo::Result<()> {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        match registry.deactivate(&name) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
 
-        // UnlockHome(s name, s secret)
-        b.method(
-            "UnlockHome",
-            ("name", "secret"),
-            (),
-            move |_, reg: &mut SharedRegistry, (name, _secret): (String, String)| {
-                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                match registry.unlock(&name) {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(MethodErr::failed(&e)),
-                }
-            },
-        );
+    /// LockHome(s name)
+    fn lock_home(&self, name: String) -> zbus::fdo::Result<()> {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        match registry.lock(&name) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
 
-        // LockAllHomes()
-        b.method(
-            "LockAllHomes",
-            (),
-            (),
-            move |_, reg: &mut SharedRegistry, ()| {
-                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                registry.lock_all();
-                Ok(())
-            },
-        );
+    /// UnlockHome(s name, s secret)
+    fn unlock_home(&self, name: String, _secret: String) -> zbus::fdo::Result<()> {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        match registry.unlock(&name) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
 
-        // DeactivateAllHomes()
-        b.method(
-            "DeactivateAllHomes",
-            (),
-            (),
-            move |_, reg: &mut SharedRegistry, ()| {
-                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                registry.deactivate_all();
-                Ok(())
-            },
-        );
+    /// LockAllHomes()
+    fn lock_all_homes(&self) {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        registry.lock_all();
+    }
 
-        // RemoveHome(s name)
-        b.method(
-            "RemoveHome",
-            ("name",),
-            (),
-            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
-                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                match registry.remove(&name) {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(MethodErr::failed(&e)),
-                }
-            },
-        );
+    /// DeactivateAllHomes()
+    fn deactivate_all_homes(&self) {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        registry.deactivate_all();
+    }
 
-        // Describe() → s (JSON description of the manager state)
-        b.method(
-            "Describe",
-            (),
-            ("json",),
-            move |_, reg: &mut SharedRegistry, ()| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                let homes = registry.list();
-                let mut homes_json = String::from("[");
-                for (i, rec) in homes.iter().enumerate() {
-                    if i > 0 {
-                        homes_json.push(',');
-                    }
-                    homes_json.push_str(&format!(
-                        concat!(
-                            "{{",
-                            "\"UserName\":\"{}\",",
-                            "\"RealName\":\"{}\",",
-                            "\"UID\":{},",
-                            "\"GID\":{},",
-                            "\"HomeDirectory\":\"{}\",",
-                            "\"Shell\":\"{}\",",
-                            "\"Storage\":\"{}\",",
-                            "\"State\":\"{}\"",
-                            "}}"
-                        ),
-                        json_escape(&rec.user_name),
-                        json_escape(&rec.real_name),
-                        rec.uid,
-                        rec.gid,
-                        json_escape(&rec.home_directory),
-                        json_escape(&rec.shell),
-                        json_escape(rec.storage.as_str()),
-                        json_escape(rec.state.as_str()),
-                    ));
-                }
-                homes_json.push(']');
+    /// RemoveHome(s name)
+    fn remove_home(&self, name: String) -> zbus::fdo::Result<()> {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        match registry.remove(&name) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
 
-                let json = format!(
-                    concat!("{{", "\"NHomes\":{},", "\"Homes\":{}", "}}"),
-                    homes.len(),
-                    homes_json,
-                );
-                Ok((json,))
-            },
-        );
-    })
+    /// Describe() → s (JSON description of the manager state)
+    fn describe(&self) -> String {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        let homes = registry.list();
+        let mut homes_json = String::from("[");
+        for (i, rec) in homes.iter().enumerate() {
+            if i > 0 {
+                homes_json.push(',');
+            }
+            homes_json.push_str(&format!(
+                concat!(
+                    "{{",
+                    "\"UserName\":\"{}\",",
+                    "\"RealName\":\"{}\",",
+                    "\"UID\":{},",
+                    "\"GID\":{},",
+                    "\"HomeDirectory\":\"{}\",",
+                    "\"Shell\":\"{}\",",
+                    "\"Storage\":\"{}\",",
+                    "\"State\":\"{}\"",
+                    "}}"
+                ),
+                json_escape(&rec.user_name),
+                json_escape(&rec.real_name),
+                rec.uid,
+                rec.gid,
+                json_escape(&rec.home_directory),
+                json_escape(&rec.shell),
+                json_escape(rec.storage.as_str()),
+                json_escape(rec.state.as_str()),
+            ));
+        }
+        homes_json.push(']');
+
+        format!(
+            concat!("{{", "\"NHomes\":{},", "\"Homes\":{}", "}}"),
+            homes.len(),
+            homes_json,
+        )
+    }
 }
 
 /// Convert a user name to a D-Bus object path.
@@ -1052,16 +977,21 @@ fn home_object_path(name: &str) -> String {
 }
 
 /// Set up the D-Bus connection and register the home1 interface.
-fn setup_dbus(shared: SharedRegistry) -> Result<(Connection, Crossroads), String> {
-    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
-    conn.request_name(DBUS_NAME, false, true, false)
-        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
-
-    let mut cr = Crossroads::new();
-    let iface_token = register_home1_iface(&mut cr);
-    cr.insert(DBUS_PATH, &[iface_token], shared);
-
-    Ok((conn, cr))
+///
+/// Uses zbus's blocking connection which dispatches messages automatically
+/// in a background thread. The returned `Connection` must be kept alive
+/// for as long as we want to serve D-Bus requests.
+fn setup_dbus(shared: SharedRegistry) -> Result<Connection, String> {
+    let iface = Home1Manager { registry: shared };
+    let conn = zbus::blocking::connection::Builder::system()
+        .map_err(|e| format!("D-Bus builder failed: {}", e))?
+        .name(DBUS_NAME)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?
+        .serve_at(DBUS_PATH, iface)
+        .map_err(|e| format!("D-Bus serve_at failed: {}", e))?
+        .build()
+        .map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    Ok(conn)
 }
 
 fn now_usec() -> u64 {
@@ -2241,9 +2171,9 @@ fn main() {
     let mut last_watchdog = Instant::now();
 
     // D-Bus connection is deferred to after READY=1 so we don't block early
-    // boot waiting for dbus-daemon. These are populated in the main loop.
-    let mut dbus_conn: Option<Connection> = None;
-    let mut dbus_cr: Option<Crossroads> = None;
+    // boot waiting for dbus-daemon.  zbus dispatches messages automatically
+    // in a background thread — we just keep the connection alive.
+    let mut _dbus_conn: Option<Connection> = None;
     let mut dbus_attempted = false;
 
     // Remove stale socket
@@ -2311,10 +2241,9 @@ fn main() {
         if !dbus_attempted {
             dbus_attempted = true;
             match setup_dbus(shared_registry.clone()) {
-                Ok((conn, cr)) => {
+                Ok(conn) => {
                     log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
-                    dbus_conn = Some(conn);
-                    dbus_cr = Some(cr);
+                    _dbus_conn = Some(conn);
                     let count = shared_registry
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
@@ -2330,13 +2259,7 @@ fn main() {
             }
         }
 
-        // Process D-Bus messages (non-blocking, short timeout)
-        if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
-            let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
-            while let Some(msg) = conn.channel().pop_message() {
-                let _ = cr.handle_message(msg, conn);
-            }
-        }
+        // zbus dispatches D-Bus messages automatically in a background thread.
 
         // Periodic GC (every ~60 iterations ≈ every 3 seconds at 50ms sleep)
         gc_counter += 1;
@@ -2385,9 +2308,10 @@ mod tests {
     // D-Bus registration tests
 
     #[test]
-    fn test_dbus_register_home1_iface() {
-        let mut cr = Crossroads::new();
-        let _token = register_home1_iface(&mut cr);
+    fn test_dbus_home1_manager_struct() {
+        let shared: SharedRegistry = Arc::new(Mutex::new(HomeRegistry::new()));
+        let _mgr = Home1Manager { registry: shared };
+        // Struct creation succeeded without panic
     }
 
     #[test]

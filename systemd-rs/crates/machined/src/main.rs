@@ -43,8 +43,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use dbus::blocking::Connection;
-use dbus_crossroads::{Crossroads, IfaceBuilder, MethodErr};
+use zbus::blocking::Connection;
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -55,7 +54,6 @@ const CONTROL_SOCKET_PATH: &str = "/run/systemd/machined-control";
 
 const DBUS_NAME: &str = "org.freedesktop.machine1";
 const DBUS_PATH: &str = "/org/freedesktop/machine1";
-const DBUS_IFACE: &str = "org.freedesktop.machine1.Manager";
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -449,10 +447,10 @@ type SharedRegistry = Arc<Mutex<MachineRegistry>>;
 // D-Bus interface: org.freedesktop.machine1.Manager
 // ---------------------------------------------------------------------------
 
-/// Register the org.freedesktop.machine1.Manager interface on a Crossroads instance.
+/// D-Bus interface struct for org.freedesktop.machine1.Manager.
 ///
 /// Methods:
-///   ListMachines() → a(ssso) — array of (name, class, service, object_path)
+///   ListMachines() → a(ssss) — array of (name, class, service, object_path)
 ///   GetMachine(s name) → o — object path for a machine
 ///   GetMachineByPID(u pid) → o — object path by leader PID
 ///   RegisterMachine(s name, ay id, s service, s class, u leader, s root_directory) → o
@@ -463,288 +461,249 @@ type SharedRegistry = Arc<Mutex<MachineRegistry>>;
 ///   PoolPath (s) — path to the machine image pool
 ///   PoolUsage (t) — current pool usage in bytes
 ///   PoolLimit (t) — pool size limit in bytes
-fn register_machine1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedRegistry> {
-    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedRegistry>| {
-        // --- Properties ---
+struct Machine1Manager {
+    registry: SharedRegistry,
+}
 
-        b.property("PoolPath")
-            .get(|_, _reg: &mut SharedRegistry| Ok("/var/lib/machines".to_string()));
+#[zbus::interface(name = "org.freedesktop.machine1.Manager")]
+impl Machine1Manager {
+    // --- Properties (read-only) ---
 
-        b.property("PoolUsage").get(|_, _reg: &mut SharedRegistry| {
-            // We don't track pool usage — return 0
-            Ok(0u64)
-        });
+    #[zbus(property, name = "PoolPath")]
+    fn pool_path(&self) -> String {
+        "/var/lib/machines".to_string()
+    }
 
-        b.property("PoolLimit").get(|_, _reg: &mut SharedRegistry| {
-            // No limit enforced
-            Ok(0u64)
-        });
+    #[zbus(property, name = "PoolUsage")]
+    fn pool_usage(&self) -> u64 {
+        0u64
+    }
 
-        // --- Methods ---
+    #[zbus(property, name = "PoolLimit")]
+    fn pool_limit(&self) -> u64 {
+        0u64
+    }
 
-        // ListMachines() → a(ssso)
-        // Returns array of (name, class, service, object_path)
-        b.method(
-            "ListMachines",
-            (),
-            ("machines",),
-            move |_, reg: &mut SharedRegistry, ()| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                let machines: Vec<(String, String, String, dbus::Path<'static>)> = registry
-                    .list()
-                    .iter()
-                    .map(|m| {
-                        let obj_path = machine_object_path(&m.name);
-                        (
-                            m.name.clone(),
-                            m.class.as_str().to_string(),
-                            m.service.clone(),
-                            dbus::Path::from(obj_path),
-                        )
-                    })
-                    .collect();
-                Ok((machines,))
-            },
-        );
+    // --- Methods ---
 
-        // GetMachine(s name) → o
-        b.method(
-            "GetMachine",
-            ("name",),
-            ("machine",),
-            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                if registry.get(&name).is_some() {
-                    Ok((dbus::Path::from(machine_object_path(&name)),))
-                } else {
-                    Err(MethodErr::failed(&format!("No machine '{}' known", name)))
-                }
-            },
-        );
+    /// ListMachines() → a(ssss) — array of (name, class, service, object_path)
+    fn list_machines(&self) -> Vec<(String, String, String, String)> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        registry
+            .list()
+            .iter()
+            .map(|m| {
+                (
+                    m.name.clone(),
+                    m.class.as_str().to_string(),
+                    m.service.clone(),
+                    machine_object_path(&m.name),
+                )
+            })
+            .collect()
+    }
 
-        // GetMachineByPID(u pid) → o
-        b.method(
-            "GetMachineByPID",
-            ("pid",),
-            ("machine",),
-            move |_, reg: &mut SharedRegistry, (pid,): (u32,)| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(m) = registry.find_by_leader(pid) {
-                    Ok((dbus::Path::from(machine_object_path(&m.name)),))
-                } else {
-                    Err(MethodErr::failed(&format!("No machine for PID {}", pid)))
-                }
-            },
-        );
+    /// GetMachine(s name) → o
+    fn get_machine(&self, name: String) -> zbus::fdo::Result<String> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        if registry.get(&name).is_some() {
+            Ok(machine_object_path(&name))
+        } else {
+            Err(zbus::fdo::Error::Failed(format!(
+                "No machine '{}' known",
+                name
+            )))
+        }
+    }
 
-        // RegisterMachine(s name, ay id, s service, s class, u leader, s root_directory) → o
-        b.method(
-            "RegisterMachine",
-            ("name", "id", "service", "class", "leader", "root_directory"),
-            ("machine",),
-            move |_,
-                  reg: &mut SharedRegistry,
-                  (name, _id, service, class_str, leader, root_directory): (
-                String,
-                Vec<u8>,
-                String,
-                String,
-                u32,
-                String,
-            )| {
-                let class = match MachineClass::parse(&class_str) {
-                    Some(c) => c,
-                    None => {
-                        return Err(MethodErr::failed(&format!(
-                            "Invalid class '{}'. Use 'container' or 'vm'",
-                            class_str
-                        )));
+    /// GetMachineByPID(u pid) → o
+    fn get_machine_by_pid(&self, pid: u32) -> zbus::fdo::Result<String> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(m) = registry.find_by_leader(pid) {
+            Ok(machine_object_path(&m.name))
+        } else {
+            Err(zbus::fdo::Error::Failed(format!(
+                "No machine for PID {}",
+                pid
+            )))
+        }
+    }
+
+    /// RegisterMachine(s name, ay id, s service, s class, u leader, s root_directory) → o
+    fn register_machine(
+        &self,
+        name: String,
+        _id: Vec<u8>,
+        service: String,
+        class_str: String,
+        leader: u32,
+        root_directory: String,
+    ) -> zbus::fdo::Result<String> {
+        let class = match MachineClass::parse(&class_str) {
+            Some(c) => c,
+            None => {
+                return Err(zbus::fdo::Error::Failed(format!(
+                    "Invalid class '{}'. Use 'container' or 'vm'",
+                    class_str
+                )));
+            }
+        };
+
+        let root_dir = if root_directory.is_empty() {
+            "/".to_string()
+        } else {
+            root_directory
+        };
+
+        let machine = Machine {
+            name: name.clone(),
+            class,
+            service,
+            scope: String::new(),
+            leader,
+            root_directory: root_dir,
+            netif: Vec::new(),
+            timestamp: now_usec(),
+            state: MachineState::Running,
+        };
+
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        match registry.register(machine) {
+            Ok(()) => {
+                let _ = registry.save_one(&name);
+                Ok(machine_object_path(&name))
+            }
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
+
+    /// TerminateMachine(s name)
+    fn terminate_machine(&self, name: String) -> zbus::fdo::Result<()> {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        match registry.terminate(&name) {
+            Ok(machine) => {
+                if machine.leader > 0 {
+                    unsafe {
+                        libc::kill(machine.leader as i32, libc::SIGTERM);
                     }
-                };
-
-                let root_dir = if root_directory.is_empty() {
-                    "/".to_string()
-                } else {
-                    root_directory
-                };
-
-                let machine = Machine {
-                    name: name.clone(),
-                    class,
-                    service,
-                    scope: String::new(),
-                    leader,
-                    root_directory: root_dir,
-                    netif: Vec::new(),
-                    timestamp: now_usec(),
-                    state: MachineState::Running,
-                };
-
-                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                match registry.register(machine) {
-                    Ok(()) => {
-                        let _ = registry.save_one(&name);
-                        Ok((dbus::Path::from(machine_object_path(&name)),))
-                    }
-                    Err(e) => Err(MethodErr::failed(&e)),
                 }
-            },
-        );
+                Ok(())
+            }
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
 
-        // TerminateMachine(s name)
-        b.method(
-            "TerminateMachine",
-            ("name",),
-            (),
-            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
-                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                match registry.terminate(&name) {
-                    Ok(machine) => {
-                        if machine.leader > 0 {
-                            unsafe {
-                                libc::kill(machine.leader as i32, libc::SIGTERM);
-                            }
-                        }
-                        Ok(())
+    /// KillMachine(s name, s who, i signal)
+    fn kill_machine(&self, name: String, _who: String, signal: i32) -> zbus::fdo::Result<()> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        match registry.get(&name) {
+            Some(m) => {
+                if m.leader > 0 {
+                    let ret = unsafe { libc::kill(m.leader as i32, signal) };
+                    if ret != 0 {
+                        return Err(zbus::fdo::Error::Failed(
+                            "Failed to send signal to leader".to_string(),
+                        ));
                     }
-                    Err(e) => Err(MethodErr::failed(&e)),
                 }
-            },
-        );
+                Ok(())
+            }
+            None => Err(zbus::fdo::Error::Failed(format!(
+                "No machine '{}' known",
+                name
+            ))),
+        }
+    }
 
-        // KillMachine(s name, s who, i signal)
-        b.method(
-            "KillMachine",
-            ("name", "who", "signal"),
-            (),
-            move |_, reg: &mut SharedRegistry, (name, _who, signal): (String, String, i32)| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                match registry.get(&name) {
-                    Some(m) => {
-                        if m.leader > 0 {
-                            let ret = unsafe { libc::kill(m.leader as i32, signal) };
-                            if ret != 0 {
-                                return Err(MethodErr::failed("Failed to send signal to leader"));
-                            }
-                        }
-                        Ok(())
+    /// GetMachineOSRelease(s name) → a{ss}
+    fn get_machine_os_release(&self, name: String) -> zbus::fdo::Result<Vec<(String, String)>> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        match registry.get(&name) {
+            Some(m) => {
+                let mut fields: Vec<(String, String)> = Vec::new();
+                let root = &m.root_directory;
+                let os_release_path = format!("{}/etc/os-release", root);
+                let usr_os_release_path = format!("{}/usr/lib/os-release", root);
+                let content = fs::read_to_string(&os_release_path)
+                    .or_else(|_| fs::read_to_string(&usr_os_release_path))
+                    .unwrap_or_default();
+                for line in content.lines() {
+                    let line = line.trim();
+                    if line.is_empty() || line.starts_with('#') {
+                        continue;
                     }
-                    None => Err(MethodErr::failed(&format!("No machine '{}' known", name))),
-                }
-            },
-        );
-
-        // GetMachineOSRelease(s name) → a{ss}
-        b.method(
-            "GetMachineOSRelease",
-            ("name",),
-            ("os_release",),
-            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                match registry.get(&name) {
-                    Some(m) => {
-                        // Try to read os-release from the machine's root
-                        let mut fields: Vec<(String, String)> = Vec::new();
-                        let root = &m.root_directory;
-                        let os_release_path = format!("{}/etc/os-release", root);
-                        let usr_os_release_path = format!("{}/usr/lib/os-release", root);
-                        let content = fs::read_to_string(&os_release_path)
-                            .or_else(|_| fs::read_to_string(&usr_os_release_path))
-                            .unwrap_or_default();
-                        for line in content.lines() {
-                            let line = line.trim();
-                            if line.is_empty() || line.starts_with('#') {
-                                continue;
-                            }
-                            if let Some((key, val)) = line.split_once('=') {
-                                let val = val.trim_matches('"').trim_matches('\'');
-                                fields.push((key.to_string(), val.to_string()));
-                            }
-                        }
-                        Ok((fields,))
+                    if let Some((key, val)) = line.split_once('=') {
+                        let val = val.trim_matches('"').trim_matches('\'');
+                        fields.push((key.to_string(), val.to_string()));
                     }
-                    None => Err(MethodErr::failed(&format!("No machine '{}' known", name))),
                 }
-            },
-        );
+                Ok(fields)
+            }
+            None => Err(zbus::fdo::Error::Failed(format!(
+                "No machine '{}' known",
+                name
+            ))),
+        }
+    }
 
-        // ListImages() → a(sssbon) — stub returning empty list
-        b.method(
-            "ListImages",
-            (),
-            ("images",),
-            move |_, _reg: &mut SharedRegistry, ()| {
-                let images: Vec<(String, String, String, bool, u64, u64)> = Vec::new();
-                Ok((images,))
-            },
-        );
+    /// ListImages() → a(sssbon) — stub returning empty list
+    fn list_images(&self) -> Vec<(String, String, String, bool, u64, u64)> {
+        Vec::new()
+    }
 
-        // CleanPool(s mode) → a(ss) — stub
-        b.method(
-            "CleanPool",
-            ("mode",),
-            ("images",),
-            move |_, _reg: &mut SharedRegistry, (_mode,): (String,)| {
-                let cleaned: Vec<(String, String)> = Vec::new();
-                Ok((cleaned,))
-            },
-        );
+    /// CleanPool(s mode) → a(ss) — stub
+    fn clean_pool(&self, _mode: String) -> Vec<(String, String)> {
+        Vec::new()
+    }
 
-        // Describe() → s (JSON description of the manager state)
-        b.method(
-            "Describe",
-            (),
-            ("json",),
-            move |_, reg: &mut SharedRegistry, ()| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                let machines = registry.list();
-                let mut machines_json = String::from("[");
-                for (i, m) in machines.iter().enumerate() {
-                    if i > 0 {
-                        machines_json.push(',');
-                    }
-                    machines_json.push_str(&format!(
-                        concat!(
-                            "{{",
-                            "\"Name\":\"{}\",",
-                            "\"Class\":\"{}\",",
-                            "\"Service\":\"{}\",",
-                            "\"Scope\":\"{}\",",
-                            "\"Leader\":{},",
-                            "\"RootDirectory\":\"{}\",",
-                            "\"State\":\"{}\",",
-                            "\"Timestamp\":{}",
-                            "}}"
-                        ),
-                        json_escape(&m.name),
-                        json_escape(m.class.as_str()),
-                        json_escape(&m.service),
-                        json_escape(&m.scope),
-                        m.leader,
-                        json_escape(&m.root_directory),
-                        json_escape(m.state.as_str()),
-                        m.timestamp,
-                    ));
-                }
-                machines_json.push(']');
+    /// Describe() → s (JSON description of the manager state)
+    fn describe(&self) -> String {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        let machines = registry.list();
+        let mut machines_json = String::from("[");
+        for (i, m) in machines.iter().enumerate() {
+            if i > 0 {
+                machines_json.push(',');
+            }
+            machines_json.push_str(&format!(
+                concat!(
+                    "{{",
+                    "\"Name\":\"{}\",",
+                    "\"Class\":\"{}\",",
+                    "\"Service\":\"{}\",",
+                    "\"Scope\":\"{}\",",
+                    "\"Leader\":{},",
+                    "\"RootDirectory\":\"{}\",",
+                    "\"State\":\"{}\",",
+                    "\"Timestamp\":{}",
+                    "}}"
+                ),
+                json_escape(&m.name),
+                json_escape(m.class.as_str()),
+                json_escape(&m.service),
+                json_escape(&m.scope),
+                m.leader,
+                json_escape(&m.root_directory),
+                json_escape(m.state.as_str()),
+                m.timestamp,
+            ));
+        }
+        machines_json.push(']');
 
-                let json = format!(
-                    concat!(
-                        "{{",
-                        "\"PoolPath\":\"/var/lib/machines\",",
-                        "\"PoolUsage\":0,",
-                        "\"PoolLimit\":0,",
-                        "\"NMachines\":{},",
-                        "\"Machines\":{}",
-                        "}}"
-                    ),
-                    machines.len(),
-                    machines_json,
-                );
-                Ok((json,))
-            },
-        );
-    })
+        format!(
+            concat!(
+                "{{",
+                "\"PoolPath\":\"/var/lib/machines\",",
+                "\"PoolUsage\":0,",
+                "\"PoolLimit\":0,",
+                "\"NMachines\":{},",
+                "\"Machines\":{}",
+                "}}"
+            ),
+            machines.len(),
+            machines_json,
+        )
+    }
 }
 
 /// Convert a machine name to a D-Bus object path.
@@ -763,16 +722,21 @@ fn machine_object_path(name: &str) -> String {
 }
 
 /// Set up the D-Bus connection and register the machine1 interface.
-fn setup_dbus(shared: SharedRegistry) -> Result<(Connection, Crossroads), String> {
-    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
-    conn.request_name(DBUS_NAME, false, true, false)
-        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
-
-    let mut cr = Crossroads::new();
-    let iface_token = register_machine1_iface(&mut cr);
-    cr.insert(DBUS_PATH, &[iface_token], shared);
-
-    Ok((conn, cr))
+///
+/// Uses zbus's blocking connection which dispatches messages automatically
+/// in a background thread. The returned `Connection` must be kept alive
+/// for as long as we want to serve D-Bus requests.
+fn setup_dbus(shared: SharedRegistry) -> Result<Connection, String> {
+    let iface = Machine1Manager { registry: shared };
+    let conn = zbus::blocking::connection::Builder::system()
+        .map_err(|e| format!("D-Bus builder failed: {}", e))?
+        .name(DBUS_NAME)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?
+        .serve_at(DBUS_PATH, iface)
+        .map_err(|e| format!("D-Bus serve_at failed: {}", e))?
+        .build()
+        .map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    Ok(conn)
 }
 
 fn json_escape(s: &str) -> String {
@@ -1171,9 +1135,9 @@ fn main() {
     let mut last_watchdog = Instant::now();
 
     // D-Bus connection is deferred to after READY=1 so we don't block early
-    // boot waiting for dbus-daemon. These are populated in the main loop.
-    let mut dbus_conn: Option<Connection> = None;
-    let mut dbus_cr: Option<Crossroads> = None;
+    // boot waiting for dbus-daemon.  zbus dispatches messages automatically
+    // in a background thread — we just keep the connection alive.
+    let mut _dbus_conn: Option<Connection> = None;
     let mut dbus_attempted = false;
 
     // Ensure parent directory exists
@@ -1243,10 +1207,9 @@ fn main() {
         if !dbus_attempted {
             dbus_attempted = true;
             match setup_dbus(shared_registry.clone()) {
-                Ok((conn, cr)) => {
+                Ok(conn) => {
                     log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
-                    dbus_conn = Some(conn);
-                    dbus_cr = Some(cr);
+                    _dbus_conn = Some(conn);
                     let count = shared_registry
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
@@ -1265,13 +1228,7 @@ fn main() {
             }
         }
 
-        // Process D-Bus messages (non-blocking, short timeout)
-        if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
-            let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
-            while let Some(msg) = conn.channel().pop_message() {
-                let _ = cr.handle_message(msg, conn);
-            }
-        }
+        // zbus dispatches D-Bus messages automatically in a background thread.
 
         // Periodic GC of dead machines
         if last_gc.elapsed() >= gc_interval {
@@ -1328,9 +1285,10 @@ mod tests {
     // D-Bus registration tests
 
     #[test]
-    fn test_dbus_register_machine1_iface() {
-        let mut cr = Crossroads::new();
-        let _token = register_machine1_iface(&mut cr);
+    fn test_dbus_machine1_manager_struct() {
+        let shared: SharedRegistry = Arc::new(Mutex::new(MachineRegistry::new()));
+        let _mgr = Machine1Manager { registry: shared };
+        // Struct creation succeeded without panic
     }
 
     #[test]

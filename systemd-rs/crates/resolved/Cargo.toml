@@ -9,8 +9,7 @@ name = "systemd-resolved"
 path = "src/main.rs"
 
 [dependencies]
-dbus = "0.9"
-dbus-crossroads = "0.5"
+zbus = "5"
 libc = "0.2"
 log = "0.4"
 fern = "0.7"

@@ -29,8 +29,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use dbus::blocking::Connection;
-use dbus_crossroads::{Crossroads, IfaceBuilder, MethodErr};
+use zbus::blocking::Connection;
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -47,7 +46,6 @@ const CONTROL_SOCKET_PATH: &str = "/run/systemd/hostnamed.sock";
 
 const DBUS_NAME: &str = "org.freedesktop.hostname1";
 const DBUS_PATH: &str = "/org/freedesktop/hostname1";
-const DBUS_IFACE: &str = "org.freedesktop.hostname1";
 
 /// Known chassis type strings accepted by systemd-hostnamed.
 const VALID_CHASSIS: &[&str] = &[
@@ -490,7 +488,7 @@ type SharedState = Arc<Mutex<HostnameState>>;
 // D-Bus interface: org.freedesktop.hostname1
 // ---------------------------------------------------------------------------
 
-/// Register the org.freedesktop.hostname1 interface on a Crossroads instance.
+/// D-Bus interface struct for org.freedesktop.hostname1.
 ///
 /// Properties (all read-only, matching upstream systemd):
 ///   Hostname, StaticHostname, PrettyHostname, IconName, Chassis,
@@ -509,333 +507,285 @@ type SharedState = Arc<Mutex<HostnameState>>;
 ///   SetLocation(s location, b interactive)
 ///   GetProductUUID(b interactive) → ay
 ///   Describe() → s (JSON description)
-fn register_hostname1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedState> {
-    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedState>| {
-        // --- Properties (read-only) ---
+struct Hostname1Manager {
+    state: SharedState,
+}
 
-        b.property("Hostname").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.hostname().to_string())
-        });
+#[zbus::interface(name = "org.freedesktop.hostname1")]
+impl Hostname1Manager {
+    // --- Properties (read-only) ---
 
-        b.property("StaticHostname")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.static_hostname.clone())
-            });
+    #[zbus(property, name = "Hostname")]
+    fn hostname(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.hostname().to_string()
+    }
 
-        b.property("PrettyHostname")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.pretty_hostname.clone())
-            });
+    #[zbus(property, name = "StaticHostname")]
+    fn static_hostname(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.static_hostname.clone()
+    }
 
-        b.property("IconName").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.effective_icon_name())
-        });
+    #[zbus(property, name = "PrettyHostname")]
+    fn pretty_hostname(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.pretty_hostname.clone()
+    }
 
-        b.property("Chassis").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.chassis.clone())
-        });
+    #[zbus(property, name = "IconName")]
+    fn icon_name(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.effective_icon_name()
+    }
 
-        b.property("Deployment").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.deployment.clone())
-        });
+    #[zbus(property, name = "Chassis")]
+    fn chassis(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.chassis.clone()
+    }
 
-        b.property("Location").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.location.clone())
-        });
+    #[zbus(property, name = "Deployment")]
+    fn deployment(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.deployment.clone()
+    }
 
-        b.property("KernelName").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.kernel_name.clone())
-        });
+    #[zbus(property, name = "Location")]
+    fn location(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.location.clone()
+    }
 
-        b.property("KernelRelease")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.kernel_release.clone())
-            });
+    #[zbus(property, name = "KernelName")]
+    fn kernel_name(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.kernel_name.clone()
+    }
 
-        b.property("OperatingSystemPrettyName")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.os_pretty_name.clone())
-            });
+    #[zbus(property, name = "KernelRelease")]
+    fn kernel_release(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.kernel_release.clone()
+    }
 
-        b.property("OperatingSystemCPEName")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.os_cpe_name.clone())
-            });
+    #[zbus(property, name = "OperatingSystemPrettyName")]
+    fn operating_system_pretty_name(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.os_pretty_name.clone()
+    }
 
-        b.property("OperatingSystemHomeURL")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.os_home_url.clone())
-            });
+    #[zbus(property, name = "OperatingSystemCPEName")]
+    fn operating_system_cpe_name(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.os_cpe_name.clone()
+    }
 
-        b.property("HardwareVendor")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.hardware_vendor.clone())
-            });
+    #[zbus(property, name = "OperatingSystemHomeURL")]
+    fn operating_system_home_url(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.os_home_url.clone()
+    }
 
-        b.property("HardwareModel")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.hardware_model.clone())
-            });
+    #[zbus(property, name = "HardwareVendor")]
+    fn hardware_vendor(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.hardware_vendor.clone()
+    }
 
-        b.property("HostnameSource")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                // HostnameSource: "static" if static hostname is set and matches
-                // transient, "transient" if only transient differs, otherwise
-                // "default".
-                let source = if !s.static_hostname.is_empty() {
-                    "static"
-                } else if !s.transient_hostname.is_empty() {
-                    "transient"
-                } else {
-                    "default"
-                };
-                Ok(source.to_string())
-            });
+    #[zbus(property, name = "HardwareModel")]
+    fn hardware_model(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.hardware_model.clone()
+    }
 
-        // --- Methods ---
+    #[zbus(property, name = "HostnameSource")]
+    fn hostname_source(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let source = if !s.static_hostname.is_empty() {
+            "static"
+        } else if !s.transient_hostname.is_empty() {
+            "transient"
+        } else {
+            "default"
+        };
+        source.to_string()
+    }
 
-        // SetHostname(s hostname, b interactive)
-        b.method(
-            "SetHostname",
-            ("hostname", "interactive"),
-            (),
-            move |_, state: &mut SharedState, (hostname, _interactive): (String, bool)| {
-                if !hostname.is_empty() && !is_valid_hostname(&hostname) {
-                    return Err(MethodErr::failed(&format!(
-                        "Invalid hostname '{}'",
-                        hostname
-                    )));
-                }
-                // Set the transient (kernel) hostname
-                if let Err(e) = set_transient_hostname(&hostname) {
-                    return Err(MethodErr::failed(&format!(
-                        "Failed to set transient hostname: {}",
-                        e
-                    )));
-                }
-                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
-                s.transient_hostname = if hostname.is_empty() {
-                    get_kernel_hostname()
-                } else {
-                    hostname
-                };
-                Ok(())
-            },
-        );
+    // --- Methods ---
 
-        // SetStaticHostname(s hostname, b interactive)
-        b.method(
-            "SetStaticHostname",
-            ("hostname", "interactive"),
-            (),
-            move |_, state: &mut SharedState, (hostname, _interactive): (String, bool)| {
-                if !hostname.is_empty() && !is_valid_hostname(&hostname) {
-                    return Err(MethodErr::failed(&format!(
-                        "Invalid hostname '{}'",
-                        hostname
-                    )));
-                }
-                if let Err(e) = set_static_hostname(&hostname) {
-                    return Err(MethodErr::failed(&format!(
-                        "Failed to set static hostname: {}",
-                        e
-                    )));
-                }
-                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
-                s.static_hostname = hostname;
-                Ok(())
-            },
-        );
+    fn set_hostname(&self, hostname: String, _interactive: bool) -> zbus::fdo::Result<()> {
+        if !hostname.is_empty() && !is_valid_hostname(&hostname) {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Invalid hostname '{}'",
+                hostname
+            )));
+        }
+        if let Err(e) = set_transient_hostname(&hostname) {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Failed to set transient hostname: {}",
+                e
+            )));
+        }
+        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.transient_hostname = if hostname.is_empty() {
+            get_kernel_hostname()
+        } else {
+            hostname
+        };
+        Ok(())
+    }
 
-        // SetPrettyHostname(s hostname, b interactive)
-        b.method(
-            "SetPrettyHostname",
-            ("hostname", "interactive"),
-            (),
-            move |_, state: &mut SharedState, (hostname, _interactive): (String, bool)| {
-                if let Err(e) = set_machine_info_key("PRETTY_HOSTNAME", &hostname) {
-                    return Err(MethodErr::failed(&format!(
-                        "Failed to set pretty hostname: {}",
-                        e
-                    )));
-                }
-                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
-                s.pretty_hostname = hostname;
-                Ok(())
-            },
-        );
+    fn set_static_hostname(&self, hostname: String, _interactive: bool) -> zbus::fdo::Result<()> {
+        if !hostname.is_empty() && !is_valid_hostname(&hostname) {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Invalid hostname '{}'",
+                hostname
+            )));
+        }
+        if let Err(e) = set_static_hostname(&hostname) {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Failed to set static hostname: {}",
+                e
+            )));
+        }
+        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.static_hostname = hostname;
+        Ok(())
+    }
 
-        // SetIconName(s icon, b interactive)
-        b.method(
-            "SetIconName",
-            ("icon", "interactive"),
-            (),
-            move |_, state: &mut SharedState, (icon, _interactive): (String, bool)| {
-                if let Err(e) = set_machine_info_key("ICON_NAME", &icon) {
-                    return Err(MethodErr::failed(&format!(
-                        "Failed to set icon name: {}",
-                        e
-                    )));
-                }
-                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
-                s.icon_name = icon;
-                Ok(())
-            },
-        );
+    fn set_pretty_hostname(&self, hostname: String, _interactive: bool) -> zbus::fdo::Result<()> {
+        if let Err(e) = set_machine_info_key("PRETTY_HOSTNAME", &hostname) {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Failed to set pretty hostname: {}",
+                e
+            )));
+        }
+        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.pretty_hostname = hostname;
+        Ok(())
+    }
 
-        // SetChassis(s chassis, b interactive)
-        b.method(
-            "SetChassis",
-            ("chassis", "interactive"),
-            (),
-            move |_, state: &mut SharedState, (chassis, _interactive): (String, bool)| {
-                let chassis = chassis.to_lowercase();
-                if !is_valid_chassis(&chassis) {
-                    return Err(MethodErr::failed(&format!(
-                        "Invalid chassis '{}'. Valid values: {}",
-                        chassis,
-                        VALID_CHASSIS.join(", ")
-                    )));
-                }
-                if let Err(e) = set_machine_info_key("CHASSIS", &chassis) {
-                    return Err(MethodErr::failed(&format!("Failed to set chassis: {}", e)));
-                }
-                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
-                s.chassis = chassis;
-                Ok(())
-            },
-        );
+    fn set_icon_name(&self, icon: String, _interactive: bool) -> zbus::fdo::Result<()> {
+        if let Err(e) = set_machine_info_key("ICON_NAME", &icon) {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Failed to set icon name: {}",
+                e
+            )));
+        }
+        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.icon_name = icon;
+        Ok(())
+    }
 
-        // SetDeployment(s deployment, b interactive)
-        b.method(
-            "SetDeployment",
-            ("deployment", "interactive"),
-            (),
-            move |_, state: &mut SharedState, (deployment, _interactive): (String, bool)| {
-                if let Err(e) = set_machine_info_key("DEPLOYMENT", &deployment) {
-                    return Err(MethodErr::failed(&format!(
-                        "Failed to set deployment: {}",
-                        e
-                    )));
-                }
-                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
-                s.deployment = deployment;
-                Ok(())
-            },
-        );
+    fn set_chassis(&self, chassis: String, _interactive: bool) -> zbus::fdo::Result<()> {
+        let chassis = chassis.to_lowercase();
+        if !is_valid_chassis(&chassis) {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Invalid chassis '{}'. Valid values: {}",
+                chassis,
+                VALID_CHASSIS.join(", ")
+            )));
+        }
+        if let Err(e) = set_machine_info_key("CHASSIS", &chassis) {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Failed to set chassis: {}",
+                e
+            )));
+        }
+        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.chassis = chassis;
+        Ok(())
+    }
 
-        // SetLocation(s location, b interactive)
-        b.method(
-            "SetLocation",
-            ("location", "interactive"),
-            (),
-            move |_, state: &mut SharedState, (location, _interactive): (String, bool)| {
-                if let Err(e) = set_machine_info_key("LOCATION", &location) {
-                    return Err(MethodErr::failed(&format!("Failed to set location: {}", e)));
-                }
-                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
-                s.location = location;
-                Ok(())
-            },
-        );
+    fn set_deployment(&self, deployment: String, _interactive: bool) -> zbus::fdo::Result<()> {
+        if let Err(e) = set_machine_info_key("DEPLOYMENT", &deployment) {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Failed to set deployment: {}",
+                e
+            )));
+        }
+        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.deployment = deployment;
+        Ok(())
+    }
 
-        // GetProductUUID(b interactive) → ay
-        b.method(
-            "GetProductUUID",
-            ("interactive",),
-            ("uuid",),
-            move |_, _state: &mut SharedState, (_interactive,): (bool,)| {
-                // Try to read /sys/class/dmi/id/product_uuid
-                let uuid_bytes = match fs::read_to_string("/sys/class/dmi/id/product_uuid") {
-                    Ok(s) => {
-                        // Parse UUID string (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) into bytes
-                        let hex: String = s.trim().replace('-', "");
-                        let mut bytes = Vec::with_capacity(16);
-                        let mut i = 0;
-                        while i + 1 < hex.len() && bytes.len() < 16 {
-                            if let Ok(b) = u8::from_str_radix(&hex[i..i + 2], 16) {
-                                bytes.push(b);
-                            }
-                            i += 2;
-                        }
-                        bytes
+    fn set_location(&self, location: String, _interactive: bool) -> zbus::fdo::Result<()> {
+        if let Err(e) = set_machine_info_key("LOCATION", &location) {
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Failed to set location: {}",
+                e
+            )));
+        }
+        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.location = location;
+        Ok(())
+    }
+
+    fn get_product_uuid(&self, _interactive: bool) -> Vec<u8> {
+        match fs::read_to_string("/sys/class/dmi/id/product_uuid") {
+            Ok(s) => {
+                let hex: String = s.trim().replace('-', "");
+                let mut bytes = Vec::with_capacity(16);
+                let mut i = 0;
+                while i + 1 < hex.len() && bytes.len() < 16 {
+                    if let Ok(b) = u8::from_str_radix(&hex[i..i + 2], 16) {
+                        bytes.push(b);
                     }
-                    Err(_) => vec![0u8; 16], // Return null UUID if unavailable
-                };
-                Ok((uuid_bytes,))
-            },
-        );
+                    i += 2;
+                }
+                bytes
+            }
+            Err(_) => vec![0u8; 16],
+        }
+    }
 
-        // Describe() → s (JSON description of all properties)
-        b.method(
-            "Describe",
-            (),
-            ("json",),
-            move |_, state: &mut SharedState, ()| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                let hostname_source = if !s.static_hostname.is_empty() {
-                    "static"
-                } else if !s.transient_hostname.is_empty() {
-                    "transient"
-                } else {
-                    "default"
-                };
-                // Build a simple JSON object — no serde dependency needed
-                let json = format!(
-                    concat!(
-                        "{{",
-                        "\"Hostname\":\"{}\",",
-                        "\"StaticHostname\":\"{}\",",
-                        "\"PrettyHostname\":\"{}\",",
-                        "\"IconName\":\"{}\",",
-                        "\"Chassis\":\"{}\",",
-                        "\"Deployment\":\"{}\",",
-                        "\"Location\":\"{}\",",
-                        "\"KernelName\":\"{}\",",
-                        "\"KernelRelease\":\"{}\",",
-                        "\"OperatingSystemPrettyName\":\"{}\",",
-                        "\"OperatingSystemCPEName\":\"{}\",",
-                        "\"OperatingSystemHomeURL\":\"{}\",",
-                        "\"HardwareVendor\":\"{}\",",
-                        "\"HardwareModel\":\"{}\",",
-                        "\"HostnameSource\":\"{}\"",
-                        "}}"
-                    ),
-                    json_escape(s.hostname()),
-                    json_escape(&s.static_hostname),
-                    json_escape(&s.pretty_hostname),
-                    json_escape(&s.effective_icon_name()),
-                    json_escape(&s.chassis),
-                    json_escape(&s.deployment),
-                    json_escape(&s.location),
-                    json_escape(&s.kernel_name),
-                    json_escape(&s.kernel_release),
-                    json_escape(&s.os_pretty_name),
-                    json_escape(&s.os_cpe_name),
-                    json_escape(&s.os_home_url),
-                    json_escape(&s.hardware_vendor),
-                    json_escape(&s.hardware_model),
-                    hostname_source,
-                );
-                Ok((json,))
-            },
-        );
-    })
+    fn describe(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let hostname_source = if !s.static_hostname.is_empty() {
+            "static"
+        } else if !s.transient_hostname.is_empty() {
+            "transient"
+        } else {
+            "default"
+        };
+        format!(
+            concat!(
+                "{{",
+                "\"Hostname\":\"{}\",",
+                "\"StaticHostname\":\"{}\",",
+                "\"PrettyHostname\":\"{}\",",
+                "\"IconName\":\"{}\",",
+                "\"Chassis\":\"{}\",",
+                "\"Deployment\":\"{}\",",
+                "\"Location\":\"{}\",",
+                "\"KernelName\":\"{}\",",
+                "\"KernelRelease\":\"{}\",",
+                "\"OperatingSystemPrettyName\":\"{}\",",
+                "\"OperatingSystemCPEName\":\"{}\",",
+                "\"OperatingSystemHomeURL\":\"{}\",",
+                "\"HardwareVendor\":\"{}\",",
+                "\"HardwareModel\":\"{}\",",
+                "\"HostnameSource\":\"{}\"",
+                "}}"
+            ),
+            json_escape(s.hostname()),
+            json_escape(&s.static_hostname),
+            json_escape(&s.pretty_hostname),
+            json_escape(&s.effective_icon_name()),
+            json_escape(&s.chassis),
+            json_escape(&s.deployment),
+            json_escape(&s.location),
+            json_escape(&s.kernel_name),
+            json_escape(&s.kernel_release),
+            json_escape(&s.os_pretty_name),
+            json_escape(&s.os_cpe_name),
+            json_escape(&s.os_home_url),
+            json_escape(&s.hardware_vendor),
+            json_escape(&s.hardware_model),
+            hostname_source,
+        )
+    }
 }
 
 /// Escape a string for embedding in a JSON value.
@@ -858,17 +808,21 @@ fn json_escape(s: &str) -> String {
 }
 
 /// Set up the D-Bus connection and register the hostname1 interface.
-/// Returns the Connection and Crossroads on success, or an error string.
-fn setup_dbus(shared: SharedState) -> Result<(Connection, Crossroads), String> {
-    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
-    conn.request_name(DBUS_NAME, false, true, false)
-        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
-
-    let mut cr = Crossroads::new();
-    let iface_token = register_hostname1_iface(&mut cr);
-    cr.insert(DBUS_PATH, &[iface_token], shared);
-
-    Ok((conn, cr))
+///
+/// Uses zbus's blocking connection which dispatches messages automatically
+/// in a background thread. The returned `Connection` must be kept alive
+/// for as long as we want to serve D-Bus requests.
+fn setup_dbus(shared: SharedState) -> Result<Connection, String> {
+    let iface = Hostname1Manager { state: shared };
+    let conn = zbus::blocking::connection::Builder::system()
+        .map_err(|e| format!("D-Bus builder failed: {}", e))?
+        .name(DBUS_NAME)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?
+        .serve_at(DBUS_PATH, iface)
+        .map_err(|e| format!("D-Bus serve_at failed: {}", e))?
+        .build()
+        .map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    Ok(conn)
 }
 
 // ---------------------------------------------------------------------------
@@ -1141,10 +1095,10 @@ fn main() {
     }
     let mut last_watchdog = Instant::now();
 
-    // D-Bus connection is deferred to after READY=1 so we don't block early
-    // boot waiting for dbus-daemon. These are populated in the main loop.
-    let mut dbus_conn: Option<Connection> = None;
-    let mut dbus_cr: Option<Crossroads> = None;
+    // D-Bus connection is deferred to after READY=1 so we don't block
+    // early boot waiting for dbus-daemon.  zbus dispatches messages
+    // automatically in a background thread — we just keep the connection alive.
+    let mut _dbus_conn: Option<Connection> = None;
     let mut dbus_attempted = false;
 
     // Ensure /run/systemd exists
@@ -1207,13 +1161,13 @@ fn main() {
 
         // Attempt D-Bus registration once (deferred from startup so we don't
         // block early boot before dbus-daemon is running).
+        // zbus handles message dispatch in a background thread automatically.
         if !dbus_attempted {
             dbus_attempted = true;
             match setup_dbus(shared_state.clone()) {
-                Ok((conn, cr)) => {
+                Ok(conn) => {
                     log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
-                    dbus_conn = Some(conn);
-                    dbus_cr = Some(cr);
+                    _dbus_conn = Some(conn);
                     sd_notify(&format!(
                         "STATUS=Hostname: {} (D-Bus active)",
                         hostname_display
@@ -1225,17 +1179,6 @@ fn main() {
                         e
                     );
                 }
-            }
-        }
-
-        // Process D-Bus messages (non-blocking, short timeout)
-        if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
-            // Read pending data from the D-Bus socket (non-blocking)
-            let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
-
-            // Dispatch all queued messages through crossroads
-            while let Some(msg) = conn.channel().pop_message() {
-                let _ = cr.handle_message(msg, conn);
             }
         }
 
@@ -1898,12 +1841,10 @@ mod tests {
     }
 
     #[test]
-    fn test_dbus_register_hostname1_iface() {
-        // Verify the interface registration doesn't panic
-        let mut cr = Crossroads::new();
-        let token = register_hostname1_iface(&mut cr);
+    fn test_dbus_hostname1_manager_struct() {
+        // Verify the interface struct can be created without panic
         let shared: SharedState = Arc::new(Mutex::new(HostnameState::default()));
-        cr.insert(DBUS_PATH, &[token], shared);
+        let _mgr = Hostname1Manager { state: shared };
     }
 
     #[test]

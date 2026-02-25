@@ -23,8 +23,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use dbus::blocking::Connection;
-use dbus_crossroads::{Crossroads, IfaceBuilder};
+use zbus::blocking::Connection;
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -60,7 +59,6 @@ const CLOCK_STATE_PATH: &str = "/var/lib/systemd/timesync/clock";
 // D-Bus constants
 const DBUS_NAME: &str = "org.freedesktop.timesync1";
 const DBUS_PATH: &str = "/org/freedesktop/timesync1";
-const DBUS_IFACE: &str = "org.freedesktop.timesync1.Manager";
 
 /// Config file path
 const CONFIG_PATH: &str = "/etc/systemd/timesyncd.conf";
@@ -987,139 +985,133 @@ type SharedState = Arc<Mutex<TimesyncState>>;
 ///
 /// Methods:
 ///   Describe() → s (JSON description of the daemon state)
-fn register_timesync1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedState> {
-    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedState>| {
-        // --- Properties ---
+/// D-Bus interface struct for org.freedesktop.timesync1.Manager.
+///
+/// Holds a shared state reference so that zbus can serve properties and
+/// methods automatically from a background thread.
+struct Timesync1Manager {
+    state: SharedState,
+}
 
-        b.property("NTPSynchronized")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.synced)
-            });
+#[zbus::interface(name = "org.freedesktop.timesync1.Manager")]
+impl Timesync1Manager {
+    // --- Properties ---
 
-        b.property("ServerName").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.server_name.clone())
-        });
+    #[zbus(property, name = "NTPSynchronized")]
+    fn ntp_synchronized(&self) -> bool {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.synced
+    }
 
-        // ServerAddress as (iay) — address family + raw address bytes
-        b.property("ServerAddress")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                let (family, bytes) = if let Ok(addr) = s.server_address.parse::<SocketAddr>() {
-                    match addr.ip() {
-                        std::net::IpAddr::V4(v4) => (2i32, v4.octets().to_vec()), // AF_INET=2
-                        std::net::IpAddr::V6(v6) => (10i32, v6.octets().to_vec()), // AF_INET6=10
-                    }
-                } else {
-                    (0i32, Vec::new()) // unspecified
-                };
-                Ok((family, bytes))
-            });
+    #[zbus(property, name = "ServerName")]
+    fn server_name(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.server_name.clone()
+    }
 
-        b.property("Frequency").get(|_, state: &mut SharedState| {
-            let s = state.lock().unwrap_or_else(|e| e.into_inner());
-            Ok(s.frequency)
-        });
+    // ServerAddress as (iay) — address family + raw address bytes
+    #[zbus(property, name = "ServerAddress")]
+    fn server_address(&self) -> (i32, Vec<u8>) {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if let Ok(addr) = s.server_address.parse::<SocketAddr>() {
+            match addr.ip() {
+                std::net::IpAddr::V4(v4) => (2i32, v4.octets().to_vec()), // AF_INET=2
+                std::net::IpAddr::V6(v6) => (10i32, v6.octets().to_vec()), // AF_INET6=10
+            }
+        } else {
+            (0i32, Vec::new()) // unspecified
+        }
+    }
 
-        b.property("RootDistanceMaxUSec")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.root_distance_max_usec)
-            });
+    #[zbus(property, name = "Frequency")]
+    fn frequency(&self) -> i64 {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.frequency
+    }
 
-        b.property("PollIntervalMinUSec")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.poll_interval_min_usec)
-            });
+    #[zbus(property, name = "RootDistanceMaxUSec")]
+    fn root_distance_max_usec(&self) -> u64 {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.root_distance_max_usec
+    }
 
-        b.property("PollIntervalMaxUSec")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.poll_interval_max_usec)
-            });
+    #[zbus(property, name = "PollIntervalMinUSec")]
+    fn poll_interval_min_usec(&self) -> u64 {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.poll_interval_min_usec
+    }
 
-        b.property("PollIntervalUSec")
-            .get(|_, state: &mut SharedState| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(s.poll_interval_usec)
-            });
+    #[zbus(property, name = "PollIntervalMaxUSec")]
+    fn poll_interval_max_usec(&self) -> u64 {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.poll_interval_max_usec
+    }
 
-        // NTPMessage as a struct of fields — we expose a simplified
-        // (uuuuitttttttt) = (leap, version, mode, stratum, precision,
-        //  root_delay_usec, root_dispersion_usec, reference_id,
-        //  origin_usec, receive_usec, transmit_usec, dest_usec,
-        //  offset_usec, delay_usec)
-        // However dbus-crossroads doesn't easily do custom structs,
-        // so we return a descriptive string with the Describe method.
+    #[zbus(property, name = "PollIntervalUSec")]
+    fn poll_interval_usec(&self) -> u64 {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.poll_interval_usec
+    }
 
-        // --- Methods ---
+    // --- Methods ---
 
-        // Describe() → s (JSON description)
-        b.method(
-            "Describe",
-            (),
-            ("json",),
-            move |_, state: &mut SharedState, ()| {
-                let s = state.lock().unwrap_or_else(|e| e.into_inner());
-                let ntp = &s.ntp_message;
-                let json = format!(
-                    concat!(
-                        "{{",
-                        "\"NTPSynchronized\":{},",
-                        "\"ServerName\":\"{}\",",
-                        "\"ServerAddress\":\"{}\",",
-                        "\"Frequency\":{},",
-                        "\"PollIntervalUSec\":{},",
-                        "\"PollIntervalMinUSec\":{},",
-                        "\"PollIntervalMaxUSec\":{},",
-                        "\"RootDistanceMaxUSec\":{},",
-                        "\"NTPMessage\":{{",
-                        "\"Leap\":{},",
-                        "\"Version\":{},",
-                        "\"Mode\":{},",
-                        "\"Stratum\":{},",
-                        "\"Precision\":{},",
-                        "\"RootDelayUSec\":{},",
-                        "\"RootDispersionUSec\":{},",
-                        "\"ReferenceID\":{},",
-                        "\"OriginUSec\":{},",
-                        "\"ReceiveUSec\":{},",
-                        "\"TransmitUSec\":{},",
-                        "\"DestUSec\":{},",
-                        "\"OffsetUSec\":{},",
-                        "\"DelayUSec\":{}",
-                        "}}",
-                        "}}"
-                    ),
-                    s.synced,
-                    json_escape(&s.server_name),
-                    json_escape(&s.server_address),
-                    s.frequency,
-                    s.poll_interval_usec,
-                    s.poll_interval_min_usec,
-                    s.poll_interval_max_usec,
-                    s.root_distance_max_usec,
-                    ntp.leap,
-                    ntp.version,
-                    ntp.mode,
-                    ntp.stratum,
-                    ntp.precision,
-                    ntp.root_delay_usec,
-                    ntp.root_dispersion_usec,
-                    ntp.reference_id,
-                    ntp.origin_usec,
-                    ntp.receive_usec,
-                    ntp.transmit_usec,
-                    ntp.dest_usec,
-                    ntp.offset_usec,
-                    ntp.delay_usec,
-                );
-                Ok((json,))
-            },
-        );
-    })
+    // Describe() → s (JSON description)
+    fn describe(&self) -> String {
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let ntp = &s.ntp_message;
+        format!(
+            concat!(
+                "{{",
+                "\"NTPSynchronized\":{},",
+                "\"ServerName\":\"{}\",",
+                "\"ServerAddress\":\"{}\",",
+                "\"Frequency\":{},",
+                "\"PollIntervalUSec\":{},",
+                "\"PollIntervalMinUSec\":{},",
+                "\"PollIntervalMaxUSec\":{},",
+                "\"RootDistanceMaxUSec\":{},",
+                "\"NTPMessage\":{{",
+                "\"Leap\":{},",
+                "\"Version\":{},",
+                "\"Mode\":{},",
+                "\"Stratum\":{},",
+                "\"Precision\":{},",
+                "\"RootDelayUSec\":{},",
+                "\"RootDispersionUSec\":{},",
+                "\"ReferenceID\":{},",
+                "\"OriginUSec\":{},",
+                "\"ReceiveUSec\":{},",
+                "\"TransmitUSec\":{},",
+                "\"DestUSec\":{},",
+                "\"OffsetUSec\":{},",
+                "\"DelayUSec\":{}",
+                "}}",
+                "}}"
+            ),
+            s.synced,
+            json_escape(&s.server_name),
+            json_escape(&s.server_address),
+            s.frequency,
+            s.poll_interval_usec,
+            s.poll_interval_min_usec,
+            s.poll_interval_max_usec,
+            s.root_distance_max_usec,
+            ntp.leap,
+            ntp.version,
+            ntp.mode,
+            ntp.stratum,
+            ntp.precision,
+            ntp.root_delay_usec,
+            ntp.root_dispersion_usec,
+            ntp.reference_id,
+            ntp.origin_usec,
+            ntp.receive_usec,
+            ntp.transmit_usec,
+            ntp.dest_usec,
+            ntp.offset_usec,
+            ntp.delay_usec,
+        )
+    }
 }
 
 /// Escape a string for embedding in JSON.
@@ -1140,16 +1132,21 @@ fn json_escape(s: &str) -> String {
 }
 
 /// Set up the D-Bus connection and register the timesync1 interface.
-fn setup_dbus(shared: SharedState) -> Result<(Connection, Crossroads), String> {
-    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
-    conn.request_name(DBUS_NAME, false, true, false)
-        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
-
-    let mut cr = Crossroads::new();
-    let iface_token = register_timesync1_iface(&mut cr);
-    cr.insert(DBUS_PATH, &[iface_token], shared);
-
-    Ok((conn, cr))
+///
+/// Uses zbus's blocking connection which dispatches messages automatically
+/// in a background thread. The returned `Connection` must be kept alive
+/// for as long as we want to serve D-Bus requests.
+fn setup_dbus(shared: SharedState) -> Result<Connection, String> {
+    let iface = Timesync1Manager { state: shared };
+    let conn = zbus::blocking::connection::Builder::system()
+        .map_err(|e| format!("D-Bus builder failed: {}", e))?
+        .name(DBUS_NAME)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?
+        .serve_at(DBUS_PATH, iface)
+        .map_err(|e| format!("D-Bus serve_at failed: {}", e))?
+        .build()
+        .map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    Ok(conn)
 }
 
 /// Read current frequency adjustment from adjtimex (in PPB).
@@ -1252,9 +1249,9 @@ impl TimesyncDaemon {
         let wd_interval = watchdog_interval();
 
         // D-Bus connection is deferred to after READY=1 so we don't block
-        // early boot waiting for dbus-daemon.
-        let mut dbus_conn: Option<Connection> = None;
-        let mut dbus_cr: Option<Crossroads> = None;
+        // early boot waiting for dbus-daemon.  zbus dispatches messages
+        // automatically in a background thread — we just keep the connection alive.
+        let mut _dbus_conn: Option<Connection> = None;
         let mut dbus_attempted = false;
 
         loop {
@@ -1266,14 +1263,14 @@ impl TimesyncDaemon {
                 self.reload_config();
             }
 
-            // Attempt D-Bus registration once (deferred from startup)
+            // Attempt D-Bus registration once (deferred from startup).
+            // zbus handles message dispatch in a background thread automatically.
             if !dbus_attempted {
                 dbus_attempted = true;
                 match setup_dbus(self.shared_state.clone()) {
-                    Ok((conn, cr)) => {
+                    Ok(conn) => {
                         log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
-                        dbus_conn = Some(conn);
-                        dbus_cr = Some(cr);
+                        _dbus_conn = Some(conn);
                     }
                     Err(e) => {
                         log::warn!(
@@ -1310,14 +1307,6 @@ impl TimesyncDaemon {
                 if RELOAD.swap(false, Ordering::SeqCst) {
                     self.reload_config();
                     break; // retry sync immediately after reload
-                }
-
-                // Process D-Bus messages (non-blocking)
-                if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
-                    let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
-                    while let Some(msg) = conn.channel().pop_message() {
-                        let _ = cr.handle_message(msg, conn);
-                    }
                 }
 
                 // Watchdog ping
@@ -2041,12 +2030,10 @@ NTP=
     // ── D-Bus interface tests ──────────────────────────────────────────────
 
     #[test]
-    fn test_dbus_register_timesync1_iface() {
-        let mut cr = Crossroads::new();
-        let token = register_timesync1_iface(&mut cr);
+    fn test_dbus_timesync1_manager_struct() {
         let shared: SharedState = Arc::new(Mutex::new(TimesyncState::default()));
-        cr.insert(DBUS_PATH, &[token], shared);
-        // Registration succeeded without panic
+        let _mgr = Timesync1Manager { state: shared };
+        // Construction succeeded without panic
     }
 
     #[test]

@@ -49,8 +49,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use dbus::blocking::Connection;
-use dbus_crossroads::{Crossroads, IfaceBuilder, MethodErr};
+use zbus::blocking::Connection;
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -61,7 +60,6 @@ const STATE_DIR: &str = "/run/systemd/portabled";
 
 const DBUS_NAME: &str = "org.freedesktop.portable1";
 const DBUS_PATH: &str = "/org/freedesktop/portable1";
-const DBUS_IFACE: &str = "org.freedesktop.portable1.Manager";
 
 /// Directories where portable service images are searched for, in priority
 /// order (highest first).
@@ -979,7 +977,7 @@ type SharedRegistry = Arc<Mutex<ImageRegistry>>;
 // D-Bus interface: org.freedesktop.portable1.Manager
 // ---------------------------------------------------------------------------
 
-/// Register the org.freedesktop.portable1.Manager interface on a Crossroads instance.
+/// D-Bus interface struct for org.freedesktop.portable1.Manager.
 ///
 /// Methods:
 ///   ListImages() → a(sssbtt) — array of (name, type, path, read_only, crtime, mtime)
@@ -996,245 +994,222 @@ type SharedRegistry = Arc<Mutex<ImageRegistry>>;
 ///   PoolPath (s) — path to the portable image pool
 ///   PoolUsage (t) — current pool usage in bytes
 ///   PoolLimit (t) — pool size limit in bytes
-fn register_portable1_iface(cr: &mut Crossroads) -> dbus_crossroads::IfaceToken<SharedRegistry> {
-    cr.register(DBUS_IFACE, |b: &mut IfaceBuilder<SharedRegistry>| {
-        // --- Properties ---
+struct Portable1Manager {
+    registry: SharedRegistry,
+}
 
-        b.property("PoolPath")
-            .get(|_, _reg: &mut SharedRegistry| Ok("/var/lib/portables".to_string()));
+#[zbus::interface(name = "org.freedesktop.portable1.Manager")]
+impl Portable1Manager {
+    // --- Properties (read-only) ---
 
-        b.property("PoolUsage")
-            .get(|_, _reg: &mut SharedRegistry| Ok(0u64));
+    #[zbus(property, name = "PoolPath")]
+    fn pool_path(&self) -> String {
+        "/var/lib/portables".to_string()
+    }
 
-        b.property("PoolLimit")
-            .get(|_, _reg: &mut SharedRegistry| Ok(0u64));
+    #[zbus(property, name = "PoolUsage")]
+    fn pool_usage(&self) -> u64 {
+        0u64
+    }
 
-        // --- Methods ---
+    #[zbus(property, name = "PoolLimit")]
+    fn pool_limit(&self) -> u64 {
+        0u64
+    }
 
-        // ListImages() → a(sssbtt)
-        b.method(
-            "ListImages",
-            (),
-            ("images",),
-            move |_, reg: &mut SharedRegistry, ()| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                let images: Vec<(String, String, String, bool, u64, u64)> = registry
-                    .images
-                    .values()
-                    .map(|img| {
-                        (
-                            img.name.clone(),
-                            img.image_type.as_str().to_string(),
-                            img.path.to_string_lossy().to_string(),
-                            false, // read_only
-                            img.crtime_usec,
-                            img.mtime_usec,
-                        )
-                    })
+    // --- Methods ---
+
+    /// ListImages() → a(sssbtt)
+    fn list_images(&self) -> Vec<(String, String, String, bool, u64, u64)> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        registry
+            .images
+            .values()
+            .map(|img| {
+                (
+                    img.name.clone(),
+                    img.image_type.as_str().to_string(),
+                    img.path.to_string_lossy().to_string(),
+                    false, // read_only
+                    img.crtime_usec,
+                    img.mtime_usec,
+                )
+            })
+            .collect()
+    }
+
+    /// GetImage(s name) → o
+    fn get_image(&self, name: String) -> zbus::fdo::Result<String> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        if registry.get_image(&name).is_some() {
+            Ok(image_object_path(&name))
+        } else {
+            Err(zbus::fdo::Error::Failed(format!(
+                "No image '{}' known",
+                name
+            )))
+        }
+    }
+
+    /// GetImageState(s name) → s
+    fn get_image_state(&self, name: String) -> String {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        let state = registry.get_attach_state(&name);
+        state.as_str().to_string()
+    }
+
+    /// AttachImage(s image, as matches, s profile, b runtime, s copy_mode) → a(sss)
+    fn attach_image(
+        &self,
+        image: String,
+        _matches: Vec<String>,
+        profile: String,
+        runtime: bool,
+        _copy_mode: String,
+    ) -> zbus::fdo::Result<Vec<(String, String, String)>> {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        let prof = if profile.is_empty() {
+            None
+        } else {
+            Some(profile.as_str())
+        };
+        match registry.attach_image(&image, prof, runtime) {
+            Ok(units) => {
+                registry.save_attachment(&image);
+                let changes: Vec<(String, String, String)> = units
+                    .iter()
+                    .map(|u| ("symlink".to_string(), u.clone(), String::new()))
                     .collect();
-                Ok((images,))
-            },
-        );
+                Ok(changes)
+            }
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
 
-        // GetImage(s name) → o
-        b.method(
-            "GetImage",
-            ("name",),
-            ("image",),
-            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                if registry.get_image(&name).is_some() {
-                    Ok((dbus::Path::from(image_object_path(&name)),))
-                } else {
-                    Err(MethodErr::failed(&format!("No image '{}' known", name)))
+    /// DetachImage(s image, b runtime) → a(sss)
+    fn detach_image(
+        &self,
+        image: String,
+        _runtime: bool,
+    ) -> zbus::fdo::Result<Vec<(String, String, String)>> {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        match registry.detach_image(&image) {
+            Ok(units) => {
+                registry.remove_attachment_file(&image);
+                let changes: Vec<(String, String, String)> = units
+                    .iter()
+                    .map(|u| ("unlink".to_string(), u.clone(), String::new()))
+                    .collect();
+                Ok(changes)
+            }
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
+
+    /// ReattachImage(s image, as matches, s profile, b runtime, s copy_mode) → (a(sss), a(sss))
+    #[allow(clippy::type_complexity)]
+    fn reattach_image(
+        &self,
+        image: String,
+        _matches: Vec<String>,
+        profile: String,
+        runtime: bool,
+        _copy_mode: String,
+    ) -> zbus::fdo::Result<(Vec<(String, String, String)>, Vec<(String, String, String)>)> {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        // Detach first
+        let removed: Vec<(String, String, String)> = match registry.detach_image(&image) {
+            Ok(units) => {
+                registry.remove_attachment_file(&image);
+                units
+                    .iter()
+                    .map(|u| ("unlink".to_string(), u.clone(), String::new()))
+                    .collect()
+            }
+            Err(_) => Vec::new(),
+        };
+
+        let prof = if profile.is_empty() {
+            None
+        } else {
+            Some(profile.as_str())
+        };
+
+        match registry.attach_image(&image, prof, runtime) {
+            Ok(units) => {
+                registry.save_attachment(&image);
+                let added: Vec<(String, String, String)> = units
+                    .iter()
+                    .map(|u| ("symlink".to_string(), u.clone(), String::new()))
+                    .collect();
+                Ok((removed, added))
+            }
+            Err(e) => Err(zbus::fdo::Error::Failed(e)),
+        }
+    }
+
+    /// RemoveImage(s name)
+    fn remove_image(&self, name: String) {
+        let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        // Detach if attached
+        let _ = registry.detach_image(&name);
+        registry.remove_attachment_file(&name);
+        // We don't actually delete the image files — just detach
+    }
+
+    /// GetImageOSRelease(s image) → a{ss}
+    fn get_image_os_release(&self, image: String) -> zbus::fdo::Result<Vec<(String, String)>> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        match registry.get_image(&image) {
+            Some(img) => {
+                let fields: Vec<(String, String)> = PortableImage::read_os_release(&img.path)
+                    .into_iter()
+                    .collect();
+                Ok(fields)
+            }
+            None => Err(zbus::fdo::Error::Failed(format!(
+                "No image '{}' known",
+                image
+            ))),
+        }
+    }
+
+    /// GetImageMetadata(s image, as matches) → (s, a(say))
+    #[allow(clippy::type_complexity)]
+    fn get_image_metadata(
+        &self,
+        image: String,
+        _matches: Vec<String>,
+    ) -> zbus::fdo::Result<(String, Vec<(String, Vec<u8>)>)> {
+        let registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
+        match registry.get_image(&image) {
+            Some(img) => {
+                // os-release as string
+                let os_release_fields = PortableImage::read_os_release(&img.path);
+                let mut os_release = String::new();
+                for (k, v) in &os_release_fields {
+                    os_release.push_str(&format!("{}={}\n", k, v));
                 }
-            },
-        );
 
-        // GetImageState(s name) → s
-        b.method(
-            "GetImageState",
-            ("name",),
-            ("state",),
-            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                let state = registry.get_attach_state(&name);
-                Ok((state.as_str().to_string(),))
-            },
-        );
-
-        // AttachImage(s image, as matches, s profile, b runtime, s copy_mode) → a(sss)
-        b.method(
-            "AttachImage",
-            ("image", "matches", "profile", "runtime", "copy_mode"),
-            ("changes",),
-            move |_,
-                  reg: &mut SharedRegistry,
-                  (image, _matches, profile, runtime, _copy_mode): (
-                String,
-                Vec<String>,
-                String,
-                bool,
-                String,
-            )| {
-                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                let prof = if profile.is_empty() {
-                    None
-                } else {
-                    Some(profile.as_str())
-                };
-                match registry.attach_image(&image, prof, runtime) {
-                    Ok(units) => {
-                        registry.save_attachment(&image);
-                        let changes: Vec<(String, String, String)> = units
-                            .iter()
-                            .map(|u| ("symlink".to_string(), u.clone(), String::new()))
-                            .collect();
-                        Ok((changes,))
+                // Unit file contents
+                let units_discovered = PortableImage::discover_units(&img.path);
+                let mut unit_map: Vec<(String, Vec<u8>)> = Vec::new();
+                for unit_name in &units_discovered {
+                    if let Some(path) = PortableImage::find_unit_path(&img.path, unit_name)
+                        && let Ok(content) = fs::read(&path)
+                    {
+                        unit_map.push((unit_name.clone(), content));
                     }
-                    Err(e) => Err(MethodErr::failed(&e)),
                 }
-            },
-        );
 
-        // DetachImage(s image, b runtime) → a(sss)
-        b.method(
-            "DetachImage",
-            ("image", "runtime"),
-            ("changes",),
-            move |_, reg: &mut SharedRegistry, (image, _runtime): (String, bool)| {
-                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                match registry.detach_image(&image) {
-                    Ok(units) => {
-                        registry.remove_attachment_file(&image);
-                        let changes: Vec<(String, String, String)> = units
-                            .iter()
-                            .map(|u| ("unlink".to_string(), u.clone(), String::new()))
-                            .collect();
-                        Ok((changes,))
-                    }
-                    Err(e) => Err(MethodErr::failed(&e)),
-                }
-            },
-        );
-
-        // ReattachImage(s image, as matches, s profile, b runtime, s copy_mode) → a(sss) a(sss)
-        b.method(
-            "ReattachImage",
-            ("image", "matches", "profile", "runtime", "copy_mode"),
-            ("changes_removed", "changes_added"),
-            move |_,
-                  reg: &mut SharedRegistry,
-                  (image, _matches, profile, runtime, _copy_mode): (
-                String,
-                Vec<String>,
-                String,
-                bool,
-                String,
-            )| {
-                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                // Detach first
-                let removed: Vec<(String, String, String)> = match registry.detach_image(&image) {
-                    Ok(units) => {
-                        registry.remove_attachment_file(&image);
-                        units
-                            .iter()
-                            .map(|u| ("unlink".to_string(), u.clone(), String::new()))
-                            .collect()
-                    }
-                    Err(_) => Vec::new(),
-                };
-
-                let prof = if profile.is_empty() {
-                    None
-                } else {
-                    Some(profile.as_str())
-                };
-
-                match registry.attach_image(&image, prof, runtime) {
-                    Ok(units) => {
-                        registry.save_attachment(&image);
-                        let added: Vec<(String, String, String)> = units
-                            .iter()
-                            .map(|u| ("symlink".to_string(), u.clone(), String::new()))
-                            .collect();
-                        Ok((removed, added))
-                    }
-                    Err(e) => Err(MethodErr::failed(&e)),
-                }
-            },
-        );
-
-        // RemoveImage(s name)
-        b.method(
-            "RemoveImage",
-            ("name",),
-            (),
-            move |_, reg: &mut SharedRegistry, (name,): (String,)| {
-                let mut registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                // Detach if attached
-                let _ = registry.detach_image(&name);
-                registry.remove_attachment_file(&name);
-                // We don't actually delete the image files — just detach
-                Ok(())
-            },
-        );
-
-        // GetImageOSRelease(s image) → a{ss}
-        b.method(
-            "GetImageOSRelease",
-            ("image",),
-            ("os_release",),
-            move |_, reg: &mut SharedRegistry, (image,): (String,)| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                match registry.get_image(&image) {
-                    Some(img) => {
-                        let fields: Vec<(String, String)> =
-                            PortableImage::read_os_release(&img.path)
-                                .into_iter()
-                                .collect();
-                        Ok((fields,))
-                    }
-                    None => Err(MethodErr::failed(&format!("No image '{}' known", image))),
-                }
-            },
-        );
-
-        // GetImageMetadata(s image, as matches) → sa{say}
-        // Returns the os-release as string and unit file contents as map
-        b.method(
-            "GetImageMetadata",
-            ("image", "matches"),
-            ("os_release", "units"),
-            move |_, reg: &mut SharedRegistry, (image, _matches): (String, Vec<String>)| {
-                let registry = reg.lock().unwrap_or_else(|e| e.into_inner());
-                match registry.get_image(&image) {
-                    Some(img) => {
-                        // os-release as string
-                        let os_release_fields = PortableImage::read_os_release(&img.path);
-                        let mut os_release = String::new();
-                        for (k, v) in &os_release_fields {
-                            os_release.push_str(&format!("{}={}\n", k, v));
-                        }
-
-                        // Unit file contents
-                        let units_discovered = PortableImage::discover_units(&img.path);
-                        let mut unit_map: Vec<(String, Vec<u8>)> = Vec::new();
-                        for unit_name in &units_discovered {
-                            if let Some(path) = PortableImage::find_unit_path(&img.path, unit_name)
-                                && let Ok(content) = fs::read(&path)
-                            {
-                                unit_map.push((unit_name.clone(), content));
-                            }
-                        }
-
-                        Ok((os_release, unit_map))
-                    }
-                    None => Err(MethodErr::failed(&format!("No image '{}' known", image))),
-                }
-            },
-        );
-    })
+                Ok((os_release, unit_map))
+            }
+            None => Err(zbus::fdo::Error::Failed(format!(
+                "No image '{}' known",
+                image
+            ))),
+        }
+    }
 }
 
 /// Convert an image name to a D-Bus object path.
@@ -1252,16 +1227,21 @@ fn image_object_path(name: &str) -> String {
 }
 
 /// Set up the D-Bus connection and register the portable1 interface.
-fn setup_dbus(shared: SharedRegistry) -> Result<(Connection, Crossroads), String> {
-    let conn = Connection::new_system().map_err(|e| format!("D-Bus connection failed: {}", e))?;
-    conn.request_name(DBUS_NAME, false, true, false)
-        .map_err(|e| format!("D-Bus name request failed: {}", e))?;
-
-    let mut cr = Crossroads::new();
-    let iface_token = register_portable1_iface(&mut cr);
-    cr.insert(DBUS_PATH, &[iface_token], shared);
-
-    Ok((conn, cr))
+///
+/// Uses zbus's blocking connection which dispatches messages automatically
+/// in a background thread. The returned `Connection` must be kept alive
+/// for as long as we want to serve D-Bus requests.
+fn setup_dbus(shared: SharedRegistry) -> Result<Connection, String> {
+    let iface = Portable1Manager { registry: shared };
+    let conn = zbus::blocking::connection::Builder::system()
+        .map_err(|e| format!("D-Bus builder failed: {}", e))?
+        .name(DBUS_NAME)
+        .map_err(|e| format!("D-Bus name request failed: {}", e))?
+        .serve_at(DBUS_PATH, iface)
+        .map_err(|e| format!("D-Bus serve_at failed: {}", e))?
+        .build()
+        .map_err(|e| format!("D-Bus connection failed: {}", e))?;
+    Ok(conn)
 }
 
 fn format_bytes(bytes: u64) -> String {
@@ -1573,9 +1553,9 @@ fn main() {
     let mut last_watchdog = Instant::now();
 
     // D-Bus connection is deferred to after READY=1 so we don't block early
-    // boot waiting for dbus-daemon. These are populated in the main loop.
-    let mut dbus_conn: Option<Connection> = None;
-    let mut dbus_cr: Option<Crossroads> = None;
+    // boot waiting for dbus-daemon.  zbus dispatches messages automatically
+    // in a background thread — we just keep the connection alive.
+    let mut _dbus_conn: Option<Connection> = None;
     let mut dbus_attempted = false;
 
     // Ensure parent directory exists
@@ -1650,10 +1630,9 @@ fn main() {
         if !dbus_attempted {
             dbus_attempted = true;
             match setup_dbus(shared_registry.clone()) {
-                Ok((conn, cr)) => {
+                Ok(conn) => {
                     log::info!("D-Bus interface registered: {} at {}", DBUS_NAME, DBUS_PATH);
-                    dbus_conn = Some(conn);
-                    dbus_cr = Some(cr);
+                    _dbus_conn = Some(conn);
                     let reg = shared_registry.lock().unwrap_or_else(|e| e.into_inner());
                     sd_notify(&format!(
                         "STATUS=Managing {} images ({} attached, D-Bus active)",
@@ -1670,13 +1649,7 @@ fn main() {
             }
         }
 
-        // Process D-Bus messages (non-blocking, short timeout)
-        if let (Some(conn), Some(cr)) = (&dbus_conn, &mut dbus_cr) {
-            let _ = conn.channel().read_write(Some(Duration::from_millis(0)));
-            while let Some(msg) = conn.channel().pop_message() {
-                let _ = cr.handle_message(msg, conn);
-            }
-        }
+        // zbus dispatches D-Bus messages automatically in a background thread.
 
         // Periodic GC of stale attachments
         if last_gc.elapsed() >= gc_interval {
@@ -1738,9 +1711,10 @@ mod tests {
     // ── D-Bus registration tests ──────────────────────────────────────────
 
     #[test]
-    fn test_dbus_register_portable1_iface() {
-        let mut cr = Crossroads::new();
-        let _token = register_portable1_iface(&mut cr);
+    fn test_dbus_portable1_manager_struct() {
+        let shared: SharedRegistry = Arc::new(Mutex::new(ImageRegistry::new()));
+        let _mgr = Portable1Manager { registry: shared };
+        // Struct creation succeeded without panic
     }
 
     #[test]
