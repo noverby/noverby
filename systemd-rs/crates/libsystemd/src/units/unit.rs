@@ -42,6 +42,7 @@ pub enum Specific {
     Mount(MountSpecific),
     Timer(TimerSpecific),
     Path(PathSpecific),
+    Device(DeviceSpecific),
 }
 
 pub struct ServiceSpecific {
@@ -465,6 +466,23 @@ pub struct PathSpecific {
     pub state: RwLock<PathState>,
 }
 
+pub struct DeviceSpecific {
+    pub conf: DeviceConfig,
+    pub state: RwLock<DeviceState>,
+}
+
+/// Configuration for a `.device` unit. Device units are dynamically created
+/// from udev events and represent kernel devices. They have no `[Device]`
+/// section directives of their own — they only use `[Unit]` and `[Install]`.
+///
+/// The `SysFSPath` property exposes the sysfs path, and device units can
+/// carry `SYSTEMD_WANTS=`, `SYSTEMD_ALIAS=`, and `SYSTEMD_READY=` udev
+/// properties for integration with the service manager.
+pub struct DeviceConfig {
+    /// The sysfs path of the device (e.g. `/sys/devices/pci0000:00/...`).
+    pub sysfs_path: Option<String>,
+}
+
 #[derive(Default)]
 /// All units have some common mutable state
 pub struct CommonState {
@@ -496,6 +514,10 @@ pub struct TimerState {
 }
 
 pub struct PathState {
+    pub common: CommonState,
+}
+
+pub struct DeviceState {
     pub common: CommonState,
 }
 
@@ -643,6 +665,7 @@ enum LockedState<'a> {
     Mount(std::sync::RwLockWriteGuard<'a, MountState>, &'a MountConfig),
     Timer(std::sync::RwLockWriteGuard<'a, TimerState>, &'a TimerConfig),
     Path(std::sync::RwLockWriteGuard<'a, PathState>, &'a PathConfig),
+    Device(std::sync::RwLockWriteGuard<'a, DeviceState>),
 }
 
 impl Unit {
@@ -829,6 +852,7 @@ impl Unit {
             Specific::Path(specific) => {
                 LockedState::Path(specific.state.write_poisoned(), &specific.conf)
             }
+            Specific::Device(specific) => LockedState::Device(specific.state.write_poisoned()),
         };
 
         {
@@ -880,7 +904,7 @@ impl Unit {
         })?;
 
         match state {
-            LockedState::Target(_) | LockedState::Slice(_) => {
+            LockedState::Target(_) | LockedState::Slice(_) | LockedState::Device(_) => {
                 {
                     let mut status = self.common.status.write_poisoned();
                     if status.is_started() {
@@ -968,6 +992,7 @@ impl Unit {
             Specific::Path(specific) => {
                 LockedState::Path(specific.state.write_poisoned(), &specific.conf)
             }
+            Specific::Device(specific) => LockedState::Device(specific.state.write_poisoned()),
         };
 
         {
@@ -993,7 +1018,7 @@ impl Unit {
 
         trace!("Deactivate unit: {}", self.id.name);
         match state {
-            LockedState::Target(_) | LockedState::Slice(_) => {
+            LockedState::Target(_) | LockedState::Slice(_) | LockedState::Device(_) => {
                 let mut status = self.common.status.write_poisoned();
                 *status = UnitStatus::Stopped(StatusStopped::StoppedFinal, vec![]);
                 Ok(())
@@ -1044,6 +1069,7 @@ impl Unit {
             Specific::Path(specific) => {
                 LockedState::Path(specific.state.write_poisoned(), &specific.conf)
             }
+            Specific::Device(specific) => LockedState::Device(specific.state.write_poisoned()),
         };
 
         let need_full_restart = self.state_transition_restarting(run_info).map_err(|bad_ids| {
@@ -1061,7 +1087,7 @@ impl Unit {
 
         if need_full_restart {
             match state {
-                LockedState::Target(_) | LockedState::Slice(_) => {
+                LockedState::Target(_) | LockedState::Slice(_) | LockedState::Device(_) => {
                     let mut status = self.common.status.write_poisoned();
                     *status = UnitStatus::Started(StatusStarted::Running);
                     Ok(())
@@ -1086,7 +1112,7 @@ impl Unit {
             }
         } else {
             match state {
-                LockedState::Target(_) | LockedState::Slice(_) => {
+                LockedState::Target(_) | LockedState::Slice(_) | LockedState::Device(_) => {
                     let mut status = self.common.status.write_poisoned();
                     *status = UnitStatus::Started(StatusStarted::Running);
                     Ok(())
