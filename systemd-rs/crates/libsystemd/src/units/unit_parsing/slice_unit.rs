@@ -1705,4 +1705,123 @@ DelegateSubgroup=worker
         assert_eq!(config.slice.disable_controllers, vec!["io"]);
         assert_eq!(config.slice.delegate_subgroup, Some("worker".to_owned()));
     }
+
+    /// End-to-end test: parse → ParsedSliceSection → SliceConfig conversion
+    /// preserves all 19 new resource-control fields.
+    #[test]
+    fn test_new_fields_survive_slice_config_conversion() {
+        let content = "\
+[Slice]
+CPUQuotaPeriodSec=50ms
+AllowedCPUs=0-3
+StartupAllowedCPUs=0-1
+AllowedMemoryNodes=0
+StartupAllowedMemoryNodes=0-1
+DefaultMemoryMin=64M
+DefaultMemoryLow=128M
+MemoryZSwapMax=512M
+IODeviceLatencyTargetSec=/dev/sda 25ms
+DisableControllers=hugetlb
+MemoryPressureThresholdSec=2s
+IPIngressFilterPath=/sys/fs/bpf/ingress
+IPEgressFilterPath=/sys/fs/bpf/egress
+BPFProgram=egress:/sys/fs/bpf/prog
+SocketBindAllow=tcp:80
+SocketBindDeny=any
+RestrictNetworkInterfaces=eth0
+NFTSet=inet:filter:addrs
+DelegateSubgroup=supervisor
+";
+        let parsed = parse_slice_from_str(content).unwrap();
+        // Convert ParsedSliceConfig → Unit → SliceConfig
+        let unit: crate::units::Unit = parsed.try_into().unwrap();
+        let slice_conf = match &unit.specific {
+            crate::units::Specific::Slice(s) => &s.conf,
+            _ => panic!("expected Slice variant"),
+        };
+
+        // Verify all 19 new fields survived the conversion
+        assert!(
+            slice_conf.cpu_quota_period_sec.is_some(),
+            "CPUQuotaPeriodSec lost in conversion"
+        );
+        assert_eq!(slice_conf.allowed_cpus, Some("0-3".to_owned()));
+        assert_eq!(slice_conf.startup_allowed_cpus, Some("0-1".to_owned()));
+        assert_eq!(slice_conf.allowed_memory_nodes, Some("0".to_owned()));
+        assert_eq!(
+            slice_conf.startup_allowed_memory_nodes,
+            Some("0-1".to_owned())
+        );
+        assert!(
+            slice_conf.default_memory_min.is_some(),
+            "DefaultMemoryMin lost in conversion"
+        );
+        assert!(
+            slice_conf.default_memory_low.is_some(),
+            "DefaultMemoryLow lost in conversion"
+        );
+        assert!(
+            slice_conf.memory_zswap_max.is_some(),
+            "MemoryZSwapMax lost in conversion"
+        );
+        assert_eq!(
+            slice_conf.io_device_latency_target_sec,
+            vec!["/dev/sda 25ms"]
+        );
+        assert_eq!(slice_conf.disable_controllers, vec!["hugetlb"]);
+        assert!(
+            slice_conf.memory_pressure_threshold_sec.is_some(),
+            "MemoryPressureThresholdSec lost in conversion"
+        );
+        assert_eq!(
+            slice_conf.ip_ingress_filter_path,
+            vec!["/sys/fs/bpf/ingress"]
+        );
+        assert_eq!(slice_conf.ip_egress_filter_path, vec!["/sys/fs/bpf/egress"]);
+        assert_eq!(slice_conf.bpf_program, vec!["egress:/sys/fs/bpf/prog"]);
+        assert_eq!(slice_conf.socket_bind_allow, vec!["tcp:80"]);
+        assert_eq!(slice_conf.socket_bind_deny, vec!["any"]);
+        assert_eq!(slice_conf.restrict_network_interfaces, vec!["eth0"]);
+        assert_eq!(slice_conf.nft_set, vec!["inet:filter:addrs"]);
+        assert_eq!(slice_conf.delegate_subgroup, Some("supervisor".to_owned()));
+    }
+
+    /// Verify that systemctl show properties are populated from a parsed slice.
+    #[test]
+    fn test_slice_config_properties_from_parsed() {
+        let content = "\
+[Slice]
+MemoryMax=4G
+CPUWeight=500
+CPUQuota=150%
+IOWeight=200
+TasksMax=1024
+Delegate=yes
+CPUAccounting=yes
+AllowedCPUs=0-7
+DelegateSubgroup=app
+ManagedOOMSwap=kill
+MemoryPressureWatch=on
+DisableControllers=hugetlb
+SocketBindAllow=tcp:8080
+";
+        let parsed = parse_slice_from_str(content).unwrap();
+        let unit: crate::units::Unit = parsed.try_into().unwrap();
+
+        let props = crate::control::unit_properties::collect_properties(&unit);
+
+        assert_eq!(props.get("MemoryMax").unwrap(), "4294967296");
+        assert_eq!(props.get("CPUWeight").unwrap(), "500");
+        assert_eq!(props.get("CPUQuota").unwrap(), "150%");
+        assert_eq!(props.get("IOWeight").unwrap(), "200");
+        assert_eq!(props.get("TasksMax").unwrap(), "1024");
+        assert_eq!(props.get("Delegate").unwrap(), "yes");
+        assert_eq!(props.get("CPUAccounting").unwrap(), "yes");
+        assert_eq!(props.get("AllowedCPUs").unwrap(), "0-7");
+        assert_eq!(props.get("DelegateSubgroup").unwrap(), "app");
+        assert_eq!(props.get("ManagedOOMSwap").unwrap(), "kill");
+        assert_eq!(props.get("MemoryPressureWatch").unwrap(), "on");
+        assert_eq!(props.get("DisableControllers").unwrap(), "hugetlb");
+        assert_eq!(props.get("SocketBindAllow").unwrap(), "tcp:8080");
+    }
 }
