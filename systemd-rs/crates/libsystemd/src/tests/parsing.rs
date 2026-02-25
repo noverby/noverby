@@ -48256,3 +48256,2078 @@ fn test_new_socket_directives_with_existing_settings() {
     assert!(socket.sock.no_delay);
     assert!(socket.sock.keep_alive);
 }
+
+#[test]
+fn test_condition_environment_var_exists() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionEnvironment = HOME
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Environment { expression, negate } => {
+            assert_eq!(expression, "HOME");
+            assert!(!negate);
+        }
+        other => panic!("Expected Environment condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_environment_var_equals_value() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionEnvironment = LANG=en_US.UTF-8
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Environment { expression, negate } => {
+            assert_eq!(expression, "LANG=en_US.UTF-8");
+            assert!(!negate);
+        }
+        other => panic!("Expected Environment condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_environment_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionEnvironment = !DISPLAY
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Environment { expression, negate } => {
+            assert_eq!(expression, "DISPLAY");
+            assert!(*negate);
+        }
+        other => panic!("Expected Environment condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_firmware_uefi() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirmware = uefi
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Firmware { value, negate } => {
+            assert_eq!(value, "uefi");
+            assert!(!negate);
+        }
+        other => panic!("Expected Firmware condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_firmware_device_tree() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirmware = device-tree
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Firmware { value, negate } => {
+            assert_eq!(value, "device-tree");
+            assert!(!negate);
+        }
+        other => panic!("Expected Firmware condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_firmware_device_tree_compatible() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirmware = device-tree-compatible(raspberrypi,4-model-b)
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Firmware { value, negate } => {
+            assert_eq!(value, "device-tree-compatible(raspberrypi,4-model-b)");
+            assert!(!negate);
+        }
+        other => panic!("Expected Firmware condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_firmware_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionFirmware = !uefi
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Firmware { value, negate } => {
+            assert_eq!(value, "uefi");
+            assert!(*negate);
+        }
+        other => panic!("Expected Firmware condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_host_hostname() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionHost = myhost
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Host { value, negate } => {
+            assert_eq!(value, "myhost");
+            assert!(!negate);
+        }
+        other => panic!("Expected Host condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_host_machine_id() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionHost = 0123456789abcdef0123456789abcdef
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Host { value, negate } => {
+            assert_eq!(value, "0123456789abcdef0123456789abcdef");
+            assert!(!negate);
+        }
+        other => panic!("Expected Host condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_host_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionHost = !badhost
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Host { value, negate } => {
+            assert_eq!(value, "badhost");
+            assert!(*negate);
+        }
+        other => panic!("Expected Host condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_memory_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionMemory = 512M
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Memory { value, negate } => {
+            assert_eq!(value, "512M");
+            assert!(!negate);
+        }
+        other => panic!("Expected Memory condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_memory_with_g_suffix() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionMemory = 1G
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Memory { value, negate } => {
+            assert_eq!(value, "1G");
+            assert!(!negate);
+        }
+        other => panic!("Expected Memory condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_memory_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionMemory = !256M
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Memory { value, negate } => {
+            assert_eq!(value, "256M");
+            assert!(*negate);
+        }
+        other => panic!("Expected Memory condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_cpu_feature_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionCPUFeature = sse4_2
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::CPUFeature { feature, negate } => {
+            assert_eq!(feature, "sse4_2");
+            assert!(!negate);
+        }
+        other => panic!("Expected CPUFeature condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_cpu_feature_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionCPUFeature = !avx2
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::CPUFeature { feature, negate } => {
+            assert_eq!(feature, "avx2");
+            assert!(*negate);
+        }
+        other => panic!("Expected CPUFeature condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_cpus_plain_number() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionCPUs = 4
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::CPUs { expression, negate } => {
+            assert_eq!(expression, "4");
+            assert!(!negate);
+        }
+        other => panic!("Expected CPUs condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_cpus_comparison_operator() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionCPUs = >=2
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::CPUs { expression, negate } => {
+            assert_eq!(expression, ">=2");
+            assert!(!negate);
+        }
+        other => panic!("Expected CPUs condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_cpus_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionCPUs = !1
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::CPUs { expression, negate } => {
+            assert_eq!(expression, "1");
+            assert!(*negate);
+        }
+        other => panic!("Expected CPUs condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_os_release_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionOSRelease = ID=fedora
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::OSRelease { expression, negate } => {
+            assert_eq!(expression, "ID=fedora");
+            assert!(!negate);
+        }
+        other => panic!("Expected OSRelease condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_os_release_version_comparison() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionOSRelease = VERSION_ID>=38
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::OSRelease { expression, negate } => {
+            assert_eq!(expression, "VERSION_ID>=38");
+            assert!(!negate);
+        }
+        other => panic!("Expected OSRelease condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_os_release_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionOSRelease = !ID=ubuntu
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::OSRelease { expression, negate } => {
+            assert_eq!(expression, "ID=ubuntu");
+            assert!(*negate);
+        }
+        other => panic!("Expected OSRelease condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_encrypted_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsEncrypted = /home
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsEncrypted { path, negate } => {
+            assert_eq!(path, "/home");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathIsEncrypted condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_encrypted_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsEncrypted = !/tmp
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsEncrypted { path, negate } => {
+            assert_eq!(path, "/tmp");
+            assert!(*negate);
+        }
+        other => panic!("Expected PathIsEncrypted condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_symbolic_link_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsSymbolicLink = /etc/mtab
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsSymbolicLink { path, negate } => {
+            assert_eq!(path, "/etc/mtab");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathIsSymbolicLink condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_path_is_symbolic_link_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathIsSymbolicLink = !/etc/hostname
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::PathIsSymbolicLink { path, negate } => {
+            assert_eq!(path, "/etc/hostname");
+            assert!(*negate);
+        }
+        other => panic!("Expected PathIsSymbolicLink condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_user_root() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionUser = root
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::User { value, negate } => {
+            assert_eq!(value, "root");
+            assert!(!negate);
+        }
+        other => panic!("Expected User condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_user_numeric_uid() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionUser = 0
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::User { value, negate } => {
+            assert_eq!(value, "0");
+            assert!(!negate);
+        }
+        other => panic!("Expected User condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_user_at_system() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionUser = @system
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::User { value, negate } => {
+            assert_eq!(value, "@system");
+            assert!(!negate);
+        }
+        other => panic!("Expected User condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_user_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionUser = !nobody
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::User { value, negate } => {
+            assert_eq!(value, "nobody");
+            assert!(*negate);
+        }
+        other => panic!("Expected User condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_group_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionGroup = wheel
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Group { value, negate } => {
+            assert_eq!(value, "wheel");
+            assert!(!negate);
+        }
+        other => panic!("Expected Group condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_group_numeric_gid() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionGroup = 0
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Group { value, negate } => {
+            assert_eq!(value, "0");
+            assert!(!negate);
+        }
+        other => panic!("Expected Group condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_group_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionGroup = !nogroup
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Group { value, negate } => {
+            assert_eq!(value, "nogroup");
+            assert!(*negate);
+        }
+        other => panic!("Expected Group condition, got {:?}", other),
+    }
+}
+
+// ===== Assert* variants for new condition types =====
+
+#[test]
+fn test_assert_ac_power_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    AssertACPower = yes
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.assertions.len(), 1);
+    match &service.common.unit.assertions[0] {
+        crate::units::UnitCondition::ACPower { value, negate } => {
+            assert!(*value);
+            assert!(!negate);
+        }
+        other => panic!("Expected ACPower assertion, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_assert_architecture_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    AssertArchitecture = x86-64
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.assertions.len(), 1);
+    match &service.common.unit.assertions[0] {
+        crate::units::UnitCondition::Architecture { arch, negate } => {
+            assert_eq!(arch, "x86-64");
+            assert!(!negate);
+        }
+        other => panic!("Expected Architecture assertion, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_assert_environment_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    AssertEnvironment = HOME
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.assertions.len(), 1);
+    match &service.common.unit.assertions[0] {
+        crate::units::UnitCondition::Environment { expression, negate } => {
+            assert_eq!(expression, "HOME");
+            assert!(!negate);
+        }
+        other => panic!("Expected Environment assertion, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_assert_firmware_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    AssertFirmware = uefi
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.assertions.len(), 1);
+    match &service.common.unit.assertions[0] {
+        crate::units::UnitCondition::Firmware { value, negate } => {
+            assert_eq!(value, "uefi");
+            assert!(!negate);
+        }
+        other => panic!("Expected Firmware assertion, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_assert_host_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    AssertHost = myhost
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.assertions.len(), 1);
+    match &service.common.unit.assertions[0] {
+        crate::units::UnitCondition::Host { value, negate } => {
+            assert_eq!(value, "myhost");
+            assert!(!negate);
+        }
+        other => panic!("Expected Host assertion, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_assert_memory_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    AssertMemory = 1G
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.assertions.len(), 1);
+    match &service.common.unit.assertions[0] {
+        crate::units::UnitCondition::Memory { value, negate } => {
+            assert_eq!(value, "1G");
+            assert!(!negate);
+        }
+        other => panic!("Expected Memory assertion, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_assert_cpu_feature_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    AssertCPUFeature = sse4_2
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.assertions.len(), 1);
+    match &service.common.unit.assertions[0] {
+        crate::units::UnitCondition::CPUFeature { feature, negate } => {
+            assert_eq!(feature, "sse4_2");
+            assert!(!negate);
+        }
+        other => panic!("Expected CPUFeature assertion, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_assert_cpus_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    AssertCPUs = >=2
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.assertions.len(), 1);
+    match &service.common.unit.assertions[0] {
+        crate::units::UnitCondition::CPUs { expression, negate } => {
+            assert_eq!(expression, ">=2");
+            assert!(!negate);
+        }
+        other => panic!("Expected CPUs assertion, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_assert_os_release_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    AssertOSRelease = ID=nixos
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.assertions.len(), 1);
+    match &service.common.unit.assertions[0] {
+        crate::units::UnitCondition::OSRelease { expression, negate } => {
+            assert_eq!(expression, "ID=nixos");
+            assert!(!negate);
+        }
+        other => panic!("Expected OSRelease assertion, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_assert_path_is_encrypted_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    AssertPathIsEncrypted = /home
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.assertions.len(), 1);
+    match &service.common.unit.assertions[0] {
+        crate::units::UnitCondition::PathIsEncrypted { path, negate } => {
+            assert_eq!(path, "/home");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathIsEncrypted assertion, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_assert_path_is_symbolic_link_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    AssertPathIsSymbolicLink = /etc/mtab
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.assertions.len(), 1);
+    match &service.common.unit.assertions[0] {
+        crate::units::UnitCondition::PathIsSymbolicLink { path, negate } => {
+            assert_eq!(path, "/etc/mtab");
+            assert!(!negate);
+        }
+        other => panic!("Expected PathIsSymbolicLink assertion, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_assert_user_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    AssertUser = root
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.assertions.len(), 1);
+    match &service.common.unit.assertions[0] {
+        crate::units::UnitCondition::User { value, negate } => {
+            assert_eq!(value, "root");
+            assert!(!negate);
+        }
+        other => panic!("Expected User assertion, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_assert_group_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    AssertGroup = wheel
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.assertions.len(), 1);
+    match &service.common.unit.assertions[0] {
+        crate::units::UnitCondition::Group { value, negate } => {
+            assert_eq!(value, "wheel");
+            assert!(!negate);
+        }
+        other => panic!("Expected Group assertion, got {:?}", other),
+    }
+}
+
+// ===== Mixed new condition types =====
+
+#[test]
+fn test_multiple_new_condition_types_combined() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionArchitecture = x86-64
+    ConditionACPower = yes
+    ConditionMemory = 512M
+    ConditionUser = root
+    ConditionHost = myhost
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 5);
+    assert!(
+        service
+            .common
+            .unit
+            .conditions
+            .iter()
+            .any(|c| matches!(c, crate::units::UnitCondition::Architecture { .. }))
+    );
+    assert!(
+        service
+            .common
+            .unit
+            .conditions
+            .iter()
+            .any(|c| matches!(c, crate::units::UnitCondition::ACPower { .. }))
+    );
+    assert!(
+        service
+            .common
+            .unit
+            .conditions
+            .iter()
+            .any(|c| matches!(c, crate::units::UnitCondition::Memory { .. }))
+    );
+    assert!(
+        service
+            .common
+            .unit
+            .conditions
+            .iter()
+            .any(|c| matches!(c, crate::units::UnitCondition::User { .. }))
+    );
+    assert!(
+        service
+            .common
+            .unit
+            .conditions
+            .iter()
+            .any(|c| matches!(c, crate::units::UnitCondition::Host { .. }))
+    );
+}
+
+#[test]
+fn test_new_conditions_with_old_conditions() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionPathExists = /etc/myconfig
+    ConditionArchitecture = x86-64
+    ConditionVirtualization = !container
+    ConditionUser = root
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 4);
+    assert!(
+        service
+            .common
+            .unit
+            .conditions
+            .iter()
+            .any(|c| matches!(c, crate::units::UnitCondition::PathExists { .. }))
+    );
+    assert!(
+        service
+            .common
+            .unit
+            .conditions
+            .iter()
+            .any(|c| matches!(c, crate::units::UnitCondition::Architecture { .. }))
+    );
+    assert!(
+        service
+            .common
+            .unit
+            .conditions
+            .iter()
+            .any(|c| matches!(c, crate::units::UnitCondition::Virtualization { .. }))
+    );
+    assert!(
+        service
+            .common
+            .unit
+            .conditions
+            .iter()
+            .any(|c| matches!(c, crate::units::UnitCondition::User { .. }))
+    );
+}
+
+#[test]
+fn test_new_conditions_in_target_unit() {
+    let test_target_str = r#"
+    [Unit]
+    ConditionArchitecture = x86-64
+    ConditionACPower = yes
+    "#;
+    let parsed_file = crate::units::parse_file(test_target_str).unwrap();
+    let target =
+        crate::units::parse_target(parsed_file, &std::path::PathBuf::from("test.target")).unwrap();
+    assert_eq!(target.common.unit.conditions.len(), 2);
+}
+
+#[test]
+fn test_new_conditions_in_socket_unit() {
+    let test_socket_str = r#"
+    [Unit]
+    ConditionUser = root
+    ConditionGroup = wheel
+    [Socket]
+    ListenStream = /run/test.sock
+    "#;
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket =
+        crate::units::parse_socket(parsed_file, &std::path::PathBuf::from("test.socket")).unwrap();
+    assert_eq!(socket.common.unit.conditions.len(), 2);
+}
+
+// ===== Tests for new unit-level directives =====
+
+#[test]
+fn test_requisite_defaults_to_empty() {
+    let test_service_str = r#"
+    [Unit]
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert!(service.common.unit.requisite.is_empty());
+}
+
+#[test]
+fn test_requisite_single_unit() {
+    let test_service_str = r#"
+    [Unit]
+    Requisite = network.target
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.requisite, vec!["network.target"]);
+}
+
+#[test]
+fn test_requisite_multiple_units() {
+    let test_service_str = r#"
+    [Unit]
+    Requisite = network.target dbus.service
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.requisite,
+        vec!["network.target", "dbus.service"]
+    );
+}
+
+#[test]
+fn test_requisite_also_added_to_requires() {
+    let test_service_str = r#"
+    [Unit]
+    Requisite = network.target
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert!(
+        service
+            .common
+            .unit
+            .requires
+            .contains(&"network.target".to_string())
+    );
+}
+
+#[test]
+fn test_upholds_defaults_to_empty() {
+    let test_service_str = r#"
+    [Unit]
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert!(service.common.unit.upholds.is_empty());
+}
+
+#[test]
+fn test_upholds_single_unit() {
+    let test_service_str = r#"
+    [Unit]
+    Upholds = my-helper.service
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.upholds, vec!["my-helper.service"]);
+}
+
+#[test]
+fn test_upholds_multiple_units() {
+    let test_service_str = r#"
+    [Unit]
+    Upholds = helper1.service helper2.service
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.upholds,
+        vec!["helper1.service", "helper2.service"]
+    );
+}
+
+#[test]
+fn test_on_success_defaults_to_empty() {
+    let test_service_str = r#"
+    [Unit]
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert!(service.common.unit.on_success.is_empty());
+}
+
+#[test]
+fn test_on_success_single_unit() {
+    let test_service_str = r#"
+    [Unit]
+    OnSuccess = success-notify.service
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.on_success,
+        vec!["success-notify.service"]
+    );
+}
+
+#[test]
+fn test_on_success_multiple_units() {
+    let test_service_str = r#"
+    [Unit]
+    OnSuccess = notify1.service notify2.service
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.on_success,
+        vec!["notify1.service", "notify2.service"]
+    );
+}
+
+#[test]
+fn test_on_success_job_mode_defaults_to_replace() {
+    let test_service_str = r#"
+    [Unit]
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.on_success_job_mode,
+        crate::units::OnFailureJobMode::Replace
+    );
+}
+
+#[test]
+fn test_on_success_job_mode_fail() {
+    let test_service_str = r#"
+    [Unit]
+    OnSuccessJobMode = fail
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.on_success_job_mode,
+        crate::units::OnFailureJobMode::Fail
+    );
+}
+
+#[test]
+fn test_propagates_reload_to_defaults_to_empty() {
+    let test_service_str = r#"
+    [Unit]
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert!(service.common.unit.propagates_reload_to.is_empty());
+}
+
+#[test]
+fn test_propagates_reload_to_single_unit() {
+    let test_service_str = r#"
+    [Unit]
+    PropagatesReloadTo = my-worker.service
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.propagates_reload_to,
+        vec!["my-worker.service"]
+    );
+}
+
+#[test]
+fn test_propagates_reload_to_multiple_units() {
+    let test_service_str = r#"
+    [Unit]
+    PropagatesReloadTo = worker1.service worker2.service
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.propagates_reload_to,
+        vec!["worker1.service", "worker2.service"]
+    );
+}
+
+#[test]
+fn test_reload_propagated_from_single_unit() {
+    let test_service_str = r#"
+    [Unit]
+    ReloadPropagatedFrom = parent.service
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.reload_propagated_from,
+        vec!["parent.service"]
+    );
+}
+
+#[test]
+fn test_joins_namespace_of_defaults_to_empty() {
+    let test_service_str = r#"
+    [Unit]
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert!(service.common.unit.joins_namespace_of.is_empty());
+}
+
+#[test]
+fn test_joins_namespace_of_single_unit() {
+    let test_service_str = r#"
+    [Unit]
+    JoinsNamespaceOf = other.service
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.joins_namespace_of,
+        vec!["other.service"]
+    );
+}
+
+#[test]
+fn test_success_action_exit_status_defaults_to_none() {
+    let test_service_str = r#"
+    [Unit]
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert!(service.common.unit.success_action_exit_status.is_none());
+}
+
+#[test]
+fn test_success_action_exit_status_value() {
+    let test_service_str = r#"
+    [Unit]
+    SuccessActionExitStatus = 42
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.success_action_exit_status, Some(42));
+}
+
+#[test]
+fn test_failure_action_exit_status_defaults_to_none() {
+    let test_service_str = r#"
+    [Unit]
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert!(service.common.unit.failure_action_exit_status.is_none());
+}
+
+#[test]
+fn test_failure_action_exit_status_value() {
+    let test_service_str = r#"
+    [Unit]
+    FailureActionExitStatus = 1
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.failure_action_exit_status, Some(1));
+}
+
+#[test]
+fn test_job_running_timeout_sec_defaults_to_none() {
+    let test_service_str = r#"
+    [Unit]
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert!(service.common.unit.job_running_timeout_sec.is_none());
+}
+
+#[test]
+fn test_job_running_timeout_sec_value() {
+    let test_service_str = r#"
+    [Unit]
+    JobRunningTimeoutSec = 30
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert!(service.common.unit.job_running_timeout_sec.is_some());
+}
+
+#[test]
+fn test_job_timeout_reboot_argument_defaults_to_none() {
+    let test_service_str = r#"
+    [Unit]
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert!(service.common.unit.job_timeout_reboot_argument.is_none());
+}
+
+#[test]
+fn test_job_timeout_reboot_argument_value() {
+    let test_service_str = r#"
+    [Unit]
+    JobTimeoutRebootArgument = recovery
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.job_timeout_reboot_argument,
+        Some("recovery".to_string())
+    );
+}
+
+#[test]
+fn test_collect_mode_defaults_to_inactive() {
+    let test_service_str = r#"
+    [Unit]
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.collect_mode,
+        crate::units::CollectMode::Inactive
+    );
+}
+
+#[test]
+fn test_collect_mode_inactive() {
+    let test_service_str = r#"
+    [Unit]
+    CollectMode = inactive
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.collect_mode,
+        crate::units::CollectMode::Inactive
+    );
+}
+
+#[test]
+fn test_collect_mode_inactive_or_failed() {
+    let test_service_str = r#"
+    [Unit]
+    CollectMode = inactive-or-failed
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.collect_mode,
+        crate::units::CollectMode::InactiveOrFailed
+    );
+}
+
+#[test]
+fn test_source_path_defaults_to_none() {
+    let test_service_str = r#"
+    [Unit]
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert!(service.common.unit.source_path.is_none());
+}
+
+#[test]
+fn test_source_path_value() {
+    let test_service_str = r#"
+    [Unit]
+    SourcePath = /etc/systemd/system/my.service.d/override.conf
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.source_path,
+        Some("/etc/systemd/system/my.service.d/override.conf".to_string())
+    );
+}
+
+#[test]
+fn test_reboot_argument_defaults_to_none() {
+    let test_service_str = r#"
+    [Unit]
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert!(service.common.unit.reboot_argument.is_none());
+}
+
+#[test]
+fn test_reboot_argument_value() {
+    let test_service_str = r#"
+    [Unit]
+    RebootArgument = firmware-setup
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(
+        service.common.unit.reboot_argument,
+        Some("firmware-setup".to_string())
+    );
+}
+
+// ===== Combined tests for new directives =====
+
+#[test]
+fn test_all_new_unit_directives_combined() {
+    let test_service_str = r#"
+    [Unit]
+    Requisite = base.target
+    Upholds = helper.service
+    OnSuccess = notify.service
+    OnSuccessJobMode = fail
+    PropagatesReloadTo = worker.service
+    ReloadPropagatedFrom = parent.service
+    JoinsNamespaceOf = sibling.service
+    SuccessActionExitStatus = 0
+    FailureActionExitStatus = 1
+    JobRunningTimeoutSec = 60
+    JobTimeoutRebootArgument = recovery
+    CollectMode = inactive-or-failed
+    SourcePath = /etc/generator/output
+    RebootArgument = firmware-setup
+    ConditionArchitecture = x86-64
+    ConditionUser = root
+    ConditionMemory = 1G
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+
+    assert_eq!(service.common.unit.requisite, vec!["base.target"]);
+    assert_eq!(service.common.unit.upholds, vec!["helper.service"]);
+    assert_eq!(service.common.unit.on_success, vec!["notify.service"]);
+    assert_eq!(
+        service.common.unit.on_success_job_mode,
+        crate::units::OnFailureJobMode::Fail
+    );
+    assert_eq!(
+        service.common.unit.propagates_reload_to,
+        vec!["worker.service"]
+    );
+    assert_eq!(
+        service.common.unit.reload_propagated_from,
+        vec!["parent.service"]
+    );
+    assert_eq!(
+        service.common.unit.joins_namespace_of,
+        vec!["sibling.service"]
+    );
+    assert_eq!(service.common.unit.success_action_exit_status, Some(0));
+    assert_eq!(service.common.unit.failure_action_exit_status, Some(1));
+    assert!(service.common.unit.job_running_timeout_sec.is_some());
+    assert_eq!(
+        service.common.unit.job_timeout_reboot_argument,
+        Some("recovery".to_string())
+    );
+    assert_eq!(
+        service.common.unit.collect_mode,
+        crate::units::CollectMode::InactiveOrFailed
+    );
+    assert_eq!(
+        service.common.unit.source_path,
+        Some("/etc/generator/output".to_string())
+    );
+    assert_eq!(
+        service.common.unit.reboot_argument,
+        Some("firmware-setup".to_string())
+    );
+    assert_eq!(service.common.unit.conditions.len(), 3);
+}
+
+#[test]
+fn test_new_unit_directives_no_unsupported_warning() {
+    let test_service_str = r#"
+    [Unit]
+    Requisite = base.target
+    Upholds = helper.service
+    OnSuccess = notify.service
+    OnSuccessJobMode = replace
+    PropagatesReloadTo = worker.service
+    ReloadPropagatedFrom = parent.service
+    JoinsNamespaceOf = sibling.service
+    SuccessActionExitStatus = 0
+    FailureActionExitStatus = 1
+    JobRunningTimeoutSec = 30
+    JobTimeoutRebootArgument = safe
+    CollectMode = inactive
+    SourcePath = /etc/gen/output
+    RebootArgument = reboot-arg
+    ConditionACPower = yes
+    ConditionArchitecture = x86-64
+    ConditionEnvironment = HOME
+    ConditionFirmware = uefi
+    ConditionHost = myhost
+    ConditionMemory = 1G
+    ConditionCPUFeature = sse4_2
+    ConditionCPUs = 4
+    ConditionOSRelease = ID=nixos
+    ConditionPathIsEncrypted = /home
+    ConditionPathIsSymbolicLink = /etc/mtab
+    ConditionUser = root
+    ConditionGroup = wheel
+    AssertACPower = yes
+    AssertArchitecture = x86-64
+    AssertEnvironment = TERM
+    AssertFirmware = uefi
+    AssertHost = myhost
+    AssertMemory = 512M
+    AssertCPUFeature = avx
+    AssertCPUs = 2
+    AssertOSRelease = ID=nixos
+    AssertPathIsEncrypted = /
+    AssertPathIsSymbolicLink = /etc/localtime
+    AssertUser = 0
+    AssertGroup = 0
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 13);
+    assert_eq!(service.common.unit.assertions.len(), 13);
+    assert_eq!(service.common.unit.requisite, vec!["base.target"]);
+    assert_eq!(service.common.unit.upholds, vec!["helper.service"]);
+    assert_eq!(service.common.unit.on_success, vec!["notify.service"]);
+    assert_eq!(service.common.unit.success_action_exit_status, Some(0));
+    assert_eq!(service.common.unit.failure_action_exit_status, Some(1));
+    assert_eq!(
+        service.common.unit.collect_mode,
+        crate::units::CollectMode::Inactive
+    );
+}
+
+// ===== Tests for 13 new Condition/Assert types =====
+
+#[test]
+fn test_condition_ac_power_yes_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionACPower = yes
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::ACPower { value, negate } => {
+            assert!(*value);
+            assert!(!negate);
+        }
+        other => panic!("Expected ACPower condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_ac_power_no_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionACPower = no
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::ACPower { value, negate } => {
+            assert!(!*value);
+            assert!(!negate);
+        }
+        other => panic!("Expected ACPower condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_ac_power_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionACPower = !yes
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::ACPower { value, negate } => {
+            assert!(*value);
+            assert!(*negate);
+        }
+        other => panic!("Expected ACPower condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_ac_power_true_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionACPower = true
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+}
+
+#[test]
+fn test_condition_architecture_parsed() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionArchitecture = x86-64
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Architecture { arch, negate } => {
+            assert_eq!(arch, "x86-64");
+            assert!(!negate);
+        }
+        other => panic!("Expected Architecture condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_architecture_negated() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionArchitecture = !arm64
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Architecture { arch, negate } => {
+            assert_eq!(arch, "arm64");
+            assert!(*negate);
+        }
+        other => panic!("Expected Architecture condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_architecture_case_insensitive() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionArchitecture = X86-64
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Architecture { arch, negate } => {
+            assert_eq!(arch, "x86-64", "Value should be lowercased");
+            assert!(!negate);
+        }
+        other => panic!("Expected Architecture condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_architecture_native() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionArchitecture = native
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 1);
+    match &service.common.unit.conditions[0] {
+        crate::units::UnitCondition::Architecture { arch, negate } => {
+            assert_eq!(arch, "native");
+            assert!(!negate);
+        }
+        other => panic!("Expected Architecture condition, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_condition_architecture_empty_ignored() {
+    let test_service_str = r#"
+    [Unit]
+    ConditionArchitecture =
+    [Service]
+    ExecStart = /bin/true
+    "#;
+    let parsed_file = crate::units::parse_file(test_service_str).unwrap();
+    let service =
+        crate::units::parse_service(parsed_file, &std::path::PathBuf::from("test.service"))
+            .unwrap();
+    assert_eq!(service.common.unit.conditions.len(), 0);
+}
+
+// ===== Helper function tests =====
+
+#[test]
+fn test_looks_like_machine_id_valid() {
+    // 32 hex chars
+    assert!(
+        crate::units::unit_parsing::mod_tests_helper::test_looks_like_machine_id(
+            "0123456789abcdef0123456789abcdef"
+        )
+    );
+}
+
+#[test]
+fn test_parse_cpu_range_count_single() {
+    assert_eq!(
+        crate::units::unit_parsing::mod_tests_helper::test_parse_cpu_range_count("0"),
+        Some(1)
+    );
+}
+
+#[test]
+fn test_parse_cpu_range_count_range() {
+    assert_eq!(
+        crate::units::unit_parsing::mod_tests_helper::test_parse_cpu_range_count("0-7"),
+        Some(8)
+    );
+}
+
+#[test]
+fn test_parse_cpu_range_count_complex() {
+    assert_eq!(
+        crate::units::unit_parsing::mod_tests_helper::test_parse_cpu_range_count("0-3,5,7-9"),
+        Some(8)
+    );
+}
+
+#[test]
+fn test_parse_memory_condition_megabytes() {
+    assert_eq!(
+        crate::units::unit_parsing::mod_tests_helper::test_parse_memory_condition("512M"),
+        Some(512 * 1024 * 1024)
+    );
+}
+
+#[test]
+fn test_parse_memory_condition_gigabytes() {
+    assert_eq!(
+        crate::units::unit_parsing::mod_tests_helper::test_parse_memory_condition("1G"),
+        Some(1024 * 1024 * 1024)
+    );
+}
+
+#[test]
+fn test_parse_memory_condition_terabytes() {
+    assert_eq!(
+        crate::units::unit_parsing::mod_tests_helper::test_parse_memory_condition("2T"),
+        Some(2 * 1024 * 1024 * 1024 * 1024)
+    );
+}
+
+#[test]
+fn test_parse_memory_condition_plain_bytes() {
+    assert_eq!(
+        crate::units::unit_parsing::mod_tests_helper::test_parse_memory_condition("4096"),
+        Some(4096)
+    );
+}
+
+#[test]
+fn test_parse_memory_condition_empty_returns_none() {
+    assert_eq!(
+        crate::units::unit_parsing::mod_tests_helper::test_parse_memory_condition(""),
+        None
+    );
+}
+
+#[test]
+fn test_parse_memory_condition_invalid_returns_none() {
+    assert_eq!(
+        crate::units::unit_parsing::mod_tests_helper::test_parse_memory_condition("abc"),
+        None
+    );
+}

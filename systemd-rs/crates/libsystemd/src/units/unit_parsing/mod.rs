@@ -186,6 +186,81 @@ pub enum UnitCondition {
     /// uefi-secureboot, tpm2, cvm, measured-uki. Multiple directives
     /// accumulate (all must be satisfied). See systemd.unit(5).
     Security { technology: String, negate: bool },
+    /// ConditionACPower=true (true if system is on AC power)
+    /// ConditionACPower=!true (true if system is NOT on AC power)
+    /// Checks whether the system is currently on AC (mains) power.
+    /// Reads from /sys/class/power_supply/ looking for an online AC adapter.
+    /// See systemd.unit(5).
+    ACPower { value: bool, negate: bool },
+    /// ConditionArchitecture=x86-64 (true if running on x86-64)
+    /// ConditionArchitecture=!arm64 (true if NOT running on arm64)
+    /// Checks whether the system is running on a specific CPU architecture.
+    /// Uses the native pointer width and target arch to determine the
+    /// architecture. Known values: x86, x86-64, arm, arm64, ia64, ppc,
+    /// ppc-le, ppc64, ppc64-le, s390, s390x, mips, mips-le, mips64,
+    /// mips64-le, alpha, arc, loongarch64, riscv32, riscv64, sh, sparc,
+    /// sparc64, native. See systemd.unit(5).
+    Architecture { arch: String, negate: bool },
+    /// ConditionEnvironment=VAR (true if VAR is set)
+    /// ConditionEnvironment=VAR=VALUE (true if VAR equals VALUE)
+    /// ConditionEnvironment=!VAR (true if VAR is NOT set)
+    /// Checks the manager's environment block for the specified variable.
+    /// See systemd.unit(5).
+    Environment { expression: String, negate: bool },
+    /// ConditionFirmware=uefi (true if running on UEFI firmware)
+    /// ConditionFirmware=device-tree (true if running with device-tree)
+    /// ConditionFirmware=device-tree-compatible(value) (true if the FDT
+    /// compatible string matches). See systemd.unit(5).
+    Firmware { value: String, negate: bool },
+    /// ConditionHost=hostname (true if hostname matches)
+    /// ConditionHost=machine-id (true if machine-id matches, if it looks like a 128-bit hex ID)
+    /// ConditionHost=!hostname (true if hostname does NOT match)
+    /// Checks the system hostname or machine-id. See systemd.unit(5).
+    Host { value: String, negate: bool },
+    /// ConditionMemory=512M (true if physical memory >= 512 MiB)
+    /// ConditionMemory=!1G (true if physical memory < 1 GiB)
+    /// Checks whether the system has at least the specified amount of
+    /// physical memory. Supports K, M, G, T suffixes. See systemd.unit(5).
+    Memory { value: String, negate: bool },
+    /// ConditionCPUFeature=sse4_2 (true if CPU supports SSE 4.2)
+    /// ConditionCPUFeature=!avx2 (true if CPU does NOT support AVX2)
+    /// Checks whether a specific CPU feature flag is available.
+    /// Reads from /proc/cpuinfo "flags" line. See systemd.unit(5).
+    CPUFeature { feature: String, negate: bool },
+    /// ConditionCPUs=4 (true if system has >= 4 CPUs)
+    /// ConditionCPUs=!1 (true if system does NOT have exactly 1 CPU)
+    /// Checks the number of online CPUs. Supports comparison operators
+    /// (>=, >, <=, <, =, !=) and range expressions. See systemd.unit(5).
+    CPUs { expression: String, negate: bool },
+    /// ConditionOSRelease=ID=fedora (true if os-release ID equals "fedora")
+    /// ConditionOSRelease=!ID=ubuntu (true if os-release ID is NOT "ubuntu")
+    /// Checks fields in /etc/os-release or /usr/lib/os-release.
+    /// Supports = (equal), != (not equal), <, <=, >, >= comparisons
+    /// and fnmatch-style glob patterns. See systemd.unit(5).
+    OSRelease { expression: String, negate: bool },
+    /// ConditionPathIsEncrypted=/some/path (true if path is on an encrypted volume)
+    /// ConditionPathIsEncrypted=!/some/path (true if path is NOT on an encrypted volume)
+    /// Checks whether the specified path resides on an encrypted block device
+    /// (e.g. dm-crypt/LUKS). Inspects /sys/dev/block/ for dm-crypt attribute.
+    /// See systemd.unit(5).
+    PathIsEncrypted { path: String, negate: bool },
+    /// ConditionPathIsSymbolicLink=/some/path (true if path is a symbolic link)
+    /// ConditionPathIsSymbolicLink=!/some/path (true if path is NOT a symbolic link)
+    /// Checks whether the specified path exists and is a symbolic link.
+    /// See systemd.unit(5).
+    PathIsSymbolicLink { path: String, negate: bool },
+    /// ConditionUser=root (true if running as root)
+    /// ConditionUser=0 (true if running as UID 0)
+    /// ConditionUser=!nobody (true if NOT running as nobody)
+    /// ConditionUser=@system (true if running as a system user, UID < 1000)
+    /// Checks the user identity of the service manager. See systemd.unit(5).
+    User { value: String, negate: bool },
+    /// ConditionGroup=wheel (true if running with group wheel)
+    /// ConditionGroup=0 (true if running with GID 0)
+    /// ConditionGroup=!nogroup (true if NOT running with group nogroup)
+    /// Checks the group identity of the service manager (primary or supplementary).
+    /// See systemd.unit(5).
+    Group { value: String, negate: bool },
 }
 
 /// The kind of virtualization detected (VM or container).
@@ -755,7 +830,510 @@ impl UnitCondition {
                 };
                 if *negate { !enabled } else { enabled }
             }
+            UnitCondition::ACPower { value, negate } => {
+                let on_ac = check_ac_power();
+                let result = if *value { on_ac } else { !on_ac };
+                if *negate { !result } else { result }
+            }
+            UnitCondition::Architecture { arch, negate } => {
+                let current = detect_architecture();
+                let result = if arch == "native" {
+                    // "native" always matches the current architecture
+                    true
+                } else {
+                    current.eq_ignore_ascii_case(arch)
+                };
+                if *negate { !result } else { result }
+            }
+            UnitCondition::Environment { expression, negate } => {
+                let result = if let Some((key, expected_value)) = expression.split_once('=') {
+                    // KEY=VALUE form: check if env var equals the expected value
+                    std::env::var(key).is_ok_and(|v| v == expected_value)
+                } else {
+                    // KEY form: check if env var is set (any value)
+                    std::env::var(expression).is_ok()
+                };
+                if *negate { !result } else { result }
+            }
+            UnitCondition::Firmware { value, negate } => {
+                let result = match value.as_str() {
+                    "uefi" => {
+                        // Check if the system booted via UEFI
+                        std::path::Path::new("/sys/firmware/efi").exists()
+                    }
+                    "device-tree" => {
+                        // Check if the system has a device tree
+                        std::path::Path::new("/sys/firmware/devicetree/base").exists()
+                    }
+                    v if v.starts_with("device-tree-compatible(") && v.ends_with(')') => {
+                        // device-tree-compatible(value) — check /sys/firmware/devicetree/base/compatible
+                        let inner = &v["device-tree-compatible(".len()..v.len() - 1];
+                        match std::fs::read("/sys/firmware/devicetree/base/compatible") {
+                            Ok(data) => {
+                                // The compatible property is a null-separated list of strings
+                                data.split(|&b| b == 0).filter(|s| !s.is_empty()).any(|s| {
+                                    std::str::from_utf8(s).is_ok_and(|compat| compat == inner)
+                                })
+                            }
+                            Err(_) => false,
+                        }
+                    }
+                    other => {
+                        trace!("Unknown firmware type in ConditionFirmware: {}", other);
+                        false
+                    }
+                };
+                if *negate { !result } else { result }
+            }
+            UnitCondition::Host { value, negate } => {
+                let result = if looks_like_machine_id(value) {
+                    // Looks like a machine-id (128-bit hex string) — compare against /etc/machine-id
+                    std::fs::read_to_string("/etc/machine-id")
+                        .map(|id| id.trim() == value)
+                        .unwrap_or(false)
+                } else {
+                    // Compare against the system hostname
+                    nix::unistd::gethostname()
+                        .ok()
+                        .and_then(|h| h.into_string().ok())
+                        .is_some_and(|hostname| hostname == *value)
+                };
+                if *negate { !result } else { result }
+            }
+            UnitCondition::Memory { value, negate } => {
+                let result = match parse_memory_condition(value) {
+                    Some(threshold_bytes) => {
+                        let total = read_total_memory();
+                        total >= threshold_bytes
+                    }
+                    None => {
+                        trace!("Failed to parse ConditionMemory value: {}", value);
+                        false
+                    }
+                };
+                if *negate { !result } else { result }
+            }
+            UnitCondition::CPUFeature { feature, negate } => {
+                let result = check_cpu_feature(feature);
+                if *negate { !result } else { result }
+            }
+            UnitCondition::CPUs { expression, negate } => {
+                let result = check_cpus_condition(expression);
+                if *negate { !result } else { result }
+            }
+            UnitCondition::OSRelease { expression, negate } => {
+                let result = check_os_release_condition(expression);
+                if *negate { !result } else { result }
+            }
+            UnitCondition::PathIsEncrypted { path, negate } => {
+                let encrypted = check_path_encrypted(path);
+                if *negate { !encrypted } else { encrypted }
+            }
+            UnitCondition::PathIsSymbolicLink { path, negate } => {
+                let is_symlink = std::fs::symlink_metadata(path)
+                    .map(|m| m.file_type().is_symlink())
+                    .unwrap_or(false);
+                if *negate { !is_symlink } else { is_symlink }
+            }
+            UnitCondition::User { value, negate } => {
+                let result = check_user_condition(value);
+                if *negate { !result } else { result }
+            }
+            UnitCondition::Group { value, negate } => {
+                let result = check_group_condition(value);
+                if *negate { !result } else { result }
+            }
         }
+    }
+}
+
+/// Check whether the system is currently on AC (mains) power.
+/// Scans /sys/class/power_supply/ for an online AC/mains supply.
+fn check_ac_power() -> bool {
+    let ps_dir = std::path::Path::new("/sys/class/power_supply");
+    let entries = match std::fs::read_dir(ps_dir) {
+        Ok(e) => e,
+        Err(_) => return true, // If we can't read, assume AC (safe default)
+    };
+    // If there are no power supply entries at all, assume AC
+    let mut found_any = false;
+    for entry in entries.flatten() {
+        let type_path = entry.path().join("type");
+        let supply_type = match std::fs::read_to_string(&type_path) {
+            Ok(t) => t.trim().to_lowercase(),
+            Err(_) => continue,
+        };
+        if supply_type == "mains" || supply_type == "ups" {
+            found_any = true;
+            let online_path = entry.path().join("online");
+            if let Ok(online) = std::fs::read_to_string(online_path)
+                && online.trim() == "1"
+            {
+                return true;
+            }
+        }
+    }
+    // If we found mains/UPS supplies but none are online, we're on battery
+    // If we found no mains/UPS supplies at all, assume AC (desktop/server)
+    !found_any
+}
+
+/// Detect the CPU architecture of the running system.
+/// Returns a string matching systemd's architecture names.
+fn detect_architecture() -> &'static str {
+    #[cfg(target_arch = "x86_64")]
+    {
+        "x86-64"
+    }
+    #[cfg(target_arch = "x86")]
+    {
+        "x86"
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        "arm64"
+    }
+    #[cfg(target_arch = "arm")]
+    {
+        "arm"
+    }
+    #[cfg(target_arch = "powerpc64")]
+    {
+        if cfg!(target_endian = "little") {
+            "ppc64-le"
+        } else {
+            "ppc64"
+        }
+    }
+    #[cfg(target_arch = "powerpc")]
+    {
+        if cfg!(target_endian = "little") {
+            "ppc-le"
+        } else {
+            "ppc"
+        }
+    }
+    #[cfg(target_arch = "s390x")]
+    {
+        "s390x"
+    }
+    #[cfg(target_arch = "mips64")]
+    {
+        if cfg!(target_endian = "little") {
+            "mips64-le"
+        } else {
+            "mips64"
+        }
+    }
+    #[cfg(target_arch = "mips")]
+    {
+        if cfg!(target_endian = "little") {
+            "mips-le"
+        } else {
+            "mips"
+        }
+    }
+    #[cfg(target_arch = "riscv64")]
+    {
+        "riscv64"
+    }
+    #[cfg(target_arch = "riscv32")]
+    {
+        "riscv32"
+    }
+    #[cfg(target_arch = "loongarch64")]
+    {
+        "loongarch64"
+    }
+    #[cfg(target_arch = "sparc64")]
+    {
+        "sparc64"
+    }
+    #[cfg(target_arch = "sparc")]
+    {
+        "sparc"
+    }
+    #[cfg(not(any(
+        target_arch = "x86_64",
+        target_arch = "x86",
+        target_arch = "aarch64",
+        target_arch = "arm",
+        target_arch = "powerpc64",
+        target_arch = "powerpc",
+        target_arch = "s390x",
+        target_arch = "mips64",
+        target_arch = "mips",
+        target_arch = "riscv64",
+        target_arch = "riscv32",
+        target_arch = "loongarch64",
+        target_arch = "sparc64",
+        target_arch = "sparc",
+    )))]
+    {
+        "unknown"
+    }
+}
+
+/// Check whether a string looks like a 128-bit hex machine-id (32 hex chars).
+fn looks_like_machine_id(s: &str) -> bool {
+    s.len() == 32 && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Parse a memory size value for ConditionMemory= (e.g. "512M", "1G", "4096").
+/// Returns the value in bytes, or None if parsing fails.
+fn parse_memory_condition(value: &str) -> Option<u64> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    // Check for comparison operators at the start (>=, >, <=, <, =)
+    let num_str = trimmed
+        .strip_prefix(">=")
+        .or_else(|| trimmed.strip_prefix('>'))
+        .or_else(|| trimmed.strip_prefix("<="))
+        .or_else(|| trimmed.strip_prefix('<'))
+        .or_else(|| trimmed.strip_prefix('='))
+        .unwrap_or(trimmed)
+        .trim();
+
+    // Parse number with optional suffix
+    let (digits, multiplier) = if let Some(d) = num_str.strip_suffix('T') {
+        (d, 1024u64 * 1024 * 1024 * 1024)
+    } else if let Some(d) = num_str.strip_suffix('G') {
+        (d, 1024u64 * 1024 * 1024)
+    } else if let Some(d) = num_str.strip_suffix('M') {
+        (d, 1024u64 * 1024)
+    } else if let Some(d) = num_str.strip_suffix('K') {
+        (d, 1024u64)
+    } else {
+        (num_str, 1u64)
+    };
+
+    digits.trim().parse::<u64>().ok().map(|v| v * multiplier)
+}
+
+/// Read total physical memory in bytes from /proc/meminfo.
+fn read_total_memory() -> u64 {
+    std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|contents| {
+            for line in contents.lines() {
+                if let Some(rest) = line.strip_prefix("MemTotal:") {
+                    // Value is in kB
+                    let kb_str = rest.trim().strip_suffix("kB").unwrap_or(rest).trim();
+                    return kb_str.parse::<u64>().ok().map(|kb| kb * 1024);
+                }
+            }
+            None
+        })
+        .unwrap_or(0)
+}
+
+/// Check whether a CPU feature flag is present.
+/// Reads /proc/cpuinfo and looks in the "flags" (x86), "Features" (arm64),
+/// or "features" (s390x) line.
+fn check_cpu_feature(feature: &str) -> bool {
+    let cpuinfo = match std::fs::read_to_string("/proc/cpuinfo") {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let feature_lower = feature.to_lowercase();
+    for line in cpuinfo.lines() {
+        // x86: "flags", ARM64: "Features", s390x: "features"
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed
+            .strip_prefix("flags")
+            .or_else(|| trimmed.strip_prefix("Features"))
+            .or_else(|| trimmed.strip_prefix("features"))
+            && let Some(flags_str) = rest.strip_prefix(':')
+        {
+            return flags_str
+                .split_whitespace()
+                .any(|f| f.to_lowercase() == feature_lower);
+        }
+    }
+    false
+}
+
+/// Check the ConditionCPUs= expression against the number of online CPUs.
+/// Supports: plain number (>=), or comparison operators (>=N, >N, <=N, <N, =N, !=N).
+fn check_cpus_condition(expression: &str) -> bool {
+    let trimmed = expression.trim();
+    let num_cpus = num_online_cpus();
+
+    if let Some(val) = trimmed.strip_prefix(">=") {
+        val.trim().parse::<u32>().is_ok_and(|n| num_cpus >= n)
+    } else if let Some(val) = trimmed.strip_prefix('>') {
+        val.trim().parse::<u32>().is_ok_and(|n| num_cpus > n)
+    } else if let Some(val) = trimmed.strip_prefix("<=") {
+        val.trim().parse::<u32>().is_ok_and(|n| num_cpus <= n)
+    } else if let Some(val) = trimmed.strip_prefix("!=") {
+        val.trim().parse::<u32>().is_ok_and(|n| num_cpus != n)
+    } else if let Some(val) = trimmed.strip_prefix('<') {
+        val.trim().parse::<u32>().is_ok_and(|n| num_cpus < n)
+    } else if let Some(val) = trimmed.strip_prefix('=') {
+        val.trim().parse::<u32>().is_ok_and(|n| num_cpus == n)
+    } else {
+        // Plain number: default is >=
+        trimmed.parse::<u32>().is_ok_and(|n| num_cpus >= n)
+    }
+}
+
+/// Get the number of online CPUs.
+fn num_online_cpus() -> u32 {
+    std::fs::read_to_string("/sys/devices/system/cpu/online")
+        .ok()
+        .and_then(|s| parse_cpu_range_count(s.trim()))
+        .unwrap_or(1)
+}
+
+/// Parse a CPU range string like "0-7" or "0-3,5,7-9" and return the count.
+fn parse_cpu_range_count(s: &str) -> Option<u32> {
+    let mut count = 0u32;
+    for part in s.split(',') {
+        let part = part.trim();
+        if let Some((start, end)) = part.split_once('-') {
+            let start: u32 = start.trim().parse().ok()?;
+            let end: u32 = end.trim().parse().ok()?;
+            count += end - start + 1;
+        } else {
+            let _: u32 = part.parse().ok()?;
+            count += 1;
+        }
+    }
+    Some(count)
+}
+
+/// Check an os-release condition expression.
+/// Supports KEY=VALUE (equality), KEY!=VALUE, KEY<VALUE, KEY<=VALUE, KEY>VALUE, KEY>=VALUE.
+/// Reads from /etc/os-release or /usr/lib/os-release.
+fn check_os_release_condition(expression: &str) -> bool {
+    let os_release = read_os_release();
+
+    // Try multi-char operators first, then single-char
+    let operators = ["!=", ">=", "<=", "=", ">", "<"];
+    for op in &operators {
+        if let Some((key, expected)) = expression.split_once(op) {
+            let key = key.trim();
+            let expected = expected.trim();
+            let actual = os_release.get(key).map(|s| s.as_str()).unwrap_or("");
+            return match *op {
+                "=" => actual == expected,
+                "!=" => actual != expected,
+                ">=" => actual >= expected,
+                "<=" => actual <= expected,
+                ">" => actual > expected,
+                "<" => actual < expected,
+                _ => false,
+            };
+        }
+    }
+    false
+}
+
+/// Read os-release fields from /etc/os-release or /usr/lib/os-release.
+fn read_os_release() -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    let content = std::fs::read_to_string("/etc/os-release")
+        .or_else(|_| std::fs::read_to_string("/usr/lib/os-release"))
+        .unwrap_or_default();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=') {
+            // Strip quotes from value
+            let value = value.trim();
+            let value = if (value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\''))
+            {
+                &value[1..value.len() - 1]
+            } else {
+                value
+            };
+            map.insert(key.trim().to_string(), value.to_string());
+        }
+    }
+    map
+}
+
+/// Check whether a path resides on an encrypted block device (dm-crypt/LUKS).
+/// Inspects /sys/dev/block/<major>:<minor>/dm/uuid for a "CRYPT-" prefix.
+fn check_path_encrypted(path: &str) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let meta = match std::fs::metadata(path) {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+    let dev = meta.dev();
+    let major = libc::major(dev);
+    let minor = libc::minor(dev);
+    let dm_uuid_path = format!("/sys/dev/block/{}:{}/dm/uuid", major, minor);
+    if let Ok(uuid) = std::fs::read_to_string(dm_uuid_path) {
+        return uuid.trim().starts_with("CRYPT-");
+    }
+    // Also check parent device for partitions
+    let slaves_dir = format!("/sys/dev/block/{}:{}/slaves", major, minor);
+    if let Ok(entries) = std::fs::read_dir(slaves_dir) {
+        for entry in entries.flatten() {
+            let uuid_path = entry.path().join("dm/uuid");
+            if let Ok(uuid) = std::fs::read_to_string(uuid_path)
+                && uuid.trim().starts_with("CRYPT-")
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Check the ConditionUser= value against the current user.
+/// Values: numeric UID, username, "@system" (UID < 1000).
+fn check_user_condition(value: &str) -> bool {
+    let uid = nix::unistd::getuid();
+    if value == "@system" {
+        return uid.as_raw() < 1000;
+    }
+    // Try as numeric UID first
+    if let Ok(expected_uid) = value.parse::<u32>() {
+        return uid.as_raw() == expected_uid;
+    }
+    // Try as username — resolve via /etc/passwd
+    match nix::unistd::User::from_name(value) {
+        Ok(Some(user)) => uid == user.uid,
+        _ => false,
+    }
+}
+
+/// Check the ConditionGroup= value against the current group(s).
+/// Checks primary GID and all supplementary groups.
+fn check_group_condition(value: &str) -> bool {
+    let gid = nix::unistd::getgid();
+    // Try as numeric GID first
+    if let Ok(expected_gid) = value.parse::<u32>() {
+        if gid.as_raw() == expected_gid {
+            return true;
+        }
+        // Check supplementary groups
+        if let Ok(groups) = nix::unistd::getgroups() {
+            return groups.iter().any(|g| g.as_raw() == expected_gid);
+        }
+        return false;
+    }
+    // Try as group name — resolve via /etc/group
+    match nix::unistd::Group::from_name(value) {
+        Ok(Some(group)) => {
+            if gid == group.gid {
+                return true;
+            }
+            // Check supplementary groups
+            if let Ok(groups) = nix::unistd::getgroups() {
+                return groups.contains(&group.gid);
+            }
+            false
+        }
+        _ => false,
     }
 }
 
@@ -837,6 +1415,17 @@ pub enum IOSchedulingClass {
     Idle,
 }
 
+/// Controls when a unit is unloaded from memory after it becomes inactive/failed.
+/// Matches systemd's `CollectMode=` setting.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum CollectMode {
+    /// Unload the unit when it becomes inactive (default).
+    #[default]
+    Inactive,
+    /// Unload the unit when it becomes inactive or failed.
+    InactiveOrFailed,
+}
+
 /// Job mode for OnFailure= units.
 /// Controls how the triggered failure units are enqueued.
 /// Matches systemd's `OnFailureJobMode=` setting.
@@ -866,6 +1455,18 @@ pub struct ParsedUnitSection {
 
     pub wants: Vec<String>,
     pub requires: Vec<String>,
+
+    /// Like `Requires=`, but the listed units must already be active when this
+    /// unit is started. If they are not active, the start is immediately failed
+    /// (they are NOT pulled in). Matches systemd's `Requisite=` setting.
+    /// Parsed and stored; runtime enforcement adds them to requires list.
+    pub requisite: Vec<String>,
+
+    /// Like `Wants=`, but continuously re-starts the listed units if they stop.
+    /// Matches systemd's `Upholds=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub upholds: Vec<String>,
+
     pub conflicts: Vec<String>,
     pub before: Vec<String>,
     pub after: Vec<String>,
@@ -909,6 +1510,18 @@ pub struct ParsedUnitSection {
     /// Matches systemd's `FailureAction=` setting.
     pub failure_action: UnitAction,
 
+    /// Exit status to report when `SuccessAction=` triggers.
+    /// Only meaningful when SuccessAction= is set to something other than `none`.
+    /// Matches systemd's `SuccessActionExitStatus=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub success_action_exit_status: Option<u8>,
+
+    /// Exit status to report when `FailureAction=` triggers.
+    /// Only meaningful when FailureAction= is set to something other than `none`.
+    /// Matches systemd's `FailureActionExitStatus=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub failure_action_exit_status: Option<u8>,
+
     /// Absolute paths that this unit requires mount points for.
     /// Automatically adds `Requires=` and `After=` dependencies on the
     /// corresponding `.mount` units for each path prefix.
@@ -936,6 +1549,16 @@ pub struct ParsedUnitSection {
     /// Parsed and stored; no runtime enforcement yet.
     pub job_timeout_action: UnitAction,
 
+    /// Timeout for the running phase of a job (after it has been started).
+    /// Matches systemd's `JobRunningTimeoutSec=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub job_running_timeout_sec: Option<Timeout>,
+
+    /// Reboot argument string passed to reboot(2) if JobTimeoutAction=reboot-*.
+    /// Matches systemd's `JobTimeoutRebootArgument=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub job_timeout_reboot_argument: Option<String>,
+
     /// If true, this unit may not be started manually (e.g. via `systemctl start`).
     /// It can only be started as a dependency of another unit.
     /// Defaults to false, matching systemd's `RefuseManualStart=` setting.
@@ -948,6 +1571,17 @@ pub struct ParsedUnitSection {
     /// Parsed and stored; no runtime enforcement yet.
     pub refuse_manual_stop: bool,
 
+    /// Units to activate when this unit completes successfully.
+    /// Matches systemd's `OnSuccess=` setting.
+    /// Parsed and stored; no runtime triggering enforcement yet.
+    pub on_success: Vec<String>,
+
+    /// Job mode for enqueuing OnSuccess= units.
+    /// Defaults to `Replace`, matching systemd's default.
+    /// Matches systemd's `OnSuccessJobMode=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub on_success_job_mode: OnFailureJobMode,
+
     /// Units to activate when this unit enters the "failed" state.
     /// Matches systemd's `OnFailure=` setting.
     /// Parsed and stored; no runtime triggering enforcement yet.
@@ -958,6 +1592,29 @@ pub struct ParsedUnitSection {
     /// Matches systemd's `OnFailureJobMode=` setting.
     /// Parsed and stored; no runtime enforcement yet.
     pub on_failure_job_mode: OnFailureJobMode,
+
+    /// Units to propagate reload requests to.
+    /// When this unit is reloaded, the listed units are also reloaded.
+    /// Matches systemd's `PropagatesReloadTo=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub propagates_reload_to: Vec<String>,
+
+    /// Units whose reload requests are propagated to this unit.
+    /// When the listed units are reloaded, this unit is also reloaded.
+    /// Matches systemd's `ReloadPropagatedFrom=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub reload_propagated_from: Vec<String>,
+
+    /// Units to propagate stop requests to.
+    /// When this unit is stopped, the listed units are also stopped.
+    /// Matches systemd's `PropagatesStopTo=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub propagates_stop_to: Vec<String>,
+
+    /// Units that share the same mount namespace as this unit.
+    /// Matches systemd's `JoinsNamespaceOf=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub joins_namespace_of: Vec<String>,
 
     /// Time interval for rate limiting unit starts.
     /// If the unit is started more than `start_limit_burst` times within this interval,
@@ -977,6 +1634,21 @@ pub struct ParsedUnitSection {
     /// Uses the same action values as `SuccessAction=`/`FailureAction=`.
     /// Parsed and stored; no runtime enforcement yet.
     pub start_limit_action: UnitAction,
+
+    /// Controls when a unit is unloaded from memory.
+    /// Matches systemd's `CollectMode=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub collect_mode: CollectMode,
+
+    /// Path to the source configuration file that generated this unit.
+    /// Matches systemd's `SourcePath=` setting.
+    /// Parsed and stored; informational only.
+    pub source_path: Option<String>,
+
+    /// Reboot argument string passed to reboot(2) when SuccessAction=/FailureAction=
+    /// triggers a reboot. Matches systemd's `RebootArgument=` setting.
+    /// Parsed and stored; no runtime enforcement yet.
+    pub reboot_argument: Option<String>,
 }
 
 impl Default for ParsedUnitSection {
@@ -986,6 +1658,8 @@ impl Default for ParsedUnitSection {
             documentation: Vec::new(),
             wants: Vec::new(),
             requires: Vec::new(),
+            requisite: Vec::new(),
+            upholds: Vec::new(),
             conflicts: Vec::new(),
             before: Vec::new(),
             after: Vec::new(),
@@ -997,18 +1671,31 @@ impl Default for ParsedUnitSection {
             assertions: Vec::new(),
             success_action: UnitAction::default(),
             failure_action: UnitAction::default(),
+            success_action_exit_status: None,
+            failure_action_exit_status: None,
             requires_mounts_for: Vec::new(),
             stop_when_unneeded: false,
             allow_isolate: false,
             job_timeout_sec: None,
             job_timeout_action: UnitAction::default(),
+            job_running_timeout_sec: None,
+            job_timeout_reboot_argument: None,
             refuse_manual_start: false,
             refuse_manual_stop: false,
+            on_success: Vec::new(),
+            on_success_job_mode: OnFailureJobMode::default(),
             on_failure: Vec::new(),
             on_failure_job_mode: OnFailureJobMode::default(),
+            propagates_reload_to: Vec::new(),
+            reload_propagated_from: Vec::new(),
+            propagates_stop_to: Vec::new(),
+            joins_namespace_of: Vec::new(),
             start_limit_interval_sec: None,
             start_limit_burst: None,
             start_limit_action: UnitAction::default(),
+            collect_mode: CollectMode::default(),
+            source_path: None,
+            reboot_argument: None,
         }
     }
 }
@@ -2652,5 +3339,21 @@ impl std::error::Error for ParsingError {
 impl std::convert::From<Box<std::io::Error>> for ParsingErrorReason {
     fn from(err: Box<std::io::Error>) -> Self {
         Self::FileError(err)
+    }
+}
+
+/// Test helper module that re-exports private functions for unit tests.
+#[cfg(test)]
+pub mod mod_tests_helper {
+    pub fn test_looks_like_machine_id(s: &str) -> bool {
+        super::looks_like_machine_id(s)
+    }
+
+    pub fn test_parse_cpu_range_count(s: &str) -> Option<u32> {
+        super::parse_cpu_range_count(s)
+    }
+
+    pub fn test_parse_memory_condition(value: &str) -> Option<u64> {
+        super::parse_memory_condition(value)
     }
 }
