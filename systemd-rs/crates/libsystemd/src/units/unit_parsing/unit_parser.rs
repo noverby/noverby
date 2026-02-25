@@ -134,6 +134,26 @@ pub(crate) fn path_to_mount_unit_name(path: &str) -> String {
     }
 }
 
+/// Convert a device path to the corresponding `.device` unit name.
+///
+/// This follows the same escaping convention as mount units:
+/// - `/dev/sda1` → `dev-sda1.device`
+/// - `/dev/disk/by-uuid/1234` → `dev-disk-by\x2duuid-1234.device`
+/// - `/sys/devices/pci0000:00/net/eth0` → `sys-devices-pci0000:00-net-eth0.device`
+///
+/// For simple `/dev/` and `/sys/` paths, the slash-to-dash replacement
+/// is sufficient. For paths containing characters outside `[a-zA-Z0-9:_.]`,
+/// full unit name escaping via `unit_name_path_escape` should be used instead.
+#[allow(dead_code)]
+pub(crate) fn path_to_device_unit_name(path: &str) -> String {
+    let trimmed = path.trim_matches('/');
+    if trimmed.is_empty() {
+        "-.device".to_owned()
+    } else {
+        format!("{}.device", trimmed.replace('/', "-"))
+    }
+}
+
 /// Return mount unit names for every prefix of the given absolute path,
 /// from `/` down to the path itself.
 ///

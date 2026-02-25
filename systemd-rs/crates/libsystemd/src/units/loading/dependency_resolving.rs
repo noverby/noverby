@@ -91,7 +91,8 @@ pub fn prune_units(
             | Specific::Slice(_)
             | Specific::Mount(_)
             | Specific::Timer(_)
-            | Specific::Path(_) => { /**/ }
+            | Specific::Path(_)
+            | Specific::Device(_) => { /**/ }
         }
 
         unit.common.dependencies.before = unit

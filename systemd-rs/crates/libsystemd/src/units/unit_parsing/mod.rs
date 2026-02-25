@@ -1,3 +1,4 @@
+mod device_unit;
 mod mount_unit;
 mod path_unit;
 mod service_unit;
@@ -7,6 +8,7 @@ mod target_unit;
 mod timer_unit;
 mod unit_parser;
 
+pub use device_unit::*;
 pub use mount_unit::*;
 pub use path_unit::*;
 pub use service_unit::*;
@@ -50,6 +52,19 @@ pub struct ParsedTimerConfig {
 pub struct ParsedPathConfig {
     pub common: ParsedCommonConfig,
     pub path: ParsedPathSection,
+}
+
+/// Parsed configuration for a `.device` unit file.
+///
+/// Device units in systemd are typically auto-generated from udev events rather
+/// than loaded from unit files. However, they support `[Unit]` and `[Install]`
+/// sections for dependency management. The `[Device]` section has no directives
+/// of its own — all device-specific metadata (SysFSPath, etc.) comes from udev
+/// properties at runtime.
+pub struct ParsedDeviceConfig {
+    pub common: ParsedCommonConfig,
+    /// The sysfs path, if known (set at runtime from udev, not from unit files).
+    pub sysfs_path: Option<String>,
 }
 
 /// Parsed [Slice] section from a `.slice` unit file.

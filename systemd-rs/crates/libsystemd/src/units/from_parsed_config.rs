@@ -1,7 +1,8 @@
 use crate::services::Service;
 use crate::sockets::Socket;
 use crate::units::{
-    Common, CommonState, Dependencies, ExecConfig, MountConfig, MountSpecific, MountState,
+    Common, CommonState, Dependencies, DeviceConfig, DeviceSpecific, DeviceState, ExecConfig,
+    MountConfig, MountSpecific, MountState, ParsedCommonConfig, ParsedDeviceConfig,
     ParsedExecSection, ParsedInstallSection, ParsedMountConfig, ParsedPathConfig,
     ParsedServiceConfig, ParsedSingleSocketConfig, ParsedSliceConfig, ParsedSocketConfig,
     ParsedTargetConfig, ParsedTimerConfig, ParsedUnitSection, PathCondition, PathConfig,
@@ -907,4 +908,77 @@ impl std::convert::TryFrom<ParsedPathConfig> for Unit {
     fn try_from(conf: ParsedPathConfig) -> Result<Self, String> {
         unit_from_parsed_path(conf)
     }
+}
+impl std::convert::TryFrom<ParsedDeviceConfig> for Unit {
+    type Error = String;
+    fn try_from(conf: ParsedDeviceConfig) -> Result<Self, String> {
+        unit_from_parsed_device(conf)
+    }
+}
+
+pub fn unit_from_parsed_device(conf: ParsedDeviceConfig) -> Result<Unit, String> {
+    let fragment_path = conf.common.fragment_path.clone();
+    Ok(Unit {
+        id: UnitId {
+            kind: UnitIdKind::Device,
+            name: conf.common.name,
+        },
+        common: make_common_from_parsed(conf.common.unit, conf.common.install, fragment_path)?,
+        specific: Specific::Device(DeviceSpecific {
+            conf: DeviceConfig {
+                sysfs_path: conf.sysfs_path,
+            },
+            state: RwLock::new(DeviceState {
+                common: CommonState::default(),
+            }),
+        }),
+    })
+}
+
+/// Create a device unit dynamically at runtime, as would happen when udev
+/// reports a new device tagged with `TAG+="systemd"`.
+///
+/// This is the primary entry point for integrating udev events with the
+/// service manager. When a device appears, udev rules can set:
+///
+/// - `SYSTEMD_ALIAS=` — additional `.device` unit names for the device
+/// - `SYSTEMD_WANTS=` — units the device should pull in via `Wants=`
+/// - `SYSTEMD_READY=` — whether the device is considered "ready" (default: true)
+/// - `TAG+="systemd"` — marks the device for tracking by the service manager
+///
+/// # Arguments
+///
+/// * `unit_name` — The escaped device unit name (e.g., `dev-sda1.device`,
+///   `sys-subsystem-net-devices-eth0.device`).
+/// * `sysfs_path` — The sysfs path of the device (e.g., `/sys/devices/pci0000:00/...`).
+/// * `wants` — Unit names from `SYSTEMD_WANTS=` that this device should pull in.
+/// * `description` — Human-readable description (e.g., from `DEVNAME` or sysfs).
+#[allow(dead_code)]
+pub fn create_device_unit(
+    unit_name: &str,
+    sysfs_path: Option<String>,
+    wants: &[String],
+    description: Option<String>,
+) -> Result<Unit, String> {
+    let mut unit_section = ParsedUnitSection::default();
+    if let Some(desc) = description {
+        unit_section.description = desc;
+    }
+    for want in wants {
+        unit_section.wants.push(want.clone());
+    }
+    // Device units should not get default dependencies — they are managed
+    // by udev and should not implicitly depend on sysinit.target etc.
+    unit_section.default_dependencies = false;
+
+    let conf = ParsedDeviceConfig {
+        common: ParsedCommonConfig {
+            name: unit_name.to_owned(),
+            unit: unit_section,
+            install: Default::default(),
+            fragment_path: None,
+        },
+        sysfs_path,
+    };
+    unit_from_parsed_device(conf)
 }

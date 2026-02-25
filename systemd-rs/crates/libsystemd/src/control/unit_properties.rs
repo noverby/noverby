@@ -157,6 +157,12 @@ pub fn collect_properties(unit: &Unit) -> BTreeMap<String, String> {
                 &format!("{:04o}", path.conf.directory_mode),
             );
         }
+        Specific::Device(dev) => {
+            // Device-specific properties
+            if let Some(ref sysfs) = dev.conf.sysfs_path {
+                insert(&mut props, "SysFSPath", sysfs);
+            }
+        }
     }
 
     // ── LoadState / UnitFileState (synthetic) ─────────────────────────

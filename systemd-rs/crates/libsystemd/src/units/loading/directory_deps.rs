@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 
 use crate::units::{
     Common, CommonState, Dependencies, MountConfig, MountSpecific, MountState, ParsedFile,
-    ParsingErrorReason, Specific, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus, parse_file,
-    parse_mount, parse_path, parse_service, parse_slice, parse_socket, parse_target,
+    ParsingErrorReason, Specific, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus, parse_device,
+    parse_file, parse_mount, parse_path, parse_service, parse_slice, parse_socket, parse_target,
     path_to_mount_unit_name,
 };
 use std::sync::RwLock;
@@ -54,6 +54,7 @@ pub fn is_unit_file(filename: &str) -> bool {
         || filename.ends_with(".mount")
         || filename.ends_with(".timer")
         || filename.ends_with(".path")
+        || filename.ends_with(".device")
 }
 
 /// Check if a unit name is a template (e.g., "getty@.service", "modprobe@.service").
@@ -715,6 +716,20 @@ pub fn insert_parsed_unit(
             }
             Err(e) => {
                 warn!("Skipping timer {:?}: {:?}", path, e);
+            }
+        }
+    } else if path_str.ends_with(".device") {
+        trace!("Device found: {:?}", path);
+        match parse_device(parsed_file, path).and_then(|parsed| {
+            TryInto::<Unit>::try_into(parsed).map_err(ParsingErrorReason::Generic)
+        }) {
+            Ok(unit) => {
+                // Device units are stored in the targets table (which serves as
+                // the catch-all for simple unit types like target/slice/timer/path/device)
+                targets.insert(unit.id.clone(), unit);
+            }
+            Err(e) => {
+                warn!("Skipping device {:?}: {:?}", path, e);
             }
         }
     }
@@ -1941,6 +1956,7 @@ mod tests {
         assert!(is_unit_file("sshd.socket"));
         assert!(is_unit_file("multi-user.target"));
         assert!(is_unit_file("user.slice"));
+        assert!(is_unit_file("dev-sda1.device"));
         assert!(!is_unit_file("override.conf"));
         assert!(!is_unit_file("README.md"));
     }
