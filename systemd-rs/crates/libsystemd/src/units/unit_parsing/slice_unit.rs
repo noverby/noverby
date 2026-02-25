@@ -283,6 +283,149 @@ fn parse_slice_section(
                 };
             }
 
+            // --- New resource-control directives ---
+            "CPUQUOTAPERIODSEC" => {
+                let trimmed = value.trim();
+                slice.cpu_quota_period_sec = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(super::service_unit::parse_timeout(trimmed))
+                };
+            }
+            "ALLOWEDCPUS" => {
+                let trimmed = value.trim();
+                slice.allowed_cpus = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_owned())
+                };
+            }
+            "STARTUPALLOWEDCPUS" => {
+                let trimmed = value.trim();
+                slice.startup_allowed_cpus = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_owned())
+                };
+            }
+            "ALLOWEDMEMORYNODES" => {
+                let trimmed = value.trim();
+                slice.allowed_memory_nodes = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_owned())
+                };
+            }
+            "STARTUPALLOWEDMEMORYNODES" => {
+                let trimmed = value.trim();
+                slice.startup_allowed_memory_nodes = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_owned())
+                };
+            }
+            "DEFAULTMEMORYMIN" => {
+                slice.default_memory_min = parse_memory_limit_opt(value, "DefaultMemoryMin")?;
+            }
+            "DEFAULTMEMORYLOW" => {
+                slice.default_memory_low = parse_memory_limit_opt(value, "DefaultMemoryLow")?;
+            }
+            "MEMORYZSWAPMAX" => {
+                slice.memory_zswap_max = parse_memory_limit_opt(value, "MemoryZSwapMax")?;
+            }
+            "IODEVICELATENCYTARGETSEC" => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    slice.io_device_latency_target_sec.clear();
+                } else {
+                    slice.io_device_latency_target_sec.push(trimmed.to_owned());
+                }
+            }
+            "DISABLECONTROLLERS" => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    slice.disable_controllers.clear();
+                } else {
+                    for token in trimmed.split_whitespace() {
+                        slice.disable_controllers.push(token.to_owned());
+                    }
+                }
+            }
+            "MEMORYPRESSURETHRESHOLDSEC" => {
+                let trimmed = value.trim();
+                slice.memory_pressure_threshold_sec = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(super::service_unit::parse_timeout(trimmed))
+                };
+            }
+            "IPINGRESSFILTERPATH" => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    slice.ip_ingress_filter_path.clear();
+                } else {
+                    slice.ip_ingress_filter_path.push(trimmed.to_owned());
+                }
+            }
+            "IPEGRESSFILTERPATH" => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    slice.ip_egress_filter_path.clear();
+                } else {
+                    slice.ip_egress_filter_path.push(trimmed.to_owned());
+                }
+            }
+            "BPFPROGRAM" => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    slice.bpf_program.clear();
+                } else {
+                    slice.bpf_program.push(trimmed.to_owned());
+                }
+            }
+            "SOCKETBINDALLOW" => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    slice.socket_bind_allow.clear();
+                } else {
+                    slice.socket_bind_allow.push(trimmed.to_owned());
+                }
+            }
+            "SOCKETBINDDENY" => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    slice.socket_bind_deny.clear();
+                } else {
+                    slice.socket_bind_deny.push(trimmed.to_owned());
+                }
+            }
+            "RESTRICTNETWORKINTERFACES" => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    slice.restrict_network_interfaces.clear();
+                } else {
+                    for token in trimmed.split_whitespace() {
+                        slice.restrict_network_interfaces.push(token.to_owned());
+                    }
+                }
+            }
+            "NFTSET" => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    slice.nft_set.clear();
+                } else {
+                    slice.nft_set.push(trimmed.to_owned());
+                }
+            }
+            "DELEGATESUBGROUP" => {
+                let trimmed = value.trim();
+                slice.delegate_subgroup = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_owned())
+                };
+            }
+
             other => {
                 if other.starts_with("X-") || other.starts_with("x-") {
                     trace!(
@@ -865,5 +1008,701 @@ CPUWeight=500
         let content = "[Slice]\nMemoryPressureWatch=invalid\n";
         let result = parse_slice_from_str(content);
         assert!(result.is_err());
+    }
+
+    // =====================================================================
+    // 18 new resource-control directives in [Slice] section
+    // =====================================================================
+
+    // --- CPUQuotaPeriodSec= ---
+
+    #[test]
+    fn test_cpu_quota_period_sec_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.cpu_quota_period_sec.is_none());
+    }
+
+    #[test]
+    fn test_cpu_quota_period_sec_value() {
+        let content = "[Slice]\nCPUQuotaPeriodSec=10\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.cpu_quota_period_sec,
+            Some(super::super::Timeout::Duration(
+                std::time::Duration::from_secs(10)
+            ))
+        );
+    }
+
+    #[test]
+    fn test_cpu_quota_period_sec_empty() {
+        let content = "[Slice]\nCPUQuotaPeriodSec=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.cpu_quota_period_sec.is_none());
+    }
+
+    // --- AllowedCPUs= ---
+
+    #[test]
+    fn test_allowed_cpus_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.allowed_cpus.is_none());
+    }
+
+    #[test]
+    fn test_allowed_cpus_single() {
+        let content = "[Slice]\nAllowedCPUs=0\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.allowed_cpus, Some("0".to_owned()));
+    }
+
+    #[test]
+    fn test_allowed_cpus_range() {
+        let content = "[Slice]\nAllowedCPUs=0-3\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.allowed_cpus, Some("0-3".to_owned()));
+    }
+
+    #[test]
+    fn test_allowed_cpus_list() {
+        let content = "[Slice]\nAllowedCPUs=0 2 4-7\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.allowed_cpus, Some("0 2 4-7".to_owned()));
+    }
+
+    #[test]
+    fn test_allowed_cpus_empty_clears() {
+        let content = "[Slice]\nAllowedCPUs=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.allowed_cpus.is_none());
+    }
+
+    // --- StartupAllowedCPUs= ---
+
+    #[test]
+    fn test_startup_allowed_cpus_value() {
+        let content = "[Slice]\nStartupAllowedCPUs=0-1\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.startup_allowed_cpus, Some("0-1".to_owned()));
+    }
+
+    #[test]
+    fn test_startup_allowed_cpus_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.startup_allowed_cpus.is_none());
+    }
+
+    // --- AllowedMemoryNodes= ---
+
+    #[test]
+    fn test_allowed_memory_nodes_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.allowed_memory_nodes.is_none());
+    }
+
+    #[test]
+    fn test_allowed_memory_nodes_value() {
+        let content = "[Slice]\nAllowedMemoryNodes=0-1\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.allowed_memory_nodes, Some("0-1".to_owned()));
+    }
+
+    #[test]
+    fn test_allowed_memory_nodes_empty() {
+        let content = "[Slice]\nAllowedMemoryNodes=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.allowed_memory_nodes.is_none());
+    }
+
+    // --- StartupAllowedMemoryNodes= ---
+
+    #[test]
+    fn test_startup_allowed_memory_nodes_value() {
+        let content = "[Slice]\nStartupAllowedMemoryNodes=0\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.startup_allowed_memory_nodes,
+            Some("0".to_owned())
+        );
+    }
+
+    // --- DefaultMemoryMin= ---
+
+    #[test]
+    fn test_default_memory_min_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.default_memory_min.is_none());
+    }
+
+    #[test]
+    fn test_default_memory_min_bytes() {
+        let content = "[Slice]\nDefaultMemoryMin=64M\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.default_memory_min,
+            Some(super::super::MemoryLimit::Bytes(64 * 1024 * 1024))
+        );
+    }
+
+    #[test]
+    fn test_default_memory_min_empty() {
+        let content = "[Slice]\nDefaultMemoryMin=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.default_memory_min.is_none());
+    }
+
+    // --- DefaultMemoryLow= ---
+
+    #[test]
+    fn test_default_memory_low_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.default_memory_low.is_none());
+    }
+
+    #[test]
+    fn test_default_memory_low_bytes() {
+        let content = "[Slice]\nDefaultMemoryLow=128M\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.default_memory_low,
+            Some(super::super::MemoryLimit::Bytes(128 * 1024 * 1024))
+        );
+    }
+
+    #[test]
+    fn test_default_memory_low_percentage() {
+        let content = "[Slice]\nDefaultMemoryLow=25%\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.default_memory_low,
+            Some(super::super::MemoryLimit::Percent(25))
+        );
+    }
+
+    // --- MemoryZSwapMax= ---
+
+    #[test]
+    fn test_memory_zswap_max_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.memory_zswap_max.is_none());
+    }
+
+    #[test]
+    fn test_memory_zswap_max_bytes() {
+        let content = "[Slice]\nMemoryZSwapMax=256M\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.memory_zswap_max,
+            Some(super::super::MemoryLimit::Bytes(256 * 1024 * 1024))
+        );
+    }
+
+    #[test]
+    fn test_memory_zswap_max_infinity() {
+        let content = "[Slice]\nMemoryZSwapMax=infinity\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.memory_zswap_max,
+            Some(super::super::MemoryLimit::Infinity)
+        );
+    }
+
+    #[test]
+    fn test_memory_zswap_max_percentage() {
+        let content = "[Slice]\nMemoryZSwapMax=50%\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.memory_zswap_max,
+            Some(super::super::MemoryLimit::Percent(50))
+        );
+    }
+
+    #[test]
+    fn test_memory_zswap_max_empty() {
+        let content = "[Slice]\nMemoryZSwapMax=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.memory_zswap_max.is_none());
+    }
+
+    // --- IODeviceLatencyTargetSec= ---
+
+    #[test]
+    fn test_io_device_latency_target_sec_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.io_device_latency_target_sec.is_empty());
+    }
+
+    #[test]
+    fn test_io_device_latency_target_sec_value() {
+        let content = "[Slice]\nIODeviceLatencyTargetSec=/dev/sda 25ms\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.io_device_latency_target_sec,
+            vec!["/dev/sda 25ms"]
+        );
+    }
+
+    #[test]
+    fn test_io_device_latency_target_sec_multiple() {
+        let content = "[Slice]\nIODeviceLatencyTargetSec=/dev/sda 25ms\nIODeviceLatencyTargetSec=/dev/sdb 50ms\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.io_device_latency_target_sec.len(), 2);
+        assert_eq!(
+            config.slice.io_device_latency_target_sec[0],
+            "/dev/sda 25ms"
+        );
+        assert_eq!(
+            config.slice.io_device_latency_target_sec[1],
+            "/dev/sdb 50ms"
+        );
+    }
+
+    #[test]
+    fn test_io_device_latency_target_sec_empty_resets() {
+        let content =
+            "[Slice]\nIODeviceLatencyTargetSec=/dev/sda 25ms\nIODeviceLatencyTargetSec=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.io_device_latency_target_sec.is_empty());
+    }
+
+    // --- DisableControllers= ---
+
+    #[test]
+    fn test_disable_controllers_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.disable_controllers.is_empty());
+    }
+
+    #[test]
+    fn test_disable_controllers_single() {
+        let content = "[Slice]\nDisableControllers=memory\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.disable_controllers, vec!["memory"]);
+    }
+
+    #[test]
+    fn test_disable_controllers_multiple() {
+        let content = "[Slice]\nDisableControllers=cpu memory io\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.disable_controllers,
+            vec!["cpu", "memory", "io"]
+        );
+    }
+
+    #[test]
+    fn test_disable_controllers_empty_resets() {
+        let content = "[Slice]\nDisableControllers=cpu\nDisableControllers=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.disable_controllers.is_empty());
+    }
+
+    #[test]
+    fn test_disable_controllers_accumulates() {
+        let content = "[Slice]\nDisableControllers=cpu\nDisableControllers=memory\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.disable_controllers, vec!["cpu", "memory"]);
+    }
+
+    // --- MemoryPressureThresholdSec= ---
+
+    #[test]
+    fn test_memory_pressure_threshold_sec_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.memory_pressure_threshold_sec.is_none());
+    }
+
+    #[test]
+    fn test_memory_pressure_threshold_sec_value() {
+        let content = "[Slice]\nMemoryPressureThresholdSec=200\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.memory_pressure_threshold_sec,
+            Some(super::super::Timeout::Duration(
+                std::time::Duration::from_secs(200)
+            ))
+        );
+    }
+
+    #[test]
+    fn test_memory_pressure_threshold_sec_empty() {
+        let content = "[Slice]\nMemoryPressureThresholdSec=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.memory_pressure_threshold_sec.is_none());
+    }
+
+    // --- IPIngressFilterPath= ---
+
+    #[test]
+    fn test_ip_ingress_filter_path_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.ip_ingress_filter_path.is_empty());
+    }
+
+    #[test]
+    fn test_ip_ingress_filter_path_value() {
+        let content = "[Slice]\nIPIngressFilterPath=/sys/fs/bpf/ingress\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.ip_ingress_filter_path,
+            vec!["/sys/fs/bpf/ingress"]
+        );
+    }
+
+    #[test]
+    fn test_ip_ingress_filter_path_empty_resets() {
+        let content = "[Slice]\nIPIngressFilterPath=/sys/fs/bpf/a\nIPIngressFilterPath=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.ip_ingress_filter_path.is_empty());
+    }
+
+    #[test]
+    fn test_ip_ingress_filter_path_accumulates() {
+        let content =
+            "[Slice]\nIPIngressFilterPath=/sys/fs/bpf/a\nIPIngressFilterPath=/sys/fs/bpf/b\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.ip_ingress_filter_path.len(), 2);
+    }
+
+    // --- IPEgressFilterPath= ---
+
+    #[test]
+    fn test_ip_egress_filter_path_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.ip_egress_filter_path.is_empty());
+    }
+
+    #[test]
+    fn test_ip_egress_filter_path_value() {
+        let content = "[Slice]\nIPEgressFilterPath=/sys/fs/bpf/egress\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.ip_egress_filter_path,
+            vec!["/sys/fs/bpf/egress"]
+        );
+    }
+
+    #[test]
+    fn test_ip_egress_filter_path_empty_resets() {
+        let content = "[Slice]\nIPEgressFilterPath=/sys/fs/bpf/x\nIPEgressFilterPath=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.ip_egress_filter_path.is_empty());
+    }
+
+    // --- BPFProgram= ---
+
+    #[test]
+    fn test_bpf_program_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.bpf_program.is_empty());
+    }
+
+    #[test]
+    fn test_bpf_program_value() {
+        let content = "[Slice]\nBPFProgram=cgroup_skb/egress:/sys/fs/bpf/prog\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.bpf_program,
+            vec!["cgroup_skb/egress:/sys/fs/bpf/prog"]
+        );
+    }
+
+    #[test]
+    fn test_bpf_program_empty_resets() {
+        let content = "[Slice]\nBPFProgram=cgroup/a\nBPFProgram=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.bpf_program.is_empty());
+    }
+
+    #[test]
+    fn test_bpf_program_accumulates() {
+        let content = "[Slice]\nBPFProgram=cgroup/a\nBPFProgram=cgroup/b\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.bpf_program, vec!["cgroup/a", "cgroup/b"]);
+    }
+
+    // --- SocketBindAllow= ---
+
+    #[test]
+    fn test_socket_bind_allow_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.socket_bind_allow.is_empty());
+    }
+
+    #[test]
+    fn test_socket_bind_allow_value() {
+        let content = "[Slice]\nSocketBindAllow=tcp:8080\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.socket_bind_allow, vec!["tcp:8080"]);
+    }
+
+    #[test]
+    fn test_socket_bind_allow_multiple() {
+        let content = "[Slice]\nSocketBindAllow=tcp:8080\nSocketBindAllow=tcp:8443\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.socket_bind_allow.len(), 2);
+    }
+
+    #[test]
+    fn test_socket_bind_allow_empty_resets() {
+        let content = "[Slice]\nSocketBindAllow=tcp:80\nSocketBindAllow=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.socket_bind_allow.is_empty());
+    }
+
+    // --- SocketBindDeny= ---
+
+    #[test]
+    fn test_socket_bind_deny_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.socket_bind_deny.is_empty());
+    }
+
+    #[test]
+    fn test_socket_bind_deny_value() {
+        let content = "[Slice]\nSocketBindDeny=any\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.socket_bind_deny, vec!["any"]);
+    }
+
+    #[test]
+    fn test_socket_bind_deny_empty_resets() {
+        let content = "[Slice]\nSocketBindDeny=any\nSocketBindDeny=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.socket_bind_deny.is_empty());
+    }
+
+    // --- RestrictNetworkInterfaces= ---
+
+    #[test]
+    fn test_restrict_network_interfaces_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.restrict_network_interfaces.is_empty());
+    }
+
+    #[test]
+    fn test_restrict_network_interfaces_allow() {
+        let content = "[Slice]\nRestrictNetworkInterfaces=eth0 wlan0\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.restrict_network_interfaces,
+            vec!["eth0", "wlan0"]
+        );
+    }
+
+    #[test]
+    fn test_restrict_network_interfaces_deny() {
+        let content = "[Slice]\nRestrictNetworkInterfaces=~docker0 veth+\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.restrict_network_interfaces,
+            vec!["~docker0", "veth+"]
+        );
+    }
+
+    #[test]
+    fn test_restrict_network_interfaces_empty_resets() {
+        let content = "[Slice]\nRestrictNetworkInterfaces=eth0\nRestrictNetworkInterfaces=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.restrict_network_interfaces.is_empty());
+    }
+
+    #[test]
+    fn test_restrict_network_interfaces_accumulates() {
+        let content = "[Slice]\nRestrictNetworkInterfaces=eth0\nRestrictNetworkInterfaces=wlan0\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.restrict_network_interfaces,
+            vec!["eth0", "wlan0"]
+        );
+    }
+
+    // --- NFTSet= ---
+
+    #[test]
+    fn test_nft_set_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.nft_set.is_empty());
+    }
+
+    #[test]
+    fn test_nft_set_value() {
+        let content = "[Slice]\nNFTSet=inet:filter:cgroup_set\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.nft_set, vec!["inet:filter:cgroup_set"]);
+    }
+
+    #[test]
+    fn test_nft_set_empty_resets() {
+        let content = "[Slice]\nNFTSet=inet:a:b\nNFTSet=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.nft_set.is_empty());
+    }
+
+    #[test]
+    fn test_nft_set_accumulates() {
+        let content = "[Slice]\nNFTSet=inet:a:b\nNFTSet=inet:c:d\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(config.slice.nft_set, vec!["inet:a:b", "inet:c:d"]);
+    }
+
+    // --- DelegateSubgroup= ---
+
+    #[test]
+    fn test_delegate_subgroup_default() {
+        let content = "[Slice]\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.delegate_subgroup.is_none());
+    }
+
+    #[test]
+    fn test_delegate_subgroup_value() {
+        let content = "[Slice]\nDelegateSubgroup=supervised\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.delegate_subgroup,
+            Some("supervised".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_delegate_subgroup_empty() {
+        let content = "[Slice]\nDelegateSubgroup=\n";
+        let config = parse_slice_from_str(content).unwrap();
+        assert!(config.slice.delegate_subgroup.is_none());
+    }
+
+    // =====================================================================
+    // Combined test for new resource-control directives
+    // =====================================================================
+
+    #[test]
+    fn test_all_new_resource_control_directives() {
+        let content = "\
+[Slice]
+CPUQuotaPeriodSec=5
+AllowedCPUs=0-3
+StartupAllowedCPUs=0-1
+AllowedMemoryNodes=0
+StartupAllowedMemoryNodes=0
+DefaultMemoryMin=32M
+DefaultMemoryLow=64M
+MemoryZSwapMax=512M
+IODeviceLatencyTargetSec=/dev/sda 10ms
+DisableControllers=cpu io
+MemoryPressureThresholdSec=100
+IPIngressFilterPath=/sys/fs/bpf/in
+IPEgressFilterPath=/sys/fs/bpf/out
+BPFProgram=cgroup_skb/egress:/sys/fs/bpf/prog
+SocketBindAllow=tcp:443
+SocketBindDeny=any
+RestrictNetworkInterfaces=eth0
+NFTSet=inet:filter:service_set
+DelegateSubgroup=supervised
+";
+        let config = parse_slice_from_str(content).unwrap();
+        assert_eq!(
+            config.slice.cpu_quota_period_sec,
+            Some(super::super::Timeout::Duration(
+                std::time::Duration::from_secs(5)
+            ))
+        );
+        assert_eq!(config.slice.allowed_cpus, Some("0-3".to_owned()));
+        assert_eq!(config.slice.startup_allowed_cpus, Some("0-1".to_owned()));
+        assert_eq!(config.slice.allowed_memory_nodes, Some("0".to_owned()));
+        assert_eq!(
+            config.slice.startup_allowed_memory_nodes,
+            Some("0".to_owned())
+        );
+        assert_eq!(
+            config.slice.default_memory_min,
+            Some(super::super::MemoryLimit::Bytes(32 * 1024 * 1024))
+        );
+        assert_eq!(
+            config.slice.default_memory_low,
+            Some(super::super::MemoryLimit::Bytes(64 * 1024 * 1024))
+        );
+        assert_eq!(
+            config.slice.memory_zswap_max,
+            Some(super::super::MemoryLimit::Bytes(512 * 1024 * 1024))
+        );
+        assert_eq!(
+            config.slice.io_device_latency_target_sec,
+            vec!["/dev/sda 10ms"]
+        );
+        assert_eq!(config.slice.disable_controllers, vec!["cpu", "io"]);
+        assert_eq!(
+            config.slice.memory_pressure_threshold_sec,
+            Some(super::super::Timeout::Duration(
+                std::time::Duration::from_secs(100)
+            ))
+        );
+        assert_eq!(config.slice.ip_ingress_filter_path, vec!["/sys/fs/bpf/in"]);
+        assert_eq!(config.slice.ip_egress_filter_path, vec!["/sys/fs/bpf/out"]);
+        assert_eq!(
+            config.slice.bpf_program,
+            vec!["cgroup_skb/egress:/sys/fs/bpf/prog"]
+        );
+        assert_eq!(config.slice.socket_bind_allow, vec!["tcp:443"]);
+        assert_eq!(config.slice.socket_bind_deny, vec!["any"]);
+        assert_eq!(config.slice.restrict_network_interfaces, vec!["eth0"]);
+        assert_eq!(config.slice.nft_set, vec!["inet:filter:service_set"]);
+        assert_eq!(
+            config.slice.delegate_subgroup,
+            Some("supervised".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_new_directives_coexist_with_existing_in_slice() {
+        let content = "\
+[Slice]
+MemoryMax=2G
+CPUWeight=200
+CPUQuota=50%
+IOWeight=100
+TasksMax=4096
+Delegate=yes
+AllowedCPUs=0-3
+MemoryZSwapMax=1G
+DisableControllers=io
+DelegateSubgroup=worker
+";
+        let config = parse_slice_from_str(content).unwrap();
+        // Existing directives still work
+        assert!(config.slice.memory_max.is_some());
+        assert_eq!(config.slice.cpu_weight, Some(200));
+        assert_eq!(config.slice.cpu_quota, Some(50));
+        assert_eq!(config.slice.io_weight, Some(100));
+        assert_eq!(
+            config.slice.tasks_max,
+            Some(super::super::TasksMax::Value(4096))
+        );
+        assert_eq!(config.slice.delegate, super::super::Delegate::Yes);
+        // New directives work alongside
+        assert_eq!(config.slice.allowed_cpus, Some("0-3".to_owned()));
+        assert_eq!(
+            config.slice.memory_zswap_max,
+            Some(super::super::MemoryLimit::Bytes(1024 * 1024 * 1024))
+        );
+        assert_eq!(config.slice.disable_controllers, vec!["io"]);
+        assert_eq!(config.slice.delegate_subgroup, Some("worker".to_owned()));
     }
 }

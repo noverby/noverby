@@ -4,7 +4,7 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ## Current Status
 
-**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~8 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **5,479 unit tests passing** across 68 crates.
+**🟢 NixOS boots successfully with systemd-rs as PID 1** — reaches `multi-user.target` with login prompt in ~8 seconds (cloud-hypervisor VM, full networking via networkd + resolved). **5,631 unit tests passing** across 68 crates.
 
 | Phase | Status |
 |-------|--------|
@@ -17,18 +17,18 @@ This document describes the phased plan for rewriting systemd as a pure Rust dro
 
 ### Unit File Directive Coverage
 
-338 of 425 upstream systemd directives supported (80%). Per-section breakdown:
+366 of 425 upstream systemd directives supported (86%). Per-section breakdown:
 
 | Section | Supported | Partial | Unsupported | Total | Coverage |
 |---------|-----------|---------|-------------|-------|----------|
 | systemd.unit | 87 | 0 | 1 | 88 | 99% |
-| systemd.service | 25 | 0 | 9 | 34 | 74% |
+| systemd.service | 34 | 0 | 0 | 34 | 100% |
 | systemd.exec | 143 | 2 | 2 | 147 | 97% |
 | systemd.socket | 27 | 0 | 33 | 60 | 45% |
-| systemd.resource-control | 28 | 0 | 20 | 48 | 58% |
+| systemd.resource-control | 46 | 0 | 2 | 48 | 96% |
 | sd_notify | 7 | 1 | 7 | 15 | 47% |
 | systemd.kill | 7 | 0 | 0 | 7 | 100% |
-| systemd.timer | 9 | 1 | 4 | 14 | 64% |
+| systemd.timer | 14 | 0 | 0 | 14 | 100% |
 | systemd.path | 7 | 0 | 1 | 8 | 88% |
 | systemd.slice | 1 | 0 | 2 | 3 | 33% |
 | systemd.device | 0 | 1 | 0 | 1 | 0% |
@@ -222,7 +222,7 @@ Remaining components and production readiness:
 - ❌ **`sd-boot`** / **`bootctl`** — UEFI boot manager and control tool (this component is EFI, likely stays as a separate build target or FFI)
 - ❌ **`sd-stub`** — UEFI stub for unified kernel images
 - ✅ **Generator framework** — fstab and getty generators built natively into `libsystemd`; external generator execution framework discovers and runs all standard generators (`systemd-gpt-auto-generator`, `systemd-cryptsetup-generator`, `systemd-debug-generator`, `systemd-run-generator`, etc.) from well-known directories plus package-relative paths; output directories inserted at correct unit search path priorities; built-in generators automatically skipped; per-generator timeout with graceful failure handling
-- 🔶 **Comprehensive test suite** — 5,479 unit tests passing; integration tests via nixos-rs boot test; missing: differential testing against real systemd
+- 🔶 **Comprehensive test suite** — 5,631 unit tests passing; integration tests via nixos-rs boot test; missing: differential testing against real systemd
 - ❌ **Documentation** — man-page-compatible documentation for all binaries and configuration formats
 - 🔶 **NixOS / distro integration** — packaging via `default.nix`, boot testing via `test-boot.sh`, NixOS module via `systemd.nix`; working end-to-end; udev rules override ensures correct `systemctl` path in udev `RUN+=` actions; `Type=idle` deferral eliminates getty/PAM race conditions; on-demand unit loading enables `systemctl restart` for units outside the boot dependency graph (e.g. udev-triggered `systemd-vconsole-setup.service`); symlink-aware unit discovery handles NixOS `/etc/systemd/system/` layouts; poison-recovering lock infrastructure prevents panic cascades from poisoned `Mutex`/`RwLock` guards; external generator framework discovers generators in NixOS store paths via executable-relative search (15 generators execute successfully during boot); networkd integration enabled (`withNetworkd = true`) with `.network` file for DHCP on ethernet interfaces and D-Bus interface; resolved integration enabled (`services.resolved.enable = true`) with stub DNS on 127.0.0.53, fallback DNS servers, and D-Bus interface; portabled integration enabled (`withPortabled = true`) for portable service image management with D-Bus; timedated integration enabled (`withTimedated = true`) for time/date management with D-Bus; machined integration enabled (`withMachined = true`) for VM/container registration with D-Bus; homed integration enabled (`withHomed = true`) for home directory management with D-Bus; `networkctl persistent-storage` subcommand added for NixOS `systemd-networkd-persistent-storage.service` compatibility; deadlock-free PID table (`Arc<Mutex<PidTable>>`) allows signal handler to update entries without RuntimeInfo read lock, preventing 3-way RwLock deadlock with activation threads and control handler; deferred D-Bus registration pattern for hostnamed/timedated/localed/machined/portabled/homed/networkd/resolved/timesyncd — daemons send READY=1 immediately and connect to D-Bus in the first main-loop iteration, avoiding blocking early boot when dbus-daemon isn't ready yet; path unit watcher thread monitors `.path` units with poll-based change detection, glob matching, rate limiting, and MakeDirectory= support; cloud-hypervisor VM boots with full networking (TAP device + dnsmasq DHCP) in ~7 seconds
 
