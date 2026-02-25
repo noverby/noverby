@@ -6,9 +6,9 @@ use crate::units::{
     ParsedServiceConfig, ParsedSingleSocketConfig, ParsedSliceConfig, ParsedSocketConfig,
     ParsedTargetConfig, ParsedTimerConfig, ParsedUnitSection, PathCondition, PathConfig,
     PathSpecific, PathState, PlatformSpecificServiceFields, ServiceConfig, ServiceSpecific,
-    ServiceState, SingleSocketConfig, SliceSpecific, SliceState, SocketConfig, SocketSpecific,
-    SocketState, Specific, TargetSpecific, TargetState, TimerConfig, TimerSpecific, TimerState,
-    Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus,
+    ServiceState, SingleSocketConfig, SliceConfig, SliceSpecific, SliceState, SocketConfig,
+    SocketSpecific, SocketState, Specific, TargetSpecific, TargetState, TimerConfig, TimerSpecific,
+    TimerState, Unit, UnitConfig, UnitId, UnitIdKind, UnitStatus,
 };
 
 use log::trace;
@@ -126,6 +126,15 @@ pub fn unit_from_parsed_service(conf: ParsedServiceConfig) -> Result<Unit, Strin
                 restart_kill_signal: conf.srvc.restart_kill_signal,
                 final_kill_signal: conf.srvc.final_kill_signal,
                 watchdog_signal: conf.srvc.watchdog_signal,
+                exit_type: conf.srvc.exit_type,
+                oom_policy: conf.srvc.oom_policy,
+                timeout_abort_sec: conf.srvc.timeout_abort_sec,
+                timeout_clean_sec: conf.srvc.timeout_clean_sec,
+                restart_prevent_exit_status: conf.srvc.restart_prevent_exit_status,
+                restart_mode: conf.srvc.restart_mode,
+                restart_steps: conf.srvc.restart_steps,
+                restart_max_delay_sec: conf.srvc.restart_max_delay_sec,
+                exec_condition: conf.srvc.exec_condition,
             },
             state: RwLock::new(ServiceState {
                 common: CommonState::default(),
@@ -252,6 +261,7 @@ pub fn unit_from_parsed_slice(conf: ParsedSliceConfig) -> Result<Unit, String> {
         },
         common: make_common_from_parsed(conf.common.unit, conf.common.install, fragment_path)?,
         specific: Specific::Slice(SliceSpecific {
+            conf: SliceConfig::from(conf.slice),
             state: RwLock::new(SliceState {
                 common: CommonState::default(),
             }),
@@ -335,6 +345,8 @@ pub fn unit_from_parsed_timer(conf: ParsedTimerConfig) -> Result<Unit, String> {
         persistent: conf.timer.persistent,
         wake_system: conf.timer.wake_system,
         remain_after_elapse: conf.timer.remain_after_elapse,
+        on_clock_change: conf.timer.on_clock_change,
+        on_timezone_change: conf.timer.on_timezone_change,
         unit: target_unit,
     };
 
