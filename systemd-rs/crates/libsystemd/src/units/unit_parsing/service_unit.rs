@@ -319,7 +319,9 @@ pub(super) fn parse_timeout(descr: &str) -> Timeout {
     }
 }
 
-fn parse_cmdlines(raw_lines: &Vec<(u32, String)>) -> Result<Vec<Commandline>, ParsingErrorReason> {
+pub(super) fn parse_cmdlines(
+    raw_lines: &Vec<(u32, String)>,
+) -> Result<Vec<Commandline>, ParsingErrorReason> {
     let mut cmdlines = Vec::new();
     for (_line, cmdline) in raw_lines {
         cmdlines.push(parse_cmdline(cmdline)?);

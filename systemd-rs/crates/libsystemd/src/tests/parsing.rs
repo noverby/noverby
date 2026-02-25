@@ -50331,3 +50331,927 @@ fn test_parse_memory_condition_invalid_returns_none() {
         None
     );
 }
+
+// ===== New socket directive tests: PassPacketInfo, TCPCongestion, ExecStart/StopPre/Post, TimeoutSec, PassFileDescriptorsToExec =====
+
+#[test]
+fn test_pass_packet_info_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket.sock.pass_packet_info,
+        "PassPacketInfo should default to false"
+    );
+}
+
+#[test]
+fn test_pass_packet_info_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenDatagram = 0.0.0.0:5353
+    PassPacketInfo = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.pass_packet_info,
+        "PassPacketInfo=yes should be true"
+    );
+}
+
+#[test]
+fn test_pass_packet_info_no() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenDatagram = 0.0.0.0:5353
+    PassPacketInfo = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket.sock.pass_packet_info,
+        "PassPacketInfo=no should be false"
+    );
+}
+
+#[test]
+fn test_pass_packet_info_true() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenDatagram = 0.0.0.0:5353
+    PassPacketInfo = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.pass_packet_info,
+        "PassPacketInfo=true should be true"
+    );
+}
+
+#[test]
+fn test_pass_packet_info_case_insensitive() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenDatagram = 0.0.0.0:5353
+    PassPacketInfo = YES
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.pass_packet_info,
+        "PassPacketInfo=YES should be true (case insensitive)"
+    );
+}
+
+#[test]
+fn test_tcp_congestion_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.tcp_congestion, None,
+        "TCPCongestion should default to None"
+    );
+}
+
+#[test]
+fn test_tcp_congestion_cubic() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    TCPCongestion = cubic
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.tcp_congestion, Some("cubic".to_owned()));
+}
+
+#[test]
+fn test_tcp_congestion_bbr() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    TCPCongestion = bbr
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.tcp_congestion, Some("bbr".to_owned()));
+}
+
+#[test]
+fn test_tcp_congestion_reno() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    TCPCongestion = reno
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.tcp_congestion, Some("reno".to_owned()));
+}
+
+#[test]
+fn test_tcp_congestion_empty_resets() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    TCPCongestion =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        socket.sock.tcp_congestion, None,
+        "Empty TCPCongestion should reset to None"
+    );
+}
+
+#[test]
+fn test_exec_start_pre_defaults_to_empty() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.exec_start_pre.is_empty(),
+        "ExecStartPre should default to empty"
+    );
+}
+
+#[test]
+fn test_exec_start_pre_single_command() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ExecStartPre = /usr/bin/mkdir -p /run/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_start_pre.len(), 1);
+    assert_eq!(socket.sock.exec_start_pre[0].cmd, "/usr/bin/mkdir");
+    assert_eq!(
+        socket.sock.exec_start_pre[0].args,
+        vec!["-p", "/run/myservice"]
+    );
+}
+
+#[test]
+fn test_exec_start_pre_with_minus_prefix() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ExecStartPre = -/usr/bin/rm /run/myservice/stale.lock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_start_pre.len(), 1);
+    assert_eq!(socket.sock.exec_start_pre[0].cmd, "/usr/bin/rm");
+    assert!(
+        socket.sock.exec_start_pre[0]
+            .prefixes
+            .contains(&crate::units::CommandlinePrefix::Minus)
+    );
+}
+
+#[test]
+fn test_exec_start_pre_multiple_commands() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ExecStartPre = /usr/bin/mkdir -p /run/myservice
+    ExecStartPre = /usr/bin/chown daemon:daemon /run/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_start_pre.len(), 2);
+    assert_eq!(socket.sock.exec_start_pre[0].cmd, "/usr/bin/mkdir");
+    assert_eq!(socket.sock.exec_start_pre[1].cmd, "/usr/bin/chown");
+}
+
+#[test]
+fn test_exec_start_post_single_command() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ExecStartPost = /usr/bin/touch /run/myservice/socket-ready
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_start_post.len(), 1);
+    assert_eq!(socket.sock.exec_start_post[0].cmd, "/usr/bin/touch");
+    assert_eq!(
+        socket.sock.exec_start_post[0].args,
+        vec!["/run/myservice/socket-ready"]
+    );
+}
+
+#[test]
+fn test_exec_start_post_defaults_to_empty() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.exec_start_post.is_empty(),
+        "ExecStartPost should default to empty"
+    );
+}
+
+#[test]
+fn test_exec_stop_pre_single_command() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ExecStopPre = /usr/bin/echo stopping
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_stop_pre.len(), 1);
+    assert_eq!(socket.sock.exec_stop_pre[0].cmd, "/usr/bin/echo");
+    assert_eq!(socket.sock.exec_stop_pre[0].args, vec!["stopping"]);
+}
+
+#[test]
+fn test_exec_stop_pre_defaults_to_empty() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.exec_stop_pre.is_empty(),
+        "ExecStopPre should default to empty"
+    );
+}
+
+#[test]
+fn test_exec_stop_post_single_command() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ExecStopPost = /usr/bin/rm -f /run/myservice/stale.lock
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_stop_post.len(), 1);
+    assert_eq!(socket.sock.exec_stop_post[0].cmd, "/usr/bin/rm");
+    assert_eq!(
+        socket.sock.exec_stop_post[0].args,
+        vec!["-f", "/run/myservice/stale.lock"]
+    );
+}
+
+#[test]
+fn test_exec_stop_post_defaults_to_empty() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.exec_stop_post.is_empty(),
+        "ExecStopPost should default to empty"
+    );
+}
+
+#[test]
+fn test_exec_stop_post_with_minus_prefix() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ExecStopPost = -/usr/bin/rm /run/myservice/cleanup
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_stop_post.len(), 1);
+    assert_eq!(socket.sock.exec_stop_post[0].cmd, "/usr/bin/rm");
+    assert!(
+        socket.sock.exec_stop_post[0]
+            .prefixes
+            .contains(&crate::units::CommandlinePrefix::Minus)
+    );
+}
+
+#[test]
+fn test_exec_stop_post_multiple_commands() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ExecStopPost = /usr/bin/rm -f /run/myservice/lock
+    ExecStopPost = /usr/bin/rmdir /run/myservice
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_stop_post.len(), 2);
+    assert_eq!(socket.sock.exec_stop_post[0].cmd, "/usr/bin/rm");
+    assert_eq!(socket.sock.exec_stop_post[1].cmd, "/usr/bin/rmdir");
+}
+
+#[test]
+fn test_timeout_sec_defaults_to_none() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.timeout_sec.is_none(),
+        "TimeoutSec should default to None"
+    );
+}
+
+#[test]
+fn test_timeout_sec_numeric_seconds() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    TimeoutSec = 30
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    match &socket.sock.timeout_sec {
+        Some(crate::units::Timeout::Duration(d)) => {
+            assert_eq!(d.as_secs(), 30, "TimeoutSec=30 should parse as 30 seconds");
+        }
+        other => panic!("Expected Duration(30s), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_timeout_sec_infinity() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    TimeoutSec = infinity
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    match &socket.sock.timeout_sec {
+        Some(crate::units::Timeout::Infinity) => {}
+        other => panic!("Expected Infinity, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_timeout_sec_empty_resets() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    TimeoutSec =
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.timeout_sec.is_none(),
+        "Empty TimeoutSec should be None"
+    );
+}
+
+#[test]
+fn test_timeout_sec_with_unit_suffix() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    TimeoutSec = 2min
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    match &socket.sock.timeout_sec {
+        Some(crate::units::Timeout::Duration(d)) => {
+            assert_eq!(
+                d.as_secs(),
+                120,
+                "TimeoutSec=2min should parse as 120 seconds"
+            );
+        }
+        other => panic!("Expected Duration(120s), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_pass_file_descriptors_to_exec_defaults_to_false() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket.sock.pass_file_descriptors_to_exec,
+        "PassFileDescriptorsToExec should default to false"
+    );
+}
+
+#[test]
+fn test_pass_file_descriptors_to_exec_yes() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassFileDescriptorsToExec = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.pass_file_descriptors_to_exec,
+        "PassFileDescriptorsToExec=yes should be true"
+    );
+}
+
+#[test]
+fn test_pass_file_descriptors_to_exec_no() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassFileDescriptorsToExec = no
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        !socket.sock.pass_file_descriptors_to_exec,
+        "PassFileDescriptorsToExec=no should be false"
+    );
+}
+
+#[test]
+fn test_pass_file_descriptors_to_exec_true() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    PassFileDescriptorsToExec = true
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(
+        socket.sock.pass_file_descriptors_to_exec,
+        "PassFileDescriptorsToExec=true should be true"
+    );
+}
+
+#[test]
+fn test_all_new_socket_exec_directives_combined() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    PassPacketInfo = yes
+    TCPCongestion = bbr
+    ExecStartPre = /usr/bin/mkdir -p /run/myservice
+    ExecStartPre = -/usr/bin/rm /run/myservice/stale.lock
+    ExecStartPost = /usr/bin/touch /run/myservice/ready
+    ExecStopPre = /usr/bin/echo stopping
+    ExecStopPost = /usr/bin/rm -f /run/myservice/ready
+    ExecStopPost = -/usr/bin/rmdir /run/myservice
+    TimeoutSec = 60
+    PassFileDescriptorsToExec = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert!(socket.sock.pass_packet_info);
+    assert_eq!(socket.sock.tcp_congestion, Some("bbr".to_owned()));
+    assert_eq!(socket.sock.exec_start_pre.len(), 2);
+    assert_eq!(socket.sock.exec_start_pre[0].cmd, "/usr/bin/mkdir");
+    assert_eq!(socket.sock.exec_start_pre[1].cmd, "/usr/bin/rm");
+    assert!(
+        socket.sock.exec_start_pre[1]
+            .prefixes
+            .contains(&crate::units::CommandlinePrefix::Minus)
+    );
+    assert_eq!(socket.sock.exec_start_post.len(), 1);
+    assert_eq!(socket.sock.exec_start_post[0].cmd, "/usr/bin/touch");
+    assert_eq!(socket.sock.exec_stop_pre.len(), 1);
+    assert_eq!(socket.sock.exec_stop_pre[0].cmd, "/usr/bin/echo");
+    assert_eq!(socket.sock.exec_stop_post.len(), 2);
+    assert_eq!(socket.sock.exec_stop_post[0].cmd, "/usr/bin/rm");
+    assert_eq!(socket.sock.exec_stop_post[1].cmd, "/usr/bin/rmdir");
+    assert!(
+        socket.sock.exec_stop_post[1]
+            .prefixes
+            .contains(&crate::units::CommandlinePrefix::Minus)
+    );
+    match &socket.sock.timeout_sec {
+        Some(crate::units::Timeout::Duration(d)) => assert_eq!(d.as_secs(), 60),
+        other => panic!("Expected Duration(60s), got {:?}", other),
+    }
+    assert!(socket.sock.pass_file_descriptors_to_exec);
+}
+
+#[test]
+fn test_new_socket_exec_directives_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    PassPacketInfo = yes
+    TCPCongestion = cubic
+    ExecStartPre = /usr/bin/mkdir -p /run/svc
+    ExecStartPost = /usr/bin/touch /run/svc/ready
+    ExecStopPre = /usr/bin/echo pre-stop
+    ExecStopPost = /usr/bin/rm /run/svc/ready
+    TimeoutSec = 45
+    PassFileDescriptorsToExec = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+    match &unit.specific {
+        crate::units::Specific::Socket(sock_spec) => {
+            assert!(sock_spec.conf.pass_packet_info);
+            assert_eq!(sock_spec.conf.tcp_congestion, Some("cubic".to_owned()));
+            assert_eq!(sock_spec.conf.exec_start_pre.len(), 1);
+            assert_eq!(sock_spec.conf.exec_start_pre[0].cmd, "/usr/bin/mkdir");
+            assert_eq!(sock_spec.conf.exec_start_post.len(), 1);
+            assert_eq!(sock_spec.conf.exec_start_post[0].cmd, "/usr/bin/touch");
+            assert_eq!(sock_spec.conf.exec_stop_pre.len(), 1);
+            assert_eq!(sock_spec.conf.exec_stop_pre[0].cmd, "/usr/bin/echo");
+            assert_eq!(sock_spec.conf.exec_stop_post.len(), 1);
+            assert_eq!(sock_spec.conf.exec_stop_post[0].cmd, "/usr/bin/rm");
+            match &sock_spec.conf.timeout_sec {
+                Some(crate::units::Timeout::Duration(d)) => assert_eq!(d.as_secs(), 45),
+                other => panic!("Expected Duration(45s), got {:?}", other),
+            }
+            assert!(sock_spec.conf.pass_file_descriptors_to_exec);
+        }
+        _ => panic!("Expected Socket specific, got something else"),
+    }
+}
+
+#[test]
+fn test_new_socket_exec_directives_defaults_preserved_after_unit_conversion() {
+    use crate::units::Unit;
+    use std::convert::TryInto;
+
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let parsed_socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    let unit: Unit = parsed_socket.try_into().unwrap();
+    match &unit.specific {
+        crate::units::Specific::Socket(sock_spec) => {
+            assert!(!sock_spec.conf.pass_packet_info);
+            assert_eq!(sock_spec.conf.tcp_congestion, None);
+            assert!(sock_spec.conf.exec_start_pre.is_empty());
+            assert!(sock_spec.conf.exec_start_post.is_empty());
+            assert!(sock_spec.conf.exec_stop_pre.is_empty());
+            assert!(sock_spec.conf.exec_stop_post.is_empty());
+            assert!(sock_spec.conf.timeout_sec.is_none());
+            assert!(!sock_spec.conf.pass_file_descriptors_to_exec);
+        }
+        _ => panic!("Expected Socket specific, got something else"),
+    }
+}
+
+#[test]
+fn test_new_socket_exec_directives_no_unsupported_warning() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    PassPacketInfo = yes
+    TCPCongestion = cubic
+    ExecStartPre = /usr/bin/true
+    ExecStartPost = /usr/bin/true
+    ExecStopPre = /usr/bin/true
+    ExecStopPost = /usr/bin/true
+    TimeoutSec = 30
+    PassFileDescriptorsToExec = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    // If parsing succeeds with all directives, they are recognized (not "unsupported")
+    assert!(socket.sock.pass_packet_info);
+    assert_eq!(socket.sock.tcp_congestion, Some("cubic".to_owned()));
+    assert_eq!(socket.sock.exec_start_pre.len(), 1);
+    assert_eq!(socket.sock.exec_start_post.len(), 1);
+    assert_eq!(socket.sock.exec_stop_pre.len(), 1);
+    assert_eq!(socket.sock.exec_stop_post.len(), 1);
+    assert!(socket.sock.timeout_sec.is_some());
+    assert!(socket.sock.pass_file_descriptors_to_exec);
+}
+
+#[test]
+fn test_new_socket_exec_directives_with_existing_settings() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = 0.0.0.0:8080
+    SocketMode = 0660
+    Accept = no
+    MaxConnections = 128
+    PassCredentials = yes
+    Backlog = 4096
+    FreeBind = yes
+    PassPacketInfo = yes
+    TCPCongestion = bbr
+    ExecStartPre = /usr/bin/mkdir -p /run/svc
+    ExecStopPost = -/usr/bin/rm /run/svc/lock
+    TimeoutSec = 90
+    PassFileDescriptorsToExec = yes
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    // Existing directives still work
+    assert_eq!(socket.sock.socket_mode, Some(0o660));
+    assert!(!socket.sock.accept);
+    assert_eq!(socket.sock.max_connections, 128);
+    assert!(socket.sock.pass_credentials);
+    assert_eq!(socket.sock.backlog, Some(4096));
+    assert!(socket.sock.free_bind);
+
+    // New directives also work
+    assert!(socket.sock.pass_packet_info);
+    assert_eq!(socket.sock.tcp_congestion, Some("bbr".to_owned()));
+    assert_eq!(socket.sock.exec_start_pre.len(), 1);
+    assert_eq!(socket.sock.exec_start_pre[0].cmd, "/usr/bin/mkdir");
+    assert_eq!(socket.sock.exec_stop_post.len(), 1);
+    assert_eq!(socket.sock.exec_stop_post[0].cmd, "/usr/bin/rm");
+    assert!(
+        socket.sock.exec_stop_post[0]
+            .prefixes
+            .contains(&crate::units::CommandlinePrefix::Minus)
+    );
+    match &socket.sock.timeout_sec {
+        Some(crate::units::Timeout::Duration(d)) => assert_eq!(d.as_secs(), 90),
+        other => panic!("Expected Duration(90s), got {:?}", other),
+    }
+    assert!(socket.sock.pass_file_descriptors_to_exec);
+}
+
+#[test]
+fn test_exec_start_pre_with_at_sign_prefix() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    ExecStartPre = @/usr/bin/myutil myutil --setup
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    assert_eq!(socket.sock.exec_start_pre.len(), 1);
+    assert_eq!(socket.sock.exec_start_pre[0].cmd, "/usr/bin/myutil");
+    assert!(
+        socket.sock.exec_start_pre[0]
+            .prefixes
+            .contains(&crate::units::CommandlinePrefix::AtSign)
+    );
+    assert_eq!(
+        socket.sock.exec_start_pre[0].args,
+        vec!["myutil", "--setup"]
+    );
+}
+
+#[test]
+fn test_timeout_sec_case_insensitive_infinity() {
+    let test_socket_str = r#"
+    [Socket]
+    ListenStream = /path/to/socket
+    TimeoutSec = INFINITY
+    "#;
+
+    let parsed_file = crate::units::parse_file(test_socket_str).unwrap();
+    let socket = crate::units::parse_socket(
+        parsed_file,
+        &std::path::PathBuf::from("/path/to/test.socket"),
+    )
+    .unwrap();
+
+    match &socket.sock.timeout_sec {
+        Some(crate::units::Timeout::Infinity) => {}
+        other => panic!("Expected Infinity, got {:?}", other),
+    }
+}

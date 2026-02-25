@@ -2983,5 +2983,50 @@ pub struct SocketConfig {
     /// See systemd.socket(5).
     pub smack_label_ipout: Option<String>,
 
+    /// PassPacketInfo= — whether to enable IP_PKTINFO (IPv4) or
+    /// IPV6_RECVPKTINFO (IPv6) on the socket, so that the receiving
+    /// process can determine the destination address and interface of
+    /// incoming packets via ancillary messages. Defaults to false.
+    /// See systemd.socket(5).
+    pub pass_packet_info: bool,
+
+    /// TCPCongestion= — the TCP congestion control algorithm to set on
+    /// the socket (TCP_CONGESTION). Takes a string such as "cubic",
+    /// "reno", "bbr", etc. If not set, the kernel default is used.
+    /// See systemd.socket(5).
+    pub tcp_congestion: Option<String>,
+
+    /// ExecStartPre= — commands to execute before listening on the socket(s).
+    /// Multiple lines are allowed and executed in order. Supports the same
+    /// command prefixes as ExecStart= in service units ("-" for ignore-failure,
+    /// "@" for argv[0] override). See systemd.socket(5).
+    pub exec_start_pre: Vec<Commandline>,
+
+    /// ExecStartPost= — commands to execute after listening on the socket(s)
+    /// has been set up. See systemd.socket(5).
+    pub exec_start_post: Vec<Commandline>,
+
+    /// ExecStopPre= — commands to execute before closing the socket(s).
+    /// See systemd.socket(5).
+    pub exec_stop_pre: Vec<Commandline>,
+
+    /// ExecStopPost= — commands to execute after closing the socket(s).
+    /// See systemd.socket(5).
+    pub exec_stop_post: Vec<Commandline>,
+
+    /// TimeoutSec= — timeout for ExecStartPre=, ExecStartPost=,
+    /// ExecStopPre=, and ExecStopPost= commands. If any of these commands
+    /// does not finish within the configured time, the socket unit is
+    /// considered failed. Takes a timespan value or "infinity".
+    /// Defaults to DefaultTimeoutStartSec= from manager configuration.
+    /// See systemd.socket(5).
+    pub timeout_sec: Option<Timeout>,
+
+    /// PassFileDescriptorsToExec= — whether to pass the socket file
+    /// descriptors to ExecStartPost=, ExecStopPre=, and ExecStopPost=
+    /// commands via the sd_listen_fds(3) protocol. Takes a boolean.
+    /// Defaults to false. See systemd.socket(5). (systemd 257+)
+    pub pass_file_descriptors_to_exec: bool,
+
     pub exec_config: ExecConfig,
 }

@@ -652,11 +652,66 @@ fn insert_socket_config(props: &mut BTreeMap<String, String>, conf: &SocketConfi
     }
     insert_bool(props, "PassCredentials", conf.pass_credentials);
     insert_bool(props, "PassSecurity", conf.pass_security);
+    insert_bool(props, "PassPacketInfo", conf.pass_packet_info);
     insert_bool(props, "RemoveOnStop", conf.remove_on_stop);
     insert_bool(props, "Writable", conf.writable);
     if !conf.filedesc_name.is_empty() {
         insert(props, "FileDescriptorName", &conf.filedesc_name);
     }
+    if let Some(ref tc) = conf.tcp_congestion {
+        insert(props, "TCPCongestion", tc);
+    }
+    if !conf.exec_start_pre.is_empty() {
+        let cmds: Vec<String> = conf.exec_start_pre.iter().map(format_commandline).collect();
+        insert(props, "ExecStartPre", &cmds.join(" ; "));
+    }
+    if !conf.exec_start_post.is_empty() {
+        let cmds: Vec<String> = conf
+            .exec_start_post
+            .iter()
+            .map(format_commandline)
+            .collect();
+        insert(props, "ExecStartPost", &cmds.join(" ; "));
+    }
+    if !conf.exec_stop_pre.is_empty() {
+        let cmds: Vec<String> = conf.exec_stop_pre.iter().map(format_commandline).collect();
+        insert(props, "ExecStopPre", &cmds.join(" ; "));
+    }
+    if !conf.exec_stop_post.is_empty() {
+        let cmds: Vec<String> = conf.exec_stop_post.iter().map(format_commandline).collect();
+        insert(props, "ExecStopPost", &cmds.join(" ; "));
+    }
+    match &conf.timeout_sec {
+        Some(crate::units::Timeout::Duration(d)) => {
+            insert(props, "TimeoutUSec", &format!("{}us", d.as_micros()));
+        }
+        Some(crate::units::Timeout::Infinity) => {
+            insert(props, "TimeoutUSec", "infinity");
+        }
+        None => {}
+    }
+    insert_bool(
+        props,
+        "PassFileDescriptorsToExec",
+        conf.pass_file_descriptors_to_exec,
+    );
+}
+
+fn format_commandline(cmd: &crate::units::Commandline) -> String {
+    let mut s = String::new();
+    for p in &cmd.prefixes {
+        match p {
+            crate::units::CommandlinePrefix::Minus => s.push('-'),
+            crate::units::CommandlinePrefix::AtSign => s.push('@'),
+            _ => {}
+        }
+    }
+    s.push_str(&cmd.cmd);
+    for arg in &cmd.args {
+        s.push(' ');
+        s.push_str(arg);
+    }
+    s
 }
 
 fn insert_mount_config(props: &mut BTreeMap<String, String>, conf: &MountConfig) {
