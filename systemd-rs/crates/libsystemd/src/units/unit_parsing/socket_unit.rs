@@ -5,8 +5,9 @@ use crate::sockets::{
     TcpSocketConfig, UdpSocketConfig, UnixSocketConfig,
 };
 use crate::units::{
-    ParsedCommonConfig, ParsedFile, ParsedSection, ParsedSingleSocketConfig, ParsedSocketConfig,
-    ParsedSocketSection, ParsingErrorReason, parse_install_section, parse_unit_section,
+    Commandline, ParsedCommonConfig, ParsedFile, ParsedSection, ParsedSingleSocketConfig,
+    ParsedSocketConfig, ParsedSocketSection, ParsingErrorReason, parse_install_section,
+    parse_unit_section,
 };
 use std::path::PathBuf;
 
@@ -165,6 +166,16 @@ fn parse_socket_section(
     let smack_label = section.remove("SMACKLABEL");
     let smack_label_ipin = section.remove("SMACKLABELIPIN");
     let smack_label_ipout = section.remove("SMACKLABELIPOUT");
+
+    // New socket directives
+    let pass_packet_info = section.remove("PASSPACKETINFO");
+    let tcp_congestion = section.remove("TCPCONGESTION");
+    let exec_start_pre = section.remove("EXECSTARTPRE");
+    let exec_start_post = section.remove("EXECSTARTPOST");
+    let exec_stop_pre = section.remove("EXECSTOPPRE");
+    let exec_stop_post = section.remove("EXECSTOPPOST");
+    let timeout_sec = section.remove("TIMEOUTSEC");
+    let pass_file_descriptors_to_exec = section.remove("PASSFILEDESCRIPTORSTOEXEC");
 
     let exec_config = super::parse_exec_section(&mut section)?;
 
@@ -1147,6 +1158,94 @@ fn parse_socket_section(
         None => None,
     };
 
+    // --- Parse new socket directives ---
+
+    let pass_packet_info = match pass_packet_info {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "PassPacketInfo".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
+    let tcp_congestion: Option<String> = match tcp_congestion {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(val.to_owned())
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "TCPCongestion".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let exec_start_pre: Vec<Commandline> = match exec_start_pre {
+        Some(vec) => super::service_unit::parse_cmdlines(&vec)?,
+        None => Vec::new(),
+    };
+
+    let exec_start_post: Vec<Commandline> = match exec_start_post {
+        Some(vec) => super::service_unit::parse_cmdlines(&vec)?,
+        None => Vec::new(),
+    };
+
+    let exec_stop_pre: Vec<Commandline> = match exec_stop_pre {
+        Some(vec) => super::service_unit::parse_cmdlines(&vec)?,
+        None => Vec::new(),
+    };
+
+    let exec_stop_post: Vec<Commandline> = match exec_stop_post {
+        Some(vec) => super::service_unit::parse_cmdlines(&vec)?,
+        None => Vec::new(),
+    };
+
+    let timeout_sec: Option<super::Timeout> = match timeout_sec {
+        Some(vec) => {
+            if vec.len() == 1 {
+                let val = vec[0].1.trim();
+                if val.is_empty() {
+                    None
+                } else {
+                    Some(super::service_unit::parse_timeout(val))
+                }
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "TimeoutSec".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => None,
+    };
+
+    let pass_file_descriptors_to_exec = match pass_file_descriptors_to_exec {
+        Some(vec) => {
+            if vec.len() == 1 {
+                super::string_to_bool(&vec[0].1)
+            } else {
+                return Err(ParsingErrorReason::SettingTooManyValues(
+                    "PassFileDescriptorsToExec".to_owned(),
+                    super::map_tuples_to_second(vec),
+                ));
+            }
+        }
+        None => false,
+    };
+
     Ok(ParsedSocketSection {
         filedesc_name: fdname,
         services,
@@ -1193,6 +1292,14 @@ fn parse_socket_section(
         smack_label,
         smack_label_ipin,
         smack_label_ipout,
+        pass_packet_info,
+        tcp_congestion,
+        exec_start_pre,
+        exec_start_post,
+        exec_stop_pre,
+        exec_stop_post,
+        timeout_sec,
+        pass_file_descriptors_to_exec,
         exec_section: exec_config,
     })
 }

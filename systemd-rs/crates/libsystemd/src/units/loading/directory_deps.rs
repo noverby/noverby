@@ -1575,6 +1575,7 @@ fn is_list_setting(key: &str) -> bool {
             | "ExecStartPost"
             | "ExecStart"
             | "ExecStop"
+            | "ExecStopPre"
             | "ExecStopPost"
             | "ExecReload"
             | "ExecCondition"
